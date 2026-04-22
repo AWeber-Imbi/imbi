@@ -149,7 +149,7 @@ function SortableWidget({ id, children }: SortableWidgetProps) {
       <div
         {...attributes}
         {...listeners}
-        className={`bg-secondary/80 absolute left-2 top-2 z-20 cursor-grab rounded p-1 text-tertiary opacity-0 transition-opacity hover:text-primary active:cursor-grabbing group-hover:opacity-100`}
+        className="bg-secondary/80 absolute left-2 top-2 z-20 cursor-grab rounded p-1 text-tertiary opacity-0 transition-opacity hover:text-primary active:cursor-grabbing group-hover:opacity-100"
       >
         <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
@@ -295,9 +295,7 @@ export function Dashboard({
 
       {/* Widgets */}
       {selectedWidgets.length === 0 ? (
-        <div
-          className={`rounded-lg border border-border bg-card p-12 text-center`}
-        >
+        <div className="rounded-lg border border-border bg-card p-12 text-center">
           <div className="mb-4 text-6xl text-secondary">📊</div>
           <h3 className="mb-2 text-xl font-medium text-primary">
             No Widgets Selected

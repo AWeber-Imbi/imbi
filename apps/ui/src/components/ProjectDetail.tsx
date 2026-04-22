@@ -1131,7 +1131,7 @@ function SidebarProjectRow({ rel }: { rel: ProjectRelationship }) {
     <li className="flex items-center gap-2 py-1">
       <Link
         to={`/projects/${rel.project.id}`}
-        className={`truncate text-sm text-warning hover:underline`}
+        className="truncate text-sm text-warning hover:underline"
       >
         {rel.project.name}
       </Link>
@@ -1297,7 +1297,7 @@ function SettingsTab({ project }: { project: Project }) {
                 onChange={(e) => setDeleteConfirmSlug(e.target.value)}
                 placeholder={project.slug}
                 disabled={deleteMutation.isPending}
-                className={''}
+                className=""
               />
               <div className="flex gap-2">
                 <Button

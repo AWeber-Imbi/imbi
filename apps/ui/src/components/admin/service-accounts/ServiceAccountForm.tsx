@@ -165,9 +165,9 @@ export function ServiceAccountForm({
 
       {/* API Error Display */}
       {error && (
-        <div className={`rounded-lg border border-danger bg-danger p-4`}>
+        <div className="rounded-lg border border-danger bg-danger p-4">
           <div className="flex items-start gap-3">
-            <AlertCircle className={`h-5 w-5 flex-shrink-0 text-danger`} />
+            <AlertCircle className="h-5 w-5 flex-shrink-0 text-danger" />
             <div>
               <div className="font-medium text-danger">
                 Failed to save service account
@@ -207,7 +207,7 @@ export function ServiceAccountForm({
                   }}
                   disabled={isLoading}
                   placeholder="my-service-account"
-                  className={''}
+                  className=""
                 />
                 <p className="mt-1 text-xs text-tertiary">
                   Lowercase letters, numbers, and hyphens only. Must start with
@@ -244,7 +244,7 @@ export function ServiceAccountForm({
                 }}
                 disabled={isLoading}
                 placeholder="CI/CD Pipeline"
-                className={''}
+                className=""
               />
               {touched.display_name && validationErrors.display_name && (
                 <p className="mt-1 text-sm text-red-600">
@@ -264,7 +264,7 @@ export function ServiceAccountForm({
                 disabled={isLoading}
                 placeholder="What does this service account do?"
                 rows={3}
-                className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -293,7 +293,7 @@ export function ServiceAccountForm({
                     handleFieldChange('organization_slug')
                   }}
                   disabled={isLoading}
-                  className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select an organization...</option>
                   {organizations.map((org) => (
@@ -329,7 +329,7 @@ export function ServiceAccountForm({
                       handleFieldChange('role_slug')
                     }}
                     disabled={isLoading}
-                    className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Select a role...</option>
                     {availableRoles.map((role) => (

@@ -52,9 +52,7 @@ export function SettingsIntegrations() {
         >
           <div className="flex items-start justify-between">
             <div className="flex items-start gap-4">
-              <div
-                className={`flex h-12 w-12 items-center justify-center rounded-lg bg-secondary text-xl`}
-              >
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-secondary text-xl">
                 {integration.icon}
               </div>
               <div>
@@ -88,7 +86,7 @@ export function SettingsIntegrations() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className={''}
+                    className=""
                     style={{ borderWidth: '0.5px' }}
                   >
                     Configure

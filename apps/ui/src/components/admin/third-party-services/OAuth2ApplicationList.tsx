@@ -167,9 +167,7 @@ export function OAuth2ApplicationList({
 
   if (error) {
     return (
-      <div
-        className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
-      >
+      <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger">
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
           <div className="font-medium">Failed to load applications</div>
@@ -212,35 +210,23 @@ export function OAuth2ApplicationList({
           </div>
         </div>
       ) : (
-        <div
-          className={`overflow-hidden rounded-lg border border-border bg-card`}
-        >
+        <div className="overflow-hidden rounded-lg border border-border bg-card">
           <table className="w-full">
             <thead className="border-b border-tertiary bg-secondary">
               <tr>
-                <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary`}
-                >
+                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
                   Application
                 </th>
-                <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary`}
-                >
+                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
                   Type
                 </th>
-                <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary`}
-                >
+                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
                   Client ID
                 </th>
-                <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary`}
-                >
+                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
                   Status
                 </th>
-                <th
-                  className={`px-6 py-3 text-right text-xs uppercase tracking-wider text-tertiary`}
-                >
+                <th className="px-6 py-3 text-right text-xs uppercase tracking-wider text-tertiary">
                   Actions
                 </th>
               </tr>
@@ -262,9 +248,7 @@ export function OAuth2ApplicationList({
                       <div className="text-sm text-tertiary">{app.slug}</div>
                     </td>
                     <td className="px-6 py-4">
-                      <code
-                        className={`rounded bg-secondary px-2 py-1 text-xs text-primary`}
-                      >
+                      <code className="rounded bg-secondary px-2 py-1 text-xs text-primary">
                         {app.app_type}
                       </code>
                     </td>
@@ -289,7 +273,7 @@ export function OAuth2ApplicationList({
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   aria-label={`Open ${app.name} application`}
-                                  className={`inline-flex items-center rounded p-1.5 text-info hover:bg-info`}
+                                  className="inline-flex items-center rounded p-1.5 text-info hover:bg-info"
                                 >
                                   <ExternalLink className="h-4 w-4" />
                                 </a>

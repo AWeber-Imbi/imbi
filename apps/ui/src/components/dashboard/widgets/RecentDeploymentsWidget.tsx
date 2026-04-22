@@ -97,21 +97,17 @@ export function RecentDeploymentsWidget({
               type="button"
               key={deployment.id}
               onClick={() => onProjectSelect?.(deployment.projectId)}
-              className={`w-full rounded-lg border border-input bg-background p-3 text-left transition-colors hover:border-secondary`}
+              className="w-full rounded-lg border border-input bg-background p-3 text-left transition-colors hover:border-secondary"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
-                  <Rocket
-                    className={`mt-0.5 h-5 w-5 flex-shrink-0 text-tertiary`}
-                  />
+                  <Rocket className="mt-0.5 h-5 w-5 flex-shrink-0 text-tertiary" />
                   <div className="min-w-0 flex-1">
                     <div className="mb-1 truncate font-medium text-primary">
                       {deployment.project}
                     </div>
                     <div className="mb-1 flex flex-wrap items-center gap-2">
-                      <code
-                        className={`rounded bg-secondary px-2 py-0.5 text-xs text-primary`}
-                      >
+                      <code className="rounded bg-secondary px-2 py-0.5 text-xs text-primary">
                         {deployment.version}
                       </code>
                       <Badge variant={env.variant} className="rounded-full">
@@ -130,9 +126,7 @@ export function RecentDeploymentsWidget({
                     </div>
                   </div>
                 </div>
-                <ChevronRight
-                  className={`h-4 w-4 flex-shrink-0 text-tertiary`}
-                />
+                <ChevronRight className="h-4 w-4 flex-shrink-0 text-tertiary" />
               </div>
             </button>
           )

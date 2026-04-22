@@ -146,7 +146,7 @@ export function ThirdPartyServiceForm({
 
       {/* API Error */}
       {error && (
-        <div className={`rounded-lg border border-danger bg-danger p-4`}>
+        <div className="rounded-lg border border-danger bg-danger p-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="h-5 w-5 flex-shrink-0 text-danger" />
             <div>
@@ -170,7 +170,7 @@ export function ThirdPartyServiceForm({
         className="space-y-6"
       >
         {/* Basic Information */}
-        <div className={`rounded-lg border border-border bg-card p-6`}>
+        <div className="rounded-lg border border-border bg-card p-6">
           <h3 className="mb-4 text-sm font-medium text-primary">
             Service Information
           </h3>
@@ -280,7 +280,7 @@ export function ThirdPartyServiceForm({
                   onChange={(e) => setCategory(e.target.value)}
                   placeholder="e.g., Payments, Analytics, Communications"
                   disabled={isLoading}
-                  className={''}
+                  className=""
                 />
               </div>
             </div>
@@ -338,7 +338,7 @@ export function ThirdPartyServiceForm({
                 rows={3}
                 disabled={isLoading}
                 placeholder="Brief description of this service and how it is used"
-                className={`w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground`}
+                className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground"
               />
             </div>
 
@@ -377,7 +377,7 @@ export function ThirdPartyServiceForm({
         </div>
 
         {/* Links */}
-        <div className={`rounded-lg border border-border bg-card p-6`}>
+        <div className="rounded-lg border border-border bg-card p-6">
           <h3 className="mb-4 text-sm font-medium text-primary">Links</h3>
           <p className="mb-4 text-sm text-secondary">
             Named links to documentation, API references, status pages, etc.
@@ -392,7 +392,7 @@ export function ThirdPartyServiceForm({
         </div>
 
         {/* Identifiers */}
-        <div className={`rounded-lg border border-border bg-card p-6`}>
+        <div className="rounded-lg border border-border bg-card p-6">
           <h3 className="mb-4 text-sm font-medium text-primary">Identifiers</h3>
           <p className="mb-4 text-sm text-secondary">
             External IDs such as account ID, org ID, or API key names.

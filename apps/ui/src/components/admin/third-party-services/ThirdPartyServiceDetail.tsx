@@ -118,9 +118,7 @@ export function ThirdPartyServiceDetail({
                 <div>
                   <div className="text-sm text-secondary">Slug</div>
                   <div className="mt-1 text-primary">
-                    <code
-                      className={`rounded bg-secondary px-2 py-1 text-sm text-primary`}
-                    >
+                    <code className="rounded bg-secondary px-2 py-1 text-sm text-primary">
                       {service.slug}
                     </code>
                   </div>
@@ -159,7 +157,7 @@ export function ThirdPartyServiceDetail({
                         href={service.service_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={`hover:text-info/80 inline-flex items-center gap-1 text-sm text-info`}
+                        className="hover:text-info/80 inline-flex items-center gap-1 text-sm text-info"
                       >
                         {service.service_url}
                         <ExternalLink className="h-3 w-3" />
@@ -189,7 +187,7 @@ export function ThirdPartyServiceDetail({
                           href={String(url)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className={`hover:text-info/80 inline-flex items-center gap-1 text-sm text-info`}
+                          className="hover:text-info/80 inline-flex items-center gap-1 text-sm text-info"
                         >
                           {String(url)}
                           <ExternalLink className="h-3 w-3" />
@@ -214,9 +212,7 @@ export function ThirdPartyServiceDetail({
                     <div key={label}>
                       <div className="text-sm text-secondary">{label}</div>
                       <div className="mt-1 text-primary">
-                        <code
-                          className={`rounded bg-secondary px-2 py-1 text-sm text-primary`}
-                        >
+                        <code className="rounded bg-secondary px-2 py-1 text-sm text-primary">
                           {String(val)}
                         </code>
                       </div>

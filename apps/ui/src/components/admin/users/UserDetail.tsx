@@ -163,17 +163,13 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
               {user.is_active ? 'Active' : 'Inactive'}
             </div>
             {user.is_admin && (
-              <div
-                className={`flex items-center gap-2 rounded bg-danger px-3 py-1.5 text-danger`}
-              >
+              <div className="flex items-center gap-2 rounded bg-danger px-3 py-1.5 text-danger">
                 <Shield className="h-4 w-4" />
                 Administrator
               </div>
             )}
             {user.is_service_account && (
-              <div
-                className={`flex items-center gap-2 rounded bg-purple-100 px-3 py-1.5 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400`}
-              >
+              <div className="flex items-center gap-2 rounded bg-purple-100 px-3 py-1.5 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
                 Service Account
               </div>
             )}
@@ -246,7 +242,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
               onClick={() => setShowAddOrg(!showAddOrg)}
               variant="outline"
               size="sm"
-              className={''}
+              className=""
             >
               <Plus className="mr-2 h-4 w-4" />
               Add to Organization
@@ -256,9 +252,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
         <CardContent>
           {/* Add to Organization Form */}
           {showAddOrg && (
-            <div
-              className={`mb-4 rounded-lg border border-input bg-secondary p-4`}
-            >
+            <div className="mb-4 rounded-lg border border-input bg-secondary p-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1.5 block text-sm text-secondary">
@@ -267,7 +261,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
                   <select
                     value={newOrgSlug}
                     onChange={(e) => setNewOrgSlug(e.target.value)}
-                    className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground`}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
                   >
                     <option value="">Select...</option>
                     {availableOrgs.map((org) => (
@@ -284,7 +278,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
                   <select
                     value={newRoleSlug}
                     onChange={(e) => setNewRoleSlug(e.target.value)}
-                    className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground`}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
                   >
                     <option value="">Select...</option>
                     {availableRoles.map((role) => (
@@ -332,7 +326,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
               {(user.organizations ?? []).map((membership: OrgMembership) => (
                 <div
                   key={membership.organization_slug}
-                  className={`flex items-center justify-between rounded-lg border border-input bg-secondary p-3`}
+                  className="flex items-center justify-between rounded-lg border border-input bg-secondary p-3"
                 >
                   <div className="flex-1">
                     <div className="text-sm font-medium text-primary">
@@ -352,7 +346,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
                         })
                       }
                       disabled={updateRoleMutation.isPending}
-                      className={`rounded border border-input bg-background px-2 py-1 text-xs text-foreground`}
+                      className="rounded border border-input bg-background px-2 py-1 text-xs text-foreground"
                     >
                       {availableRoles.map((role) => (
                         <option key={role.slug} value={role.slug}>
@@ -376,7 +370,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
                               }
                             }}
                             disabled={removeOrgMutation.isPending}
-                            className={`rounded p-1.5 text-danger hover:bg-secondary`}
+                            className="rounded p-1.5 text-danger hover:bg-secondary"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>

@@ -433,9 +433,7 @@ export function ServiceAccountDetail({
               <Power className="h-4 w-4" />
               {account.is_active ? 'Active' : 'Inactive'}
             </div>
-            <div
-              className={`flex items-center gap-2 rounded bg-purple-100 px-3 py-1.5 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400`}
-            >
+            <div className="flex items-center gap-2 rounded bg-purple-100 px-3 py-1.5 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
               Service Account
             </div>
           </div>
@@ -454,7 +452,7 @@ export function ServiceAccountDetail({
               onClick={() => setShowAddOrg(!showAddOrg)}
               variant="outline"
               size="sm"
-              className={''}
+              className=""
             >
               <Plus className="mr-2 h-4 w-4" />
               Add to Organization
@@ -464,9 +462,7 @@ export function ServiceAccountDetail({
         <CardContent>
           {/* Add to Organization Form */}
           {showAddOrg && (
-            <div
-              className={`mb-4 rounded-lg border border-input bg-secondary p-4`}
-            >
+            <div className="mb-4 rounded-lg border border-input bg-secondary p-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1.5 block text-sm text-secondary">
@@ -475,7 +471,7 @@ export function ServiceAccountDetail({
                   <select
                     value={newOrgSlug}
                     onChange={(e) => setNewOrgSlug(e.target.value)}
-                    className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground`}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
                   >
                     <option value="">Select...</option>
                     {availableOrgs.map((org) => (
@@ -497,7 +493,7 @@ export function ServiceAccountDetail({
                     <select
                       value={newRoleSlug}
                       onChange={(e) => setNewRoleSlug(e.target.value)}
-                      className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground`}
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
                     >
                       <option value="">Select...</option>
                       {availableRoles.map((role) => (
@@ -547,7 +543,7 @@ export function ServiceAccountDetail({
                 (membership: OrgMembership) => (
                   <div
                     key={membership.organization_slug}
-                    className={`flex items-center justify-between rounded-lg border border-input bg-secondary p-3`}
+                    className="flex items-center justify-between rounded-lg border border-input bg-secondary p-3"
                   >
                     <div className="flex-1">
                       <div className="text-sm font-medium text-primary">
@@ -577,7 +573,7 @@ export function ServiceAccountDetail({
                           }
                           disabled={updateOrgRoleMutation.isPending}
                           aria-label={`Role for ${membership.organization_name}`}
-                          className={`rounded border border-input bg-background px-2 py-1 text-xs text-foreground`}
+                          className="rounded border border-input bg-background px-2 py-1 text-xs text-foreground"
                         >
                           {availableRoles.map((role) => (
                             <option key={role.slug} value={role.slug}>
@@ -604,7 +600,7 @@ export function ServiceAccountDetail({
                                 }
                               }}
                               disabled={removeOrgMutation.isPending}
-                              className={`rounded p-1.5 text-danger hover:bg-secondary`}
+                              className="rounded p-1.5 text-danger hover:bg-secondary"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
@@ -643,7 +639,7 @@ export function ServiceAccountDetail({
             onClick={() => setShowCreateCredential(!showCreateCredential)}
             variant="outline"
             size="sm"
-            className={''}
+            className=""
           >
             <Plus className="mr-2 h-4 w-4" />
             Create Credential
@@ -652,9 +648,7 @@ export function ServiceAccountDetail({
         <CardContent>
           {/* Create Credential Form */}
           {showCreateCredential && (
-            <div
-              className={`mb-4 rounded-lg border border-input bg-secondary p-4`}
-            >
+            <div className="mb-4 rounded-lg border border-input bg-secondary p-4">
               <div className="space-y-3">
                 <div>
                   <label className="mb-1.5 block text-sm text-secondary">
@@ -664,7 +658,7 @@ export function ServiceAccountDetail({
                     value={credentialName}
                     onChange={(e) => setCredentialName(e.target.value)}
                     placeholder="e.g., production-api"
-                    className={''}
+                    className=""
                   />
                 </div>
                 <div>
@@ -675,7 +669,7 @@ export function ServiceAccountDetail({
                     value={credentialDescription}
                     onChange={(e) => setCredentialDescription(e.target.value)}
                     placeholder="What is this credential used for?"
-                    className={''}
+                    className=""
                   />
                 </div>
                 <div>
@@ -689,7 +683,7 @@ export function ServiceAccountDetail({
                     value={credentialScopes}
                     onChange={(e) => setCredentialScopes(e.target.value)}
                     placeholder="e.g., read:projects, write:projects"
-                    className={''}
+                    className=""
                   />
                 </div>
                 <div>
@@ -705,7 +699,7 @@ export function ServiceAccountDetail({
                     value={credentialExpiresDays}
                     onChange={(e) => setCredentialExpiresDays(e.target.value)}
                     placeholder="e.g., 90"
-                    className={''}
+                    className=""
                   />
                 </div>
                 <div className="flex items-center gap-2 pt-2">
@@ -727,7 +721,7 @@ export function ServiceAccountDetail({
                       setShowCreateCredential(false)
                       resetCredentialForm()
                     }}
-                    className={''}
+                    className=""
                   >
                     Cancel
                   </Button>
@@ -738,9 +732,7 @@ export function ServiceAccountDetail({
 
           {/* Newly Created Credential Banner */}
           {newlyCreatedCredential && (
-            <div
-              className={`mb-4 rounded-lg border border-success bg-success p-4`}
-            >
+            <div className="mb-4 rounded-lg border border-success bg-success p-4">
               <div className="mb-2 font-medium text-success">
                 Client Credential Created - Copy the secret now, it will not be
                 shown again!
@@ -749,9 +741,7 @@ export function ServiceAccountDetail({
                 <div>
                   <span className="text-xs text-secondary">Client ID</span>
                   <div className="flex items-center gap-2">
-                    <code
-                      className={`flex-1 rounded border border-input bg-background px-3 py-2 text-sm text-success`}
-                    >
+                    <code className="flex-1 rounded border border-input bg-background px-3 py-2 text-sm text-success">
                       {newlyCreatedCredential.client_id}
                     </code>
                     <TooltipProvider delayDuration={200}>
@@ -785,9 +775,7 @@ export function ServiceAccountDetail({
                 <div>
                   <span className="text-xs text-secondary">Client Secret</span>
                   <div className="flex items-center gap-2">
-                    <code
-                      className={`flex-1 rounded border border-input bg-background px-3 py-2 text-sm text-success`}
-                    >
+                    <code className="flex-1 rounded border border-input bg-background px-3 py-2 text-sm text-success">
                       {newlyCreatedCredential.client_secret}
                     </code>
                     <TooltipProvider delayDuration={200}>
@@ -834,9 +822,7 @@ export function ServiceAccountDetail({
               Loading client credentials...
             </div>
           ) : credentialsError ? (
-            <div
-              className={`flex items-center gap-2 rounded-lg bg-danger p-3 text-danger`}
-            >
+            <div className="flex items-center gap-2 rounded-lg bg-danger p-3 text-danger">
               <AlertCircle className="h-4 w-4 flex-shrink-0" />
               <span className="text-sm">Failed to load client credentials</span>
             </div>
@@ -864,9 +850,7 @@ export function ServiceAccountDetail({
                       <span className="text-sm font-medium text-primary">
                         {cred.name}
                       </span>
-                      <code
-                        className={`rounded bg-secondary px-2 py-0.5 text-xs text-secondary`}
-                      >
+                      <code className="rounded bg-secondary px-2 py-0.5 text-xs text-secondary">
                         {truncateClientId(cred.client_id)}
                       </code>
                       {cred.revoked && <Badge variant="danger">Revoked</Badge>}
@@ -896,7 +880,7 @@ export function ServiceAccountDetail({
                                 handleRotateCredential(cred.client_id)
                               }
                               disabled={rotateCredentialMutation.isPending}
-                              className={`rounded p-1.5 text-info hover:bg-secondary`}
+                              className="rounded p-1.5 text-info hover:bg-secondary"
                             >
                               <RotateCw className="h-4 w-4" />
                             </button>
@@ -916,7 +900,7 @@ export function ServiceAccountDetail({
                                 handleRevokeCredential(cred.client_id)
                               }
                               disabled={revokeCredentialMutation.isPending}
-                              className={`rounded p-1.5 text-danger hover:bg-secondary`}
+                              className="rounded p-1.5 text-danger hover:bg-secondary"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
@@ -946,7 +930,7 @@ export function ServiceAccountDetail({
             onClick={() => setShowCreateKey(!showCreateKey)}
             variant="outline"
             size="sm"
-            className={''}
+            className=""
           >
             <Plus className="mr-2 h-4 w-4" />
             Create API Key
@@ -955,9 +939,7 @@ export function ServiceAccountDetail({
         <CardContent>
           {/* Create Key Form */}
           {showCreateKey && (
-            <div
-              className={`mb-4 rounded-lg border border-input bg-secondary p-4`}
-            >
+            <div className="mb-4 rounded-lg border border-input bg-secondary p-4">
               <div className="flex items-end gap-3">
                 <div className="flex-1">
                   <label className="mb-1.5 block text-sm text-secondary">
@@ -968,7 +950,7 @@ export function ServiceAccountDetail({
                     value={newKeyName}
                     onChange={(e) => setNewKeyName(e.target.value)}
                     placeholder="e.g., production, staging"
-                    className={`w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground`}
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
                   />
                 </div>
                 <Button
@@ -993,16 +975,12 @@ export function ServiceAccountDetail({
 
           {/* Newly Created Key Banner */}
           {newlyCreatedKey && (
-            <div
-              className={`mb-4 rounded-lg border border-success bg-success p-4`}
-            >
+            <div className="mb-4 rounded-lg border border-success bg-success p-4">
               <div className="mb-2 font-medium text-success">
                 API Key Created - Copy it now, it will not be shown again!
               </div>
               <div className="flex items-center gap-2">
-                <code
-                  className={`flex-1 rounded border border-input bg-background px-3 py-2 text-sm text-success`}
-                >
+                <code className="flex-1 rounded border border-input bg-background px-3 py-2 text-sm text-success">
                   {newlyCreatedKey.key_secret}
                 </code>
                 <TooltipProvider delayDuration={200}>
@@ -1044,9 +1022,7 @@ export function ServiceAccountDetail({
               Loading API keys...
             </div>
           ) : keysError ? (
-            <div
-              className={`flex items-center gap-2 rounded-lg bg-danger p-3 text-danger`}
-            >
+            <div className="flex items-center gap-2 rounded-lg bg-danger p-3 text-danger">
               <AlertCircle className="h-4 w-4 flex-shrink-0" />
               <span className="text-sm">Failed to load API keys</span>
             </div>
@@ -1074,9 +1050,7 @@ export function ServiceAccountDetail({
                       <span className="text-sm font-medium text-primary">
                         {key.name}
                       </span>
-                      <code
-                        className={`rounded bg-secondary px-2 py-0.5 text-xs text-secondary`}
-                      >
+                      <code className="rounded bg-secondary px-2 py-0.5 text-xs text-secondary">
                         {key.key_id.substring(0, 7)}...
                       </code>
                       {key.revoked && <Badge variant="danger">Revoked</Badge>}
@@ -1099,7 +1073,7 @@ export function ServiceAccountDetail({
                               aria-label={`Rotate API key ${key.name}`}
                               onClick={() => handleRotateKey(key.key_id)}
                               disabled={rotateKeyMutation.isPending}
-                              className={`rounded p-1.5 text-info hover:bg-secondary`}
+                              className="rounded p-1.5 text-info hover:bg-secondary"
                             >
                               <RotateCw className="h-4 w-4" />
                             </button>
@@ -1117,7 +1091,7 @@ export function ServiceAccountDetail({
                               aria-label={`Revoke API key ${key.name}`}
                               onClick={() => handleRevokeKey(key.key_id)}
                               disabled={revokeKeyMutation.isPending}
-                              className={`rounded p-1.5 text-danger hover:bg-secondary`}
+                              className="rounded p-1.5 text-danger hover:bg-secondary"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>

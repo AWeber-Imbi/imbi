@@ -97,9 +97,7 @@ export function IconUpload({
   return (
     <div className="space-y-3">
       {isImageUrl && value && (
-        <div
-          className={`inline-flex items-center gap-3 rounded-lg border border-input bg-secondary p-3`}
-        >
+        <div className="inline-flex items-center gap-3 rounded-lg border border-input bg-secondary p-3">
           <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg bg-white">
             <img
               src={getThumbnailSrc(value)}
@@ -156,9 +154,7 @@ export function IconUpload({
       )}
 
       {error && (
-        <div
-          className={`flex items-start gap-2 rounded-lg border border-danger bg-danger p-3 text-danger`}
-        >
+        <div className="flex items-start gap-2 rounded-lg border border-danger bg-danger p-3 text-danger">
           <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <div className="text-xs">{error}</div>
         </div>

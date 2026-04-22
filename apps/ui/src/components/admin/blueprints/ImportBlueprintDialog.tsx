@@ -431,9 +431,7 @@ export function ImportBlueprintDialog({
 
           {/* Validation error display */}
           {error && (
-            <div
-              className={`flex items-start gap-2.5 rounded-lg border border-danger bg-danger px-3 py-2.5 text-danger`}
-            >
+            <div className="flex items-start gap-2.5 rounded-lg border border-danger bg-danger px-3 py-2.5 text-danger">
               <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
               <span className="text-sm">{error}</span>
             </div>
@@ -441,9 +439,7 @@ export function ImportBlueprintDialog({
 
           {/* API error display */}
           {apiError && !error && (
-            <div
-              className={`flex items-start gap-2.5 rounded-lg border border-danger bg-danger px-3 py-2.5 text-danger`}
-            >
+            <div className="flex items-start gap-2.5 rounded-lg border border-danger bg-danger px-3 py-2.5 text-danger">
               <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
               <div className="text-sm">
                 <div className="font-medium">Failed to import blueprint</div>
@@ -459,9 +455,7 @@ export function ImportBlueprintDialog({
 
           {/* Preview */}
           {parsedPreview && (
-            <div
-              className={`rounded-lg border border-input bg-secondary px-3 py-2.5`}
-            >
+            <div className="rounded-lg border border-input bg-secondary px-3 py-2.5">
               <div className="mb-1.5 text-xs font-medium text-tertiary">
                 Preview
               </div>

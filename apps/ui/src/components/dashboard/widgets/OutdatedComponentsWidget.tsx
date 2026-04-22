@@ -89,13 +89,11 @@ export function OutdatedComponentsWidget({
           return (
             <div
               key={item.projectId}
-              className={`rounded-lg border border-input bg-background p-4 transition-colors hover:border-secondary`}
+              className="rounded-lg border border-input bg-background p-4 transition-colors hover:border-secondary"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
-                  <Package
-                    className={`mt-0.5 h-5 w-5 flex-shrink-0 text-tertiary`}
-                  />
+                  <Package className="mt-0.5 h-5 w-5 flex-shrink-0 text-tertiary" />
                   <div className="min-w-0 flex-1">
                     <div className="mb-1 flex items-center gap-2">
                       <code className="text-sm font-medium text-primary">
@@ -109,14 +107,12 @@ export function OutdatedComponentsWidget({
                     <button
                       type="button"
                       onClick={() => onProjectSelect?.(item.projectId)}
-                      className={`mb-2 text-sm text-info hover:underline`}
+                      className="mb-2 text-sm text-info hover:underline"
                     >
                       {item.project}
                     </button>
 
-                    <div
-                      className={`flex items-center gap-3 text-xs text-secondary`}
-                    >
+                    <div className="flex items-center gap-3 text-xs text-secondary">
                       <span className="font-mono">
                         {item.currentVersion} → {item.latestVersion}
                       </span>
@@ -134,7 +130,7 @@ export function OutdatedComponentsWidget({
                 <button
                   type="button"
                   onClick={() => onProjectSelect?.(item.projectId)}
-                  className={`flex-shrink-0 rounded p-2 text-secondary transition-colors hover:bg-secondary hover:text-primary`}
+                  className="flex-shrink-0 rounded p-2 text-secondary transition-colors hover:bg-secondary hover:text-primary"
                   aria-label={`View update details for ${item.component}`}
                 >
                   <TrendingUp className="h-4 w-4" />
@@ -149,7 +145,7 @@ export function OutdatedComponentsWidget({
         <button
           type="button"
           onClick={() => onProjectSelect?.('outdated-components')}
-          className={`hover:text-info/80 flex items-center gap-1 text-sm text-info`}
+          className="hover:text-info/80 flex items-center gap-1 text-sm text-info"
         >
           View all outdated components
           <ExternalLink className="h-3 w-3" />

@@ -77,16 +77,14 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
     <div ref={containerRef} className="relative">
       {/* Current value display */}
       {value ? (
-        <div
-          className={`flex items-center gap-3 rounded-lg border border-input bg-background p-2.5`}
-        >
+        <div className="flex items-center gap-3 rounded-lg border border-input bg-background p-2.5">
           <button
             type="button"
             onClick={() => setOpen(!open)}
-            className={`flex flex-1 items-center gap-3 text-left text-sm text-primary`}
+            className="flex flex-1 items-center gap-3 text-left text-sm text-primary"
           >
             {SelectedIcon && <SelectedIcon className="h-5 w-5 flex-shrink-0" />}
-            <code className={`rounded bg-secondary px-1.5 py-0.5 text-xs`}>
+            <code className="rounded bg-secondary px-1.5 py-0.5 text-xs">
               {value}
             </code>
           </button>
@@ -96,7 +94,7 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
             size="sm"
             onClick={handleClear}
             aria-label="Remove icon"
-            className={`h-7 w-7 p-0 text-tertiary hover:text-danger`}
+            className="h-7 w-7 p-0 text-tertiary hover:text-danger"
           >
             <X className="h-3.5 w-3.5" />
           </Button>
@@ -105,7 +103,7 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
         <button
           type="button"
           onClick={() => setOpen(!open)}
-          className={`flex w-full items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm text-tertiary hover:border-secondary`}
+          className="flex w-full items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm text-tertiary hover:border-secondary"
         >
           <Search className="h-4 w-4" />
           Pick an icon...
@@ -114,9 +112,7 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
 
       {/* Dropdown */}
       {open && (
-        <div
-          className={`absolute z-50 mt-1 w-full rounded-lg border border-border bg-card shadow-lg`}
-        >
+        <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-card shadow-lg">
           <div className="p-2">
             <div className="mb-2 flex flex-wrap gap-1">
               {sets.map((set) => (
@@ -137,9 +133,7 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
               ))}
             </div>
             <div className="relative">
-              <Search
-                className={`absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary`}
-              />
+              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary" />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -151,7 +145,7 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
           </div>
           <div className="max-h-64 overflow-y-auto px-2 pb-2">
             {filtered.length === 0 ? (
-              <div className={`py-6 text-center text-sm text-tertiary`}>
+              <div className="py-6 text-center text-sm text-tertiary">
                 No icons found
               </div>
             ) : (
@@ -176,7 +170,7 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
                               : 'hover:bg-secondary'
                           }`}
                         >
-                          <Icon className={`h-5 w-5 text-secondary`} />
+                          <Icon className="h-5 w-5 text-secondary" />
                         </button>
                       </HoverCardTrigger>
                       <HoverCardContent className="w-auto p-4" side="top">
@@ -193,7 +187,7 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
               </div>
             )}
             {filtered.length === MAX_RESULTS && (
-              <p className={`mt-2 text-center text-xs text-tertiary`}>
+              <p className="mt-2 text-center text-xs text-tertiary">
                 Type to narrow results
               </p>
             )}

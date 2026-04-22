@@ -125,9 +125,7 @@ export function ProjectsView() {
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="relative max-w-md flex-1">
-              <Search
-                className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary`}
-              />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary" />
               <Input
                 type="text"
                 placeholder="Search projects..."
@@ -137,9 +135,7 @@ export function ProjectsView() {
               />
             </div>
 
-            <div
-              className={`flex items-center rounded-lg border border-secondary`}
-            >
+            <div className="flex items-center rounded-lg border border-secondary">
               <Button
                 variant="ghost"
                 size="sm"
@@ -187,7 +183,7 @@ export function ProjectsView() {
               >
                 <div className="mb-3 flex items-start justify-between">
                   <div className="min-w-0 flex-1">
-                    <h3 className={`mb-1 truncate font-medium text-primary`}>
+                    <h3 className="mb-1 truncate font-medium text-primary">
                       {project.name}
                     </h3>
                     <p className="text-sm text-tertiary">
@@ -206,7 +202,7 @@ export function ProjectsView() {
                 </div>
 
                 {project.description && (
-                  <p className={`mb-3 line-clamp-2 text-sm text-secondary`}>
+                  <p className="mb-3 line-clamp-2 text-sm text-secondary">
                     {project.description}
                   </p>
                 )}
@@ -235,7 +231,7 @@ export function ProjectsView() {
         <Card className="overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className={`border-b border-tertiary bg-secondary`}>
+              <thead className="border-b border-tertiary bg-secondary">
                 <tr>
                   <th
                     className={
@@ -280,7 +276,7 @@ export function ProjectsView() {
                   return (
                     <tr
                       key={`table-${project.id}`}
-                      className={`cursor-pointer transition-colors hover:bg-secondary`}
+                      className="cursor-pointer transition-colors hover:bg-secondary"
                       onClick={() => handleProjectSelect(project.id)}
                     >
                       <td className="px-6 py-4 font-medium text-primary">

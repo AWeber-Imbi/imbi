@@ -135,7 +135,7 @@ export function SettingsApiKeys() {
                     onClick={() =>
                       handleCopyKey(`ik_${apiKey.key_id}`, apiKey.key_id)
                     }
-                    className={''}
+                    className=""
                     style={{ borderWidth: '0.5px' }}
                   >
                     {copiedKeyId === apiKey.key_id ? '✓' : '⎘'}
@@ -221,7 +221,7 @@ export function SettingsApiKeys() {
                   onClick={() =>
                     handleCopyKey(createdKey.key_secret, 'created')
                   }
-                  className={''}
+                  className=""
                   style={{ borderWidth: '0.5px' }}
                 >
                   {copiedKeyId === 'created' ? '✓' : '⎘'}
@@ -260,7 +260,7 @@ export function SettingsApiKeys() {
                     setShowCreateDialog(false)
                     setCreateError(null)
                   }}
-                  className={''}
+                  className=""
                   style={{ borderWidth: '0.5px' }}
                 >
                   Cancel
@@ -296,7 +296,7 @@ export function SettingsApiKeys() {
             <Button
               variant="outline"
               onClick={() => setRevokingKeyId(null)}
-              className={''}
+              className=""
               style={{ borderWidth: '0.5px' }}
             >
               Cancel

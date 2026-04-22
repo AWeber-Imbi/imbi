@@ -241,9 +241,7 @@ export function RoleForm({
 
   if (isEditing && roleError) {
     return (
-      <div
-        className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
-      >
+      <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger">
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
           <div className="font-medium">Failed to load role</div>
@@ -298,9 +296,9 @@ export function RoleForm({
 
       {/* System Role Warning */}
       {isSystemRole && (
-        <div className={`rounded-lg border border-warning bg-warning p-4`}>
+        <div className="rounded-lg border border-warning bg-warning p-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle className={`h-5 w-5 flex-shrink-0 text-warning`} />
+            <AlertTriangle className="h-5 w-5 flex-shrink-0 text-warning" />
             <div>
               <div className="font-medium text-warning">System Role</div>
               <div className="mt-1 text-sm text-warning">
@@ -314,9 +312,9 @@ export function RoleForm({
 
       {/* API Error Display */}
       {error && (
-        <div className={`rounded-lg border border-danger bg-danger p-4`}>
+        <div className="rounded-lg border border-danger bg-danger p-4">
           <div className="flex items-start gap-3">
-            <AlertCircle className={`h-5 w-5 flex-shrink-0 text-danger`} />
+            <AlertCircle className="h-5 w-5 flex-shrink-0 text-danger" />
             <div>
               <div className="font-medium text-danger">Failed to save role</div>
               <div className="mt-1 text-sm text-danger">
@@ -442,9 +440,7 @@ export function RoleForm({
           </div>
         </CardHeader>
         <CardContent>
-          <div
-            className={`mb-4 flex items-start gap-2 rounded-lg bg-info p-3 text-info`}
-          >
+          <div className="mb-4 flex items-start gap-2 rounded-lg bg-info p-3 text-info">
             <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
             <div className="text-xs">
               Select the permissions this role should have. Permissions are
@@ -480,7 +476,7 @@ export function RoleForm({
                 return (
                   <div
                     key={resource}
-                    className={`rounded-lg border border-input bg-secondary`}
+                    className="rounded-lg border border-input bg-secondary"
                   >
                     {/* Group Header */}
                     <div className="flex items-center gap-3 p-3">
@@ -493,7 +489,7 @@ export function RoleForm({
                             : 'Expand permissions group'
                         }
                         aria-expanded={isExpanded}
-                        className={`rounded p-0.5 hover:bg-secondary`}
+                        className="rounded p-0.5 hover:bg-secondary"
                       >
                         {isExpanded ? (
                           <ChevronDown className="h-4 w-4 text-secondary" />
@@ -517,7 +513,7 @@ export function RoleForm({
                         />
                         <label
                           htmlFor={`group-${resource}`}
-                          className={`flex-1 cursor-pointer select-none text-primary`}
+                          className="flex-1 cursor-pointer select-none text-primary"
                         >
                           {resourceLabel(resource)}
                         </label>
@@ -535,15 +531,13 @@ export function RoleForm({
 
                     {/* Group Permissions */}
                     {isExpanded && (
-                      <div
-                        className={`space-y-2 border-t border-secondary px-3 pb-3`}
-                      >
+                      <div className="space-y-2 border-t border-secondary px-3 pb-3">
                         {perms
                           .sort((a, b) => a.action.localeCompare(b.action))
                           .map((perm) => (
                             <div
                               key={perm.name}
-                              className={`flex items-start gap-3 rounded p-2.5 hover:bg-primary`}
+                              className="flex items-start gap-3 rounded p-2.5 hover:bg-primary"
                             >
                               <Checkbox
                                 id={perm.name}
@@ -559,9 +553,7 @@ export function RoleForm({
                                 className="flex-1 cursor-pointer select-none"
                               >
                                 <div className="text-sm text-primary">
-                                  <code
-                                    className={`rounded bg-secondary px-1.5 py-0.5 text-xs text-info`}
-                                  >
+                                  <code className="rounded bg-secondary px-1.5 py-0.5 text-xs text-info">
                                     {perm.action}
                                   </code>
                                 </div>

@@ -75,7 +75,7 @@ export function SettingsNotifications() {
         <div className="flex justify-end gap-3">
           <Button
             variant="outline"
-            className={''}
+            className=""
             style={{ borderWidth: '0.5px' }}
           >
             Reset to defaults

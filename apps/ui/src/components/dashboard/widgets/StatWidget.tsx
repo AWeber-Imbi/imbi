@@ -6,7 +6,7 @@ interface StatWidgetProps {
 
 export function StatWidget({ title, value, icon }: StatWidgetProps) {
   return (
-    <div className={`rounded-lg border border-border bg-card p-6`}>
+    <div className="rounded-lg border border-border bg-card p-6">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-secondary">{title}</p>

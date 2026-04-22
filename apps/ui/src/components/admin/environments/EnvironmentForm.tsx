@@ -185,9 +185,7 @@ export function EnvironmentForm({
                 ))}
               </select>
               {errors.organization && (
-                <div
-                  className={`mt-1 flex items-center gap-1 text-xs text-danger`}
-                >
+                <div className="mt-1 flex items-center gap-1 text-xs text-danger">
                   <AlertCircle className="h-3 w-3" />
                   {errors.organization}
                 </div>
@@ -213,9 +211,7 @@ export function EnvironmentForm({
                   className={` ${errors.name ? 'border-red-500' : ''}`}
                 />
                 {errors.name && (
-                  <div
-                    className={`mt-1 flex items-center gap-1 text-xs text-danger`}
-                  >
+                  <div className="mt-1 flex items-center gap-1 text-xs text-danger">
                     <AlertCircle className="h-3 w-3" />
                     {errors.name}
                   </div>
@@ -239,9 +235,7 @@ export function EnvironmentForm({
                     className={` ${errors.slug ? 'border-red-500' : ''}`}
                   />
                   {errors.slug && (
-                    <div
-                      className={`mt-1 flex items-center gap-1 text-xs text-danger`}
-                    >
+                    <div className="mt-1 flex items-center gap-1 text-xs text-danger">
                       <AlertCircle className="h-3 w-3" />
                       {errors.slug}
                     </div>
@@ -285,7 +279,7 @@ export function EnvironmentForm({
                 rows={3}
                 disabled={isLoading}
                 placeholder="Brief description of this environment"
-                className={`w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground`}
+                className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground"
               />
             </div>
 

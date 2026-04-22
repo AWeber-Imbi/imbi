@@ -130,9 +130,7 @@ export function BlueprintDetail({
 
   if (error || !blueprint) {
     return (
-      <div
-        className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
-      >
+      <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger">
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
           <div className="font-medium">Failed to load blueprint</div>
@@ -203,11 +201,9 @@ export function BlueprintDetail({
       </div>
 
       {/* Blueprint info card */}
-      <div className={`rounded-lg border border-border bg-card`}>
+      <div className="rounded-lg border border-border bg-card">
         {/* Title row */}
-        <div
-          className={`flex items-start justify-between border-b border-tertiary px-6 py-5`}
-        >
+        <div className="flex items-start justify-between border-b border-tertiary px-6 py-5">
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-info p-2">
               <FileJson className="h-6 w-6 text-info" />
@@ -311,7 +307,7 @@ export function BlueprintDetail({
 
       {/* Conditional Filter detail */}
       {hasFilter && parsedFilter && (
-        <div className={`rounded-lg border border-border bg-card`}>
+        <div className="rounded-lg border border-border bg-card">
           <div className="border-b border-tertiary px-6 py-4">
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-warning" />
@@ -373,7 +369,7 @@ export function BlueprintDetail({
       )}
 
       {/* Schema Properties */}
-      <div className={`rounded-lg border border-border bg-card`}>
+      <div className="rounded-lg border border-border bg-card">
         <div className="border-b border-tertiary px-6 py-4">
           <h3 className="text-sm font-medium text-primary">
             Schema Properties
@@ -393,9 +389,7 @@ export function BlueprintDetail({
                 <div key={prop.name} className="px-6 py-4">
                   <div className="flex items-center gap-3">
                     <IconComponent className="h-4 w-4 flex-shrink-0 text-tertiary" />
-                    <code
-                      className={`rounded bg-secondary px-2 py-1 text-sm font-medium text-info`}
-                    >
+                    <code className="rounded bg-secondary px-2 py-1 text-sm font-medium text-info">
                       {prop.name}
                     </code>
                     <Badge variant="secondary">
@@ -487,9 +481,7 @@ export function BlueprintDetail({
                       {prop.defaultValue !== undefined && (
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs text-tertiary">Default</span>
-                          <code
-                            className={`rounded bg-secondary px-1.5 py-0.5 text-xs text-primary`}
-                          >
+                          <code className="rounded bg-secondary px-1.5 py-0.5 text-xs text-primary">
                             {prop.defaultValue}
                           </code>
                         </div>
@@ -497,9 +489,7 @@ export function BlueprintDetail({
                       {prop.minimum !== undefined && (
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs text-tertiary">Min</span>
-                          <code
-                            className={`rounded bg-secondary px-1.5 py-0.5 text-xs text-primary`}
-                          >
+                          <code className="rounded bg-secondary px-1.5 py-0.5 text-xs text-primary">
                             {prop.minimum}
                           </code>
                         </div>
@@ -507,9 +497,7 @@ export function BlueprintDetail({
                       {prop.maximum !== undefined && (
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs text-tertiary">Max</span>
-                          <code
-                            className={`rounded bg-secondary px-1.5 py-0.5 text-xs text-primary`}
-                          >
+                          <code className="rounded bg-secondary px-1.5 py-0.5 text-xs text-primary">
                             {prop.maximum}
                           </code>
                         </div>
@@ -519,9 +507,7 @@ export function BlueprintDetail({
                           <span className="text-xs text-tertiary">
                             Min length
                           </span>
-                          <code
-                            className={`rounded bg-secondary px-1.5 py-0.5 text-xs text-primary`}
-                          >
+                          <code className="rounded bg-secondary px-1.5 py-0.5 text-xs text-primary">
                             {prop.minLength}
                           </code>
                         </div>
@@ -531,9 +517,7 @@ export function BlueprintDetail({
                           <span className="text-xs text-tertiary">
                             Max length
                           </span>
-                          <code
-                            className={`rounded bg-secondary px-1.5 py-0.5 text-xs text-primary`}
-                          >
+                          <code className="rounded bg-secondary px-1.5 py-0.5 text-xs text-primary">
                             {prop.maxLength}
                           </code>
                         </div>
@@ -548,7 +532,7 @@ export function BlueprintDetail({
       </div>
 
       {/* Raw JSON Schema (collapsible) */}
-      <div className={`rounded-lg border border-border bg-card`}>
+      <div className="rounded-lg border border-border bg-card">
         <button
           onClick={() => setRawSchemaOpen(!rawSchemaOpen)}
           className={`flex w-full items-center gap-2 px-6 py-4 text-left hover:bg-secondary ${rawSchemaOpen ? 'border-b border-tertiary' : ''}`}
@@ -564,9 +548,7 @@ export function BlueprintDetail({
           </span>
         </button>
         {rawSchemaOpen && (
-          <pre
-            className={`overflow-x-auto px-6 py-4 font-mono text-sm leading-relaxed text-primary`}
-          >
+          <pre className="overflow-x-auto px-6 py-4 font-mono text-sm leading-relaxed text-primary">
             {raw}
           </pre>
         )}

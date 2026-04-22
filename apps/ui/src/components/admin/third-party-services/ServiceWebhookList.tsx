@@ -179,9 +179,7 @@ export function ServiceWebhookList({
 
   if (error) {
     return (
-      <div
-        className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
-      >
+      <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger">
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
           <div className="font-medium">Failed to load webhooks</div>
@@ -204,9 +202,7 @@ export function ServiceWebhookList({
           </div>
           {webhooks.length > 0 && (
             <div className="relative max-w-xs">
-              <Search
-                className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary`}
-              />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary" />
               <Input
                 placeholder="Search webhooks..."
                 value={searchQuery}
@@ -245,30 +241,20 @@ export function ServiceWebhookList({
           </div>
         </div>
       ) : (
-        <div
-          className={`overflow-hidden rounded-lg border border-border bg-card`}
-        >
+        <div className="overflow-hidden rounded-lg border border-border bg-card">
           <table className="w-full">
             <thead className="border-b border-tertiary">
               <tr>
-                <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary`}
-                >
+                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
                   Webhook
                 </th>
-                <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary`}
-                >
+                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
                   Path
                 </th>
-                <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary`}
-                >
+                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
                   Rules
                 </th>
-                <th
-                  className={`px-6 py-3 text-right text-xs uppercase tracking-wider text-tertiary`}
-                >
+                <th className="px-6 py-3 text-right text-xs uppercase tracking-wider text-tertiary">
                   Actions
                 </th>
               </tr>
@@ -295,9 +281,7 @@ export function ServiceWebhookList({
                 >
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div
-                        className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-900/30`}
-                      >
+                      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-900/30">
                         <Webhook
                           className={
                             'h-4 w-4 text-indigo-600 dark:text-indigo-400'
@@ -319,9 +303,7 @@ export function ServiceWebhookList({
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <code
-                      className={`rounded bg-secondary px-2 py-1 text-xs text-primary`}
-                    >
+                    <code className="rounded bg-secondary px-2 py-1 text-xs text-primary">
                       {wh.notification_path}
                     </code>
                   </td>

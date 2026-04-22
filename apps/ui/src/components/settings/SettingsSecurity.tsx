@@ -75,7 +75,7 @@ export function SettingsSecurity() {
             </div>
             <Button
               variant="outline"
-              className={''}
+              className=""
               style={{ borderWidth: '0.5px' }}
             >
               View active sessions
@@ -95,7 +95,7 @@ export function SettingsSecurity() {
           </p>
           <Button
             variant="outline"
-            className={''}
+            className=""
             style={{ borderWidth: '0.5px' }}
           >
             View access logs

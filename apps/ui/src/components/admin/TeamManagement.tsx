@@ -190,9 +190,7 @@ export function TeamManagement() {
             cellAlign: 'left',
             render: (team) => (
               <div className="flex items-center gap-3">
-                <div
-                  className={`flex size-8 flex-shrink-0 items-center justify-center rounded-lg bg-info`}
-                >
+                <div className="flex size-8 flex-shrink-0 items-center justify-center rounded-lg bg-info">
                   {team.icon ? (
                     <EntityIcon
                       icon={team.icon}
@@ -219,7 +217,7 @@ export function TeamManagement() {
             headerAlign: 'center',
             cellAlign: 'center',
             render: (team) => (
-              <code className={`rounded bg-secondary px-2 py-1 text-primary`}>
+              <code className="rounded bg-secondary px-2 py-1 text-primary">
                 {team.slug}
               </code>
             ),

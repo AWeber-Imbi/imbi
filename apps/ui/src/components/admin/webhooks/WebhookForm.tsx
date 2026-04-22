@@ -335,7 +335,7 @@ export function WebhookForm({
                     isEditing ? '(unchanged)' : 'HMAC verification secret'
                   }
                   disabled={isLoading}
-                  className={''}
+                  className=""
                 />
               </div>
             </div>
@@ -350,7 +350,7 @@ export function WebhookForm({
                 rows={3}
                 disabled={isLoading}
                 placeholder="Brief description of this webhook"
-                className={`w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground`}
+                className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground"
               />
             </div>
 
@@ -484,7 +484,7 @@ export function WebhookForm({
                 {rules.map((rule, index) => (
                   <div
                     key={rule._clientId}
-                    className={`bg-secondary/50 rounded-lg border border-input p-4`}
+                    className="bg-secondary/50 rounded-lg border border-input p-4"
                   >
                     <div className="flex items-start gap-3">
                       {/* Order controls */}
@@ -520,9 +520,7 @@ export function WebhookForm({
                       </div>
 
                       {/* Rule number */}
-                      <div
-                        className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-medium text-secondary`}
-                      >
+                      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-medium text-secondary">
                         {index + 1}
                       </div>
 
@@ -637,7 +635,7 @@ export function WebhookForm({
                         disabled={isLoading}
                         aria-label={`Delete rule ${index + 1}`}
                         title={`Delete rule ${index + 1}`}
-                        className={`rounded p-1.5 text-danger transition-colors hover:bg-danger`}
+                        className="rounded p-1.5 text-danger transition-colors hover:bg-danger"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>

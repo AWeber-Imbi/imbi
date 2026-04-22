@@ -58,9 +58,7 @@ export function OrganizationDetail({
           <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
             <div>
               <div className="mb-1 text-sm text-secondary">Slug</div>
-              <code
-                className={`rounded bg-secondary px-2 py-1 text-sm text-primary`}
-              >
+              <code className="rounded bg-secondary px-2 py-1 text-sm text-primary">
                 {organization.slug}
               </code>
             </div>

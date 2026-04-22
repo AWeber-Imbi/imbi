@@ -85,7 +85,7 @@ export function LinkDefinitionForm({
     <div className="space-y-6">
       {/* API Error */}
       {error && (
-        <div className={`rounded-lg border border-danger bg-danger p-4`}>
+        <div className="rounded-lg border border-danger bg-danger p-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="h-5 w-5 flex-shrink-0 text-danger" />
             <div>
@@ -153,9 +153,7 @@ export function LinkDefinitionForm({
                 ))}
               </select>
               {errors.organization && (
-                <div
-                  className={`mt-1 flex items-center gap-1 text-xs text-danger`}
-                >
+                <div className="mt-1 flex items-center gap-1 text-xs text-danger">
                   <AlertCircle className="h-3 w-3" />
                   {errors.organization}
                 </div>
@@ -181,9 +179,7 @@ export function LinkDefinitionForm({
                   className={` ${errors.name ? 'border-red-500' : ''}`}
                 />
                 {errors.name && (
-                  <div
-                    className={`mt-1 flex items-center gap-1 text-xs text-danger`}
-                  >
+                  <div className="mt-1 flex items-center gap-1 text-xs text-danger">
                     <AlertCircle className="h-3 w-3" />
                     {errors.name}
                   </div>
@@ -207,9 +203,7 @@ export function LinkDefinitionForm({
                     className={` ${errors.slug ? 'border-red-500' : ''}`}
                   />
                   {errors.slug && (
-                    <div
-                      className={`mt-1 flex items-center gap-1 text-xs text-danger`}
-                    >
+                    <div className="mt-1 flex items-center gap-1 text-xs text-danger">
                       <AlertCircle className="h-3 w-3" />
                       {errors.slug}
                     </div>
@@ -232,7 +226,7 @@ export function LinkDefinitionForm({
                 rows={3}
                 disabled={isLoading}
                 placeholder="Brief description of this link definition"
-                className={`w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground`}
+                className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground"
               />
             </div>
 
@@ -281,7 +275,7 @@ export function LinkDefinitionForm({
                 onChange={(e) => setUrlTemplate(e.target.value)}
                 placeholder="e.g., https://github.com/{organization}/{project}"
                 disabled={isLoading}
-                className={''}
+                className=""
               />
               <p className="mt-1 text-xs text-tertiary">
                 URL template with placeholders in curly braces

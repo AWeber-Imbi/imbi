@@ -154,7 +154,7 @@ export function ServiceAccountManagement() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-          className={`rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground`}
+          className="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
         >
           <option value="all">All Status</option>
           <option value="active">Active</option>

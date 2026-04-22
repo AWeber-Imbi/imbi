@@ -163,9 +163,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
 
   if (error || !role) {
     return (
-      <div
-        className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
-      >
+      <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger">
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
           <div className="font-medium">Failed to load role</div>
@@ -292,7 +290,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
         <div className="space-y-4">
           {/* Add Permission Section */}
           {!role.is_system && (
-            <div className={`rounded-lg border border-border bg-card p-4`}>
+            <div className="rounded-lg border border-border bg-card p-4">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-sm font-medium text-primary">
                   Assign Permission
@@ -310,7 +308,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                   <select
                     value={selectedPermission}
                     onChange={(e) => setSelectedPermission(e.target.value)}
-                    className={`flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground`}
+                    className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
                   >
                     <option value="">Select a permission...</option>
                     {availablePermissions.map((perm) => (
@@ -331,9 +329,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                 </div>
               )}
 
-              <div
-                className={`mt-3 flex items-start gap-2 rounded bg-info p-2 text-xs text-info`}
-              >
+              <div className="mt-3 flex items-start gap-2 rounded bg-info p-2 text-xs text-info">
                 <AlertCircle className="mt-0.5 h-3 w-3 flex-shrink-0" />
                 <span>
                   Permissions define what actions users with this role can
@@ -360,20 +356,14 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                 <table className="w-full">
                   <thead className="border-b border-tertiary bg-secondary">
                     <tr>
-                      <th
-                        className={`px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary`}
-                      >
+                      <th className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
                         Permission
                       </th>
-                      <th
-                        className={`px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary`}
-                      >
+                      <th className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
                         Description
                       </th>
                       {!role.is_system && (
-                        <th
-                          className={`px-6 py-3 text-right text-xs uppercase tracking-wider text-tertiary`}
-                        >
+                        <th className="px-6 py-3 text-right text-xs uppercase tracking-wider text-tertiary">
                           Actions
                         </th>
                       )}
@@ -385,9 +375,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                       .map((perm) => (
                         <tr key={perm.name} className="hover:bg-secondary">
                           <td className="px-6 py-4 text-primary">
-                            <code
-                              className={`rounded bg-secondary px-2 py-1 text-sm text-info`}
-                            >
+                            <code className="rounded bg-secondary px-2 py-1 text-sm text-info">
                               {perm.name}
                             </code>
                           </td>
@@ -404,7 +392,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                                         handleRevokePermission(perm.name)
                                       }
                                       disabled={revokeMutation.isPending}
-                                      className={`rounded p-1.5 text-danger hover:bg-danger`}
+                                      className="rounded p-1.5 text-danger hover:bg-danger"
                                     >
                                       <Trash2 className="h-4 w-4" />
                                     </button>
@@ -430,10 +418,8 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
       {activeTab === 'users' && (
         <div className="space-y-4">
           {/* Info banner */}
-          <div
-            className={`flex items-start gap-3 rounded-lg border border-tertiary bg-card p-4 dark:border-border dark:bg-card`}
-          >
-            <Info className={`mt-0.5 h-5 w-5 flex-shrink-0 text-info`} />
+          <div className="flex items-start gap-3 rounded-lg border border-tertiary bg-card p-4 dark:border-border dark:bg-card">
+            <Info className="mt-0.5 h-5 w-5 flex-shrink-0 text-info" />
             <div className="text-sm text-info">
               Role assignments are managed via User Management. This list shows
               users directly assigned this role.
@@ -446,9 +432,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
               <div className="text-sm text-secondary">Loading users...</div>
             </div>
           ) : usersError ? (
-            <div
-              className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
-            >
+            <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger">
               <AlertCircle className="h-5 w-5 flex-shrink-0" />
               <div>
                 <div className="font-medium">Failed to load users</div>
@@ -470,9 +454,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
           ) : (
             <Card className="overflow-hidden">
               <CardContent className="p-0">
-                <div
-                  className={`grid grid-cols-[1fr_auto_auto] gap-4 border-b border-border bg-secondary px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-tertiary`}
-                >
+                <div className="grid grid-cols-[1fr_auto_auto] gap-4 border-b border-border bg-secondary px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-tertiary">
                   <div>User</div>
                   <div>Status</div>
                   <div>Last Login</div>
@@ -530,10 +512,8 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
       {activeTab === 'service-accounts' && (
         <div className="space-y-4">
           {/* Info banner */}
-          <div
-            className={`flex items-start gap-3 rounded-lg border border-tertiary bg-card p-4 dark:border-border dark:bg-card`}
-          >
-            <Info className={`mt-0.5 h-5 w-5 flex-shrink-0 text-info`} />
+          <div className="flex items-start gap-3 rounded-lg border border-tertiary bg-card p-4 dark:border-border dark:bg-card">
+            <Info className="mt-0.5 h-5 w-5 flex-shrink-0 text-info" />
             <div className="text-sm text-info">
               Role assignments are managed via Service Account Management. This
               list shows service accounts assigned this role via organization
@@ -549,9 +529,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
               </div>
             </div>
           ) : saError ? (
-            <div
-              className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
-            >
+            <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger">
               <AlertCircle className="h-5 w-5 flex-shrink-0" />
               <div>
                 <div className="font-medium">
@@ -576,9 +554,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
           ) : (
             <Card className="overflow-hidden">
               <CardContent className="p-0">
-                <div
-                  className={`grid grid-cols-[1fr_auto_auto] gap-4 border-b border-border bg-secondary px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-tertiary`}
-                >
+                <div className="grid grid-cols-[1fr_auto_auto] gap-4 border-b border-border bg-secondary px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-tertiary">
                   <div>Service Account</div>
                   <div>Status</div>
                   <div>Last Authenticated</div>
@@ -643,10 +619,8 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
       {activeTab === 'groups' && (
         <div className="space-y-4">
           {/* Info banner */}
-          <div
-            className={`flex items-start gap-3 rounded-lg border border-tertiary bg-card p-4 dark:border-border dark:bg-card`}
-          >
-            <Info className={`mt-0.5 h-5 w-5 flex-shrink-0 text-info`} />
+          <div className="flex items-start gap-3 rounded-lg border border-tertiary bg-card p-4 dark:border-border dark:bg-card">
+            <Info className="mt-0.5 h-5 w-5 flex-shrink-0 text-info" />
             <div className="text-sm text-info">
               Role assignments to teams are managed via Team Management. All
               members of a team inherit the team's roles.
@@ -659,9 +633,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
               <div className="text-sm text-secondary">Loading groups...</div>
             </div>
           ) : groupsError ? (
-            <div
-              className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
-            >
+            <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger">
               <AlertCircle className="h-5 w-5 flex-shrink-0" />
               <div>
                 <div className="font-medium">Failed to load groups</div>
@@ -683,9 +655,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
           ) : (
             <Card className="overflow-hidden">
               <CardContent className="p-0">
-                <div
-                  className={`grid grid-cols-[1fr_1fr] gap-4 border-b border-border bg-secondary px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-tertiary`}
-                >
+                <div className="grid grid-cols-[1fr_1fr] gap-4 border-b border-border bg-secondary px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-tertiary">
                   <div>Group</div>
                   <div>Description</div>
                 </div>

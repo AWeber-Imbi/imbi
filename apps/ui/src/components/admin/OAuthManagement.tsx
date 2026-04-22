@@ -40,10 +40,8 @@ export function OAuthManagement() {
 
   return (
     <div className="space-y-4">
-      <div
-        className={`flex items-start gap-3 rounded-lg border border-info bg-info p-4`}
-      >
-        <Power className={`mt-0.5 h-5 w-5 flex-shrink-0 text-info`} />
+      <div className="flex items-start gap-3 rounded-lg border border-info bg-info p-4">
+        <Power className="mt-0.5 h-5 w-5 flex-shrink-0 text-info" />
         <p className="text-sm text-info">
           OAuth providers are configured in the backend. Contact an
           administrator to add or modify providers.
@@ -51,14 +49,12 @@ export function OAuthManagement() {
       </div>
 
       <div className="relative">
-        <Search
-          className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary`}
-        />
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary" />
         <Input
           placeholder="Search providers..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className={`border-input bg-background pl-10 text-foreground placeholder:text-muted-foreground`}
+          className="border-input bg-background pl-10 text-foreground placeholder:text-muted-foreground"
         />
       </div>
 
@@ -87,9 +83,7 @@ export function OAuthManagement() {
                 {provider.enabled ? (
                   <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
                 ) : (
-                  <AlertCircle
-                    className={`h-5 w-5 flex-shrink-0 text-tertiary`}
-                  />
+                  <AlertCircle className="h-5 w-5 flex-shrink-0 text-tertiary" />
                 )}
               </CardHeader>
               <CardContent>

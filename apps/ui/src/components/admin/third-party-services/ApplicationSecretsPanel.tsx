@@ -125,7 +125,7 @@ export function ApplicationSecretsPanel({
   const is403 = error && (error as ApiError)?.response?.status === 403
 
   return (
-    <div className={`rounded-lg border border-border bg-card p-6`}>
+    <div className="rounded-lg border border-border bg-card p-6">
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Shield className="h-5 w-5 text-warning" />
@@ -163,18 +163,14 @@ export function ApplicationSecretsPanel({
       )}
 
       {revealed && is403 && (
-        <div
-          className={`flex items-center gap-3 rounded-lg border border-warning bg-warning p-4 text-warning`}
-        >
+        <div className="flex items-center gap-3 rounded-lg border border-warning bg-warning p-4 text-warning">
           <AlertCircle className="h-5 w-5 flex-shrink-0" />
           <div className="text-sm">Admin access required to view secrets.</div>
         </div>
       )}
 
       {revealed && error && !is403 && (
-        <div
-          className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
-        >
+        <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger">
           <AlertCircle className="h-5 w-5 flex-shrink-0" />
           <div className="text-sm">
             {error instanceof Error ? error.message : 'Failed to load secrets'}
@@ -195,9 +191,7 @@ export function ApplicationSecretsPanel({
                   {FIELD_LABELS[field]}
                 </div>
                 <div className="flex items-center gap-2">
-                  <code
-                    className={`flex-1 break-all rounded bg-secondary px-3 py-2 font-mono text-sm text-primary`}
-                  >
+                  <code className="flex-1 break-all rounded bg-secondary px-3 py-2 font-mono text-sm text-primary">
                     {field === 'private_key' ? (
                       <pre className="whitespace-pre-wrap text-xs">{value}</pre>
                     ) : (
@@ -213,7 +207,7 @@ export function ApplicationSecretsPanel({
                             size="sm"
                             aria-label={`Copy ${FIELD_LABELS[field]}`}
                             onClick={() => handleCopy(field, value)}
-                            className={''}
+                            className=""
                           >
                             {copiedField === field ? (
                               <Check className="h-4 w-4 text-green-500" />
@@ -243,9 +237,7 @@ export function ApplicationSecretsPanel({
           </p>
 
           {updateMutation.error && (
-            <div
-              className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-3 text-danger`}
-            >
+            <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-3 text-danger">
               <AlertCircle className="h-4 w-4 flex-shrink-0" />
               <div className="text-sm">
                 {updateMutation.error instanceof Error
@@ -268,7 +260,7 @@ export function ApplicationSecretsPanel({
                   }
                   placeholder="Paste new value to update"
                   rows={4}
-                  className={`w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm text-foreground`}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm text-foreground"
                 />
               ) : (
                 <Input
@@ -278,7 +270,7 @@ export function ApplicationSecretsPanel({
                     setEditValues({ ...editValues, [field]: e.target.value })
                   }
                   placeholder="Paste new value to update"
-                  className={''}
+                  className=""
                 />
               )}
             </div>

@@ -48,12 +48,10 @@ export function WidgetSelector({
         role="dialog"
         aria-modal="true"
         aria-labelledby="widget-selector-title"
-        className={`max-h-[80vh] w-full max-w-2xl rounded-lg border border-border bg-card shadow-xl`}
+        className="max-h-[80vh] w-full max-w-2xl rounded-lg border border-border bg-card shadow-xl"
       >
         {/* Header */}
-        <div
-          className={`flex items-center justify-between border-b border-tertiary p-6`}
-        >
+        <div className="flex items-center justify-between border-b border-tertiary p-6">
           <div>
             <h2 id="widget-selector-title" className="text-xl text-primary">
               Customize Dashboard
@@ -66,7 +64,7 @@ export function WidgetSelector({
             onClick={onClose}
             aria-label="Close"
             type="button"
-            className={`rounded p-2 text-secondary hover:bg-secondary`}
+            className="rounded p-2 text-secondary hover:bg-secondary"
           >
             <X className="h-5 w-5" />
           </button>
@@ -76,9 +74,7 @@ export function WidgetSelector({
         <div className="max-h-[60vh] overflow-y-auto p-6">
           {Object.entries(groupedWidgets).map(([category, widgets]) => (
             <div key={category} className="mb-6 last:mb-0">
-              <h3
-                className={`mb-3 text-sm uppercase tracking-wider text-tertiary`}
-              >
+              <h3 className="mb-3 text-sm uppercase tracking-wider text-tertiary">
                 {categories[category as keyof typeof categories]}
               </h3>
               <div className="space-y-2">
@@ -143,9 +139,7 @@ export function WidgetSelector({
         </div>
 
         {/* Footer */}
-        <div
-          className={`flex items-center justify-between border-t border-tertiary p-6`}
-        >
+        <div className="flex items-center justify-between border-t border-tertiary p-6">
           <div className="text-sm text-secondary">
             {selectedWidgets.length} widget
             {selectedWidgets.length !== 1 ? 's' : ''} selected

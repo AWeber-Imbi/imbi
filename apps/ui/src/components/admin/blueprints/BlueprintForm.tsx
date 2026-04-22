@@ -627,9 +627,7 @@ export function BlueprintForm({
 
   if (isEditing && bpError) {
     return (
-      <div
-        className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
-      >
+      <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger">
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
           <div className="font-medium">Failed to load blueprint</div>
@@ -677,7 +675,7 @@ export function BlueprintForm({
 
       {/* API Error Display */}
       {error && (
-        <div className={`rounded-lg border border-danger bg-danger p-4`}>
+        <div className="rounded-lg border border-danger bg-danger p-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="h-5 w-5 flex-shrink-0 text-danger" />
             <div>
@@ -714,7 +712,7 @@ export function BlueprintForm({
       )}
 
       {/* Basic Information */}
-      <div className={`rounded-lg border border-border bg-card p-6`}>
+      <div className="rounded-lg border border-border bg-card p-6">
         <h3 className="mb-4 text-sm font-medium text-primary">
           Basic Information
         </h3>
@@ -738,7 +736,7 @@ export function BlueprintForm({
               }}
               disabled={isLoading}
               placeholder="e.g. AWS Metadata"
-              className={''}
+              className=""
             />
             {touched.name && validationErrors.name && (
               <p className="mt-1 text-sm text-red-600">
@@ -950,7 +948,7 @@ export function BlueprintForm({
               }}
               disabled={isLoading}
               placeholder="0"
-              className={''}
+              className=""
             />
             <p className="mt-1 text-xs text-tertiary">
               Higher priority blueprints are applied later and can override
@@ -969,7 +967,7 @@ export function BlueprintForm({
               disabled={isLoading}
               placeholder="Brief description of what this blueprint defines"
               rows={3}
-              className={`w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground`}
+              className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
             />
           </div>
 
@@ -997,7 +995,7 @@ export function BlueprintForm({
       </div>
 
       {/* Conditional Filter */}
-      <div className={`rounded-lg border border-border bg-card p-6`}>
+      <div className="rounded-lg border border-border bg-card p-6">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-tertiary" />
@@ -1141,10 +1139,10 @@ export function BlueprintForm({
       </div>
 
       {/* JSON Schema Editor */}
-      <div className={`rounded-lg border border-border bg-card p-6`}>
+      <div className="rounded-lg border border-border bg-card p-6">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-sm font-medium text-primary">JSON Schema</h3>
-          <div className={`flex items-center rounded-lg border border-input`}>
+          <div className="flex items-center rounded-lg border border-input">
             <button
               onClick={() => handleEditorModeSwitch('visual')}
               className={`flex items-center gap-1.5 rounded-l-lg px-3 py-1.5 text-sm transition-colors ${
@@ -1172,9 +1170,7 @@ export function BlueprintForm({
 
         {/* Schema Error */}
         {(schemaError || (touched.schema && validationErrors.schema)) && (
-          <div
-            className={`mb-4 flex items-start gap-2 rounded-lg bg-danger p-3 text-danger`}
-          >
+          <div className="mb-4 flex items-start gap-2 rounded-lg bg-danger p-3 text-danger">
             <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
             <div className="text-xs">
               {schemaError || validationErrors.schema}
@@ -1198,7 +1194,7 @@ export function BlueprintForm({
                 return (
                   <div
                     key={prop.id}
-                    className={`rounded-lg border border-input bg-secondary`}
+                    className="rounded-lg border border-input bg-secondary"
                   >
                     {/* Property Row */}
                     <div className="flex items-center gap-3 p-3">
@@ -1273,7 +1269,7 @@ export function BlueprintForm({
                             type: e.target.value as SchemaProperty['type'],
                           })
                         }
-                        className={`w-28 rounded-md border border-input bg-background px-2 py-2 text-sm text-foreground`}
+                        className="w-28 rounded-md border border-input bg-background px-2 py-2 text-sm text-foreground"
                       >
                         {PROPERTY_TYPES.map((t) => (
                           <option key={t} value={t}>
@@ -1333,7 +1329,7 @@ export function BlueprintForm({
                                   : 'Expand advanced options'
                               }
                               onClick={() => toggleExpandProp(prop.id)}
-                              className={`rounded p-1.5 text-xs text-secondary hover:bg-secondary`}
+                              className="rounded p-1.5 text-xs text-secondary hover:bg-secondary"
                             >
                               {isExpanded ? (
                                 <ChevronUp className="h-3.5 w-3.5" />
@@ -1355,7 +1351,7 @@ export function BlueprintForm({
                               type="button"
                               aria-label="Remove property"
                               onClick={() => removeProperty(prop.id)}
-                              className={`rounded p-1.5 text-danger hover:bg-danger`}
+                              className="rounded p-1.5 text-danger hover:bg-danger"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
@@ -1369,9 +1365,7 @@ export function BlueprintForm({
 
                     {/* Advanced Options */}
                     {isExpanded && (
-                      <div
-                        className={`space-y-3 border-t border-secondary px-3 pb-3 pt-2`}
-                      >
+                      <div className="space-y-3 border-t border-secondary px-3 pb-3 pt-2">
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="mb-1 block text-xs text-secondary">
@@ -1418,7 +1412,7 @@ export function BlueprintForm({
                                     format: e.target.value || undefined,
                                   })
                                 }
-                                className={`w-full rounded-md border border-input bg-background px-2 py-2 text-sm text-foreground`}
+                                className="w-full rounded-md border border-input bg-background px-2 py-2 text-sm text-foreground"
                               >
                                 {STRING_FORMATS.map((f) => (
                                   <option key={f} value={f}>
@@ -1685,7 +1679,7 @@ export function BlueprintForm({
                                               })
                                               commit(next)
                                             }}
-                                            className={`rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground`}
+                                            className="rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground"
                                           >
                                             {[
                                               'green',
@@ -1771,7 +1765,7 @@ export function BlueprintForm({
             onBlur={() => syncCodeToVisual(rawSchema)}
             rows={20}
             spellCheck={false}
-            className={`w-full resize-y rounded-md border border-input bg-secondary px-4 py-3 font-mono text-sm text-primary`}
+            className="w-full resize-y rounded-md border border-input bg-secondary px-4 py-3 font-mono text-sm text-primary"
           />
         )}
       </div>

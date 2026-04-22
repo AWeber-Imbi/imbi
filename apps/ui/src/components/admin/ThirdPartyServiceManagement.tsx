@@ -134,9 +134,7 @@ export function ThirdPartyServiceManagement() {
       cellAlign: 'left',
       render: (svc) => (
         <div className="flex items-center gap-3">
-          <div
-            className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-purple-50 dark:bg-purple-900/30`}
-          >
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-purple-50 dark:bg-purple-900/30">
             {svc.icon ? (
               <EntityIcon
                 icon={svc.icon}

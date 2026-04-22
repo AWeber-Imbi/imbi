@@ -220,7 +220,7 @@ export function UserManagement() {
             aria-label="Filter users by type"
             value={userFilter}
             onChange={(e) => setUserFilter(e.target.value as UserFilter)}
-            className={`rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground`}
+            className="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
           >
             <option value="all">All Types</option>
             <option value="users">Regular Users</option>
@@ -230,7 +230,7 @@ export function UserManagement() {
             aria-label="Filter users by status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className={`rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground`}
+            className="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
           >
             <option value="all">All Status</option>
             <option value="active">Active</option>

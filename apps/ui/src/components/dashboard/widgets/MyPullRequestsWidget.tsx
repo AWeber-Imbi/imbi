@@ -88,12 +88,10 @@ export function MyPullRequestsWidget({
           return (
             <div
               key={pr.id}
-              className={`rounded-lg border border-input bg-background p-4 transition-colors hover:border-secondary`}
+              className="rounded-lg border border-input bg-background p-4 transition-colors hover:border-secondary"
             >
               <div className="flex items-start gap-3">
-                <GitPullRequest
-                  className={`mt-0.5 h-5 w-5 flex-shrink-0 text-tertiary`}
-                />
+                <GitPullRequest className="mt-0.5 h-5 w-5 flex-shrink-0 text-tertiary" />
                 <div className="min-w-0 flex-1">
                   <div className="mb-1 font-medium text-primary">
                     {pr.title}

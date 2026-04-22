@@ -140,9 +140,7 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
             <div>
               <div className="text-sm text-secondary">Slug</div>
               <div className="mt-1 text-primary">
-                <code
-                  className={`rounded bg-secondary px-2 py-1 text-sm text-primary`}
-                >
+                <code className="rounded bg-secondary px-2 py-1 text-sm text-primary">
                   {team.slug}
                 </code>
               </div>
@@ -168,9 +166,7 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
             <div className="flex items-center gap-2">
               <Users className="h-5 w-5 text-secondary" />
               <CardTitle>Team Members</CardTitle>
-              <span
-                className={`ml-2 rounded bg-secondary px-2 py-1 text-sm text-primary`}
-              >
+              <span className="ml-2 rounded bg-secondary px-2 py-1 text-sm text-primary">
                 {members.length}
               </span>
             </div>
@@ -185,14 +181,10 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
 
           {/* Add Member Panel */}
           {showAddMember && (
-            <div
-              className={`mt-4 rounded-lg border border-input bg-secondary p-4`}
-            >
+            <div className="mt-4 rounded-lg border border-input bg-secondary p-4">
               <div className="flex items-center gap-3">
                 <div className="relative flex-1">
-                  <Search
-                    className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary`}
-                  />
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary" />
                   <Input
                     placeholder="Enter user email address..."
                     value={newMemberEmail}
@@ -212,9 +204,7 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
                 </Button>
               </div>
               {!!addMemberMutation.error && (
-                <div
-                  className={`mt-2 flex items-center gap-2 text-xs text-danger`}
-                >
+                <div className="mt-2 flex items-center gap-2 text-xs text-danger">
                   <AlertCircle className="h-3 w-3" />
                   {extractApiErrorDetail(
                     addMemberMutation.error,
@@ -247,24 +237,16 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
             <table className="w-full">
               <thead className="border-b border-tertiary bg-secondary">
                 <tr>
-                  <th
-                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-tertiary`}
-                  >
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-tertiary">
                     Member
                   </th>
-                  <th
-                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-tertiary`}
-                  >
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-tertiary">
                     Email
                   </th>
-                  <th
-                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-tertiary`}
-                  >
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-tertiary">
                     Status
                   </th>
-                  <th
-                    className={`px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-tertiary`}
-                  >
+                  <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-tertiary">
                     Actions
                   </th>
                 </tr>
@@ -303,7 +285,7 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
                               disabled={removeMemberMutation.isPending}
                               aria-label={`Remove ${member.display_name} from team`}
                               title="Remove from team"
-                              className={`rounded p-1.5 text-danger hover:bg-danger`}
+                              className="rounded p-1.5 text-danger hover:bg-danger"
                             >
                               <X className="h-4 w-4" />
                             </button>

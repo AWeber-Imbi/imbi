@@ -227,9 +227,9 @@ export function UserForm({
 
       {/* API Error Display */}
       {error && (
-        <div className={`rounded-lg border border-danger bg-danger p-4`}>
+        <div className="rounded-lg border border-danger bg-danger p-4">
           <div className="flex items-start gap-3">
-            <AlertCircle className={`h-5 w-5 flex-shrink-0 text-danger`} />
+            <AlertCircle className="h-5 w-5 flex-shrink-0 text-danger" />
             <div>
               <div className="font-medium text-danger">Failed to save user</div>
               <div className="mt-1 text-sm text-danger">
@@ -268,7 +268,7 @@ export function UserForm({
                   }}
                   disabled={isLoading}
                   placeholder="john.doe@company.com"
-                  className={''}
+                  className=""
                 />
                 {touched.email && validationErrors.email && (
                   <p className="mt-1 text-sm text-red-600">
@@ -301,7 +301,7 @@ export function UserForm({
                 }}
                 disabled={isLoading}
                 placeholder="John Doe"
-                className={''}
+                className=""
               />
               {touched.display_name && validationErrors.display_name && (
                 <p className="mt-1 text-sm text-red-600">
@@ -386,7 +386,7 @@ export function UserForm({
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       disabled={isLoading}
-                      className={`absolute right-3 top-1/2 -translate-y-1/2 text-tertiary hover:text-secondary`}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-tertiary hover:text-secondary"
                     >
                       {showPassword ? (
                         <EyeOff className="h-4 w-4" />
@@ -508,7 +508,7 @@ export function UserForm({
                     }}
                     disabled={isLoading}
                     placeholder="Re-enter password"
-                    className={''}
+                    className=""
                   />
                   {touched.confirmPassword &&
                     validationErrors.confirmPassword && (
@@ -653,7 +653,7 @@ export function UserForm({
                     handleFieldChange('organization_slug')
                   }}
                   disabled={isLoading}
-                  className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select an organization...</option>
                   {organizations.map((org) => (
@@ -685,7 +685,7 @@ export function UserForm({
                       handleFieldChange('role_slug')
                     }}
                     disabled={isLoading}
-                    className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Select a role...</option>
                     {availableRoles.map((role) => (

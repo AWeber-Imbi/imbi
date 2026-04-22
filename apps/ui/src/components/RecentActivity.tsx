@@ -92,7 +92,7 @@ export function RecentActivity({
       {activities.map((activity, index) => (
         <div
           key={index}
-          className={`border-b border-tertiary pb-4 last:border-0 last:pb-0`}
+          className="border-b border-tertiary pb-4 last:border-0 last:pb-0"
         >
           <div className="flex gap-3">
             <img
@@ -105,7 +105,7 @@ export function RecentActivity({
               <p className="text-sm leading-relaxed text-secondary">
                 <button
                   onClick={() => onUserSelect?.(activity.display_name)}
-                  className={`font-medium text-primary transition-colors hover:text-info`}
+                  className="font-medium text-primary transition-colors hover:text-info"
                 >
                   {activity.display_name}
                 </button>{' '}
@@ -117,7 +117,7 @@ export function RecentActivity({
                 {activity.project_name && (
                   <button
                     onClick={() => onProjectSelect?.(activity.project_name!)}
-                    className={`hover:text-info/80 font-medium text-info transition-colors`}
+                    className="hover:text-info/80 font-medium text-info transition-colors"
                   >
                     {activity.project_name}
                   </button>
@@ -162,7 +162,7 @@ export function RecentActivity({
           <button
             onClick={onLoadMore}
             disabled={isLoadingMore}
-            className={`hover:text-info/80 text-sm text-info transition-colors disabled:opacity-50`}
+            className="hover:text-info/80 text-sm text-info transition-colors disabled:opacity-50"
           >
             {isLoadingMore ? 'Loading more...' : 'Load more activity'}
           </button>

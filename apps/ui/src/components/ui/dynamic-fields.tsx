@@ -101,9 +101,7 @@ export function DynamicFormFields({
                 </p>
               )}
               {fieldError && (
-                <div
-                  className={`mt-1 flex items-center gap-1 text-xs text-danger`}
-                >
+                <div className="mt-1 flex items-center gap-1 text-xs text-danger">
                   <AlertCircle className="h-3 w-3" />
                   {fieldError}
                 </div>
@@ -167,9 +165,7 @@ export function DynamicFormFields({
               <p className="mt-1 text-xs text-tertiary">{field.description}</p>
             )}
             {fieldError && (
-              <div
-                className={`mt-1 flex items-center gap-1 text-xs text-danger`}
-              >
+              <div className="mt-1 flex items-center gap-1 text-xs text-danger">
                 <AlertCircle className="h-3 w-3" />
                 {fieldError}
               </div>

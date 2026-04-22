@@ -69,9 +69,7 @@ export function EnvironmentDetail({
             <div>
               <div className="text-sm text-secondary">Slug</div>
               <div className="mt-1 text-primary">
-                <code
-                  className={`rounded bg-secondary px-2 py-1 text-sm text-primary`}
-                >
+                <code className="rounded bg-secondary px-2 py-1 text-sm text-primary">
                   {environment.slug}
                 </code>
               </div>

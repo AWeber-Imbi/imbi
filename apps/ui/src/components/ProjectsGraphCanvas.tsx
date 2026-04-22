@@ -256,9 +256,7 @@ export function ProjectsGraphCanvas({
         } `}
       >
         {/* Toolbar */}
-        <CardHeader
-          className={`flex-shrink-0 flex-row items-center gap-2 space-y-0 border-b border-tertiary px-4 py-3`}
-        >
+        <CardHeader className="flex-shrink-0 flex-row items-center gap-2 space-y-0 border-b border-tertiary px-4 py-3">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -385,9 +383,7 @@ export function ProjectsGraphCanvas({
           className={`relative p-0 ${isFullscreen ? 'flex-1' : 'min-h-[400px] flex-1'}`}
         >
           {isRendering && nodes.length > 0 && (
-            <div
-              className={`absolute inset-0 z-10 flex items-center justify-center bg-background/80`}
-            >
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80">
               <div className="flex flex-col items-center gap-3">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-current border-t-transparent opacity-50" />
                 <p className="text-sm text-tertiary">Rendering graph…</p>
