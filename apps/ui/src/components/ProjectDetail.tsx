@@ -54,9 +54,9 @@ import type {
 import { isFieldEditable } from '@/components/ui/inline-edit/field-policy'
 import { InlineField } from '@/components/ui/inline-edit/InlineField'
 import {
-  ProjectsGraphCanvas,
+  LazyProjectsGraphCanvas,
   type GraphProject,
-} from '@/components/ProjectsGraphCanvas'
+} from '@/components/LazyProjectsGraphCanvas'
 import { EditRelationshipsDialog } from '@/components/EditRelationshipsDialog'
 import { EditIdentifiersCard } from '@/components/EditIdentifiersCard'
 import { EditLinksCard } from '@/components/EditLinksCard'
@@ -1003,7 +1003,7 @@ function RelationshipsTab({
             onFilterChange={setFilter}
             onAdd={() => setEditDialogOpen(true)}
           />
-          <ProjectsGraphCanvas
+          <LazyProjectsGraphCanvas
             projects={projects}
             edges={edges}
             centerId={projectId}

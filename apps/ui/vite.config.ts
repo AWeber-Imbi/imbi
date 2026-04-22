@@ -25,6 +25,23 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          tanstack: ['@tanstack/react-query', '@tanstack/react-virtual'],
+          three: [
+            'reagraph',
+            '@react-three/fiber',
+            '@react-three/drei',
+            '@react-spring/three',
+            'three',
+          ],
+          charts: ['recharts'],
+          markdown: ['react-markdown', 'remark-gfm'],
+        },
+      },
+    },
   },
   esbuild: {
     drop: ['console'],

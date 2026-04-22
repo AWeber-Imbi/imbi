@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { getProjectRelationships } from '@/api/endpoints'
-import { ProjectsGraphCanvas } from '@/components/ProjectsGraphCanvas'
+import { LazyProjectsGraphCanvas } from '@/components/LazyProjectsGraphCanvas'
 import { Card } from '@/components/ui/card'
 import {
   buildRelationshipEdges,
@@ -87,7 +87,7 @@ export function ProjectGraphView({ projects }: ProjectGraphViewProps) {
         height: 'calc(100vh - 280px - var(--assistant-height, 64px))',
       }}
     >
-      <ProjectsGraphCanvas projects={projects} edges={edges} />
+      <LazyProjectsGraphCanvas projects={projects} edges={edges} />
     </div>
   )
 }
