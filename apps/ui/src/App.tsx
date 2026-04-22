@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
+import { BootstrapGate } from './components/BootstrapGate'
 import { OrganizationProvider } from './contexts/OrganizationContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { useAuth } from './hooks/useAuth'
@@ -44,16 +45,17 @@ function PageFallback() {
   )
 }
 
+function savePostLoginRedirect() {
+  const { pathname, search } = window.location
+  if (pathname === '/login' || pathname === '/auth/callback') return
+  sessionStorage.setItem('imbi_redirect_after_login', pathname + search)
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth()
 
   useEffect(() => {
-    if (!isAuthenticated && !isLoading) {
-      const currentPath = window.location.pathname
-      if (currentPath !== '/login' && currentPath !== '/auth/callback') {
-        sessionStorage.setItem('returnTo', currentPath)
-      }
-    }
+    if (!isAuthenticated && !isLoading) savePostLoginRedirect()
   }, [isAuthenticated, isLoading])
 
   if (isLoading) {
@@ -71,12 +73,7 @@ function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, user } = useAuth()
 
   useEffect(() => {
-    if (!isAuthenticated && !isLoading) {
-      const currentPath = window.location.pathname
-      if (currentPath !== '/login' && currentPath !== '/auth/callback') {
-        sessionStorage.setItem('returnTo', currentPath)
-      }
-    }
+    if (!isAuthenticated && !isLoading) savePostLoginRedirect()
   }, [isAuthenticated, isLoading])
 
   if (isLoading) {
@@ -101,65 +98,67 @@ function App() {
       <Toaster richColors position="top-right" />
       <OrganizationProvider>
         <Suspense fallback={<PageFallback />}>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/auth/callback" element={<OAuthCallbackPage />} />
+          <BootstrapGate fallback={<PageFallback />}>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/auth/callback" element={<OAuthCallbackPage />} />
 
-            <Route
-              path="/dashboard"
-              element={
-                <ProtectedRoute>
-                  <DashboardPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/projects"
-              element={
-                <ProtectedRoute>
-                  <ProjectsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/projects/:projectId/:tab?"
-              element={
-                <ProtectedRoute>
-                  <ProjectDetailPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/operations-log"
-              element={
-                <ProtectedRoute>
-                  <OperationsLogPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/settings/:tab?"
-              element={
-                <ProtectedRoute>
-                  <SettingsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/:section?/:slug?/:action?"
-              element={
-                <AdminProtectedRoute>
-                  <AdminPage />
-                </AdminProtectedRoute>
-              }
-            />
-            <Route
-              path="/opslog"
-              element={<Navigate to="/operations-log" replace />}
-            />
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <DashboardPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/projects"
+                element={
+                  <ProtectedRoute>
+                    <ProjectsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/projects/:projectId/:tab?"
+                element={
+                  <ProtectedRoute>
+                    <ProjectDetailPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/operations-log"
+                element={
+                  <ProtectedRoute>
+                    <OperationsLogPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/settings/:tab?"
+                element={
+                  <ProtectedRoute>
+                    <SettingsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/:section?/:slug?/:action?"
+                element={
+                  <AdminProtectedRoute>
+                    <AdminPage />
+                  </AdminProtectedRoute>
+                }
+              />
+              <Route
+                path="/opslog"
+                element={<Navigate to="/operations-log" replace />}
+              />
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </BootstrapGate>
         </Suspense>
       </OrganizationProvider>
     </ThemeProvider>

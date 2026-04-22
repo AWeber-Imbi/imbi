@@ -10,6 +10,10 @@ import {
 } from '@/api/endpoints'
 import type { UserResponse, LoginRequest, UseAuthReturn } from '@/types'
 
+// Session bootstrap (refresh-if-expired / redirect-if-no-refresh-token) lives
+// in <BootstrapGate> at the app root, not in this hook. useAuth is purely
+// ambient state over the Zustand store + the currentUser query + the
+// login/logout/refresh mutations.
 export function useAuth(): UseAuthReturn {
   const navigate = useNavigate()
   const location = useLocation()
@@ -52,46 +56,6 @@ export function useAuth(): UseAuthReturn {
       }
     },
     enabled: !!accessToken && !isTokenExpired(),
-    retry: false,
-    staleTime: Infinity,
-  })
-
-  useQuery({
-    queryKey: ['authInit'],
-    queryFn: async () => {
-      if (!accessToken || isTokenExpired()) {
-        if (!refreshToken) {
-          clearTokens()
-          if (location.pathname !== '/login') {
-            // Save current path before redirecting to login
-            const currentPath = location.pathname + location.search
-            sessionStorage.setItem('imbi_redirect_after_login', currentPath)
-            navigate('/login', { replace: true })
-          }
-          throw new Error('No refresh token available')
-        }
-        try {
-          const response = await refreshTokenApi(refreshToken)
-          setTokens(response.access_token, response.refresh_token)
-          await refetch()
-        } catch (error) {
-          console.error(
-            '[Auth] Token refresh failed during initialization:',
-            error,
-          )
-          clearTokens()
-          if (location.pathname !== '/login') {
-            // Save current path before redirecting to login
-            const currentPath = location.pathname + location.search
-            sessionStorage.setItem('imbi_redirect_after_login', currentPath)
-            navigate('/login', { replace: true })
-          }
-          throw error
-        }
-      }
-      return true
-    },
-    enabled: true,
     retry: false,
     staleTime: Infinity,
   })
