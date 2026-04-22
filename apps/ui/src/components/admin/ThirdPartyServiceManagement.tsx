@@ -7,6 +7,7 @@ import { AdminSection } from './AdminSection'
 import { ThirdPartyServiceForm } from './third-party-services/ThirdPartyServiceForm'
 import { ThirdPartyServiceDetail } from './third-party-services/ThirdPartyServiceDetail'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAdminNav } from '@/hooks/useAdminNav'
 import { useAdminCrud } from '@/hooks/useAdminCrud'
 import {
   listThirdPartyServices,
@@ -18,20 +19,19 @@ import { statusBadgeVariant } from '@/lib/status-colors'
 import { Badge } from '@/components/ui/badge'
 import type { ThirdPartyService, ThirdPartyServiceCreate } from '@/types'
 
-type ViewMode = 'list' | 'create' | 'edit' | 'detail'
-
 export function ThirdPartyServiceManagement() {
   const { selectedOrganization } = useOrganization()
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
-  const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
+  const {
+    viewMode,
+    slug: selectedSlug,
+    goToList,
+    goToCreate,
+    goToDetail,
+    goToEdit,
+  } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
 
   const orgSlug = selectedOrganization?.slug
-
-  const goToList = () => {
-    setViewMode('list')
-    setSelectedSlug(null)
-  }
 
   const {
     items: services,
@@ -104,16 +104,12 @@ export function ThirdPartyServiceManagement() {
     }
   }
 
-  const handleCancel = () => {
-    goToList()
-  }
-
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <ThirdPartyServiceForm
         service={selectedService}
         onSave={handleSave}
-        onCancel={handleCancel}
+        onCancel={goToList}
         isLoading={createMutation.isPending || updateMutation.isPending}
         error={createMutation.error || updateMutation.error}
       />
@@ -124,11 +120,8 @@ export function ThirdPartyServiceManagement() {
     return (
       <ThirdPartyServiceDetail
         service={selectedService}
-        onEdit={() => {
-          setSelectedSlug(selectedService.slug)
-          setViewMode('edit')
-        }}
-        onBack={handleCancel}
+        onEdit={() => goToEdit(selectedService.slug)}
+        onBack={goToList}
       />
     )
   }
@@ -206,10 +199,7 @@ export function ThirdPartyServiceManagement() {
       search={searchQuery}
       onSearchChange={setSearchQuery}
       createLabel="New Service"
-      onCreate={() => {
-        setSelectedSlug(null)
-        setViewMode('create')
-      }}
+      onCreate={goToCreate}
       isLoading={isLoading}
       loadingLabel="Loading third-party services..."
       error={error}
@@ -263,10 +253,7 @@ export function ThirdPartyServiceManagement() {
         rows={filteredServices}
         getRowKey={(svc) => svc.slug}
         getDeleteLabel={(svc) => svc.name}
-        onRowClick={(svc) => {
-          setSelectedSlug(svc.slug)
-          setViewMode('detail')
-        }}
+        onRowClick={(svc) => goToDetail(svc.slug)}
         onDelete={(svc) => deleteMutation.mutate(svc.slug)}
         isDeleting={deleteMutation.isPending}
         emptyMessage={

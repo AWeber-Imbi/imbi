@@ -51,13 +51,8 @@ import type {
   ProjectSchemaSection,
   ProjectSchemaSectionProperty,
 } from '@/api/endpoints'
-import {
-  isFieldEditable,
-  pickInlineComponent,
-} from '@/components/ui/inline-edit/field-policy'
-import { InlineSwitch } from '@/components/ui/inline-edit/InlineSwitch'
-import { InlineNumber } from '@/components/ui/inline-edit/InlineNumber'
-import { InlineDate } from '@/components/ui/inline-edit/InlineDate'
+import { isFieldEditable } from '@/components/ui/inline-edit/field-policy'
+import { InlineField } from '@/components/ui/inline-edit/InlineField'
 import {
   ProjectsGraphCanvas,
   type GraphProject,
@@ -428,71 +423,6 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
   const muted = 'text-tertiary'
   const divider = 'border-tertiary'
 
-  function renderInlineForField(
-    _key: string,
-    def: ProjectSchemaSectionProperty,
-    raw: unknown,
-    onCommit: (v: unknown) => Promise<void>,
-    pending: boolean,
-    display: React.ReactNode,
-  ): React.ReactNode {
-    const kind = pickInlineComponent(def)
-    switch (kind) {
-      case 'select':
-        return (
-          <InlineSelect
-            value={raw == null ? null : String(raw)}
-            options={(def.enum ?? []).map((v) => ({
-              value: String(v),
-              label: String(v),
-            }))}
-            onCommit={(v) => onCommit(v)}
-            pending={pending}
-            renderDisplay={display}
-          />
-        )
-      case 'switch':
-        return (
-          <InlineSwitch
-            value={raw === true || raw === 'true'}
-            onCommit={(v) => onCommit(v)}
-            pending={pending}
-          />
-        )
-      case 'number':
-        return (
-          <InlineNumber
-            value={raw == null || raw === '' ? null : Number(raw)}
-            integer={def.type === 'integer'}
-            min={def.minimum ?? undefined}
-            max={def.maximum ?? undefined}
-            onCommit={(v) => onCommit(v)}
-            pending={pending}
-            renderDisplay={display}
-          />
-        )
-      case 'date':
-        return (
-          <InlineDate
-            value={raw == null ? null : String(raw)}
-            mode={def.format === 'date-time' ? 'date-time' : 'date'}
-            onCommit={(v) => onCommit(v)}
-            pending={pending}
-            renderDisplay={display}
-          />
-        )
-      default:
-        return (
-          <InlineText
-            value={raw == null ? null : String(raw)}
-            onCommit={(v) => onCommit(v)}
-            pending={pending}
-            renderValue={display !== null ? () => display : undefined}
-          />
-        )
-    }
-  }
-
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-8">
       {/* Project Header */}
@@ -742,14 +672,13 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
                               {fieldLabel}
                             </span>
                             {editable ? (
-                              renderInlineForField(
-                                key,
-                                def,
-                                rawValue,
-                                (v) => patch(`/${key}`, v),
-                                pendingPath === `/${key}`,
-                                richDisplay,
-                              )
+                              <InlineField
+                                def={def}
+                                raw={rawValue}
+                                onCommit={(v) => patch(`/${key}`, v)}
+                                pending={pendingPath === `/${key}`}
+                                display={richDisplay}
+                              />
                             ) : richDisplay !== null ? (
                               richDisplay
                             ) : (

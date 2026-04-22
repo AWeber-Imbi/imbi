@@ -4,6 +4,8 @@ import { Search, Power, AlertCircle, CheckCircle } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { LoadingState } from '@/components/ui/loading-state'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { getAuthProviders } from '@/api/endpoints'
 import type { AuthProvider } from '@/types'
 
@@ -29,22 +31,11 @@ export function OAuthManagement() {
   })
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-sm text-tertiary">Loading OAuth providers...</div>
-      </div>
-    )
+    return <LoadingState label="Loading OAuth providers..." />
   }
 
   if (error) {
-    return (
-      <div
-        className={`flex items-center gap-2 rounded-lg bg-danger p-4 text-danger`}
-      >
-        <AlertCircle className="h-5 w-5 flex-shrink-0" />
-        <span>Failed to load OAuth providers. Please try again later.</span>
-      </div>
-    )
+    return <ErrorBanner title="Failed to load OAuth providers" error={error} />
   }
 
   return (
