@@ -1,20 +1,13 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import {
-  Save,
-  X,
-  AlertCircle,
-  Plus,
-  Trash2,
-  ArrowUp,
-  ArrowDown,
-} from 'lucide-react'
+import { AlertCircle, Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { IconPicker } from '@/components/ui/icon-picker'
+import { FormHeader } from '@/components/admin/form-header'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { listThirdPartyServices } from '@/api/endpoints'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
@@ -112,8 +105,7 @@ export function WebhookForm({
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSave = () => {
     if (!validate()) return
 
     onSave({
@@ -131,6 +123,11 @@ export function WebhookForm({
         handler_config: r.handler_config,
       })),
     })
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    handleSave()
   }
 
   const handleNameChange = (value: string) => {
@@ -201,36 +198,19 @@ export function WebhookForm({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-medium text-primary">
-            {isEditing ? 'Edit Webhook' : 'Add Webhook'}
-          </h2>
-          <p className="mt-1 text-sm text-secondary">
-            {isEditing
-              ? 'Update webhook configuration'
-              : 'Configure a new inbound webhook'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
-            <X className="mr-2 h-4 w-4" />
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={isLoading}
-            className="bg-action text-action-foreground hover:bg-action-hover"
-          >
-            <Save className="mr-2 h-4 w-4" />
-            {isLoading
-              ? 'Saving...'
-              : isEditing
-                ? 'Save Changes'
-                : 'Create Webhook'}
-          </Button>
-        </div>
-      </div>
+      <FormHeader
+        title={isEditing ? 'Edit Webhook' : 'Add Webhook'}
+        subtitle={
+          isEditing
+            ? 'Update webhook configuration'
+            : 'Configure a new inbound webhook'
+        }
+        isEditing={isEditing}
+        isLoading={isLoading}
+        onCancel={onCancel}
+        onSave={handleSave}
+        createLabel="Create Webhook"
+      />
 
       {/* API Error */}
       {error && <ErrorBanner title="Failed to save webhook" error={error} />}

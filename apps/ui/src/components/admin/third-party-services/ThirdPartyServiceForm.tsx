@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Save, X, AlertCircle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { AlertCircle } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { KeyValueEditor } from '@/components/ui/key-value-editor'
+import { FormHeader } from '@/components/admin/form-header'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { listTeams } from '@/api/endpoints'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
@@ -81,8 +81,7 @@ export function ThirdPartyServiceForm({
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSave = () => {
     if (!validate()) return
 
     onSave({
@@ -100,6 +99,11 @@ export function ThirdPartyServiceForm({
     })
   }
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    handleSave()
+  }
+
   const handleNameChange = (value: string) => {
     setName(value)
     if (!isEditing) {
@@ -112,37 +116,21 @@ export function ThirdPartyServiceForm({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-medium text-primary">
-            {isEditing ? 'Edit Third-Party Service' : 'Add Third-Party Service'}
-          </h2>
-          <p className="mt-1 text-sm text-secondary">
-            {isEditing
-              ? 'Update service information'
-              : 'Register a new external SaaS or managed service'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
-            <X className="mr-2 h-4 w-4" />
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            form="third-party-service-form"
-            disabled={isLoading}
-            className="bg-action text-action-foreground hover:bg-action-hover"
-          >
-            <Save className="mr-2 h-4 w-4" />
-            {isLoading
-              ? 'Saving...'
-              : isEditing
-                ? 'Save Changes'
-                : 'Create Service'}
-          </Button>
-        </div>
-      </div>
+      <FormHeader
+        title={
+          isEditing ? 'Edit Third-Party Service' : 'Add Third-Party Service'
+        }
+        subtitle={
+          isEditing
+            ? 'Update service information'
+            : 'Register a new external SaaS or managed service'
+        }
+        isEditing={isEditing}
+        isLoading={isLoading}
+        onCancel={onCancel}
+        onSave={handleSave}
+        createLabel="Create Service"
+      />
 
       {/* API Error */}
       {error && (

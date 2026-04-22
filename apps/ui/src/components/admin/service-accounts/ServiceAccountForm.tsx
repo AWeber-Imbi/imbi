@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Save, X, AlertCircle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { AlertCircle } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
+import { FormHeader } from '@/components/admin/form-header'
 import { getRoles } from '@/api/endpoints'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useFormScaffold } from '@/hooks/useFormScaffold'
@@ -126,36 +126,19 @@ export function ServiceAccountForm({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-medium text-primary">
-            {isEditing ? 'Edit Service Account' : 'Create Service Account'}
-          </h2>
-          <p className="mt-1 text-secondary">
-            {isEditing
-              ? `Editing ${account?.display_name}`
-              : 'Create an automated service account for API access'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
-            <X className="mr-2 h-4 w-4" />
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={isLoading}
-            className="bg-action text-action-foreground hover:bg-action-hover"
-          >
-            <Save className="mr-2 h-4 w-4" />
-            {isLoading
-              ? 'Saving...'
-              : isEditing
-                ? 'Save Changes'
-                : 'Create Service Account'}
-          </Button>
-        </div>
-      </div>
+      <FormHeader
+        title={isEditing ? 'Edit Service Account' : 'Create Service Account'}
+        subtitle={
+          isEditing
+            ? `Editing ${account?.display_name}`
+            : 'Create an automated service account for API access'
+        }
+        isEditing={isEditing}
+        isLoading={isLoading}
+        onCancel={onCancel}
+        onSave={handleSave}
+        createLabel="Create Service Account"
+      />
 
       {/* API Error Display */}
       {error && (

@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Save, X, AlertCircle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { AlertCircle } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { ColorPicker } from '@/components/ui/color-picker'
+import { FormHeader } from '@/components/admin/form-header'
 import {
   DynamicFormFields,
   validateDynamicFields,
@@ -83,8 +83,7 @@ export function EnvironmentForm({
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSave = () => {
     if (!validate()) return
 
     onSave(orgSlug, {
@@ -98,6 +97,11 @@ export function EnvironmentForm({
         : null,
       ...dynamicFormData,
     })
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    handleSave()
   }
 
   const handleNameChange = (value: string) => {
@@ -121,36 +125,19 @@ export function EnvironmentForm({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-medium text-primary">
-            {isEditing ? 'Edit Environment' : 'Create New Environment'}
-          </h2>
-          <p className="mt-1 text-sm text-secondary">
-            {isEditing
-              ? 'Update environment information'
-              : 'Create a new environment'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
-            <X className="mr-2 h-4 w-4" />
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={isLoading}
-            className="bg-action text-action-foreground hover:bg-action-hover"
-          >
-            <Save className="mr-2 h-4 w-4" />
-            {isLoading
-              ? 'Saving...'
-              : isEditing
-                ? 'Save Changes'
-                : 'Create Environment'}
-          </Button>
-        </div>
-      </div>
+      <FormHeader
+        title={isEditing ? 'Edit Environment' : 'Create New Environment'}
+        subtitle={
+          isEditing
+            ? 'Update environment information'
+            : 'Create a new environment'
+        }
+        isEditing={isEditing}
+        isLoading={isLoading}
+        onCancel={onCancel}
+        onSave={handleSave}
+        createLabel="Create Environment"
+      />
 
       {/* API Error */}
       {!!error && (

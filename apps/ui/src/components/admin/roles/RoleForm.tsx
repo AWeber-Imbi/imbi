@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { FormField } from '@/components/ui/form-field'
+import { useFormScaffold } from '@/hooks/useFormScaffold'
 import { getRole, getAdminSettings } from '@/api/endpoints'
 import type { RoleCreate, Permission } from '@/types'
 
@@ -96,10 +98,13 @@ export function RoleForm({
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
   // Validation
-  const [validationErrors, setValidationErrors] = useState<
-    Record<string, string>
-  >({})
-  const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const {
+    validationErrors,
+    setValidationErrors,
+    touched,
+    setTouched,
+    handleFieldChange,
+  } = useFormScaffold()
 
   // Group available permissions by resource_type
   const groupedPermissions = useMemo(
@@ -183,15 +188,6 @@ export function RoleForm({
       priority,
     }
     onSave(roleData, Array.from(selectedPermissions))
-  }
-
-  const handleFieldChange = (field: string) => {
-    setTouched({ ...touched, [field]: true })
-    if (validationErrors[field]) {
-      const newErrors = { ...validationErrors }
-      delete newErrors[field]
-      setValidationErrors(newErrors)
-    }
   }
 
   const togglePermission = (permName: string) => {
@@ -333,29 +329,28 @@ export function RoleForm({
           <div className="grid grid-cols-2 gap-4">
             {/* Name */}
             <div className="col-span-2">
-              <label className="mb-1.5 block text-sm text-secondary">
-                Name <span className="text-red-500">*</span>
-              </label>
-              <Input
-                value={name}
-                onChange={(e) => handleNameChange(e.target.value)}
-                onBlur={() => {
-                  setTouched({ ...touched, name: true })
-                  const err = validateName(name)
-                  if (err)
-                    setValidationErrors({ ...validationErrors, name: err })
-                }}
-                disabled={isLoading || isSystemRole}
-                placeholder="e.g. Project Manager"
-                className={` ${
-                  isSystemRole ? 'cursor-not-allowed opacity-60' : ''
-                }`}
-              />
-              {touched.name && validationErrors.name && (
-                <p className="mt-1 text-sm text-red-600">
-                  {validationErrors.name}
-                </p>
-              )}
+              <FormField
+                label="Name"
+                required
+                touched={touched.name}
+                error={validationErrors.name}
+              >
+                <Input
+                  value={name}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  onBlur={() => {
+                    setTouched({ ...touched, name: true })
+                    const err = validateName(name)
+                    if (err)
+                      setValidationErrors({ ...validationErrors, name: err })
+                  }}
+                  disabled={isLoading || isSystemRole}
+                  placeholder="e.g. Project Manager"
+                  className={` ${
+                    isSystemRole ? 'cursor-not-allowed opacity-60' : ''
+                  }`}
+                />
+              </FormField>
             </div>
 
             {/* Slug */}

@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { ArrowLeft, AlertCircle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { AlertCircle } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { FormHeader } from '@/components/admin/form-header'
 import { slugify } from '@/lib/utils'
 import type {
   ServiceApplication,
@@ -142,24 +142,14 @@ export function OAuth2ApplicationForm({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" onClick={onCancel}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back
-          </Button>
-          <h3 className="text-base font-medium text-primary">
-            {isEdit ? 'Edit Application' : 'New Application'}
-          </h3>
-        </div>
-        <Button
-          onClick={handleSubmit}
-          disabled={isLoading}
-          className="bg-action text-action-foreground hover:bg-action-hover"
-        >
-          {isLoading ? 'Saving...' : isEdit ? 'Update' : 'Create'}
-        </Button>
-      </div>
+      <FormHeader
+        title={isEdit ? 'Edit Application' : 'New Application'}
+        isEditing={isEdit}
+        isLoading={isLoading}
+        onCancel={onCancel}
+        onSave={handleSubmit}
+        createLabel="Create"
+      />
 
       {/* Error display */}
       {(validationError || error) && (

@@ -1,8 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Save,
-  X,
   AlertTriangle,
   Eye,
   EyeOff,
@@ -10,9 +8,9 @@ import {
   X as XIcon,
   AlertCircle,
 } from 'lucide-react'
-import { Button } from '../../ui/button'
 import { Input } from '../../ui/input'
 import { FormField } from '@/components/ui/form-field'
+import { FormHeader } from '@/components/admin/form-header'
 import { Gravatar } from '../../ui/gravatar'
 import { Card, CardContent } from '../../ui/card'
 import { getRoles } from '@/api/endpoints'
@@ -188,36 +186,19 @@ export function UserForm({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-medium text-primary">
-            {isEditing ? 'Edit User' : 'Create New User'}
-          </h2>
-          <p className="mt-1 text-secondary">
-            {isEditing
-              ? `Editing ${user?.display_name}`
-              : 'Add a new user account to the system'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
-            <X className="mr-2 h-4 w-4" />
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={isLoading}
-            className="bg-action text-action-foreground hover:bg-action-hover"
-          >
-            <Save className="mr-2 h-4 w-4" />
-            {isLoading
-              ? 'Saving...'
-              : isEditing
-                ? 'Save Changes'
-                : 'Create User'}
-          </Button>
-        </div>
-      </div>
+      <FormHeader
+        title={isEditing ? 'Edit User' : 'Create New User'}
+        subtitle={
+          isEditing
+            ? `Editing ${user?.display_name}`
+            : 'Add a new user account to the system'
+        }
+        isEditing={isEditing}
+        isLoading={isLoading}
+        onCancel={onCancel}
+        onSave={handleSave}
+        createLabel="Create User"
+      />
 
       {/* API Error Display */}
       {error && (
