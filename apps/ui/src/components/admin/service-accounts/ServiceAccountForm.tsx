@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { getRoles } from '@/api/endpoints'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useFormScaffold } from '@/hooks/useFormScaffold'
 import type { ServiceAccount, ServiceAccountCreate } from '@/types'
 
 interface ServiceAccountFormProps {
@@ -51,10 +52,13 @@ export function ServiceAccountForm({
   })
 
   // Validation state
-  const [validationErrors, setValidationErrors] = useState<
-    Record<string, string>
-  >({})
-  const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const {
+    validationErrors,
+    setValidationErrors,
+    touched,
+    setTouched,
+    handleFieldChange,
+  } = useFormScaffold()
 
   // Validation functions
   const validateSlug = (value: string): string => {
@@ -110,16 +114,6 @@ export function ServiceAccountForm({
     }
 
     onSave(data)
-  }
-
-  const handleFieldChange = (field: string) => {
-    setTouched({ ...touched, [field]: true })
-
-    if (validationErrors[field]) {
-      const newErrors = { ...validationErrors }
-      delete newErrors[field]
-      setValidationErrors(newErrors)
-    }
   }
 
   const handleSlugChange = (value: string) => {
