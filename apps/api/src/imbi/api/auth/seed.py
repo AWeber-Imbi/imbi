@@ -291,129 +291,95 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
 
 
 async def seed_permissions(db: graph.Graph) -> int:
-    """
-    Seed standard permissions into the database.
+    """Seed standard permissions in a single batched query."""
+    maps: list[str] = []
+    params: dict[str, typing.Any] = {}
+    for i, (name, resource_type, action, description) in enumerate(
+        STANDARD_PERMISSIONS
+    ):
+        maps.append(
+            f'{{{{name: {{p_n_{i}}}, resource_type: {{p_rt_{i}}},'
+            f' action: {{p_a_{i}}}, description: {{p_d_{i}}}}}}}'
+        )
+        params[f'p_n_{i}'] = name
+        params[f'p_rt_{i}'] = resource_type
+        params[f'p_a_{i}'] = action
+        params[f'p_d_{i}'] = description
 
-    Uses MERGE to make the operation idempotent - running multiple
-    times will not create duplicates.
-
-    Parameters:
-        db: Graph database connection.
-
-    Returns:
-        int: Number of permissions created (not updated).
-    """
+    query: str = (
+        'UNWIND [' + ', '.join(maps) + '] AS perm '
+        'OPTIONAL MATCH (existing:Permission {{name: perm.name}}) '
+        'WITH perm, existing '
+        'MERGE (p:Permission {{name: perm.name}}) '
+        'SET p.resource_type = perm.resource_type, '
+        'p.action = perm.action, '
+        'p.description = perm.description '
+        'RETURN sum(CASE WHEN existing IS NULL THEN 1 ELSE 0 END) '
+        'AS created'
+    )
+    records = await db.execute(query, params, columns=['created'])
     created_count = 0
-
-    for name, resource_type, action, description in STANDARD_PERMISSIONS:
-        # Check if the permission already exists
-        check_query = (
-            'OPTIONAL MATCH (existing:Permission '
-            '{{name: {name}}}) '
-            'RETURN existing IS NULL AS is_new'
-        )
-        check_records = await db.execute(
-            check_query,
-            {'name': name},
-            columns=['is_new'],
-        )
-        is_new = False
-        if check_records:
-            raw = graph.parse_agtype(check_records[0].get('is_new'))
-            is_new = bool(raw)
-
-        # Merge the permission node
-        merge_query = (
-            'MERGE (p:Permission {{name: {name}}}) '
-            'SET p.resource_type = {resource_type}, '
-            'p.action = {action}, '
-            'p.description = {description} '
-            'RETURN p'
-        )
-        await db.execute(
-            merge_query,
-            {
-                'name': name,
-                'resource_type': resource_type,
-                'action': action,
-                'description': description,
-            },
-        )
-
-        if is_new:
-            created_count += 1
-
+    if records:
+        raw = graph.parse_agtype(records[0].get('created'))
+        created_count = int(raw or 0)
     LOGGER.info('Seeded %d permissions', created_count)
     return created_count
 
 
 async def seed_default_roles(db: graph.Graph) -> int:
+    """Seed default roles and GRANTS edges in a single batched query.
+
+    Must run after ``seed_permissions``: the second UNWIND below does a
+    ``MATCH (gp:Permission {{name: grant.perm}})`` that will silently
+    produce no GRANTS edges if any referenced permission is missing.
+    ``bootstrap_auth_system`` enforces this ordering.
     """
-    Seed default roles (admin, developer, readonly) into the
-    database.
+    role_maps: list[str] = []
+    grant_maps: list[str] = []
+    params: dict[str, typing.Any] = {}
+    for i, (
+        slug,
+        name,
+        description,
+        priority,
+        permission_names,
+    ) in enumerate(DEFAULT_ROLES):
+        role_maps.append(
+            f'{{{{slug: {{r_s_{i}}}, name: {{r_n_{i}}},'
+            f' description: {{r_d_{i}}}, priority: {{r_p_{i}}}}}}}'
+        )
+        params[f'r_s_{i}'] = slug
+        params[f'r_n_{i}'] = name
+        params[f'r_d_{i}'] = description
+        params[f'r_p_{i}'] = priority
+        for j, perm_name in enumerate(permission_names):
+            grant_maps.append(
+                f'{{{{slug: {{r_s_{i}}}, perm: {{g_{i}_{j}}}}}}}'
+            )
+            params[f'g_{i}_{j}'] = perm_name
 
-    Uses MERGE to make the operation idempotent.
-
-    Parameters:
-        db: Graph database connection.
-
-    Returns:
-        int: Number of roles created (not updated).
-    """
+    query: str = (
+        'UNWIND [' + ', '.join(role_maps) + '] AS role '
+        'OPTIONAL MATCH (existing:Role {{slug: role.slug}}) '
+        'WITH role, existing '
+        'MERGE (r:Role {{slug: role.slug}}) '
+        'SET r.name = role.name, '
+        'r.description = role.description, '
+        'r.priority = role.priority, '
+        'r.is_system = true '
+        'WITH sum(CASE WHEN existing IS NULL THEN 1 ELSE 0 END) '
+        'AS created '
+        'UNWIND [' + ', '.join(grant_maps) + '] AS grant '
+        'MATCH (gr:Role {{slug: grant.slug}}), '
+        '(gp:Permission {{name: grant.perm}}) '
+        'MERGE (gr)-[:GRANTS]->(gp) '
+        'RETURN created LIMIT 1'
+    )
+    records = await db.execute(query, params, columns=['created'])
     created_count = 0
-
-    for slug, name, description, priority, permission_names in DEFAULT_ROLES:
-        # Check if the role already exists
-        check_query = (
-            'OPTIONAL MATCH (existing:Role {{slug: {slug}}}) '
-            'RETURN existing IS NULL AS is_new'
-        )
-        check_records = await db.execute(
-            check_query,
-            {'slug': slug},
-            columns=['is_new'],
-        )
-        is_new = False
-        if check_records:
-            raw = graph.parse_agtype(check_records[0].get('is_new'))
-            is_new = bool(raw)
-
-        # Merge the role node
-        merge_query = (
-            'MERGE (r:Role {{slug: {slug}}}) '
-            'SET r.name = {name}, '
-            'r.description = {description}, '
-            'r.priority = {priority}, '
-            'r.is_system = {is_system} '
-            'RETURN r'
-        )
-        await db.execute(
-            merge_query,
-            {
-                'slug': slug,
-                'name': name,
-                'description': description,
-                'priority': priority,
-                'is_system': True,
-            },
-        )
-
-        if is_new:
-            created_count += 1
-
-        # Grant permissions to role
-        for perm_name in permission_names:
-            perm_query = (
-                'MATCH (r:Role {{slug: {slug}}}), '
-                '(p:Permission {{name: {perm_name}}}) '
-                'MERGE (r)-[g:GRANTS]->(p) '
-                'RETURN g'
-            )
-            await db.execute(
-                perm_query,
-                {'slug': slug, 'perm_name': perm_name},
-            )
-
+    if records:
+        raw = graph.parse_agtype(records[0].get('created'))
+        created_count = int(raw or 0)
     LOGGER.info('Seeded %d default roles', created_count)
     return created_count
 

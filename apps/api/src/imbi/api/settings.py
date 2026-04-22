@@ -46,6 +46,11 @@ class ServerConfig(pydantic_settings.BaseSettings):
         8000
     )
     cors_allowed_origins: list[str] = []
+    # Comma-separated list (or '*') of trusted proxy IPs whose
+    # X-Forwarded-* headers are honored. Must be set when deploying
+    # behind a reverse proxy so rate limiting keys on the real client
+    # IP rather than the proxy address. Empty disables the middleware.
+    forwarded_allow_ips: str = ''
 
 
 class Auth(settings.Auth):  # type: ignore[misc]

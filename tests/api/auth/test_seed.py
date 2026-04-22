@@ -12,8 +12,9 @@ class SeedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_seed_permissions_creates_all(self) -> None:
         """Verify all standard permissions are created."""
         mock_db = mock.AsyncMock()
-        # check query returns is_new=True, merge returns []
-        mock_db.execute.return_value = [{'is_new': True}]
+        mock_db.execute.return_value = [
+            {'created': len(seed.STANDARD_PERMISSIONS)}
+        ]
 
         with mock.patch(
             'imbi_common.graph.parse_agtype',
@@ -22,12 +23,12 @@ class SeedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
             count = await seed.seed_permissions(mock_db)
 
         self.assertEqual(count, len(seed.STANDARD_PERMISSIONS))
+        mock_db.execute.assert_awaited_once()
 
     async def test_seed_permissions_idempotent(self) -> None:
         """Second run creates no duplicates."""
         mock_db = mock.AsyncMock()
-        # All permissions already exist
-        mock_db.execute.return_value = [{'is_new': False}]
+        mock_db.execute.return_value = [{'created': 0}]
 
         with mock.patch(
             'imbi_common.graph.parse_agtype',
@@ -35,8 +36,8 @@ class SeedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             count = await seed.seed_permissions(mock_db)
 
-        # Should create 0 new permissions
         self.assertEqual(count, 0)
+        mock_db.execute.assert_awaited_once()
 
     async def test_permission_format_validation(self) -> None:
         """Ensure all permission names match resource_type:action."""
@@ -60,13 +61,7 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_seed_default_roles_creates_all(self) -> None:
         """Verify all 3 default roles are created."""
         mock_db = mock.AsyncMock()
-
-        def execute_side_effect(query, params=None, columns=None):
-            if 'GRANTS' in query:
-                return []
-            return [{'is_new': True}]
-
-        mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
+        mock_db.execute.return_value = [{'created': len(seed.DEFAULT_ROLES)}]
 
         with mock.patch(
             'imbi_common.graph.parse_agtype',
@@ -74,19 +69,13 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             count = await seed.seed_default_roles(mock_db)
 
-        # Should create 3 roles (admin, developer, readonly)
-        self.assertEqual(count, 3)
+        self.assertEqual(count, len(seed.DEFAULT_ROLES))
+        mock_db.execute.assert_awaited_once()
 
     async def test_seed_default_roles_idempotent(self) -> None:
         """Second run creates no duplicate roles."""
         mock_db = mock.AsyncMock()
-
-        def execute_side_effect(query, params=None, columns=None):
-            if 'GRANTS' in query:
-                return []
-            return [{'is_new': False}]
-
-        mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
+        mock_db.execute.return_value = [{'created': 0}]
 
         with mock.patch(
             'imbi_common.graph.parse_agtype',
@@ -94,8 +83,8 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             count = await seed.seed_default_roles(mock_db)
 
-        # Should create 0 new roles
         self.assertEqual(count, 0)
+        mock_db.execute.assert_awaited_once()
 
     def test_default_roles_structure(self) -> None:
         """Verify default role definitions are well-formed."""

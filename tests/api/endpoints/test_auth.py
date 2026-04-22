@@ -388,8 +388,13 @@ class LoginPasswordRehashTestCase(unittest.TestCase):
 
         # db.match returns user
         self.mock_db.match.return_value = [test_user]
-        # db.execute returns empty for TOTP and token
-        self.mock_db.execute.return_value = []
+        # db.execute is called for the MFA/TOTP check (no TOTP -> [])
+        # and for the atomic MATCH/CREATE inside issue_token_pair that
+        # both persists token metadata and returns principal_count.
+        self.mock_db.execute.side_effect = [
+            [],
+            [{'principal_count': 1}],
+        ]
         # db.merge returns None (void)
         self.mock_db.merge.return_value = None
 
@@ -540,8 +545,13 @@ class LoginMFATestCase(unittest.TestCase):
         }
 
         self.mock_db.match.return_value = [test_user]
-        self.mock_db.execute.return_value = [
-            {'n': totp_data},
+        # execute(): TOTP fetch, TOTP last_used update, then the
+        # atomic MATCH/CREATE inside issue_token_pair that returns
+        # principal_count.
+        self.mock_db.execute.side_effect = [
+            [{'n': totp_data}],
+            [],
+            [{'principal_count': 1}],
         ]
         self.mock_db.merge.return_value = None
 
@@ -586,8 +596,13 @@ class LoginMFATestCase(unittest.TestCase):
         }
 
         self.mock_db.match.return_value = [test_user]
-        self.mock_db.execute.return_value = [
-            {'n': totp_data},
+        # execute(): TOTP fetch, backup_codes update, then the atomic
+        # MATCH/CREATE inside issue_token_pair that returns
+        # principal_count.
+        self.mock_db.execute.side_effect = [
+            [{'n': totp_data}],
+            [],
+            [{'principal_count': 1}],
         ]
         self.mock_db.merge.return_value = None
 
@@ -835,8 +850,11 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
                 datetime.UTC,
             ).isoformat(),
         }
-        self.mock_db.execute.return_value = [
-            {'u': user_data},
+        # execute(): user fetch, then the atomic MATCH/CREATE inside
+        # issue_token_pair that returns principal_count.
+        self.mock_db.execute.side_effect = [
+            [{'u': user_data}],
+            [{'principal_count': 1}],
         ]
 
         with (
@@ -926,8 +944,13 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
                 datetime.UTC,
             ).isoformat(),
         }
-        self.mock_db.execute.return_value = [
-            {'u': user_data},
+        # execute(): OAUTH_IDENTITY MERGE, user fetch, then the atomic
+        # MATCH/CREATE inside issue_token_pair that returns
+        # principal_count.
+        self.mock_db.execute.side_effect = [
+            [],
+            [{'u': user_data}],
+            [{'principal_count': 1}],
         ]
 
         with (
@@ -1104,8 +1127,13 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
                 datetime.UTC,
             ).isoformat(),
         }
-        self.mock_db.execute.return_value = [
-            {'u': user_data},
+        # execute(): OAUTH_IDENTITY MERGE, user fetch, then the atomic
+        # MATCH/CREATE inside issue_token_pair that returns
+        # principal_count.
+        self.mock_db.execute.side_effect = [
+            [],
+            [{'u': user_data}],
+            [{'principal_count': 1}],
         ]
 
         with (
@@ -1276,7 +1304,12 @@ class TokenRefreshTestCase(unittest.TestCase):
             [test_user],
         ]
         self.mock_db.merge.return_value = None
-        self.mock_db.execute.return_value = []
+        # execute() runs the atomic MATCH/CREATE inside
+        # issue_token_pair that persists token metadata and returns
+        # principal_count.
+        self.mock_db.execute.return_value = [
+            {'principal_count': 1},
+        ]
 
         with mock.patch(
             'imbi_api.settings.get_auth_settings',
@@ -1761,8 +1794,13 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
             ).isoformat(),
         }
 
-        self.mock_db.execute.return_value = [
-            {'c': cred_data, 's': sa_data},
+        # execute(): credential+SA fetch, atomic MATCH/CREATE inside
+        # issue_token_pair returning principal_count, then the
+        # last_used/last_authenticated update.
+        self.mock_db.execute.side_effect = [
+            [{'c': cred_data, 's': sa_data}],
+            [{'principal_count': 1}],
+            [],
         ]
 
         with (
@@ -1996,8 +2034,13 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
             ).isoformat(),
         }
 
-        self.mock_db.execute.return_value = [
-            {'c': cred_data, 's': sa_data},
+        # execute(): credential+SA fetch, atomic MATCH/CREATE inside
+        # issue_token_pair returning principal_count, then the
+        # last_used/last_authenticated update.
+        self.mock_db.execute.side_effect = [
+            [{'c': cred_data, 's': sa_data}],
+            [{'principal_count': 1}],
+            [],
         ]
 
         with (

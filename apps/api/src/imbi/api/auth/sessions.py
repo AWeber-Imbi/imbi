@@ -6,7 +6,6 @@ concurrent session limits, and tracking session activity.
 
 import datetime
 import logging
-import typing
 
 from imbi_common import graph
 
@@ -36,45 +35,25 @@ async def enforce_session_limit(
     query = (
         'MATCH (u:User {{email: {email}}})'
         '<-[:SESSION_FOR]-(s:Session) '
-        'RETURN s.session_id, s.last_activity '
-        'ORDER BY s.last_activity DESC'
+        'WITH s ORDER BY s.last_activity DESC SKIP {limit} '
+        'DETACH DELETE s '
+        'RETURN count(s) AS removed'
     )
     records = await db.execute(
         query,
-        {'email': email},
-        columns=['session_id', 'last_activity'],
+        {
+            'email': email,
+            'limit': auth_settings.max_concurrent_sessions,
+        },
+        columns=['removed'],
     )
+    raw = graph.parse_agtype(records[0].get('removed') if records else None)
+    removed = raw if isinstance(raw, int) else 0
 
-    sessions: list[dict[str, typing.Any]] = []
-    for record in records:
-        sessions.append(
-            {
-                'session_id': graph.parse_agtype(record.get('session_id')),
-                'last_activity': graph.parse_agtype(
-                    record.get('last_activity')
-                ),
-            }
-        )
-
-    if len(sessions) > auth_settings.max_concurrent_sessions:
-        # Remove oldest sessions (those beyond the limit)
-        sessions_to_remove: list[dict[str, typing.Any]] = sessions[
-            auth_settings.max_concurrent_sessions :
-        ]
-        for s in sessions_to_remove:
-            delete_query = (
-                'MATCH (s:Session '
-                '{{session_id: {session_id}}}) '
-                'DETACH DELETE s'
-            )
-            await db.execute(
-                delete_query,
-                {'session_id': s['session_id']},
-            )
-
+    if removed > 0:
         LOGGER.info(
             'Removed %d old sessions for user %s',
-            len(sessions_to_remove),
+            removed,
             email,
         )
 

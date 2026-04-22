@@ -17,7 +17,8 @@ from imbi_common import blueprints, graph, models
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
-from imbi_api.relationships import relationship_link
+from imbi_api.graph_sql import escape_prop, props_template, set_clause
+from imbi_api.relationships import build_relationships
 
 LOGGER = logging.getLogger(__name__)
 
@@ -155,44 +156,6 @@ class ProjectResponse(pydantic.BaseModel):
 # -- Helpers ------------------------------------------------------------
 
 
-def _escape_prop(name: str) -> str:
-    """Escape a Cypher property name with backticks."""
-    return '`' + name.replace('`', '``') + '`'
-
-
-def _props_template(props: dict[str, typing.Any]) -> str:
-    """Build a Cypher property-map template with double-escaped braces.
-
-    Each key becomes ```key`: {key}`` inside doubled braces so that
-    ``psycopg.sql.SQL.format()`` resolves them correctly::
-
-        >>> _props_template({'name': 'x', 'slug': 'y'})
-        '{{`name`: {name}, `slug`: {slug}}}'
-
-    """
-    if not props:
-        return ''
-    pairs = [f'{_escape_prop(k)}: {{{k}}}' for k in props]
-    return '{{' + ', '.join(pairs) + '}}'
-
-
-def _set_clause(
-    alias: str,
-    props: dict[str, typing.Any],
-) -> str:
-    """Build a Cypher SET clause from a property dict.
-
-    Returns ``SET p.`name` = {name}, p.`slug` = {slug}``.
-
-    """
-    if not props:
-        return ''
-    assignments = ', '.join(
-        f'{alias}.{_escape_prop(k)} = {{{k}}}' for k in props
-    )
-    return f'SET {assignments}'
-
-
 def _env_entries_template(
     entries: list[dict[str, typing.Any]],
 ) -> tuple[str, dict[str, typing.Any]]:
@@ -212,7 +175,7 @@ def _env_entries_template(
         pairs: list[str] = []
         for key, value in entry.items():
             param = f'env_{i}_{key}'
-            pairs.append(f'{_escape_prop(key)}: {{{param}}}')
+            pairs.append(f'{escape_prop(key)}: {{{param}}}')
             params[param] = value
         maps.append('{{' + ', '.join(pairs) + '}}')
     return '[' + ', '.join(maps) + ']', params
@@ -238,7 +201,7 @@ def _edge_create_props(
     prop_keys = list(all_keys)
     if not prop_keys:
         return ''
-    pairs = [f'{_escape_prop(k)}: entry.{_escape_prop(k)}' for k in prop_keys]
+    pairs = [f'{escape_prop(k)}: entry.{escape_prop(k)}' for k in prop_keys]
     return ' {{' + ', '.join(pairs) + '}}'
 
 
@@ -338,33 +301,6 @@ def _flatten_edge_props(
             env.update(
                 {k: v for k, v in edge.items() if k not in _PROTECTED_ENV_KEYS}
             )
-    return project
-
-
-def _add_relationships(
-    project: dict[str, typing.Any],
-    org_slug: str,
-    outbound_count: int = 0,
-    inbound_count: int = 0,
-) -> dict[str, typing.Any]:
-    """Attach relationships sub-object to a project dict."""
-    project_id = project.get('id') or ''
-    team = project.get('team', {})
-    team_slug = team.get('slug', '') if team else ''
-    base = f'/api/organizations/{org_slug}/projects/{project_id}'
-    project['relationships'] = {
-        'team': relationship_link(
-            f'/api/organizations/{org_slug}/teams/{team_slug}',
-            1 if team_slug else 0,
-        ),
-        'environments': relationship_link(
-            f'{base}/environments',
-            len(project.get('environments') or []),
-        ),
-        'href': f'{base}/relationships',
-        'outbound_count': outbound_count,
-        'inbound_count': inbound_count,
-    }
     return project
 
 
@@ -518,7 +454,7 @@ async def create_project(
             list(data.environments.keys()),
         )
 
-    create_tpl = _props_template(props)
+    create_tpl = props_template(props)
     env_entries = [{'slug': s, **ep} for s, ep in data.environments.items()]
     env_tpl, env_params = _env_entries_template(env_entries)
     edge_props_tpl = _edge_create_props(env_entries)
@@ -591,13 +527,45 @@ async def create_project(
 
     project_data = graph.parse_agtype(records[0]['project'])
     _flatten_edge_props(project_data)
-    result = _add_relationships(
+    _attach_project_relationships(
         project_data,
         org_slug,
         graph.parse_agtype(records[0]['outbound_count']),
         graph.parse_agtype(records[0]['inbound_count']),
     )
-    return ProjectResponse.model_validate(result)
+    return ProjectResponse.model_validate(project_data)
+
+
+def _attach_project_relationships(
+    project: dict[str, typing.Any],
+    org_slug: str,
+    outbound_count: int = 0,
+    inbound_count: int = 0,
+) -> None:
+    """Attach relationships sub-object to a project dict."""
+    project_id = project.get('id') or ''
+    team = project.get('team', {})
+    team_slug = team.get('slug', '') if team else ''
+    base = f'/api/organizations/{org_slug}/projects/{project_id}'
+    rels: dict[str, typing.Any] = dict(
+        build_relationships(
+            '',
+            {
+                'team': (
+                    f'/api/organizations/{org_slug}/teams/{team_slug}',
+                    1 if team_slug else 0,
+                ),
+                'environments': (
+                    f'{base}/environments',
+                    len(project.get('environments') or []),
+                ),
+            },
+        )
+    )
+    rels['href'] = f'{base}/relationships'
+    rels['outbound_count'] = outbound_count
+    rels['inbound_count'] = inbound_count
+    project['relationships'] = rels
 
 
 @projects_router.get('/')
@@ -642,14 +610,14 @@ async def list_projects(
     for record in records:
         project_data = graph.parse_agtype(record['project'])
         _flatten_edge_props(project_data)
-        proj = _add_relationships(
+        _attach_project_relationships(
             project_data,
             org_slug,
             graph.parse_agtype(record['outbound_count']),
             graph.parse_agtype(record['inbound_count']),
         )
         results.append(
-            ProjectResponse.model_validate(proj),
+            ProjectResponse.model_validate(project_data),
         )
     return results
 
@@ -839,13 +807,13 @@ async def get_project(
         )
     project_data = graph.parse_agtype(records[0]['project'])
     _flatten_edge_props(project_data)
-    result = _add_relationships(
+    _attach_project_relationships(
         project_data,
         org_slug,
         graph.parse_agtype(records[0]['outbound_count']),
         graph.parse_agtype(records[0]['inbound_count']),
     )
-    return ProjectResponse.model_validate(result)
+    return ProjectResponse.model_validate(project_data)
 
 
 class ProjectRelationshipSummary(pydantic.BaseModel):
@@ -1330,7 +1298,7 @@ async def _execute_project_update(
     await _validate_update_refs(db, org_slug, data)
 
     rel_clauses, new_env_params = _build_update_clauses(data)
-    set_clause = _set_clause('p', props)
+    set_stmt = set_clause('p', props)
 
     update_query: str = (
         """
@@ -1339,7 +1307,7 @@ async def _execute_project_update(
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
     WITH DISTINCT p, o
     """
-        + set_clause
+        + set_stmt
         + rel_clauses
         + """
     WITH DISTINCT p, o
@@ -1374,13 +1342,13 @@ async def _execute_project_update(
 
     updated_data = graph.parse_agtype(updated[0]['project'])
     _flatten_edge_props(updated_data)
-    result = _add_relationships(
+    _attach_project_relationships(
         updated_data,
         org_slug,
         graph.parse_agtype(updated[0]['outbound_count']),
         graph.parse_agtype(updated[0]['inbound_count']),
     )
-    return ProjectResponse.model_validate(result)
+    return ProjectResponse.model_validate(updated_data)
 
 
 @projects_router.put('/{project_id}')

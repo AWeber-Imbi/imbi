@@ -1,6 +1,7 @@
 """S3 client for object storage operations."""
 
 import asyncio
+import contextlib
 import logging
 import typing
 
@@ -33,6 +34,8 @@ class StorageClient:
         )
         self._initialized = False
         self._lock = asyncio.Lock()
+        self._exit_stack: contextlib.AsyncExitStack | None = None
+        self._s3: typing.Any = None
 
     async def initialize(self) -> None:
         """Initialize the storage client and ensure the bucket exists.
@@ -48,6 +51,20 @@ class StorageClient:
             if self._initialized:
                 return
 
+            kwargs: dict[str, typing.Any] = {}
+            if self._settings.endpoint_url:
+                kwargs['endpoint_url'] = self._settings.endpoint_url
+            stack = contextlib.AsyncExitStack()
+            await stack.__aenter__()
+            try:
+                self._s3 = await stack.enter_async_context(
+                    self._session.client('s3', **kwargs)  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType,reportArgumentType]
+                )
+            except BaseException:
+                await stack.aclose()
+                raise
+            self._exit_stack = stack
+
             if self._settings.create_bucket_on_init:
                 await self._ensure_bucket()
 
@@ -56,6 +73,10 @@ class StorageClient:
     async def aclose(self) -> None:
         """Clean up storage client resources."""
         async with self._lock:
+            if self._exit_stack is not None:
+                await self._exit_stack.aclose()
+            self._s3 = None
+            self._exit_stack = None
             self._initialized = False
             LOGGER.debug('Storage client closed')
 
@@ -73,13 +94,14 @@ class StorageClient:
             content_type: MIME type of the file
 
         """
-        async with self._s3_client() as s3:
-            await s3.put_object(
-                Bucket=self._settings.bucket,
-                Key=key,
-                Body=data,
-                ContentType=content_type,
-            )
+        if self._s3 is None:
+            raise RuntimeError('StorageClient not initialized')
+        await self._s3.put_object(
+            Bucket=self._settings.bucket,
+            Key=key,
+            Body=data,
+            ContentType=content_type,
+        )
         LOGGER.debug('Uploaded %s (%d bytes)', key, len(data))
 
     async def download(self, key: str) -> bytes:
@@ -92,13 +114,14 @@ class StorageClient:
             File content as bytes
 
         """
-        async with self._s3_client() as s3:
-            response = await s3.get_object(
-                Bucket=self._settings.bucket,
-                Key=key,
-            )
-            async with response['Body'] as body:
-                data: bytes = await body.read()
+        if self._s3 is None:
+            raise RuntimeError('StorageClient not initialized')
+        response = await self._s3.get_object(
+            Bucket=self._settings.bucket,
+            Key=key,
+        )
+        async with response['Body'] as body:
+            data: bytes = await body.read()
         LOGGER.debug('Downloaded %s (%d bytes)', key, len(data))
         return data
 
@@ -109,11 +132,12 @@ class StorageClient:
             key: S3 object key
 
         """
-        async with self._s3_client() as s3:
-            await s3.delete_object(
-                Bucket=self._settings.bucket,
-                Key=key,
-            )
+        if self._s3 is None:
+            raise RuntimeError('StorageClient not initialized')
+        await self._s3.delete_object(
+            Bucket=self._settings.bucket,
+            Key=key,
+        )
         LOGGER.debug('Deleted %s', key)
 
     async def presigned_url(
@@ -131,50 +155,33 @@ class StorageClient:
             Presigned URL string
 
         """
-        async with self._s3_client() as s3:
-            url: str = await s3.generate_presigned_url(
-                'get_object',
-                Params={
-                    'Bucket': self._settings.bucket,
-                    'Key': key,
-                },
-                ExpiresIn=expires_in,
-            )
-        return url
-
-    def _s3_client(self) -> typing.Any:  # pyright: ignore[reportUnknownMemberType]
-        """Create an S3 client context manager.
-
-        Returns:
-            Async context manager yielding an S3 client.
-
-        """
-        kwargs: dict[str, typing.Any] = {}
-        if self._settings.endpoint_url:
-            kwargs['endpoint_url'] = self._settings.endpoint_url
-        return self._session.client(  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
-            's3', **kwargs
+        if self._s3 is None:
+            raise RuntimeError('StorageClient not initialized')
+        url: str = await self._s3.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': self._settings.bucket,
+                'Key': key,
+            },
+            ExpiresIn=expires_in,
         )
+        return url
 
     async def _ensure_bucket(self) -> None:
         """Create the S3 bucket if it does not exist."""
-        async with self._s3_client() as s3:
-            try:
-                await s3.head_bucket(Bucket=self._settings.bucket)
-                LOGGER.debug(
-                    'Bucket %s already exists',
-                    self._settings.bucket,
-                )
-            except botocore_exceptions.ClientError:
-                params: dict[str, typing.Any] = {
-                    'Bucket': self._settings.bucket,
+        try:
+            await self._s3.head_bucket(Bucket=self._settings.bucket)
+            LOGGER.debug(
+                'Bucket %s already exists',
+                self._settings.bucket,
+            )
+        except botocore_exceptions.ClientError:
+            params: dict[str, typing.Any] = {
+                'Bucket': self._settings.bucket,
+            }
+            if self._settings.region and self._settings.region != 'us-east-1':
+                params['CreateBucketConfiguration'] = {
+                    'LocationConstraint': self._settings.region,
                 }
-                if (
-                    self._settings.region
-                    and self._settings.region != 'us-east-1'
-                ):
-                    params['CreateBucketConfiguration'] = {
-                        'LocationConstraint': self._settings.region,
-                    }
-                await s3.create_bucket(**params)
-                LOGGER.info('Created bucket %s', self._settings.bucket)
+            await self._s3.create_bucket(**params)
+            LOGGER.info('Created bucket %s', self._settings.bucket)

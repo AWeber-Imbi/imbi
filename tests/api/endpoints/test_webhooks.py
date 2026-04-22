@@ -355,16 +355,7 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         updated = copy.deepcopy(self.webhook_record)
         updated['webhook']['description'] = 'Updated'
 
-        fetch_result = [
-            {'webhook': self.webhook_record['webhook']},
-        ]
-        update_result = [updated]
-
-        self.mock_db.execute.side_effect = [
-            fetch_result,
-            update_result,
-            [updated],
-        ]
+        self.mock_db.execute.return_value = [updated]
 
         payload = dict(self.webhook_update_json)
         payload['description'] = 'Updated'
@@ -389,9 +380,12 @@ class WebhookEndpointsTestCase(unittest.TestCase):
 
     def test_update_webhook_not_found(self) -> None:
         self.mock_db.execute.return_value = []
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             response = self.client.put(
                 '/organizations/engineering/webhooks/nonexistent',
@@ -402,14 +396,7 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.assertIn('not found', response.json()['detail'])
 
     def test_update_slug_conflict(self) -> None:
-        fetch_result = [
-            {'webhook': self.webhook_record['webhook']},
-        ]
-
-        self.mock_db.execute.side_effect = [
-            fetch_result,
-            psycopg.errors.UniqueViolation(),
-        ]
+        self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation()
 
         payload = dict(self.webhook_update_json)
         payload['slug'] = 'existing-slug'
@@ -431,31 +418,6 @@ class WebhookEndpointsTestCase(unittest.TestCase):
             'already exists',
             response.json()['detail'],
         )
-
-    def test_update_concurrent_delete(self) -> None:
-        fetch_result = [
-            {'webhook': self.webhook_record['webhook']},
-        ]
-        empty_result: list[dict] = []
-
-        self.mock_db.execute.side_effect = [
-            fetch_result,
-            empty_result,
-        ]
-
-        with (
-            self._patch_encryption(),
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            response = self.client.put(
-                '/organizations/engineering/webhooks/github-events',
-                json=self.webhook_update_json,
-            )
-
-        self.assertEqual(response.status_code, 404)
 
     def test_update_missing_required_field(self) -> None:
         response = self.client.put(

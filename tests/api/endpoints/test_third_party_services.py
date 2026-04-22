@@ -328,10 +328,7 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         updated = dict(self.service_data)
         updated['description'] = 'Updated description'
 
-        self.mock_db.execute.side_effect = [
-            [{'service': self.service_data}],
-            [{'service': updated}],
-        ]
+        self.mock_db.execute.return_value = [{'service': updated}]
 
         payload = dict(self.service_update_json)
         payload['description'] = 'Updated description'
@@ -358,10 +355,7 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             'slug': 'backend',
         }
 
-        self.mock_db.execute.side_effect = [
-            [{'service': self.service_data}],
-            [{'service': updated}],
-        ]
+        self.mock_db.execute.return_value = [{'service': updated}]
 
         payload = dict(self.service_update_json)
         payload['team_slug'] = 'backend'
@@ -419,10 +413,7 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
 
     def test_update_slug_conflict(self) -> None:
-        self.mock_db.execute.side_effect = [
-            [{'service': self.service_data}],
-            psycopg.errors.UniqueViolation(),
-        ]
+        self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation()
 
         payload = dict(self.service_update_json)
         payload['slug'] = 'existing-slug'
@@ -441,24 +432,6 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             'already exists',
             response.json()['detail'],
         )
-
-    def test_update_concurrent_delete(self) -> None:
-        """Service deleted between fetch and update."""
-        self.mock_db.execute.side_effect = [
-            [{'service': self.service_data}],
-            [],
-        ]
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                '/organizations/engineering/third-party-services/stripe',
-                json=self.service_update_json,
-            )
-
-        self.assertEqual(response.status_code, 404)
 
     # -- Patch --
 

@@ -13,39 +13,9 @@ from imbi_common.auth import encryption
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.domain import models
+from imbi_api.graph_sql import props_template, set_clause
 
 LOGGER = logging.getLogger(__name__)
-
-
-def _props_template(props: dict[str, typing.Any]) -> str:
-    """Build a Cypher property-map template with double-escaped braces.
-
-    Each key becomes ``key: {key}`` inside doubled braces so that
-    ``psycopg.sql.SQL.format()`` resolves them correctly::
-
-        >>> _props_template({'name': 'x', 'slug': 'y'})
-        '{{name: {name}, slug: {slug}}}'
-
-    """
-    if not props:
-        return ''
-    pairs = [f'{k}: {{{k}}}' for k in props]
-    return '{{' + ', '.join(pairs) + '}}'
-
-
-def _set_clause(
-    alias: str,
-    props: dict[str, typing.Any],
-) -> str:
-    """Build a Cypher SET clause from a property dict.
-
-    Returns a string like ``SET w.name = {name}, w.slug = {slug}``.
-
-    """
-    if not props:
-        return ''
-    assignments = ', '.join(f'{alias}.{k} = {{{k}}}' for k in props)
-    return f'SET {assignments}'
 
 
 def _rules_create_clauses(
@@ -102,6 +72,38 @@ RETURN w{{.*}} AS webhook,
 """
 
 
+_UPDATE_RETURN_TAIL_WITH_TPS: typing.LiteralString = (
+    ' WITH w, tps, impl'
+    ' OPTIONAL MATCH (r:WebhookRule)-[:ACTIONS]->(w)'
+    ' WITH w, tps, impl, r ORDER BY r.ordinal'
+    ' WITH w, tps, impl,'
+    ' collect(CASE WHEN r IS NOT NULL'
+    ' THEN r{{.filter_expression, .handler,'
+    ' .handler_config, .ordinal}} END) AS all_rules'
+    ' RETURN w{{.*}} AS webhook, tps{{.*}} AS tps,'
+    ' impl.identifier_selector AS identifier_selector,'
+    ' [x IN all_rules'
+    ' | x {{.filter_expression, .handler,'
+    ' .handler_config}}] AS rules'
+)
+
+
+_UPDATE_RETURN_TAIL_NO_TPS: typing.LiteralString = (
+    ' WITH w'
+    ' OPTIONAL MATCH (r:WebhookRule)-[:ACTIONS]->(w)'
+    ' WITH w, r ORDER BY r.ordinal'
+    ' WITH w,'
+    ' collect(CASE WHEN r IS NOT NULL'
+    ' THEN r{{.filter_expression, .handler,'
+    ' .handler_config, .ordinal}} END) AS all_rules'
+    ' RETURN w{{.*}} AS webhook, null AS tps,'
+    ' null AS identifier_selector,'
+    ' [x IN all_rules'
+    ' | x {{.filter_expression, .handler,'
+    ' .handler_config}}] AS rules'
+)
+
+
 webhooks_router = fastapi.APIRouter(tags=['Webhooks'])
 
 
@@ -130,7 +132,7 @@ async def create_webhook(
             encryptor.encrypt(data.secret) if data.secret is not None else None
         ),
     }
-    create_tpl = _props_template(props)
+    create_tpl = props_template(props)
 
     # Build rule creation params as scalars
     rule_dicts: list[dict[str, str | int]] = []
@@ -317,37 +319,7 @@ async def update_webhook(
     ],
 ) -> models.WebhookResponse:
     """Update a webhook (full replacement including rules)."""
-    # Verify exists
-    check_query: typing.LiteralString = """
-    MATCH (w:Webhook {{slug: {slug}}})
-          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    RETURN w{{.*}} AS webhook
-    """
-    existing = await db.execute(
-        check_query,
-        {'slug': slug, 'org_slug': org_slug},
-        ['webhook'],
-    )
-
-    if not existing:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'Webhook with slug {slug!r} not found',
-        )
-
     encryptor = encryption.TokenEncryption.get_instance()
-
-    # Distinguish omitted secret (preserve existing) from explicit
-    # null (clear) or a new value (encrypt and store).
-    existing_webhook = graph.parse_agtype(
-        existing[0]['webhook'],
-    )
-    if 'secret' not in data.model_fields_set:
-        encrypted_secret = existing_webhook.get('secret')
-    elif data.secret is None:
-        encrypted_secret = None
-    else:
-        encrypted_secret = encryptor.encrypt(data.secret)
 
     props: dict[str, typing.Any] = {
         'name': data.name,
@@ -355,9 +327,12 @@ async def update_webhook(
         'description': data.description,
         'icon': data.icon,
         'notification_path': data.notification_path,
-        'secret': encrypted_secret,
     }
-    set_clause = _set_clause('w', props)
+    if 'secret' in data.model_fields_set:
+        props['secret'] = (
+            None if data.secret is None else encryptor.encrypt(data.secret)
+        )
+    set_stmt = set_clause('w', props)
 
     rule_dicts: list[dict[str, str | int]] = []
     for idx, rule in enumerate(data.rules):
@@ -389,12 +364,12 @@ async def update_webhook(
             ' (w)-[old_impl:IMPLEMENTED_BY]->()'
             ' DELETE old_impl'
             ' WITH DISTINCT w, o, tps'
-            f' {set_clause}'
+            f' {set_stmt}'
             ' CREATE (w)-[impl:IMPLEMENTED_BY]->(tps)'
             ' SET impl.identifier_selector'
             ' = {identifier_selector}'
             + rule_clauses
-            + ' RETURN w.slug AS slug'
+            + _UPDATE_RETURN_TAIL_WITH_TPS
         )
         params: dict[str, typing.Any] = {
             'old_slug': slug,
@@ -417,7 +392,7 @@ async def update_webhook(
             ' (w)-[old_impl:IMPLEMENTED_BY]->()'
             ' DELETE old_impl'
             ' WITH DISTINCT w'
-            f' {set_clause}' + rule_clauses + ' RETURN w.slug AS slug'
+            f' {set_stmt}' + rule_clauses + _UPDATE_RETURN_TAIL_NO_TPS
         )
         params = {
             'old_slug': slug,
@@ -427,10 +402,10 @@ async def update_webhook(
         }
 
     try:
-        write_records = await db.execute(
+        records = await db.execute(
             write_query,
             params,
-            ['slug'],
+            ['webhook', 'tps', 'identifier_selector', 'rules'],
         )
     except psycopg.errors.UniqueViolation as e:
         raise fastapi.HTTPException(
@@ -442,17 +417,12 @@ async def update_webhook(
             ),
         ) from e
 
-    if not write_records:
+    if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Webhook with slug {slug!r} not found',
         )
 
-    records = await db.execute(
-        _FETCH_WEBHOOK_QUERY,
-        {'slug': data.slug, 'org_slug': org_slug},
-        ['webhook', 'tps', 'identifier_selector', 'rules'],
-    )
     return models.WebhookResponse.from_graph_record(records[0])
 
 
@@ -551,7 +521,7 @@ async def patch_webhook(
         'notification_path': data.notification_path,
         'secret': encrypted_secret,
     }
-    set_clause = _set_clause('w', props)
+    set_stmt = set_clause('w', props)
 
     rule_dicts: list[dict[str, str | int]] = []
     for idx, rule in enumerate(data.rules):
@@ -582,7 +552,7 @@ async def patch_webhook(
             ' (w)-[old_impl:IMPLEMENTED_BY]->()'
             ' DELETE old_impl'
             ' WITH DISTINCT w, o, tps'
-            f' {set_clause}'
+            f' {set_stmt}'
             ' CREATE (w)-[impl:IMPLEMENTED_BY]->(tps)'
             ' SET impl.identifier_selector'
             ' = {identifier_selector}'
@@ -610,7 +580,7 @@ async def patch_webhook(
             ' (w)-[old_impl:IMPLEMENTED_BY]->()'
             ' DELETE old_impl'
             ' WITH DISTINCT w'
-            f' {set_clause}' + rule_clauses + ' RETURN w.slug AS slug'
+            f' {set_stmt}' + rule_clauses + ' RETURN w.slug AS slug'
         )
         params = {
             'old_slug': slug,

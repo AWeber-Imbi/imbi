@@ -11,63 +11,12 @@ from imbi_common import blueprints, graph, models
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
-from imbi_api.relationships import relationship_link
+from imbi_api.graph_sql import props_template, set_clause
+from imbi_api.relationships import build_relationships
 
 LOGGER = logging.getLogger(__name__)
 
 project_types_router = fastapi.APIRouter(tags=['Project Types'])
-
-
-def _escape_prop(name: str) -> str:
-    """Escape a Cypher property name with backticks."""
-    return '`' + name.replace('`', '``') + '`'
-
-
-def _props_template(props: dict[str, typing.Any]) -> str:
-    """Build a Cypher property-map template with double-escaped braces.
-
-    Each key becomes ```key`: {key}`` inside doubled braces so that
-    ``psycopg.sql.SQL.format()`` resolves them correctly::
-
-        >>> _props_template({'name': 'x', 'slug': 'y'})
-        '{{`name`: {name}, `slug`: {slug}}}'
-
-    """
-    if not props:
-        return ''
-    pairs = [f'{_escape_prop(k)}: {{{k}}}' for k in props]
-    return '{{' + ', '.join(pairs) + '}}'
-
-
-def _set_clause(
-    alias: str,
-    props: dict[str, typing.Any],
-) -> str:
-    """Build a Cypher SET clause from a property dict.
-
-    Returns ``SET pt.`name` = {name}, pt.`slug` = {slug}``.
-
-    """
-    if not props:
-        return ''
-    assignments = ', '.join(
-        f'{alias}.{_escape_prop(k)} = {{{k}}}' for k in props
-    )
-    return f'SET {assignments}'
-
-
-def _add_relationships(
-    pt: dict[str, typing.Any],
-    project_count: int = 0,
-) -> dict[str, typing.Any]:
-    """Attach relationships sub-object to a project type dict."""
-    pt['relationships'] = {
-        'projects': relationship_link(
-            f'/api/projects?project-type={pt["slug"]}',
-            project_count,
-        ),
-    }
-    return pt
 
 
 @project_types_router.post('/', status_code=201)
@@ -132,7 +81,7 @@ async def create_project_type(
         exclude={'organization'},
     )
 
-    create_tpl = _props_template(props)
+    create_tpl = props_template(props)
     query = (
         f'MATCH (o:Organization {{{{slug: {{org_slug}}}}}})'
         f' CREATE (pt:ProjectType {create_tpl})'
@@ -160,10 +109,19 @@ async def create_project_type(
             detail=(f'Organization with slug {org_slug!r} not found'),
         )
 
-    pt_props = graph.parse_agtype(records[0]['pt'])
+    pt_props: dict[str, typing.Any] = graph.parse_agtype(records[0]['pt'])
     org_props = graph.parse_agtype(records[0]['o'])
     pt_props['organization'] = org_props
-    return _add_relationships(pt_props)
+    pt_props['relationships'] = build_relationships(
+        '',
+        {
+            'projects': (
+                f'/api/projects?project-type={pt_props["slug"]}',
+                0,
+            ),
+        },
+    )
+    return pt_props
 
 
 @project_types_router.get('/')
@@ -206,7 +164,15 @@ async def list_project_types(
         org = graph.parse_agtype(record['o'])
         pt['organization'] = org
         pc = graph.parse_agtype(record['project_count'])
-        _add_relationships(pt, pc or 0)
+        pt['relationships'] = build_relationships(
+            '',
+            {
+                'projects': (
+                    f'/api/projects?project-type={pt["slug"]}',
+                    pc or 0,
+                ),
+            },
+        )
         project_types.append(pt)
     return project_types
 
@@ -255,11 +221,20 @@ async def get_project_type(
             detail=(f'Project type with slug {slug!r} not found'),
         )
 
-    pt = graph.parse_agtype(records[0]['pt'])
+    pt: dict[str, typing.Any] = graph.parse_agtype(records[0]['pt'])
     org = graph.parse_agtype(records[0]['o'])
     pt['organization'] = org
     pc = graph.parse_agtype(records[0]['project_count'])
-    return _add_relationships(pt, pc or 0)
+    pt['relationships'] = build_relationships(
+        '',
+        {
+            'projects': (
+                f'/api/projects?project-type={pt["slug"]}',
+                pc or 0,
+            ),
+        },
+    )
+    return pt
 
 
 async def _persist_project_type(
@@ -318,7 +293,7 @@ async def _persist_project_type(
         exclude={'organization'},
     )
 
-    set_stmt = _set_clause('pt', props)
+    set_stmt = set_clause('pt', props)
     update_query = (
         f'MATCH (pt:ProjectType {{{{slug: {{slug}}}}}})'
         f' -[:BELONGS_TO]->(o:Organization'
@@ -352,11 +327,20 @@ async def _persist_project_type(
             detail=(f'Project type with slug {original_slug!r} not found'),
         )
 
-    pt = graph.parse_agtype(updated[0]['pt'])
+    pt: dict[str, typing.Any] = graph.parse_agtype(updated[0]['pt'])
     org = graph.parse_agtype(updated[0]['o'])
     pt['organization'] = org
     pc = graph.parse_agtype(updated[0]['project_count'])
-    return _add_relationships(pt, pc or 0)
+    pt['relationships'] = build_relationships(
+        '',
+        {
+            'projects': (
+                f'/api/projects?project-type={pt["slug"]}',
+                pc or 0,
+            ),
+        },
+    )
+    return pt
 
 
 @project_types_router.put('/{slug}')

@@ -1,6 +1,7 @@
 import fastapi
 from fastapi.middleware import cors
 from imbi_common import graph, lifespan
+from uvicorn.middleware import proxy_headers
 
 from imbi_api import endpoints, lifespans, openapi, settings, version
 from imbi_api.middleware import rate_limit
@@ -32,6 +33,15 @@ def create_app() -> fastapi.FastAPI:
         allow_methods=['*'],
         allow_headers=['authorization'],
     )
+
+    # Honor X-Forwarded-For from trusted proxies so rate limiting keys
+    # on the real client IP rather than the proxy address. Skipped
+    # when forwarded_allow_ips is empty (dev/no-proxy deployments).
+    if server_config.forwarded_allow_ips:
+        app.add_middleware(
+            proxy_headers.ProxyHeadersMiddleware,
+            trusted_hosts=server_config.forwarded_allow_ips,
+        )
 
     # Phase 5: Setup rate limiting middleware
     rate_limit.setup_rate_limiting(app)

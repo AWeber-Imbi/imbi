@@ -1,6 +1,5 @@
 """Tests for session management."""
 
-import datetime
 import unittest
 from unittest import mock
 
@@ -24,86 +23,31 @@ class EnforceSessionLimitTestCase(unittest.IsolatedAsyncioTestCase):
         await sessions.enforce_session_limit(
             mock_db, 'testuser', self.auth_settings
         )
+        mock_db.execute.assert_awaited_once()
 
     async def test_enforce_limit_within_limit(self) -> None:
         """Test enforce_session_limit with sessions within limit."""
         mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'session_id': 'sess1',
-                'last_activity': datetime.datetime.now(
-                    datetime.UTC
-                ).isoformat(),
-            },
-            {
-                'session_id': 'sess2',
-                'last_activity': datetime.datetime.now(
-                    datetime.UTC
-                ).isoformat(),
-            },
-        ]
+        mock_db.execute.return_value = [{'removed': 0}]
 
         with mock.patch(
             'imbi_common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
-            # Should not delete any sessions
+            # Should issue a single query and not log any removal
             await sessions.enforce_session_limit(
                 mock_db, 'testuser', self.auth_settings
             )
+        mock_db.execute.assert_awaited_once()
+        call_args = mock_db.execute.await_args
+        params = call_args[0][1] if len(call_args[0]) > 1 else {}
+        self.assertEqual('testuser', params.get('email'))
+        self.assertEqual(3, params.get('limit'))
 
     async def test_enforce_limit_exceeds_limit(self) -> None:
         """Test enforce_session_limit removes oldest sessions."""
-        now = datetime.datetime.now(datetime.UTC)
-
-        # Create 5 sessions (limit is 3), returned sorted by
-        # last_activity DESC
-        session_data = [
-            {
-                'session_id': 'sess1',
-                'last_activity': (
-                    now - datetime.timedelta(minutes=1)
-                ).isoformat(),
-            },
-            {
-                'session_id': 'sess2',
-                'last_activity': (
-                    now - datetime.timedelta(minutes=2)
-                ).isoformat(),
-            },
-            {
-                'session_id': 'sess3',
-                'last_activity': (
-                    now - datetime.timedelta(minutes=3)
-                ).isoformat(),
-            },
-            {
-                'session_id': 'sess4',
-                'last_activity': (
-                    now - datetime.timedelta(minutes=4)
-                ).isoformat(),
-            },
-            {
-                'session_id': 'sess5',
-                'last_activity': (
-                    now - datetime.timedelta(minutes=5)
-                ).isoformat(),
-            },
-        ]
-
         mock_db = mock.AsyncMock()
-        deleted_session_ids: list[str] = []
-
-        def execute_side_effect(query, params=None, columns=None):
-            if 'RETURN s.session_id' in query:
-                return session_data
-            elif 'DETACH DELETE' in query:
-                if params and 'session_id' in params:
-                    deleted_session_ids.append(params['session_id'])
-                return []
-            return []
-
-        mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
+        mock_db.execute.return_value = [{'removed': 2}]
 
         with mock.patch(
             'imbi_common.graph.parse_agtype',
@@ -113,10 +57,12 @@ class EnforceSessionLimitTestCase(unittest.IsolatedAsyncioTestCase):
                 mock_db, 'testuser', self.auth_settings
             )
 
-        # Sessions 4 and 5 (oldest) should be deleted
-        self.assertIn('sess4', deleted_session_ids)
-        self.assertIn('sess5', deleted_session_ids)
-        self.assertEqual(len(deleted_session_ids), 2)
+        # Single query with email and limit params
+        mock_db.execute.assert_awaited_once()
+        call_args = mock_db.execute.await_args
+        params = call_args[0][1] if len(call_args[0]) > 1 else {}
+        self.assertEqual('testuser', params.get('email'))
+        self.assertEqual(3, params.get('limit'))
 
 
 class UpdateSessionActivityTestCase(

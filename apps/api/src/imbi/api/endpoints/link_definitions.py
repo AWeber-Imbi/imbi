@@ -11,7 +11,8 @@ from imbi_common import blueprints, graph, models
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
-from imbi_api.relationships import relationship_link
+from imbi_api.graph_sql import props_template, set_clause
+from imbi_api.relationships import build_relationships
 
 LOGGER = logging.getLogger(__name__)
 
@@ -20,54 +21,19 @@ link_definitions_router = fastapi.APIRouter(
 )
 
 
-def _props_template(props: dict[str, typing.Any]) -> str:
-    """Build a Cypher property-map template with double-escaped braces.
+def _projects_relationship(
+    project_count: int,
+) -> dict[str, models.RelationshipLink]:
+    """Build the ``projects`` relationship for a link definition.
 
-    Each key becomes ``key: {key}`` inside doubled braces so that
-    ``psycopg.sql.SQL.format()`` resolves them correctly::
-
-        >>> _props_template({'name': 'x', 'slug': 'y'})
-        '{{name: {name}, slug: {slug}}}'
-
+    The href is intentionally empty because ``list_projects`` does not
+    yet support a ``link_definition`` query filter; only the count is
+    meaningful today.
     """
-    if not props:
-        return ''
-    pairs = [f'{k}: {{{k}}}' for k in props]
-    return '{{' + ', '.join(pairs) + '}}'
-
-
-def _set_clause(
-    alias: str,
-    props: dict[str, typing.Any],
-) -> str:
-    """Build a Cypher SET clause from a property dict.
-
-    Returns ``SET ld.name = {name}, ld.slug = {slug}``.
-
-    """
-    if not props:
-        return ''
-    assignments = ', '.join(f'{alias}.{k} = {{{k}}}' for k in props)
-    return f'SET {assignments}'
-
-
-def _add_relationships(
-    ld: dict[str, typing.Any],
-    project_count: int = 0,
-) -> dict[str, typing.Any]:
-    """Attach relationships sub-object to a link definition dict.
-
-    The projects href is omitted because ``list_projects`` does not
-    yet support a ``link`` query-parameter filter.  Only the count
-    is accurate for now.
-    """
-    ld['relationships'] = {
-        'projects': relationship_link(
-            '',
-            project_count,
-        ),
-    }
-    return ld
+    return build_relationships(
+        '',
+        {'projects': ('', project_count)},
+    )
 
 
 class LinkDefinitionCreate(pydantic.BaseModel):
@@ -168,7 +134,7 @@ async def create_link_definition(
         exclude={'organization'},
     )
 
-    create_tpl = _props_template(props)
+    create_tpl = props_template(props)
     query = (
         f'MATCH (o:Organization {{{{slug: {{org_slug}}}}}})'
         f' CREATE (ld:LinkDefinition {create_tpl})'
@@ -201,7 +167,7 @@ async def create_link_definition(
     )
     org = graph.parse_agtype(records[0]['o'])
     result['organization'] = org
-    _add_relationships(result, 0)
+    result['relationships'] = _projects_relationship(0)
     return result
 
 
@@ -249,7 +215,7 @@ async def list_link_definitions(
         org = graph.parse_agtype(record['o'])
         ld['organization'] = org
         pc = graph.parse_agtype(record['project_count'])
-        _add_relationships(ld, pc or 0)
+        ld['relationships'] = _projects_relationship(pc or 0)
         results.append(ld)
     return results
 
@@ -308,7 +274,7 @@ async def get_link_definition(
     org = graph.parse_agtype(records[0]['o'])
     result['organization'] = org
     pc = graph.parse_agtype(records[0]['project_count'])
-    _add_relationships(result, pc or 0)
+    result['relationships'] = _projects_relationship(pc or 0)
     return result
 
 
@@ -368,7 +334,7 @@ async def _persist_link_definition(
         exclude={'organization'},
     )
 
-    set_stmt = _set_clause('ld', props)
+    set_stmt = set_clause('ld', props)
     update_query = (
         f'MATCH (ld:LinkDefinition {{{{slug: {{slug}}}}}})'
         f' -[:BELONGS_TO]->(o:Organization'
@@ -409,7 +375,7 @@ async def _persist_link_definition(
     org = graph.parse_agtype(updated[0]['o'])
     result['organization'] = org
     pc = graph.parse_agtype(updated[0]['project_count'])
-    _add_relationships(result, pc or 0)
+    result['relationships'] = _projects_relationship(pc or 0)
     return result
 
 

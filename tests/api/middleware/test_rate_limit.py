@@ -11,38 +11,9 @@ from imbi_api.middleware import rate_limit
 class GetRateLimitKeyTestCase(unittest.TestCase):
     """Test cases for get_rate_limit_key function."""
 
-    def test_api_key_authentication(self) -> None:
-        """Test rate limit key for API key authentication."""
-        # Create mock request with API key auth context
+    def test_returns_ip_key(self) -> None:
+        """Test rate limit key uses the remote IP address."""
         mock_request = mock.MagicMock()
-        mock_auth = mock.MagicMock()
-        mock_auth.auth_method = 'api_key'
-        mock_auth.user.email = 'service@example.com'
-        mock_request.state.auth_context = mock_auth
-
-        key = rate_limit.get_rate_limit_key(mock_request)
-
-        self.assertEqual(key, 'api_key:service@example.com')
-
-    def test_jwt_authentication(self) -> None:
-        """Test rate limit key for JWT authentication."""
-        # Create mock request with JWT auth context
-        mock_request = mock.MagicMock()
-        mock_auth = mock.MagicMock()
-        mock_auth.auth_method = 'jwt'
-        mock_auth.user.email = 'user@example.com'
-        mock_request.state.auth_context = mock_auth
-
-        key = rate_limit.get_rate_limit_key(mock_request)
-
-        self.assertEqual(key, 'user:user@example.com')
-
-    def test_unauthenticated_fallback_to_ip(self) -> None:
-        """Test rate limit key fallback to IP for unauthenticated requests."""
-        # Create mock request without auth context
-        mock_request = mock.MagicMock()
-        # Use spec=[] to create a state without auth_context attribute
-        mock_request.state = mock.Mock(spec=[])
 
         with mock.patch(
             'imbi_api.middleware.rate_limit.slowapi_util.get_remote_address',
@@ -52,43 +23,9 @@ class GetRateLimitKeyTestCase(unittest.TestCase):
 
         self.assertEqual(key, 'ip:192.168.1.100')
 
-    def test_auth_context_without_auth_method(self) -> None:
-        """Test fallback to IP when auth context lacks auth_method."""
-        # Create mock request with auth context but no auth_method
-        mock_request = mock.MagicMock()
-        mock_auth = mock.MagicMock(spec=[])  # No auth_method attribute
-        mock_request.state.auth_context = mock_auth
-
-        with mock.patch(
-            'imbi_api.middleware.rate_limit.slowapi_util.get_remote_address',
-            return_value='10.0.0.1',
-        ):
-            key = rate_limit.get_rate_limit_key(mock_request)
-
-        self.assertEqual(key, 'ip:10.0.0.1')
-
-    def test_unknown_auth_method_fallback_to_ip(self) -> None:
-        """Test fallback to IP for unknown authentication method."""
-        # Create mock request with unknown auth method
-        mock_request = mock.MagicMock()
-        mock_auth = mock.MagicMock()
-        mock_auth.auth_method = 'unknown_method'
-        mock_auth.user.email = 'user@example.com'
-        mock_request.state.auth_context = mock_auth
-
-        with mock.patch(
-            'imbi_api.middleware.rate_limit.slowapi_util.get_remote_address',
-            return_value='172.16.0.1',
-        ):
-            key = rate_limit.get_rate_limit_key(mock_request)
-
-        self.assertEqual(key, 'ip:172.16.0.1')
-
     def test_ipv6_address(self) -> None:
         """Test rate limit key with IPv6 address."""
         mock_request = mock.MagicMock()
-        # Use spec=[] to create a state without auth_context attribute
-        mock_request.state = mock.Mock(spec=[])
 
         with mock.patch(
             'imbi_api.middleware.rate_limit.slowapi_util.get_remote_address',

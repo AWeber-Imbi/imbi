@@ -13,6 +13,7 @@ from imbi_common.auth import encryption
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.domain import models
+from imbi_api.graph_sql import props_template, set_clause
 
 LOGGER = logging.getLogger(__name__)
 
@@ -25,37 +26,6 @@ _APP_JSON_FIELDS: dict[str, list[str] | dict[str, typing.Any]] = {
     'scopes': [],
     'settings': {},
 }
-
-
-def _props_template(props: dict[str, typing.Any]) -> str:
-    """Build a Cypher property-map template with double-escaped braces.
-
-    Each key becomes ``key: {key}`` inside doubled braces so that
-    ``psycopg.sql.SQL.format()`` resolves them correctly::
-
-        >>> _props_template({'name': 'x', 'slug': 'y'})
-        '{{name: {name}, slug: {slug}}}'
-
-    """
-    if not props:
-        return ''
-    pairs = [f'{k}: {{{k}}}' for k in props]
-    return '{{' + ', '.join(pairs) + '}}'
-
-
-def _set_clause(
-    alias: str,
-    props: dict[str, typing.Any],
-) -> str:
-    """Build a Cypher SET clause from a property dict.
-
-    Returns a string like ``SET s.name = {name}, s.slug = {slug}``.
-
-    """
-    if not props:
-        return ''
-    assignments = ', '.join(f'{alias}.{k} = {{{k}}}' for k in props)
-    return f'SET {assignments}'
 
 
 def _build_service_response(
@@ -178,7 +148,7 @@ async def create_third_party_service(
     }
 
     graph_props = _serialize_json_fields(props, _SERVICE_JSON_FIELDS)
-    create_tpl = _props_template(graph_props)
+    create_tpl = props_template(graph_props)
 
     if data.team_slug:
         query: str = (
@@ -352,26 +322,6 @@ async def update_third_party_service(
         409: Slug conflict
 
     """
-    # Fetch existing to validate it exists
-    fetch_query: typing.LiteralString = """
-    MATCH (s:ThirdPartyService {{slug: {slug}}})
-          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    OPTIONAL MATCH (s)-[:MANAGED_BY]->(t:Team)
-    RETURN s{{.*, organization: o{{.*}}, team: t{{.*}}}}
-        AS service
-    """
-    records = await db.execute(
-        fetch_query,
-        {'slug': slug, 'org_slug': org_slug},
-        ['service'],
-    )
-
-    if not records:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=(f'Third-party service with slug {slug!r} not found'),
-        )
-
     return await _execute_service_update(slug, org_slug, data, db)
 
 
@@ -652,7 +602,7 @@ async def create_service_application(
         )
 
     graph_props = _serialize_json_fields(props, _APP_JSON_FIELDS)
-    app_tpl = _props_template(graph_props)
+    app_tpl = props_template(graph_props)
 
     create_query: str = (
         'MATCH (s:ThirdPartyService {{slug: {svc_slug}}})'
@@ -721,7 +671,7 @@ async def _execute_service_update(
     }
 
     graph_props = _serialize_json_fields(props, _SERVICE_JSON_FIELDS)
-    set_clause = _set_clause('s', graph_props)
+    set_stmt = set_clause('s', graph_props)
 
     if update_data.team_slug:
         update_query: str = (
@@ -733,7 +683,7 @@ async def _execute_service_update(
             ' OPTIONAL MATCH (s)-[old_mgr:MANAGED_BY]->()'
             ' DELETE old_mgr'
             ' WITH s, o, t'
-            f' {set_clause}'
+            f' {set_stmt}'
             ' CREATE (s)-[:MANAGED_BY]->(t)'
             ' RETURN s{{.*, organization: o{{.*}},'
             ' team: t{{.*}}}} AS service'
@@ -752,7 +702,7 @@ async def _execute_service_update(
             ' OPTIONAL MATCH (s)-[old_mgr:MANAGED_BY]->()'
             ' DELETE old_mgr'
             ' WITH s, o'
-            f' {set_clause}'
+            f' {set_stmt}'
             ' RETURN s{{.*, organization: o{{.*}},'
             ' team: null}} AS service'
         )
@@ -879,7 +829,7 @@ async def update_service_application(
         props[field] = existing.get(field)
 
     graph_props = _serialize_json_fields(props, _APP_JSON_FIELDS)
-    app_set = _set_clause('a', graph_props)
+    app_set = set_clause('a', graph_props)
 
     update_query: str = (
         'MATCH (a:ServiceApplication {{slug: {cur_app_slug}}})'

@@ -16,7 +16,7 @@ from imbi_common.auth import core, encryption
 
 from imbi_api import models, settings
 from imbi_api.auth import models as auth_models
-from imbi_api.auth import oauth, permissions
+from imbi_api.auth import oauth, permissions, tokens
 from imbi_api.auth import password as password_auth
 from imbi_api.middleware import rate_limit
 
@@ -205,76 +205,16 @@ async def token(
     }
     if granted_scopes:
         extra_claims['scope'] = ' '.join(sorted(granted_scopes))
-    access_token = core.create_access_token(
-        sa.slug,
-        extra_claims=extra_claims,
+    access_token, refresh_token, _ = await tokens.issue_token_pair(
+        db,
+        principal_type='service_account',
+        principal_id=sa.slug,
         auth_settings=auth_settings,
-    )
-    access_claims = core.verify_token(access_token, auth_settings)
-
-    refresh_token = core.create_refresh_token(
-        sa.slug,
         extra_claims=extra_claims,
-        auth_settings=auth_settings,
-    )
-    refresh_claims = core.verify_token(refresh_token, auth_settings)
-
-    # Store token metadata (link to ServiceAccount)
-    now = datetime.datetime.now(datetime.UTC)
-
-    access_exp = (
-        now
-        + datetime.timedelta(seconds=auth_settings.access_token_expire_seconds)
-    ).isoformat()
-
-    access_meta_query: typing.LiteralString = """
-    MATCH (s:ServiceAccount {{slug: {slug}}})
-    CREATE (t:TokenMetadata {{
-        jti: {jti},
-        token_type: 'access',
-        issued_at: {issued_at},
-        expires_at: {expires_at},
-        revoked: false
-    }})-[:ISSUED_TO]->(s)
-    """
-    await db.execute(
-        access_meta_query,
-        {
-            'jti': access_claims['jti'],
-            'expires_at': access_exp,
-            'issued_at': now.isoformat(),
-            'slug': sa.slug,
-        },
-    )
-
-    refresh_exp = (
-        now
-        + datetime.timedelta(
-            seconds=auth_settings.refresh_token_expire_seconds
-        )
-    ).isoformat()
-
-    refresh_meta_query: typing.LiteralString = """
-    MATCH (s:ServiceAccount {{slug: {slug}}})
-    CREATE (t:TokenMetadata {{
-        jti: {jti},
-        token_type: 'refresh',
-        issued_at: {issued_at},
-        expires_at: {expires_at},
-        revoked: false
-    }})-[:ISSUED_TO]->(s)
-    """
-    await db.execute(
-        refresh_meta_query,
-        {
-            'jti': refresh_claims['jti'],
-            'expires_at': refresh_exp,
-            'issued_at': now.isoformat(),
-            'slug': sa.slug,
-        },
     )
 
     # Update last_used on credential, last_authenticated on SA
+    now_iso = datetime.datetime.now(datetime.UTC).isoformat()
     update_query: typing.LiteralString = """
     MATCH (c:ClientCredential {{client_id: {client_id}}})
     SET c.last_used = {now}
@@ -286,7 +226,7 @@ async def token(
         update_query,
         {
             'client_id': client_id,
-            'now': now.isoformat(),
+            'now': now_iso,
         },
     )
 
@@ -487,47 +427,15 @@ async def login(
 
     # Create tokens
     auth_settings = settings.get_auth_settings()
-    access_token = core.create_access_token(
-        user.email, auth_settings=auth_settings
+    access_token, refresh_token, meta = await tokens.issue_token_pair(
+        db,
+        principal_type='user',
+        principal_id=user.email,
+        auth_settings=auth_settings,
     )
-    access_claims = core.verify_token(access_token, auth_settings)
-    access_jti = access_claims['jti']
-
-    refresh_token = core.create_refresh_token(
-        user.email, auth_settings=auth_settings
-    )
-    refresh_claims = core.verify_token(refresh_token, auth_settings)
-    refresh_jti = refresh_claims['jti']
-
-    # Store token metadata for access token
-    now = datetime.datetime.now(datetime.UTC)
-    access_token_meta = models.TokenMetadata(
-        jti=access_jti,
-        token_type='access',
-        issued_at=now,
-        expires_at=now
-        + datetime.timedelta(
-            seconds=auth_settings.access_token_expire_seconds
-        ),
-        user=user,
-    )
-    await db.merge(access_token_meta)
-
-    # Store token metadata for refresh token
-    refresh_token_meta = models.TokenMetadata(
-        jti=refresh_jti,
-        token_type='refresh',
-        issued_at=now,
-        expires_at=now
-        + datetime.timedelta(
-            seconds=auth_settings.refresh_token_expire_seconds
-        ),
-        user=user,
-    )
-    await db.merge(refresh_token_meta)
 
     # Update last login timestamp
-    user.last_login = now
+    user.last_login = meta['issued_at']
     await db.merge(user, match_on=['email'])
 
     LOGGER.info('User %s logged in successfully', user.email)
@@ -611,7 +519,8 @@ async def refresh_token(
     # Resolve principal (user or service account)
     subject = payload['sub']
     auth_method = payload.get('auth_method')
-    extra_claims: dict[str, typing.Any] = {}
+    principal_type: tokens.PrincipalType
+    extra_claims: dict[str, typing.Any] | None = None
 
     if auth_method == 'client_credentials':
         sa_results = await db.match(models.ServiceAccount, {'slug': subject})
@@ -626,6 +535,7 @@ async def refresh_token(
                 status_code=401,
                 detail='Service account not found or inactive',
             )
+        principal_type = 'service_account'
         principal_id = sa.slug
         extra_claims = {'auth_method': 'client_credentials'}
     else:
@@ -640,90 +550,16 @@ async def refresh_token(
                 status_code=401,
                 detail='User not found or inactive',
             )
+        principal_type = 'user'
         principal_id = user.email
 
-    # Create new access token
-    access_token = core.create_access_token(
-        principal_id,
-        extra_claims=extra_claims or None,
+    # Mint rotated access+refresh pair
+    access_token, new_refresh_token, _ = await tokens.issue_token_pair(
+        db,
+        principal_type=principal_type,
+        principal_id=principal_id,
         auth_settings=auth_settings,
-    )
-    access_claims = core.verify_token(access_token, auth_settings)
-    access_jti = access_claims['jti']
-
-    # Create NEW refresh token (token rotation)
-    new_refresh_token = core.create_refresh_token(
-        principal_id,
-        extra_claims=extra_claims or None,
-        auth_settings=auth_settings,
-    )
-    new_refresh_claims = core.verify_token(new_refresh_token, auth_settings)
-    new_refresh_jti = new_refresh_claims['jti']
-
-    # Store new token metadata via Cypher (handles both
-    # User and ServiceAccount via ISSUED_TO)
-    now = datetime.datetime.now(datetime.UTC)
-
-    if auth_method == 'client_credentials':
-        # Link to ServiceAccount
-        meta_query: typing.LiteralString = """
-        MATCH (s:ServiceAccount {{slug: {subject}}})
-        CREATE (at:TokenMetadata {{
-            jti: {access_jti},
-            token_type: 'access',
-            issued_at: {issued_at},
-            expires_at: {access_exp},
-            revoked: false
-        }})-[:ISSUED_TO]->(s)
-        CREATE (rt:TokenMetadata {{
-            jti: {refresh_jti},
-            token_type: 'refresh',
-            issued_at: {issued_at},
-            expires_at: {refresh_exp},
-            revoked: false
-        }})-[:ISSUED_TO]->(s)
-        """
-    else:
-        # Link to User
-        meta_query = """
-        MATCH (u:User {{email: {subject}}})
-        CREATE (at:TokenMetadata {{
-            jti: {access_jti},
-            token_type: 'access',
-            issued_at: {issued_at},
-            expires_at: {access_exp},
-            revoked: false
-        }})-[:ISSUED_TO]->(u)
-        CREATE (rt:TokenMetadata {{
-            jti: {refresh_jti},
-            token_type: 'refresh',
-            issued_at: {issued_at},
-            expires_at: {refresh_exp},
-            revoked: false
-        }})-[:ISSUED_TO]->(u)
-        """
-
-    access_exp = (
-        now
-        + datetime.timedelta(seconds=auth_settings.access_token_expire_seconds)
-    ).isoformat()
-    refresh_exp = (
-        now
-        + datetime.timedelta(
-            seconds=auth_settings.refresh_token_expire_seconds
-        )
-    ).isoformat()
-
-    await db.execute(
-        meta_query,
-        {
-            'subject': subject,
-            'access_jti': access_jti,
-            'access_exp': access_exp,
-            'issued_at': now.isoformat(),
-            'refresh_jti': new_refresh_jti,
-            'refresh_exp': refresh_exp,
-        },
+        extra_claims=extra_claims,
     )
 
     LOGGER.info(
@@ -1044,39 +880,13 @@ async def oauth_callback(
             )
 
         # Create JWT tokens
-        at = core.create_access_token(user.email, auth_settings=auth_settings)
-        at_claims = core.verify_token(at, auth_settings)
-        access_jti = at_claims['jti']
-
-        rt = core.create_refresh_token(user.email, auth_settings=auth_settings)
-        rt_claims = core.verify_token(rt, auth_settings)
-        refresh_jti = rt_claims['jti']
-
-        # Store token metadata
-        now = datetime.datetime.now(datetime.UTC)
-        access_token_meta = models.TokenMetadata(
-            jti=access_jti,
-            token_type='access',
-            issued_at=now,
-            expires_at=now
-            + datetime.timedelta(
-                seconds=(auth_settings.access_token_expire_seconds)
-            ),
-            user=user,
+        at, rt, meta = await tokens.issue_token_pair(
+            db,
+            principal_type='user',
+            principal_id=user.email,
+            auth_settings=auth_settings,
         )
-        await db.merge(access_token_meta)
-
-        refresh_token_meta = models.TokenMetadata(
-            jti=refresh_jti,
-            token_type='refresh',
-            issued_at=now,
-            expires_at=now
-            + datetime.timedelta(
-                seconds=(auth_settings.refresh_token_expire_seconds)
-            ),
-            user=user,
-        )
-        await db.merge(refresh_token_meta)
+        now = meta['issued_at']
 
         # Update user last_login
         user.last_login = now

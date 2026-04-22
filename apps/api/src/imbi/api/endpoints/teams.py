@@ -11,63 +11,12 @@ from imbi_common import blueprints, graph, models
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
-from imbi_api.relationships import relationship_link
+from imbi_api.graph_sql import props_template, set_clause
+from imbi_api.relationships import build_relationships
 
 LOGGER = logging.getLogger(__name__)
 
 teams_router = fastapi.APIRouter(tags=['Teams'])
-
-
-def _props_template(props: dict[str, typing.Any]) -> str:
-    """Build a Cypher property-map template with double-escaped braces.
-
-    Each key becomes ``key: {key}`` inside doubled braces so that
-    ``psycopg.sql.SQL.format()`` resolves them correctly::
-
-        >>> _props_template({'name': 'x', 'slug': 'y'})
-        '{{name: {name}, slug: {slug}}}'
-
-    """
-    if not props:
-        return ''
-    pairs = [f'{k}: {{{k}}}' for k in props]
-    return '{{' + ', '.join(pairs) + '}}'
-
-
-def _set_clause(
-    alias: str,
-    props: dict[str, typing.Any],
-) -> str:
-    """Build a Cypher SET clause from a property dict.
-
-    Returns a string like ``SET t.name = {name}, t.slug = {slug}``.
-
-    """
-    if not props:
-        return ''
-    assignments = ', '.join(f'{alias}.{k} = {{{k}}}' for k in props)
-    return f'SET {assignments}'
-
-
-def _add_relationships(
-    team: dict[str, typing.Any],
-    org_slug: str,
-    project_count: int = 0,
-    member_count: int = 0,
-) -> dict[str, typing.Any]:
-    """Attach relationships sub-object to a team dict."""
-    slug = team['slug']
-    team['relationships'] = {
-        'projects': relationship_link(
-            f'/api/projects?team={slug}',
-            project_count,
-        ),
-        'members': relationship_link(
-            f'/api/organizations/{org_slug}/teams/{slug}/members',
-            member_count,
-        ),
-    }
-    return team
 
 
 @teams_router.post('/', status_code=201)
@@ -129,7 +78,7 @@ async def create_team(
         exclude={'organization'},
     )
 
-    create_tpl = _props_template(props)
+    create_tpl = props_template(props)
     query = (
         f'MATCH (o:Organization {{{{slug: {{org_slug}}}}}})'
         f' CREATE (t:Team {create_tpl})'
@@ -155,10 +104,21 @@ async def create_team(
             detail=(f'Organization with slug {org_slug!r} not found'),
         )
 
-    team_props = graph.parse_agtype(records[0]['t'])
+    team_props: dict[str, typing.Any] = graph.parse_agtype(records[0]['t'])
     org_props = graph.parse_agtype(records[0]['o'])
     team_props['organization'] = org_props
-    return _add_relationships(team_props, org_slug)
+    slug = team_props['slug']
+    team_props['relationships'] = build_relationships(
+        '',
+        {
+            'projects': (f'/api/projects?team={slug}', 0),
+            'members': (
+                f'/api/organizations/{org_slug}/teams/{slug}/members',
+                0,
+            ),
+        },
+    )
+    return team_props
 
 
 @teams_router.get('/')
@@ -201,11 +161,16 @@ async def list_teams(
         team['organization'] = org
         pc = graph.parse_agtype(record['project_count'])
         mc = graph.parse_agtype(record['member_count'])
-        _add_relationships(
-            team,
-            org_slug,
-            pc or 0,
-            mc or 0,
+        slug = team['slug']
+        team['relationships'] = build_relationships(
+            '',
+            {
+                'projects': (f'/api/projects?team={slug}', pc or 0),
+                'members': (
+                    f'/api/organizations/{org_slug}/teams/{slug}/members',
+                    mc or 0,
+                ),
+            },
         )
         teams.append(team)
     return teams
@@ -255,12 +220,22 @@ async def get_team(
             detail=f'Team with slug {slug!r} not found',
         )
 
-    team = graph.parse_agtype(records[0]['t'])
+    team: dict[str, typing.Any] = graph.parse_agtype(records[0]['t'])
     org = graph.parse_agtype(records[0]['o'])
     team['organization'] = org
     pc = graph.parse_agtype(records[0]['project_count'])
     mc = graph.parse_agtype(records[0]['member_count'])
-    return _add_relationships(team, org_slug, pc or 0, mc or 0)
+    team['relationships'] = build_relationships(
+        '',
+        {
+            'projects': (f'/api/projects?team={slug}', pc or 0),
+            'members': (
+                f'/api/organizations/{org_slug}/teams/{slug}/members',
+                mc or 0,
+            ),
+        },
+    )
+    return team
 
 
 async def _persist_team(
@@ -313,7 +288,7 @@ async def _persist_team(
     team.updated_at = datetime.datetime.now(datetime.UTC)
     props = team.model_dump(mode='json', exclude={'organization'})
 
-    set_stmt = _set_clause('t', props)
+    set_stmt = set_clause('t', props)
     update_query = (
         f'MATCH (t:Team {{{{slug: {{slug}}}}}})'
         f' -[:BELONGS_TO]->(o:Organization {{{{slug: {{org_slug}}}}}})'
@@ -348,12 +323,23 @@ async def _persist_team(
             detail=f'Team with slug {original_slug!r} not found',
         )
 
-    team_data = graph.parse_agtype(updated[0]['t'])
+    team_data: dict[str, typing.Any] = graph.parse_agtype(updated[0]['t'])
     org_data = graph.parse_agtype(updated[0]['o'])
     team_data['organization'] = org_data
     pc = graph.parse_agtype(updated[0]['project_count'])
     mc = graph.parse_agtype(updated[0]['member_count'])
-    return _add_relationships(team_data, org_slug, pc or 0, mc or 0)
+    slug = team_data['slug']
+    team_data['relationships'] = build_relationships(
+        '',
+        {
+            'projects': (f'/api/projects?team={slug}', pc or 0),
+            'members': (
+                f'/api/organizations/{org_slug}/teams/{slug}/members',
+                mc or 0,
+            ),
+        },
+    )
+    return team_data
 
 
 @teams_router.put('/{slug}')

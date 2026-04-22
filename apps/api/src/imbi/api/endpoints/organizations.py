@@ -11,7 +11,7 @@ from imbi_common import graph, models
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
-from imbi_api.relationships import relationship_link
+from imbi_api.relationships import build_relationships
 
 from .environments import environments_router
 from .link_definitions import link_definitions_router
@@ -71,31 +71,6 @@ organizations_router.include_router(
 )
 
 
-def _add_relationships(
-    org: dict[str, typing.Any],
-    team_count: int = 0,
-    member_count: int = 0,
-    project_count: int = 0,
-) -> dict[str, typing.Any]:
-    """Attach relationships sub-object to an organization dict."""
-    slug = org['slug']
-    org['relationships'] = {
-        'teams': relationship_link(
-            f'/api/organizations/{slug}/teams',
-            team_count,
-        ),
-        'members': relationship_link(
-            f'/api/organizations/{slug}/members',
-            member_count,
-        ),
-        'projects': relationship_link(
-            f'/api/organizations/{slug}/projects',
-            project_count,
-        ),
-    }
-    return org
-
-
 @organizations_router.post('/', status_code=201)
 async def create_organization(
     org: models.Organization,
@@ -130,7 +105,16 @@ async def create_organization(
             detail=(f'Organization with slug {org.slug!r} already exists'),
         ) from e
     result = created.model_dump()
-    return _add_relationships(result)
+    slug = result['slug']
+    result['relationships'] = build_relationships(
+        f'/api/organizations/{slug}',
+        {
+            'teams': ('/teams', 0),
+            'members': ('/members', 0),
+            'projects': ('/projects', 0),
+        },
+    )
+    return result
 
 
 @organizations_router.get('/')
@@ -172,11 +156,14 @@ async def list_organizations(
         team_count = graph.parse_agtype(record['team_count'])
         member_count = graph.parse_agtype(record['member_count'])
         project_count = graph.parse_agtype(record['project_count'])
-        _add_relationships(
-            org_data,
-            team_count,
-            member_count,
-            project_count,
+        slug = org_data['slug']
+        org_data['relationships'] = build_relationships(
+            f'/api/organizations/{slug}',
+            {
+                'teams': ('/teams', team_count),
+                'members': ('/members', member_count),
+                'projects': ('/projects', project_count),
+            },
         )
         organizations.append(org_data)
     return organizations
@@ -228,13 +215,26 @@ async def get_organization(
             status_code=404,
             detail=f'Organization with slug {slug!r} not found',
         )
-    org_data = graph.parse_agtype(records[0]['o'])
-    return _add_relationships(
-        org_data,
-        graph.parse_agtype(records[0]['team_count']),
-        graph.parse_agtype(records[0]['member_count']),
-        graph.parse_agtype(records[0]['project_count']),
+    org_data: dict[str, typing.Any] = graph.parse_agtype(records[0]['o'])
+    slug = org_data['slug']
+    org_data['relationships'] = build_relationships(
+        f'/api/organizations/{slug}',
+        {
+            'teams': (
+                '/teams',
+                graph.parse_agtype(records[0]['team_count']),
+            ),
+            'members': (
+                '/members',
+                graph.parse_agtype(records[0]['member_count']),
+            ),
+            'projects': (
+                '/projects',
+                graph.parse_agtype(records[0]['project_count']),
+            ),
+        },
     )
+    return org_data
 
 
 async def _persist_organization(
@@ -306,12 +306,24 @@ async def _persist_organization(
     )
     counts = count_records[0] if count_records else {}
     org_dict = org.model_dump()
-    return _add_relationships(
-        org_dict,
-        graph.parse_agtype(counts.get('team_count', 0)),
-        graph.parse_agtype(counts.get('member_count', 0)),
-        graph.parse_agtype(counts.get('project_count', 0)),
+    org_dict['relationships'] = build_relationships(
+        f'/api/organizations/{org.slug}',
+        {
+            'teams': (
+                '/teams',
+                graph.parse_agtype(counts.get('team_count', 0)),
+            ),
+            'members': (
+                '/members',
+                graph.parse_agtype(counts.get('member_count', 0)),
+            ),
+            'projects': (
+                '/projects',
+                graph.parse_agtype(counts.get('project_count', 0)),
+            ),
+        },
     )
+    return org_dict
 
 
 @organizations_router.put('/{slug}')
