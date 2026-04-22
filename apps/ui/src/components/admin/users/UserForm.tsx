@@ -12,10 +12,12 @@ import {
 } from 'lucide-react'
 import { Button } from '../../ui/button'
 import { Input } from '../../ui/input'
+import { FormField } from '@/components/ui/form-field'
 import { Gravatar } from '../../ui/gravatar'
 import { Card, CardContent } from '../../ui/card'
 import { getRoles } from '@/api/endpoints'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useFormScaffold } from '@/hooks/useFormScaffold'
 import type { AdminUser, AdminUserCreate } from '@/types'
 
 interface UserFormProps {
@@ -66,10 +68,13 @@ export function UserForm({
   })
 
   // Validation state
-  const [validationErrors, setValidationErrors] = useState<
-    Record<string, string>
-  >({})
-  const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const {
+    validationErrors,
+    setValidationErrors,
+    touched,
+    setTouched,
+    handleFieldChange,
+  } = useFormScaffold()
 
   // Password strength
   const getPasswordStrength = (
@@ -180,17 +185,6 @@ export function UserForm({
     onSave(userData)
   }
 
-  const handleFieldChange = (field: string) => {
-    setTouched({ ...touched, [field]: true })
-
-    // Clear validation error for this field
-    if (validationErrors[field]) {
-      const newErrors = { ...validationErrors }
-      delete newErrors[field]
-      setValidationErrors(newErrors)
-    }
-  }
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -249,92 +243,92 @@ export function UserForm({
             {/* Email */}
             {!isEditing && (
               <div className="col-span-2">
-                <label className="mb-1.5 block text-sm text-secondary">
-                  Email <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value)
-                    handleFieldChange('email')
-                  }}
-                  onBlur={() => {
-                    setTouched({ ...touched, email: true })
-                    const error = validateEmail(email)
-                    if (error) {
-                      setValidationErrors({ ...validationErrors, email: error })
-                    }
-                  }}
-                  disabled={isLoading}
-                  placeholder="john.doe@company.com"
-                  className=""
-                />
-                {touched.email && validationErrors.email && (
-                  <p className="mt-1 text-sm text-red-600">
-                    {validationErrors.email}
-                  </p>
-                )}
+                <FormField
+                  label="Email"
+                  required
+                  touched={touched.email}
+                  error={validationErrors.email}
+                >
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value)
+                      handleFieldChange('email')
+                    }}
+                    onBlur={() => {
+                      setTouched({ ...touched, email: true })
+                      const error = validateEmail(email)
+                      if (error) {
+                        setValidationErrors({
+                          ...validationErrors,
+                          email: error,
+                        })
+                      }
+                    }}
+                    disabled={isLoading}
+                    placeholder="john.doe@company.com"
+                    className=""
+                  />
+                </FormField>
               </div>
             )}
 
             {/* Display Name */}
             <div className="col-span-2">
-              <label className="mb-1.5 block text-sm text-secondary">
-                Display Name <span className="text-red-500">*</span>
-              </label>
-              <Input
-                value={displayName}
-                onChange={(e) => {
-                  setDisplayName(e.target.value)
-                  handleFieldChange('display_name')
-                }}
-                onBlur={() => {
-                  setTouched({ ...touched, display_name: true })
-                  const error = validateDisplayName(displayName)
-                  if (error) {
-                    setValidationErrors({
-                      ...validationErrors,
-                      display_name: error,
-                    })
-                  }
-                }}
-                disabled={isLoading}
-                placeholder="John Doe"
-                className=""
-              />
-              {touched.display_name && validationErrors.display_name && (
-                <p className="mt-1 text-sm text-red-600">
-                  {validationErrors.display_name}
-                </p>
-              )}
+              <FormField
+                label="Display Name"
+                required
+                touched={touched.display_name}
+                error={validationErrors.display_name}
+              >
+                <Input
+                  value={displayName}
+                  onChange={(e) => {
+                    setDisplayName(e.target.value)
+                    handleFieldChange('display_name')
+                  }}
+                  onBlur={() => {
+                    setTouched({ ...touched, display_name: true })
+                    const error = validateDisplayName(displayName)
+                    if (error) {
+                      setValidationErrors({
+                        ...validationErrors,
+                        display_name: error,
+                      })
+                    }
+                  }}
+                  disabled={isLoading}
+                  placeholder="John Doe"
+                  className=""
+                />
+              </FormField>
             </div>
 
             {/* Gravatar Preview */}
             {email && validateEmail(email) === '' && (
               <div className="col-span-2">
-                <label className="mb-1.5 block text-sm text-secondary">
-                  Avatar (Gravatar)
-                </label>
-                <div className="flex items-center gap-3">
-                  <Gravatar
-                    email={email}
-                    size={64}
-                    className="h-16 w-16 rounded-full border-2 border-gray-300 dark:border-gray-600"
-                  />
-                  <p className="text-sm text-secondary">
-                    Avatar will be loaded from{' '}
-                    <a
-                      href="https://gravatar.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-500 hover:underline"
-                    >
-                      Gravatar
-                    </a>{' '}
-                    based on email address
-                  </p>
-                </div>
+                <FormField label="Avatar (Gravatar)">
+                  <div className="flex items-center gap-3">
+                    <Gravatar
+                      email={email}
+                      size={64}
+                      className="h-16 w-16 rounded-full border-2 border-gray-300 dark:border-gray-600"
+                    />
+                    <p className="text-sm text-secondary">
+                      Avatar will be loaded from{' '}
+                      <a
+                        href="https://gravatar.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-500 hover:underline"
+                      >
+                        Gravatar
+                      </a>{' '}
+                      based on email address
+                    </p>
+                  </div>
+                </FormField>
               </div>
             )}
 
@@ -357,49 +351,48 @@ export function UserForm({
             {(changePassword || !isEditing) && (
               <>
                 <div className="col-span-2">
-                  <label className="mb-1.5 block text-sm text-secondary">
-                    Password <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <Input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => {
-                        setPassword(e.target.value)
-                        handleFieldChange('password')
-                      }}
-                      onBlur={() => {
-                        setTouched({ ...touched, password: true })
-                        const error = validatePassword(password)
-                        if (error) {
-                          setValidationErrors({
-                            ...validationErrors,
-                            password: error,
-                          })
-                        }
-                      }}
-                      disabled={isLoading}
-                      placeholder="Minimum 12 characters"
-                      className="pr-10"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      disabled={isLoading}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-tertiary hover:text-secondary"
-                    >
-                      {showPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
-                  {touched.password && validationErrors.password && (
-                    <p className="mt-1 text-sm text-red-600">
-                      {validationErrors.password}
-                    </p>
-                  )}
+                  <FormField
+                    label="Password"
+                    required
+                    touched={touched.password}
+                    error={validationErrors.password}
+                  >
+                    <div className="relative">
+                      <Input
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => {
+                          setPassword(e.target.value)
+                          handleFieldChange('password')
+                        }}
+                        onBlur={() => {
+                          setTouched({ ...touched, password: true })
+                          const error = validatePassword(password)
+                          if (error) {
+                            setValidationErrors({
+                              ...validationErrors,
+                              password: error,
+                            })
+                          }
+                        }}
+                        disabled={isLoading}
+                        placeholder="Minimum 12 characters"
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        disabled={isLoading}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-tertiary hover:text-secondary"
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
+                  </FormField>
                   {password && !validationErrors.password && (
                     <div className="mt-2">
                       <div className="mb-1 flex items-center gap-2">
@@ -486,36 +479,34 @@ export function UserForm({
                 </div>
 
                 <div className="col-span-2">
-                  <label className="mb-1.5 block text-sm text-secondary">
-                    Confirm Password <span className="text-red-500">*</span>
-                  </label>
-                  <Input
-                    type={showPassword ? 'text' : 'password'}
-                    value={confirmPassword}
-                    onChange={(e) => {
-                      setConfirmPassword(e.target.value)
-                      handleFieldChange('confirmPassword')
-                    }}
-                    onBlur={() => {
-                      setTouched({ ...touched, confirmPassword: true })
-                      const error = validateConfirmPassword(confirmPassword)
-                      if (error) {
-                        setValidationErrors({
-                          ...validationErrors,
-                          confirmPassword: error,
-                        })
-                      }
-                    }}
-                    disabled={isLoading}
-                    placeholder="Re-enter password"
-                    className=""
-                  />
-                  {touched.confirmPassword &&
-                    validationErrors.confirmPassword && (
-                      <p className="mt-1 text-sm text-red-600">
-                        {validationErrors.confirmPassword}
-                      </p>
-                    )}
+                  <FormField
+                    label="Confirm Password"
+                    required
+                    touched={touched.confirmPassword}
+                    error={validationErrors.confirmPassword}
+                  >
+                    <Input
+                      type={showPassword ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={(e) => {
+                        setConfirmPassword(e.target.value)
+                        handleFieldChange('confirmPassword')
+                      }}
+                      onBlur={() => {
+                        setTouched({ ...touched, confirmPassword: true })
+                        const error = validateConfirmPassword(confirmPassword)
+                        if (error) {
+                          setValidationErrors({
+                            ...validationErrors,
+                            confirmPassword: error,
+                          })
+                        }
+                      }}
+                      disabled={isLoading}
+                      placeholder="Re-enter password"
+                      className=""
+                    />
+                  </FormField>
                 </div>
               </>
             )}
@@ -642,10 +633,12 @@ export function UserForm({
 
             <div className="grid grid-cols-2 gap-4">
               {/* Organization */}
-              <div>
-                <label className="mb-1.5 block text-sm text-secondary">
-                  Organization <span className="text-red-500">*</span>
-                </label>
+              <FormField
+                label="Organization"
+                required
+                touched={touched.organization_slug}
+                error={validationErrors.organization_slug}
+              >
                 <select
                   value={organizationSlug}
                   onChange={(e) => {
@@ -662,19 +655,15 @@ export function UserForm({
                     </option>
                   ))}
                 </select>
-                {touched.organization_slug &&
-                  validationErrors.organization_slug && (
-                    <p className="mt-1 text-sm text-red-600">
-                      {validationErrors.organization_slug}
-                    </p>
-                  )}
-              </div>
+              </FormField>
 
               {/* Role */}
-              <div>
-                <label className="mb-1.5 block text-sm text-secondary">
-                  Role <span className="text-red-500">*</span>
-                </label>
+              <FormField
+                label="Role"
+                required
+                touched={touched.role_slug}
+                error={validationErrors.role_slug}
+              >
                 {rolesLoading ? (
                   <p className="text-sm text-secondary">Loading roles...</p>
                 ) : (
@@ -695,12 +684,7 @@ export function UserForm({
                     ))}
                   </select>
                 )}
-                {touched.role_slug && validationErrors.role_slug && (
-                  <p className="mt-1 text-sm text-red-600">
-                    {validationErrors.role_slug}
-                  </p>
-                )}
-              </div>
+              </FormField>
             </div>
           </CardContent>
         </Card>
