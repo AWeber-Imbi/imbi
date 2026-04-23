@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Users,
   Shield,
@@ -81,6 +81,12 @@ export function Admin() {
     : 'blueprints'
   const [isCollapsed, setIsCollapsed] = useState(false)
   const { selectedOrganization } = useOrganization()
+
+  useEffect(() => {
+    if (section === undefined) {
+      navigate('/admin/blueprints', { replace: true })
+    }
+  }, [section, navigate])
 
   const orgName = selectedOrganization?.name || 'Organization'
 
