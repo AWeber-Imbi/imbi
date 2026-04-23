@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactElement } from 'react'
 import { Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -41,6 +41,16 @@ interface DashboardProps {
 }
 
 const WIDGET_STORAGE_KEY = 'imbi-dashboard-widgets-v3'
+
+type WidgetId =
+  | 'stat-total-projects'
+  | 'stat-active-deployments'
+  | 'stat-teams'
+  | 'team-activity'
+  | 'recent-activity'
+  | 'recent-deployments'
+  | 'my-pull-requests'
+  | 'outdated-components'
 
 const availableWidgets: WidgetConfig[] = [
   {
@@ -109,7 +119,7 @@ const availableWidgets: WidgetConfig[] = [
   },
 ]
 
-const defaultWidgets = [
+const defaultWidgets: WidgetId[] = [
   'stat-total-projects',
   'stat-active-deployments',
   'stat-teams',
@@ -117,6 +127,20 @@ const defaultWidgets = [
   'recent-activity',
   'my-pull-requests',
 ]
+
+const WIDGET_IDS: ReadonlySet<WidgetId> = new Set<WidgetId>([
+  'stat-total-projects',
+  'stat-active-deployments',
+  'stat-teams',
+  'team-activity',
+  'recent-activity',
+  'recent-deployments',
+  'my-pull-requests',
+  'outdated-components',
+])
+
+const isWidgetId = (value: unknown): value is WidgetId =>
+  typeof value === 'string' && WIDGET_IDS.has(value as WidgetId)
 
 interface SortableWidgetProps {
   id: string
@@ -169,11 +193,15 @@ export function Dashboard({
   const orgSlug = selectedOrganization?.slug || ''
   const [showWidgetSelector, setShowWidgetSelector] = useState(false)
 
-  const [selectedWidgets, setSelectedWidgets] = useState<string[]>(() => {
+  const [selectedWidgets, setSelectedWidgets] = useState<WidgetId[]>(() => {
     const stored = localStorage.getItem(WIDGET_STORAGE_KEY)
     if (stored) {
       try {
-        return JSON.parse(stored)
+        const parsed: unknown = JSON.parse(stored)
+        if (Array.isArray(parsed)) {
+          return Array.from(new Set(parsed.filter(isWidgetId)))
+        }
+        return defaultWidgets
       } catch {
         return defaultWidgets
       }
@@ -210,6 +238,7 @@ export function Dashboard({
   }, [selectedWidgets])
 
   const handleToggleWidget = (widgetId: string) => {
+    if (!isWidgetId(widgetId)) return
     setSelectedWidgets((prev) =>
       prev.includes(widgetId)
         ? prev.filter((id) => id !== widgetId)
@@ -221,53 +250,51 @@ export function Dashboard({
     const { active, over } = event
 
     if (over && active.id !== over.id) {
+      if (!isWidgetId(active.id) || !isWidgetId(over.id)) return
+      const activeId = active.id
+      const overId = over.id
       setSelectedWidgets((items) => {
-        const oldIndex = items.indexOf(active.id as string)
-        const newIndex = items.indexOf(over.id as string)
+        const oldIndex = items.indexOf(activeId)
+        const newIndex = items.indexOf(overId)
+        if (oldIndex === -1 || newIndex === -1) return items
         return arrayMove(items, oldIndex, newIndex)
       })
     }
   }
 
-  const renderWidget = (widgetId: string) => {
-    switch (widgetId) {
-      case 'stat-total-projects':
-        return (
-          <StatWidget
-            title="Total Projects"
-            value={projectCount.toLocaleString()}
-            icon="📁"
-          />
-        )
-      case 'stat-active-deployments':
-        return <StatWidget title="Active Deployments" value="1,429" icon="🚀" />
-      case 'stat-teams':
-        return (
-          <StatWidget
-            title="Teams"
-            value={teamCount.toLocaleString()}
-            icon="👥"
-          />
-        )
-      case 'team-activity':
-        return <TeamActivityWidget onViewChange={onViewChange} />
-      case 'recent-activity':
-        return (
-          <RecentActivityWidget
-            onUserSelect={onUserSelect}
-            onProjectSelect={onProjectSelect}
-          />
-        )
-      case 'recent-deployments':
-        return <RecentDeploymentsWidget onProjectSelect={onProjectSelect} />
-      case 'my-pull-requests':
-        return <MyPullRequestsWidget onUserSelect={onUserSelect} />
-      case 'outdated-components':
-        return <OutdatedComponentsWidget onProjectSelect={onProjectSelect} />
-      default:
-        return null
-    }
+  const widgetRegistry: Record<WidgetId, () => ReactElement> = {
+    'stat-total-projects': () => (
+      <StatWidget
+        title="Total Projects"
+        value={projectCount.toLocaleString()}
+        icon="📁"
+      />
+    ),
+    'stat-active-deployments': () => (
+      <StatWidget title="Active Deployments" value="1,429" icon="🚀" />
+    ),
+    'stat-teams': () => (
+      <StatWidget title="Teams" value={teamCount.toLocaleString()} icon="👥" />
+    ),
+    'team-activity': () => <TeamActivityWidget onViewChange={onViewChange} />,
+    'recent-activity': () => (
+      <RecentActivityWidget
+        onUserSelect={onUserSelect}
+        onProjectSelect={onProjectSelect}
+      />
+    ),
+    'recent-deployments': () => (
+      <RecentDeploymentsWidget onProjectSelect={onProjectSelect} />
+    ),
+    'my-pull-requests': () => (
+      <MyPullRequestsWidget onUserSelect={onUserSelect} />
+    ),
+    'outdated-components': () => (
+      <OutdatedComponentsWidget onProjectSelect={onProjectSelect} />
+    ),
   }
+
+  const renderWidget = (widgetId: WidgetId) => widgetRegistry[widgetId]()
 
   // Separate stat widgets from other widgets for layout
   const statWidgets = selectedWidgets.filter((id) => id.startsWith('stat-'))
