@@ -237,6 +237,28 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
+    def test_create_third_party_service_not_found(self) -> None:
+        self.mock_db.execute.return_value = []
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            payload = dict(self.webhook_create_json)
+            payload['third_party_service_slug'] = 'nonexistent'
+            payload['identifier_selector'] = '$.repository.full_name'
+            response = self.client.post(
+                '/organizations/engineering/webhooks/',
+                json=payload,
+            )
+
+        self.assertEqual(response.status_code, 404)
+        detail = response.json()['detail']
+        self.assertIn('not found', detail)
+        self.assertIn('nonexistent', detail)
+
     def test_create_missing_name(self) -> None:
         response = self.client.post(
             '/organizations/engineering/webhooks/',
