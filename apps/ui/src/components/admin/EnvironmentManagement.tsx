@@ -45,7 +45,7 @@ export function EnvironmentManagement() {
     { orgSlug: string; slug: string }
   >({
     queryKey: ['environments', orgSlug],
-    listFn: orgSlug ? () => listEnvironments(orgSlug) : null,
+    listFn: orgSlug ? (signal) => listEnvironments(orgSlug, signal) : null,
     createFn: ({ orgSlug, env }) => createEnvironment(orgSlug, env),
     updateFn: ({ orgSlug, slug, env }) => updateEnvironment(orgSlug, slug, env),
     deleteFn: ({ orgSlug, slug }) => deleteEnvironment(orgSlug, slug),

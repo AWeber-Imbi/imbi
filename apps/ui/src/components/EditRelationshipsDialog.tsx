@@ -81,7 +81,7 @@ export function EditRelationshipsDialog({
     isError,
   } = useQuery({
     queryKey: ['projects', orgSlug],
-    queryFn: () => getProjects(orgSlug),
+    queryFn: ({ signal }) => getProjects(orgSlug, signal),
     enabled: !!orgSlug && isOpen,
   })
 

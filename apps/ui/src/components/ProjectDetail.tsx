@@ -168,24 +168,24 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
 
   const { data: linkDefs = [] } = useQuery({
     queryKey: ['linkDefinitions', orgSlug],
-    queryFn: () => listLinkDefinitions(orgSlug),
+    queryFn: ({ signal }) => listLinkDefinitions(orgSlug, signal),
     enabled: !!orgSlug,
   })
 
   const { data: projectSchema } = useQuery({
     queryKey: ['projectSchema', orgSlug, project.id],
-    queryFn: () => getProjectSchema(orgSlug, project.id),
+    queryFn: ({ signal }) => getProjectSchema(orgSlug, project.id, signal),
     enabled: !!orgSlug,
   })
 
   const { data: teams = [] } = useQuery({
     queryKey: ['teams', orgSlug],
-    queryFn: () => listTeams(orgSlug),
+    queryFn: ({ signal }) => listTeams(orgSlug, signal),
     enabled: !!orgSlug,
   })
   const { data: projectTypes = [] } = useQuery({
     queryKey: ['projectTypes', orgSlug],
-    queryFn: () => listProjectTypes(orgSlug),
+    queryFn: ({ signal }) => listProjectTypes(orgSlug, signal),
     enabled: !!orgSlug,
   })
 

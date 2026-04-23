@@ -22,8 +22,10 @@ function parseLinkHeader(headers: Headers): string | undefined {
 
 async function fetchActivityFeed({
   pageParam,
+  signal,
 }: {
   pageParam?: string
+  signal?: AbortSignal
 }): Promise<ActivityFeedResponse> {
   try {
     const params: Record<string, unknown> = { limit: 20 }
@@ -33,7 +35,7 @@ async function fetchActivityFeed({
 
     const { data, headers } = await apiClient.getWithHeaders<
       ActivityFeedEntry[]
-    >('/activity-feed', params)
+    >('/activity-feed', params, signal)
 
     const items = Array.isArray(data) ? data : []
     const nextToken = parseLinkHeader(headers)
@@ -50,6 +52,9 @@ async function fetchActivityFeed({
       nextToken,
     }
   } catch (error) {
+    if (signal?.aborted) {
+      throw error
+    }
     console.error('[API] Activity feed error:', error)
     return { data: [] }
   }

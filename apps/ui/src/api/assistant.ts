@@ -11,16 +11,21 @@ const ASSISTANT_BASE_URL = '/assistant'
 async function assistantFetch<T>(
   path: string,
   options: RequestInit = {},
+  signal?: AbortSignal,
 ): Promise<T> {
-  const response = await withAuthRetry(path, (token) =>
-    fetch(`${ASSISTANT_BASE_URL}${path}`, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...options.headers,
-      },
-    }),
+  const response = await withAuthRetry(
+    path,
+    (token) =>
+      fetch(`${ASSISTANT_BASE_URL}${path}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...options.headers,
+        },
+        signal: signal ?? options.signal,
+      }),
+    signal,
   )
   if (!response.ok) {
     let errorData: unknown
@@ -42,11 +47,14 @@ export const createConversation = (data?: CreateConversationRequest) =>
     body: JSON.stringify(data ?? {}),
   })
 
-export const listConversations = (params?: {
-  limit?: number
-  offset?: number
-  include_archived?: boolean
-}) => {
+export const listConversations = (
+  params?: {
+    limit?: number
+    offset?: number
+    include_archived?: boolean
+  },
+  signal?: AbortSignal,
+) => {
   const searchParams = params
     ? '?' +
       new URLSearchParams(
@@ -55,11 +63,15 @@ export const listConversations = (params?: {
           .map(([k, v]) => [k, String(v)]),
       ).toString()
     : ''
-  return assistantFetch<Conversation[]>(`/conversations${searchParams}`)
+  return assistantFetch<Conversation[]>(
+    `/conversations${searchParams}`,
+    {},
+    signal,
+  )
 }
 
-export const getConversation = (id: string) =>
-  assistantFetch<ConversationWithMessages>(`/conversations/${id}`)
+export const getConversation = (id: string, signal?: AbortSignal) =>
+  assistantFetch<ConversationWithMessages>(`/conversations/${id}`, {}, signal)
 
 export const deleteConversation = (id: string) =>
   assistantFetch<void>(`/conversations/${id}`, { method: 'DELETE' })

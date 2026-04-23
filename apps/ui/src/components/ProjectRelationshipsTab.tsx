@@ -25,7 +25,8 @@ export function ProjectRelationshipsTab({
 }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['project-relationships', orgSlug, projectId],
-    queryFn: () => getProjectRelationships(orgSlug, projectId),
+    queryFn: ({ signal }) =>
+      getProjectRelationships(orgSlug, projectId, signal),
   })
   const [filter, setFilter] = useState<RelFilter>('all')
   const [editDialogOpen, setEditDialogOpen] = useState(false)

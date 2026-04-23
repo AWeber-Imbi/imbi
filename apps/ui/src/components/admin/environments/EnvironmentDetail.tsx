@@ -22,7 +22,7 @@ export function EnvironmentDetail({
 }: EnvironmentDetailProps) {
   const { data: envSchema } = useQuery({
     queryKey: ['environmentSchema'],
-    queryFn: getEnvironmentSchema,
+    queryFn: ({ signal }) => getEnvironmentSchema(signal),
     staleTime: 5 * 60 * 1000,
   })
 

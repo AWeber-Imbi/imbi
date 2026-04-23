@@ -195,7 +195,7 @@ export function Dashboard({
   // Fetch real data for stats
   const { data: projects } = useQuery({
     queryKey: ['projects', orgSlug],
-    queryFn: () => getProjects(orgSlug),
+    queryFn: ({ signal }) => getProjects(orgSlug, signal),
     enabled: !!orgSlug,
   })
 

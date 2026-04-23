@@ -60,7 +60,7 @@ export function ServiceWebhookList({
     error,
   } = useQuery({
     queryKey: ['service-webhooks', orgSlug, serviceSlug],
-    queryFn: () => listServiceWebhooks(orgSlug, serviceSlug),
+    queryFn: ({ signal }) => listServiceWebhooks(orgSlug, serviceSlug, signal),
   })
 
   const createMutation = useMutation({

@@ -44,7 +44,7 @@ export function ProjectTypeManagement() {
     { orgSlug: string; slug: string }
   >({
     queryKey: ['projectTypes', orgSlug],
-    listFn: orgSlug ? () => listProjectTypes(orgSlug) : null,
+    listFn: orgSlug ? (signal) => listProjectTypes(orgSlug, signal) : null,
     createFn: ({ orgSlug, pt }) => createProjectType(orgSlug, pt),
     updateFn: ({ orgSlug, slug, pt }) => updateProjectType(orgSlug, slug, pt),
     deleteFn: ({ orgSlug, slug }) => deleteProjectType(orgSlug, slug),

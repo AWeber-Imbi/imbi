@@ -53,7 +53,8 @@ export function BlueprintForm({
     error: bpError,
   } = useQuery({
     queryKey: ['blueprint', blueprintKey?.type, blueprintKey?.slug],
-    queryFn: () => getBlueprint(blueprintKey!.type, blueprintKey!.slug),
+    queryFn: ({ signal }) =>
+      getBlueprint(blueprintKey!.type, blueprintKey!.slug, signal),
     enabled: isEditing,
   })
 
@@ -67,7 +68,7 @@ export function BlueprintForm({
     isError: ptIsError,
   } = useQuery({
     queryKey: ['projectTypes', orgSlug],
-    queryFn: () => listProjectTypes(orgSlug!),
+    queryFn: ({ signal }) => listProjectTypes(orgSlug!, signal),
     enabled: !!orgSlug,
   })
 
@@ -77,7 +78,7 @@ export function BlueprintForm({
     isError: envIsError,
   } = useQuery({
     queryKey: ['environments', orgSlug],
-    queryFn: () => listEnvironments(orgSlug!),
+    queryFn: ({ signal }) => listEnvironments(orgSlug!, signal),
     enabled: !!orgSlug,
   })
 

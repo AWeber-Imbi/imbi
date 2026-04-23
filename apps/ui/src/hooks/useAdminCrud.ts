@@ -9,7 +9,7 @@ interface AdminCrudConfig<TItem, TCreateInput, TUpdateInput, TDeleteInput> {
   /** React Query key for the list query. */
   queryKey: QueryKey
   /** Fetch the list. Return [] to disable via enabled=false. */
-  listFn: (() => Promise<TItem[]>) | null
+  listFn: ((signal?: AbortSignal) => Promise<TItem[]>) | null
   /** Create mutation handler. */
   createFn: (input: TCreateInput) => Promise<unknown>
   /** Update mutation handler. */
@@ -60,7 +60,8 @@ export function useAdminCrud<
 
   const listQuery = useQuery<TItem[]>({
     queryKey,
-    queryFn: listFn ?? (() => Promise.resolve([] as TItem[])),
+    queryFn: ({ signal }) =>
+      listFn ? listFn(signal) : Promise.resolve([] as TItem[]),
     enabled: !!listFn,
   })
 

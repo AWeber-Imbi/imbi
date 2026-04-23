@@ -52,7 +52,7 @@ export function UserManagement() {
     string
   >({
     queryKey: ['adminUsers'],
-    listFn: listAdminUsers,
+    listFn: (signal) => listAdminUsers(undefined, signal),
     createFn: createAdminUser,
     updateFn: ({ email, user }) => updateAdminUser(email, user),
     deleteFn: deleteAdminUser,
@@ -134,7 +134,7 @@ export function UserManagement() {
     error: selectedUserError,
   } = useQuery({
     queryKey: ['adminUser', selectedUserEmail],
-    queryFn: () => getAdminUser(selectedUserEmail!),
+    queryFn: ({ signal }) => getAdminUser(selectedUserEmail!, signal),
     enabled:
       !!selectedUserEmail && (viewMode === 'detail' || viewMode === 'edit'),
   })

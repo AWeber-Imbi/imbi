@@ -19,7 +19,7 @@ export function ProjectDetailPage() {
     error,
   } = useQuery({
     queryKey: ['project', orgSlug, projectId],
-    queryFn: () => getProject(orgSlug, projectId!),
+    queryFn: ({ signal }) => getProject(orgSlug, projectId!, signal),
     enabled: !!orgSlug && !!projectId,
   })
 

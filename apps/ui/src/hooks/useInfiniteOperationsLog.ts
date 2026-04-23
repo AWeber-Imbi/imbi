@@ -7,12 +7,15 @@ const PAGE_SIZE = 200
 export function useInfiniteOperationsLog(filters: OperationsLogFilters) {
   return useInfiniteQuery({
     queryKey: ['operationsLog', 'infinite', filters],
-    queryFn: ({ pageParam }) =>
-      listOperationsLog({
-        limit: PAGE_SIZE,
-        cursor: pageParam as string | undefined,
-        filters,
-      }),
+    queryFn: ({ pageParam, signal }) =>
+      listOperationsLog(
+        {
+          limit: PAGE_SIZE,
+          cursor: pageParam as string | undefined,
+          filters,
+        },
+        signal,
+      ),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage, _allPages, lastPageParam) => {
       if (!lastPage.nextCursor) return undefined

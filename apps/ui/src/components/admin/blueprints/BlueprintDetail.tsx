@@ -118,7 +118,8 @@ export function BlueprintDetail({
     error,
   } = useQuery({
     queryKey: ['blueprint', blueprintKey.type, blueprintKey.slug],
-    queryFn: () => getBlueprint(blueprintKey.type, blueprintKey.slug),
+    queryFn: ({ signal }) =>
+      getBlueprint(blueprintKey.type, blueprintKey.slug, signal),
   })
 
   if (isLoading) {

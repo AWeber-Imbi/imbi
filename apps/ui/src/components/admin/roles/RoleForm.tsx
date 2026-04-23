@@ -73,7 +73,7 @@ export function RoleForm({
     error: roleError,
   } = useQuery({
     queryKey: ['role', roleSlug],
-    queryFn: () => getRole(roleSlug!),
+    queryFn: ({ signal }) => getRole(roleSlug!, signal),
     enabled: isEditing,
   })
 
@@ -84,7 +84,7 @@ export function RoleForm({
     error: adminSettingsError,
   } = useQuery({
     queryKey: ['adminSettings'],
-    queryFn: getAdminSettings,
+    queryFn: ({ signal }) => getAdminSettings(signal),
   })
 
   const [name, setName] = useState('')

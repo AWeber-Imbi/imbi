@@ -22,7 +22,7 @@ export function ProjectGraphView({ projects }: ProjectGraphViewProps) {
       const orgSlug = p.team?.organization?.slug ?? ''
       return {
         queryKey: ['project-relationships', orgSlug, p.id],
-        queryFn: () => getProjectRelationships(orgSlug, p.id),
+        queryFn: ({ signal }) => getProjectRelationships(orgSlug, p.id, signal),
         enabled: Boolean(orgSlug && p.id),
       }
     }),

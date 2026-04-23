@@ -129,12 +129,14 @@ async function resolveAuthToken(url: string): Promise<string | null> {
 export async function withAuthRetry(
   url: string,
   fetcher: (token: string | null) => Promise<Response>,
+  signal?: AbortSignal,
 ): Promise<Response> {
   const token = await resolveAuthToken(url)
   const response = await fetcher(token)
 
   if (response.status !== 401) return response
   if (shouldSkipAuth(url)) return response
+  if (signal?.aborted) return response
 
   try {
     const newToken = await refreshAccessToken()
@@ -173,71 +175,94 @@ class ApiClient {
       params?: Record<string, unknown>
       body?: unknown
       headers?: Record<string, string>
+      signal?: AbortSignal
     } = {},
   ): Promise<T> {
-    const { params, body, headers: extraHeaders } = options
+    const { params, body, headers: extraHeaders, signal } = options
     const fullUrl = buildUrl(url, params)
 
-    const response = await withAuthRetry(url, (token) => {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        ...extraHeaders,
-      }
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
-      }
+    const response = await withAuthRetry(
+      url,
+      (token) => {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          ...extraHeaders,
+        }
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`
+        }
 
-      const init: RequestInit = {
-        method,
-        credentials: 'include',
-        headers,
-      }
+        const init: RequestInit = {
+          method,
+          credentials: 'include',
+          headers,
+          signal,
+        }
 
-      if (body !== undefined) {
-        init.body = JSON.stringify(body)
-      }
+        if (body !== undefined) {
+          init.body = JSON.stringify(body)
+        }
 
-      return fetch(fullUrl, init)
-    })
+        return fetch(fullUrl, init)
+      },
+      signal,
+    )
 
     return parseResponse<T>(response)
   }
 
-  async get<T>(url: string, params?: Record<string, unknown>): Promise<T> {
-    return this.request<T>('GET', url, { params })
+  async get<T>(
+    url: string,
+    params?: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    return this.request<T>('GET', url, { params, signal })
   }
 
-  async post<T>(url: string, data?: unknown): Promise<T> {
-    return this.request<T>('POST', url, { body: data })
+  async post<T>(url: string, data?: unknown, signal?: AbortSignal): Promise<T> {
+    return this.request<T>('POST', url, { body: data, signal })
   }
 
-  async put<T>(url: string, data?: unknown): Promise<T> {
-    return this.request<T>('PUT', url, { body: data })
+  async put<T>(url: string, data?: unknown, signal?: AbortSignal): Promise<T> {
+    return this.request<T>('PUT', url, { body: data, signal })
   }
 
-  async patch<T>(url: string, data?: unknown): Promise<T> {
-    return this.request<T>('PATCH', url, { body: data })
+  async patch<T>(
+    url: string,
+    data?: unknown,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    return this.request<T>('PATCH', url, { body: data, signal })
   }
 
-  async delete<T>(url: string): Promise<T> {
-    return this.request<T>('DELETE', url)
+  async delete<T>(url: string, signal?: AbortSignal): Promise<T> {
+    return this.request<T>('DELETE', url, { signal })
   }
 
-  async postFormData<T>(url: string, formData: FormData): Promise<T> {
-    const response = await withAuthRetry(url, (token) => {
-      const headers: Record<string, string> = {}
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
-      }
+  async postFormData<T>(
+    url: string,
+    formData: FormData,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const response = await withAuthRetry(
+      url,
+      (token) => {
+        const headers: Record<string, string> = {}
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`
+        }
 
-      // Don't set Content-Type — browser sets it with boundary for FormData
-      return fetch(`${API_BASE_URL}${url}`, {
-        method: 'POST',
-        credentials: 'include',
-        headers,
-        body: formData,
-      })
-    })
+        // Don't set Content-Type — browser sets it with boundary for FormData
+        return fetch(`${API_BASE_URL}${url}`, {
+          method: 'POST',
+          credentials: 'include',
+          headers,
+          body: formData,
+          signal,
+        })
+      },
+      signal,
+    )
 
     return parseResponse<T>(response)
   }
@@ -245,23 +270,29 @@ class ApiClient {
   async getWithHeaders<T>(
     url: string,
     params?: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<{ data: T; headers: Headers }> {
     const fullUrl = buildUrl(url, params)
 
-    const response = await withAuthRetry(url, (token) => {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      }
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
-      }
+    const response = await withAuthRetry(
+      url,
+      (token) => {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        }
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`
+        }
 
-      return fetch(fullUrl, {
-        method: 'GET',
-        credentials: 'include',
-        headers,
-      })
-    })
+        return fetch(fullUrl, {
+          method: 'GET',
+          credentials: 'include',
+          headers,
+          signal,
+        })
+      },
+      signal,
+    )
 
     if (!response.ok) {
       let errorData: unknown

@@ -58,7 +58,7 @@ export function ThirdPartyServiceForm({
 
   const { data: teams = [] } = useQuery({
     queryKey: ['teams', orgSlug],
-    queryFn: () => listTeams(orgSlug),
+    queryFn: ({ signal }) => listTeams(orgSlug, signal),
     enabled: !!orgSlug,
   })
 

@@ -22,7 +22,7 @@ export function ProjectTypeDetail({
 }: ProjectTypeDetailProps) {
   const { data: ptSchema } = useQuery({
     queryKey: ['projectTypeSchema'],
-    queryFn: getProjectTypeSchema,
+    queryFn: ({ signal }) => getProjectTypeSchema(signal),
     staleTime: 5 * 60 * 1000,
   })
 

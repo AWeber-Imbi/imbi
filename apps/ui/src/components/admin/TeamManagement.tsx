@@ -41,7 +41,7 @@ export function TeamManagement() {
     { orgSlug: string; slug: string }
   >({
     queryKey: ['teams', orgSlug],
-    listFn: orgSlug ? () => listTeams(orgSlug) : null,
+    listFn: orgSlug ? (signal) => listTeams(orgSlug, signal) : null,
     createFn: ({ orgSlug, team }) => createTeam(orgSlug, team),
     updateFn: ({ orgSlug, slug, team }) => updateTeam(orgSlug, slug, team),
     deleteFn: ({ orgSlug, slug }) => deleteTeam(orgSlug, slug),

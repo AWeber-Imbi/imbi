@@ -61,7 +61,7 @@ export function ApiKeysSection({
     error: keysError,
   } = useQuery({
     queryKey: ['serviceAccountApiKeys', account.slug],
-    queryFn: () => listServiceAccountApiKeys(account.slug),
+    queryFn: ({ signal }) => listServiceAccountApiKeys(account.slug, signal),
   })
 
   const handleCreateKey = () => {

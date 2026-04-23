@@ -54,7 +54,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
 
   const { data: availableRoles = [] } = useQuery({
     queryKey: ['roles'],
-    queryFn: getRoles,
+    queryFn: ({ signal }) => getRoles(signal),
   })
 
   const addOrgMutation = useMutation({

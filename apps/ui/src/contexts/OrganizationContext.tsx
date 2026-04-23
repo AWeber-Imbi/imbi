@@ -33,7 +33,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
 
   const { data: organizations = [], isLoading } = useQuery({
     queryKey: ['organizations'],
-    queryFn: listOrganizations,
+    queryFn: ({ signal }) => listOrganizations(signal),
     enabled: !!accessToken && !isTokenExpired(),
     retry: 1,
   })

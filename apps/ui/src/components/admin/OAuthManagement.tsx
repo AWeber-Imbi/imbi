@@ -14,7 +14,7 @@ export function OAuthManagement() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['authProviders'],
-    queryFn: getAuthProviders,
+    queryFn: ({ signal }) => getAuthProviders(signal),
   })
 
   const providers = data?.providers || []

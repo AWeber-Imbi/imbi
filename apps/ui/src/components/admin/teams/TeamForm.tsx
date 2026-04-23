@@ -50,7 +50,7 @@ export function TeamForm({
 
   const { data: teamSchema } = useQuery({
     queryKey: ['teamSchema'],
-    queryFn: getTeamSchema,
+    queryFn: ({ signal }) => getTeamSchema(signal),
     staleTime: 5 * 60 * 1000,
   })
 

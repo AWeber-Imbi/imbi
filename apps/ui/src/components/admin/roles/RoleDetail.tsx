@@ -70,13 +70,13 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
     error,
   } = useQuery({
     queryKey: ['role', slug],
-    queryFn: () => getRole(slug),
+    queryFn: ({ signal }) => getRole(slug, signal),
   })
 
   // Fetch admin settings for available permissions
   const { data: adminSettings } = useQuery({
     queryKey: ['adminSettings'],
-    queryFn: getAdminSettings,
+    queryFn: ({ signal }) => getAdminSettings(signal),
   })
 
   // Fetch users with this role
@@ -86,7 +86,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
     error: usersError,
   } = useQuery({
     queryKey: ['roleUsers', slug],
-    queryFn: () => getRoleUsers(slug),
+    queryFn: ({ signal }) => getRoleUsers(slug, signal),
     enabled: activeTab === 'users',
   })
 
@@ -97,7 +97,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
     error: saError,
   } = useQuery({
     queryKey: ['roleServiceAccounts', slug],
-    queryFn: () => getRoleServiceAccounts(slug),
+    queryFn: ({ signal }) => getRoleServiceAccounts(slug, signal),
     enabled: activeTab === 'service-accounts',
   })
 
@@ -108,7 +108,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
     error: groupsError,
   } = useQuery({
     queryKey: ['roleGroups', slug],
-    queryFn: () => getRoleGroups(slug),
+    queryFn: ({ signal }) => getRoleGroups(slug, signal),
     enabled: activeTab === 'groups',
   })
 

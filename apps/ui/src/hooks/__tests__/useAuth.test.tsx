@@ -194,7 +194,10 @@ describe('useAuth', () => {
 
     await waitFor(() => expect(result.current.isAuthenticated).toBe(true))
     expect(endpoints.getUserByUsername).toHaveBeenCalledTimes(1)
-    expect(endpoints.getUserByUsername).toHaveBeenCalledWith('user@example.com')
+    expect(endpoints.getUserByUsername).toHaveBeenCalledWith(
+      'user@example.com',
+      expect.any(AbortSignal),
+    )
     expect(endpoints.refreshToken).not.toHaveBeenCalled()
     expect(latestLocation.pathname).toBe('/dashboard')
   })

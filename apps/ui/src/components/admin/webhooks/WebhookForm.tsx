@@ -72,7 +72,7 @@ export function WebhookForm({
 
   const { data: services = [] } = useQuery({
     queryKey: ['third-party-services', orgSlug],
-    queryFn: () => listThirdPartyServices(orgSlug),
+    queryFn: ({ signal }) => listThirdPartyServices(orgSlug, signal),
     enabled: !!orgSlug,
   })
 

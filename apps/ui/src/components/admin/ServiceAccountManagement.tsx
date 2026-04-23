@@ -48,7 +48,7 @@ export function ServiceAccountManagement() {
     string
   >({
     queryKey: ['serviceAccounts'],
-    listFn: listServiceAccounts,
+    listFn: (signal) => listServiceAccounts(undefined, signal),
     createFn: createServiceAccount,
     updateFn: ({ slug, data }) => updateServiceAccount(slug, data),
     deleteFn: deleteServiceAccount,
@@ -75,7 +75,7 @@ export function ServiceAccountManagement() {
   // Fetch full SA detail (with orgs) when viewing/editing a specific account
   const { data: selectedAccount = null } = useQuery({
     queryKey: ['serviceAccount', selectedAccountSlug],
-    queryFn: () => getServiceAccount(selectedAccountSlug!),
+    queryFn: ({ signal }) => getServiceAccount(selectedAccountSlug!, signal),
     enabled:
       !!selectedAccountSlug && (viewMode === 'detail' || viewMode === 'edit'),
   })

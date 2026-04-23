@@ -62,7 +62,7 @@ export function UserForm({
   // Fetch available roles
   const { data: availableRoles = [], isLoading: rolesLoading } = useQuery({
     queryKey: ['roles'],
-    queryFn: getRoles,
+    queryFn: ({ signal }) => getRoles(signal),
   })
 
   // Validation state

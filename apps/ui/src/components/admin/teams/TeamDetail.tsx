@@ -64,12 +64,13 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
     error: membersError,
   } = useQuery({
     queryKey: ['teamMembers', team.organization.slug, team.slug],
-    queryFn: () => getTeamMembers(team.organization.slug, team.slug),
+    queryFn: ({ signal }) =>
+      getTeamMembers(team.organization.slug, team.slug, signal),
   })
 
   const { data: teamSchema } = useQuery({
     queryKey: ['teamSchema'],
-    queryFn: getTeamSchema,
+    queryFn: ({ signal }) => getTeamSchema(signal),
     staleTime: 5 * 60 * 1000,
   })
 

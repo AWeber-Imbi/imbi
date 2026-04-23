@@ -32,7 +32,7 @@ export function SettingsApiKeys() {
     error: listError,
   } = useQuery({
     queryKey: ['api-keys'],
-    queryFn: () => listApiKeys(),
+    queryFn: ({ signal }) => listApiKeys(signal),
   })
 
   const createMutation = useMutation({

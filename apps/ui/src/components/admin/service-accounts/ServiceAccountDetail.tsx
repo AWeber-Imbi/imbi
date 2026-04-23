@@ -50,7 +50,7 @@ export function ServiceAccountDetail({
     isLoading: rolesLoading,
   } = useQuery({
     queryKey: ['roles'],
-    queryFn: getRoles,
+    queryFn: ({ signal }) => getRoles(signal),
   })
 
   const {

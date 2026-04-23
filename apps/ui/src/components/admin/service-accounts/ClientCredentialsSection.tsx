@@ -89,7 +89,7 @@ export function ClientCredentialsSection({
     error: credentialsError,
   } = useQuery({
     queryKey: ['clientCredentials', account.slug],
-    queryFn: () => listClientCredentials(account.slug),
+    queryFn: ({ signal }) => listClientCredentials(account.slug, signal),
   })
 
   const resetCredentialForm = () => {

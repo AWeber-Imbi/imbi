@@ -48,7 +48,7 @@ export function ServiceAccountForm({
     isError: rolesError,
   } = useQuery({
     queryKey: ['roles'],
-    queryFn: getRoles,
+    queryFn: ({ signal }) => getRoles(signal),
   })
 
   // Validation state

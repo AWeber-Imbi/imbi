@@ -164,7 +164,7 @@ export function OperationsLog({
     refetch: refetchProjects,
   } = useQuery({
     queryKey: ['projects', orgSlug],
-    queryFn: () => getProjects(orgSlug),
+    queryFn: ({ signal }) => getProjects(orgSlug, signal),
     enabled: !!orgSlug,
   })
   const {
@@ -173,7 +173,7 @@ export function OperationsLog({
     refetch: refetchEnvironments,
   } = useQuery({
     queryKey: ['environments', orgSlug],
-    queryFn: () => listEnvironments(orgSlug),
+    queryFn: ({ signal }) => listEnvironments(orgSlug, signal),
     enabled: !!orgSlug,
   })
   const {
@@ -182,7 +182,7 @@ export function OperationsLog({
     refetch: refetchUsers,
   } = useQuery({
     queryKey: ['admin-users', 'active'],
-    queryFn: () => listAdminUsers({ is_active: true }),
+    queryFn: ({ signal }) => listAdminUsers({ is_active: true }, signal),
   })
   // Metadata queries back the filter dropdowns and the slug→name
   // lookups. When any of them fail we surface a non-blocking banner so

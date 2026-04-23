@@ -57,7 +57,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
     isError: linkDefsError,
   } = useQuery({
     queryKey: ['linkDefinitions', orgSlug],
-    queryFn: () => listLinkDefinitions(orgSlug),
+    queryFn: ({ signal }) => listLinkDefinitions(orgSlug, signal),
     enabled: !!orgSlug,
   })
 
@@ -68,7 +68,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
 
   const { data: availableEnvironments = [] } = useQuery({
     queryKey: ['environments', orgSlug],
-    queryFn: () => listEnvironments(orgSlug),
+    queryFn: ({ signal }) => listEnvironments(orgSlug, signal),
     enabled: !!orgSlug,
   })
 

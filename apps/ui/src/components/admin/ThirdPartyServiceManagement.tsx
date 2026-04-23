@@ -47,7 +47,9 @@ export function ThirdPartyServiceManagement() {
     string
   >({
     queryKey: ['third-party-services', orgSlug],
-    listFn: orgSlug ? () => listThirdPartyServices(orgSlug) : null,
+    listFn: orgSlug
+      ? (signal) => listThirdPartyServices(orgSlug, signal)
+      : null,
     createFn: (svc) => {
       if (!orgSlug) throw new Error('No organization selected')
       return createThirdPartyService(orgSlug, svc)

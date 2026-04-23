@@ -129,7 +129,7 @@ export function BlueprintManagement() {
     BlueprintKey
   >({
     queryKey: ['blueprints'],
-    listFn: listBlueprints,
+    listFn: (signal) => listBlueprints(undefined, signal),
     createFn: (blueprint) => createBlueprint(blueprint),
     updateFn: ({ type, slug, blueprint }) =>
       updateBlueprint(type, slug, blueprint),

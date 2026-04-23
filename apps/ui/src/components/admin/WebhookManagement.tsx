@@ -43,7 +43,7 @@ export function WebhookManagement() {
     string
   >({
     queryKey: ['webhooks', orgSlug],
-    listFn: orgSlug ? () => listWebhooks(orgSlug) : null,
+    listFn: orgSlug ? (signal) => listWebhooks(orgSlug, signal) : null,
     createFn: (data) => {
       if (!orgSlug) throw new Error('No organization selected')
       return createWebhook(orgSlug, data)

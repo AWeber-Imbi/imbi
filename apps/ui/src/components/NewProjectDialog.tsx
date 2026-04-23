@@ -56,25 +56,25 @@ export function NewProjectDialog({
 
   const { data: teams = [] } = useQuery({
     queryKey: ['teams', orgSlug],
-    queryFn: () => listTeams(orgSlug),
+    queryFn: ({ signal }) => listTeams(orgSlug, signal),
     enabled: !!orgSlug && isOpen,
   })
 
   const { data: projectTypes = [] } = useQuery({
     queryKey: ['projectTypes', orgSlug],
-    queryFn: () => listProjectTypes(orgSlug),
+    queryFn: ({ signal }) => listProjectTypes(orgSlug, signal),
     enabled: !!orgSlug && isOpen,
   })
 
   const { data: environments = [] } = useQuery({
     queryKey: ['environments', orgSlug],
-    queryFn: () => listEnvironments(orgSlug),
+    queryFn: ({ signal }) => listEnvironments(orgSlug, signal),
     enabled: !!orgSlug && isOpen,
   })
 
   const { data: linkDefs = [] } = useQuery({
     queryKey: ['linkDefinitions', orgSlug],
-    queryFn: () => listLinkDefinitions(orgSlug),
+    queryFn: ({ signal }) => listLinkDefinitions(orgSlug, signal),
     enabled: !!orgSlug && isOpen,
   })
 

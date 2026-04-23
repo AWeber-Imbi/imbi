@@ -65,7 +65,8 @@ export function ApplicationSecretsPanel({
     refetch,
   } = useQuery({
     queryKey: ['application-secrets', orgSlug, serviceSlug, appSlug],
-    queryFn: () => getApplicationSecrets(orgSlug, serviceSlug, appSlug),
+    queryFn: ({ signal }) =>
+      getApplicationSecrets(orgSlug, serviceSlug, appSlug, signal),
     enabled: revealed,
     retry: false,
   })

@@ -68,7 +68,8 @@ export function OAuth2ApplicationList({
     error,
   } = useQuery({
     queryKey: ['service-applications', orgSlug, serviceSlug],
-    queryFn: () => listServiceApplications(orgSlug, serviceSlug),
+    queryFn: ({ signal }) =>
+      listServiceApplications(orgSlug, serviceSlug, signal),
   })
 
   const createMutation = useMutation({

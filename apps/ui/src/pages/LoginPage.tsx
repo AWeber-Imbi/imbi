@@ -30,7 +30,7 @@ export function LoginPage() {
 
   const { data: providersData, isLoading: providersLoading } = useQuery({
     queryKey: ['authProviders'],
-    queryFn: getAuthProviders,
+    queryFn: ({ signal }) => getAuthProviders(signal),
     staleTime: 10 * 60 * 1000,
     retry: false,
   })

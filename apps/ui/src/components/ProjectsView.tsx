@@ -58,7 +58,7 @@ export function ProjectsView() {
 
   const { data: projects, isLoading } = useQuery({
     queryKey: ['projects', orgSlug],
-    queryFn: () => getProjects(orgSlug),
+    queryFn: ({ signal }) => getProjects(orgSlug, signal),
     enabled: !!orgSlug,
   })
 

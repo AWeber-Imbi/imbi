@@ -51,7 +51,7 @@ function MetaChip({
 export function OperationsLogEntryDetails({ entry }: Props) {
   const { data } = useQuery({
     queryKey: ['operationsLog', 'entry', entry.id],
-    queryFn: () => getOperationsLogEntry(entry.id),
+    queryFn: ({ signal }) => getOperationsLogEntry(entry.id, signal),
     initialData: entry,
     staleTime: 30_000,
   })

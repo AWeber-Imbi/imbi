@@ -66,12 +66,15 @@ import type {
 export type { PatchOperation }
 
 // Status/Health
-export const getStatus = () => apiClient.get<ApiStatus>('/status')
+export const getStatus = (signal?: AbortSignal) =>
+  apiClient.get<ApiStatus>('/status', undefined, signal)
 
 // User/Auth
-export const getAuthProviders = () =>
+export const getAuthProviders = (signal?: AbortSignal) =>
   apiClient.get<{ providers: AuthProvider[]; default_redirect: string }>(
     '/auth/providers',
+    undefined,
+    signal,
   )
 
 export const loginWithPassword = (credentials: LoginRequest) =>
@@ -84,24 +87,36 @@ export const refreshToken = (refreshToken: string) =>
 
 export const logoutAuth = () => apiClient.post<void>('/auth/logout', {})
 
-export const getUserByUsername = (username: string) =>
-  apiClient.get<UserResponse>(`/users/${username}`)
+export const getUserByUsername = (username: string, signal?: AbortSignal) =>
+  apiClient.get<UserResponse>(`/users/${username}`, undefined, signal)
 
 // Legacy endpoints (kept for backward compatibility)
-export const getCurrentUser = () => apiClient.get<User>('/ui/user')
+export const getCurrentUser = (signal?: AbortSignal) =>
+  apiClient.get<User>('/ui/user', undefined, signal)
 export const logout = () => apiClient.get<void>('/ui/logout')
 
 // Projects (org-scoped)
-export const getProjects = async (orgSlug: string): Promise<Project[]> => {
+export const getProjects = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<Project[]> => {
   const response = await apiClient.get<Project[]>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/`,
+    undefined,
+    signal,
   )
   return Array.isArray(response) ? response : []
 }
 
-export const getProject = (orgSlug: string, projectId: string) =>
+export const getProject = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+) =>
   apiClient.get<Project>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}`,
+    undefined,
+    signal,
   )
 
 export interface ProjectSchemaSectionProperty {
@@ -135,14 +150,26 @@ export interface ProjectSchemaResponse {
   sections: ProjectSchemaSection[]
 }
 
-export const getProjectSchema = (orgSlug: string, projectId: string) =>
+export const getProjectSchema = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+) =>
   apiClient.get<ProjectSchemaResponse>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/schema`,
+    undefined,
+    signal,
   )
 
-export const getProjectRelationships = (orgSlug: string, projectId: string) =>
+export const getProjectRelationships = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+) =>
   apiClient.get<ProjectRelationshipsResponse>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/relationships`,
+    undefined,
+    signal,
   )
 
 export const setProjectRelationships = (
@@ -193,16 +220,25 @@ export const deleteProject = (orgSlug: string, projectId: string) =>
 // Link Definitions (org-scoped)
 export const listLinkDefinitions = async (
   orgSlug: string,
+  signal?: AbortSignal,
 ): Promise<LinkDefinition[]> => {
   const response = await apiClient.get<LinkDefinition[]>(
     `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/`,
+    undefined,
+    signal,
   )
   return Array.isArray(response) ? response : []
 }
 
-export const getLinkDefinition = (orgSlug: string, slug: string) =>
+export const getLinkDefinition = (
+  orgSlug: string,
+  slug: string,
+  signal?: AbortSignal,
+) =>
   apiClient.get<LinkDefinition>(
     `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
   )
 
 export const createLinkDefinition = (
@@ -230,14 +266,18 @@ export const deleteLinkDefinition = (orgSlug: string, slug: string) =>
   )
 
 // Activity Feed
-export const getActivityFeed = async (params?: {
-  limit?: number
-  omit_user?: string
-  token?: string
-}): Promise<ActivityFeedEntry[]> => {
+export const getActivityFeed = async (
+  params?: {
+    limit?: number
+    omit_user?: string
+    token?: string
+  },
+  signal?: AbortSignal,
+): Promise<ActivityFeedEntry[]> => {
   const response = await apiClient.get<ActivityFeedEntry[]>(
     '/activity-feed',
     params,
+    signal,
   )
   // Activity feed returns array directly, not wrapped in { data: [] }
   return Array.isArray(response) ? response : []
@@ -277,11 +317,14 @@ function parseNextCursor(headers: Headers): string | undefined {
   }
 }
 
-export const listOperationsLog = async (params: {
-  limit?: number
-  cursor?: string
-  filters?: OperationsLogFilters
-}): Promise<OperationsLogPage> => {
+export const listOperationsLog = async (
+  params: {
+    limit?: number
+    cursor?: string
+    filters?: OperationsLogFilters
+  },
+  signal?: AbortSignal,
+): Promise<OperationsLogPage> => {
   const query: Record<string, unknown> = { limit: params.limit ?? 50 }
   if (params.cursor) query.cursor = params.cursor
   if (params.filters) {
@@ -293,6 +336,7 @@ export const listOperationsLog = async (params: {
     await apiClient.getWithHeaders<OperationsLogEnvelope>(
       '/operations-log/',
       query,
+      signal,
     )
   return {
     entries: Array.isArray(data?.data) ? data.data : [],
@@ -301,37 +345,58 @@ export const listOperationsLog = async (params: {
   }
 }
 
-export const getOperationsLogEntry = (entryId: string) =>
+export const getOperationsLogEntry = (entryId: string, signal?: AbortSignal) =>
   apiClient.get<OperationsLogRecord>(
     `/operations-log/${encodeURIComponent(entryId)}`,
+    undefined,
+    signal,
   )
 
 // Metadata
-export const getEnvironments = async (): Promise<Environment[]> => {
-  const response =
-    await apiClient.get<CollectionResponse<Environment>>('/environments')
+export const getEnvironments = async (
+  signal?: AbortSignal,
+): Promise<Environment[]> => {
+  const response = await apiClient.get<CollectionResponse<Environment>>(
+    '/environments',
+    undefined,
+    signal,
+  )
   return response.data
 }
 
-export const getProjectTypes = async (): Promise<ProjectType[]> => {
-  const response =
-    await apiClient.get<CollectionResponse<ProjectType>>('/project-types')
+export const getProjectTypes = async (
+  signal?: AbortSignal,
+): Promise<ProjectType[]> => {
+  const response = await apiClient.get<CollectionResponse<ProjectType>>(
+    '/project-types',
+    undefined,
+    signal,
+  )
   return response.data
 }
 
 // Admin - Environments
 export const listEnvironments = async (
   orgSlug: string,
+  signal?: AbortSignal,
 ): Promise<Environment[]> => {
   const response = await apiClient.get<Environment[]>(
     `/organizations/${encodeURIComponent(orgSlug)}/environments/`,
+    undefined,
+    signal,
   )
   return Array.isArray(response) ? response : []
 }
 
-export const getEnvironment = (orgSlug: string, slug: string) =>
+export const getEnvironment = (
+  orgSlug: string,
+  slug: string,
+  signal?: AbortSignal,
+) =>
   apiClient.get<Environment>(
     `/organizations/${encodeURIComponent(orgSlug)}/environments/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
   )
 
 export const createEnvironment = (orgSlug: string, env: EnvironmentCreate) =>
@@ -355,22 +420,31 @@ export const deleteEnvironment = (orgSlug: string, slug: string) =>
     `/organizations/${encodeURIComponent(orgSlug)}/environments/${encodeURIComponent(slug)}`,
   )
 
-export const getEnvironmentSchema = () =>
-  getDynamicSchema('EnvironmentRequest', ENVIRONMENT_BASE_FIELDS)
+export const getEnvironmentSchema = (signal?: AbortSignal) =>
+  getDynamicSchema('EnvironmentRequest', ENVIRONMENT_BASE_FIELDS, signal)
 
 // Admin - Project Types
 export const listProjectTypes = async (
   orgSlug: string,
+  signal?: AbortSignal,
 ): Promise<ProjectType[]> => {
   const response = await apiClient.get<ProjectType[]>(
     `/organizations/${encodeURIComponent(orgSlug)}/project-types/`,
+    undefined,
+    signal,
   )
   return Array.isArray(response) ? response : []
 }
 
-export const getProjectType = (orgSlug: string, slug: string) =>
+export const getProjectType = (
+  orgSlug: string,
+  slug: string,
+  signal?: AbortSignal,
+) =>
   apiClient.get<ProjectType>(
     `/organizations/${encodeURIComponent(orgSlug)}/project-types/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
   )
 
 export const createProjectType = (orgSlug: string, pt: ProjectTypeCreate) =>
@@ -394,21 +468,28 @@ export const deleteProjectType = (orgSlug: string, slug: string) =>
     `/organizations/${encodeURIComponent(orgSlug)}/project-types/${encodeURIComponent(slug)}`,
   )
 
-export const getProjectTypeSchema = () =>
-  getDynamicSchema('ProjectTypeRequest', PROJECT_TYPE_BASE_FIELDS)
+export const getProjectTypeSchema = (signal?: AbortSignal) =>
+  getDynamicSchema('ProjectTypeRequest', PROJECT_TYPE_BASE_FIELDS, signal)
 
 // Admin - User Management
-export const listAdminUsers = async (params?: {
-  is_active?: boolean
-  is_admin?: boolean
-}): Promise<AdminUser[]> => {
-  const response = await apiClient.get<AdminUser[]>('/users/', params)
+export const listAdminUsers = async (
+  params?: {
+    is_active?: boolean
+    is_admin?: boolean
+  },
+  signal?: AbortSignal,
+): Promise<AdminUser[]> => {
+  const response = await apiClient.get<AdminUser[]>('/users/', params, signal)
   // Users endpoint returns array directly, not wrapped in { data: [] }
   return Array.isArray(response) ? response : []
 }
 
-export const getAdminUser = (email: string) =>
-  apiClient.get<AdminUser>(`/users/${encodeURIComponent(email)}`)
+export const getAdminUser = (email: string, signal?: AbortSignal) =>
+  apiClient.get<AdminUser>(
+    `/users/${encodeURIComponent(email)}`,
+    undefined,
+    signal,
+  )
 
 export const createAdminUser = (user: AdminUserCreate) =>
   apiClient.post<AdminUser>('/users/', user)
@@ -441,13 +522,17 @@ export const removeUserFromOrg = (email: string, orgSlug: string) =>
   )
 
 // Admin - Roles Management
-export const getRoles = async (): Promise<Role[]> => {
-  const response = await apiClient.get<Role[]>('/roles/')
+export const getRoles = async (signal?: AbortSignal): Promise<Role[]> => {
+  const response = await apiClient.get<Role[]>('/roles/', undefined, signal)
   return Array.isArray(response) ? response : []
 }
 
-export const getRole = (slug: string) =>
-  apiClient.get<RoleDetail>(`/roles/${encodeURIComponent(slug)}`)
+export const getRole = (slug: string, signal?: AbortSignal) =>
+  apiClient.get<RoleDetail>(
+    `/roles/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
+  )
 
 export const createRole = (role: RoleCreate) =>
   apiClient.post<RoleDetail>('/roles/', role)
@@ -468,57 +553,83 @@ export const revokePermission = (slug: string, permissionName: string) =>
     `/roles/${encodeURIComponent(slug)}/permissions/${encodeURIComponent(permissionName)}`,
   )
 
-export const getRoleUsers = async (slug: string): Promise<RoleUser[]> => {
+export const getRoleUsers = async (
+  slug: string,
+  signal?: AbortSignal,
+): Promise<RoleUser[]> => {
   const response = await apiClient.get<RoleUser[]>(
     `/roles/${encodeURIComponent(slug)}/users`,
+    undefined,
+    signal,
   )
   return Array.isArray(response) ? response : []
 }
 
 export const getRoleServiceAccounts = async (
   slug: string,
+  signal?: AbortSignal,
 ): Promise<ServiceAccount[]> => {
   const response = await apiClient.get<ServiceAccount[]>(
     `/roles/${encodeURIComponent(slug)}/service-accounts`,
+    undefined,
+    signal,
   )
   return Array.isArray(response) ? response : []
 }
 
 export const getRoleGroups = async (
   slug: string,
+  signal?: AbortSignal,
 ): Promise<{ name: string; slug: string }[]> => {
   const response = await apiClient.get<{ name: string; slug: string }[]>(
     `/roles/${encodeURIComponent(slug)}/groups`,
+    undefined,
+    signal,
   )
   return Array.isArray(response) ? response : []
 }
 
 // Admin - Settings (reference data)
-export const getAdminSettings = () =>
-  apiClient.get<AdminSettings>('/admin/settings')
+export const getAdminSettings = (signal?: AbortSignal) =>
+  apiClient.get<AdminSettings>('/admin/settings', undefined, signal)
 
 // Admin - Blueprints
-export const listBlueprints = async (params?: {
-  enabled?: boolean
-}): Promise<Blueprint[]> => {
-  const response = await apiClient.get<Blueprint[]>('/blueprints/', params)
+export const listBlueprints = async (
+  params?: {
+    enabled?: boolean
+  },
+  signal?: AbortSignal,
+): Promise<Blueprint[]> => {
+  const response = await apiClient.get<Blueprint[]>(
+    '/blueprints/',
+    params,
+    signal,
+  )
   return Array.isArray(response) ? response : []
 }
 
 export const listBlueprintsByType = async (
   type: string,
   params?: { enabled?: boolean },
+  signal?: AbortSignal,
 ): Promise<Blueprint[]> => {
   const response = await apiClient.get<Blueprint[]>(
     `/blueprints/${encodeURIComponent(type)}`,
     params,
+    signal,
   )
   return Array.isArray(response) ? response : []
 }
 
-export const getBlueprint = (type: string, slug: string) =>
+export const getBlueprint = (
+  type: string,
+  slug: string,
+  signal?: AbortSignal,
+) =>
   apiClient.get<Blueprint>(
     `/blueprints/${encodeURIComponent(type)}/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
   )
 
 export const createBlueprint = (blueprint: BlueprintCreate) =>
@@ -540,13 +651,23 @@ export const deleteBlueprint = (type: string, slug: string) =>
   )
 
 // Admin - Organizations
-export const listOrganizations = async (): Promise<Organization[]> => {
-  const response = await apiClient.get<Organization[]>('/organizations/')
+export const listOrganizations = async (
+  signal?: AbortSignal,
+): Promise<Organization[]> => {
+  const response = await apiClient.get<Organization[]>(
+    '/organizations/',
+    undefined,
+    signal,
+  )
   return Array.isArray(response) ? response : []
 }
 
-export const getOrganization = (slug: string) =>
-  apiClient.get<Organization>(`/organizations/${encodeURIComponent(slug)}`)
+export const getOrganization = (slug: string, signal?: AbortSignal) =>
+  apiClient.get<Organization>(
+    `/organizations/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
+  )
 
 export const createOrganization = (org: OrganizationCreate) =>
   apiClient.post<Organization>('/organizations/', org)
@@ -611,8 +732,13 @@ interface OpenApiResponse {
 export const getDynamicSchema = async (
   schemaName: string,
   baseFields: string[],
+  signal?: AbortSignal,
 ): Promise<DynamicSchema | null> => {
-  const response = await apiClient.get<OpenApiResponse>('/openapi.json')
+  const response = await apiClient.get<OpenApiResponse>(
+    '/openapi.json',
+    undefined,
+    signal,
+  )
   const schema = response.components?.schemas?.[schemaName]
   if (!schema?.properties) return null
   const baseSet = new Set(baseFields)
@@ -632,20 +758,27 @@ export const getDynamicSchema = async (
   }
 }
 
-export const getTeamSchema = () =>
-  getDynamicSchema('TeamRequest', TEAM_BASE_FIELDS)
+export const getTeamSchema = (signal?: AbortSignal) =>
+  getDynamicSchema('TeamRequest', TEAM_BASE_FIELDS, signal)
 
 // Admin - Teams
-export const listTeams = async (orgSlug: string): Promise<Team[]> => {
+export const listTeams = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<Team[]> => {
   const response = await apiClient.get<Team[]>(
     `/organizations/${encodeURIComponent(orgSlug)}/teams/`,
+    undefined,
+    signal,
   )
   return Array.isArray(response) ? response : []
 }
 
-export const getTeam = (orgSlug: string, slug: string) =>
+export const getTeam = (orgSlug: string, slug: string, signal?: AbortSignal) =>
   apiClient.get<Team>(
     `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
   )
 
 export const createTeam = (orgSlug: string, team: TeamCreate) =>
@@ -668,9 +801,12 @@ export const deleteTeam = (orgSlug: string, slug: string) =>
 export const getTeamMembers = async (
   orgSlug: string,
   slug: string,
+  signal?: AbortSignal,
 ): Promise<TeamMember[]> => {
   const response = await apiClient.get<TeamMember[]>(
     `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}/members`,
+    undefined,
+    signal,
   )
   return Array.isArray(response) ? response : []
 }
@@ -693,16 +829,25 @@ export const removeTeamMember = (
 // Admin - Third-Party Services
 export const listThirdPartyServices = async (
   orgSlug: string,
+  signal?: AbortSignal,
 ): Promise<ThirdPartyService[]> => {
   const response = await apiClient.get<ThirdPartyService[]>(
     `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/`,
+    undefined,
+    signal,
   )
   return Array.isArray(response) ? response : []
 }
 
-export const getThirdPartyService = (orgSlug: string, slug: string) =>
+export const getThirdPartyService = (
+  orgSlug: string,
+  slug: string,
+  signal?: AbortSignal,
+) =>
   apiClient.get<ThirdPartyService>(
     `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
   )
 
 export const createThirdPartyService = (
@@ -733,9 +878,12 @@ export const deleteThirdPartyService = (orgSlug: string, slug: string) =>
 export const listServiceApplications = async (
   orgSlug: string,
   serviceSlug: string,
+  signal?: AbortSignal,
 ): Promise<ServiceApplication[]> => {
   const response = await apiClient.get<ServiceApplication[]>(
     `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/`,
+    undefined,
+    signal,
   )
   return Array.isArray(response) ? response : []
 }
@@ -744,9 +892,12 @@ export const getServiceApplication = (
   orgSlug: string,
   serviceSlug: string,
   appSlug: string,
+  signal?: AbortSignal,
 ) =>
   apiClient.get<ServiceApplication>(
     `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`,
+    undefined,
+    signal,
   )
 
 export const createServiceApplication = (
@@ -784,9 +935,12 @@ export const getApplicationSecrets = (
   orgSlug: string,
   serviceSlug: string,
   appSlug: string,
+  signal?: AbortSignal,
 ) =>
   apiClient.get<ServiceApplicationSecrets>(
     `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}/secrets`,
+    undefined,
+    signal,
   )
 
 export const updateApplicationSecrets = (
@@ -821,8 +975,8 @@ export const deleteUpload = (id: string) =>
   apiClient.delete<void>(`/uploads/${encodeURIComponent(id)}`)
 
 // API Keys (routes use the authenticated user, no user prefix)
-export const listApiKeys = async (): Promise<ApiKey[]> => {
-  const response = await apiClient.get<ApiKey[]>('/api-keys')
+export const listApiKeys = async (signal?: AbortSignal): Promise<ApiKey[]> => {
+  const response = await apiClient.get<ApiKey[]>('/api-keys', undefined, signal)
   return Array.isArray(response) ? response : []
 }
 
@@ -833,11 +987,17 @@ export const deleteApiKey = (keyId: string) =>
   apiClient.delete<void>(`/api-keys/${encodeURIComponent(keyId)}`)
 
 // Service Accounts
-export const listServiceAccounts = (params?: { is_active?: boolean }) =>
-  apiClient.get<ServiceAccount[]>('/service-accounts', params)
+export const listServiceAccounts = (
+  params?: { is_active?: boolean },
+  signal?: AbortSignal,
+) => apiClient.get<ServiceAccount[]>('/service-accounts', params, signal)
 
-export const getServiceAccount = (slug: string) =>
-  apiClient.get<ServiceAccount>(`/service-accounts/${encodeURIComponent(slug)}`)
+export const getServiceAccount = (slug: string, signal?: AbortSignal) =>
+  apiClient.get<ServiceAccount>(
+    `/service-accounts/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
+  )
 
 export const createServiceAccount = (data: ServiceAccountCreate) =>
   apiClient.post<ServiceAccount>('/service-accounts', data)
@@ -879,9 +1039,11 @@ export const removeServiceAccountFromOrg = (slug: string, orgSlug: string) =>
   )
 
 // Service Account Client Credentials
-export const listClientCredentials = (slug: string) =>
+export const listClientCredentials = (slug: string, signal?: AbortSignal) =>
   apiClient.get<ClientCredential[]>(
     `/service-accounts/${encodeURIComponent(slug)}/client-credentials`,
+    undefined,
+    signal,
   )
 
 export const createClientCredential = (
@@ -904,9 +1066,11 @@ export const rotateClientCredential = (slug: string, clientId: string) =>
   )
 
 // Service Account API Keys
-export const listServiceAccountApiKeys = (slug: string) =>
+export const listServiceAccountApiKeys = (slug: string, signal?: AbortSignal) =>
   apiClient.get<ApiKey[]>(
     `/service-accounts/${encodeURIComponent(slug)}/api-keys`,
+    undefined,
+    signal,
   )
 
 export const createServiceAccountApiKey = (
@@ -934,16 +1098,27 @@ export const rotateServiceAccountApiKey = (slug: string, keyId: string) =>
   )
 
 // Admin - Webhooks
-export const listWebhooks = async (orgSlug: string): Promise<Webhook[]> => {
+export const listWebhooks = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<Webhook[]> => {
   const response = await apiClient.get<Webhook[]>(
     `/organizations/${encodeURIComponent(orgSlug)}/webhooks/`,
+    undefined,
+    signal,
   )
   return Array.isArray(response) ? response : []
 }
 
-export const getWebhook = (orgSlug: string, slug: string) =>
+export const getWebhook = (
+  orgSlug: string,
+  slug: string,
+  signal?: AbortSignal,
+) =>
   apiClient.get<Webhook>(
     `/organizations/${encodeURIComponent(orgSlug)}/webhooks/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
   )
 
 export const createWebhook = (orgSlug: string, data: WebhookCreate) =>
@@ -970,9 +1145,12 @@ export const deleteWebhook = (orgSlug: string, slug: string) =>
 export const listServiceWebhooks = async (
   orgSlug: string,
   serviceSlug: string,
+  signal?: AbortSignal,
 ): Promise<Webhook[]> => {
   const response = await apiClient.get<Webhook[]>(
     `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/webhooks/`,
+    undefined,
+    signal,
   )
   return Array.isArray(response) ? response : []
 }
@@ -981,9 +1159,12 @@ export const listServiceWebhooks = async (
 export const listProjectServices = async (
   orgSlug: string,
   projectSlug: string,
+  signal?: AbortSignal,
 ): Promise<ProjectService[]> => {
   const response = await apiClient.get<ProjectService[]>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectSlug)}/services/`,
+    undefined,
+    signal,
   )
   return Array.isArray(response) ? response : []
 }

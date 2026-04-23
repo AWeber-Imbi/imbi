@@ -34,13 +34,13 @@ export function useAuth(): UseAuthReturn {
     refetch,
   } = useQuery<UserResponse>({
     queryKey: ['currentUser', getUsername()],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const username = getUsername()
       if (!username) {
         throw new Error('No username found in token')
       }
       try {
-        return await getUserByUsername(username)
+        return await getUserByUsername(username, signal)
       } catch (error) {
         console.error('[Auth] Error fetching user:', error)
         if (error instanceof ApiError && error.status === 401) {

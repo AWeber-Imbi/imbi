@@ -25,7 +25,7 @@ export function ConversationHistory({
 
   const { data: conversations = [] } = useQuery({
     queryKey: ['assistant', 'conversations'],
-    queryFn: () => listConversations({ limit: 20 }),
+    queryFn: ({ signal }) => listConversations({ limit: 20 }, signal),
     enabled: showHistory,
   })
 

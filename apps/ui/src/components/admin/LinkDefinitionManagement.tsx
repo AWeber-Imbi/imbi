@@ -42,7 +42,7 @@ export function LinkDefinitionManagement() {
     { orgSlug: string; slug: string }
   >({
     queryKey: ['linkDefinitions', orgSlug],
-    listFn: orgSlug ? () => listLinkDefinitions(orgSlug) : null,
+    listFn: orgSlug ? (signal) => listLinkDefinitions(orgSlug, signal) : null,
     createFn: ({ orgSlug, data }) => createLinkDefinition(orgSlug, data),
     updateFn: ({ orgSlug, slug, data }) =>
       updateLinkDefinition(orgSlug, slug, data),

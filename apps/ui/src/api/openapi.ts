@@ -4,13 +4,13 @@ import { useQuery } from '@tanstack/react-query'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type OpenApiSpec = Record<string, any>
 
-export const fetchOpenApiSpec = () =>
-  apiClient.get<OpenApiSpec>('/openapi.json')
+export const fetchOpenApiSpec = (signal?: AbortSignal) =>
+  apiClient.get<OpenApiSpec>('/openapi.json', undefined, signal)
 
 export function useOpenApiSpec() {
   return useQuery({
     queryKey: ['openapi-spec'],
-    queryFn: fetchOpenApiSpec,
+    queryFn: ({ signal }) => fetchOpenApiSpec(signal),
     staleTime: Infinity,
   })
 }
