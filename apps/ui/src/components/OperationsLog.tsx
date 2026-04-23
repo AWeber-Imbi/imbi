@@ -218,7 +218,7 @@ export function OperationsLog({
     isFetchingNextPage,
     fetchNextPage,
     refetch,
-  } = useInfiniteOperationsLog(apiFilters)
+  } = useInfiniteOperationsLog(orgSlug, apiFilters)
 
   const rawEntries: OperationsLogRecord[] = useMemo(
     () => data?.entries ?? [],

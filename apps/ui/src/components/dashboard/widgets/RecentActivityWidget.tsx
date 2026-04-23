@@ -1,5 +1,6 @@
 import { RecentActivity } from '../../RecentActivity'
 import { useInfiniteActivityFeed } from '@/hooks/useInfiniteActivityFeed'
+import { useOrganization } from '@/contexts/OrganizationContext'
 
 interface RecentActivityWidgetProps {
   onUserSelect?: (userName: string) => void
@@ -10,13 +11,15 @@ export function RecentActivityWidget({
   onUserSelect,
   onProjectSelect,
 }: RecentActivityWidgetProps) {
+  const { selectedOrganization } = useOrganization()
+  const orgSlug = selectedOrganization?.slug ?? ''
   const {
     data: activityData,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
     isLoading,
-  } = useInfiniteActivityFeed()
+  } = useInfiniteActivityFeed(orgSlug)
 
   const activityFeed = activityData?.activities || []
 

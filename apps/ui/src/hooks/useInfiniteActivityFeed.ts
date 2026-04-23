@@ -60,9 +60,10 @@ async function fetchActivityFeed({
   }
 }
 
-export function useInfiniteActivityFeed() {
+export function useInfiniteActivityFeed(orgSlug: string) {
   return useInfiniteQuery({
-    queryKey: ['activityFeed', 'infinite'],
+    queryKey: ['activityFeed', 'infinite', orgSlug],
+    enabled: Boolean(orgSlug),
     queryFn: fetchActivityFeed,
     initialPageParam: undefined,
     getNextPageParam: (lastPage) => lastPage.nextToken,
