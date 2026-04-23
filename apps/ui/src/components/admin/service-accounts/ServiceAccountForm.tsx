@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { FormHeader } from '@/components/admin/form-header'
 import { getRoles } from '@/api/endpoints'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useDirtyState } from '@/hooks/useDirtyState'
 import { useFormScaffold } from '@/hooks/useFormScaffold'
 import type { ServiceAccount, ServiceAccountCreate } from '@/types'
 
@@ -59,6 +60,27 @@ export function ServiceAccountForm({
     setTouched,
     handleFieldChange,
   } = useFormScaffold()
+
+  // Warn on unsaved navigation. Snapshot the initial values once at mount so
+  // the baseline doesn't drift when `organizations` loads asynchronously (which
+  // would otherwise flip an untouched form into "dirty").
+  const [initialFormData] = useState(() => ({
+    slug: account?.slug ?? '',
+    display_name: account?.display_name ?? '',
+    description: account?.description ?? '',
+    is_active: account?.is_active ?? true,
+    organization_slug: organizations.length === 1 ? organizations[0].slug : '',
+    role_slug: '',
+  }))
+  const currentFormData = {
+    slug,
+    display_name: displayName,
+    description,
+    is_active: isActive,
+    organization_slug: organizationSlug,
+    role_slug: roleSlug,
+  }
+  useDirtyState(initialFormData, currentFormData, { enabled: !isLoading })
 
   // Validation functions
   const validateSlug = (value: string): string => {
