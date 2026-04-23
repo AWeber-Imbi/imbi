@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Plus, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/tooltip'
 import type { SchemaProperty } from '@/types'
 import { PROPERTY_TYPES, STRING_FORMATS } from './blueprint-schema-utils'
+import { BlueprintUiMapEditor } from './BlueprintUiMapEditor'
 
 interface BlueprintSchemaPropertyRowProps {
   prop: SchemaProperty
@@ -440,118 +441,25 @@ export function BlueprintSchemaPropertyRow({
                   [mapType]: Object.keys(map).length > 0 ? map : undefined,
                 })
               }
+              const setEntries = (next: [string, string][]) => {
+                setUiMapEntries({
+                  ...uiMapEntries,
+                  [stateKey]: next,
+                })
+              }
               return (
-                <div key={mapType}>
-                  <div className="mb-1 flex items-center justify-between">
-                    <label className="text-xs text-secondary">{mapLabel}</label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setUiMapEntries({
-                          ...uiMapEntries,
-                          [stateKey]: [...entries, ['', defaultVal]],
-                        })
-                      }}
-                      className={
-                        'hover:text-info/80 flex items-center gap-1 text-xs text-info'
-                      }
-                    >
-                      <Plus className="h-3 w-3" />
-                      Add entry
-                    </button>
-                  </div>
-                  {entries.length === 0 ? (
-                    <p className="text-xs italic text-tertiary">
-                      No {mapLabel.toLowerCase()} entries
-                    </p>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {entries.map(([eKey, eVal], idx) => (
-                        <div key={idx} className="flex items-center gap-1.5">
-                          <Input
-                            value={eKey}
-                            onChange={(e) => {
-                              const next = entries.map(
-                                (row, i): [string, string] =>
-                                  i === idx ? [e.target.value, row[1]] : row,
-                              )
-                              setUiMapEntries({
-                                ...uiMapEntries,
-                                [stateKey]: next,
-                              })
-                            }}
-                            onBlur={() => commit(entries)}
-                            placeholder={keyPh}
-                            className="flex-1 text-xs"
-                          />
-                          {isColor ? (
-                            <select
-                              value={eVal}
-                              onChange={(e) => {
-                                const next = entries.map(
-                                  (row, i): [string, string] =>
-                                    i === idx ? [row[0], e.target.value] : row,
-                                )
-                                setUiMapEntries({
-                                  ...uiMapEntries,
-                                  [stateKey]: next,
-                                })
-                                commit(next)
-                              }}
-                              className="rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground"
-                            >
-                              {[
-                                'green',
-                                'red',
-                                'amber',
-                                'yellow',
-                                'blue',
-                                'gray',
-                              ].map((c) => (
-                                <option key={c} value={c}>
-                                  {c}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <Input
-                              value={eVal}
-                              onChange={(e) => {
-                                const next = entries.map(
-                                  (row, i): [string, string] =>
-                                    i === idx ? [row[0], e.target.value] : row,
-                                )
-                                setUiMapEntries({
-                                  ...uiMapEntries,
-                                  [stateKey]: next,
-                                })
-                              }}
-                              onBlur={() => commit(entries)}
-                              placeholder={valPh}
-                              className="flex-1 text-xs"
-                            />
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const next = entries.filter((_, i) => i !== idx)
-                              setUiMapEntries({
-                                ...uiMapEntries,
-                                [stateKey]: next,
-                              })
-                              commit(next)
-                            }}
-                            className={
-                              'flex-shrink-0 text-tertiary hover:text-danger'
-                            }
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <BlueprintUiMapEditor
+                  key={mapType}
+                  mapType={mapType}
+                  label={mapLabel}
+                  keyPh={keyPh}
+                  valPh={valPh}
+                  defaultVal={defaultVal}
+                  isColor={isColor}
+                  entries={entries}
+                  setEntries={setEntries}
+                  commit={commit}
+                />
               )
             },
           )}
