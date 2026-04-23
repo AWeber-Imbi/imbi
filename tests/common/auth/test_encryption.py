@@ -68,6 +68,18 @@ class TestTokenEncryption(unittest.TestCase):
         fernet = encryption.get_fernet()
         self.assertIsInstance(fernet, Fernet)
 
+    def test_get_fernet_raises_when_key_missing(self):
+        """Test RuntimeError when encryption_key is unset."""
+        from imbi_common import settings
+
+        auth_settings = settings.Auth()
+        auth_settings.encryption_key = None
+        with self.assertRaises(RuntimeError) as ctx:
+            encryption.get_fernet(auth_settings)
+        self.assertEqual(str(ctx.exception), 'Encryption key not configured')
+        # Ensure get_fernet did not mutate the passed-in settings.
+        self.assertIsNone(auth_settings.encryption_key)
+
 
 if __name__ == '__main__':
     unittest.main()

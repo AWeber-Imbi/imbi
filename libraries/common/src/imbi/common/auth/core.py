@@ -9,6 +9,44 @@ import jwt
 from imbi_common import settings
 
 
+def _create_token(
+    subject: str,
+    *,
+    token_type: str,
+    ttl_seconds: int,
+    extra_claims: dict[str, typing.Any] | None,
+    auth_settings: settings.Auth,
+) -> str:
+    """Build and sign a JWT with the shared claim structure.
+
+    Args:
+        subject: Subject (user identifier) to encode in token
+        token_type: Value for the ``type`` claim (e.g. ``access``)
+        ttl_seconds: Token lifetime in seconds
+        extra_claims: Optional additional claims to include
+        auth_settings: Auth settings for JWT configuration
+
+    Returns:
+        JWT token string
+
+    """
+    now = datetime.datetime.now(datetime.UTC)
+    claims = {
+        'sub': subject,
+        'jti': secrets.token_urlsafe(16),
+        'type': token_type,
+        'iat': now,
+        'exp': now + datetime.timedelta(seconds=ttl_seconds),
+        **(extra_claims or {}),
+    }
+    token: str = jwt.encode(
+        claims,
+        auth_settings.jwt_secret,
+        algorithm=auth_settings.jwt_algorithm,
+    )
+    return token
+
+
 def create_access_token(
     subject: str,
     extra_claims: dict[str, typing.Any] | None = None,
@@ -28,26 +66,13 @@ def create_access_token(
     """
     if auth_settings is None:
         auth_settings = settings.get_auth_settings()
-
-    jti = secrets.token_urlsafe(16)
-    now = datetime.datetime.now(datetime.UTC)
-    expires = now + datetime.timedelta(
-        seconds=auth_settings.access_token_expire_seconds
+    return _create_token(
+        subject,
+        token_type='access',  # noqa: S106 - claim label, not a secret
+        ttl_seconds=auth_settings.access_token_expire_seconds,
+        extra_claims=extra_claims,
+        auth_settings=auth_settings,
     )
-
-    claims = {
-        'sub': subject,
-        'jti': jti,
-        'type': 'access',
-        'iat': now,
-        'exp': expires,
-        **(extra_claims or {}),
-    }
-
-    token: str = jwt.encode(
-        claims, auth_settings.jwt_secret, algorithm=auth_settings.jwt_algorithm
-    )
-    return token
 
 
 def create_refresh_token(
@@ -69,26 +94,13 @@ def create_refresh_token(
     """
     if auth_settings is None:
         auth_settings = settings.get_auth_settings()
-
-    jti = secrets.token_urlsafe(16)
-    now = datetime.datetime.now(datetime.UTC)
-    expires = now + datetime.timedelta(
-        seconds=auth_settings.refresh_token_expire_seconds
+    return _create_token(
+        subject,
+        token_type='refresh',  # noqa: S106 - claim label, not a secret
+        ttl_seconds=auth_settings.refresh_token_expire_seconds,
+        extra_claims=extra_claims,
+        auth_settings=auth_settings,
     )
-
-    claims = {
-        'sub': subject,
-        'jti': jti,
-        'type': 'refresh',
-        'iat': now,
-        'exp': expires,
-        **(extra_claims or {}),
-    }
-
-    token: str = jwt.encode(
-        claims, auth_settings.jwt_secret, algorithm=auth_settings.jwt_algorithm
-    )
-    return token
 
 
 def verify_token(

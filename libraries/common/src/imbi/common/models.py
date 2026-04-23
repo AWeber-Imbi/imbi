@@ -259,11 +259,13 @@ class Organization(Node):
     pass
 
 
+BelongsToOrganization = typing.Annotated[
+    Organization, Edge(rel_type='BELONGS_TO', direction='OUTGOING')
+]
+
+
 class Team(Node):
-    organization: typing.Annotated[
-        Organization,
-        Edge(rel_type='BELONGS_TO', direction='OUTGOING'),
-    ]
+    organization: BelongsToOrganization
 
 
 class Environment(Node):
@@ -278,24 +280,15 @@ class Environment(Node):
         ),
     ]
 
-    organization: typing.Annotated[
-        Organization,
-        Edge(rel_type='BELONGS_TO', direction='OUTGOING'),
-    ]
+    organization: BelongsToOrganization
 
 
 class ProjectType(Node):
-    organization: typing.Annotated[
-        Organization,
-        Edge(rel_type='BELONGS_TO', direction='OUTGOING'),
-    ]
+    organization: BelongsToOrganization
 
 
 class ThirdPartyService(Node):
-    organization: typing.Annotated[
-        Organization,
-        Edge(rel_type='BELONGS_TO', direction='OUTGOING'),
-    ]
+    organization: BelongsToOrganization
 
 
 class LinkDefinition(Node):
@@ -308,13 +301,7 @@ class LinkDefinition(Node):
     """
 
     url_template: str | None = None
-    organization: typing.Annotated[
-        Organization,
-        Edge(
-            rel_type='BELONGS_TO',
-            direction='OUTGOING',
-        ),
-    ]
+    organization: BelongsToOrganization
 
 
 class Project(Node):

@@ -6,6 +6,7 @@ dict of parameter values.  The execution layer (``graph.py``) is
 responsible for binding the parameters via ``psycopg.sql``.
 """
 
+import functools
 import typing
 
 import pydantic
@@ -43,31 +44,30 @@ def _get_edge(
     return None
 
 
+@functools.cache
 def _edge_fields(
     model_cls: type[pydantic.BaseModel],
-) -> list[tuple[str, pydantic.fields.FieldInfo, models.Edge]]:
-    """Return ``(name, field_info, edge)`` for every relationship field."""
+) -> tuple[tuple[str, pydantic.fields.FieldInfo, models.Edge], ...]:
+    """Return ``(name, field_info, edge)`` for every relationship field.
+
+    Cached per model class; ``model_fields`` is populated at class
+    creation time and never mutates, so the descriptor tuple is
+    safe to reuse across calls.
+
+    """
     result: list[tuple[str, pydantic.fields.FieldInfo, models.Edge]] = []
     for name, info in model_cls.model_fields.items():
         edge = _get_edge(info)
         if edge is not None:
             result.append((name, info, edge))
-    return result
+    return tuple(result)
 
 
 def _is_list_edge(
     field_info: pydantic.fields.FieldInfo,
 ) -> bool:
     """Return ``True`` when the field annotation is ``list[T]``."""
-    annotation = field_info.annotation
-    origin = typing.get_origin(annotation)
-    if origin is list:
-        return True
-    if origin is typing.Annotated:
-        args = typing.get_args(annotation)
-        if args:
-            return typing.get_origin(args[0]) is list
-    return False
+    return typing.get_origin(field_info.annotation) is list
 
 
 def _label(
@@ -263,10 +263,7 @@ def merge(
 
     """
     if match_on is None:
-        if isinstance(node, models.Node):
-            match_on = ['slug']
-        else:
-            match_on = ['id']
+        match_on = [_identity(node)[0]]
     if not match_on:
         raise ValueError('match_on must contain at least one key')
     props = _node_properties(node)

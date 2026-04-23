@@ -169,10 +169,7 @@ def get_fernet(auth_settings: settings.Auth | None = None) -> fernet.Fernet:
         auth_settings = settings.get_auth_settings()
 
     if not auth_settings.encryption_key:
-        # This should not happen since Auth now auto-generates encryption_key
-        auth_settings.encryption_key = fernet.Fernet.generate_key().decode(
-            'ascii'
-        )
+        raise RuntimeError('Encryption key not configured')
 
     return fernet.Fernet(auth_settings.encryption_key.encode('ascii'))
 

@@ -20,19 +20,28 @@ def _coerce_enum_case(
     return _coerce
 
 
-def _map_string_type(prop_schema: typing.Any) -> type[typing.Any]:
-    """Map JSON Schema string format to appropriate Python type"""
+def _map_string_type(
+    prop_schema: typing.Any,
+) -> tuple[type[typing.Any], list[str] | None]:
+    """Map JSON Schema string format to a Python type.
+
+    Returns a tuple of ``(field_type, enum_values)`` where
+    ``enum_values`` is the list of enum strings when the schema
+    declares a string enum, and ``None`` otherwise. Callers use
+    ``enum_values`` to decide whether to wrap the field in a
+    case-coercing validator.
+    """
     format_type = getattr(prop_schema, 'format', None)
     if format_type == 'email':
-        return pydantic.EmailStr
+        return pydantic.EmailStr, None
     elif format_type in ('uri', 'url'):
-        return pydantic.HttpUrl
+        return pydantic.HttpUrl, None
     elif format_type == 'date-time':
-        return datetime.datetime
+        return datetime.datetime, None
     elif format_type == 'date':
-        return datetime.date
+        return datetime.date, None
     elif format_type == 'time':
-        return datetime.time
+        return datetime.time, None
 
     # Check for enum constraint
     enum_values = getattr(prop_schema, 'enum', None)
@@ -42,9 +51,12 @@ def _map_string_type(prop_schema: typing.Any) -> type[typing.Any]:
         and all(isinstance(v, str) for v in enum_values)
     ):
         # Create Literal type from enum values
-        return typing.Literal[tuple(enum_values)]  # type: ignore[return-value]
+        literal_type: type[typing.Any] = typing.Literal[  # type: ignore[assignment]
+            tuple(enum_values)
+        ]
+        return literal_type, list(enum_values)
 
-    return str
+    return str, None
 
 
 def _map_array_type(prop_schema: typing.Any) -> type[typing.Any]:
@@ -66,24 +78,31 @@ def _map_array_type(prop_schema: typing.Any) -> type[typing.Any]:
         return list
 
 
-def _map_schema_type_to_python(prop_schema: typing.Any) -> type[typing.Any]:
-    """Map JSON Schema type to Python type"""
+def _map_schema_type_to_python(
+    prop_schema: typing.Any,
+) -> tuple[type[typing.Any], list[str] | None]:
+    """Map JSON Schema type to a Python type.
+
+    Returns a tuple of ``(field_type, enum_values)``.
+    ``enum_values`` is only populated for string enum schemas;
+    it is ``None`` for every other JSON Schema type.
+    """
     json_type = getattr(prop_schema, 'type', None)
 
     if json_type == 'string':
         return _map_string_type(prop_schema)
     elif json_type == 'integer':
-        return int
+        return int, None
     elif json_type == 'number':
-        return float
+        return float, None
     elif json_type == 'boolean':
-        return bool
+        return bool, None
     elif json_type == 'array':
-        return _map_array_type(prop_schema)
+        return _map_array_type(prop_schema), None
     elif json_type == 'object':
-        return dict
+        return dict, None
     else:
-        return typing.Any
+        return typing.Any, None
 
 
 def apply_blueprints[ModelType: pydantic.BaseModel](
@@ -104,8 +123,13 @@ def apply_blueprints[ModelType: pydantic.BaseModel](
                     and prop_name in blueprint.json_schema.required
                 )
 
-                # Map JSON Schema type to Python type
-                field_type: typing.Any = _map_schema_type_to_python(
+                # Map JSON Schema type to Python type. Enum
+                # detection lives in ``_map_string_type``; the
+                # returned ``enum_values`` drives the validator
+                # wrapping below.
+                field_type: typing.Any
+                enum_values: list[str] | None
+                field_type, enum_values = _map_schema_type_to_python(
                     prop_schema
                 )
 
@@ -113,13 +137,7 @@ def apply_blueprints[ModelType: pydantic.BaseModel](
                 # BeforeValidator so that incoming values are
                 # matched case-insensitively against the
                 # blueprint-defined enum values.
-                enum_values = getattr(prop_schema, 'enum', None)
-                if (
-                    enum_values
-                    and isinstance(enum_values, list)
-                    and getattr(prop_schema, 'type', None) == 'string'
-                    and all(isinstance(v, str) for v in enum_values)
-                ):
+                if enum_values is not None:
                     field_type = typing.Annotated[
                         field_type,
                         pydantic.BeforeValidator(
@@ -263,10 +281,9 @@ async def get_edge_model(
         order_by='priority',
     )
     matched = [bp for bp in all_blueprints if _matches_filter(bp, context)]
-    edge_base: type[models.RelationshipEdge] = type(
+    edge_base = pydantic.create_model(
         f'{source}{edge.title().replace("_", "")}{target}Edge',
-        (models.RelationshipEdge,),
-        {},
+        __base__=models.RelationshipEdge,
     )
     return apply_blueprints(edge_base, matched)
 

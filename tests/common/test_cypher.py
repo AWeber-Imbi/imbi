@@ -137,7 +137,13 @@ class PropsTemplateTests(unittest.TestCase):
 
 class EdgeFieldsTests(unittest.TestCase):
     def test_organization_has_no_edges(self) -> None:
-        self.assertEqual([], cypher._edge_fields(models.Organization))
+        self.assertEqual((), cypher._edge_fields(models.Organization))
+
+    def test_edge_fields_cached(self) -> None:
+        # Same class returns the same tuple instance.
+        first = cypher._edge_fields(models.Team)
+        second = cypher._edge_fields(models.Team)
+        self.assertIs(first, second)
 
     def test_team_has_one_edge(self) -> None:
         edges = cypher._edge_fields(models.Team)

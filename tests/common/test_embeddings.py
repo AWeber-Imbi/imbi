@@ -33,6 +33,17 @@ class EmbeddingsRegistryTests(unittest.TestCase):
         self.assertIsNone(embeddings._registry)
         self.assertEqual({}, embeddings._models)
 
+    def test_default_model_idempotent(self) -> None:
+        real_get_registry = embeddings._get_registry
+        with mock.patch(
+            'imbi_common.graph.embeddings._get_registry',
+            wraps=real_get_registry,
+        ) as spy:
+            first = embeddings.default_model()
+            for _ in range(10):
+                self.assertEqual(first, embeddings.default_model())
+            self.assertEqual(1, spy.call_count)
+
 
 class EmbedSyncTests(unittest.TestCase):
     def setUp(self) -> None:

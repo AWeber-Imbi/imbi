@@ -28,6 +28,29 @@ class SampleModelDifferent(pydantic.BaseModel):
     value: str
 
 
+class SampleModelWithAlias(pydantic.BaseModel):
+    """Model exercising Pydantic field aliases."""
+
+    model_config = pydantic.ConfigDict(populate_by_name=True)
+
+    id: int
+    row_version: int = pydantic.Field(default=1, alias='_row_version')
+
+
+class SampleEvidence(pydantic.BaseModel):
+    """Nested Pydantic model for Nested-column tests."""
+
+    type: str
+    snippet: str
+
+
+class SampleModelWithNestedModels(pydantic.BaseModel):
+    """Model with list[BaseModel] targeting a ClickHouse Nested column."""
+
+    id: int
+    evidence: list[SampleEvidence]
+
+
 class SampleEnum(enum.Enum):
     """Sample enum for value extraction."""
 
@@ -251,6 +274,62 @@ class InsertTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn('same type', str(cm.exception))
         self.assertIn('SampleModel', str(cm.exception))
+
+    async def test_insert_uses_field_aliases(self) -> None:
+        """Aliased fields must be sent using their alias name."""
+        mock_ch = mock.AsyncMock()
+        mock_summary = mock.MagicMock()
+        mock_ch.insert.return_value = mock_summary
+
+        data = [SampleModelWithAlias(id=1, row_version=7)]
+
+        with mock.patch.object(
+            clickhouse.client.Clickhouse,
+            'get_instance',
+            return_value=mock_ch,
+        ):
+            await clickhouse.insert('test_table', data)
+
+        call_args = mock_ch.insert.call_args
+        column_names = call_args[0][2]
+        self.assertIn('_row_version', column_names)
+        self.assertNotIn('row_version', column_names)
+        row_index = column_names.index('_row_version')
+        self.assertEqual(call_args[0][1][0][row_index], 7)
+
+    async def test_insert_flattens_nested_models(self) -> None:
+        """list[BaseModel] fields flatten to dotted Nested column names."""
+        mock_ch = mock.AsyncMock()
+        mock_summary = mock.MagicMock()
+        mock_ch.insert.return_value = mock_summary
+
+        data = [
+            SampleModelWithNestedModels(
+                id=1,
+                evidence=[
+                    SampleEvidence(type='text', snippet='hello'),
+                    SampleEvidence(type='link', snippet='world'),
+                ],
+            )
+        ]
+
+        with mock.patch.object(
+            clickhouse.client.Clickhouse,
+            'get_instance',
+            return_value=mock_ch,
+        ):
+            await clickhouse.insert('test_table', data)
+
+        call_args = mock_ch.insert.call_args
+        column_names = call_args[0][2]
+        self.assertIn('evidence.type', column_names)
+        self.assertIn('evidence.snippet', column_names)
+        self.assertNotIn('evidence', column_names)
+        type_index = column_names.index('evidence.type')
+        snippet_index = column_names.index('evidence.snippet')
+        row = call_args[0][1][0]
+        self.assertEqual(row[type_index], ['text', 'link'])
+        self.assertEqual(row[snippet_index], ['hello', 'world'])
 
     async def test_insert_single_model(self) -> None:
         """Test insert with single model."""

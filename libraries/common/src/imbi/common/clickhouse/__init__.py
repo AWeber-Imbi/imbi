@@ -17,7 +17,9 @@ __all__ = [
 ]
 
 
-def _dump(model: pydantic.BaseModel) -> dict[str, typing.Any]:
+def _dump(
+    model: pydantic.BaseModel, by_alias: bool = True
+) -> dict[str, typing.Any]:
     """
     Dump a Pydantic model to a format compatible with ClickHouse Nested types.
 
@@ -36,7 +38,7 @@ def _dump(model: pydantic.BaseModel) -> dict[str, typing.Any]:
         }
     """
     result: dict[str, typing.Any] = {}
-    model_dict = model.model_dump(by_alias=True)
+    model_dict = model.model_dump(by_alias=by_alias)
 
     for field_name, field_value in model_dict.items():
         if isinstance(field_value, list) and field_value:
@@ -135,13 +137,11 @@ async def insert(
             f'Expected {first_type.__name__}, but found mixed types.'
         )
 
-    column_names = list(data[0].model_dump().keys())
+    dumps = [_dump(model, by_alias=True) for model in data]
+    column_names = list(dumps[0].keys())
+    rows = [[dump[col] for col in column_names] for dump in dumps]
     clickhouse = client.Clickhouse.get_instance()
-    return await clickhouse.insert(
-        table,
-        [list(model.model_dump().values()) for model in data],
-        column_names,
-    )
+    return await clickhouse.insert(table, rows, column_names)
 
 
 async def query(

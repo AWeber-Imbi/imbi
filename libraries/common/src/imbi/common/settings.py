@@ -71,10 +71,7 @@ class Auth(pydantic_settings.BaseSettings):
             from cryptography import fernet
 
             self.encryption_key = fernet.Fernet.generate_key().decode('ascii')
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.warning(
+            LOGGER.warning(
                 'Encryption key auto-generated. Set IMBI_AUTH_ENCRYPTION_KEY '
                 'in production for stable key across restarts.'
             )

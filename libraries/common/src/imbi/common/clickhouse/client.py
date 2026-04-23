@@ -16,6 +16,7 @@ Example usage:
 """
 
 import asyncio
+import contextlib
 import logging
 import pathlib
 import tomllib
@@ -46,6 +47,22 @@ class SchemataQuery(pydantic.BaseModel):
 
 class DatabaseError(Exception):
     """Base class for errors raised by the Clickhouse client."""
+
+
+@contextlib.contextmanager
+def _translate_errors(operation: str) -> typing.Iterator[None]:
+    """Translate clickhouse driver errors into `DatabaseError`.
+
+    Logs the failure, reports it to Sentry when `sentry_sdk` is
+    installed, and re-raises as `DatabaseError` with a clear message.
+    """
+    try:
+        yield
+    except exceptions.DatabaseError as err:
+        LOGGER.error('Error during clickhouse %s: %s', operation, err)
+        if sentry_sdk is not None:
+            sentry_sdk.capture_exception(err)
+        raise DatabaseError(f'Clickhouse {operation} failed: {err}') from err
 
 
 class Clickhouse:
@@ -102,15 +119,10 @@ class Clickhouse:
             await self.initialize()
         if not self._clickhouse:
             raise RuntimeError('Failed to initialize ClickHouse client')
-        try:
+        with _translate_errors(f'insert into {table}'):
             return await self._clickhouse.insert(
                 table, data, column_names=column_names
             )
-        except exceptions.DatabaseError as err:
-            LOGGER.error('Error inserting data to %s: %s', table, err)
-            if sentry_sdk:
-                sentry_sdk.capture_exception(err)
-            raise DatabaseError(str(err)) from err
 
     async def query(
         self, statement: str, parameters: dict[str, typing.Any] | None = None
@@ -133,23 +145,18 @@ class Clickhouse:
             raise RuntimeError('Failed to initialize ClickHouse client')
         LOGGER.debug('Clickhouse QUERY: %s', statement)
         LOGGER.debug('Clickhouse QUERY Parameters: %r', parameters)
-        try:
+        with _translate_errors('query'):
             result = await self._clickhouse.query(
                 statement, parameters=parameters or {}
             )
-        except exceptions.DatabaseError as err:
-            LOGGER.error('Error querying data: %s', err)
-            if sentry_sdk:
-                sentry_sdk.capture_exception(err)
-            raise DatabaseError(str(err)) from err
         results = []
         for row in result.result_rows:
-            data = dict(zip(result.column_names, row, strict=False))
+            data = dict(zip(result.column_names, row, strict=True))
             results.append(data)
         return results
 
     async def _connect(
-        self, delay: float = 0.5, attempt: int = 1
+        self, delay: float = 0.5
     ) -> asyncclient.AsyncClient | None:
         host = helpers.unwrap_as(str, self._settings.url.host)
         port = (
@@ -157,41 +164,45 @@ class Clickhouse:
             if self._settings.url.port is None
             else self._settings.url.port
         )
-        LOGGER.debug(
-            'Connecting to Clickhouse at %s:%s (attempt %d)...',
-            host,
-            port,
-            attempt,
-        )
-        try:
-            # Extract database from path (strip leading /)
-            path = self._settings.url.path
-            database = path[1:] if path else 'internal'
-            if not database:
-                database = 'internal'
+        path = self._settings.url.path
+        database = path[1:] if path else 'internal'
+        if not database:
+            database = 'internal'
 
-            return await clickhouse_connect.driver.create_async_client(
-                host=host,
-                port=port,
-                username=self._settings.url.username,
-                password=self._settings.url.password or '',
-                database=database,
-                connect_timeout=self._settings.connect_timeout,
+        max_attempts = self._settings.max_connect_attempts
+        current_delay = delay
+        for attempt in range(1, max_attempts + 1):
+            LOGGER.debug(
+                'Connecting to Clickhouse at %s:%s (attempt %d)...',
+                host,
+                port,
+                attempt,
             )
-        except exceptions.OperationalError as err:
-            LOGGER.warning(
-                'Failed to connect to Clickhouse, sleeping %.2f seconds: %s',
-                delay,
-                err,
-            )
-            await asyncio.sleep(delay)
-            if attempt >= self._settings.max_connect_attempts:
-                LOGGER.critical(
-                    'Failed to Connect to Clickhouse after %s attempts',
-                    attempt,
+            try:
+                return await clickhouse_connect.driver.create_async_client(
+                    host=host,
+                    port=port,
+                    username=self._settings.url.username,
+                    password=self._settings.url.password or '',
+                    database=database,
+                    connect_timeout=self._settings.connect_timeout,
                 )
-                return None
-            return await self._connect(delay * 2, attempt + 1)
+            except exceptions.OperationalError as err:
+                if attempt >= max_attempts:
+                    LOGGER.critical(
+                        'Failed to Connect to Clickhouse after %s attempts',
+                        attempt,
+                    )
+                    return None
+                LOGGER.warning(
+                    'Failed to connect to Clickhouse, sleeping %.2f '
+                    'seconds: %s',
+                    current_delay,
+                    err,
+                )
+                await asyncio.sleep(current_delay)
+                current_delay *= 2
+        return None
 
     def _load_schemata_queries(self) -> list[SchemataQuery]:
         """Load queries from schemata.toml file.

@@ -1,5 +1,6 @@
 """Tests for the graph module."""
 
+import datetime
 import json
 import unittest
 from unittest import mock
@@ -86,6 +87,29 @@ class CypherParamTests(unittest.TestCase):
     def test_string_with_dollar_quote(self) -> None:
         self.assertEqual(self._render('a$$b'), "'a$$b'")
 
+    def test_string_mixed_apostrophe_and_backslash(self) -> None:
+        # ``O'Brien\back`` — backslash must be doubled *first*
+        # then the apostrophe escaped, so the emitted literal
+        # survives Cypher parsing unchanged.
+        self.assertEqual(
+            self._render("O'Brien\\back"),
+            "'O\\'Brien\\\\back'",
+        )
+
+    def test_string_with_embedded_double_dollar(self) -> None:
+        # ``$$`` is only meaningful to PostgreSQL dollar quoting;
+        # Cypher escaping leaves it untouched.
+        self.assertEqual(
+            self._render('pre$$post'),
+            "'pre$$post'",
+        )
+
+    def test_string_with_only_backslashes(self) -> None:
+        self.assertEqual(
+            self._render('\\\\'),
+            "'\\\\\\\\'",
+        )
+
     # -- lists --
 
     def test_empty_list(self) -> None:
@@ -155,6 +179,38 @@ class DollarQuoteTagTests(unittest.TestCase):
         tag = client._dollar_quote_tag(body)
         self.assertEqual(tag, '$q1$')
         self.assertNotIn(tag, body)
+
+
+class BuildCypherSqlTests(unittest.IsolatedAsyncioTestCase):
+    """Regression tests for _build_cypher_sql composition.
+
+    The previous implementation round-tripped the rendered
+    Cypher through ``sql.SQL(resolved_string)``, which treated
+    literal ``{`` / ``}`` in user data as format placeholders
+    and raised ``IndexError`` at format time.  After switching
+    to ``sql.Composed``, user data containing braces passes
+    through untouched.
+
+    """
+
+    async def test_user_value_with_literal_braces(self) -> None:
+        g = graph.Graph()
+        await g.open()
+        try:
+            async with g.pool.connection() as conn:
+                built = g._build_cypher_sql(
+                    conn,
+                    'MATCH (n:Organization {{name: {name}}}) RETURN n',
+                    {'name': 'pre{weird}post'},
+                )
+                rendered = built.as_string(conn)
+        finally:
+            await g.close()
+        # The user value survives verbatim inside the Cypher
+        # body — it is NOT re-interpreted as placeholders.
+        self.assertIn('pre{weird}post', rendered)
+        # And the Cypher property-map braces are still present.
+        self.assertIn('{name: ', rendered)
 
 
 class GraphInitTests(unittest.TestCase):
@@ -306,6 +362,95 @@ class EmbeddableFieldsTests(unittest.TestCase):
         self.assertIsNone(by_name['description'])
 
 
+class DeleteEmbeddingsWhereTests(
+    unittest.IsolatedAsyncioTestCase,
+):
+    """Verify the three historical call sites compose correctly.
+
+    ``_delete_embeddings_where`` replaces ``_delete_embeddings``,
+    ``_delete_attr_embeddings``, and ``_delete_orphan_chunks``.
+    Each branch below asserts the rendered SQL and parameters
+    match the behaviour of the helper it collapsed.
+
+    """
+
+    @staticmethod
+    def _captured(mock_conn: mock.AsyncMock) -> tuple[str, dict]:
+        """Return the rendered SQL and params dict from the mock."""
+        call = mock_conn.execute.await_args
+        assert call is not None
+        query_obj, params = call.args
+        return query_obj.as_string(None), params
+
+    async def test_delete_all_embeddings_for_node(self) -> None:
+        mock_conn = mock.AsyncMock()
+        await client.Graph._delete_embeddings_where(
+            mock_conn,
+            node_label='Organization',
+            node_id='org-1',
+        )
+        sql_text, params = self._captured(mock_conn)
+        self.assertIn('DELETE FROM public.embeddings', sql_text)
+        self.assertIn('node_label = %(node_label)s', sql_text)
+        self.assertIn('node_id = %(node_id)s', sql_text)
+        self.assertNotIn('attribute', sql_text)
+        self.assertNotIn('model_name', sql_text)
+        self.assertNotIn('chunk_index', sql_text)
+        self.assertEqual(
+            params,
+            {'node_label': 'Organization', 'node_id': 'org-1'},
+        )
+
+    async def test_delete_single_attribute(self) -> None:
+        mock_conn = mock.AsyncMock()
+        await client.Graph._delete_embeddings_where(
+            mock_conn,
+            node_label='Organization',
+            node_id='org-1',
+            attribute='description',
+        )
+        sql_text, params = self._captured(mock_conn)
+        self.assertIn('attribute = %(attribute)s', sql_text)
+        self.assertNotIn('model_name', sql_text)
+        self.assertNotIn('chunk_index', sql_text)
+        self.assertEqual(
+            params,
+            {
+                'node_label': 'Organization',
+                'node_id': 'org-1',
+                'attribute': 'description',
+            },
+        )
+
+    async def test_delete_orphan_chunks(self) -> None:
+        mock_conn = mock.AsyncMock()
+        await client.Graph._delete_embeddings_where(
+            mock_conn,
+            node_label='Organization',
+            node_id='org-1',
+            attribute='description',
+            model_name='text',
+            min_chunk_index=3,
+        )
+        sql_text, params = self._captured(mock_conn)
+        self.assertIn('attribute = %(attribute)s', sql_text)
+        self.assertIn('model_name = %(model_name)s', sql_text)
+        self.assertIn(
+            'chunk_index >= %(min_chunk_index)s',
+            sql_text,
+        )
+        self.assertEqual(
+            params,
+            {
+                'node_label': 'Organization',
+                'node_id': 'org-1',
+                'attribute': 'description',
+                'model_name': 'text',
+                'min_chunk_index': 3,
+            },
+        )
+
+
 class AutoEmbedTests(unittest.IsolatedAsyncioTestCase):
     """Test _auto_embed with mocked embeddings module."""
 
@@ -369,3 +514,87 @@ class SearchResultTests(unittest.TestCase):
         )
         with self.assertRaises(AttributeError):
             r.distance = 1.0  # type: ignore[misc]
+
+
+class SearchNodesDeserializationTests(
+    unittest.IsolatedAsyncioTestCase,
+):
+    """Verify search_nodes runs field validators.
+
+    Regression guard: earlier versions called
+    ``model_construct`` directly so ISO timestamp strings
+    were never coerced to ``datetime``.
+
+    """
+
+    async def test_search_nodes_runs_validators(self) -> None:
+        g = graph.Graph()
+        g.opened = True
+
+        node_id = 'org-1'
+        iso = '2026-04-22T12:34:56+00:00'
+        props = {
+            'id': node_id,
+            'name': 'Acme',
+            'slug': 'acme',
+            'description': None,
+            'created_at': iso,
+        }
+        vertex = (
+            json.dumps(
+                {
+                    'id': 1,
+                    'label': 'Organization',
+                    'properties': props,
+                },
+            )
+            + '::vertex'
+        )
+
+        async def fake_search(
+            query: str,
+            *,
+            model_name: str = 'text',
+            node_label: str | None = None,
+            limit: int = 10,
+            distance_threshold: float | None = None,
+        ) -> list[graph.SearchResult]:
+            return [
+                graph.SearchResult(
+                    node_label='Organization',
+                    node_id=node_id,
+                    attribute='name',
+                    chunk_text='Acme',
+                    distance=0.1,
+                ),
+            ]
+
+        async def fake_execute(
+            query_template: str,
+            params: dict[str, object] | None = None,
+            columns: list[str] | None = None,
+        ) -> list[dict[str, object]]:
+            return [{'n': vertex}]
+
+        with (
+            mock.patch.object(g, 'search', side_effect=fake_search),
+            mock.patch.object(g, 'execute', side_effect=fake_execute),
+        ):
+            result = await g.search_nodes(
+                models.Organization,
+                'acme',
+            )
+
+        self.assertEqual(len(result), 1)
+        org = result[0]
+        self.assertIsInstance(org, models.Organization)
+        self.assertEqual(org.id, node_id)
+        # The validator coerced the ISO string to a datetime.
+        self.assertIsInstance(
+            org.created_at,
+            datetime.datetime,
+        )
+        self.assertEqual(
+            org.created_at,
+            datetime.datetime.fromisoformat(iso),
+        )

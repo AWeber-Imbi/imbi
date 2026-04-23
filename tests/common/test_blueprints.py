@@ -489,7 +489,7 @@ class MapSchemaTypeToPythonTests(unittest.TestCase):
             type = None
 
         self.assertEqual(
-            typing.Any,
+            (typing.Any, None),
             blueprints._map_schema_type_to_python(S()),
         )
 

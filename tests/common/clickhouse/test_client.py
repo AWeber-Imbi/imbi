@@ -26,6 +26,47 @@ class SchemataQueryTestCase(unittest.TestCase):
         self.assertFalse(query.enabled)
 
 
+class TranslateErrorsTestCase(unittest.TestCase):
+    """Tests for the `_translate_errors` helper."""
+
+    def test_translates_database_error(self) -> None:
+        """Driver DatabaseError becomes client.DatabaseError."""
+        with self.assertRaises(client.DatabaseError) as cm:
+            with client._translate_errors('query'):
+                raise exceptions.DatabaseError('boom')
+
+        self.assertIn('query', str(cm.exception))
+        self.assertIn('boom', str(cm.exception))
+        self.assertIsInstance(cm.exception.__cause__, exceptions.DatabaseError)
+
+    def test_captures_to_sentry_when_available(self) -> None:
+        """Helper reports to sentry_sdk when the module is installed."""
+        mock_sentry = mock.MagicMock()
+        with mock.patch(
+            'imbi_common.clickhouse.client.sentry_sdk', mock_sentry
+        ):
+            with self.assertRaises(client.DatabaseError):
+                with client._translate_errors('insert into t'):
+                    raise exceptions.DatabaseError('bad')
+
+        mock_sentry.capture_exception.assert_called_once()
+        captured = mock_sentry.capture_exception.call_args.args[0]
+        self.assertIsInstance(captured, exceptions.DatabaseError)
+
+    def test_skips_sentry_when_unavailable(self) -> None:
+        """Helper does not explode when sentry_sdk is None."""
+        with mock.patch('imbi_common.clickhouse.client.sentry_sdk', None):
+            with self.assertRaises(client.DatabaseError):
+                with client._translate_errors('query'):
+                    raise exceptions.DatabaseError('nope')
+
+    def test_passes_through_non_database_errors(self) -> None:
+        """Other exceptions are not translated."""
+        with self.assertRaises(ValueError):
+            with client._translate_errors('query'):
+                raise ValueError('unrelated')
+
+
 class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
@@ -358,6 +399,36 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             self.mock_create_client.call_count,
             ch._settings.max_connect_attempts,
+        )
+
+    async def test_connect_no_sleep_on_final_attempt(self) -> None:
+        """Ensure _connect does not sleep after the last failed attempt.
+
+        The iterative retry loop should sleep only between attempts, so
+        the number of sleeps equals max_connect_attempts - 1 when every
+        attempt fails.
+        """
+        ch = client.Clickhouse.get_instance()
+        ch._settings.max_connect_attempts = 4
+
+        self.mock_create_client.side_effect = exceptions.OperationalError(
+            'Connection refused'
+        )
+
+        with mock.patch(
+            'imbi_common.clickhouse.client.asyncio.sleep',
+            new=mock.AsyncMock(),
+        ) as mock_sleep:
+            result = await ch._connect(delay=0.01)
+
+        self.assertIsNone(result)
+        self.assertEqual(
+            self.mock_create_client.call_count,
+            ch._settings.max_connect_attempts,
+        )
+        self.assertEqual(
+            mock_sleep.call_count,
+            ch._settings.max_connect_attempts - 1,
         )
 
     async def test_load_schemata_queries_success(self) -> None:

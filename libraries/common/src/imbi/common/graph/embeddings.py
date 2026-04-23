@@ -34,9 +34,18 @@ def _get_registry() -> dict[str, settings.EmbeddingModelConfig]:
 
 
 def default_model() -> str:
-    """Return the configured default model name."""
-    _get_registry()
-    return _default_model or 'text'
+    """Return the configured default model name.
+
+    Uses a double-checked lock so concurrent first callers
+    don't race while subsequent calls skip the lock entirely.
+    """
+    cached = _default_model
+    if cached is not None:
+        return cached
+    with _lock:
+        if _default_model is None:
+            _get_registry()
+        return _default_model or 'text'
 
 
 def _resolve(model_name: str | None) -> str:
