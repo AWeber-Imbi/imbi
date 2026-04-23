@@ -908,3 +908,130 @@ class ProjectRelationshipsEndpointTestCase(_RelationshipsTestBase):
             'so ordering is stable when multiple related projects share a '
             'name across namespaces',
         )
+
+
+class CreateProjectRelationshipTestCase(_RelationshipsTestBase):
+    """Tests for POST /projects/{id}/relationships/{target_id}."""
+
+    _permissions: typing.ClassVar[set[str]] = {'project:write'}
+
+    def _target_url(self, target_id: str, pid: str = PROJECT_ID) -> str:
+        return (
+            f'/organizations/engineering/projects/{pid}'
+            f'/relationships/{target_id}'
+        )
+
+    def test_create_edge(self) -> None:
+        """Creates a DEPENDS_ON edge and returns 204."""
+        self.mock_db.execute.return_value = [{'source_id': PROJECT_ID}]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(self._target_url('target1'))
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(self.mock_db.execute.call_count, 1)
+        query = self.mock_db.execute.call_args.args[0]
+        self.assertIn('MERGE', query)
+        self.assertIn('DEPENDS_ON', query)
+
+    def test_create_is_idempotent(self) -> None:
+        """MERGE makes repeated calls safe; still returns 204."""
+        self.mock_db.execute.return_value = [{'source_id': PROJECT_ID}]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            first = self.client.post(self._target_url('target1'))
+            second = self.client.post(self._target_url('target1'))
+
+        self.assertEqual(first.status_code, 204)
+        self.assertEqual(second.status_code, 204)
+        self.assertEqual(self.mock_db.execute.call_count, 2)
+        for call in self.mock_db.execute.call_args_list:
+            query = call.args[0]
+            self.assertIn('MERGE', query)
+            self.assertIn('DEPENDS_ON', query)
+
+    def test_source_not_found(self) -> None:
+        """Returns 404 when source project is missing."""
+        self.mock_db.execute.return_value = []
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(
+                self._target_url('target1', pid='missing'),
+            )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])
+
+    def test_target_not_found(self) -> None:
+        """Returns 404 when target project is missing."""
+        self.mock_db.execute.return_value = []
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(self._target_url('missing-target'))
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])
+
+    def test_self_reference_rejected(self) -> None:
+        """Returns 400 when source and target are the same project."""
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(self._target_url(PROJECT_ID))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('itself', response.json()['detail'])
+        self.mock_db.execute.assert_not_called()
+
+
+class DeleteProjectRelationshipTestCase(_RelationshipsTestBase):
+    """Tests for DELETE /projects/{id}/relationships/{target_id}."""
+
+    _permissions: typing.ClassVar[set[str]] = {'project:write'}
+
+    def _target_url(self, target_id: str, pid: str = PROJECT_ID) -> str:
+        return (
+            f'/organizations/engineering/projects/{pid}'
+            f'/relationships/{target_id}'
+        )
+
+    def test_delete_edge(self) -> None:
+        """Removes a DEPENDS_ON edge and returns 204."""
+        self.mock_db.execute.return_value = [{'source_id': PROJECT_ID}]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.delete(self._target_url('target1'))
+
+        self.assertEqual(response.status_code, 204)
+        query = self.mock_db.execute.call_args.args[0]
+        self.assertIn('DELETE r', query)
+        self.assertIn('DEPENDS_ON', query)
+
+    def test_edge_missing(self) -> None:
+        """Returns 404 when the edge does not exist."""
+        self.mock_db.execute.return_value = []
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.delete(self._target_url('target1'))
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])

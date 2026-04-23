@@ -941,6 +941,115 @@ async def list_project_relationships(
     )
 
 
+@projects_router.post(
+    '/{project_id}/relationships/{target_id}',
+    status_code=204,
+)
+async def create_project_relationship(
+    org_slug: str,
+    project_id: str,
+    target_id: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:write'),
+        ),
+    ],
+) -> None:
+    """Create a single ``DEPENDS_ON`` edge from source to target project.
+
+    Idempotent: if the edge already exists, returns 204 without error.
+
+    Raises:
+        400: ``project_id`` equals ``target_id`` (self-reference).
+        404: Source or target project does not exist within ``org_slug``.
+    """
+    if project_id == target_id:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='A project cannot depend on itself',
+        )
+
+    query: typing.LiteralString = """
+    MATCH (src:Project {{id: {project_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    MATCH (tgt:Project {{id: {target_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    MERGE (src)-[:DEPENDS_ON]->(tgt)
+    RETURN src.id AS source_id
+    """
+    records = await db.execute(
+        query,
+        {
+            'project_id': project_id,
+            'org_slug': org_slug,
+            'target_id': target_id,
+        },
+        ['source_id'],
+    )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=(
+                f'Project {project_id!r} or target {target_id!r} not found'
+            ),
+        )
+
+
+@projects_router.delete(
+    '/{project_id}/relationships/{target_id}',
+    status_code=204,
+)
+async def delete_project_relationship(
+    org_slug: str,
+    project_id: str,
+    target_id: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:write'),
+        ),
+    ],
+) -> None:
+    """Remove a ``DEPENDS_ON`` edge from source to target project.
+
+    Raises:
+        404: The edge does not exist (source, target, or the edge
+            itself may be missing).
+    """
+    query: typing.LiteralString = """
+    MATCH (src:Project {{id: {project_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    MATCH (tgt:Project {{id: {target_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    MATCH (src)-[r:DEPENDS_ON]->(tgt)
+    DELETE r
+    RETURN src.id AS source_id
+    """
+    records = await db.execute(
+        query,
+        {
+            'project_id': project_id,
+            'org_slug': org_slug,
+            'target_id': target_id,
+        },
+        ['source_id'],
+    )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=(
+                f'Relationship from {project_id!r} to {target_id!r} not found'
+            ),
+        )
+
+
 async def _validate_update_refs(
     db: graph.Pool,
     org_slug: str,
