@@ -1217,3 +1217,420 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
         data = response.json()[0]
         self.assertEqual(data['scopes'], [])
         self.assertEqual(data['settings'], {})
+
+    # -- PATCH application (non-secret fields) --
+
+    def _set_non_admin(self) -> None:
+        from imbi_api.auth import permissions
+
+        non_admin = models.User(
+            email='user@example.com',
+            display_name='Regular User',
+            password_hash='$argon2id$hashed',
+            is_active=True,
+            is_admin=False,
+            is_service_account=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.auth_context = permissions.AuthContext(
+            user=non_admin,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions={
+                'third_party_service:read',
+                'third_party_service:update',
+            },
+        )
+
+        async def mock_get_current_user():
+            return self.auth_context
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            mock_get_current_user
+        )
+
+    def test_patch_application_name(self) -> None:
+        """Patch a non-secret field."""
+        updated = dict(self.app_data)
+        updated['name'] = 'Renamed App'
+        self.mock_db.execute.side_effect = [
+            [{'app': self.app_data}],
+            [{'app': updated}],
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.patch(
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/name',
+                        'value': 'Renamed App',
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['name'], 'Renamed App')
+        self.assertNotIn('client_secret', data)
+        self.assertNotIn('webhook_secret', data)
+
+    def test_patch_application_rejects_secret_path(self) -> None:
+        """Attempts to PATCH a secret field via this endpoint 400."""
+        self.mock_db.execute.return_value = [{'app': self.app_data}]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.patch(
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/client_secret',
+                        'value': 'new-secret',
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('read-only', response.json()['detail'])
+
+    def test_patch_application_preserves_secrets(self) -> None:
+        """Non-secret PATCH does not overwrite secret fields."""
+        updated = dict(self.app_data)
+        updated['name'] = 'Renamed'
+        self.mock_db.execute.side_effect = [
+            [{'app': self.app_data}],
+            [{'app': updated}],
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.patch(
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app',
+                json=[
+                    {'op': 'replace', 'path': '/name', 'value': 'Renamed'},
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        # Non-secret PATCH must not touch secret columns.
+        update_call = self.mock_db.execute.call_args_list[-1]
+        params = update_call.args[1]
+        for field in (
+            'client_secret',
+            'webhook_secret',
+            'private_key',
+            'signing_secret',
+        ):
+            self.assertNotIn(field, params)
+
+    def test_patch_application_not_found(self) -> None:
+        self.mock_db.execute.return_value = []
+        response = self.client.patch(
+            '/organizations/engineering'
+            '/third-party-services/stripe'
+            '/applications/missing',
+            json=[{'op': 'replace', 'path': '/name', 'value': 'X'}],
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_patch_application_slug_conflict(self) -> None:
+        """Slug rename that collides returns 409."""
+        self.mock_db.execute.side_effect = [
+            [{'app': self.app_data}],
+            psycopg.errors.UniqueViolation(),
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.patch(
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/slug',
+                        'value': 'existing',
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('already exists', response.json()['detail'])
+
+    def test_patch_application_invalid_value(self) -> None:
+        """Pydantic validation failure returns 400."""
+        self.mock_db.execute.return_value = [{'app': self.app_data}]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.patch(
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/status',
+                        'value': 'not-a-status',
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_patch_application_rejects_unknown_path(self) -> None:
+        """Unknown JSON Patch paths are rejected, not silently dropped."""
+        self.mock_db.execute.return_value = [{'app': self.app_data}]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.patch(
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app',
+                json=[{'op': 'add', 'path': '/bogus', 'value': 'x'}],
+            )
+
+        self.assertEqual(response.status_code, 400)
+
+    # -- PATCH application secrets --
+
+    def test_patch_secrets_non_admin(self) -> None:
+        self._set_non_admin()
+        response = self.client.patch(
+            '/organizations/engineering'
+            '/third-party-services/stripe'
+            '/applications/my-app/secrets',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/client_secret',
+                    'value': 'x',
+                },
+            ],
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('Admin', response.json()['detail'])
+
+    def test_patch_secrets_encrypts_value(self) -> None:
+        """PATCH secrets encrypts plaintext before persisting."""
+        existing = dict(self.app_data)
+        existing['client_secret'] = 'enc:old-secret'
+        updated = dict(existing)
+        updated['client_secret'] = 'enc:new-secret'
+
+        self.mock_db.execute.side_effect = [
+            [{'app': existing}],
+            [{'app': updated}],
+        ]
+
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app/secrets',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/client_secret',
+                        'value': 'new-secret',
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()['client_secret'],
+            'new-secret',
+        )
+        encrypt_calls = [
+            c.args[0] for c in self.mock_encryptor.encrypt.call_args_list
+        ]
+        self.assertIn('new-secret', encrypt_calls)
+
+        # The SET params use the encrypted value
+        update_call = self.mock_db.execute.call_args_list[-1]
+        params = update_call.args[1]
+        self.assertEqual(params['client_secret'], 'enc:new-secret')
+
+    def test_patch_secrets_rejects_non_secret_path(self) -> None:
+        self.mock_db.execute.return_value = [{'app': self.app_data}]
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app/secrets',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/name',
+                        'value': 'whatever',
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('secret', response.json()['detail'])
+
+    def test_patch_secrets_remove_optional(self) -> None:
+        """Remove op on optional secret nulls the field."""
+        existing = dict(self.app_data)
+        existing['webhook_secret'] = 'enc:old-webhook'
+        updated = dict(existing)
+        updated['webhook_secret'] = None
+
+        self.mock_db.execute.side_effect = [
+            [{'app': existing}],
+            [{'app': updated}],
+        ]
+
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app/secrets',
+                json=[
+                    {'op': 'remove', 'path': '/webhook_secret'},
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        update_call = self.mock_db.execute.call_args_list[-1]
+        params = update_call.args[1]
+        self.assertIsNone(params['webhook_secret'])
+
+    def test_patch_secrets_remove_client_secret_rejected(self) -> None:
+        """Cannot remove the required client_secret."""
+        self.mock_db.execute.return_value = [{'app': self.app_data}]
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app/secrets',
+                json=[
+                    {'op': 'remove', 'path': '/client_secret'},
+                ],
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('client_secret', response.json()['detail'])
+
+    def test_patch_secrets_application_not_found(self) -> None:
+        self.mock_db.execute.return_value = []
+        with self._patch_encryption():
+            response = self.client.patch(
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/missing/secrets',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/client_secret',
+                        'value': 'x',
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 404)
+
+    # -- DELETE a single secret --
+
+    def test_delete_single_secret_admin(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'app': self.app_data}],
+            [{'app': self.app_data}],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.delete(
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app/secrets/webhook_secret',
+            )
+
+        self.assertEqual(response.status_code, 204)
+        update_call = self.mock_db.execute.call_args_list[-1]
+        params = update_call.args[1]
+        self.assertIsNone(params['webhook_secret'])
+
+    def test_delete_single_secret_non_admin(self) -> None:
+        self._set_non_admin()
+        response = self.client.delete(
+            '/organizations/engineering'
+            '/third-party-services/stripe'
+            '/applications/my-app/secrets/webhook_secret',
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_delete_single_secret_unknown_field(self) -> None:
+        response = self.client.delete(
+            '/organizations/engineering'
+            '/third-party-services/stripe'
+            '/applications/my-app/secrets/bogus_field',
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_delete_single_secret_client_secret_rejected(self) -> None:
+        """Cannot clear the required client_secret."""
+        response = self.client.delete(
+            '/organizations/engineering'
+            '/third-party-services/stripe'
+            '/applications/my-app/secrets/client_secret',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('client_secret', response.json()['detail'])
+
+    def test_delete_single_secret_not_found(self) -> None:
+        self.mock_db.execute.return_value = []
+        response = self.client.delete(
+            '/organizations/engineering'
+            '/third-party-services/stripe'
+            '/applications/missing/secrets/webhook_secret',
+        )
+        self.assertEqual(response.status_code, 404)

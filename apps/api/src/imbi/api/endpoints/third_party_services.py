@@ -756,6 +756,135 @@ async def get_service_application(
     return models.ServiceApplicationResponse(**app)
 
 
+_APP_SECRET_PATHS: frozenset[str] = frozenset(
+    f'/{field}' for field in models.SECRET_FIELDS
+)
+
+
+class _ServiceApplicationPatchFields(pydantic.BaseModel):
+    """Internal validator for non-secret application fields."""
+
+    slug: str = pydantic.Field(
+        pattern=r'^[a-z][a-z0-9-]*$',
+        min_length=2,
+        max_length=64,
+    )
+    name: str = pydantic.Field(min_length=1, max_length=128)
+    description: str | None = None
+    app_type: str = pydantic.Field(min_length=1, max_length=64)
+    application_url: str | None = None
+    client_id: str = pydantic.Field(min_length=1)
+    scopes: list[str] = pydantic.Field(default_factory=list)
+    settings: dict[str, str | int | bool] = pydantic.Field(
+        default_factory=dict,
+    )
+    status: typing.Literal['active', 'inactive', 'revoked'] = 'active'
+
+    model_config = pydantic.ConfigDict(extra='forbid')
+
+
+@third_party_services_router.patch(
+    '/{slug}/applications/{app_slug}',
+)
+async def patch_service_application(
+    org_slug: str,
+    slug: str,
+    app_slug: str,
+    operations: list[json_patch.PatchOperation],
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission(
+                'third_party_service:update',
+            ),
+        ),
+    ],
+) -> models.ServiceApplicationResponse:
+    """Partially update non-secret application fields via JSON Patch.
+
+    Secret fields (``client_secret``, ``webhook_secret``, ``private_key``,
+    ``signing_secret``) cannot be modified here — use the ``/secrets``
+    sub-resource instead. Attempts to patch them return 400.
+
+    Parameters:
+        org_slug: Organization slug from URL.
+        slug: Third-party service slug from URL.
+        app_slug: Application slug from URL.
+        operations: JSON Patch operations.
+
+    Returns:
+        The updated application (secrets stripped).
+
+    Raises:
+        400: Invalid patch or secret path targeted.
+        404: Application not found.
+        409: Slug conflict.
+        422: Patch test failed or validation error.
+
+    """
+    existing = await _fetch_application(db, org_slug, slug, app_slug)
+
+    patchable = {
+        k: v for k, v in existing.items() if k not in models.SECRET_FIELDS
+    }
+
+    readonly = json_patch.READONLY_PATHS | _APP_SECRET_PATHS
+    patched = json_patch.apply_patch(patchable, operations, readonly)
+
+    try:
+        validated = _ServiceApplicationPatchFields(**patched)
+    except pydantic.ValidationError as e:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'Validation error: {e.errors()}',
+        ) from e
+
+    props = validated.model_dump(mode='json')
+
+    graph_props = _serialize_json_fields(props, _APP_JSON_FIELDS)
+    app_set = set_clause('a', graph_props)
+
+    update_query: str = (
+        'MATCH (a:ServiceApplication {{slug: {cur_app_slug}}})'
+        ' -[:REGISTERED_IN]->(s:ThirdPartyService'
+        ' {{slug: {svc_slug}}})'
+        ' -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})'
+        f' {app_set}'
+        ' RETURN a{{.*}} AS app'
+    )
+    try:
+        updated = await db.execute(
+            update_query,
+            {
+                'cur_app_slug': app_slug,
+                'svc_slug': slug,
+                'org_slug': org_slug,
+                **graph_props,
+            },
+            ['app'],
+        )
+    except psycopg.errors.UniqueViolation as e:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'Application {props["slug"]!r} already exists'
+                f' in service {slug!r}'
+            ),
+        ) from e
+
+    if not updated:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=(f'Application {app_slug!r} not found in service {slug!r}'),
+        )
+
+    app = graph.parse_agtype(updated[0]['app'])
+    app = _deserialize_json_fields(app, _APP_JSON_FIELDS)
+    _strip_secrets(app)
+    return models.ServiceApplicationResponse(**app)
+
+
 @third_party_services_router.delete(
     '/{slug}/applications/{app_slug}',
     status_code=204,
@@ -834,3 +963,192 @@ async def get_application_secrets(
     app = await _fetch_application(db, org_slug, slug, app_slug)
     encryptor = encryption.TokenEncryption.get_instance()
     return _build_secrets_response(app, encryptor)
+
+
+def _require_secret_field(path: str) -> str:
+    """Validate that a JSON Pointer path targets a known secret field.
+
+    Returns the field name. Raises 400 otherwise.
+    """
+    if not path.startswith('/') or '/' in path[1:]:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'Invalid secret path {path!r}',
+        )
+    field = path[1:]
+    if field not in models.SECRET_FIELDS:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                f'Path {path!r} is not a recognized secret field;'
+                f' allowed: {sorted(models.SECRET_FIELDS)}'
+            ),
+        )
+    return field
+
+
+@third_party_services_router.patch(
+    '/{slug}/applications/{app_slug}/secrets',
+)
+async def patch_application_secrets(
+    org_slug: str,
+    slug: str,
+    app_slug: str,
+    operations: list[json_patch.PatchOperation],
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission(
+                'third_party_service:update',
+            ),
+        ),
+    ],
+) -> models.ServiceApplicationSecrets:
+    """Update application secrets via JSON Patch.
+
+    Each operation's ``value`` is plaintext; the handler encrypts it
+    before persisting. Only fields in ``models.SECRET_FIELDS`` are
+    addressable. Requires admin privileges.
+    """
+    if not auth.is_admin:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Admin privileges required to update secrets',
+        )
+
+    existing = await _fetch_application(db, org_slug, slug, app_slug)
+    encryptor = encryption.TokenEncryption.get_instance()
+
+    secret_updates: dict[str, str | None] = {}
+    for op in operations:
+        field = _require_secret_field(op.path)
+        if op.op in ('add', 'replace'):
+            if not isinstance(op.value, str) or not op.value:
+                raise fastapi.HTTPException(
+                    status_code=400,
+                    detail=(
+                        f'Secret {field!r} requires a non-empty string value'
+                    ),
+                )
+            secret_updates[field] = encryptor.encrypt(op.value)
+        elif op.op == 'remove':
+            if field == 'client_secret':
+                raise fastapi.HTTPException(
+                    status_code=400,
+                    detail='client_secret is required and cannot be removed',
+                )
+            secret_updates[field] = None
+        else:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=(
+                    f'Operation {op.op!r} is not supported on secrets;'
+                    ' use add, replace, or remove'
+                ),
+            )
+
+    if not secret_updates:
+        return _build_secrets_response(existing, encryptor)
+
+    app_set = set_clause('a', secret_updates)
+    update_query: str = (
+        'MATCH (a:ServiceApplication {{slug: {app_slug}}})'
+        ' -[:REGISTERED_IN]->(s:ThirdPartyService'
+        ' {{slug: {svc_slug}}})'
+        ' -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})'
+        f' {app_set}'
+        ' RETURN a{{.*}} AS app'
+    )
+    records = await db.execute(
+        update_query,
+        {
+            'app_slug': app_slug,
+            'svc_slug': slug,
+            'org_slug': org_slug,
+            **secret_updates,
+        },
+        ['app'],
+    )
+
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=(f'Application {app_slug!r} not found in service {slug!r}'),
+        )
+
+    updated_app = graph.parse_agtype(records[0]['app'])
+    return _build_secrets_response(updated_app, encryptor)
+
+
+@third_party_services_router.delete(
+    '/{slug}/applications/{app_slug}/secrets/{field}',
+    status_code=204,
+)
+async def delete_application_secret(
+    org_slug: str,
+    slug: str,
+    app_slug: str,
+    field: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission(
+                'third_party_service:update',
+            ),
+        ),
+    ],
+) -> None:
+    """Clear a single optional application secret. Admin-only.
+
+    ``client_secret`` is required and cannot be cleared via this
+    endpoint.
+    """
+    if not auth.is_admin:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Admin privileges required to update secrets',
+        )
+
+    if field not in models.SECRET_FIELDS:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                f'Field {field!r} is not a recognized secret;'
+                f' allowed: {sorted(models.SECRET_FIELDS)}'
+            ),
+        )
+    if field == 'client_secret':
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='client_secret is required and cannot be cleared',
+        )
+
+    await _fetch_application(db, org_slug, slug, app_slug)
+
+    app_set = set_clause('a', {field: None})
+    update_query: str = (
+        'MATCH (a:ServiceApplication {{slug: {app_slug}}})'
+        ' -[:REGISTERED_IN]->(s:ThirdPartyService'
+        ' {{slug: {svc_slug}}})'
+        ' -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})'
+        f' {app_set}'
+        ' RETURN a{{.*}} AS app'
+    )
+    records = await db.execute(
+        update_query,
+        {
+            'app_slug': app_slug,
+            'svc_slug': slug,
+            'org_slug': org_slug,
+            field: None,
+        },
+        ['app'],
+    )
+
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=(f'Application {app_slug!r} not found in service {slug!r}'),
+        )
