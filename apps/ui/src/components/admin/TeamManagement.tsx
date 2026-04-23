@@ -12,7 +12,8 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAdminNav } from '@/hooks/useAdminNav'
 import { useAdminCrud } from '@/hooks/useAdminCrud'
 import { listTeams, deleteTeam, createTeam, updateTeam } from '@/api/endpoints'
-import type { Team, TeamCreate } from '@/types'
+import { buildDiffPatch } from '@/lib/json-patch'
+import type { Team, TeamCreate, PatchOperation } from '@/types'
 
 export function TeamManagement() {
   const { selectedOrganization } = useOrganization()
@@ -37,13 +38,14 @@ export function TeamManagement() {
   } = useAdminCrud<
     Team,
     { orgSlug: string; team: TeamCreate },
-    { orgSlug: string; slug: string; team: TeamCreate },
+    { orgSlug: string; slug: string; operations: PatchOperation[] },
     { orgSlug: string; slug: string }
   >({
     queryKey: ['teams', orgSlug],
     listFn: orgSlug ? (signal) => listTeams(orgSlug, signal) : null,
     createFn: ({ orgSlug, team }) => createTeam(orgSlug, team),
-    updateFn: ({ orgSlug, slug, team }) => updateTeam(orgSlug, slug, team),
+    updateFn: ({ orgSlug, slug, operations }) =>
+      updateTeam(orgSlug, slug, operations),
     deleteFn: ({ orgSlug, slug }) => deleteTeam(orgSlug, slug),
     onMutationSuccess: goToList,
     deleteErrorLabel: 'team',
@@ -86,11 +88,20 @@ export function TeamManagement() {
   const handleSave = (formOrgSlug: string, teamData: TeamCreate) => {
     if (viewMode === 'create') {
       createMutation.mutate({ orgSlug: formOrgSlug, team: teamData })
-    } else if (selectedTeamSlug) {
+    } else if (selectedTeamSlug && selectedTeam) {
+      const operations = buildDiffPatch(
+        selectedTeam as unknown as Record<string, unknown>,
+        teamData as unknown as Record<string, unknown>,
+        { fields: Object.keys(teamData) },
+      )
+      if (operations.length === 0) {
+        goToList()
+        return
+      }
       updateMutation.mutate({
-        orgSlug: selectedTeam?.organization.slug || formOrgSlug,
+        orgSlug: selectedTeam.organization.slug || formOrgSlug,
         slug: selectedTeamSlug,
-        team: teamData,
+        operations,
       })
     }
   }

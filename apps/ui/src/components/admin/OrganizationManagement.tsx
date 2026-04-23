@@ -15,7 +15,8 @@ import {
   createOrganization,
   updateOrganization,
 } from '@/api/endpoints'
-import type { Organization, OrganizationCreate } from '@/types'
+import { buildDiffPatch } from '@/lib/json-patch'
+import type { Organization, OrganizationCreate, PatchOperation } from '@/types'
 
 export function OrganizationManagement() {
   const {
@@ -37,13 +38,13 @@ export function OrganizationManagement() {
   } = useAdminCrud<
     Organization,
     OrganizationCreate,
-    { slug: string; org: OrganizationCreate },
+    { slug: string; operations: PatchOperation[] },
     string
   >({
     queryKey: ['organizations'],
     listFn: listOrganizations,
     createFn: createOrganization,
-    updateFn: ({ slug, org }) => updateOrganization(slug, org),
+    updateFn: ({ slug, operations }) => updateOrganization(slug, operations),
     deleteFn: deleteOrganization,
     onMutationSuccess: goToList,
     deleteErrorLabel: 'organization',
@@ -87,8 +88,17 @@ export function OrganizationManagement() {
   const handleSave = (orgData: OrganizationCreate) => {
     if (viewMode === 'create') {
       createMutation.mutate(orgData)
-    } else if (selectedOrgSlug) {
-      updateMutation.mutate({ slug: selectedOrgSlug, org: orgData })
+    } else if (selectedOrgSlug && selectedOrg) {
+      const operations = buildDiffPatch(
+        selectedOrg as unknown as Record<string, unknown>,
+        orgData as unknown as Record<string, unknown>,
+        { fields: Object.keys(orgData) },
+      )
+      if (operations.length === 0) {
+        goToList()
+        return
+      }
+      updateMutation.mutate({ slug: selectedOrgSlug, operations })
     }
   }
 

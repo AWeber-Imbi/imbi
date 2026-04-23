@@ -12,6 +12,7 @@ import {
   updateServiceAccountOrgRole,
   removeServiceAccountFromOrg,
 } from '@/api/endpoints'
+import { buildReplacePatch } from '@/lib/json-patch'
 import type { ServiceAccount, ClientCredentialCreate } from '@/types'
 
 export function useServiceAccountMutations(account: ServiceAccount) {
@@ -41,9 +42,11 @@ export function useServiceAccountMutations(account: ServiceAccount) {
       orgSlug: string
       roleSlug: string
     }) =>
-      updateServiceAccountOrgRole(account.slug, orgSlug, {
-        role_slug: roleSlug,
-      }),
+      updateServiceAccountOrgRole(
+        account.slug,
+        orgSlug,
+        buildReplacePatch({ role_slug: roleSlug }),
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['serviceAccounts'] })
       queryClient.invalidateQueries({

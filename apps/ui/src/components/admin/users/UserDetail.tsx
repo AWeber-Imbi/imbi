@@ -26,6 +26,7 @@ import {
   removeUserFromOrg,
 } from '@/api/endpoints'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { buildReplacePatch } from '@/lib/json-patch'
 import type { AdminUser, OrgMembership } from '@/types'
 import {
   Tooltip,
@@ -81,7 +82,12 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
     }: {
       orgSlug: string
       roleSlug: string
-    }) => updateUserOrgRole(user.email, orgSlug, { role_slug: roleSlug }),
+    }) =>
+      updateUserOrgRole(
+        user.email,
+        orgSlug,
+        buildReplacePatch({ role_slug: roleSlug }),
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
       queryClient.invalidateQueries({ queryKey: ['adminUser', user.email] })

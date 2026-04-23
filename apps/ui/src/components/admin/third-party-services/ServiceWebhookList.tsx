@@ -22,7 +22,8 @@ import {
   updateWebhook,
   deleteWebhook,
 } from '@/api/endpoints'
-import type { WebhookCreate } from '@/types'
+import { buildDiffPatch } from '@/lib/json-patch'
+import type { WebhookCreate, PatchOperation } from '@/types'
 import type { ViewMode } from '@/hooks/useAdminNav'
 
 interface ServiceWebhookListProps {
@@ -78,8 +79,13 @@ export function ServiceWebhookList({
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ slug, data }: { slug: string; data: WebhookCreate }) =>
-      updateWebhook(orgSlug, slug, data),
+    mutationFn: ({
+      slug,
+      operations,
+    }: {
+      slug: string
+      operations: PatchOperation[]
+    }) => updateWebhook(orgSlug, slug, operations),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ['service-webhooks', orgSlug, serviceSlug],
@@ -138,8 +144,18 @@ export function ServiceWebhookList({
         ...data,
         third_party_service_slug: serviceSlug,
       })
-    } else if (selectedSlug) {
-      updateMutation.mutate({ slug: selectedSlug, data })
+    } else if (selectedSlug && selectedWebhook) {
+      const operations = buildDiffPatch(
+        selectedWebhook as unknown as Record<string, unknown>,
+        data as unknown as Record<string, unknown>,
+        { fields: Object.keys(data) },
+      )
+      if (operations.length === 0) {
+        setViewMode('list')
+        setSelectedSlug(null)
+        return
+      }
+      updateMutation.mutate({ slug: selectedSlug, operations })
     }
   }
 

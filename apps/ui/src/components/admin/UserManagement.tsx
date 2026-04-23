@@ -20,7 +20,8 @@ import {
   updateAdminUser,
   createAdminUser,
 } from '@/api/endpoints'
-import type { AdminUser, AdminUserCreate, AdminUserUpdate } from '@/types'
+import { buildDiffPatch, buildReplacePatch } from '@/lib/json-patch'
+import type { AdminUser, AdminUserCreate, PatchOperation } from '@/types'
 
 type UserFilter = 'all' | 'users' | 'admins'
 type StatusFilter = 'all' | 'active' | 'inactive'
@@ -48,13 +49,13 @@ export function UserManagement() {
   } = useAdminCrud<
     AdminUser,
     AdminUserCreate,
-    { email: string; user: AdminUserUpdate },
+    { email: string; operations: PatchOperation[] },
     string
   >({
     queryKey: ['adminUsers'],
     listFn: (signal) => listAdminUsers(undefined, signal),
     createFn: createAdminUser,
-    updateFn: ({ email, user }) => updateAdminUser(email, user),
+    updateFn: ({ email, operations }) => updateAdminUser(email, operations),
     deleteFn: deleteAdminUser,
     onMutationSuccess: goToList,
     deleteErrorLabel: 'user',
@@ -63,8 +64,13 @@ export function UserManagement() {
   // Toggle-active is a bespoke mutation: it fires in the list view, mustn't
   // navigate, and toasts on failure but not via useAdminCrud's update flow.
   const toggleActiveMutation = useMutation({
-    mutationFn: ({ email, user }: { email: string; user: AdminUserUpdate }) =>
-      updateAdminUser(email, user),
+    mutationFn: ({
+      email,
+      operations,
+    }: {
+      email: string
+      operations: PatchOperation[]
+    }) => updateAdminUser(email, operations),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
     },
@@ -97,13 +103,7 @@ export function UserManagement() {
   const handleToggleActive = (user: AdminUser) => {
     toggleActiveMutation.mutate({
       email: user.email,
-      user: {
-        email: user.email,
-        display_name: user.display_name,
-        is_active: !user.is_active,
-        is_admin: user.is_admin,
-        is_service_account: user.is_service_account,
-      },
+      operations: buildReplacePatch({ is_active: !user.is_active }),
     })
   }
 
@@ -153,7 +153,16 @@ export function UserManagement() {
     } else if (selectedUser) {
       // Strip org/role fields for update — they're only for creation
       const { organization_slug: _, role_slug: __, ...updateData } = userData
-      updateMutation.mutate({ email: selectedUser.email, user: updateData })
+      const operations = buildDiffPatch(
+        selectedUser as unknown as Record<string, unknown>,
+        updateData as unknown as Record<string, unknown>,
+        { fields: Object.keys(updateData) },
+      )
+      if (operations.length === 0) {
+        goToList()
+        return
+      }
+      updateMutation.mutate({ email: selectedUser.email, operations })
     }
   }
 

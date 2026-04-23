@@ -17,7 +17,8 @@ import {
   createEnvironment,
   updateEnvironment,
 } from '@/api/endpoints'
-import type { Environment, EnvironmentCreate } from '@/types'
+import { buildDiffPatch } from '@/lib/json-patch'
+import type { Environment, EnvironmentCreate, PatchOperation } from '@/types'
 
 export function EnvironmentManagement() {
   const { selectedOrganization } = useOrganization()
@@ -41,13 +42,14 @@ export function EnvironmentManagement() {
   } = useAdminCrud<
     Environment,
     { orgSlug: string; env: EnvironmentCreate },
-    { orgSlug: string; slug: string; env: EnvironmentCreate },
+    { orgSlug: string; slug: string; operations: PatchOperation[] },
     { orgSlug: string; slug: string }
   >({
     queryKey: ['environments', orgSlug],
     listFn: orgSlug ? (signal) => listEnvironments(orgSlug, signal) : null,
     createFn: ({ orgSlug, env }) => createEnvironment(orgSlug, env),
-    updateFn: ({ orgSlug, slug, env }) => updateEnvironment(orgSlug, slug, env),
+    updateFn: ({ orgSlug, slug, operations }) =>
+      updateEnvironment(orgSlug, slug, operations),
     deleteFn: ({ orgSlug, slug }) => deleteEnvironment(orgSlug, slug),
     onMutationSuccess: goToList,
     deleteErrorLabel: 'environment',
@@ -86,11 +88,20 @@ export function EnvironmentManagement() {
   const handleSave = (formOrgSlug: string, envData: EnvironmentCreate) => {
     if (viewMode === 'create') {
       createMutation.mutate({ orgSlug: formOrgSlug, env: envData })
-    } else if (selectedEnvSlug) {
+    } else if (selectedEnvSlug && selectedEnvironment) {
+      const operations = buildDiffPatch(
+        selectedEnvironment as unknown as Record<string, unknown>,
+        envData as unknown as Record<string, unknown>,
+        { fields: Object.keys(envData) },
+      )
+      if (operations.length === 0) {
+        goToList()
+        return
+      }
       updateMutation.mutate({
-        orgSlug: selectedEnvironment?.organization.slug || formOrgSlug,
+        orgSlug: selectedEnvironment.organization.slug || formOrgSlug,
         slug: selectedEnvSlug,
-        env: envData,
+        operations,
       })
     }
   }

@@ -21,6 +21,7 @@ import {
   grantPermission,
   revokePermission,
 } from '@/api/endpoints'
+import { buildDiffPatch } from '@/lib/json-patch'
 import type { RoleDetail as RoleDetailType, RoleCreate } from '@/types'
 
 type Role = Awaited<ReturnType<typeof getRoles>>[number]
@@ -137,7 +138,14 @@ export function RoleManagement() {
       }
     },
     updateFn: async ({ slug, role, permissions }) => {
-      const updated = await updateRole(slug, role)
+      const existing = await getRole(slug)
+      const operations = buildDiffPatch(
+        existing as unknown as Record<string, unknown>,
+        role as unknown as Record<string, unknown>,
+        { fields: Object.keys(role) },
+      )
+      const updated =
+        operations.length > 0 ? await updateRole(slug, operations) : existing
       try {
         await syncPermissions(updated.slug, permissions)
       } catch (err) {

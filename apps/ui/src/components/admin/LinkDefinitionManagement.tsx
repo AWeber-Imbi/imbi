@@ -14,7 +14,12 @@ import {
   createLinkDefinition,
   updateLinkDefinition,
 } from '@/api/endpoints'
-import type { LinkDefinition, LinkDefinitionCreate } from '@/types'
+import { buildDiffPatch } from '@/lib/json-patch'
+import type {
+  LinkDefinition,
+  LinkDefinitionCreate,
+  PatchOperation,
+} from '@/types'
 
 export function LinkDefinitionManagement() {
   const { selectedOrganization } = useOrganization()
@@ -38,14 +43,14 @@ export function LinkDefinitionManagement() {
   } = useAdminCrud<
     LinkDefinition,
     { orgSlug: string; data: LinkDefinitionCreate },
-    { orgSlug: string; slug: string; data: LinkDefinitionCreate },
+    { orgSlug: string; slug: string; operations: PatchOperation[] },
     { orgSlug: string; slug: string }
   >({
     queryKey: ['linkDefinitions', orgSlug],
     listFn: orgSlug ? (signal) => listLinkDefinitions(orgSlug, signal) : null,
     createFn: ({ orgSlug, data }) => createLinkDefinition(orgSlug, data),
-    updateFn: ({ orgSlug, slug, data }) =>
-      updateLinkDefinition(orgSlug, slug, data),
+    updateFn: ({ orgSlug, slug, operations }) =>
+      updateLinkDefinition(orgSlug, slug, operations),
     deleteFn: ({ orgSlug, slug }) => deleteLinkDefinition(orgSlug, slug),
     onMutationSuccess: goToList,
     deleteErrorLabel: 'link definition',
@@ -84,11 +89,20 @@ export function LinkDefinitionManagement() {
   const handleSave = (formOrgSlug: string, data: LinkDefinitionCreate) => {
     if (viewMode === 'create') {
       createMutation.mutate({ orgSlug: formOrgSlug, data })
-    } else if (selectedSlug) {
+    } else if (selectedSlug && selectedLinkDefinition) {
+      const operations = buildDiffPatch(
+        selectedLinkDefinition as unknown as Record<string, unknown>,
+        data as unknown as Record<string, unknown>,
+        { fields: Object.keys(data) },
+      )
+      if (operations.length === 0) {
+        goToList()
+        return
+      }
       updateMutation.mutate({
-        orgSlug: selectedLinkDefinition?.organization.slug || formOrgSlug,
+        orgSlug: selectedLinkDefinition.organization.slug || formOrgSlug,
         slug: selectedSlug,
-        data,
+        operations,
       })
     }
   }

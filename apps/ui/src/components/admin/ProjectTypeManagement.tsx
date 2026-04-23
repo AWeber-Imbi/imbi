@@ -16,7 +16,8 @@ import {
   createProjectType,
   updateProjectType,
 } from '@/api/endpoints'
-import type { ProjectType, ProjectTypeCreate } from '@/types'
+import { buildDiffPatch } from '@/lib/json-patch'
+import type { ProjectType, ProjectTypeCreate, PatchOperation } from '@/types'
 
 export function ProjectTypeManagement() {
   const { selectedOrganization } = useOrganization()
@@ -40,13 +41,14 @@ export function ProjectTypeManagement() {
   } = useAdminCrud<
     ProjectType,
     { orgSlug: string; pt: ProjectTypeCreate },
-    { orgSlug: string; slug: string; pt: ProjectTypeCreate },
+    { orgSlug: string; slug: string; operations: PatchOperation[] },
     { orgSlug: string; slug: string }
   >({
     queryKey: ['projectTypes', orgSlug],
     listFn: orgSlug ? (signal) => listProjectTypes(orgSlug, signal) : null,
     createFn: ({ orgSlug, pt }) => createProjectType(orgSlug, pt),
-    updateFn: ({ orgSlug, slug, pt }) => updateProjectType(orgSlug, slug, pt),
+    updateFn: ({ orgSlug, slug, operations }) =>
+      updateProjectType(orgSlug, slug, operations),
     deleteFn: ({ orgSlug, slug }) => deleteProjectType(orgSlug, slug),
     onMutationSuccess: goToList,
     deleteErrorLabel: 'project type',
@@ -85,11 +87,20 @@ export function ProjectTypeManagement() {
   const handleSave = (formOrgSlug: string, ptData: ProjectTypeCreate) => {
     if (viewMode === 'create') {
       createMutation.mutate({ orgSlug: formOrgSlug, pt: ptData })
-    } else if (selectedPtSlug) {
+    } else if (selectedPtSlug && selectedProjectType) {
+      const operations = buildDiffPatch(
+        selectedProjectType as unknown as Record<string, unknown>,
+        ptData as unknown as Record<string, unknown>,
+        { fields: Object.keys(ptData) },
+      )
+      if (operations.length === 0) {
+        goToList()
+        return
+      }
       updateMutation.mutate({
-        orgSlug: selectedProjectType?.organization.slug || formOrgSlug,
+        orgSlug: selectedProjectType.organization.slug || formOrgSlug,
         slug: selectedPtSlug,
-        pt: ptData,
+        operations,
       })
     }
   }

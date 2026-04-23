@@ -17,7 +17,12 @@ import {
 } from '@/api/endpoints'
 import { statusBadgeVariant } from '@/lib/status-colors'
 import { Badge } from '@/components/ui/badge'
-import type { ThirdPartyService, ThirdPartyServiceCreate } from '@/types'
+import { buildDiffPatch } from '@/lib/json-patch'
+import type {
+  ThirdPartyService,
+  ThirdPartyServiceCreate,
+  PatchOperation,
+} from '@/types'
 
 export function ThirdPartyServiceManagement() {
   const { selectedOrganization } = useOrganization()
@@ -43,7 +48,7 @@ export function ThirdPartyServiceManagement() {
   } = useAdminCrud<
     ThirdPartyService,
     ThirdPartyServiceCreate,
-    { slug: string; svc: ThirdPartyServiceCreate },
+    { slug: string; operations: PatchOperation[] },
     string
   >({
     queryKey: ['third-party-services', orgSlug],
@@ -54,9 +59,9 @@ export function ThirdPartyServiceManagement() {
       if (!orgSlug) throw new Error('No organization selected')
       return createThirdPartyService(orgSlug, svc)
     },
-    updateFn: ({ slug, svc }) => {
+    updateFn: ({ slug, operations }) => {
       if (!orgSlug) throw new Error('No organization selected')
-      return updateThirdPartyService(orgSlug, slug, svc)
+      return updateThirdPartyService(orgSlug, slug, operations)
     },
     deleteFn: (slug) => {
       if (!orgSlug) throw new Error('No organization selected')
@@ -101,8 +106,17 @@ export function ThirdPartyServiceManagement() {
   const handleSave = (svcData: ThirdPartyServiceCreate) => {
     if (viewMode === 'create') {
       createMutation.mutate(svcData)
-    } else if (selectedSlug) {
-      updateMutation.mutate({ slug: selectedSlug, svc: svcData })
+    } else if (selectedSlug && selectedService) {
+      const operations = buildDiffPatch(
+        selectedService as unknown as Record<string, unknown>,
+        svcData as unknown as Record<string, unknown>,
+        { fields: Object.keys(svcData) },
+      )
+      if (operations.length === 0) {
+        goToList()
+        return
+      }
+      updateMutation.mutate({ slug: selectedSlug, operations })
     }
   }
 

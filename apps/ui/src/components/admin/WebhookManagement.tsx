@@ -14,7 +14,8 @@ import {
   createWebhook,
   updateWebhook,
 } from '@/api/endpoints'
-import type { Webhook, WebhookCreate } from '@/types'
+import { buildDiffPatch } from '@/lib/json-patch'
+import type { Webhook, WebhookCreate, PatchOperation } from '@/types'
 
 export function WebhookManagement() {
   const { selectedOrganization } = useOrganization()
@@ -39,7 +40,7 @@ export function WebhookManagement() {
   } = useAdminCrud<
     Webhook,
     WebhookCreate,
-    { slug: string; data: WebhookCreate },
+    { slug: string; operations: PatchOperation[] },
     string
   >({
     queryKey: ['webhooks', orgSlug],
@@ -48,9 +49,9 @@ export function WebhookManagement() {
       if (!orgSlug) throw new Error('No organization selected')
       return createWebhook(orgSlug, data)
     },
-    updateFn: ({ slug, data }) => {
+    updateFn: ({ slug, operations }) => {
       if (!orgSlug) throw new Error('No organization selected')
-      return updateWebhook(orgSlug, slug, data)
+      return updateWebhook(orgSlug, slug, operations)
     },
     deleteFn: (slug) => {
       if (!orgSlug) throw new Error('No organization selected')
@@ -85,8 +86,17 @@ export function WebhookManagement() {
   const handleSave = (data: WebhookCreate) => {
     if (viewMode === 'create') {
       createMutation.mutate(data)
-    } else if (selectedSlug) {
-      updateMutation.mutate({ slug: selectedSlug, data })
+    } else if (selectedSlug && selectedWebhook) {
+      const operations = buildDiffPatch(
+        selectedWebhook as unknown as Record<string, unknown>,
+        data as unknown as Record<string, unknown>,
+        { fields: Object.keys(data) },
+      )
+      if (operations.length === 0) {
+        goToList()
+        return
+      }
+      updateMutation.mutate({ slug: selectedSlug, operations })
     }
   }
 

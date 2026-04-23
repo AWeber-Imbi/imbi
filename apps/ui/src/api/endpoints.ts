@@ -23,7 +23,6 @@ import type {
   UserResponse,
   AdminUser,
   AdminUserCreate,
-  AdminUserUpdate,
   AdminSettings,
   Role,
   RoleDetail,
@@ -40,15 +39,12 @@ import type {
   ThirdPartyServiceCreate,
   ServiceApplication,
   ServiceApplicationCreate,
-  ServiceApplicationUpdate,
   ServiceApplicationSecrets,
-  ServiceApplicationSecretsUpdate,
   Upload,
   ApiKey,
   ApiKeyCreated,
   ServiceAccount,
   ServiceAccountCreate,
-  ServiceAccountUpdate,
   ClientCredential,
   ClientCredentialCreated,
   ClientCredentialCreate,
@@ -192,16 +188,6 @@ export const createProject = (
     project,
   )
 
-export const updateProject = (
-  orgSlug: string,
-  projectId: string,
-  project: Partial<ProjectCreate>,
-) =>
-  apiClient.put<Project>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}`,
-    project,
-  )
-
 export const patchProject = (
   orgSlug: string,
   projectId: string,
@@ -253,11 +239,11 @@ export const createLinkDefinition = (
 export const updateLinkDefinition = (
   orgSlug: string,
   slug: string,
-  data: Partial<LinkDefinitionCreate>,
+  operations: PatchOperation[],
 ) =>
-  apiClient.put<LinkDefinition>(
+  apiClient.patch<LinkDefinition>(
     `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/${encodeURIComponent(slug)}`,
-    data,
+    operations,
   )
 
 export const deleteLinkDefinition = (orgSlug: string, slug: string) =>
@@ -408,11 +394,11 @@ export const createEnvironment = (orgSlug: string, env: EnvironmentCreate) =>
 export const updateEnvironment = (
   orgSlug: string,
   slug: string,
-  env: EnvironmentCreate,
+  operations: PatchOperation[],
 ) =>
-  apiClient.put<Environment>(
+  apiClient.patch<Environment>(
     `/organizations/${encodeURIComponent(orgSlug)}/environments/${encodeURIComponent(slug)}`,
-    env,
+    operations,
   )
 
 export const deleteEnvironment = (orgSlug: string, slug: string) =>
@@ -456,11 +442,11 @@ export const createProjectType = (orgSlug: string, pt: ProjectTypeCreate) =>
 export const updateProjectType = (
   orgSlug: string,
   slug: string,
-  pt: ProjectTypeCreate,
+  operations: PatchOperation[],
 ) =>
-  apiClient.put<ProjectType>(
+  apiClient.patch<ProjectType>(
     `/organizations/${encodeURIComponent(orgSlug)}/project-types/${encodeURIComponent(slug)}`,
-    pt,
+    operations,
   )
 
 export const deleteProjectType = (orgSlug: string, slug: string) =>
@@ -494,8 +480,8 @@ export const getAdminUser = (email: string, signal?: AbortSignal) =>
 export const createAdminUser = (user: AdminUserCreate) =>
   apiClient.post<AdminUser>('/users/', user)
 
-export const updateAdminUser = (email: string, user: AdminUserUpdate) =>
-  apiClient.put<AdminUser>(`/users/${encodeURIComponent(email)}`, user)
+export const updateAdminUser = (email: string, operations: PatchOperation[]) =>
+  apiClient.patch<AdminUser>(`/users/${encodeURIComponent(email)}`, operations)
 
 export const deleteAdminUser = (email: string) =>
   apiClient.delete<void>(`/users/${encodeURIComponent(email)}`)
@@ -509,11 +495,11 @@ export const addUserToOrg = (
 export const updateUserOrgRole = (
   email: string,
   orgSlug: string,
-  data: { role_slug: string },
+  operations: PatchOperation[],
 ) =>
-  apiClient.put(
+  apiClient.patch(
     `/users/${encodeURIComponent(email)}/organizations/${encodeURIComponent(orgSlug)}`,
-    data,
+    operations,
   )
 
 export const removeUserFromOrg = (email: string, orgSlug: string) =>
@@ -537,8 +523,8 @@ export const getRole = (slug: string, signal?: AbortSignal) =>
 export const createRole = (role: RoleCreate) =>
   apiClient.post<RoleDetail>('/roles/', role)
 
-export const updateRole = (slug: string, role: RoleCreate) =>
-  apiClient.put<RoleDetail>(`/roles/${encodeURIComponent(slug)}`, role)
+export const updateRole = (slug: string, operations: PatchOperation[]) =>
+  apiClient.patch<RoleDetail>(`/roles/${encodeURIComponent(slug)}`, operations)
 
 export const deleteRole = (slug: string) =>
   apiClient.delete<void>(`/roles/${encodeURIComponent(slug)}`)
@@ -638,11 +624,11 @@ export const createBlueprint = (blueprint: BlueprintCreate) =>
 export const updateBlueprint = (
   type: string,
   slug: string,
-  blueprint: BlueprintCreate,
+  operations: PatchOperation[],
 ) =>
-  apiClient.put<Blueprint>(
+  apiClient.patch<Blueprint>(
     `/blueprints/${encodeURIComponent(type)}/${encodeURIComponent(slug)}`,
-    blueprint,
+    operations,
   )
 
 export const deleteBlueprint = (type: string, slug: string) =>
@@ -672,8 +658,14 @@ export const getOrganization = (slug: string, signal?: AbortSignal) =>
 export const createOrganization = (org: OrganizationCreate) =>
   apiClient.post<Organization>('/organizations/', org)
 
-export const updateOrganization = (slug: string, org: OrganizationCreate) =>
-  apiClient.put<Organization>(`/organizations/${encodeURIComponent(slug)}`, org)
+export const updateOrganization = (
+  slug: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<Organization>(
+    `/organizations/${encodeURIComponent(slug)}`,
+    operations,
+  )
 
 export const deleteOrganization = (slug: string) =>
   apiClient.delete<void>(`/organizations/${encodeURIComponent(slug)}`)
@@ -787,10 +779,14 @@ export const createTeam = (orgSlug: string, team: TeamCreate) =>
     team,
   )
 
-export const updateTeam = (orgSlug: string, slug: string, team: TeamCreate) =>
-  apiClient.put<Team>(
+export const updateTeam = (
+  orgSlug: string,
+  slug: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<Team>(
     `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}`,
-    team,
+    operations,
   )
 
 export const deleteTeam = (orgSlug: string, slug: string) =>
@@ -862,11 +858,11 @@ export const createThirdPartyService = (
 export const updateThirdPartyService = (
   orgSlug: string,
   slug: string,
-  svc: ThirdPartyServiceCreate,
+  operations: PatchOperation[],
 ) =>
-  apiClient.put<ThirdPartyService>(
+  apiClient.patch<ThirdPartyService>(
     `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(slug)}`,
-    svc,
+    operations,
   )
 
 export const deleteThirdPartyService = (orgSlug: string, slug: string) =>
@@ -914,11 +910,11 @@ export const updateServiceApplication = (
   orgSlug: string,
   serviceSlug: string,
   appSlug: string,
-  data: ServiceApplicationUpdate,
+  operations: PatchOperation[],
 ) =>
-  apiClient.put<ServiceApplication>(
+  apiClient.patch<ServiceApplication>(
     `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`,
-    data,
+    operations,
   )
 
 export const deleteServiceApplication = (
@@ -947,11 +943,11 @@ export const updateApplicationSecrets = (
   orgSlug: string,
   serviceSlug: string,
   appSlug: string,
-  data: ServiceApplicationSecretsUpdate,
+  operations: PatchOperation[],
 ) =>
-  apiClient.put<ServiceApplicationSecrets>(
+  apiClient.patch<ServiceApplicationSecrets>(
     `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}/secrets`,
-    data,
+    operations,
   )
 
 // Uploads
@@ -1004,11 +1000,11 @@ export const createServiceAccount = (data: ServiceAccountCreate) =>
 
 export const updateServiceAccount = (
   slug: string,
-  data: ServiceAccountUpdate,
+  operations: PatchOperation[],
 ) =>
-  apiClient.put<ServiceAccount>(
+  apiClient.patch<ServiceAccount>(
     `/service-accounts/${encodeURIComponent(slug)}`,
-    data,
+    operations,
   )
 
 export const deleteServiceAccount = (slug: string) =>
@@ -1026,11 +1022,11 @@ export const addServiceAccountToOrg = (
 export const updateServiceAccountOrgRole = (
   slug: string,
   orgSlug: string,
-  data: { role_slug: string },
+  operations: PatchOperation[],
 ) =>
-  apiClient.put(
+  apiClient.patch(
     `/service-accounts/${encodeURIComponent(slug)}/organizations/${encodeURIComponent(orgSlug)}`,
-    data,
+    operations,
   )
 
 export const removeServiceAccountFromOrg = (slug: string, orgSlug: string) =>
@@ -1130,11 +1126,11 @@ export const createWebhook = (orgSlug: string, data: WebhookCreate) =>
 export const updateWebhook = (
   orgSlug: string,
   slug: string,
-  data: WebhookCreate,
+  operations: PatchOperation[],
 ) =>
-  apiClient.put<Webhook>(
+  apiClient.patch<Webhook>(
     `/organizations/${encodeURIComponent(orgSlug)}/webhooks/${encodeURIComponent(slug)}`,
-    data,
+    operations,
   )
 
 export const deleteWebhook = (orgSlug: string, slug: string) =>

@@ -15,10 +15,11 @@ import {
   updateServiceAccount,
   deleteServiceAccount,
 } from '@/api/endpoints'
+import { buildDiffPatch } from '@/lib/json-patch'
 import type {
   ServiceAccount,
   ServiceAccountCreate,
-  ServiceAccountUpdate,
+  PatchOperation,
 } from '@/types'
 
 type StatusFilter = 'all' | 'active' | 'inactive'
@@ -44,13 +45,13 @@ export function ServiceAccountManagement() {
   } = useAdminCrud<
     ServiceAccount,
     ServiceAccountCreate,
-    { slug: string; data: ServiceAccountUpdate },
+    { slug: string; operations: PatchOperation[] },
     string
   >({
     queryKey: ['serviceAccounts'],
     listFn: (signal) => listServiceAccounts(undefined, signal),
     createFn: createServiceAccount,
-    updateFn: ({ slug, data }) => updateServiceAccount(slug, data),
+    updateFn: ({ slug, operations }) => updateServiceAccount(slug, operations),
     deleteFn: deleteServiceAccount,
     onMutationSuccess: goToList,
     deleteErrorLabel: 'service account',
@@ -98,7 +99,16 @@ export function ServiceAccountManagement() {
     } else if (selectedAccount) {
       // Strip org/role fields for update — they're only for creation
       const { organization_slug: _, role_slug: __, ...updateData } = data
-      updateMutation.mutate({ slug: selectedAccount.slug, data: updateData })
+      const operations = buildDiffPatch(
+        selectedAccount as unknown as Record<string, unknown>,
+        updateData as unknown as Record<string, unknown>,
+        { fields: Object.keys(updateData) },
+      )
+      if (operations.length === 0) {
+        goToList()
+        return
+      }
+      updateMutation.mutate({ slug: selectedAccount.slug, operations })
     }
   }
 

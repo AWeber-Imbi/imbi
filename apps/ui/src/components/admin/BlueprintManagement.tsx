@@ -25,7 +25,8 @@ import {
   updateBlueprint,
 } from '@/api/endpoints'
 import { parseFilterFromBlueprint } from '@/lib/utils'
-import type { Blueprint, BlueprintCreate } from '@/types'
+import { buildDiffPatch } from '@/lib/json-patch'
+import type { Blueprint, BlueprintCreate, PatchOperation } from '@/types'
 
 interface BlueprintKey {
   type: string
@@ -125,14 +126,14 @@ export function BlueprintManagement() {
   } = useAdminCrud<
     Blueprint,
     BlueprintCreate,
-    { type: string; slug: string; blueprint: BlueprintCreate },
+    { type: string; slug: string; operations: PatchOperation[] },
     BlueprintKey
   >({
     queryKey: ['blueprints'],
     listFn: (signal) => listBlueprints(undefined, signal),
     createFn: (blueprint) => createBlueprint(blueprint),
-    updateFn: ({ type, slug, blueprint }) =>
-      updateBlueprint(type, slug, blueprint),
+    updateFn: ({ type, slug, operations }) =>
+      updateBlueprint(type, slug, operations),
     deleteFn: ({ type, slug }) => deleteBlueprint(type, slug),
     onMutationSuccess: goToList,
     // The backend auto-refreshes its OpenAPI schema cache on blueprint CRUD;
@@ -175,10 +176,25 @@ export function BlueprintManagement() {
     if (viewMode === 'create') {
       createMutation.mutate(data)
     } else if (selectedKey) {
+      const existing = blueprints.find(
+        (bp) =>
+          blueprintPathType(bp) === selectedKey.type &&
+          bp.slug === selectedKey.slug,
+      )
+      if (!existing) return
+      const operations = buildDiffPatch(
+        existing as unknown as Record<string, unknown>,
+        data as unknown as Record<string, unknown>,
+        { fields: Object.keys(data) },
+      )
+      if (operations.length === 0) {
+        goToList()
+        return
+      }
       updateMutation.mutate({
         type: selectedKey.type,
         slug: selectedKey.slug,
-        blueprint: data,
+        operations,
       })
     }
   }

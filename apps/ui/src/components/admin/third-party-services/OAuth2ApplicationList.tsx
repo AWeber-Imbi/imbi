@@ -21,10 +21,12 @@ import {
 } from '@/api/endpoints'
 import { OAuth2ApplicationForm } from './OAuth2ApplicationForm'
 import { ApplicationSecretsPanel } from './ApplicationSecretsPanel'
+import { buildDiffPatch } from '@/lib/json-patch'
 import type {
   ServiceApplication,
   ServiceApplicationCreate,
   ServiceApplicationUpdate,
+  PatchOperation,
 } from '@/types'
 import {
   Tooltip,
@@ -86,11 +88,11 @@ export function OAuth2ApplicationList({
   const updateMutation = useMutation({
     mutationFn: ({
       appSlug,
-      data,
+      operations,
     }: {
       appSlug: string
-      data: ServiceApplicationUpdate
-    }) => updateServiceApplication(orgSlug, serviceSlug, appSlug, data),
+      operations: PatchOperation[]
+    }) => updateServiceApplication(orgSlug, serviceSlug, appSlug, operations),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ['service-applications', orgSlug, serviceSlug],
@@ -125,10 +127,18 @@ export function OAuth2ApplicationList({
     if (viewMode === 'create') {
       createMutation.mutate(data as ServiceApplicationCreate)
     } else if (editingApp) {
-      updateMutation.mutate({
-        appSlug: editingApp.slug,
-        data: data as ServiceApplicationUpdate,
-      })
+      const updateData = data as ServiceApplicationUpdate
+      const operations = buildDiffPatch(
+        editingApp as unknown as Record<string, unknown>,
+        updateData as unknown as Record<string, unknown>,
+        { fields: Object.keys(updateData) },
+      )
+      if (operations.length === 0) {
+        setViewMode('list')
+        setEditingApp(null)
+        return
+      }
+      updateMutation.mutate({ appSlug: editingApp.slug, operations })
     }
   }
 
