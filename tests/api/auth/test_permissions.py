@@ -28,8 +28,8 @@ class OrgMembershipPermissionTestCase(unittest.IsolatedAsyncioTestCase):
             'imbi_common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
-            perms = await permissions.load_user_permissions(
-                mock_db, 'testuser@example.com'
+            perms = await permissions.load_principal_permissions(
+                mock_db, 'User', 'email', 'testuser@example.com'
             )
 
         self.assertEqual(
@@ -54,8 +54,8 @@ class OrgMembershipPermissionTestCase(unittest.IsolatedAsyncioTestCase):
             'imbi_common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
-            perms = await permissions.load_user_permissions(
-                mock_db, 'testuser@example.com'
+            perms = await permissions.load_principal_permissions(
+                mock_db, 'User', 'email', 'testuser@example.com'
             )
 
         self.assertEqual(
@@ -83,8 +83,8 @@ class OrgMembershipPermissionTestCase(unittest.IsolatedAsyncioTestCase):
             'imbi_common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
-            perms = await permissions.load_user_permissions(
-                mock_db, 'testuser@example.com'
+            perms = await permissions.load_principal_permissions(
+                mock_db, 'User', 'email', 'testuser@example.com'
             )
 
         self.assertIn('blueprint:read', perms)
@@ -96,8 +96,8 @@ class OrgMembershipPermissionTestCase(unittest.IsolatedAsyncioTestCase):
         mock_db = mock.AsyncMock()
         mock_db.execute.return_value = []
 
-        perms = await permissions.load_user_permissions(
-            mock_db, 'nobody@example.com'
+        perms = await permissions.load_principal_permissions(
+            mock_db, 'User', 'email', 'nobody@example.com'
         )
 
         self.assertEqual(perms, set())
@@ -111,7 +111,11 @@ class ResourceLevelPermissionTestCase(
     async def test_check_resource_permission_user_access(self) -> None:
         """Test checking permission with direct user CAN_ACCESS."""
         mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [{'actions': ['read', 'write']}]
+        mock_db.execute.side_effect = [
+            [{'allowed': True}],
+            [{'allowed': True}],
+            [{'allowed': False}],
+        ]
 
         with mock.patch(
             'imbi_common.graph.parse_agtype',
@@ -175,8 +179,8 @@ class PermissionDeduplicationTestCase(
             'imbi_common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
-            perms = await permissions.load_user_permissions(
-                mock_db, 'testuser@example.com'
+            perms = await permissions.load_principal_permissions(
+                mock_db, 'User', 'email', 'testuser@example.com'
             )
 
         # Should be deduplicated to a set
@@ -281,8 +285,8 @@ class ServiceAccountPermissionTestCase(
             'imbi_common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
-            perms = await permissions.load_service_account_permissions(
-                mock_db, 'deploy-bot'
+            perms = await permissions.load_principal_permissions(
+                mock_db, 'ServiceAccount', 'slug', 'deploy-bot'
             )
 
         self.assertEqual(

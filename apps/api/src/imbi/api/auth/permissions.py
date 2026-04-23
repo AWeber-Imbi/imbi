@@ -58,24 +58,54 @@ class AuthContext(pydantic.BaseModel):
         return self.user
 
 
-async def load_user_permissions(db: graph.Graph, email: str) -> set[str]:
-    """
-    Get permission names granted to a user.
+PrincipalLabel = typing.Literal['User', 'ServiceAccount']
+PrincipalMatchProp = typing.Literal['email', 'slug']
 
-    Collects permissions from the user's organization memberships.
-    Each membership has a role property that links to a Role node.
-    Role inheritance is followed to collect all granted permissions.
+_ALLOWED_PRINCIPAL_SELECTORS: frozenset[
+    tuple[PrincipalLabel, PrincipalMatchProp]
+] = frozenset(
+    {
+        ('User', 'email'),
+        ('ServiceAccount', 'slug'),
+    }
+)
+
+
+async def load_principal_permissions(
+    db: graph.Graph,
+    label: PrincipalLabel,
+    match_prop: PrincipalMatchProp,
+    value: str,
+) -> set[str]:
+    """Get permission names granted to a principal (user or SA).
+
+    Collects permissions from the principal's organization memberships,
+    following role inheritance via ``INHERITS_FROM`` and ``GRANTS``
+    relationships.
 
     Parameters:
         db: Graph database connection.
-        email (str): Email of user whose permissions will be resolved.
+        label: Node label of the principal (``'User'`` or
+            ``'ServiceAccount'``).
+        match_prop: Property name on the principal used to match
+            (``'email'`` for users, ``'slug'`` for service accounts).
+        value: Value of ``match_prop`` identifying the principal.
 
     Returns:
-        set[str]: Set of permission names (for example,
-            'blueprint:read', 'project:write').
+        Set of permission names (for example, ``'blueprint:read'``).
+
+    Raises:
+        ValueError: If ``(label, match_prop)`` is not an allowed
+            principal selector. ``label`` and ``match_prop`` are
+            interpolated into the Cypher template, so this guard
+            prevents Cypher injection via future non-constant inputs.
     """
+    if (label, match_prop) not in _ALLOWED_PRINCIPAL_SELECTORS:
+        raise ValueError(
+            f'Unsupported principal selector: ({label!r}, {match_prop!r})'
+        )
     query = (
-        'MATCH (u:User {{email: {email}}})'
+        f'MATCH (p:{label} {{{{{match_prop}: {{value}}}}}})'
         '-[m:MEMBER_OF]->(o:Organization) '
         'MATCH (r:Role {{slug: m.role}}) '
         'OPTIONAL MATCH (r)-[:INHERITS_FROM*0..]->(parent:Role) '
@@ -84,47 +114,8 @@ async def load_user_permissions(db: graph.Graph, email: str) -> set[str]:
         'RETURN collect(DISTINCT perm.name)'
     )
     records = await db.execute(
-        query, {'email': email}, columns=['permissions']
+        query, {'value': value}, columns=['permissions']
     )
-    if not records:
-        return set()
-    raw: typing.Any = graph.parse_agtype(records[0].get('permissions'))
-    if isinstance(raw, list):
-        return {
-            item
-            for item in typing.cast(list[str | typing.Any], raw)
-            if isinstance(item, str)
-        }
-    return set()
-
-
-async def load_service_account_permissions(
-    db: graph.Graph,
-    slug: str,
-) -> set[str]:
-    """Get permissions granted to a service account.
-
-    Collects permissions from the service account's organization
-    memberships, following role inheritance.
-
-    Parameters:
-        db: Graph database connection.
-        slug: Slug of the service account.
-
-    Returns:
-        Set of permission names.
-
-    """
-    query = (
-        'MATCH (s:ServiceAccount {{slug: {slug}}})'
-        '-[m:MEMBER_OF]->(o:Organization) '
-        'MATCH (r:Role {{slug: m.role}}) '
-        'OPTIONAL MATCH (r)-[:INHERITS_FROM*0..]->(parent:Role) '
-        'WITH DISTINCT parent '
-        'OPTIONAL MATCH (parent)-[:GRANTS]->(perm:Permission) '
-        'RETURN collect(DISTINCT perm.name)'
-    )
-    records = await db.execute(query, {'slug': slug}, columns=['permissions'])
     if not records:
         return set()
     raw: typing.Any = graph.parse_agtype(records[0].get('permissions'))
@@ -216,7 +207,9 @@ async def authenticate_jwt(
                 detail='Service account is inactive',
             )
 
-        perms = await load_service_account_permissions(db, subject)
+        perms = await load_principal_permissions(
+            db, 'ServiceAccount', 'slug', subject
+        )
         return AuthContext(
             service_account=sa,
             session_id=jti,
@@ -237,7 +230,7 @@ async def authenticate_jwt(
         )
 
     # Load permissions
-    perms = await load_user_permissions(db, subject)
+    perms = await load_principal_permissions(db, 'User', 'email', subject)
 
     return AuthContext(
         user=user,
@@ -344,7 +337,9 @@ async def authenticate_api_key(
                 status_code=401,
                 detail='Service account is inactive',
             )
-        all_perms = await load_service_account_permissions(db, sa.slug)
+        all_perms = await load_principal_permissions(
+            db, 'ServiceAccount', 'slug', sa.slug
+        )
         filtered = all_perms.intersection(set(scopes)) if scopes else all_perms
 
         # Update last_used only after all validation passes
@@ -367,7 +362,9 @@ async def authenticate_api_key(
             status_code=401, detail='User account is inactive'
         )
 
-    all_perms = await load_user_permissions(db, user.email)
+    all_perms = await load_principal_permissions(
+        db, 'User', 'email', user.email
+    )
     filtered = all_perms.intersection(set(scopes)) if scopes else all_perms
 
     # Update last_used only after all validation passes
@@ -507,8 +504,7 @@ async def check_resource_permission(
         'MATCH (resource {{slug: {resource_slug}}}) '
         'WHERE {resource_type} IN labels(resource) '
         'MATCH (u)-[access:CAN_ACCESS]->(resource) '
-        'UNWIND access.actions AS action_item '
-        'RETURN collect(DISTINCT action_item)'
+        'RETURN {action} IN access.actions'
     )
     records = await db.execute(
         query,
@@ -516,15 +512,13 @@ async def check_resource_permission(
             'email': email,
             'resource_type': resource_type,
             'resource_slug': resource_slug,
+            'action': action,
         },
-        columns=['actions'],
+        columns=['allowed'],
     )
     if not records:
         return False
-    actions = graph.parse_agtype(records[0].get('actions'))
-    if isinstance(actions, list):
-        return action in actions
-    return False
+    return bool(graph.parse_agtype(records[0].get('allowed')))
 
 
 def require_resource_access(

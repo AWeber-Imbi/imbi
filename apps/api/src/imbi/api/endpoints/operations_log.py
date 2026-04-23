@@ -15,7 +15,6 @@ from __future__ import annotations
 import base64
 import datetime
 import logging
-import threading
 import typing
 import urllib.parse
 
@@ -251,7 +250,6 @@ async def _fetch_current(
     return rows[0] if rows else None
 
 
-_row_version_lock = threading.Lock()
 _row_version_last: int = 0
 
 
@@ -261,18 +259,17 @@ def _next_row_version(current_version: int) -> int:
     ClickHouse ``ReplacingMergeTree`` requires the version column to
     strictly increase per key to guarantee deterministic last-write-wins
     replacement. We combine millisecond-precision wall time with a
-    process-wide monotonic guard so two concurrent writers observing the
-    same ``current_version`` in the same millisecond still produce
-    distinct, strictly-increasing versions; the result is also kept
-    greater than ``current_version`` to remain safe against any
-    older/current values already in ClickHouse.
+    process-wide monotonic guard so two writers observing the same
+    ``current_version`` in the same millisecond still produce distinct,
+    strictly-increasing versions; the result is also kept greater than
+    ``current_version`` to remain safe against any older/current values
+    already in ClickHouse.
     """
     global _row_version_last
     now_ms = int(datetime.datetime.now(datetime.UTC).timestamp() * 1000)
-    with _row_version_lock:
-        candidate = max(now_ms, _row_version_last + 1, current_version + 1)
-        _row_version_last = candidate
-        return candidate
+    candidate = max(now_ms, _row_version_last + 1, current_version + 1)
+    _row_version_last = candidate
+    return candidate
 
 
 _FILTER_FIELDS: tuple[str, ...] = (

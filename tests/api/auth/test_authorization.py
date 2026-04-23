@@ -26,8 +26,8 @@ class PermissionLoadingTestCase(unittest.IsolatedAsyncioTestCase):
             'imbi_common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
-            perms = await permissions.load_user_permissions(
-                mock_db, 'testuser'
+            perms = await permissions.load_principal_permissions(
+                mock_db, 'User', 'email', 'testuser'
             )
 
         self.assertEqual(perms, {'blueprint:read', 'blueprint:write'})
@@ -37,7 +37,9 @@ class PermissionLoadingTestCase(unittest.IsolatedAsyncioTestCase):
         mock_db = mock.AsyncMock()
         mock_db.execute.return_value = []
 
-        perms = await permissions.load_user_permissions(mock_db, 'testuser')
+        perms = await permissions.load_principal_permissions(
+            mock_db, 'User', 'email', 'testuser'
+        )
 
         self.assertEqual(perms, set())
 
@@ -412,7 +414,7 @@ class ResourcePermissionTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_check_resource_permission_granted(self) -> None:
         """Test checking resource permission when granted."""
         mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [{'actions': ['read', 'write']}]
+        mock_db.execute.return_value = [{'allowed': True}]
 
         with mock.patch(
             'imbi_common.graph.parse_agtype',
@@ -431,7 +433,7 @@ class ResourcePermissionTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_check_resource_permission_denied(self) -> None:
         """Test checking resource permission when denied."""
         mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [{'actions': ['read']}]
+        mock_db.execute.return_value = [{'allowed': False}]
 
         with mock.patch(
             'imbi_common.graph.parse_agtype',
@@ -536,7 +538,7 @@ class ResourceAccessDependencyTestCase(
         )
 
         mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [{'actions': ['read', 'write']}]
+        mock_db.execute.return_value = [{'allowed': True}]
 
         check_fn = permissions.require_resource_access('blueprint', 'read')
 
