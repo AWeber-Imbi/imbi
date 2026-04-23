@@ -107,7 +107,7 @@ export function resolveFieldValue(
   }
   // Fall back to environment objects (e.g. url, or any env-scoped field)
   for (const env of project.environments || []) {
-    const envVal = env[key]
+    const envVal = (env as Record<string, unknown>)[key]
     if (envVal !== null && envVal !== undefined && envVal !== '') {
       return envVal
     }

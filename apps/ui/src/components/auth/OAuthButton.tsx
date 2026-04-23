@@ -11,7 +11,7 @@ interface OAuthButtonProps {
   provider: {
     id: string
     name: string
-    icon: string
+    icon?: string | null
   }
   onClick: () => void
   disabled?: boolean
@@ -25,7 +25,7 @@ const iconMap: Record<string, LucideIcon> = {
 }
 
 export function OAuthButton({ provider, onClick, disabled }: OAuthButtonProps) {
-  const Icon = iconMap[provider.icon] || KeyIcon
+  const Icon = iconMap[provider.icon ?? ''] || KeyIcon
 
   return (
     <Button

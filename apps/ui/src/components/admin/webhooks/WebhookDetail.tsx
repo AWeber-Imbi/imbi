@@ -84,7 +84,7 @@ export function WebhookDetail({ webhook, onEdit, onBack }: WebhookDetailProps) {
             <div>
               <div className="text-sm text-secondary">Third-Party Service</div>
               <div className="mt-1 text-primary">
-                {webhook.third_party_service?.name || (
+                {(webhook.third_party_service?.name as string | undefined) || (
                   <span className="text-tertiary">None</span>
                 )}
               </div>

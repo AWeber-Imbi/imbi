@@ -128,7 +128,7 @@ export function BlueprintForm({
   useEffect(() => {
     if (existingBlueprint) {
       setName(existingBlueprint.name)
-      setSlug(existingBlueprint.slug)
+      setSlug(existingBlueprint.slug ?? '')
       setKind(existingBlueprint.kind || 'node')
       setType(existingBlueprint.type || '')
       setSource(existingBlueprint.source || '')

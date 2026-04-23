@@ -1,9 +1,15 @@
+import type { components } from './api-generated'
+
+type Schemas = components['schemas']
+
 // API Response Wrappers
 export interface CollectionResponse<T> {
   data: T[]
 }
 
 // API Response Types
+// `ApiStatus` is the UI-facing status envelope (richer than the backend
+// `StatusResponse` — includes `started_at` and optional `system` metadata).
 export interface ApiStatus {
   started_at: string
   status: 'ok' | 'maintenance'
@@ -21,6 +27,9 @@ export interface ApiStatus {
   }
 }
 
+// `User` is the UI-side profile shape used by auth/session consumers.
+// It does not map cleanly to the backend `UserResponse` (different key set:
+// UI tracks `username`/`user_type`; backend exposes `email`-keyed users).
 export interface User {
   username: string
   display_name: string
@@ -31,6 +40,9 @@ export interface User {
   groups?: string[]
 }
 
+// `Project` keeps its hand-written shape: it has UI-only convenience fields
+// (`project_type`, `[key: string]: unknown` for blueprint-defined extras) and
+// a looser `relationships` shape than the generated `ProjectResponse`.
 export interface Project {
   name: string
   slug: string
@@ -77,6 +89,9 @@ export interface Project {
   [key: string]: unknown
 }
 
+// `ProjectCreate` stays hand-written: the UI sends `environment_slugs` (a
+// flat slug list) whereas the generated `ProjectCreate` expects an
+// `environments` map of edge-property dicts + a required `project_type_slugs`.
 export interface ProjectCreate {
   name: string
   slug: string
@@ -89,56 +104,21 @@ export interface ProjectCreate {
   [key: string]: unknown
 }
 
-export interface LinkDefinition {
-  name: string
-  slug: string
-  description?: string | null
-  icon?: string | null
-  url_template?: string | null
-  created_at?: string | null
-  updated_at?: string | null
-  organization: {
-    name: string
-    slug: string
-  }
-  relationships?: {
-    projects?: RelationshipLink
-  }
-}
+export type LinkDefinition = Schemas['LinkDefinitionResponse']
+export type LinkDefinitionCreate = Schemas['LinkDefinitionCreate']
 
-export interface LinkDefinitionCreate {
-  name: string
-  slug: string
-  description?: string | null
-  icon?: string | null
-  url_template?: string | null
-}
+export type RelationshipLink = Schemas['RelationshipLink']
 
-export interface RelationshipLink {
-  href: string
-  count: number
-}
-
-export interface Environment {
-  name: string
-  slug: string
-  sort_order?: number | null
-  description?: string | null
-  icon?: string | null
-  label_color?: string | null
+// `Environment` tracks the full response shape (with relationships).
+// Add a UI-only `url` passthrough — it's surfaced in ProjectEnvironmentsCard
+// but not part of the Environment schema itself.
+export type Environment = Schemas['EnvironmentResponse'] & {
   url?: string | null
-  created_at?: string | null
-  updated_at?: string | null
-  organization: {
-    name: string
-    slug: string
-  }
-  relationships?: {
-    projects?: RelationshipLink
-  }
-  [key: string]: unknown
 }
 
+// `EnvironmentCreate` stays hand-written: the generated `EnvironmentRequest`
+// requires updated_at/description/icon/label_color be explicitly set to
+// `string|null`, which the UI create form doesn't do.
 export interface EnvironmentCreate {
   name: string
   slug: string
@@ -149,23 +129,10 @@ export interface EnvironmentCreate {
   [key: string]: unknown
 }
 
-export interface ProjectType {
-  name: string
-  slug: string
-  description?: string | null
-  icon?: string | null
-  created_at?: string | null
-  updated_at?: string | null
-  organization: {
-    name: string
-    slug: string
-  }
-  relationships?: {
-    projects?: RelationshipLink
-  }
-  [key: string]: unknown
-}
+export type ProjectType = Schemas['ProjectTypeResponse']
 
+// `ProjectTypeCreate` stays hand-written: no generated counterpart — the API
+// mounts project-type creation via the generic org scoped endpoint.
 export interface ProjectTypeCreate {
   name: string
   slug: string
@@ -174,6 +141,7 @@ export interface ProjectTypeCreate {
   [key: string]: unknown
 }
 
+// Activity feed projection for the dashboard — not a 1:1 backend shape.
 export interface ProjectFeedEntry {
   type: 'ProjectFeedEntry'
   display_name: string
@@ -189,6 +157,7 @@ export interface ProjectFeedEntry {
   who: string
 }
 
+// Activity feed projection; distinct from `OperationsLogRecord`.
 export interface OperationsLogEntry {
   type: 'OperationsLogEntry'
   id: number
@@ -237,23 +206,7 @@ export type OperationsLogEntryType = (typeof OPERATIONS_LOG_ENTRY_TYPES)[number]
 
 // Raw record returned by the /operations-log/ API (distinct from the
 // activity-feed projection defined above in `OperationsLogEntry`).
-export interface OperationsLogRecord {
-  id: string
-  occurred_at: string
-  recorded_at: string
-  recorded_by: string
-  performed_by?: string | null
-  completed_at?: string | null
-  project_id: string
-  project_slug: string
-  environment_slug: string
-  entry_type: OperationsLogEntryType
-  description: string
-  link?: string | null
-  notes?: string | null
-  ticket_slug?: string | null
-  version?: string | null
-}
+export type OperationsLogRecord = Schemas['OperationLogResponse']
 
 export interface OperationsLogFilters {
   project_slug?: string
@@ -279,27 +232,18 @@ export interface AuthState {
   isLoading: boolean
 }
 
-export interface AuthProvider {
-  id: string
-  type: 'oauth' | 'password'
-  name: string
-  enabled: boolean
-  auth_url?: string
-  icon: string
-}
+export type AuthProvider = Schemas['AuthProvider']
 
 export interface LoginRequest {
   email: string
   password: string
 }
 
-export interface TokenResponse {
-  access_token: string
-  refresh_token: string
-  token_type: 'bearer'
-  expires_in: number
-}
+export type TokenResponse = Schemas['TokenResponse']
 
+// `UserResponse` stays hand-written: it's a UI-side extension of `User`
+// (inherits `username`, `user_type`, etc.) which the backend `UserResponse`
+// doesn't expose.
 export interface UserResponse extends User {
   groups?: string[]
   roles?: string[]
@@ -341,13 +285,11 @@ export interface ViewChangeConfig {
 }
 
 // Admin User Management Types (matching API schema)
-export interface Permission {
-  name: string
-  resource_type: string
-  action: string
-  description?: string | null
-}
+export type Permission = Schemas['Permission']
 
+// `Role`/`RoleDetail`/`RoleCreate` stay hand-written: the generated
+// `Role-Output` is a single flat shape, while the UI separates a summary
+// (`Role`) from the detailed (`RoleDetail`) and create (`RoleCreate`) forms.
 export interface Role {
   name: string
   slug: string
@@ -369,13 +311,10 @@ export interface RoleCreate {
   priority?: number
 }
 
-export interface AdminSettings {
-  permissions: Permission[]
-  oauth_provider_types: string[]
-  auth_methods: string[]
-  auth_types: string[]
-}
+export type AdminSettings = Schemas['AdminSettings']
 
+// `RoleUser` stays hand-written: no generated counterpart (the
+// /roles/{slug}/users endpoint returns a flattened user projection).
 export interface RoleUser {
   email: string
   display_name: string
@@ -387,6 +326,8 @@ export interface RoleUser {
   avatar_url?: string | null
 }
 
+// `AdminUser` stays hand-written: no generated counterpart — the UI
+// composite flattens group/role/org memberships.
 export interface AdminUser {
   email: string
   display_name: string
@@ -406,41 +347,15 @@ export interface AdminUser {
   organizations?: OrgMembership[]
 }
 
-export interface AdminUserCreate {
-  email: string
-  display_name: string
-  password?: string | null
-  is_active?: boolean
-  is_admin?: boolean
-  is_service_account?: boolean
-  organization_slug: string
-  role_slug: string
-}
-
-export interface AdminUserUpdate {
-  email: string
-  display_name: string
-  password?: string | null
-  is_active?: boolean
-  is_admin?: boolean
-  is_service_account?: boolean
-}
+export type AdminUserCreate = Schemas['UserCreate']
+export type AdminUserUpdate = Schemas['UserUpdate']
 
 // Organization types
-export interface Organization {
-  name: string
-  slug: string
-  description?: string | null
-  icon?: string | null
-  created_at?: string | null
-  updated_at?: string | null
-  relationships?: {
-    teams?: RelationshipLink
-    members?: RelationshipLink
-    projects?: RelationshipLink
-  }
-}
+export type Organization = Schemas['OrganizationResponse']
 
+// `OrganizationCreate` stays hand-written: the generated
+// `OrganizationRequest` requires `updated_at`/`description`/`icon` be
+// present (nullable), which the UI create form doesn't send.
 export interface OrganizationCreate {
   name: string
   slug: string
@@ -449,24 +364,9 @@ export interface OrganizationCreate {
 }
 
 // Team types
-export interface Team {
-  name: string
-  slug: string
-  description?: string | null
-  icon?: string | null
-  created_at?: string | null
-  updated_at?: string | null
-  organization: {
-    name: string
-    slug: string
-  }
-  relationships?: {
-    projects?: RelationshipLink
-    members?: RelationshipLink
-  }
-  [key: string]: unknown
-}
+export type Team = Schemas['TeamResponse']
 
+// `TeamCreate` stays hand-written (same reason as `OrganizationCreate`).
 export interface TeamCreate {
   name: string
   slug: string
@@ -475,6 +375,7 @@ export interface TeamCreate {
   [key: string]: unknown
 }
 
+// `TeamMember` has no generated counterpart.
 export interface TeamMember {
   email: string
   display_name: string
@@ -487,117 +388,32 @@ export interface TeamMember {
 }
 
 // Upload types
-export interface Upload {
-  id: string
-  filename: string
-  content_type: string
-  size: number
-  has_thumbnail: boolean
-  uploaded_by: string
-  created_at: string
-}
+export type Upload = Schemas['UploadResponse']
 
 // Service Account types
-export interface ServiceAccount {
-  slug: string
-  display_name: string
-  description?: string | null
-  is_active: boolean
-  created_at: string
-  last_authenticated?: string | null
-  organizations?: OrgMembership[]
-}
+export type ServiceAccount = Schemas['ServiceAccountResponse']
+export type ServiceAccountCreate = Schemas['ServiceAccountCreate']
+export type ServiceAccountUpdate = Schemas['ServiceAccountUpdate']
 
-export interface ServiceAccountCreate {
-  slug: string
-  display_name: string
-  description?: string | null
-  is_active?: boolean
-  organization_slug: string
-  role_slug: string
-}
+export type OrgMembership = Schemas['OrgMembership']
 
-export interface ServiceAccountUpdate {
-  slug: string
-  display_name: string
-  description?: string | null
-  is_active?: boolean
-}
-
-export interface OrgMembership {
-  organization_name: string
-  organization_slug: string
-  role: string
-}
-
-export interface ClientCredential {
-  client_id: string
-  name: string
-  description?: string | null
-  scopes: string[]
-  created_at: string
-  expires_at?: string | null
-  last_used?: string | null
-  last_rotated?: string | null
-  revoked: boolean
-  revoked_at?: string | null
-}
-
-export interface ClientCredentialCreated extends ClientCredential {
-  client_secret: string
-}
-
-export interface ClientCredentialCreate {
-  name: string
-  description?: string | null
-  scopes?: string[]
-  expires_in_days?: number | null
-}
+export type ClientCredential = Schemas['ClientCredentialResponse']
+export type ClientCredentialCreated = Schemas['ClientCredentialCreateResponse']
+export type ClientCredentialCreate = Schemas['ClientCredentialCreate']
 
 // API Key types
-export interface ApiKey {
-  key_id: string
-  name: string
-  description?: string | null
-  scopes: string[]
-  created_at: string
-  expires_at?: string | null
-  last_used?: string | null
-  last_rotated?: string | null
-  revoked: boolean
-}
-
-export interface ApiKeyCreated {
-  key_id: string
-  key_secret: string
-  name: string
-  description?: string | null
-  scopes: string[]
-  expires_at?: string | null
-}
+export type ApiKey = Schemas['APIKeyResponse']
+export type ApiKeyCreated = Schemas['APIKeyCreateResponse']
 
 // Blueprint types
-export interface BlueprintFilter {
-  project_type: string[]
-  environment: string[]
-}
+export type BlueprintFilter = Schemas['BlueprintFilter']
 
-export interface Blueprint {
-  name: string
-  slug: string
-  kind: 'node' | 'relationship'
-  type?: string | null
-  source?: string | null
-  target?: string | null
-  edge?: string | null
-  description?: string | null
-  enabled: boolean
-  priority: number
-  filter?: string | null
-  json_schema: string
-  version: number
-}
+export type Blueprint = Schemas['Blueprint-Output']
 
+// `BlueprintCreate` stays hand-written: generated `Blueprint-Input` types
+// `json_schema` as the full `Schema-Input` AST, but the UI passes a
+// `Record<string, unknown>` (parsed JSON) and includes an `id`/timestamps
+// on read-round-trip shapes.
 export interface BlueprintCreate {
   name: string
   slug?: string
@@ -615,145 +431,28 @@ export interface BlueprintCreate {
 }
 
 // Third-Party Service types
-export interface ThirdPartyService {
-  name: string
-  slug: string
-  description?: string | null
-  icon?: string | null
-  vendor: string
-  service_url?: string | null
-  category?: string | null
-  status: 'active' | 'deprecated' | 'evaluating' | 'inactive'
-  links: Record<string, string>
-  identifiers: Record<string, string | number>
-  organization: {
-    name: string
-    slug: string
-  }
-  team?: {
-    name: string
-    slug: string
-  } | null
-  [key: string]: unknown
-}
-
-export interface ThirdPartyServiceCreate {
-  name: string
-  slug: string
-  description?: string | null
-  icon?: string | null
-  vendor: string
-  service_url?: string | null
-  category?: string | null
-  status?: string
-  links?: Record<string, string>
-  identifiers?: Record<string, string | number>
-  team_slug?: string | null
-  [key: string]: unknown
-}
+export type ThirdPartyService = Schemas['ThirdPartyServiceResponse']
+export type ThirdPartyServiceCreate = Schemas['ThirdPartyServiceCreate']
 
 // Service Application types
-export interface ServiceApplication {
-  slug: string
-  name: string
-  description?: string | null
-  app_type: string
-  application_url?: string | null
-  client_id: string
-  scopes: string[]
-  settings: Record<string, string | number | boolean>
-  status: 'active' | 'inactive' | 'revoked'
-}
-
-export interface ServiceApplicationCreate {
-  slug: string
-  name: string
-  description?: string | null
-  app_type: string
-  application_url?: string | null
-  client_id: string
-  client_secret: string
-  scopes?: string[]
-  webhook_secret?: string | null
-  private_key?: string | null
-  signing_secret?: string | null
-  settings?: Record<string, string | number | boolean>
-  status?: 'active' | 'inactive' | 'revoked'
-}
-
-export interface ServiceApplicationUpdate {
-  slug: string
-  name: string
-  description?: string | null
-  app_type: string
-  application_url?: string | null
-  client_id: string
-  scopes?: string[]
-  settings?: Record<string, string | number | boolean>
-  status?: 'active' | 'inactive' | 'revoked'
-}
-
-export interface ServiceApplicationSecrets {
-  client_secret: string
-  webhook_secret?: string | null
-  private_key?: string | null
-  signing_secret?: string | null
-}
-
-export interface ServiceApplicationSecretsUpdate {
-  client_secret?: string | null
-  webhook_secret?: string | null
-  private_key?: string | null
-  signing_secret?: string | null
-}
+export type ServiceApplication = Schemas['ServiceApplicationResponse']
+export type ServiceApplicationCreate = Schemas['ServiceApplicationCreate']
+export type ServiceApplicationUpdate = Schemas['ServiceApplicationUpdate']
+export type ServiceApplicationSecrets = Schemas['ServiceApplicationSecrets']
+export type ServiceApplicationSecretsUpdate =
+  Schemas['ServiceApplicationSecretsUpdate']
 
 // Webhook types
-export interface WebhookRule {
-  filter_expression: string
-  handler: string
-  handler_config: Record<string, unknown> | unknown[]
-}
-
-export interface Webhook {
-  name: string
-  slug: string
-  description?: string | null
-  icon?: string | null
-  notification_path: string
-  third_party_service?: {
-    name: string
-    slug: string
-  } | null
-  identifier_selector?: string | null
-  rules: WebhookRule[]
-}
-
-export interface WebhookCreate {
-  name: string
-  slug: string
-  description?: string | null
-  icon?: string | null
-  notification_path: string
-  secret?: string | null
-  third_party_service_slug?: string | null
-  identifier_selector?: string | null
-  rules: WebhookRule[]
-}
+export type WebhookRule = Schemas['WebhookRuleResponse']
+export type Webhook = Schemas['WebhookResponse']
+export type WebhookCreate = Schemas['WebhookCreate']
 
 // Project EXISTS_IN types
-export interface ProjectService {
-  third_party_service_slug: string
-  third_party_service_name: string
-  identifier: string
-  canonical_link?: string | null
-}
+export type ProjectService = Schemas['ExistsInResponse']
+export type ProjectServiceCreate = Schemas['ExistsInCreate']
 
-export interface ProjectServiceCreate {
-  third_party_service_slug: string
-  identifier: string
-  canonical_link?: string | null
-}
-
+// `SchemaProperty` is UI-only — a form-builder projection derived from a
+// JSON Schema property descriptor.
 export interface SchemaProperty {
   id: string
   name: string
@@ -777,29 +476,10 @@ export interface SchemaProperty {
 }
 
 // Project Relationships (DEPENDS_ON edges)
-export interface ProjectRelationshipSummary {
-  id: string
-  name: string
-  slug: string
-  namespace?: string | null
-  project_type?: string | null
-  project_type_icon?: string | null
-}
-
-export interface ProjectRelationship {
-  direction: 'inbound' | 'outbound'
-  type: 'depends_on'
-  project: ProjectRelationshipSummary
-}
-
-export interface ProjectRelationshipsResponse {
-  relationships: ProjectRelationship[]
-}
+export type ProjectRelationshipSummary = Schemas['ProjectRelationshipSummary']
+export type ProjectRelationship = Schemas['ProjectRelationship']
+export type ProjectRelationshipsResponse =
+  Schemas['ProjectRelationshipsResponse']
 
 // JSON Patch operation (RFC 6902)
-export type PatchOperation = {
-  op: 'add' | 'remove' | 'replace' | 'move' | 'copy' | 'test'
-  path: string
-  value?: unknown
-  from?: string
-}
+export type PatchOperation = Schemas['PatchOperation']

@@ -142,9 +142,9 @@ export function SettingsApiKeys() {
                   </Button>
                 </div>
 
-                {apiKey.scopes.length > 0 && (
+                {(apiKey.scopes?.length ?? 0) > 0 && (
                   <div className="flex gap-2">
-                    {apiKey.scopes.map((scope) => (
+                    {apiKey.scopes?.map((scope) => (
                       <Badge
                         key={scope}
                         variant="outline"

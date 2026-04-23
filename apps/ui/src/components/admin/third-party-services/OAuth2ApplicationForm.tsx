@@ -23,6 +23,13 @@ const APP_TYPES = [
   { value: 'generic_oauth2', label: 'Generic OAuth2' },
 ]
 
+const APP_STATUSES = ['active', 'inactive', 'revoked'] as const
+type AppStatus = (typeof APP_STATUSES)[number]
+
+function isAppStatus(value: unknown): value is AppStatus {
+  return typeof value === 'string' && APP_STATUSES.includes(value as AppStatus)
+}
+
 // Secret fields to show per app type (create mode only)
 const TYPE_SECRET_FIELDS: Record<string, string[]> = {
   github_app: ['private_key', 'webhook_secret'],
@@ -48,7 +55,9 @@ export function OAuth2ApplicationForm({
   )
   const [clientId, setClientId] = useState(application?.client_id || '')
   const [scopes, setScopes] = useState(application?.scopes?.join(', ') || '')
-  const [status, setStatus] = useState(application?.status || 'active')
+  const [status, setStatus] = useState<AppStatus>(
+    isAppStatus(application?.status) ? application.status : 'active',
+  )
   const [validationError, setValidationError] = useState<string | null>(null)
 
   // Secret fields (create mode only)

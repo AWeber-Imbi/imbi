@@ -60,7 +60,9 @@ export function WebhookForm({
   )
   const [secret, setSecret] = useState('')
   const [tpsSlug, setTpsSlug] = useState(
-    webhook?.third_party_service?.slug || defaultServiceSlug || '',
+    (webhook?.third_party_service?.slug as string | undefined) ||
+      defaultServiceSlug ||
+      '',
   )
   const [identifierSelector, setIdentifierSelector] = useState(
     webhook?.identifier_selector || '',

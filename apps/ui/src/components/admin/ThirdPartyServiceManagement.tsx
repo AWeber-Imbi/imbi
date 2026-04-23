@@ -189,7 +189,9 @@ export function ThirdPartyServiceManagement() {
       headerAlign: 'left',
       cellAlign: 'left',
       render: (svc) =>
-        svc.team?.name ?? <span className="text-muted-foreground">--</span>,
+        (svc.team?.name as string | undefined) ?? (
+          <span className="text-muted-foreground">--</span>
+        ),
     },
   ]
 

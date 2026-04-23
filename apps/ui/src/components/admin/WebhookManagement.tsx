@@ -207,7 +207,7 @@ export function WebhookManagement() {
             headerAlign: 'left',
             cellAlign: 'left',
             render: (wh) =>
-              wh.third_party_service?.name || (
+              (wh.third_party_service?.name as string | undefined) || (
                 <span className="text-tertiary">--</span>
               ),
           },

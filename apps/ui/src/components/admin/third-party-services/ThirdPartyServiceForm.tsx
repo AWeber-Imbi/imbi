@@ -45,15 +45,22 @@ export function ThirdPartyServiceForm({
   const [vendor, setVendor] = useState(service?.vendor || '')
   const [serviceUrl, setServiceUrl] = useState(service?.service_url || '')
   const [category, setCategory] = useState(service?.category || '')
-  const [status, setStatus] = useState<string>(service?.status || 'active')
+  const [status, setStatus] = useState<
+    'active' | 'deprecated' | 'evaluating' | 'inactive'
+  >(
+    (service?.status as 'active' | 'deprecated' | 'evaluating' | 'inactive') ||
+      'active',
+  )
   const [links, setLinks] = useState<Record<string, string | number>>(
-    service?.links || {},
+    (service?.links as Record<string, string | number> | undefined) || {},
   )
   const [identifiers, setIdentifiers] = useState<
     Record<string, string | number>
-  >(service?.identifiers || {})
+  >((service?.identifiers as Record<string, string | number> | undefined) || {})
   const orgSlug = selectedOrganization?.slug || ''
-  const [teamSlug, setTeamSlug] = useState(service?.team?.slug || '')
+  const [teamSlug, setTeamSlug] = useState(
+    (service?.team?.slug as string | undefined) || '',
+  )
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const { data: teams = [] } = useQuery({
@@ -303,7 +310,15 @@ export function ThirdPartyServiceForm({
                 </label>
                 <select
                   value={status}
-                  onChange={(e) => setStatus(e.target.value)}
+                  onChange={(e) =>
+                    setStatus(
+                      e.target.value as
+                        | 'active'
+                        | 'deprecated'
+                        | 'evaluating'
+                        | 'inactive',
+                    )
+                  }
                   disabled={isLoading}
                   className={selectClass}
                 >
