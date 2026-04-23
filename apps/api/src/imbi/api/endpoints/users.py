@@ -11,6 +11,7 @@ from imbi_common import graph
 from imbi_api import models
 from imbi_api import patch as json_patch
 from imbi_api.auth import password, permissions
+from imbi_api.endpoints import _helpers
 
 LOGGER = logging.getLogger(__name__)
 
@@ -558,6 +559,45 @@ async def add_to_organization(
             detail=f'User {email!r}, organization {org_slug!r},'
             f' or role {role_slug!r} not found',
         )
+
+
+@users_router.patch(
+    '/{email}/organizations/{org_slug}',
+    status_code=204,
+)
+async def update_organization_role(
+    email: str,
+    org_slug: str,
+    operations: list[json_patch.PatchOperation],
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('user:update')),
+    ],
+) -> None:
+    """Change a user's role in an organization via JSON Patch.
+
+    Parameters:
+        email (str): Email of user.
+        org_slug (str): Organization slug.
+        operations (list): JSON Patch operations. Exactly one
+            ``replace`` or ``add`` op targeting ``/role_slug``.
+
+    Raises:
+        fastapi.HTTPException: HTTP 400 on malformed patch, HTTP 404
+            if membership or role not found.
+
+    """
+    email = urlparse.unquote(email)
+    role_slug = _helpers.extract_role_slug(operations)
+    await _helpers.update_membership_role(
+        db,
+        principal_label='User',
+        principal_match_prop='email',
+        principal_value=email,
+        org_slug=org_slug,
+        role_slug=role_slug,
+    )
 
 
 @users_router.delete(

@@ -790,6 +790,84 @@ class OrgMembershipEndpointsTestCase(unittest.TestCase):
             response.json()['detail'],
         )
 
+    def test_update_organization_role_success(self) -> None:
+        """PATCH updates the membership role."""
+        self.mock_db.execute.side_effect = [
+            [{'slug': 'admin'}],
+            [{'role': 'admin'}],
+        ]
+
+        response = self.client.patch(
+            '/users/test@example.com/organizations/default',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/role_slug',
+                    'value': 'admin',
+                },
+            ],
+        )
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(self.mock_db.execute.call_count, 2)
+
+    def test_update_organization_role_missing_role(self) -> None:
+        """PATCH returns 404 when the target role does not exist."""
+        self.mock_db.execute.side_effect = [[]]
+
+        response = self.client.patch(
+            '/users/test@example.com/organizations/default',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/role_slug',
+                    'value': 'ghost',
+                },
+            ],
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('Role', response.json()['detail'])
+
+    def test_update_organization_role_missing_membership(
+        self,
+    ) -> None:
+        """PATCH returns 404 when the user is not a member."""
+        self.mock_db.execute.side_effect = [
+            [{'slug': 'admin'}],
+            [],
+        ]
+
+        response = self.client.patch(
+            '/users/test@example.com/organizations/other-org',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/role_slug',
+                    'value': 'admin',
+                },
+            ],
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not a member', response.json()['detail'])
+
+    def test_update_organization_role_malformed_patch(self) -> None:
+        """PATCH with wrong path returns 400 without touching graph."""
+        response = self.client.patch(
+            '/users/test@example.com/organizations/default',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/display_name',
+                    'value': 'nope',
+                },
+            ],
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.mock_db.execute.assert_not_awaited()
+
 
 class ServiceAccountGuardRailsTestCase(unittest.TestCase):
     """Test guardrails for invalid service account operations."""
