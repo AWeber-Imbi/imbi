@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -53,6 +54,9 @@ export function SettingsApiKeys() {
     onSuccess: () => {
       setRevokingKeyId(null)
       queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+    },
+    onError: (error: unknown) => {
+      toast.error(`Failed to revoke API key: ${extractApiErrorDetail(error)}`)
     },
   })
 

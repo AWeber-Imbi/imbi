@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { MessageSquare, Plus, Archive, Trash2 } from 'lucide-react'
 import {
   listConversations,
   deleteConversation,
   updateConversation,
 } from '@/api/assistant'
+import { extractApiErrorDetail } from '@/lib/apiError'
 import type { Conversation } from '@/types/assistant'
 import { Button } from '@/components/ui/button'
 
@@ -35,6 +37,11 @@ export function ConversationHistory({
       queryClient.invalidateQueries({
         queryKey: ['assistant', 'conversations'],
       }),
+    onError: (error: unknown) => {
+      toast.error(
+        `Failed to delete conversation: ${extractApiErrorDetail(error)}`,
+      )
+    },
   })
 
   const archiveMutation = useMutation({
@@ -43,6 +50,11 @@ export function ConversationHistory({
       queryClient.invalidateQueries({
         queryKey: ['assistant', 'conversations'],
       }),
+    onError: (error: unknown) => {
+      toast.error(
+        `Failed to archive conversation: ${extractApiErrorDetail(error)}`,
+      )
+    },
   })
 
   const handleDelete = (e: React.MouseEvent, id: string) => {
