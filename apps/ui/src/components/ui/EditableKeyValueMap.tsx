@@ -1,3 +1,10 @@
+// Inline-edit key/value card: keys are picked from a pre-known set (Select),
+// values commit on blur with a SavedIndicator, and deletes pass through a
+// ConfirmDialog. Use on detail pages where each row is independently saved
+// against the server (see EditLinksCard, EditIdentifiersCard).
+//
+// For form-embedded free-form key/value editing where the whole form is
+// submitted at once, use KeyValueEditor (./key-value-editor) instead.
 import type { ReactNode } from 'react'
 import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'

@@ -57,6 +57,13 @@ This is a complete rewrite of the Imbi UI using modern TypeScript and React.
 4. Use React Query hooks for data fetching
 5. Handle loading and error states
 
+## Component conventions
+
+### Key/value editors
+Two primitives, intentionally kept distinct — pick by save model, not by look:
+- **`EditableKeyValueMap`** (`@/components/ui/EditableKeyValueMap`): inline-edit on a detail page. Each row commits on blur with a `SavedIndicator`, deletes route through `ConfirmDialog`, and keys are picked from a pre-known set via `Select`. Pairs with the `useEditableKeyValueMap` hook. Used by `EditLinksCard`, `EditIdentifiersCard`.
+- **`KeyValueEditor`** (`@/components/ui/key-value-editor`): form-embedded editor with free-form keys, controlled via `value`/`onChange`, no per-row save. Used inside forms that submit the whole object at once (e.g. `ThirdPartyServiceForm`'s links and identifiers).
+
 ## Backend API
 - OpenAPI spec snapshot committed at `openapi.json` (repo root). Regenerate types after backend changes with `npm run codegen:fetch` (requires a running backend at `localhost:8000`) or `npm run codegen` (from the current snapshot). Generated types at `src/types/api-generated.ts`.
 - Session cookie auth (or Private-Token header)

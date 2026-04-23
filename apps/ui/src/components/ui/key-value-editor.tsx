@@ -1,3 +1,10 @@
+// Form-embedded key/value editor: free-form keys (user types them), controlled
+// via value/onChange, no per-row save. Use inside a form that submits the
+// whole object at once (see ThirdPartyServiceForm's links/identifiers state).
+//
+// For inline-edit on a detail page where each row is independently committed
+// against the server (with confirm dialog + saved indicator + Select from a
+// pre-known key set), use EditableKeyValueMap (./EditableKeyValueMap) instead.
 import { useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { Button } from './button'
