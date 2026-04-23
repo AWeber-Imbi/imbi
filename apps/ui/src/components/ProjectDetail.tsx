@@ -22,7 +22,7 @@ import {
   TooltipContent,
   TooltipProvider,
 } from '@/components/ui/tooltip'
-import { useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -227,6 +227,41 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
     [projectTypes],
   )
 
+  const label = 'text-tertiary'
+  const value = 'text-primary'
+  const muted = 'text-tertiary'
+  const divider = 'border-tertiary'
+
+  const handleCommitName = useCallback(
+    (v: string | null) => patch('/name', v ?? ''),
+    [patch],
+  )
+  const handleCommitDescription = useCallback(
+    (v: string | null) => patch('/description', v),
+    [patch],
+  )
+  const handleCommitTeamSlug = useCallback(
+    (v: string) => patch('/team_slug', v),
+    [patch],
+  )
+  const handleCommitSlug = useCallback(
+    (v: string | null) => patch('/slug', v ?? ''),
+    [patch],
+  )
+  const handleCommitProjectTypeSlugs = useCallback(
+    (v: string[]) => patch('/project_type_slugs', v),
+    [patch],
+  )
+
+  const renderNameValue = useCallback(
+    (v: string) => <span className={`text-[1.75rem] ${value}`}>{v}</span>,
+    [value],
+  )
+  const renderSlugValue = useCallback(
+    (v: string) => <span className={`font-mono text-sm ${value}`}>{v}</span>,
+    [value],
+  )
+
   const tabs: { id: TabType; label: string }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'configuration', label: 'Configuration' },
@@ -245,11 +280,6 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
     { id: 'settings', label: '' },
   ]
 
-  const label = 'text-tertiary'
-  const value = 'text-primary'
-  const muted = 'text-tertiary'
-  const divider = 'border-tertiary'
-
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-8">
       {/* Project Header */}
@@ -259,12 +289,10 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
             <div className="-ml-[18px] mb-1 flex items-center gap-3">
               <InlineText
                 value={project.name}
-                onCommit={(v) => patch('/name', v ?? '')}
+                onCommit={handleCommitName}
                 pending={pendingPath === '/name'}
                 className="text-[1.75rem]"
-                renderValue={(v) => (
-                  <span className={`text-[1.75rem] ${value}`}>{v}</span>
-                )}
+                renderValue={renderNameValue}
               />
             </div>
           </div>
@@ -312,7 +340,7 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
         <div className="-ml-[18px] mt-3 text-secondary">
           <InlineTextarea
             value={project.description ?? null}
-            onCommit={(v) => patch('/description', v)}
+            onCommit={handleCommitDescription}
             pending={pendingPath === '/description'}
             placeholder="Add a description…"
             rows={2}
@@ -379,7 +407,7 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
                       <InlineSelect
                         value={project.team.slug}
                         options={teamOptions}
-                        onCommit={(v) => patch('/team_slug', v)}
+                        onCommit={handleCommitTeamSlug}
                         pending={pendingPath === '/team_slug'}
                       />
                     </div>
@@ -390,13 +418,9 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
                       <span className={`text-sm ${label}`}>Slug</span>
                       <InlineText
                         value={project.slug}
-                        onCommit={(v) => patch('/slug', v ?? '')}
+                        onCommit={handleCommitSlug}
                         pending={pendingPath === '/slug'}
-                        renderValue={(v) => (
-                          <span className={`font-mono text-sm ${value}`}>
-                            {v}
-                          </span>
-                        )}
+                        renderValue={renderSlugValue}
                       />
                     </div>
 
@@ -409,7 +433,7 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
                           (pt) => pt.slug,
                         )}
                         options={projectTypeOptions}
-                        onCommit={(v) => patch('/project_type_slugs', v)}
+                        onCommit={handleCommitProjectTypeSlugs}
                         pending={pendingPath === '/project_type_slugs'}
                       />
                     </div>
