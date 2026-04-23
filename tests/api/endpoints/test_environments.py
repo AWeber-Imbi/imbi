@@ -298,213 +298,6 @@ class EnvironmentEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
-    def test_update_environment(self) -> None:
-        """Test updating an environment."""
-        fetch_records = [
-            {
-                'e': {
-                    'name': 'Production',
-                    'slug': 'production',
-                    'description': 'Production environment',
-                },
-                'o': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
-                },
-            }
-        ]
-        update_records = [
-            {
-                'e': {
-                    'name': 'Production US',
-                    'slug': 'production',
-                    'description': 'Updated description',
-                },
-                'o': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
-                },
-                'project_count': 10,
-            }
-        ]
-        self.mock_db.execute.side_effect = [
-            fetch_records,
-            update_records,
-        ]
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Environment
-
-            response = self.client.put(
-                '/organizations/engineering/environments/production',
-                json={
-                    'name': 'Production US',
-                    'slug': 'production',
-                    'description': 'Updated description',
-                },
-            )
-
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(data['name'], 'Production US')
-        self.assertIn('relationships', data)
-
-    def test_update_environment_not_found(self) -> None:
-        """Test updating nonexistent environment."""
-        self.mock_db.execute.return_value = []
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Environment
-
-            response = self.client.put(
-                '/organizations/engineering/environments/nonexistent',
-                json={
-                    'name': 'Test',
-                    'slug': 'nonexistent',
-                },
-            )
-
-        self.assertEqual(response.status_code, 404)
-
-    def test_update_environment_validation_error(self) -> None:
-        """Test updating environment with invalid data."""
-        fetch_records = [
-            {
-                'e': {
-                    'name': 'Production',
-                    'slug': 'production',
-                    'description': 'Production environment',
-                },
-                'o': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
-                },
-            }
-        ]
-        self.mock_db.execute.return_value = fetch_records
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Environment
-
-            response = self.client.put(
-                '/organizations/engineering/environments/production',
-                json={'name': 123},
-            )
-
-        self.assertEqual(response.status_code, 400)
-
-    def test_update_environment_slug_conflict(self) -> None:
-        """Test updating environment with conflicting slug."""
-        fetch_records = [
-            {
-                'e': {
-                    'name': 'Production',
-                    'slug': 'production',
-                    'description': 'Production environment',
-                },
-                'o': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
-                },
-            }
-        ]
-        self.mock_db.execute.side_effect = [
-            fetch_records,
-            psycopg.errors.UniqueViolation(),
-        ]
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Environment
-
-            response = self.client.put(
-                '/organizations/engineering/environments/production',
-                json={
-                    'name': 'Production',
-                    'slug': 'existing-slug',
-                },
-            )
-
-        self.assertEqual(response.status_code, 409)
-        self.assertIn(
-            'already exists',
-            response.json()['detail'],
-        )
-
-    def test_update_environment_concurrent_delete(self) -> None:
-        """Test updating environment deleted between fetch
-        and update."""
-        fetch_records = [
-            {
-                'e': {
-                    'name': 'Production',
-                    'slug': 'production',
-                    'description': 'Production environment',
-                },
-                'o': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
-                },
-            }
-        ]
-        self.mock_db.execute.side_effect = [
-            fetch_records,
-            [],
-        ]
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Environment
-
-            response = self.client.put(
-                '/organizations/engineering/environments/production',
-                json={
-                    'name': 'Production Updated',
-                    'slug': 'production',
-                },
-            )
-
-        self.assertEqual(response.status_code, 404)
-        self.assertIn('not found', response.json()['detail'])
-
     def test_patch_environment_name(self) -> None:
         """Test patching only the environment name."""
         from imbi_common import models as common_models
@@ -568,6 +361,76 @@ class EnvironmentEndpointsTestCase(unittest.TestCase):
             response = self.client.patch(
                 '/organizations/engineering/environments/nonexistent',
                 json=[{'op': 'replace', 'path': '/name', 'value': 'X'}],
+            )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_patch_environment_slug_conflict(self) -> None:
+        """Patch that renames slug to an existing one returns 409."""
+        from imbi_common import models as common_models
+
+        existing = {
+            'name': 'Production',
+            'slug': 'production',
+            'sort_order': 0,
+        }
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'e': existing,
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                },
+            ],
+            psycopg.errors.UniqueViolation(),
+        ]
+
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+                return_value=common_models.Environment,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/environments/production',
+                json=[{'op': 'replace', 'path': '/slug', 'value': 'existing'}],
+            )
+
+        self.assertEqual(response.status_code, 409)
+
+    def test_patch_environment_concurrent_delete(self) -> None:
+        """Update returning no rows yields 404."""
+        from imbi_common import models as common_models
+
+        existing = {
+            'name': 'Production',
+            'slug': 'production',
+            'sort_order': 0,
+        }
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'e': existing,
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                },
+            ],
+            [],
+        ]
+
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+                return_value=common_models.Environment,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/environments/production',
+                json=[{'op': 'replace', 'path': '/name', 'value': 'P2'}],
             )
 
         self.assertEqual(response.status_code, 404)

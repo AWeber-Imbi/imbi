@@ -165,53 +165,6 @@ async def get_blueprint(
     return blueprint
 
 
-@blueprint_router.put(
-    '/{type}/{slug}',
-    response_model=models.Blueprint,
-)
-async def update_blueprint(
-    blueprint_type: typing.Annotated[
-        BlueprintType,
-        fastapi.Path(alias='type'),
-    ],
-    slug: str,
-    blueprint: models.Blueprint,
-    db: graph.Pool,
-    auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(
-            permissions.require_permission('blueprint:write'),
-        ),
-    ],
-) -> models.Blueprint:
-    """Update or create a blueprint (upsert)."""
-    if blueprint.slug != slug:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail='Blueprint slug in body must match URL',
-        )
-    if blueprint_type == _RELATIONSHIP:
-        if blueprint.kind != _RELATIONSHIP:
-            raise fastapi.HTTPException(
-                status_code=400,
-                detail='Blueprint kind must be relationship',
-            )
-        match_on = ['slug', 'kind']
-    else:
-        if blueprint.type != blueprint_type:
-            raise fastapi.HTTPException(
-                status_code=400,
-                detail='Blueprint type in body must match URL',
-            )
-        match_on = ['slug', 'type']
-    await db.merge(blueprint, match_on=match_on)
-    try:
-        await openapi.refresh_blueprint_models(db)
-    except Exception:
-        LOGGER.exception('Failed to refresh blueprint models')
-    return blueprint
-
-
 @blueprint_router.patch(
     '/{type}/{slug}',
     response_model=models.Blueprint,

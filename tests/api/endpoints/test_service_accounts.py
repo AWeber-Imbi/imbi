@@ -196,46 +196,6 @@ class ServiceAccountsEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
-    def test_update_service_account(self) -> None:
-        """Test updating a service account."""
-        self.mock_db.match.return_value = [self.sa_data]
-        self.mock_db.merge.return_value = self.sa_data
-
-        response = self.client.put(
-            '/service-accounts/test-bot',
-            json={
-                'slug': 'test-bot',
-                'display_name': 'Updated Bot',
-                'description': 'Updated description',
-                'is_active': False,
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(data['slug'], 'test-bot')
-        self.assertEqual(data['display_name'], 'Updated Bot')
-        self.assertEqual(
-            data['description'],
-            'Updated description',
-        )
-        self.assertFalse(data['is_active'])
-
-    def test_update_service_account_slug_mismatch(
-        self,
-    ) -> None:
-        """Test updating with mismatched slugs returns 400."""
-        response = self.client.put(
-            '/service-accounts/test-bot',
-            json={
-                'slug': 'different-slug',
-                'display_name': 'Mismatched',
-            },
-        )
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('must match', response.json()['detail'])
-
     def test_delete_service_account(self) -> None:
         """Test deleting a service account returns 204."""
         self.mock_db.execute.return_value = [{'deleted': 1}]
@@ -348,47 +308,6 @@ class ServiceAccountsEndpointsTestCase(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 422)
-
-    def test_update_organization_role(self) -> None:
-        """Test changing a SA's role in an organization."""
-        self.mock_db.execute.return_value = [
-            {'s': {}, 'o': {}, 'r': {}},
-        ]
-
-        response = self.client.put(
-            '/service-accounts/test-bot/organizations/acme-corp',
-            json={'role_slug': 'admin'},
-        )
-
-        self.assertEqual(response.status_code, 204)
-
-    def test_update_organization_role_missing_slug(
-        self,
-    ) -> None:
-        """Test updating role without role_slug returns 400."""
-        response = self.client.put(
-            '/service-accounts/test-bot/organizations/acme-corp',
-            json={},
-        )
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn(
-            'required',
-            response.json()['detail'],
-        )
-
-    def test_update_organization_role_not_found(
-        self,
-    ) -> None:
-        """Test updating role for non-existent membership."""
-        self.mock_db.execute.return_value = []
-
-        response = self.client.put(
-            '/service-accounts/test-bot/organizations/nonexistent',
-            json={'role_slug': 'admin'},
-        )
-
-        self.assertEqual(response.status_code, 404)
 
     def test_remove_from_organization(self) -> None:
         """Test removing service account from org."""

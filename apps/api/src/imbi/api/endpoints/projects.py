@@ -841,14 +841,6 @@ class ProjectRelationshipsResponse(pydantic.BaseModel):
     relationships: list[ProjectRelationship]
 
 
-class ProjectRelationshipsUpdate(pydantic.BaseModel):
-    """Request body for replacing outbound DEPENDS_ON edges."""
-
-    depends_on: list[str] = pydantic.Field(
-        description='Project IDs that this project depends on.',
-    )
-
-
 _RELATIONSHIPS_QUERY: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
@@ -949,95 +941,6 @@ async def list_project_relationships(
     )
 
 
-@projects_router.put('/{project_id}/relationships')
-async def set_project_relationships(
-    org_slug: str,
-    project_id: str,
-    data: ProjectRelationshipsUpdate,
-    db: graph.Pool,
-    auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(
-            permissions.require_permission('project:write'),
-        ),
-    ],
-) -> ProjectRelationshipsResponse:
-    """Replace the outbound DEPENDS_ON edges for a project.
-
-    Deletes all existing outbound DEPENDS_ON edges and creates new
-    ones for each project ID in ``depends_on``.  Self-references
-    are silently ignored.
-    """
-    target_ids = list(
-        dict.fromkeys(tid for tid in data.depends_on if tid != project_id)
-    )
-
-    exists = await db.execute(
-        _PROJECT_EXISTS_QUERY,
-        {'project_id': project_id, 'org_slug': org_slug},
-        ['id'],
-    )
-    if not exists:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'Project {project_id!r} not found',
-        )
-
-    if target_ids:
-        validate_query: typing.LiteralString = """
-        UNWIND {target_ids} AS tid
-        OPTIONAL MATCH (t:Project {{id: tid}})
-        RETURN tid, t IS NOT NULL AS found
-        """
-        records = await db.execute(
-            validate_query,
-            {'target_ids': target_ids},
-            ['tid', 'found'],
-        )
-        missing = [
-            graph.parse_agtype(r['tid'])
-            for r in records
-            if not graph.parse_agtype(r['found'])
-        ]
-        if missing:
-            raise fastapi.HTTPException(
-                status_code=422,
-                detail=(f'Project ID(s) not found: {sorted(missing)!r}'),
-            )
-
-    if target_ids:
-        mutate_query: typing.LiteralString = """
-        MATCH (p:Project {{id: {project_id}}})
-        OPTIONAL MATCH (p)-[old:DEPENDS_ON]->(:Project)
-        DELETE old
-        WITH DISTINCT p
-        UNWIND {target_ids} AS tid
-        MATCH (target:Project {{id: tid}})
-        CREATE (p)-[:DEPENDS_ON]->(target)
-        """
-        await db.execute(
-            mutate_query,
-            {
-                'project_id': project_id,
-                'target_ids': target_ids,
-            },
-        )
-    else:
-        delete_query: typing.LiteralString = """
-        MATCH (p:Project {{id: {project_id}}})
-        OPTIONAL MATCH (p)-[old:DEPENDS_ON]->(:Project)
-        DELETE old
-        """
-        await db.execute(
-            delete_query,
-            {'project_id': project_id},
-        )
-
-    return ProjectRelationshipsResponse(
-        relationships=await _fetch_relationships(db, project_id, org_slug),
-    )
-
-
 async def _validate_update_refs(
     db: graph.Pool,
     org_slug: str,
@@ -1046,7 +949,7 @@ async def _validate_update_refs(
     """Validate team, project type, and environment references.
 
     Raises HTTPException 422 if any referenced slugs do not exist.
-    Called by both PUT and PATCH handlers before executing the update.
+    Called by the PATCH handler before executing the update.
     """
     if data.team_slug:
         team_check: typing.LiteralString = """
@@ -1169,7 +1072,7 @@ async def _execute_project_update(
     existing_types: list[str],
     db: graph.Pool,
 ) -> ProjectResponse:
-    """Execute the shared update logic for PUT and PATCH handlers.
+    """Execute the shared update logic for the PATCH handler.
 
     Merges ``data`` with the existing project node, validates
     references, builds and runs the Cypher update query, and
@@ -1349,64 +1252,6 @@ async def _execute_project_update(
         graph.parse_agtype(updated[0]['inbound_count']),
     )
     return ProjectResponse.model_validate(updated_data)
-
-
-@projects_router.put('/{project_id}')
-async def update_project(
-    org_slug: str,
-    project_id: str,
-    data: ProjectUpdate,
-    db: graph.Pool,
-    auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(
-            permissions.require_permission('project:write'),
-        ),
-    ],
-) -> ProjectResponse:
-    """Update a project."""
-    fetch_query: typing.LiteralString = """
-    MATCH (p:Project {{id: {project_id}}})
-          -[:OWNED_BY]->(:Team)
-          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    WITH DISTINCT p, o
-    MATCH (p)-[:OWNED_BY]->(t:Team)-[:BELONGS_TO]->(o)
-    WITH p, o, t.slug AS team_slug
-    OPTIONAL MATCH (p)-[:TYPE]->(pt:ProjectType)
-          -[:BELONGS_TO]->(o)
-    WITH p, team_slug, collect(pt.slug) AS type_slugs
-    RETURN p{{.*}} AS project,
-           team_slug AS current_team_slug,
-           type_slugs AS current_type_slugs
-    """
-    records = await db.execute(
-        fetch_query,
-        {
-            'project_id': project_id,
-            'org_slug': org_slug,
-        },
-        ['project', 'current_team_slug', 'current_type_slugs'],
-    )
-
-    if not records:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'Project {project_id!r} not found',
-        )
-
-    existing_p = graph.parse_agtype(records[0]['project'])
-    existing_team = graph.parse_agtype(records[0]['current_team_slug'])
-    existing_types = graph.parse_agtype(records[0]['current_type_slugs'])
-
-    return await _execute_project_update(
-        project_id,
-        org_slug,
-        data,
-        existing_p,
-        existing_team,
-        existing_types,
-        db,
-    )
 
 
 @projects_router.patch('/{project_id}')

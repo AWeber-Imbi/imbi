@@ -35,12 +35,9 @@ __all__ = [
     'ServiceAccount',
     'ServiceAccountCreate',
     'ServiceAccountResponse',
-    'ServiceAccountUpdate',
     'ServiceApplicationCreate',
     'ServiceApplicationResponse',
     'ServiceApplicationSecrets',
-    'ServiceApplicationSecretsUpdate',
-    'ServiceApplicationUpdate',
     'Session',
     'TOTPSecret',
     'ThirdPartyService',
@@ -52,7 +49,6 @@ __all__ = [
     'User',
     'UserCreate',
     'UserResponse',
-    'UserUpdate',
     'WebhookCreate',
     'WebhookResponse',
     'WebhookRuleCreate',
@@ -381,17 +377,6 @@ class UserCreate(pydantic.BaseModel):
     role_slug: str
 
 
-class UserUpdate(pydantic.BaseModel):
-    """Request model for updating users."""
-
-    email: pydantic.EmailStr
-    display_name: str
-    password: str | None = None
-    is_active: bool = True
-    is_admin: bool = False
-    is_service_account: bool = False
-
-
 class UserResponse(pydantic.BaseModel):
     """Response model for users (excludes password_hash)."""
 
@@ -461,20 +446,6 @@ class ServiceAccountCreate(pydantic.BaseModel):
     is_active: bool = True
     organization_slug: str
     role_slug: str
-
-
-class ServiceAccountUpdate(pydantic.BaseModel):
-    """Request model for updating service accounts."""
-
-    slug: str = pydantic.Field(
-        pattern=r'^[a-z][a-z0-9-]*$',
-        min_length=2,
-        max_length=64,
-        description='Unique slug identifier (lowercase, hyphens)',
-    )
-    display_name: str = pydantic.Field(min_length=1, max_length=128)
-    description: str | None = None
-    is_active: bool = True
 
 
 class ServiceAccountResponse(pydantic.BaseModel):
@@ -700,26 +671,6 @@ class ServiceApplicationCreate(pydantic.BaseModel):
     status: typing.Literal['active', 'inactive', 'revoked'] = 'active'
 
 
-class ServiceApplicationUpdate(pydantic.BaseModel):
-    """Request model for updating non-secret application fields."""
-
-    slug: str = pydantic.Field(
-        pattern=r'^[a-z][a-z0-9-]*$',
-        min_length=2,
-        max_length=64,
-    )
-    name: str = pydantic.Field(min_length=1, max_length=128)
-    description: str | None = None
-    app_type: str = pydantic.Field(min_length=1, max_length=64)
-    application_url: str | None = None
-    client_id: str = pydantic.Field(min_length=1)
-    scopes: list[str] = pydantic.Field(default_factory=list)
-    settings: dict[str, str | int | bool] = pydantic.Field(
-        default_factory=dict,
-    )
-    status: typing.Literal['active', 'inactive', 'revoked'] = 'active'
-
-
 class ServiceApplicationResponse(pydantic.BaseModel):
     """Response model for service applications (no secrets)."""
 
@@ -741,23 +692,6 @@ class ServiceApplicationSecrets(pydantic.BaseModel):
     webhook_secret: str | None = None
     private_key: str | None = None
     signing_secret: str | None = None
-
-
-class ServiceApplicationSecretsUpdate(pydantic.BaseModel):
-    """Request model for updating application secrets."""
-
-    client_secret: str | None = pydantic.Field(default=None, min_length=1)
-    webhook_secret: str | None = pydantic.Field(default=None, min_length=1)
-    private_key: str | None = pydantic.Field(default=None, min_length=1)
-    signing_secret: str | None = pydantic.Field(default=None, min_length=1)
-
-    @pydantic.model_validator(mode='after')
-    def at_least_one_field(self) -> typing.Self:
-        """Ensure at least one secret field is provided."""
-        if all(getattr(self, f) is None for f in SECRET_FIELDS):
-            msg = 'At least one secret field must be provided'
-            raise ValueError(msg)
-        return self
 
 
 class OAuth2TokenResponse(pydantic.BaseModel):

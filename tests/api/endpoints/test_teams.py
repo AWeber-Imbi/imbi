@@ -313,273 +313,6 @@ class TeamEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
-    def test_update_team(self) -> None:
-        """Test updating a team."""
-        fetch_records = [
-            {
-                't': {
-                    'name': 'Backend',
-                    'slug': 'backend',
-                    'description': 'Backend team',
-                },
-                'o': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
-                },
-            }
-        ]
-        update_records = [
-            {
-                't': {
-                    'name': 'Backend Services',
-                    'slug': 'backend',
-                    'description': 'Updated description',
-                },
-                'o': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
-                },
-                'project_count': 0,
-                'member_count': 0,
-            }
-        ]
-        self.mock_db.execute.side_effect = [
-            fetch_records,
-            update_records,
-        ]
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Team
-
-            response = self.client.put(
-                '/organizations/engineering/teams/backend',
-                json={
-                    'name': 'Backend Services',
-                    'slug': 'backend',
-                    'description': 'Updated description',
-                },
-            )
-
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(data['name'], 'Backend Services')
-        self.assertIn('relationships', data)
-
-    def test_update_team_slug_rename(self) -> None:
-        """Test updating with different slug renames it."""
-        fetch_records = [
-            {
-                't': {
-                    'name': 'Backend',
-                    'slug': 'backend',
-                    'description': 'Backend team',
-                },
-                'o': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
-                },
-            }
-        ]
-        update_records = [
-            {
-                't': {
-                    'name': 'Backend',
-                    'slug': 'new-slug',
-                },
-                'o': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
-                },
-                'project_count': 0,
-                'member_count': 0,
-            }
-        ]
-        self.mock_db.execute.side_effect = [
-            fetch_records,
-            update_records,
-        ]
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Team
-
-            response = self.client.put(
-                '/organizations/engineering/teams/backend',
-                json={
-                    'name': 'Backend',
-                    'slug': 'new-slug',
-                },
-            )
-
-            self.assertEqual(response.status_code, 200)
-            # Second call is the update query with old slug
-            update_call = self.mock_db.execute.call_args_list[1]
-            # params is the second positional arg
-            params = update_call[0][1]
-            self.assertEqual(params['slug'], 'backend')
-
-    def test_update_team_slug_conflict(self) -> None:
-        """Test updating team with a slug that already exists."""
-        fetch_records = [
-            {
-                't': {
-                    'name': 'Backend',
-                    'slug': 'backend',
-                    'description': 'Backend team',
-                },
-                'o': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
-                },
-            }
-        ]
-        self.mock_db.execute.side_effect = [
-            fetch_records,
-            psycopg.errors.UniqueViolation(),
-        ]
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Team
-
-            response = self.client.put(
-                '/organizations/engineering/teams/backend',
-                json={
-                    'name': 'Backend',
-                    'slug': 'existing-slug',
-                },
-            )
-
-        self.assertEqual(response.status_code, 409)
-        self.assertIn(
-            'already exists',
-            response.json()['detail'],
-        )
-
-    def test_update_team_concurrent_delete(self) -> None:
-        """Test updating a team deleted between fetch and update."""
-        fetch_records = [
-            {
-                't': {
-                    'name': 'Backend',
-                    'slug': 'backend',
-                    'description': 'Backend team',
-                },
-                'o': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
-                },
-            }
-        ]
-        self.mock_db.execute.side_effect = [
-            fetch_records,
-            [],
-        ]
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Team
-
-            response = self.client.put(
-                '/organizations/engineering/teams/backend',
-                json={
-                    'name': 'Backend Updated',
-                    'slug': 'backend',
-                },
-            )
-
-        self.assertEqual(response.status_code, 404)
-        self.assertIn('not found', response.json()['detail'])
-
-    def test_update_team_not_found(self) -> None:
-        """Test updating nonexistent team."""
-        self.mock_db.execute.return_value = []
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Team
-
-            response = self.client.put(
-                '/organizations/engineering/teams/nonexistent',
-                json={
-                    'name': 'Test',
-                    'slug': 'nonexistent',
-                },
-            )
-
-        self.assertEqual(response.status_code, 404)
-
-    def test_update_team_validation_error(self) -> None:
-        """Test updating team with invalid data."""
-        fetch_records = [
-            {
-                't': {
-                    'name': 'Backend',
-                    'slug': 'backend',
-                    'description': 'Backend team',
-                },
-                'o': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
-                },
-            }
-        ]
-        self.mock_db.execute.return_value = fetch_records
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Team
-
-            response = self.client.put(
-                '/organizations/engineering/teams/backend',
-                json={'name': 123},
-            )
-
-        self.assertEqual(response.status_code, 400)
-
     def test_delete_team(self) -> None:
         """Test deleting a team."""
         self.mock_db.execute.return_value = [{'t': True}]
@@ -730,6 +463,75 @@ class TeamEndpointsTestCase(unittest.TestCase):
                 )
 
         self.assertEqual(response.status_code, 400)
+
+    def test_patch_team_slug_conflict(self) -> None:
+        """Renaming team slug to a conflicting value returns 409."""
+        from imbi_common import models as common_models
+
+        existing = {
+            'name': 'Backend',
+            'slug': 'backend',
+            'description': 'Backend team',
+        }
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    't': existing,
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                },
+            ],
+            psycopg.errors.UniqueViolation(),
+        ]
+
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+                return_value=common_models.Team,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/teams/backend',
+                json=[{'op': 'replace', 'path': '/slug', 'value': 'taken'}],
+            )
+
+        self.assertEqual(response.status_code, 409)
+
+    def test_patch_team_concurrent_delete(self) -> None:
+        """Update returning no rows yields 404."""
+        from imbi_common import models as common_models
+
+        existing = {
+            'name': 'Backend',
+            'slug': 'backend',
+        }
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    't': existing,
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                },
+            ],
+            [],
+        ]
+
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+                return_value=common_models.Team,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/teams/backend',
+                json=[{'op': 'replace', 'path': '/name', 'value': 'New'}],
+            )
+
+        self.assertEqual(response.status_code, 404)
 
 
 class TeamMembershipTestCase(unittest.TestCase):

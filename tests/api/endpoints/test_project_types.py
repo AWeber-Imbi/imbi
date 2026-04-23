@@ -276,213 +276,6 @@ class ProjectTypeEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
-    def test_update_project_type(self) -> None:
-        """Test updating a project type."""
-        fetch_records = [
-            {
-                'pt': {
-                    'name': 'API Service',
-                    'slug': 'api-service',
-                    'description': 'REST API service',
-                },
-                'o': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
-                },
-            }
-        ]
-        update_records = [
-            {
-                'pt': {
-                    'name': 'REST API Service',
-                    'slug': 'api-service',
-                    'description': 'Updated description',
-                },
-                'o': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
-                },
-                'project_count': 5,
-            }
-        ]
-        self.mock_db.execute.side_effect = [
-            fetch_records,
-            update_records,
-        ]
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.ProjectType
-
-            response = self.client.put(
-                '/organizations/engineering/project-types/api-service',
-                json={
-                    'name': 'REST API Service',
-                    'slug': 'api-service',
-                    'description': 'Updated description',
-                },
-            )
-
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(data['name'], 'REST API Service')
-        self.assertIn('relationships', data)
-
-    def test_update_project_type_not_found(self) -> None:
-        """Test updating nonexistent project type."""
-        self.mock_db.execute.return_value = []
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.ProjectType
-
-            response = self.client.put(
-                '/organizations/engineering/project-types/nonexistent',
-                json={
-                    'name': 'Test',
-                    'slug': 'nonexistent',
-                },
-            )
-
-        self.assertEqual(response.status_code, 404)
-
-    def test_update_project_type_validation_error(self) -> None:
-        """Test updating project type with invalid data."""
-        fetch_records = [
-            {
-                'pt': {
-                    'name': 'API Service',
-                    'slug': 'api-service',
-                    'description': 'REST API service',
-                },
-                'o': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
-                },
-            }
-        ]
-        self.mock_db.execute.return_value = fetch_records
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.ProjectType
-
-            response = self.client.put(
-                '/organizations/engineering/project-types/api-service',
-                json={'name': None},
-            )
-
-        self.assertEqual(response.status_code, 400)
-
-    def test_update_project_type_slug_conflict(self) -> None:
-        """Test updating project type with conflicting slug."""
-        fetch_records = [
-            {
-                'pt': {
-                    'name': 'API Service',
-                    'slug': 'api-service',
-                    'description': 'REST API service',
-                },
-                'o': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
-                },
-            }
-        ]
-        self.mock_db.execute.side_effect = [
-            fetch_records,
-            psycopg.errors.UniqueViolation(),
-        ]
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.ProjectType
-
-            response = self.client.put(
-                '/organizations/engineering/project-types/api-service',
-                json={
-                    'name': 'API Service',
-                    'slug': 'existing-slug',
-                },
-            )
-
-        self.assertEqual(response.status_code, 409)
-        self.assertIn(
-            'already exists',
-            response.json()['detail'],
-        )
-
-    def test_update_project_type_concurrent_delete(self) -> None:
-        """Test updating project type deleted between fetch
-        and update."""
-        fetch_records = [
-            {
-                'pt': {
-                    'name': 'API Service',
-                    'slug': 'api-service',
-                    'description': 'REST API service',
-                },
-                'o': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
-                },
-            }
-        ]
-        self.mock_db.execute.side_effect = [
-            fetch_records,
-            [],
-        ]
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.ProjectType
-
-            response = self.client.put(
-                '/organizations/engineering/project-types/api-service',
-                json={
-                    'name': 'API Service Updated',
-                    'slug': 'api-service',
-                },
-            )
-
-        self.assertEqual(response.status_code, 404)
-        self.assertIn('not found', response.json()['detail'])
-
     def test_delete_project_type(self) -> None:
         """Test deleting a project type."""
         self.mock_db.execute.return_value = [{'pt': True}]
@@ -586,6 +379,68 @@ class ProjectTypeEndpointsTestCase(unittest.TestCase):
                         'value': 'X',
                     }
                 ],
+            )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_patch_project_type_slug_conflict(self) -> None:
+        """Renaming slug to an existing value returns 409."""
+        from imbi_common import models as common_models
+
+        existing = {'name': 'API Service', 'slug': 'api-service'}
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'pt': existing,
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                },
+            ],
+            psycopg.errors.UniqueViolation(),
+        ]
+
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+                return_value=common_models.ProjectType,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/project-types/api-service',
+                json=[{'op': 'replace', 'path': '/slug', 'value': 'taken'}],
+            )
+
+        self.assertEqual(response.status_code, 409)
+
+    def test_patch_project_type_concurrent_delete(self) -> None:
+        """Update returning no rows yields 404."""
+        from imbi_common import models as common_models
+
+        existing = {'name': 'API Service', 'slug': 'api-service'}
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'pt': existing,
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                },
+            ],
+            [],
+        ]
+
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+                return_value=common_models.ProjectType,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/project-types/api-service',
+                json=[{'op': 'replace', 'path': '/name', 'value': 'New'}],
             )
 
         self.assertEqual(response.status_code, 404)

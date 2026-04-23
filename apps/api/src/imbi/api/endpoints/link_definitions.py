@@ -46,16 +46,6 @@ class LinkDefinitionCreate(pydantic.BaseModel):
     url_template: str | None = None
 
 
-class LinkDefinitionUpdate(pydantic.BaseModel):
-    """Request model for updating a link definition."""
-
-    name: str | None = None
-    slug: str | None = None
-    description: str | None = None
-    icon: pydantic.HttpUrl | str | None = None
-    url_template: str | None = None
-
-
 class OrganizationRef(pydantic.BaseModel):
     """Minimal organization reference."""
 
@@ -377,82 +367,6 @@ async def _persist_link_definition(
     pc = graph.parse_agtype(updated[0]['project_count'])
     result['relationships'] = _projects_relationship(pc or 0)
     return result
-
-
-@link_definitions_router.put('/{slug}')
-async def update_link_definition(
-    org_slug: str,
-    slug: str,
-    data: LinkDefinitionUpdate,
-    db: graph.Pool,
-    auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(
-            permissions.require_permission(
-                'link_definition:write',
-            ),
-        ),
-    ],
-) -> dict[str, typing.Any]:
-    """Update a link definition.
-
-    Parameters:
-        org_slug: Organization slug from URL path.
-        slug: Link definition slug from URL.
-        data: Updated link definition data.
-
-    Returns:
-        The updated link definition.
-
-    Raises:
-        400: Validation error
-        404: Link definition not found
-
-    """
-    dynamic_model = await blueprints.get_model(
-        db,
-        models.LinkDefinition,
-    )
-
-    fetch_query = """
-    MATCH (ld:LinkDefinition {{slug: {slug}}})
-          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    RETURN ld, o
-    """
-    records = await db.execute(
-        fetch_query,
-        {'slug': slug, 'org_slug': org_slug},
-        columns=['ld', 'o'],
-    )
-
-    if not records:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=(f'Link definition with slug {slug!r} not found'),
-        )
-
-    existing_data = graph.parse_agtype(records[0]['ld'])
-    existing_org = graph.parse_agtype(records[0]['o'])
-
-    payload = {
-        k: v
-        for k, v in existing_data.items()
-        if k not in ('created_at', 'updated_at', 'organization')
-    }
-    incoming = data.model_dump(exclude_unset=True)
-    payload.update(incoming)
-    if 'slug' not in payload:
-        payload['slug'] = slug
-
-    return await _persist_link_definition(
-        slug,
-        org_slug,
-        dynamic_model,
-        existing_org,
-        payload,
-        existing_data.get('created_at'),
-        db,
-    )
 
 
 @link_definitions_router.patch('/{slug}')

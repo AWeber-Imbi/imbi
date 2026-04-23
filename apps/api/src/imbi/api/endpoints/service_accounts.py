@@ -206,56 +206,6 @@ async def get_service_account(
     )
 
 
-@service_accounts_router.put(
-    '/{slug}', response_model=models.ServiceAccountResponse
-)
-async def update_service_account(
-    slug: str,
-    sa_update: models.ServiceAccountUpdate,
-    db: graph.Pool,
-    auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(
-            permissions.require_permission('service_account:update')
-        ),
-    ],
-) -> models.ServiceAccountResponse:
-    """Update a service account."""
-    if sa_update.slug != slug:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail=f'Slug in URL ({slug!r}) must match '
-            f'slug in body ({sa_update.slug!r})',
-        )
-
-    results = await db.match(models.ServiceAccount, {'slug': slug})
-    existing = results[0] if results else None
-    if existing is None:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'Service account {slug!r} not found',
-        )
-
-    updated = models.ServiceAccount(
-        slug=sa_update.slug,
-        display_name=sa_update.display_name,
-        description=sa_update.description,
-        is_active=sa_update.is_active,
-        created_at=existing.created_at,
-        last_authenticated=existing.last_authenticated,
-    )
-    await db.merge(updated, match_on=['slug'])
-
-    return models.ServiceAccountResponse(
-        slug=updated.slug,
-        display_name=updated.display_name,
-        description=updated.description,
-        is_active=updated.is_active,
-        created_at=updated.created_at,
-        last_authenticated=updated.last_authenticated,
-    )
-
-
 @service_accounts_router.patch(
     '/{slug}', response_model=models.ServiceAccountResponse
 )
@@ -411,56 +361,6 @@ async def add_to_organization(
             detail=f'Service account {slug!r}, '
             f'organization {org_slug!r}, '
             f'or role {role_slug!r} not found',
-        )
-
-
-@service_accounts_router.put(
-    '/{slug}/organizations/{org_slug}',
-    status_code=204,
-)
-async def update_organization_role(
-    slug: str,
-    org_slug: str,
-    role_data: dict[str, str],
-    db: graph.Pool,
-    auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(
-            permissions.require_permission('service_account:update')
-        ),
-    ],
-) -> None:
-    """Change a service account's role in an organization."""
-    role_slug = role_data.get('role_slug')
-    if not role_slug:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail='role_slug is required',
-        )
-
-    query: typing.LiteralString = """
-    MATCH (s:ServiceAccount {{slug: {slug}}})
-          -[m:MEMBER_OF]->(o:Organization {{slug: {org_slug}}})
-    MATCH (r:Role {{slug: {role_slug}}})
-    SET m.role = {role_slug}
-    RETURN s, o, r
-    """
-    records = await db.execute(
-        query,
-        {
-            'slug': slug,
-            'org_slug': org_slug,
-            'role_slug': role_slug,
-        },
-        ['s', 'o', 'r'],
-    )
-    if not records:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=(
-                f'Membership for {slug!r} in {org_slug!r}'
-                f' or role {role_slug!r} not found'
-            ),
         )
 
 

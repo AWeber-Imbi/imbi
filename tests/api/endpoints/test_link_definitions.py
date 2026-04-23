@@ -238,116 +238,6 @@ class LinkDefinitionEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
-    # -- Update --------------------------------------------------------
-
-    def test_update_success(self) -> None:
-        """Test updating a link definition."""
-        fetch_records = [
-            {
-                'ld': self._link_def_data(),
-                'o': self._org_data(),
-            },
-        ]
-        update_records = [
-            {
-                'ld': self._link_def_data(
-                    name='Updated GitHub Repo',
-                ),
-                'o': self._org_data(),
-                'project_count': 2,
-            },
-        ]
-        self.mock_db.execute.side_effect = [
-            fetch_records,
-            update_records,
-        ]
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                '/organizations/engineering/link-definitions/github-repo',
-                json={'name': 'Updated GitHub Repo'},
-            )
-
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(data['name'], 'Updated GitHub Repo')
-
-    def test_update_not_found(self) -> None:
-        """Test updating nonexistent link definition."""
-        self.mock_db.execute.return_value = []
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                '/organizations/engineering/link-definitions/nonexistent',
-                json={'name': 'Updated'},
-            )
-
-        self.assertEqual(response.status_code, 404)
-        self.assertIn('not found', response.json()['detail'])
-
-    def test_update_slug_conflict(self) -> None:
-        """Test updating link definition with conflicting slug."""
-        fetch_records = [
-            {
-                'ld': self._link_def_data(),
-                'o': self._org_data(),
-            },
-        ]
-        self.mock_db.execute.side_effect = [
-            fetch_records,
-            psycopg.errors.UniqueViolation(),
-        ]
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                '/organizations/engineering/link-definitions/github-repo',
-                json={
-                    'name': 'GitHub Repository',
-                    'slug': 'existing-slug',
-                },
-            )
-
-        self.assertEqual(response.status_code, 409)
-        self.assertIn(
-            'already exists',
-            response.json()['detail'],
-        )
-
-    def test_update_concurrent_delete(self) -> None:
-        """Test updating link definition deleted between
-        fetch and update."""
-        fetch_records = [
-            {
-                'ld': self._link_def_data(),
-                'o': self._org_data(),
-            },
-        ]
-        self.mock_db.execute.side_effect = [
-            fetch_records,
-            [],
-        ]
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                '/organizations/engineering/link-definitions/github-repo',
-                json={'name': 'Updated'},
-            )
-
-        self.assertEqual(response.status_code, 404)
-        self.assertIn('not found', response.json()['detail'])
-
     # -- Delete --------------------------------------------------------
 
     def test_delete_success(self) -> None:
@@ -457,6 +347,66 @@ class LinkDefinitionEndpointsTestCase(unittest.TestCase):
                         'value': 'X',
                     }
                 ],
+            )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_patch_link_definition_slug_conflict(self) -> None:
+        """Renaming slug to a conflicting value returns 409."""
+        from imbi_common import models as common_models
+
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'ld': self._link_def_data(),
+                    'o': self._org_data(),
+                },
+            ],
+            psycopg.errors.UniqueViolation(),
+        ]
+
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+                return_value=common_models.LinkDefinition,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/link-definitions/github-repo',
+                json=[{'op': 'replace', 'path': '/slug', 'value': 'taken'}],
+            )
+
+        self.assertEqual(response.status_code, 409)
+
+    def test_patch_link_definition_concurrent_delete(self) -> None:
+        """Update returning no rows yields 404."""
+        from imbi_common import models as common_models
+
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'ld': self._link_def_data(),
+                    'o': self._org_data(),
+                },
+            ],
+            [],
+        ]
+
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+                return_value=common_models.LinkDefinition,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/link-definitions/github-repo',
+                json=[{'op': 'replace', 'path': '/name', 'value': 'New'}],
             )
 
         self.assertEqual(response.status_code, 404)

@@ -73,16 +73,6 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             'team': None,
         }
 
-        self.service_update_json = {
-            'name': 'Stripe',
-            'slug': 'stripe',
-            'vendor': 'Stripe Inc',
-            'description': 'Payment processing',
-            'service_url': 'https://stripe.com',
-            'category': 'payments',
-            'status': 'active',
-        }
-
     # -- Create --
 
     def test_create_success(self) -> None:
@@ -324,115 +314,6 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
 
     # -- Update --
 
-    def test_update_service(self) -> None:
-        updated = dict(self.service_data)
-        updated['description'] = 'Updated description'
-
-        self.mock_db.execute.return_value = [{'service': updated}]
-
-        payload = dict(self.service_update_json)
-        payload['description'] = 'Updated description'
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                '/organizations/engineering/third-party-services/stripe',
-                json=payload,
-            )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.json()['description'],
-            'Updated description',
-        )
-
-    def test_update_service_with_team(self) -> None:
-        updated = dict(self.service_data)
-        updated['team'] = {
-            'name': 'Backend',
-            'slug': 'backend',
-        }
-
-        self.mock_db.execute.return_value = [{'service': updated}]
-
-        payload = dict(self.service_update_json)
-        payload['team_slug'] = 'backend'
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                '/organizations/engineering/third-party-services/stripe',
-                json=payload,
-            )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.json()['team']['slug'],
-            'backend',
-        )
-
-    def test_update_missing_required_field(self) -> None:
-        """Omitting a required field returns 422."""
-        response = self.client.put(
-            '/organizations/engineering/third-party-services/stripe',
-            json={
-                'name': 'Stripe',
-                'vendor': 'Stripe Inc',
-                # Missing slug, status
-            },
-        )
-        self.assertEqual(response.status_code, 422)
-
-    def test_update_service_not_found(self) -> None:
-        self.mock_db.execute.return_value = []
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                '/organizations/engineering/third-party-services/nonexistent',
-                json=self.service_update_json,
-            )
-
-        self.assertEqual(response.status_code, 404)
-        self.assertIn('not found', response.json()['detail'])
-
-    def test_update_invalid_status(self) -> None:
-        payload = dict(self.service_update_json)
-        payload['status'] = 'bogus'
-
-        response = self.client.put(
-            '/organizations/engineering/third-party-services/stripe',
-            json=payload,
-        )
-
-        self.assertEqual(response.status_code, 422)
-
-    def test_update_slug_conflict(self) -> None:
-        self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation()
-
-        payload = dict(self.service_update_json)
-        payload['slug'] = 'existing-slug'
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                '/organizations/engineering/third-party-services/stripe',
-                json=payload,
-            )
-
-        self.assertEqual(response.status_code, 409)
-        self.assertIn(
-            'already exists',
-            response.json()['detail'],
-        )
-
     # -- Patch --
 
     def test_patch_third_party_service_name(self) -> None:
@@ -495,6 +376,84 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+    def test_patch_third_party_service_with_team(self) -> None:
+        """Patching with team_slug goes through the team-change path."""
+        existing = dict(self.service_data)
+        updated = dict(self.service_data)
+        updated['team'] = {'name': 'Backend', 'slug': 'backend'}
+
+        self.mock_db.execute.side_effect = [
+            [{'service': existing}],
+            [{'service': updated}],
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/third-party-services/stripe',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/team_slug',
+                        'value': 'backend',
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['team']['slug'], 'backend')
+
+    def test_patch_third_party_service_slug_conflict(self) -> None:
+        """A slug rename that collides returns 409."""
+        existing = dict(self.service_data)
+        self.mock_db.execute.side_effect = [
+            [{'service': existing}],
+            psycopg.errors.UniqueViolation(),
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/third-party-services/stripe',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/slug',
+                        'value': 'existing-slug',
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('already exists', response.json()['detail'])
+
+    def test_patch_third_party_service_concurrent_delete(self) -> None:
+        """Update returning no rows yields 404."""
+        existing = dict(self.service_data)
+        self.mock_db.execute.side_effect = [
+            [{'service': existing}],
+            [],
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/third-party-services/stripe',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/name',
+                        'value': 'New',
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])
 
     # -- Delete --
 
@@ -865,15 +824,6 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             'webhook_secret': 'wh-secret',
         }
 
-        self.app_update_json = {
-            'slug': 'my-app',
-            'name': 'My App',
-            'description': 'Test app',
-            'app_type': 'github_app',
-            'client_id': 'client-123',
-            'scopes': ['repo', 'user'],
-        }
-
         self.mock_encryptor = mock.MagicMock()
         self.mock_encryptor.encrypt.side_effect = lambda v: f'enc:{v}'
         self.mock_encryptor.decrypt.side_effect = lambda v: v.removeprefix(
@@ -1193,103 +1143,6 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertIn('Admin', response.json()['detail'])
 
-    # -- Update application --
-
-    def test_update_application(self) -> None:
-        updated_app = dict(self.app_data)
-        updated_app['name'] = 'Updated App'
-
-        self.mock_db.execute.side_effect = [
-            [{'app': self.app_data}],
-            [{'app': updated_app}],
-        ]
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            payload = dict(self.app_update_json)
-            payload['name'] = 'Updated App'
-            response = self.client.put(
-                '/organizations/engineering'
-                '/third-party-services/stripe'
-                '/applications/my-app',
-                json=payload,
-            )
-
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(data['name'], 'Updated App')
-        self.assertNotIn('client_secret', data)
-
-    def test_update_preserves_existing_secrets(self) -> None:
-        """Update carries forward existing encrypted values."""
-        self.mock_db.execute.side_effect = [
-            [{'app': self.app_data}],
-            [{'app': self.app_data}],
-        ]
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                '/organizations/engineering'
-                '/third-party-services/stripe'
-                '/applications/my-app',
-                json=self.app_update_json,
-            )
-
-        self.assertEqual(response.status_code, 200)
-        # Verify existing encrypted values were preserved
-        # (props are now expanded as individual scalar params)
-        update_call = self.mock_db.execute.call_args_list[1]
-        params = update_call.args[1]
-        self.assertEqual(
-            params['client_secret'],
-            self.app_data['client_secret'],
-        )
-        self.assertEqual(
-            params['webhook_secret'],
-            self.app_data['webhook_secret'],
-        )
-
-    def test_update_application_not_found(self) -> None:
-        self.mock_db.execute.return_value = []
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                '/organizations/engineering'
-                '/third-party-services/stripe'
-                '/applications/nonexistent',
-                json=self.app_update_json,
-            )
-
-        self.assertEqual(response.status_code, 404)
-        self.assertIn('not found', response.json()['detail'])
-
-    def test_update_application_concurrent_delete(self) -> None:
-        """App deleted between fetch and update."""
-        self.mock_db.execute.side_effect = [
-            [{'app': self.app_data}],
-            [],
-        ]
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                '/organizations/engineering'
-                '/third-party-services/stripe'
-                '/applications/my-app',
-                json=self.app_update_json,
-            )
-
-        self.assertEqual(response.status_code, 404)
-
     # -- Delete application --
 
     def test_delete_application(self) -> None:
@@ -1364,140 +1217,3 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
         data = response.json()[0]
         self.assertEqual(data['scopes'], [])
         self.assertEqual(data['settings'], {})
-
-    # -- Update application secrets --
-
-    def test_update_secrets(self) -> None:
-        updated_app = dict(self.app_data)
-        updated_app['client_secret'] = 'enc:new-secret'
-
-        self.mock_db.execute.side_effect = [
-            [{'app': self.app_data}],
-            [{'app': updated_app}],
-        ]
-
-        with (
-            self._patch_encryption(),
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            response = self.client.put(
-                '/organizations/engineering'
-                '/third-party-services/stripe'
-                '/applications/my-app/secrets',
-                json={'client_secret': 'new-secret'},
-            )
-
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(data['client_secret'], 'new-secret')
-
-    def test_update_secrets_preserves_unchanged(self) -> None:
-        """Fields not provided keep existing values."""
-        updated_app = dict(self.app_data)
-        updated_app['webhook_secret'] = 'enc:new-webhook'
-
-        self.mock_db.execute.side_effect = [
-            [{'app': self.app_data}],
-            [{'app': updated_app}],
-        ]
-
-        with (
-            self._patch_encryption(),
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            response = self.client.put(
-                '/organizations/engineering'
-                '/third-party-services/stripe'
-                '/applications/my-app/secrets',
-                json={'webhook_secret': 'new-webhook'},
-            )
-
-        self.assertEqual(response.status_code, 200)
-        # Existing client_secret should be preserved
-        update_call = self.mock_db.execute.call_args_list[1]
-        self.assertEqual(
-            update_call.args[1]['client_secret'],
-            self.app_data['client_secret'],
-        )
-
-    def test_update_secrets_non_admin(self) -> None:
-        from imbi_api.auth import permissions
-
-        non_admin = models.User(
-            email='user@example.com',
-            display_name='Regular User',
-            password_hash='$argon2id$hashed',
-            is_active=True,
-            is_admin=False,
-            is_service_account=False,
-            created_at=datetime.datetime.now(datetime.UTC),
-        )
-        self.auth_context = permissions.AuthContext(
-            user=non_admin,
-            session_id='test-session',
-            auth_method='jwt',
-            permissions={'third_party_service:update'},
-        )
-
-        async def mock_get_current_user():
-            return self.auth_context
-
-        self.test_app.dependency_overrides[permissions.get_current_user] = (
-            mock_get_current_user
-        )
-
-        self.mock_db.execute.return_value = [
-            {'app': self.app_data},
-        ]
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                '/organizations/engineering'
-                '/third-party-services/stripe'
-                '/applications/my-app/secrets',
-                json={'client_secret': 'new-secret'},
-            )
-
-        self.assertEqual(response.status_code, 403)
-        self.assertIn('Admin', response.json()['detail'])
-
-    def test_update_secrets_empty_body_rejected(self) -> None:
-        """At least one secret field must be provided."""
-        response = self.client.put(
-            '/organizations/engineering'
-            '/third-party-services/stripe'
-            '/applications/my-app/secrets',
-            json={},
-        )
-        self.assertEqual(response.status_code, 422)
-
-    def test_update_secrets_not_found(self) -> None:
-        self.mock_db.execute.side_effect = [
-            [{'app': self.app_data}],
-            [],
-        ]
-
-        with (
-            self._patch_encryption(),
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            response = self.client.put(
-                '/organizations/engineering'
-                '/third-party-services/stripe'
-                '/applications/missing/secrets',
-                json={'client_secret': 'new-secret'},
-            )
-
-        self.assertEqual(response.status_code, 404)
-        self.assertIn('not found', response.json()['detail'])

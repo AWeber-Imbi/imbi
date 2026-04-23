@@ -229,112 +229,6 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
             response.json()['detail'],
         )
 
-    def test_update_organization(self) -> None:
-        """Test updating organization."""
-        self.mock_db.match.return_value = [self.test_org]
-        self.mock_db.execute.side_effect = [
-            # First execute: MATCH/SET update query
-            [{'n': 'true'}],
-            # Second execute: count query
-            [
-                {
-                    'team_count': 1,
-                    'member_count': 2,
-                    'project_count': 3,
-                },
-            ],
-        ]
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                '/organizations/engineering',
-                json={
-                    'name': 'Engineering Department',
-                    'slug': 'engineering',
-                    'description': 'Updated description',
-                },
-            )
-
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(
-            data['name'],
-            'Engineering Department',
-        )
-        self.assertIn('relationships', data)
-
-    def test_update_organization_slug_rename(self) -> None:
-        """Test updating with different slug renames it."""
-        self.mock_db.match.return_value = [self.test_org]
-        self.mock_db.execute.side_effect = [
-            # First execute: MATCH/SET update query
-            [{'n': 'true'}],
-            # Second execute: count query
-            [
-                {
-                    'team_count': 0,
-                    'member_count': 0,
-                    'project_count': 0,
-                },
-            ],
-        ]
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                '/organizations/engineering',
-                json={
-                    'name': 'Engineering',
-                    'slug': 'new-slug',
-                    'description': 'Test',
-                },
-            )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(self.mock_db.execute.call_count, 2)
-
-    def test_update_organization_slug_conflict(self) -> None:
-        """Test slug rename conflict returns 409."""
-        self.mock_db.match.return_value = [self.test_org]
-        self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation(
-            'Duplicate'
-        )
-
-        response = self.client.put(
-            '/organizations/engineering',
-            json={
-                'name': 'Engineering',
-                'slug': 'existing-slug',
-                'description': 'Test',
-            },
-        )
-
-        self.assertEqual(response.status_code, 409)
-        self.assertIn(
-            'already exists',
-            response.json()['detail'],
-        )
-
-    def test_update_organization_not_found(self) -> None:
-        """Test updating non-existent organization."""
-        self.mock_db.match.return_value = []
-
-        response = self.client.put(
-            '/organizations/nonexistent',
-            json={
-                'name': 'Test',
-                'slug': 'nonexistent',
-                'description': 'Test',
-            },
-        )
-
-        self.assertEqual(response.status_code, 404)
-
     def test_delete_organization(self) -> None:
         """Test deleting organization."""
         self.mock_db.execute.return_value = [{'n': 'true'}]
@@ -425,3 +319,26 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 409)
+
+    def test_patch_organization_concurrent_delete(self) -> None:
+        """Update query returning no rows yields 404."""
+        self.mock_db.match.return_value = [self.test_org]
+        self.mock_db.execute.side_effect = [[]]
+
+        response = self.client.patch(
+            '/organizations/engineering',
+            json=[{'op': 'replace', 'path': '/name', 'value': 'Renamed'}],
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_patch_organization_validation_error(self) -> None:
+        """Patch that yields invalid model returns 400."""
+        self.mock_db.match.return_value = [self.test_org]
+
+        response = self.client.patch(
+            '/organizations/engineering',
+            json=[{'op': 'replace', 'path': '/name', 'value': None}],
+        )
+
+        self.assertEqual(response.status_code, 400)

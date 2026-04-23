@@ -101,12 +101,6 @@ class WebhookEndpointsTestCase(unittest.TestCase):
             'secret': 'my-secret',
         }
 
-        self.webhook_update_json: _WebhookDetails = {
-            'name': 'GitHub Events',
-            'slug': 'github-events',
-            'notification_path': '/webhooks/github',
-        }
-
         self.mock_encryptor = mock.MagicMock()
         self.mock_encryptor.encrypt.side_effect = lambda v: f'enc:{v}'
         self.mock_encryptor.decrypt.side_effect = lambda v: v.removeprefix(
@@ -348,86 +342,6 @@ class WebhookEndpointsTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
-
-    # -- Update --
-
-    def test_update_webhook(self) -> None:
-        updated = copy.deepcopy(self.webhook_record)
-        updated['webhook']['description'] = 'Updated'
-
-        self.mock_db.execute.return_value = [updated]
-
-        payload = dict(self.webhook_update_json)
-        payload['description'] = 'Updated'
-
-        with (
-            self._patch_encryption(),
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            response = self.client.put(
-                '/organizations/engineering/webhooks/github-events',
-                json=payload,
-            )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.json()['description'],
-            'Updated',
-        )
-
-    def test_update_webhook_not_found(self) -> None:
-        self.mock_db.execute.return_value = []
-        with (
-            self._patch_encryption(),
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            response = self.client.put(
-                '/organizations/engineering/webhooks/nonexistent',
-                json=self.webhook_update_json,
-            )
-
-        self.assertEqual(response.status_code, 404)
-        self.assertIn('not found', response.json()['detail'])
-
-    def test_update_slug_conflict(self) -> None:
-        self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation()
-
-        payload = dict(self.webhook_update_json)
-        payload['slug'] = 'existing-slug'
-
-        with (
-            self._patch_encryption(),
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            response = self.client.put(
-                '/organizations/engineering/webhooks/github-events',
-                json=payload,
-            )
-
-        self.assertEqual(response.status_code, 409)
-        self.assertIn(
-            'already exists',
-            response.json()['detail'],
-        )
-
-    def test_update_missing_required_field(self) -> None:
-        response = self.client.put(
-            '/organizations/engineering/webhooks/github-events',
-            json={
-                'name': 'Test',
-                # Missing slug, notification_path
-            },
-        )
-        self.assertEqual(response.status_code, 422)
 
     # -- Patch --
 

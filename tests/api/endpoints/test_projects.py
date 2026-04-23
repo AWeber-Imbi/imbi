@@ -418,337 +418,6 @@ class ProjectEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
-    # -- Update --------------------------------------------------------
-
-    def test_update_success(self) -> None:
-        """Test updating a project."""
-        existing = self._project_data()
-        updated = self._project_data(name='Updated API')
-
-        self.mock_db.execute.side_effect = [
-            # Fetch existing
-            [
-                {
-                    'project': existing,
-                    'current_team_slug': 'platform',
-                    'current_type_slugs': ['api-service'],
-                },
-            ],
-            # Update
-            [
-                {
-                    'project': updated,
-                    'outbound_count': 0,
-                    'inbound_count': 0,
-                },
-            ],
-        ]
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Project
-
-            response = self.client.put(
-                f'/organizations/engineering/projects/{PROJECT_ID}',
-                json={'name': 'Updated API'},
-            )
-
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(data['name'], 'Updated API')
-        self.assertIn('relationships', data)
-
-    def test_update_with_team_change(self) -> None:
-        """Test updating a project with team change."""
-        existing = self._project_data()
-        updated = self._project_data(
-            team={
-                'name': 'Backend',
-                'slug': 'backend',
-                'organization': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
-                },
-            },
-        )
-
-        self.mock_db.execute.side_effect = [
-            # Fetch existing project
-            [
-                {
-                    'project': existing,
-                    'current_team_slug': 'platform',
-                    'current_type_slugs': ['api-service'],
-                },
-            ],
-            # Team pre-validation
-            [{'slug': 'backend'}],
-            # Update query
-            [
-                {
-                    'project': updated,
-                    'outbound_count': 0,
-                    'inbound_count': 0,
-                },
-            ],
-        ]
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Project
-
-            response = self.client.put(
-                f'/organizations/engineering/projects/{PROJECT_ID}',
-                json={'team_slug': 'backend'},
-            )
-
-        self.assertEqual(response.status_code, 200)
-
-    def test_update_invalid_team(self) -> None:
-        """Test updating a project with nonexistent team slug."""
-        existing = self._project_data()
-
-        self.mock_db.execute.side_effect = [
-            # Fetch existing project
-            [
-                {
-                    'project': existing,
-                    'current_team_slug': 'platform',
-                    'current_type_slugs': ['api-service'],
-                },
-            ],
-            # Team pre-validation: not found
-            [],
-        ]
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Project
-
-            response = self.client.put(
-                f'/organizations/engineering/projects/{PROJECT_ID}',
-                json={'team_slug': 'nonexistent'},
-            )
-
-        self.assertEqual(response.status_code, 422)
-        self.assertIn('not found', response.json()['detail'])
-
-    def test_update_invalid_type_slugs(self) -> None:
-        """Test updating project with invalid project type slugs."""
-        existing = self._project_data()
-
-        self.mock_db.execute.side_effect = [
-            # Fetch existing project
-            [
-                {
-                    'project': existing,
-                    'current_team_slug': 'platform',
-                    'current_type_slugs': ['api-service'],
-                },
-            ],
-            # Type pre-validation: slug not found
-            [{'pt_slug': 'nonexistent', 'found': False}],
-        ]
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Project
-
-            response = self.client.put(
-                f'/organizations/engineering/projects/{PROJECT_ID}',
-                json={
-                    'project_type_slugs': ['nonexistent'],
-                },
-            )
-
-        self.assertEqual(response.status_code, 422)
-        self.assertIn('not found', response.json()['detail'])
-
-    def test_update_with_environment_change(self) -> None:
-        """Test updating a project with environment change."""
-        existing = self._project_data()
-        updated = self._project_data(
-            environments=[
-                {
-                    'name': 'Staging',
-                    'slug': 'staging',
-                    'organization': {
-                        'name': 'Engineering',
-                        'slug': 'engineering',
-                    },
-                },
-            ],
-        )
-
-        self.mock_db.execute.side_effect = [
-            # fetch existing project
-            [
-                {
-                    'project': existing,
-                    'current_team_slug': 'platform',
-                    'current_type_slugs': ['api-service'],
-                },
-            ],
-            # env_slug validation
-            [
-                {
-                    'env_slug': 'staging',
-                    'found': True,
-                },
-            ],
-            # update query
-            [
-                {
-                    'project': updated,
-                    'outbound_count': 0,
-                    'inbound_count': 0,
-                },
-            ],
-        ]
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Project
-
-            response = self.client.put(
-                f'/organizations/engineering/projects/{PROJECT_ID}',
-                json={'environments': {'staging': {}}},
-            )
-
-        self.assertEqual(response.status_code, 200)
-
-    def test_update_not_found(self) -> None:
-        """Test updating nonexistent project."""
-        self.mock_db.execute.return_value = []
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Project
-
-            response = self.client.put(
-                '/organizations/engineering/projects/nonexistent',
-                json={'name': 'Updated'},
-            )
-
-        self.assertEqual(response.status_code, 404)
-
-    def test_update_slug_conflict(self) -> None:
-        """Test updating project with conflicting slug."""
-        existing = self._project_data()
-
-        self.mock_db.execute.side_effect = [
-            [
-                {
-                    'project': existing,
-                    'current_team_slug': 'platform',
-                    'current_type_slugs': ['api-service'],
-                },
-            ],
-            psycopg.errors.UniqueViolation(
-                'Project with slug "conflicting-slug" already'
-                ' exists for project type "api-service"'
-            ),
-        ]
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Project
-
-            response = self.client.put(
-                f'/organizations/engineering/projects/{PROJECT_ID}',
-                json={'slug': 'conflicting-slug'},
-            )
-
-        self.assertEqual(response.status_code, 409)
-        self.assertIn(
-            'already exists',
-            response.json()['detail'],
-        )
-
-    def test_update_concurrent_delete(self) -> None:
-        """Test updating project deleted between fetch and
-        update."""
-        existing = self._project_data()
-
-        self.mock_db.execute.side_effect = [
-            [
-                {
-                    'project': existing,
-                    'current_team_slug': 'platform',
-                    'current_type_slugs': ['api-service'],
-                },
-            ],
-            [],
-        ]
-
-        with (
-            mock.patch(
-                'imbi_common.blueprints.get_model',
-            ) as mock_get_model,
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            mock_get_model.return_value = models.Project
-
-            response = self.client.put(
-                f'/organizations/engineering/projects/{PROJECT_ID}',
-                json={'name': 'Updated'},
-            )
-
-        self.assertEqual(response.status_code, 404)
-        self.assertIn('not found', response.json()['detail'])
-
     # -- Patch ---------------------------------------------------------
 
     def test_patch_project_name(self) -> None:
@@ -857,6 +526,182 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
+
+    def test_patch_project_team_change(self) -> None:
+        """Patch a project to change its team."""
+        existing = self._project_data()
+        updated = self._project_data(
+            team={
+                'name': 'Backend',
+                'slug': 'backend',
+                'organization': {
+                    'name': 'Engineering',
+                    'slug': 'engineering',
+                },
+            },
+        )
+
+        self.mock_db.execute.side_effect = [
+            # fetch existing
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+            # team_slug validation
+            [{'slug': 'backend'}],
+            # project type validation
+            [{'pt_slug': 'api-service', 'found': True}],
+            # SET update
+            [{'project': updated, 'outbound_count': 0, 'inbound_count': 0}],
+        ]
+
+        with (
+            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            mock_get_model.return_value = models.Project
+
+            response = self.client.patch(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/team_slug',
+                        'value': 'backend',
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_patch_project_invalid_team(self) -> None:
+        """Patch with a non-existent team slug returns 422."""
+        existing = self._project_data()
+
+        self.mock_db.execute.side_effect = [
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+            # team_slug validation: not found
+            [],
+        ]
+
+        with (
+            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            mock_get_model.return_value = models.Project
+
+            response = self.client.patch(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/team_slug',
+                        'value': 'nonexistent',
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('not found', response.json()['detail'])
+
+    def test_patch_project_invalid_type_slugs(self) -> None:
+        """Patch with invalid project type slugs returns 422."""
+        existing = self._project_data()
+
+        self.mock_db.execute.side_effect = [
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+            # team_slug validation
+            [{'slug': 'platform'}],
+            # project type validation: slug not found
+            [{'pt_slug': 'nonexistent', 'found': False}],
+        ]
+
+        with (
+            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            mock_get_model.return_value = models.Project
+
+            response = self.client.patch(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/project_type_slugs',
+                        'value': ['nonexistent'],
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('not found', response.json()['detail'])
+
+    def test_patch_project_slug_conflict(self) -> None:
+        """Patch that triggers slug conflict returns 409."""
+        existing = self._project_data()
+
+        self.mock_db.execute.side_effect = [
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+            [{'slug': 'platform'}],
+            [{'pt_slug': 'api-service', 'found': True}],
+            psycopg.errors.UniqueViolation(
+                'Project with slug "conflicting-slug" already exists'
+            ),
+        ]
+
+        with (
+            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            mock_get_model.return_value = models.Project
+
+            response = self.client.patch(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/slug',
+                        'value': 'conflicting-slug',
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('already exists', response.json()['detail'])
+
+    def test_patch_project_concurrent_delete(self) -> None:
+        """Patch when update query returns empty returns 404."""
+        existing = self._project_data()
+
+        self.mock_db.execute.side_effect = [
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+            [{'slug': 'platform'}],
+            [{'pt_slug': 'api-service', 'found': True}],
+            [],  # update returns no rows
+        ]
+
+        with (
+            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            mock_get_model.return_value = models.Project
+
+            response = self.client.patch(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json=[
+                    {'op': 'replace', 'path': '/name', 'value': 'Updated'},
+                ],
+            )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])
 
     # -- Delete --------------------------------------------------------
 
@@ -1063,148 +908,3 @@ class ProjectRelationshipsEndpointTestCase(_RelationshipsTestBase):
             'so ordering is stable when multiple related projects share a '
             'name across namespaces',
         )
-
-
-class SetProjectRelationshipsTestCase(_RelationshipsTestBase):
-    """Tests for PUT /projects/{id}/relationships."""
-
-    _permissions: typing.ClassVar[set[str]] = {'project:write'}
-
-    def test_set_depends_on(self) -> None:
-        """Replaces outbound edges and returns updated list."""
-        # exists, validate, mutate (delete+create), fetch
-        self.mock_db.execute.side_effect = [
-            [{'id': PROJECT_ID}],
-            [{'tid': 'target1', 'found': True}],
-            [],
-            [
-                {
-                    'direction': 'outbound',
-                    'other': self._summary(id='target1', name='Target One'),
-                },
-            ],
-        ]
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                self._url(),
-                json={'depends_on': ['target1']},
-            )
-
-        self.assertEqual(response.status_code, 200)
-        rels = response.json()['relationships']
-        self.assertEqual(len(rels), 1)
-        self.assertEqual(rels[0]['direction'], 'outbound')
-        self.assertEqual(rels[0]['project']['id'], 'target1')
-        self.assertEqual(rels[0]['type'], 'depends_on')
-
-    def test_clear_depends_on(self) -> None:
-        """Empty list removes all outbound edges."""
-        self.mock_db.execute.side_effect = [
-            [{'id': PROJECT_ID}],
-            [],
-            [{'direction': None, 'other': None}],
-        ]
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                self._url(),
-                json={'depends_on': []},
-            )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {'relationships': []})
-
-    def test_project_not_found(self) -> None:
-        """Returns 404 when source project does not exist."""
-        self.mock_db.execute.return_value = []
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                self._url('missing'),
-                json={'depends_on': ['target1']},
-            )
-
-        self.assertEqual(response.status_code, 404)
-        self.assertIn('not found', response.json()['detail'])
-
-    def test_target_not_found(self) -> None:
-        """Returns 422 when a target project ID does not exist."""
-        self.mock_db.execute.side_effect = [
-            [{'id': PROJECT_ID}],
-            [
-                {'tid': 'good', 'found': True},
-                {'tid': 'bad', 'found': False},
-            ],
-        ]
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                self._url(),
-                json={'depends_on': ['good', 'bad']},
-            )
-
-        self.assertEqual(response.status_code, 422)
-        self.assertIn('bad', response.json()['detail'])
-
-    def test_self_reference_ignored(self) -> None:
-        """Self-references are silently dropped."""
-        self.mock_db.execute.side_effect = [
-            [{'id': PROJECT_ID}],
-            [],
-            [{'direction': None, 'other': None}],
-        ]
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                self._url(),
-                json={'depends_on': [PROJECT_ID]},
-            )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {'relationships': []})
-
-    def test_duplicates_deduplicated(self) -> None:
-        """Duplicate IDs in depends_on are collapsed."""
-        # exists, validate, mutate (delete+create), fetch
-        self.mock_db.execute.side_effect = [
-            [{'id': PROJECT_ID}],
-            [{'tid': 'dup', 'found': True}],
-            [],
-            [
-                {
-                    'direction': 'outbound',
-                    'other': self._summary(id='dup', name='Dup'),
-                },
-            ],
-        ]
-
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.put(
-                self._url(),
-                json={'depends_on': ['dup', 'dup', 'dup']},
-            )
-
-        self.assertEqual(response.status_code, 200)
-        # Validate only unique targets were sent to the DB
-        validate_call = self.mock_db.execute.call_args_list[1]
-        validate_params = validate_call.args[1]
-        self.assertEqual(validate_params['target_ids'], ['dup'])

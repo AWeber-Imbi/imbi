@@ -67,12 +67,9 @@ Role = _domain.Role
 ServiceAccount = _domain.ServiceAccount
 ServiceAccountCreate = _domain.ServiceAccountCreate
 ServiceAccountResponse = _domain.ServiceAccountResponse
-ServiceAccountUpdate = _domain.ServiceAccountUpdate
 ServiceApplicationCreate = _domain.ServiceApplicationCreate
 ServiceApplicationResponse = _domain.ServiceApplicationResponse
 ServiceApplicationSecrets = _domain.ServiceApplicationSecrets
-ServiceApplicationSecretsUpdate = _domain.ServiceApplicationSecretsUpdate
-ServiceApplicationUpdate = _domain.ServiceApplicationUpdate
 Session = _domain.Session
 TOTPSecret = _domain.TOTPSecret
 TokenMetadata = _domain.TokenMetadata
@@ -80,7 +77,6 @@ Upload = _domain.Upload
 User = _domain.User
 UserCreate = _domain.UserCreate
 UserResponse = _domain.UserResponse
-UserUpdate = _domain.UserUpdate
 
 
 def parse_scopes(value: typing.Any) -> list[str]:

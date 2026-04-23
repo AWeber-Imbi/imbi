@@ -328,131 +328,6 @@ class UserEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
-    def test_update_user_success(self) -> None:
-        """Test updating an existing user."""
-        existing_user = models.User(
-            email='test@example.com',
-            display_name='Old Name',
-            password_hash='$argon2id$oldhash',
-            is_active=True,
-            is_admin=False,
-            is_service_account=False,
-            created_at=datetime.datetime(
-                2024,
-                1,
-                1,
-                tzinfo=datetime.UTC,
-            ),
-        )
-        self.mock_db.match.return_value = [existing_user]
-        self.mock_db.merge.return_value = None
-
-        response = self.client.put(
-            '/users/test@example.com',
-            json={
-                'email': 'test@example.com',
-                'display_name': 'New Name',
-                'is_active': True,
-                'is_admin': False,
-                'is_service_account': False,
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(data['email'], 'test@example.com')
-        self.assertEqual(data['display_name'], 'New Name')
-        self.mock_db.merge.assert_called_once()
-
-    def test_update_user_email_mismatch(self) -> None:
-        """Test updating user with mismatched email."""
-        response = self.client.put(
-            '/users/test@example.com',
-            json={
-                'email': 'different@example.com',
-                'display_name': 'Test',
-            },
-        )
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('must match', response.json()['detail'])
-
-    def test_update_user_non_admin_cannot_set_admin(
-        self,
-    ) -> None:
-        """Test non-admin cannot grant admin privileges."""
-        # Change auth context to non-admin
-        self.auth_context.user.is_admin = False
-
-        existing_user = models.User(
-            email='test@example.com',
-            display_name='Test',
-            is_active=True,
-            is_admin=False,
-            is_service_account=False,
-            created_at=datetime.datetime.now(datetime.UTC),
-        )
-        self.mock_db.match.return_value = [existing_user]
-
-        response = self.client.put(
-            '/users/test@example.com',
-            json={
-                'email': 'test@example.com',
-                'display_name': 'Test',
-                'is_admin': True,
-            },
-        )
-
-        self.assertEqual(response.status_code, 403)
-        self.assertIn('admin', response.json()['detail'].lower())
-
-        # Restore admin status
-        self.auth_context.user.is_admin = True
-
-    def test_update_user_cannot_deactivate_self(
-        self,
-    ) -> None:
-        """Test user cannot deactivate their own account."""
-        self.auth_context.user.email = 'test@example.com'
-
-        existing_user = models.User(
-            email='test@example.com',
-            display_name='Test',
-            is_active=True,
-            is_admin=False,
-            is_service_account=False,
-            created_at=datetime.datetime.now(datetime.UTC),
-        )
-        self.mock_db.match.return_value = [existing_user]
-
-        response = self.client.put(
-            '/users/test@example.com',
-            json={
-                'email': 'test@example.com',
-                'display_name': 'Test',
-                'is_active': False,
-            },
-        )
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('deactivate', response.json()['detail'])
-
-        self.auth_context.user.email = 'admin@example.com'
-
-    def test_update_user_not_found(self) -> None:
-        """Test updating non-existent user."""
-        self.mock_db.match.return_value = []
-
-        response = self.client.put(
-            '/users/nonexistent@example.com',
-            json={
-                'email': 'nonexistent@example.com',
-                'display_name': 'Test',
-            },
-        )
-
-        self.assertEqual(response.status_code, 404)
-
     def test_delete_user_success(self) -> None:
         """Test deleting a user."""
         self.mock_db.execute.return_value = [{'n': 'true'}]
@@ -693,6 +568,120 @@ class UserEndpointsTestCase(unittest.TestCase):
 
         self.auth_context.user.is_admin = True
 
+    def test_patch_user_non_admin_cannot_modify_admin(self) -> None:
+        """Non-admins cannot patch admin users."""
+        self.auth_context.user.is_admin = False
+
+        admin_user = models.User(
+            email='admin@example.com',
+            display_name='Admin',
+            is_active=True,
+            is_admin=True,
+            is_service_account=False,
+            created_at=datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC),
+        )
+        self.mock_db.match.return_value = [admin_user]
+
+        response = self.client.patch(
+            '/users/admin%40example.com',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/display_name',
+                    'value': 'Renamed',
+                },
+            ],
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+        self.auth_context.user.is_admin = True
+
+    def test_patch_user_cannot_deactivate_self(self) -> None:
+        """Users cannot deactivate themselves via PATCH."""
+        self.auth_context.user.email = 'test@example.com'
+
+        existing_user = models.User(
+            email='test@example.com',
+            display_name='Test',
+            is_active=True,
+            is_admin=False,
+            is_service_account=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.mock_db.match.return_value = [existing_user]
+
+        response = self.client.patch(
+            '/users/test%40example.com',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/is_active',
+                    'value': False,
+                },
+            ],
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('deactivate', response.json()['detail'])
+
+        self.auth_context.user.email = 'admin@example.com'
+
+    def test_patch_user_service_account_cannot_be_admin(self) -> None:
+        """Setting is_service_account + is_admin on a user returns 400."""
+        existing_user = models.User(
+            email='u@example.com',
+            display_name='U',
+            is_active=True,
+            is_admin=True,
+            is_service_account=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.mock_db.match.return_value = [existing_user]
+
+        response = self.client.patch(
+            '/users/u%40example.com',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/is_service_account',
+                    'value': True,
+                },
+            ],
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('admins', response.json()['detail'])
+
+    def test_patch_user_service_account_clears_password(self) -> None:
+        """Becoming a service account clears the password hash."""
+        existing_user = models.User(
+            email='svc@example.com',
+            display_name='Svc',
+            password_hash='$argon2id$hashed',
+            is_active=True,
+            is_admin=False,
+            is_service_account=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.mock_db.match.return_value = [existing_user]
+        self.mock_db.merge.return_value = None
+
+        response = self.client.patch(
+            '/users/svc%40example.com',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/is_service_account',
+                    'value': True,
+                },
+            ],
+        )
+
+        self.assertEqual(response.status_code, 200)
+        merged_user = self.mock_db.merge.call_args.args[0]
+        self.assertIsNone(merged_user.password_hash)
+
 
 class OrgMembershipEndpointsTestCase(unittest.TestCase):
     """Test org membership endpoints on users."""
@@ -771,44 +760,6 @@ class OrgMembershipEndpointsTestCase(unittest.TestCase):
                 'organization_slug': 'nonexistent',
                 'role_slug': 'developer',
             },
-        )
-
-        self.assertEqual(response.status_code, 404)
-
-    def test_update_organization_role_success(self) -> None:
-        """Test changing a user's role in an organization."""
-        self.mock_db.execute.return_value = [
-            {'u': {}, 'o': {}, 'r': {}},
-        ]
-
-        response = self.client.put(
-            '/users/test@example.com/organizations/default',
-            json={'role_slug': 'admin'},
-        )
-
-        self.assertEqual(response.status_code, 204)
-
-    def test_update_organization_role_missing_slug(
-        self,
-    ) -> None:
-        """Test updating role without role_slug."""
-        response = self.client.put(
-            '/users/test@example.com/organizations/default',
-            json={},
-        )
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('required', response.json()['detail'])
-
-    def test_update_organization_role_not_found(
-        self,
-    ) -> None:
-        """Test updating role for non-existent membership."""
-        self.mock_db.execute.return_value = []
-
-        response = self.client.put(
-            '/users/test@example.com/organizations/nonexistent',
-            json={'role_slug': 'admin'},
         )
 
         self.assertEqual(response.status_code, 404)
@@ -929,38 +880,6 @@ class ServiceAccountGuardRailsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn(
             'Service accounts cannot be admins',
-            response.json()['detail'],
-        )
-
-    def test_update_service_account_password_blocked(
-        self,
-    ) -> None:
-        """PUT /users/{email} for SA with password = 400."""
-        existing_sa = models.User(
-            email='sa@example.com',
-            display_name='Existing SA',
-            is_active=True,
-            is_admin=False,
-            is_service_account=True,
-            created_at=datetime.datetime.now(datetime.UTC),
-        )
-        self.mock_db.match.return_value = [existing_sa]
-
-        response = self.client.put(
-            '/users/sa@example.com',
-            json={
-                'email': 'sa@example.com',
-                'display_name': 'Updated SA',
-                'password': 'NewPass123!@#',
-                'is_active': True,
-                'is_admin': False,
-                'is_service_account': True,
-            },
-        )
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn(
-            'Service accounts cannot have passwords',
             response.json()['detail'],
         )
 

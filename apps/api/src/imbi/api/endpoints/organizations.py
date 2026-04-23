@@ -326,47 +326,6 @@ async def _persist_organization(
     return org_dict
 
 
-@organizations_router.put('/{slug}')
-async def update_organization(
-    slug: str,
-    org: models.Organization,
-    db: graph.Pool,
-    _auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(
-            permissions.require_permission('organization:update'),
-        ),
-    ],
-) -> dict[str, typing.Any]:
-    """Update an existing organization.
-
-    Parameters:
-        slug: Organization slug from URL (identifies existing record).
-        org: Updated organization data.
-
-    Returns:
-        The updated organization.
-
-    Raises:
-        404: Organization not found.
-        409: Slug rename conflicts with existing organization.
-
-    """
-    results = await db.match(
-        models.Organization,
-        {'slug': slug},
-    )
-    existing = results[0] if results else None
-    if existing is None:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'Organization with slug {slug!r} not found',
-        )
-    org.created_at = existing.created_at
-    org.updated_at = datetime.datetime.now(datetime.UTC)
-    return await _persist_organization(slug, org, db)
-
-
 @organizations_router.patch('/{slug}')
 async def patch_organization(
     slug: str,
