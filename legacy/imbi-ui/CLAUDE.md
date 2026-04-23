@@ -58,7 +58,7 @@ This is a complete rewrite of the Imbi UI using modern TypeScript and React.
 5. Handle loading and error states
 
 ## Backend API
-- OpenAPI spec available at `imbi-openapi.yaml`
+- OpenAPI spec snapshot committed at `openapi.json` (repo root). Regenerate types after backend changes with `npm run codegen:fetch` (requires a running backend at `localhost:8000`) or `npm run codegen` (from the current snapshot). Generated types at `src/types/api-generated.ts`.
 - Session cookie auth (or Private-Token header)
 - Base URL configured via `VITE_API_URL` env var
 - OpenSearch endpoint not documented in OpenAPI spec

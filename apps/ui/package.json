@@ -14,6 +14,8 @@
     "test:coverage": "vitest run --coverage",
     "format": "prettier --write 'src/**/*.{ts,tsx,css}'",
     "format:check": "prettier --check 'src/**/*.{ts,tsx,css}'",
+    "codegen": "openapi-typescript openapi.json -o src/types/api-generated.ts",
+    "codegen:fetch": "curl -sf http://localhost:8000/openapi.json -o openapi.json && npm run codegen",
     "prepare": "husky"
   },
   "dependencies": {
@@ -116,6 +118,7 @@
     "husky": "^9.1.7",
     "jsdom": "^27.4.0",
     "lint-staged": "^16.4.0",
+    "openapi-typescript": "^7.13.0",
     "postcss": "^8.4.49",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
