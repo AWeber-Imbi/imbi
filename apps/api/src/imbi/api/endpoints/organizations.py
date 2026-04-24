@@ -15,10 +15,12 @@ from imbi_api.relationships import build_relationships
 
 from .environments import environments_router
 from .link_definitions import link_definitions_router
+from .notes import notes_project_router, notes_router
 from .operations_log import operations_log_project_router
 from .project_types import project_types_router
 from .projects import projects_router
 from .releases import releases_router
+from .tags import tags_router
 from .teams import teams_router
 from .third_party_services import third_party_services_router
 from .webhooks import project_services_router, webhooks_router
@@ -68,6 +70,18 @@ organizations_router.include_router(
 organizations_router.include_router(
     project_services_router,
     prefix='/{org_slug}/projects/{project_id}/services',
+)
+organizations_router.include_router(
+    tags_router,
+    prefix='/{org_slug}/tags',
+)
+organizations_router.include_router(
+    notes_router,
+    prefix='/{org_slug}/notes',
+)
+organizations_router.include_router(
+    notes_project_router,
+    prefix='/{org_slug}/projects/{project_id}/notes',
 )
 
 

@@ -227,6 +227,16 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'delete',
         'Delete operations log entries',
     ),
+    # Tag management
+    ('tag:create', 'tag', 'create', 'Create tags'),
+    ('tag:read', 'tag', 'read', 'View tags'),
+    ('tag:write', 'tag', 'write', 'Update tags'),
+    ('tag:delete', 'tag', 'delete', 'Delete tags'),
+    # Note management
+    ('note:create', 'note', 'create', 'Create project notes'),
+    ('note:read', 'note', 'read', 'View project notes'),
+    ('note:write', 'note', 'write', 'Update project notes'),
+    ('note:delete', 'note', 'delete', 'Delete project notes'),
 ]
 
 # Default role definitions
@@ -264,6 +274,13 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
             'upload:read',
             'webhook:read',
             'webhook:update',
+            'tag:create',
+            'tag:read',
+            'tag:write',
+            'note:create',
+            'note:read',
+            'note:write',
+            'note:delete',
         ],
     ),
     (
@@ -285,6 +302,8 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
             'role:read',
             'upload:read',
             'webhook:read',
+            'tag:read',
+            'note:read',
         ],
     ),
 ]
