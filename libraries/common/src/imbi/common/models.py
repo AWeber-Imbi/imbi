@@ -20,6 +20,7 @@ __all__ = [
     'GraphModel',
     'LinkDefinition',
     'Node',
+    'Note',
     'OperationLog',
     'Organization',
     'Project',
@@ -30,6 +31,7 @@ __all__ = [
     'ReleaseDeploymentEdge',
     'ReleaseLink',
     'Schema',
+    'Tag',
     'Team',
     'ThirdPartyService',
 ]
@@ -328,6 +330,34 @@ class Project(Node):
     ] = []
     links: dict[str, pydantic.AnyUrl] = {}
     identifiers: dict[str, int | str | pydantic.AnyUrl] = {}
+
+
+class Tag(Node):
+    organization: BelongsToOrganization
+
+
+class Note(GraphModel):
+    """A free-form, taggable note attached to a ``Project``.
+
+    ``content`` is markdown and is embedded so future semantic search
+    can surface notes alongside other corpus content.
+
+    """
+
+    project: typing.Annotated[
+        Project,
+        Edge(rel_type='ATTACHED_TO', direction='OUTGOING'),
+    ]
+    tags: typing.Annotated[
+        list[Tag],
+        Edge(rel_type='TAGGED_WITH', direction='OUTGOING'),
+    ] = []
+    content: typing.Annotated[
+        str,
+        Embeddable(chunk=True, mimetype='text/markdown'),
+    ]
+    created_by: str
+    updated_by: str | None = None
 
 
 class DeploymentEvent(pydantic.BaseModel):
