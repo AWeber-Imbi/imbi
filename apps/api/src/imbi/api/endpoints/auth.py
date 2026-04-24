@@ -496,12 +496,32 @@ async def refresh_token(
             status_code=401, detail='Invalid token type'
         )
 
-    # Check if refresh token is revoked
-    token_results = await db.match(
-        models.TokenMetadata, {'jti': payload['jti']}
+    # Atomically revoke the refresh token. Matching on
+    # ``revoked = false`` in the same statement as the SET closes
+    # the TOCTOU gap between the check and the write: when two
+    # refreshes race on the same token, only the first matches, so
+    # the second gets ``revoked_count = 0`` and a clean 401 instead
+    # of AGE raising ``Entity failed to be updated: 3`` on the
+    # concurrently-updated vertex.
+    revoke_query: typing.LiteralString = (
+        'MATCH (n:TokenMetadata {{jti: {jti}}}) '
+        "WHERE n.revoked = false AND n.token_type = 'refresh' "
+        'SET n.revoked = true, n.revoked_at = {revoked_at} '
+        'RETURN count(n) AS revoked_count'
     )
-    token_meta = token_results[0] if token_results else None
-    if not token_meta or token_meta.revoked:
+    revoke_records = await db.execute(
+        revoke_query,
+        {
+            'jti': payload['jti'],
+            'revoked_at': datetime.datetime.now(datetime.UTC).isoformat(),
+        },
+        columns=['revoked_count'],
+    )
+    revoked = 0
+    if revoke_records:
+        raw = graph.parse_agtype(revoke_records[0].get('revoked_count'))
+        revoked = int(raw or 0)
+    if revoked == 0:
         LOGGER.warning(
             'Token refresh failed: token revoked or not found (jti=%s)',
             payload['jti'],
@@ -510,11 +530,6 @@ async def refresh_token(
             status_code=401,
             detail='Refresh token has been revoked',
         )
-
-    # Phase 5: Revoke old refresh token (token rotation)
-    token_meta.revoked = True
-    token_meta.revoked_at = datetime.datetime.now(datetime.UTC)
-    await db.merge(token_meta, match_on=['jti'])
 
     # Resolve principal (user or service account)
     subject = payload['sub']

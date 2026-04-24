@@ -318,36 +318,17 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
         refresh_token = core.create_refresh_token(
             self.test_user.email, auth_settings=self.auth_settings
         )
-        payload = jwt.decode(
-            refresh_token,
-            self.auth_settings.jwt_secret,
-            algorithms=[self.auth_settings.jwt_algorithm],
-        )
-        refresh_jti = payload['jti']
 
-        # Create non-revoked token metadata
-        token_metadata = models.TokenMetadata(
-            jti=refresh_jti,
-            token_type='refresh',
-            issued_at=datetime.datetime.now(datetime.UTC),
-            expires_at=datetime.datetime.now(datetime.UTC)
-            + datetime.timedelta(days=30),
-            revoked=False,
-            user=self.test_user,
-        )
-
-        # match() returns token metadata first, then user
-        self.mock_db.match.side_effect = [
-            [token_metadata],
-            [self.test_user],
-        ]
-        # merge() for revoking old token
-        self.mock_db.merge.return_value = None
-        # execute() runs the atomic MATCH/CREATE inside
-        # issue_token_pair that persists token metadata and returns
-        # principal_count.
-        self.mock_db.execute.return_value = [
-            {'principal_count': 1},
+        # Token metadata lookup is folded into the atomic revoke, so
+        # only the user match remains.
+        self.mock_db.match.return_value = [self.test_user]
+        # execute() is called twice: first for the atomic revoke
+        # (revoked_count=1 means the row was unrevoked and is now
+        # revoked), then for the MATCH/CREATE inside issue_token_pair
+        # that persists token metadata and returns principal_count.
+        self.mock_db.execute.side_effect = [
+            [{'revoked_count': 1}],
+            [{'principal_count': 1}],
         ]
 
         with mock.patch(
@@ -425,25 +406,10 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
         refresh_token = core.create_refresh_token(
             self.test_user.email, auth_settings=self.auth_settings
         )
-        payload = jwt.decode(
-            refresh_token,
-            self.auth_settings.jwt_secret,
-            algorithms=[self.auth_settings.jwt_algorithm],
-        )
-        refresh_jti = payload['jti']
 
-        # Create revoked token metadata
-        revoked_token = models.TokenMetadata(
-            jti=refresh_jti,
-            token_type='refresh',
-            issued_at=datetime.datetime.now(datetime.UTC),
-            expires_at=datetime.datetime.now(datetime.UTC)
-            + datetime.timedelta(days=30),
-            revoked=True,
-            user=self.test_user,
-        )
-
-        self.mock_db.match.return_value = [revoked_token]
+        # Atomic revoke returns 0 when the token is already revoked
+        # (or the jti doesn't match any TokenMetadata vertex).
+        self.mock_db.execute.return_value = [{'revoked_count': 0}]
 
         with mock.patch(
             'imbi_api.settings.get_auth_settings'

@@ -11,6 +11,7 @@ import logging
 import typing
 
 import jwt
+import nanoid
 from imbi_common import graph
 from imbi_common.auth import core
 
@@ -28,17 +29,21 @@ class PrincipalNotFoundError(Exception):
 _USER_CREATE: typing.LiteralString = (
     'MATCH (p:User {{email: {principal_id}}}) '
     'CREATE (at:TokenMetadata {{'
+    'id: {access_id}, '
     'jti: {access_jti}, '
     "token_type: 'access', "
     'issued_at: {issued_at}, '
     'expires_at: {access_exp}, '
+    'created_at: {issued_at}, '
     'revoked: false'
     '}})-[:ISSUED_TO]->(p) '
     'CREATE (rt:TokenMetadata {{'
+    'id: {refresh_id}, '
     'jti: {refresh_jti}, '
     "token_type: 'refresh', "
     'issued_at: {issued_at}, '
     'expires_at: {refresh_exp}, '
+    'created_at: {issued_at}, '
     'revoked: false'
     '}})-[:ISSUED_TO]->(p) '
     'RETURN count(p) AS principal_count'
@@ -46,17 +51,21 @@ _USER_CREATE: typing.LiteralString = (
 _SERVICE_ACCOUNT_CREATE: typing.LiteralString = (
     'MATCH (p:ServiceAccount {{slug: {principal_id}}}) '
     'CREATE (at:TokenMetadata {{'
+    'id: {access_id}, '
     'jti: {access_jti}, '
     "token_type: 'access', "
     'issued_at: {issued_at}, '
     'expires_at: {access_exp}, '
+    'created_at: {issued_at}, '
     'revoked: false'
     '}})-[:ISSUED_TO]->(p) '
     'CREATE (rt:TokenMetadata {{'
+    'id: {refresh_id}, '
     'jti: {refresh_jti}, '
     "token_type: 'refresh', "
     'issued_at: {issued_at}, '
     'expires_at: {refresh_exp}, '
+    'created_at: {issued_at}, '
     'revoked: false'
     '}})-[:ISSUED_TO]->(p) '
     'RETURN count(p) AS principal_count'
@@ -139,7 +148,9 @@ async def issue_token_pair(
         create_query,
         {
             'principal_id': principal_id,
+            'access_id': nanoid.generate(),
             'access_jti': access_claims['jti'],
+            'refresh_id': nanoid.generate(),
             'refresh_jti': refresh_claims['jti'],
             'issued_at': now.isoformat(),
             'access_exp': access_expires_at.isoformat(),
