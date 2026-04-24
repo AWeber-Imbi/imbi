@@ -34,7 +34,6 @@ _NOTE_READONLY_PATHS: frozenset[str] = frozenset(
     [
         '/id',
         '/project_id',
-        '/project_slug',
         '/created_by',
         '/created_at',
         '/updated_by',
@@ -56,7 +55,6 @@ class NoteResponse(pydantic.BaseModel):
     updated_by: str | None = None
     updated_at: datetime.datetime | None = None
     project_id: str
-    project_slug: str
     tags: list[TagRef] = []
 
 
@@ -139,7 +137,6 @@ def _parse_note_row(record: dict[str, typing.Any]) -> dict[str, typing.Any]:
             {'name': str(entry.get('name', '')), 'slug': str(slug)},
         )
     note['project_id'] = project.get('id', '')
-    note['project_slug'] = project.get('slug', '')
     note['tags'] = tags
     return note
 
