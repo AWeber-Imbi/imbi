@@ -15,6 +15,7 @@ from imbi_api.relationships import build_relationships
 
 from .environments import environments_router
 from .link_definitions import link_definitions_router
+from .note_templates import note_templates_router
 from .notes import notes_project_router, notes_router
 from .operations_log import operations_log_project_router
 from .project_types import project_types_router
@@ -82,6 +83,10 @@ organizations_router.include_router(
 organizations_router.include_router(
     notes_project_router,
     prefix='/{org_slug}/projects/{project_id}/notes',
+)
+organizations_router.include_router(
+    note_templates_router,
+    prefix='/{org_slug}/note-templates',
 )
 
 

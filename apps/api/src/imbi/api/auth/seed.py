@@ -237,6 +237,31 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ('note:read', 'note', 'read', 'View project notes'),
     ('note:write', 'note', 'write', 'Update project notes'),
     ('note:delete', 'note', 'delete', 'Delete project notes'),
+    # Note template management
+    (
+        'note_template:create',
+        'note_template',
+        'create',
+        'Create note templates',
+    ),
+    (
+        'note_template:read',
+        'note_template',
+        'read',
+        'View note templates',
+    ),
+    (
+        'note_template:write',
+        'note_template',
+        'write',
+        'Update note templates',
+    ),
+    (
+        'note_template:delete',
+        'note_template',
+        'delete',
+        'Delete note templates',
+    ),
 ]
 
 # Default role definitions
@@ -281,6 +306,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
             'note:read',
             'note:write',
             'note:delete',
+            'note_template:read',
         ],
     ),
     (
@@ -304,6 +330,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
             'webhook:read',
             'tag:read',
             'note:read',
+            'note_template:read',
         ],
     ),
 ]
