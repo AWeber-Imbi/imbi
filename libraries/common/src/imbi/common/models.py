@@ -352,12 +352,14 @@ class Note(GraphModel):
         list[Tag],
         Edge(rel_type='TAGGED_WITH', direction='OUTGOING'),
     ] = []
+    title: str
     content: typing.Annotated[
         str,
         Embeddable(chunk=True, mimetype='text/markdown'),
     ]
     created_by: str
     updated_by: str | None = None
+    is_pinned: bool = False
 
 
 class DeploymentEvent(pydantic.BaseModel):
