@@ -208,7 +208,7 @@ async def _fetch_template(
         """
     MATCH (nt:NoteTemplate {{slug: {slug}}})
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    WITH DISTINCT nt, o
+    WITH nt, o
     """
         + _TAGS_TAIL
     )
@@ -321,7 +321,7 @@ async def list_note_templates(
         """
     MATCH (nt:NoteTemplate)
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    WITH DISTINCT nt, o
+    WITH nt, o
     ORDER BY nt.sort_order, nt.name
     """
         + _TAGS_TAIL
