@@ -17,8 +17,6 @@ READONLY_PATHS: frozenset[str] = frozenset(
     ]
 )
 
-_UNSET: object = object()
-
 
 class PatchOperation(pydantic.BaseModel):
     """A single JSON Patch operation (RFC 6902).
@@ -35,7 +33,7 @@ class PatchOperation(pydantic.BaseModel):
 
     op: typing.Literal['add', 'remove', 'replace', 'move', 'copy', 'test']
     path: str
-    value: typing.Any = _UNSET
+    value: typing.Any = None
     from_: str | None = pydantic.Field(None, alias='from')
 
 
@@ -84,7 +82,7 @@ def apply_patch(
     ops_list: list[dict[str, typing.Any]] = []
     for op in operations:
         d: dict[str, typing.Any] = {'op': op.op, 'path': op.path}
-        if op.value is not _UNSET:
+        if 'value' in op.model_fields_set:
             d['value'] = op.value
         if op.from_ is not None:
             d['from'] = op.from_

@@ -49,16 +49,19 @@ class TagRef(pydantic.BaseModel):
 
 class NoteResponse(pydantic.BaseModel):
     id: str
+    title: str = ''
     content: str
     created_by: str
     created_at: datetime.datetime
     updated_by: str | None = None
     updated_at: datetime.datetime | None = None
     project_id: str
+    is_pinned: bool = False
     tags: list[TagRef] = []
 
 
 class NoteCreate(pydantic.BaseModel):
+    title: str = pydantic.Field(min_length=1, max_length=200)
     content: str = pydantic.Field(min_length=1)
     tags: list[str] = pydantic.Field(
         default_factory=list,
@@ -138,6 +141,9 @@ def _parse_note_row(record: dict[str, typing.Any]) -> dict[str, typing.Any]:
         )
     note['project_id'] = project.get('id', '')
     note['tags'] = tags
+    # Defaults for rows written before these columns landed.
+    note['is_pinned'] = bool(note.get('is_pinned', False))
+    note['title'] = str(note.get('title') or '')
     return note
 
 
@@ -151,6 +157,47 @@ _TAGS_TAIL: typing.LiteralString = """
     WITH n, p, [t IN raw_tags WHERE t IS NOT NULL] AS tags
     RETURN n, p, tags
 """
+
+
+async def _attach_tags(
+    db: graph.Pool,
+    org_slug: str,
+    note_id: str,
+    tag_slugs: list[str],
+) -> None:
+    """Create ``TAGGED_WITH`` edges from note -> tags.
+
+    Split from the CREATE/SET query because AGE's Cypher translator does
+    not support ``FOREACH``; a plain ``UNWIND`` + ``MATCH`` + ``CREATE``
+    is portable.
+    """
+    if not tag_slugs:
+        return
+    query: typing.LiteralString = """
+    MATCH (n:Note {{id: {note_id}}}),
+          (:Organization {{slug: {org_slug}}})<-[:BELONGS_TO]-(t:Tag)
+    WHERE t.slug IN {tag_slugs}
+    CREATE (n)-[:TAGGED_WITH]->(t)
+    RETURN count(t) AS attached
+    """
+    await db.execute(
+        query,
+        {'note_id': note_id, 'org_slug': org_slug, 'tag_slugs': tag_slugs},
+        columns=['attached'],
+    )
+
+
+async def _detach_all_tags(
+    db: graph.Pool,
+    note_id: str,
+) -> None:
+    """Remove every ``TAGGED_WITH`` edge from ``note``."""
+    query: typing.LiteralString = """
+    MATCH (n:Note {{id: {note_id}}})-[tw:TAGGED_WITH]->(:Tag)
+    DELETE tw
+    RETURN count(tw) AS removed
+    """
+    await db.execute(query, {'note_id': note_id}, columns=['removed'])
 
 
 async def _validate_tag_slugs(
@@ -198,45 +245,50 @@ async def create_note(
 
     now = datetime.datetime.now(datetime.UTC)
     note_id = nanoid.generate()
-    params: dict[str, typing.Any] = {
-        'org_slug': org_slug,
-        'project_id': project_id,
-        'id': note_id,
-        'content': data.content,
-        'created_by': auth.principal_name,
-        'created_at': now.isoformat(),
-        'tag_slugs': tag_slugs,
-    }
-    query: str = (
-        """
+    create_query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
-          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
     CREATE (n:Note {{
         id: {id},
+        title: {title},
         content: {content},
         created_by: {created_by},
-        created_at: {created_at}
+        created_at: {created_at},
+        is_pinned: {is_pinned}
     }})
     CREATE (n)-[:ATTACHED_TO]->(p)
-    WITH n, p, o
-    UNWIND (CASE WHEN size({tag_slugs}) = 0 THEN [null]
-                 ELSE {tag_slugs} END) AS tag_slug
-    OPTIONAL MATCH (tag:Tag {{slug: tag_slug}})-[:BELONGS_TO]->(o)
-    FOREACH (_ IN CASE WHEN tag IS NOT NULL THEN [1] ELSE [] END |
-        CREATE (n)-[:TAGGED_WITH]->(tag)
-    )
-    WITH DISTINCT n, p
+    RETURN n.id AS id
     """
-        + _TAGS_TAIL
+    records = await db.execute(
+        create_query,
+        {
+            'org_slug': org_slug,
+            'project_id': project_id,
+            'id': note_id,
+            'title': data.title,
+            'content': data.content,
+            'created_by': auth.principal_name,
+            'created_at': now.isoformat(),
+            'is_pinned': False,
+        },
+        columns=['id'],
     )
-    records = await db.execute(query, params, columns=['n', 'p', 'tags'])
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Project {project_id!r} not found',
         )
-    return _parse_note_row(records[0])
+
+    if tag_slugs:
+        await _attach_tags(db, org_slug, note_id, tag_slugs)
+
+    note = await _fetch_note(db, org_slug, project_id, note_id)
+    if note is None:
+        raise fastapi.HTTPException(
+            status_code=500, detail='Note created but could not be read back'
+        )
+    return note
 
 
 async def _list_notes_impl(
@@ -297,7 +349,7 @@ async def _list_notes_impl(
         + tag_match
         + cursor_clause
         + """
-    WITH DISTINCT n, p
+    WITH n, p
     ORDER BY n.created_at DESC, n.id DESC
     LIMIT {row_limit}
     """
@@ -431,8 +483,34 @@ async def get_note(
 
 
 class NoteUpdate(pydantic.BaseModel):
+    title: str | None = pydantic.Field(
+        default=None, min_length=1, max_length=200
+    )
     content: str | None = pydantic.Field(default=None, min_length=1)
     tags: list[str] | None = None
+    is_pinned: bool | None = None
+
+
+def _resolve_patched_field(
+    field: str,
+    touched: set[str],
+    new_value: typing.Any,
+    fallback: typing.Any,
+) -> typing.Any:
+    """Return the resolved value for a non-nullable field after a JSON Patch.
+
+    If the patch touched ``field`` and ``new_value`` is ``None`` (an explicit
+    ``null``), raise 400 — silent no-ops would make the response disagree with
+    the patch document. Otherwise return ``new_value`` when touched, else
+    ``fallback``.
+    """
+    if field in touched:
+        if new_value is None:
+            raise fastapi.HTTPException(
+                status_code=400, detail=f'{field} cannot be null'
+            )
+        return new_value
+    return fallback
 
 
 @notes_project_router.patch('/{note_id}', response_model=NoteResponse)
@@ -455,78 +533,98 @@ async def patch_note(
         )
 
     current = {
+        'title': str(existing.get('title') or ''),
         'content': existing['content'],
         'tags': [t['slug'] for t in existing.get('tags', [])],
+        'is_pinned': bool(existing.get('is_pinned', False)),
     }
     patched = json_patch.apply_patch(current, operations, _NOTE_READONLY_PATHS)
+    # Only validate fields the patch actually touched. The merged ``patched``
+    # dict carries every field from ``current`` (incl. legacy values that
+    # may not satisfy ``NoteUpdate`` constraints), so validating it whole
+    # would reject a ``/is_pinned`` patch on a note with an empty title.
+    touched: set[str] = set()
+    for op in operations:
+        if op.path.startswith('/'):
+            head = op.path.split('/', 2)[1]
+            if head:
+                touched.add(head)
     try:
-        update = NoteUpdate(**patched)
+        update = NoteUpdate(**{k: patched[k] for k in touched if k in patched})
     except pydantic.ValidationError as e:
         raise fastapi.HTTPException(
             status_code=400,
             detail=f'Validation error: {e.errors()}',
         ) from e
 
-    new_content = (
-        update.content if update.content is not None else existing['content']
+    # Use ``touched`` (not ``is not None``) so that explicit ``null`` values
+    # in the patch document are rejected rather than silently treated as
+    # "field omitted". ``apply_patch()`` preserves explicit nulls, so the
+    # PATCH result must agree with the patch document.
+    new_title = _resolve_patched_field(
+        'title', touched, update.title, str(existing.get('title') or '')
     )
-    replace_tags = update.tags is not None
+    new_content = _resolve_patched_field(
+        'content', touched, update.content, existing['content']
+    )
+    # Replace tag edges only when an op actually targeted ``/tags``.
+    replace_tags = 'tags' in touched
     new_tags: list[str] = (
-        list(dict.fromkeys(update.tags))
-        if update.tags is not None
+        list(dict.fromkeys(update.tags or []))
+        if replace_tags
         else [t['slug'] for t in existing.get('tags', [])]
     )
     if replace_tags:
         await _validate_tag_slugs(db, org_slug, new_tags)
+    new_is_pinned = _resolve_patched_field(
+        'is_pinned',
+        touched,
+        update.is_pinned,
+        bool(existing.get('is_pinned', False)),
+    )
 
     now = datetime.datetime.now(datetime.UTC)
-    params: dict[str, typing.Any] = {
-        'org_slug': org_slug,
-        'project_id': project_id,
-        'note_id': note_id,
-        'content': new_content,
-        'updated_by': auth.principal_name,
-        'updated_at': now.isoformat(),
-        'tag_slugs': new_tags,
-    }
-
-    tag_replacement = ''
-    if replace_tags:
-        tag_replacement = """
-        WITH DISTINCT n, p, o
-        OPTIONAL MATCH (n)-[tw:TAGGED_WITH]->(:Tag)
-        DELETE tw
-        WITH DISTINCT n, p, o
-        UNWIND (CASE WHEN size({tag_slugs}) = 0 THEN [null]
-                     ELSE {tag_slugs} END) AS tag_slug
-        OPTIONAL MATCH (tag:Tag {{slug: tag_slug}})-[:BELONGS_TO]->(o)
-        FOREACH (_ IN CASE WHEN tag IS NOT NULL THEN [1] ELSE [] END |
-            CREATE (n)-[:TAGGED_WITH]->(tag)
-        )
-        """
-
-    query: str = (
-        """
+    set_query: typing.LiteralString = """
     MATCH (n:Note {{id: {note_id}}})
-          -[:ATTACHED_TO]->(p:Project {{id: {project_id}}})
+          -[:ATTACHED_TO]->(:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
-          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    SET n.content = {content},
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    SET n.title = {title},
+        n.content = {content},
         n.updated_by = {updated_by},
-        n.updated_at = {updated_at}
+        n.updated_at = {updated_at},
+        n.is_pinned = {is_pinned}
+    RETURN n.id AS id
     """
-        + tag_replacement
-        + """
-    WITH DISTINCT n, p
-    """
-        + _TAGS_TAIL
+    records = await db.execute(
+        set_query,
+        {
+            'org_slug': org_slug,
+            'project_id': project_id,
+            'note_id': note_id,
+            'title': new_title,
+            'content': new_content,
+            'updated_by': auth.principal_name,
+            'updated_at': now.isoformat(),
+            'is_pinned': new_is_pinned,
+        },
+        columns=['id'],
     )
-    records = await db.execute(query, params, columns=['n', 'p', 'tags'])
     if not records:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Note {note_id!r} not found'
         )
-    return _parse_note_row(records[0])
+
+    if replace_tags:
+        await _detach_all_tags(db, note_id)
+        await _attach_tags(db, org_slug, note_id, new_tags)
+
+    note = await _fetch_note(db, org_slug, project_id, note_id)
+    if note is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Note {note_id!r} not found'
+        )
+    return note
 
 
 @notes_project_router.delete('/{note_id}', status_code=204)

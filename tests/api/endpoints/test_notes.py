@@ -57,6 +57,7 @@ class NoteEndpointsTestCase(unittest.TestCase):
     def _note_data(self, **overrides: typing.Any) -> dict:
         data: dict[str, typing.Any] = {
             'id': 'note-1',
+            'title': 'DB lock runbook',
             'content': 'Watch out for DB locks',
             'created_by': 'admin@example.com',
             'created_at': '2026-03-17T12:00:00Z',
@@ -85,19 +86,25 @@ class NoteEndpointsTestCase(unittest.TestCase):
         ):
             response = self.client.post(
                 '/organizations/engineering/projects/proj-abc/notes/',
-                json={'content': 'Watch out for DB locks'},
+                json={
+                    'title': 'DB lock runbook',
+                    'content': 'Watch out for DB locks',
+                },
             )
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json()['project_id'], 'proj-abc')
+        self.assertEqual(response.json()['title'], 'DB lock runbook')
         self.assertEqual(response.json()['tags'], [])
 
     def test_create_with_tags(self) -> None:
-        # first call = _validate_tag_slugs (both found), second = insert
+        # Calls: validate_tags, create_note, attach_tags, fetch_note
         self.mock_db.execute.side_effect = [
             [
                 {'tag_slug': 'runbook', 'found': True},
                 {'tag_slug': 'alert', 'found': True},
             ],
+            [{'id': 'note-1'}],
+            [{'attached': 2}],
             [
                 {
                     'n': self._note_data(),
@@ -114,11 +121,19 @@ class NoteEndpointsTestCase(unittest.TestCase):
         ):
             response = self.client.post(
                 '/organizations/engineering/projects/proj-abc/notes/',
-                json={'content': 'x', 'tags': ['runbook', 'alert']},
+                json={
+                    'title': 't',
+                    'content': 'x',
+                    'tags': ['runbook', 'alert'],
+                },
             )
         self.assertEqual(response.status_code, 201)
         tags = {t['slug'] for t in response.json()['tags']}
         self.assertEqual(tags, {'runbook', 'alert'})
+        attach_call = self.mock_db.execute.await_args_list[2]
+        self.assertEqual(
+            attach_call.args[1]['tag_slugs'], ['runbook', 'alert']
+        )
 
     def test_create_unknown_tag_returns_422(self) -> None:
         self.mock_db.execute.return_value = [
@@ -130,7 +145,11 @@ class NoteEndpointsTestCase(unittest.TestCase):
         ):
             response = self.client.post(
                 '/organizations/engineering/projects/proj-abc/notes/',
-                json={'content': 'x', 'tags': ['runbook', 'ghost']},
+                json={
+                    'title': 't',
+                    'content': 'x',
+                    'tags': ['runbook', 'ghost'],
+                },
             )
         self.assertEqual(response.status_code, 422)
         self.assertIn('ghost', response.json()['detail'])
@@ -142,14 +161,28 @@ class NoteEndpointsTestCase(unittest.TestCase):
         ):
             response = self.client.post(
                 '/organizations/engineering/projects/missing/notes/',
-                json={'content': 'x'},
+                json={'title': 't', 'content': 'x'},
             )
         self.assertEqual(response.status_code, 404)
 
     def test_create_empty_content_rejected(self) -> None:
         response = self.client.post(
             '/organizations/engineering/projects/proj-abc/notes/',
-            json={'content': ''},
+            json={'title': 't', 'content': ''},
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_create_missing_title_rejected(self) -> None:
+        response = self.client.post(
+            '/organizations/engineering/projects/proj-abc/notes/',
+            json={'content': 'x'},
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_create_empty_title_rejected(self) -> None:
+        response = self.client.post(
+            '/organizations/engineering/projects/proj-abc/notes/',
+            json={'title': '', 'content': 'x'},
         )
         self.assertEqual(response.status_code, 422)
 
@@ -242,6 +275,7 @@ class NoteEndpointsTestCase(unittest.TestCase):
     # -- Patch ---------------------------------------------------------
 
     def test_patch_content(self) -> None:
+        # 1: _fetch_note (existing), 2: SET query, 3: _fetch_note (final)
         self.mock_db.execute.side_effect = [
             [
                 {
@@ -250,6 +284,7 @@ class NoteEndpointsTestCase(unittest.TestCase):
                     'tags': [],
                 }
             ],
+            [{'id': 'note-1'}],
             [
                 {
                     'n': self._note_data(content='Updated text'),
@@ -275,6 +310,7 @@ class NoteEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.json()['content'], 'Updated text')
 
     def test_patch_replace_tags(self) -> None:
+        # fetch-existing, validate, SET, detach, attach, fetch-final
         self.mock_db.execute.side_effect = [
             [
                 {
@@ -283,9 +319,10 @@ class NoteEndpointsTestCase(unittest.TestCase):
                     'tags': [],
                 }
             ],
-            [  # _validate_tag_slugs
-                {'tag_slug': 'runbook', 'found': True},
-            ],
+            [{'tag_slug': 'runbook', 'found': True}],
+            [{'id': 'note-1'}],
+            [{'removed': 0}],
+            [{'attached': 1}],
             [
                 {
                     'n': self._note_data(updated_by='admin@example.com'),
@@ -311,6 +348,153 @@ class NoteEndpointsTestCase(unittest.TestCase):
         self.assertEqual(
             [t['slug'] for t in response.json()['tags']], ['runbook']
         )
+
+    def test_create_defaults_is_pinned_false(self) -> None:
+        self.mock_db.execute.return_value = [
+            {'n': self._note_data(), 'p': self._project(), 'tags': []}
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.post(
+                '/organizations/engineering/projects/proj-abc/notes/',
+                json={
+                    'title': 'DB lock runbook',
+                    'content': 'Watch out for DB locks',
+                },
+            )
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.json()['is_pinned'])
+        create_call = self.mock_db.execute.await_args_list[0]
+        self.assertFalse(create_call.args[1]['is_pinned'])
+
+    def test_patch_title(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'n': self._note_data(),
+                    'p': self._project(),
+                    'tags': [],
+                }
+            ],
+            [{'id': 'note-1'}],
+            [
+                {
+                    'n': self._note_data(title='New title'),
+                    'p': self._project(),
+                    'tags': [],
+                }
+            ],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/projects/proj-abc/notes/note-1',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/title',
+                        'value': 'New title',
+                    }
+                ],
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['title'], 'New title')
+        # SET query is the second call (after the initial _fetch_note).
+        write_call = self.mock_db.execute.await_args_list[1]
+        self.assertEqual(write_call.args[1]['title'], 'New title')
+
+    def test_patch_is_pinned(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'n': self._note_data(),
+                    'p': self._project(),
+                    'tags': [],
+                }
+            ],
+            [{'id': 'note-1'}],
+            [
+                {
+                    'n': self._note_data(is_pinned=True),
+                    'p': self._project(),
+                    'tags': [],
+                }
+            ],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/projects/proj-abc/notes/note-1',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/is_pinned',
+                        'value': True,
+                    }
+                ],
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['is_pinned'])
+        # SET query is the second call (after the initial _fetch_note).
+        write_call = self.mock_db.execute.await_args_list[1]
+        self.assertTrue(write_call.args[1]['is_pinned'])
+
+    def test_patch_title_null_rejected(self) -> None:
+        """Explicit ``replace /title -> null`` must 400, not silently no-op."""
+        self.mock_db.execute.return_value = [
+            {
+                'n': self._note_data(),
+                'p': self._project(),
+                'tags': [],
+            }
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/projects/proj-abc/notes/note-1',
+                json=[{'op': 'replace', 'path': '/title', 'value': None}],
+            )
+        self.assertEqual(response.status_code, 400)
+
+    def test_patch_is_pinned_null_rejected(self) -> None:
+        """Explicit ``replace /is_pinned -> null`` must 400."""
+        self.mock_db.execute.return_value = [
+            {
+                'n': self._note_data(),
+                'p': self._project(),
+                'tags': [],
+            }
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/projects/proj-abc/notes/note-1',
+                json=[{'op': 'replace', 'path': '/is_pinned', 'value': None}],
+            )
+        self.assertEqual(response.status_code, 400)
+
+    def test_patch_content_null_rejected(self) -> None:
+        """Explicit ``replace /content -> null`` must 400."""
+        self.mock_db.execute.return_value = [
+            {
+                'n': self._note_data(),
+                'p': self._project(),
+                'tags': [],
+            }
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/projects/proj-abc/notes/note-1',
+                json=[{'op': 'replace', 'path': '/content', 'value': None}],
+            )
+        self.assertEqual(response.status_code, 400)
 
     def test_patch_readonly_path_rejected(self) -> None:
         self.mock_db.execute.return_value = [
