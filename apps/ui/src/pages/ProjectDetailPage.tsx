@@ -8,7 +8,12 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { getProject } from '@/api/endpoints'
 
 export function ProjectDetailPage() {
-  const { projectId, tab } = useParams<{ projectId: string; tab?: string }>()
+  const { projectId, tab, subId, subAction } = useParams<{
+    projectId: string
+    tab?: string
+    subId?: string
+    subAction?: string
+  }>()
   const { selectedOrganization } = useOrganization()
 
   const orgSlug = selectedOrganization?.slug || ''
@@ -55,7 +60,14 @@ export function ProjectDetailPage() {
             </div>
           </div>
         )}
-        {project && <ProjectDetail project={project} initialTab={tab} />}
+        {project && (
+          <ProjectDetail
+            project={project}
+            initialTab={tab}
+            initialSubId={subId}
+            initialSubAction={subAction}
+          />
+        )}
       </main>
       <CommandBar />
     </div>

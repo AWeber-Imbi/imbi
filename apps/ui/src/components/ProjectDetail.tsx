@@ -1,7 +1,7 @@
 import {
   TrendingUp,
   TrendingDown,
-  Settings as SettingsIcon,
+  Settings2 as SettingsIcon,
   ArrowRight,
   Rocket,
 } from 'lucide-react'
@@ -31,6 +31,7 @@ import { sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
 import {
   listLinkDefinitions,
   getProjectSchema,
+  listProjectNotes,
   listTeams,
   listProjectTypes,
 } from '@/api/endpoints'
@@ -45,10 +46,13 @@ import { ProjectRelationshipsTab } from '@/components/ProjectRelationshipsTab'
 import { ProjectEnvironmentsCard } from '@/components/ProjectEnvironmentsCard'
 import { ProjectAttributesSection } from '@/components/ProjectAttributesSection'
 import { ProjectSettingsTab } from '@/components/ProjectSettingsTab'
+import { ProjectNotesTab } from '@/components/notes/ProjectNotesTab'
 
 interface ProjectDetailProps {
   project: Project
   initialTab?: string
+  initialSubId?: string
+  initialSubAction?: string
 }
 
 const VALID_TABS = [
@@ -66,7 +70,12 @@ type TabType = (typeof VALID_TABS)[number]
 
 const VALID_TAB_SET: Set<string> = new Set(VALID_TABS)
 
-export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
+export function ProjectDetail({
+  project,
+  initialTab,
+  initialSubId,
+  initialSubAction,
+}: ProjectDetailProps) {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug || ''
   const { patch, pendingPath } = useProjectPatch(orgSlug, project.id)
@@ -188,6 +197,12 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
     queryFn: ({ signal }) => listProjectTypes(orgSlug, signal),
     enabled: !!orgSlug,
   })
+  const { data: projectNotes = [] } = useQuery({
+    queryKey: ['projectNotes', orgSlug, project.id],
+    queryFn: ({ signal }) =>
+      listProjectNotes(orgSlug, project.id, undefined, signal),
+    enabled: !!orgSlug && !!project.id,
+  })
 
   // Bumps when an icon-set chunk finishes loading; include in useMemo deps
   // where icons are resolved so they refresh once available.
@@ -267,7 +282,11 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
     { id: 'configuration', label: 'Configuration' },
     { id: 'dependencies', label: 'Dependencies' },
     { id: 'logs', label: 'Logs' },
-    { id: 'notes', label: 'Notes' },
+    {
+      id: 'notes',
+      label:
+        projectNotes.length > 0 ? `Notes (${projectNotes.length})` : 'Notes',
+    },
     { id: 'operations-log', label: 'Operations Log' },
     {
       id: 'relationships',
@@ -375,19 +394,30 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="mb-6">
-          {tabs.map((tab) => (
-            <TabsTrigger
-              key={tab.id}
-              value={tab.id}
-              aria-label={tab.id === 'settings' ? 'Settings' : undefined}
-            >
-              {tab.id === 'settings' ? (
-                <SettingsIcon className="h-4 w-4" />
-              ) : (
-                tab.label
-              )}
-            </TabsTrigger>
-          ))}
+          {tabs.map((tab) =>
+            tab.id === 'settings' ? (
+              <TooltipProvider key={tab.id} delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <TabsTrigger
+                      value={tab.id}
+                      aria-label="Project Settings"
+                      className="ml-auto"
+                    >
+                      <SettingsIcon className="h-4 w-4" />
+                    </TabsTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Project Settings</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <TabsTrigger key={tab.id} value={tab.id}>
+                {tab.label}
+              </TabsTrigger>
+            ),
+          )}
         </TabsList>
 
         <TabsContent value="overview">
@@ -591,7 +621,12 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
           <PlaceholderTab name="Logs" />
         </TabsContent>
         <TabsContent value="notes">
-          <PlaceholderTab name="Notes" />
+          <ProjectNotesTab
+            orgSlug={project.team.organization.slug}
+            projectId={project.id}
+            initialNoteId={activeTab === 'notes' ? initialSubId : undefined}
+            initialAction={activeTab === 'notes' ? initialSubAction : undefined}
+          />
         </TabsContent>
         <TabsContent value="operations-log">
           <OperationsLog

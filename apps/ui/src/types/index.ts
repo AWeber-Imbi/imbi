@@ -483,3 +483,43 @@ export type ProjectRelationshipsResponse =
 
 // JSON Patch operation (RFC 6902)
 export type PatchOperation = Schemas['PatchOperation']
+
+// Notes & tags. Inlined here (not from api-generated.ts) because the
+// committed openapi.json snapshot predates the notes endpoints.
+// Regenerate with `npm run codegen:fetch` once the snapshot is refreshed
+// and switch these to `Schemas['NoteResponse']` etc.
+export interface TagRef {
+  name: string
+  slug: string
+}
+
+export interface Note {
+  id: string
+  title: string
+  content: string
+  created_by: string
+  created_at: string
+  updated_by?: string | null
+  updated_at?: string | null
+  project_id: string
+  is_pinned: boolean
+  tags: TagRef[]
+}
+
+export interface NoteCreate {
+  title: string
+  content: string
+  tags?: string[]
+}
+
+export type NoteListResponse = CollectionResponse<Note>
+
+export interface Tag {
+  id: string
+  name: string
+  slug: string
+  description?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+  organization: { name: string; slug: string }
+}

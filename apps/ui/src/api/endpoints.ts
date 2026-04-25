@@ -56,6 +56,10 @@ import type {
   PatchOperation,
   OperationsLogRecord,
   OperationsLogFilters,
+  Note,
+  NoteCreate,
+  NoteListResponse,
+  Tag,
 } from '@/types'
 
 // Re-export for backward compatibility with modules that import from here.
@@ -1182,4 +1186,83 @@ export const deleteProjectService = (
 ) =>
   apiClient.delete<void>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectSlug)}/services/${encodeURIComponent(serviceSlug)}`,
+  )
+
+// Notes (project-scoped)
+export const listProjectNotes = async (
+  orgSlug: string,
+  projectId: string,
+  params?: { limit?: number; cursor?: string; tag?: string },
+  signal?: AbortSignal,
+): Promise<Note[]> => {
+  const response = await apiClient.get<NoteListResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/notes/`,
+    params,
+    signal,
+  )
+  return response?.data ?? []
+}
+
+export const getProjectNote = (
+  orgSlug: string,
+  projectId: string,
+  noteId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<Note>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/notes/${encodeURIComponent(noteId)}`,
+    undefined,
+    signal,
+  )
+
+export const createProjectNote = (
+  orgSlug: string,
+  projectId: string,
+  data: NoteCreate,
+) =>
+  apiClient.post<Note>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/notes/`,
+    data,
+  )
+
+export const patchProjectNote = (
+  orgSlug: string,
+  projectId: string,
+  noteId: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<Note>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/notes/${encodeURIComponent(noteId)}`,
+    operations,
+  )
+
+export const deleteProjectNote = (
+  orgSlug: string,
+  projectId: string,
+  noteId: string,
+) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/notes/${encodeURIComponent(noteId)}`,
+  )
+
+// Tags (org-scoped)
+export const listTags = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<Tag[]> => {
+  const response = await apiClient.get<Tag[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/tags/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createTag = (
+  orgSlug: string,
+  data: { name: string; slug?: string | null; description?: string | null },
+) =>
+  apiClient.post<Tag>(
+    `/organizations/${encodeURIComponent(orgSlug)}/tags/`,
+    data,
   )

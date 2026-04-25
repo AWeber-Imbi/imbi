@@ -141,3 +141,107 @@
     line-height: 1.5;
   }
 }
+
+@layer components {
+  .note-markdown {
+    font-size: 14.5px;
+    line-height: 1.65;
+    color: var(--color-text-primary);
+  }
+  .note-markdown h1,
+  .note-markdown h2,
+  .note-markdown h3,
+  .note-markdown h4 {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--color-text-primary);
+    margin: 1em 0 0.4em;
+  }
+  .note-markdown h1 {
+    font-size: 22px;
+  }
+  .note-markdown h2 {
+    font-size: 17px;
+  }
+  .note-markdown h3 {
+    font-size: 15px;
+  }
+  .note-markdown h4 {
+    font-size: 13.5px;
+  }
+  .note-markdown p,
+  .note-markdown ul,
+  .note-markdown ol {
+    margin: 0.5em 0;
+  }
+  .note-markdown ul,
+  .note-markdown ol {
+    padding-left: 1.2em;
+  }
+  .note-markdown li {
+    margin: 0.25em 0;
+  }
+  .note-markdown a {
+    color: var(--color-text-warning);
+    text-decoration: none;
+  }
+  .note-markdown a:hover {
+    text-decoration: underline;
+  }
+  .note-markdown code {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    background: var(--color-background-secondary);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+  .note-markdown pre {
+    margin: 0.75em 0;
+    padding: 10px 12px;
+    background: var(--color-background-secondary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.55;
+    overflow: auto;
+  }
+  .note-markdown pre code {
+    background: transparent;
+    padding: 0;
+    font-size: inherit;
+  }
+  .note-markdown blockquote {
+    margin: 0.5em 0;
+    padding: 0.25em 0.75em;
+    border-left: 2px solid var(--color-border-tertiary);
+    color: var(--color-text-secondary);
+  }
+  .note-markdown table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 0.75em 0;
+  }
+  .note-markdown th,
+  .note-markdown td {
+    padding: 8px 10px;
+    text-align: left;
+    border-top: 0.5px solid var(--color-border-tertiary);
+  }
+  .note-markdown thead th {
+    background: var(--color-background-secondary);
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 11.5px;
+    font-weight: 600;
+    border-top: 0;
+  }
+  .note-markdown input[type='checkbox'] {
+    margin-right: 0.5em;
+  }
+}
