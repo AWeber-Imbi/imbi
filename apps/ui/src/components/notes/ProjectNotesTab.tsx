@@ -16,11 +16,12 @@ import { NotesPinboard } from './NotesPinboard'
 import { NotesPinboardEmpty } from './NotesPinboardEmpty'
 import { NotesPinboardNew } from './NotesPinboardNew'
 import { NotesPinboardReader } from './NotesPinboardReader'
-import type { Note } from '@/types'
+import type { Note, NoteTemplate } from '@/types'
 
 interface Props {
   orgSlug: string
   projectId: string
+  projectTypeSlugs?: string[]
   initialNoteId?: string
   initialAction?: string
 }
@@ -28,7 +29,7 @@ interface Props {
 type View =
   | { kind: 'list' }
   | { kind: 'reading'; noteId: string }
-  | { kind: 'creating'; templateSlug?: string }
+  | { kind: 'creating'; template?: NoteTemplate | null }
   | { kind: 'editing'; noteId: string }
 
 function viewFromUrl(
@@ -46,6 +47,7 @@ function viewFromUrl(
 export function ProjectNotesTab({
   orgSlug,
   projectId,
+  projectTypeSlugs,
   initialNoteId,
   initialAction,
 }: Props) {
@@ -251,8 +253,8 @@ export function ProjectNotesTab({
   }, [error, isLoading, navigateToView, notes, view])
 
   const handleCreate = useCallback(
-    (templateSlug?: string) => {
-      navigateToView({ kind: 'creating', templateSlug })
+    (template?: NoteTemplate) => {
+      navigateToView({ kind: 'creating', template: template ?? null })
     },
     [navigateToView],
   )
@@ -284,7 +286,7 @@ export function ProjectNotesTab({
       <NotesPinboardNew
         orgSlug={orgSlug}
         allNotes={notes}
-        templateSlug={view.templateSlug}
+        template={view.template}
         onDiscard={handleDiscard}
         onSave={handleSave}
         saving={createMutation.isPending}
@@ -325,7 +327,13 @@ export function ProjectNotesTab({
   }
 
   if (notes.length === 0) {
-    return <NotesPinboardEmpty onCreate={handleCreate} />
+    return (
+      <NotesPinboardEmpty
+        orgSlug={orgSlug}
+        projectTypeSlugs={projectTypeSlugs}
+        onCreate={handleCreate}
+      />
+    )
   }
 
   return (

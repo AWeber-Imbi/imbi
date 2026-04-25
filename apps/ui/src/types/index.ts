@@ -523,3 +523,34 @@ export interface Tag {
   updated_at?: string | null
   organization: { name: string; slug: string }
 }
+
+// Note Templates. Inlined for the same reason as Note/Tag — the committed
+// openapi.json snapshot predates these endpoints. Switch to
+// `Schemas['NoteTemplateResponse']` etc. once the snapshot is refreshed.
+export interface NoteTemplate {
+  id: string
+  name: string
+  slug: string
+  description?: string | null
+  icon?: string | null
+  title?: string | null
+  content: string
+  tags: TagRef[]
+  project_type_slugs: string[]
+  sort_order: number
+  created_at: string
+  updated_at?: string | null
+  organization: { name: string; slug: string }
+}
+
+export interface NoteTemplateCreate {
+  name: string
+  slug: string
+  description?: string | null
+  icon?: string | null
+  title?: string | null
+  content?: string
+  tags?: string[]
+  project_type_slugs?: string[]
+  sort_order?: number
+}

@@ -14,6 +14,7 @@ import {
   Bot,
   Cloud,
   Link2,
+  StickyNote,
   Webhook,
 } from 'lucide-react'
 import { UserManagement } from './admin/UserManagement'
@@ -27,6 +28,7 @@ import { EnvironmentManagement } from './admin/EnvironmentManagement'
 import { ProjectTypeManagement } from './admin/ProjectTypeManagement'
 import { ThirdPartyServiceManagement } from './admin/ThirdPartyServiceManagement'
 import { LinkDefinitionManagement } from './admin/LinkDefinitionManagement'
+import { NoteTemplateManagement } from './admin/NoteTemplateManagement'
 import { WebhookManagement } from './admin/WebhookManagement'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -39,6 +41,7 @@ type AdminSection =
   | 'third-party-services'
   | 'webhooks'
   | 'link-definitions'
+  | 'note-templates'
   | 'blueprints'
   | 'organizations'
   | 'users'
@@ -50,6 +53,7 @@ const VALID_SECTIONS: AdminSection[] = [
   'blueprints',
   'environments',
   'link-definitions',
+  'note-templates',
   'oauth',
   'organizations',
   'project-types',
@@ -110,6 +114,13 @@ export function Admin() {
       label: 'Link Definitions',
       icon: Link2,
       description: 'Manage link definitions for projects',
+      scope: 'org',
+    },
+    {
+      id: 'note-templates',
+      label: 'Note Templates',
+      icon: StickyNote,
+      description: 'Manage reusable note templates',
       scope: 'org',
     },
     {
@@ -304,6 +315,7 @@ export function Admin() {
             {currentSection === 'link-definitions' && (
               <LinkDefinitionManagement />
             )}
+            {currentSection === 'note-templates' && <NoteTemplateManagement />}
             {currentSection === 'blueprints' && <BlueprintManagement />}
             {currentSection === 'organizations' && <OrganizationManagement />}
             {currentSection === 'users' && <UserManagement />}

@@ -1,14 +1,13 @@
 import { ArrowLeft, Check, Columns2, Eye, PencilLine } from 'lucide-react'
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { NotesFilterRail } from './NotesFilterRail'
 import { EMPTY_ACTIVE, tagCounts, uniqueTagsFromNotes } from './notesHelpers'
-import { findTemplate } from './notesTemplates'
 import { TagCombobox } from './TagCombobox'
-import type { Note, TagRef } from '@/types'
+import type { Note, NoteTemplate, TagRef } from '@/types'
 
 type EditorMode = 'split' | 'write' | 'preview'
 
@@ -17,10 +16,10 @@ interface Props {
   allNotes?: Note[]
   initialNote?: Note | null
   /**
-   * When creating a new note, pre-seed the form from a template (currently
-   * just its tag). Ignored when `initialNote` is provided.
+   * When creating a new note, pre-seed the form (title, content, tags) from
+   * the chosen template. Ignored when `initialNote` is provided.
    */
-  templateSlug?: string
+  template?: NoteTemplate | null
   onDiscard: () => void
   onSave: (draft: { title: string; content: string; tags: string[] }) => void
   saving?: boolean
@@ -32,7 +31,7 @@ export function NotesPinboardNew({
   orgSlug,
   allNotes = [],
   initialNote,
-  templateSlug,
+  template,
   onDiscard,
   onSave,
   saving = false,
@@ -40,17 +39,27 @@ export function NotesPinboardNew({
   const railTags = useMemo(() => uniqueTagsFromNotes(allNotes), [allNotes])
   const railCounts = useMemo(() => tagCounts(allNotes), [allNotes])
   const isEditing = !!initialNote
-  const template = !initialNote ? findTemplate(templateSlug) : null
+  const seed = !initialNote ? template : null
   const [mode, setMode] = useState<EditorMode>('split')
-  const [title, setTitle] = useState(initialNote?.title ?? '')
-  const [content, setContent] = useState(initialNote?.content ?? '')
+  const [title, setTitle] = useState(initialNote?.title ?? seed?.title ?? '')
+  const [content, setContent] = useState(
+    initialNote?.content ?? seed?.content ?? '',
+  )
   const [tags, setTags] = useState<TagRef[]>(
     initialNote
       ? initialNote.tags.map((t) => ({ name: t.name, slug: t.slug }))
-      : template
-        ? [template.tag]
+      : seed?.tags
+        ? seed.tags.map((t) => ({ name: t.name, slug: t.slug }))
         : [],
   )
+  const titleRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const input = titleRef.current
+    if (!input) return
+    input.focus()
+    const len = input.value.length
+    input.setSelectionRange(len, len)
+  }, [])
 
   const trimmedTitle = title.trim()
   const isValid = trimmedTitle.length > 0 && content.trim().length > 0
@@ -159,11 +168,11 @@ export function NotesPinboardNew({
           <div className="px-7 pt-6">
             <div className="flex items-start gap-4">
               <input
+                ref={titleRef}
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Title"
-                autoFocus
                 className="flex-1 border-0 bg-transparent p-0 text-[26px] font-medium leading-[1.2] tracking-[-0.015em] text-primary outline-none placeholder:text-tertiary"
               />
               <TagCombobox

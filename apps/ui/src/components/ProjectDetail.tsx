@@ -624,6 +624,13 @@ export function ProjectDetail({
           <ProjectNotesTab
             orgSlug={project.team.organization.slug}
             projectId={project.id}
+            projectTypeSlugs={
+              project.project_types && project.project_types.length > 0
+                ? project.project_types.map((pt) => pt.slug)
+                : project.project_type
+                  ? [project.project_type.slug]
+                  : []
+            }
             initialNoteId={activeTab === 'notes' ? initialSubId : undefined}
             initialAction={activeTab === 'notes' ? initialSubAction : undefined}
           />

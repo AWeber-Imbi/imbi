@@ -11,6 +11,8 @@ import type {
   ProjectCreate,
   LinkDefinition,
   LinkDefinitionCreate,
+  NoteTemplate,
+  NoteTemplateCreate,
   ActivityFeedEntry,
   Environment,
   EnvironmentCreate,
@@ -253,6 +255,51 @@ export const updateLinkDefinition = (
 export const deleteLinkDefinition = (orgSlug: string, slug: string) =>
   apiClient.delete<void>(
     `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/${encodeURIComponent(slug)}`,
+  )
+
+// Note Templates (org-scoped)
+export const listNoteTemplates = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<NoteTemplate[]> => {
+  const response = await apiClient.get<NoteTemplate[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/note-templates/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getNoteTemplate = (
+  orgSlug: string,
+  slug: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<NoteTemplate>(
+    `/organizations/${encodeURIComponent(orgSlug)}/note-templates/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
+  )
+
+export const createNoteTemplate = (orgSlug: string, data: NoteTemplateCreate) =>
+  apiClient.post<NoteTemplate>(
+    `/organizations/${encodeURIComponent(orgSlug)}/note-templates/`,
+    data,
+  )
+
+export const updateNoteTemplate = (
+  orgSlug: string,
+  slug: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<NoteTemplate>(
+    `/organizations/${encodeURIComponent(orgSlug)}/note-templates/${encodeURIComponent(slug)}`,
+    operations,
+  )
+
+export const deleteNoteTemplate = (orgSlug: string, slug: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/note-templates/${encodeURIComponent(slug)}`,
   )
 
 // Activity Feed

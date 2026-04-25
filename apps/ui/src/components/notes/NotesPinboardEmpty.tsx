@@ -1,13 +1,43 @@
+import { useQuery } from '@tanstack/react-query'
 import { Plus, StickyNote } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { EntityIcon } from '@/components/ui/entity-icon'
+import { listNoteTemplates } from '@/api/endpoints'
 import { NoteTagChip } from './NoteTagChip'
-import { NOTE_TEMPLATES } from './notesTemplates'
+import type { NoteTemplate } from '@/types'
 
 interface Props {
-  onCreate: (templateSlug?: string) => void
+  orgSlug: string
+  projectTypeSlugs?: string[]
+  onCreate: (template?: NoteTemplate) => void
 }
 
-export function NotesPinboardEmpty({ onCreate }: Props) {
+export function NotesPinboardEmpty({
+  orgSlug,
+  projectTypeSlugs,
+  onCreate,
+}: Props) {
+  const {
+    data: templates = [],
+    isLoading: templatesLoading,
+    error: templatesError,
+  } = useQuery<NoteTemplate[]>({
+    queryKey: ['noteTemplates', orgSlug],
+    queryFn: ({ signal }) => listNoteTemplates(orgSlug, signal),
+    enabled: !!orgSlug,
+  })
+
+  const projectTypeSet =
+    projectTypeSlugs && projectTypeSlugs.length
+      ? new Set(projectTypeSlugs)
+      : undefined
+
+  const visibleTemplates = templates.filter((t) => {
+    if (!t.project_type_slugs || t.project_type_slugs.length === 0) return true
+    if (!projectTypeSet) return false
+    return t.project_type_slugs.some((s) => projectTypeSet.has(s))
+  })
+
   return (
     <div className="flex flex-col items-center gap-4 rounded-lg border border-tertiary bg-primary px-10 py-14 text-center">
       <div className="relative flex h-[108px] w-[108px] items-center justify-center">
@@ -33,37 +63,54 @@ export function NotesPinboardEmpty({ onCreate }: Props) {
         New note
       </Button>
 
-      <div className="mt-5 w-full max-w-[720px] text-overline uppercase text-tertiary">
-        Or choose a template
-      </div>
-      <div className="grid w-full max-w-[720px] grid-cols-3 gap-2.5 text-left">
-        {NOTE_TEMPLATES.map((t) => {
-          const Icon = t.icon
-          return (
-            <button
-              key={t.slug}
-              type="button"
-              onClick={() => onCreate(t.slug)}
-              className="flex cursor-pointer flex-col gap-1.5 rounded-lg border border-tertiary bg-primary p-3.5 text-left hover:border-secondary hover:shadow-sm"
-            >
-              <div className="flex items-center gap-2">
-                <div className="inline-flex h-[26px] w-[26px] items-center justify-center rounded-md bg-secondary text-secondary">
-                  <Icon className="h-3.5 w-3.5" />
+      {templatesLoading && (
+        <div className="mt-5 text-xs text-tertiary">Loading templates…</div>
+      )}
+      {templatesError && (
+        <div className="mt-5 text-xs text-danger">
+          Failed to load templates.
+        </div>
+      )}
+      {!templatesLoading && !templatesError && visibleTemplates.length > 0 && (
+        <>
+          <div className="mt-5 w-full max-w-[864px] text-overline uppercase text-tertiary">
+            Or choose a template
+          </div>
+          <div className="flex w-full max-w-[864px] flex-wrap justify-center gap-2.5 text-left">
+            {visibleTemplates.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => onCreate(t)}
+                className="flex w-[281px] cursor-pointer flex-col gap-1.5 rounded-lg border border-tertiary bg-primary p-3.5 text-left hover:border-secondary hover:shadow-sm"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="inline-flex h-[26px] w-[26px] items-center justify-center rounded-md bg-secondary text-secondary">
+                    {t.icon ? (
+                      <EntityIcon icon={t.icon} className="h-3.5 w-3.5" />
+                    ) : (
+                      <StickyNote className="h-3.5 w-3.5" />
+                    )}
+                  </div>
+                  <span className="text-[13.5px] font-medium text-primary">
+                    {t.name}
+                  </span>
+                  {t.tags && t.tags.length > 0 && (
+                    <span className="ml-auto">
+                      <NoteTagChip tag={t.tags[0]} size="sm" />
+                    </span>
+                  )}
                 </div>
-                <span className="text-[13.5px] font-medium text-primary">
-                  {t.label}
-                </span>
-                <span className="ml-auto">
-                  <NoteTagChip tag={t.tag} size="sm" />
-                </span>
-              </div>
-              <div className="text-xs leading-[1.5] text-tertiary">
-                {t.hint}
-              </div>
-            </button>
-          )
-        })}
-      </div>
+                {t.description && (
+                  <div className="text-xs leading-[1.5] text-tertiary">
+                    {t.description}
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }

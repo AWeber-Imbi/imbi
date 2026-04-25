@@ -1,14 +1,9 @@
 import { useState } from 'react'
-import { Save, AlertCircle } from 'lucide-react'
+import { Save, AlertCircle, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -21,12 +16,13 @@ interface LinkDefinitionFormProps {
   onSave: (orgSlug: string, data: LinkDefinitionCreate) => void
   onCancel: () => void
   isLoading?: boolean
-  error?: { response?: { data?: { detail?: string } }; message?: string } | null
+  error?: unknown
 }
 
 export function LinkDefinitionForm({
   linkDefinition,
   onSave,
+  onCancel,
   isLoading = false,
   error,
 }: LinkDefinitionFormProps) {
@@ -83,52 +79,48 @@ export function LinkDefinitionForm({
 
   return (
     <div className="space-y-6">
-      {/* API Error */}
-      {error && (
-        <div className="rounded-lg border border-danger bg-danger p-4">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 flex-shrink-0 text-danger" />
-            <div>
-              <div className="font-medium text-danger">
-                Failed to save link definition
-              </div>
-              <div className="mt-1 text-sm text-danger">
-                {error?.response?.data?.detail ||
-                  error?.message ||
-                  'An error occurred'}
-              </div>
-            </div>
-          </div>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-medium text-primary">
+            {isEditing ? 'Edit Link Definition' : 'Create Link Definition'}
+          </h2>
+          <p className="mt-1 text-secondary">
+            Defines a type of project link displayed on the project details
+            page.
+          </p>
         </div>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={isLoading}
+          >
+            <X className="mr-2 h-4 w-4" />
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isLoading}
+            className="bg-action text-action-foreground hover:bg-action-hover"
+          >
+            <Save className="mr-2 h-4 w-4" />
+            {isLoading ? 'Saving...' : 'Save'}
+          </Button>
+        </div>
+      </div>
+
+      {/* API Error */}
+      {!!error && (
+        <ErrorBanner title="Failed to save link definition" error={error} />
       )}
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b pb-4">
-            <div>
-              <CardTitle>
-                {isEditing ? 'Edit Link Definition' : 'Create Link Definition'}
-              </CardTitle>
-              <CardDescription className="mt-1">
-                Defines a type of project link displayed on the project details
-                page.
-              </CardDescription>
-            </div>
-            <Button
-              onClick={handleSubmit}
-              disabled={isLoading}
-              className="bg-action text-action-foreground hover:bg-action-hover"
-            >
-              <Save className="mr-2 h-4 w-4" />
-              {isLoading
-                ? 'Saving...'
-                : isEditing
-                  ? 'Save Changes'
-                  : 'Create Link Definition'}
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 pt-6">
             <div>
               <label
                 htmlFor="link-def-org"

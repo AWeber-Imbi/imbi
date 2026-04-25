@@ -12,13 +12,24 @@ interface Props {
   orgSlug: string
   selected: TagRef[]
   onChange: (tags: TagRef[]) => void
+  /**
+   * Layout variant. `'compact'` (default) is the right-aligned inline pill
+   * used in the note composer header. `'full'` stretches to fill its
+   * container and uses input-sized padding/text — for use inside forms.
+   */
+  variant?: 'compact' | 'full'
 }
 
 /**
  * Multi-select tag combobox. Type to filter existing org tags; Enter on an
  * unmatched query creates a new tag server-side and attaches it.
  */
-export function TagCombobox({ orgSlug, selected, onChange }: Props) {
+export function TagCombobox({
+  orgSlug,
+  selected,
+  onChange,
+  variant = 'compact',
+}: Props) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [activeIdx, setActiveIdx] = useState(0)
@@ -117,21 +128,37 @@ export function TagCombobox({ orgSlug, selected, onChange }: Props) {
     }
   }
 
+  const isFull = variant === 'full'
+
   return (
-    <div ref={rootRef} className="relative flex flex-col items-end gap-2">
+    <div
+      ref={rootRef}
+      className={cn(
+        'relative flex flex-col gap-2',
+        isFull ? 'w-full items-stretch' : 'items-end',
+      )}
+    >
       <div
         onClick={() => {
           setOpen(true)
           inputRef.current?.focus()
         }}
         className={cn(
-          'flex min-w-[260px] max-w-[380px] flex-wrap items-center gap-1 rounded-md border bg-primary px-2 py-1 text-xs transition-colors',
+          'flex flex-wrap items-center gap-1 rounded-lg border bg-primary transition-colors',
+          isFull
+            ? 'w-full px-3 py-2 text-sm'
+            : 'min-w-[260px] max-w-[380px] px-2 py-1 text-xs',
           open
             ? 'ring-action/20 border-action ring-2'
             : 'border-secondary hover:border-primary',
         )}
       >
-        <TagIcon className="h-3 w-3 flex-shrink-0 text-tertiary" />
+        <TagIcon
+          className={cn(
+            'flex-shrink-0 text-tertiary',
+            isFull ? 'h-4 w-4' : 'h-3 w-3',
+          )}
+        />
         {selected.map((t) => (
           <span
             key={t.slug}
@@ -156,13 +183,21 @@ export function TagCombobox({ orgSlug, selected, onChange }: Props) {
           onFocus={() => setOpen(true)}
           onKeyDown={handleKey}
           placeholder={selected.length === 0 ? 'Add tags…' : ''}
-          className="flex-1 border-0 bg-transparent p-0 text-xs text-primary outline-none placeholder:text-tertiary"
+          className={cn(
+            'flex-1 border-0 bg-transparent p-0 text-primary outline-none placeholder:text-tertiary',
+            isFull ? 'text-sm' : 'text-xs',
+          )}
           style={{ minWidth: 80 }}
         />
       </div>
 
       {open && (
-        <div className="absolute right-0 top-[calc(100%+6px)] z-10 max-h-80 w-[320px] overflow-auto rounded-lg border border-secondary bg-primary p-1 shadow-md">
+        <div
+          className={cn(
+            'absolute top-[calc(100%+6px)] z-10 max-h-80 overflow-auto rounded-lg border border-secondary bg-primary p-1 shadow-md',
+            isFull ? 'left-0 w-full' : 'right-0 w-[320px]',
+          )}
+        >
           {matches.length > 0 && (
             <div>
               <div className="px-2 py-1 text-overline uppercase text-tertiary">
