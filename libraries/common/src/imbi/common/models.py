@@ -21,6 +21,7 @@ __all__ = [
     'LinkDefinition',
     'Node',
     'Note',
+    'NoteTemplate',
     'OperationLog',
     'Organization',
     'Project',
@@ -360,6 +361,30 @@ class Note(GraphModel):
     created_by: str
     updated_by: str | None = None
     is_pinned: bool = False
+
+
+class NoteTemplate(Node):
+    """Reusable starter content for a project ``Note``.
+
+    Templates are scoped to an organization and seed a new note's
+    title, content, and tag set. ``project_type_slugs`` restricts
+    which project types may use the template; an empty list means
+    the template applies to every project type in the organization.
+
+    """
+
+    organization: BelongsToOrganization
+    title: str | None = None
+    content: typing.Annotated[
+        str,
+        Embeddable(chunk=True, mimetype='text/markdown'),
+    ] = ''
+    tags: typing.Annotated[
+        list[Tag],
+        Edge(rel_type='TAGGED_WITH', direction='OUTGOING'),
+    ] = []
+    project_type_slugs: list[str] = []
+    sort_order: int = 0
 
 
 class DeploymentEvent(pydantic.BaseModel):

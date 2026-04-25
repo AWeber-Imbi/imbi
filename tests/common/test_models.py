@@ -405,6 +405,50 @@ class ProjectModelTestCase(unittest.TestCase):
             )
 
 
+class NoteTemplateModelTestCase(unittest.TestCase):
+    """Test cases for NoteTemplate model."""
+
+    def _org(self) -> models.Organization:
+        return models.Organization(name='Org', slug='org')
+
+    def test_note_template_creation(self) -> None:
+        org = self._org()
+        adr = models.Tag(name='ADR', slug='adr', organization=org)
+        template = models.NoteTemplate(
+            name='ADR',
+            slug='adr',
+            description='Context · Decision · Trade-offs',
+            organization=org,
+            content='# Context\n',
+            tags=[adr],
+            project_type_slugs=['http-api'],
+            sort_order=10,
+        )
+        self.assertEqual(template.name, 'ADR')
+        self.assertEqual(template.slug, 'adr')
+        self.assertEqual(template.content, '# Context\n')
+        self.assertEqual(template.tags, [adr])
+        self.assertEqual(template.organization, org)
+        self.assertEqual(template.project_type_slugs, ['http-api'])
+        self.assertEqual(template.sort_order, 10)
+
+    def test_note_template_defaults(self) -> None:
+        template = models.NoteTemplate(
+            name='Runbook',
+            slug='runbook',
+            organization=self._org(),
+        )
+        self.assertEqual(template.content, '')
+        self.assertEqual(template.tags, [])
+        self.assertEqual(template.project_type_slugs, [])
+        self.assertEqual(template.sort_order, 0)
+        self.assertIsNone(template.title)
+
+    def test_note_template_requires_organization(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.NoteTemplate(name='ADR', slug='adr')
+
+
 class OperationLogTestCase(unittest.TestCase):
     """Tests for the OperationLog model."""
 

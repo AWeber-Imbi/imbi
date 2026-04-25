@@ -16,6 +16,7 @@ name = [
   "Environment",
   "LinkDefinition",
   "Message",
+  "NoteTemplate",
   "OAuthIdentity",
   "Organization",
   "Permission",
@@ -78,6 +79,10 @@ unique = true
 [[vlabel_indexes]]
 vlabel = "Message"
 attributes = ["conversation_id"]
+
+[[vlabel_indexes]]
+vlabel = "NoteTemplate"
+attributes = ["slug"]
 
 [[vlabel_indexes]]
 vlabel = "OAuthIdentity"
