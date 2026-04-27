@@ -110,6 +110,20 @@ class ReleaseEnvironmentEdgeResponse(pydantic.BaseModel):
     current_status: _DEPLOYMENT_STATUS | None = None
 
 
+class CurrentReleaseEnvironment(pydantic.BaseModel):
+    """Latest deployment state for one environment of a project.
+
+    ``release`` and ``current_status`` are ``None`` when the project is
+    configured to deploy in the environment but has no recorded
+    deployment events there yet.
+    """
+
+    environment: ReleaseEnvironmentRef
+    release: ReleaseResponse | None = None
+    current_status: _DEPLOYMENT_STATUS | None = None
+    last_event_at: datetime.datetime | None = None
+
+
 # -- Helpers ------------------------------------------------------------
 
 
@@ -354,6 +368,108 @@ async def list_releases(
         _release_to_response(graph.parse_agtype(r['release']), project_id)
         for r in rows
     ]
+
+
+@releases_router.get(
+    '/current',
+    response_model=list[CurrentReleaseEnvironment],
+)
+async def list_current_releases(
+    org_slug: str,
+    project_id: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:read'),
+        ),
+    ],
+) -> list[CurrentReleaseEnvironment]:
+    """List the most-current release per environment for a project.
+
+    For each environment the project is configured to deploy in
+    (``DEPLOYED_IN``), returns the release whose ``DEPLOYED_TO`` edge
+    contains the deployment event with the latest timestamp.
+    Environments with no deployment events are returned with
+    ``release=None``. Results are sorted by ``Environment.sort_order``
+    ascending, then by name.
+    """
+    del auth
+    if not await _project_exists(db, org_slug, project_id):
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Project {project_id!r} not found',
+        )
+
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    MATCH (p)-[:DEPLOYED_IN]->(e:Environment)
+    OPTIONAL MATCH (p)-[:HAS_RELEASE]->(r:Release)
+                   -[d:DEPLOYED_TO]->(e)
+    RETURN e{{.slug, .name, .sort_order}} AS env,
+           CASE WHEN r IS NULL THEN null ELSE r{{.*}} END AS release,
+           CASE WHEN d IS NULL THEN null ELSE d.deployments END
+               AS deployments
+    """
+    rows = await db.execute(
+        query,
+        {'project_id': project_id, 'org_slug': org_slug},
+        ['env', 'release', 'deployments'],
+    )
+
+    # Group by env.slug; keep the (release, event) pair with the latest
+    # event timestamp. Envs with no deployments are seeded with None.
+    by_env: dict[
+        str,
+        tuple[
+            dict[str, typing.Any],
+            dict[str, typing.Any] | None,
+            models.DeploymentEvent | None,
+        ],
+    ] = {}
+
+    for row in rows:
+        env = graph.parse_agtype(row['env'])
+        if not env:
+            continue
+        slug = env['slug']
+        release_raw = graph.parse_agtype(row['release'])
+        events = _parse_deployments(graph.parse_agtype(row['deployments']))
+
+        if release_raw is None or not events:
+            by_env.setdefault(slug, (env, None, None))
+            continue
+
+        latest = max(events, key=lambda ev: ev.timestamp)
+        existing = by_env.get(slug)
+        if (
+            existing is None
+            or existing[2] is None
+            or latest.timestamp > existing[2].timestamp
+        ):
+            by_env[slug] = (env, release_raw, latest)
+
+    sortable: list[tuple[int, str, CurrentReleaseEnvironment]] = []
+    for env, release_raw, event in by_env.values():
+        release_resp = (
+            _release_to_response(release_raw, project_id)
+            if release_raw is not None
+            else None
+        )
+        item = CurrentReleaseEnvironment(
+            environment=ReleaseEnvironmentRef(
+                slug=env['slug'], name=env['name']
+            ),
+            release=release_resp,
+            current_status=event.status if event else None,
+            last_event_at=event.timestamp if event else None,
+        )
+        sortable.append((env.get('sort_order') or 0, env['name'], item))
+
+    sortable.sort(key=lambda t: (t[0], t[1]))
+    return [item for _, _, item in sortable]
 
 
 @releases_router.get('/{version}', response_model=ReleaseResponse)

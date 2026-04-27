@@ -582,3 +582,188 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body['current_status'], 'success')
+
+
+class CurrentReleasesTestCase(_ReleasesTestBase):
+    """GET /releases/current — latest deployment event per env."""
+
+    @staticmethod
+    def _env(
+        slug: str,
+        sort_order: int = 0,
+    ) -> dict[str, typing.Any]:
+        return {
+            'slug': slug,
+            'name': slug.title(),
+            'sort_order': sort_order,
+        }
+
+    @staticmethod
+    def _events(*specs: tuple[str, str]) -> str:
+        return json.dumps(
+            [
+                {'timestamp': ts, 'status': status, 'note': None}
+                for ts, status in specs
+            ]
+        )
+
+    def test_404_when_project_missing(self) -> None:
+        self.mock_db.execute.side_effect = [[]]
+        response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 404)
+
+    def test_env_with_no_deployments(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],  # _project_exists
+            [
+                {
+                    'env': self._env('testing', sort_order=10),
+                    'release': None,
+                    'deployments': None,
+                }
+            ],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['environment']['slug'], 'testing')
+        self.assertIsNone(data[0]['release'])
+        self.assertIsNone(data[0]['current_status'])
+        self.assertIsNone(data[0]['last_event_at'])
+
+    def test_latest_event_wins_across_releases(self) -> None:
+        # production has been deployed v1.0.0 then v1.1.0; v1.1.0
+        # event timestamp is later, so it must win.
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'env': self._env('production', sort_order=30),
+                    'release': _release_row(version='1.0.0', id='r1'),
+                    'deployments': self._events(
+                        ('2026-04-20T10:00:00+00:00', 'success'),
+                    ),
+                },
+                {
+                    'env': self._env('production', sort_order=30),
+                    'release': _release_row(version='1.1.0', id='r2'),
+                    'deployments': self._events(
+                        ('2026-04-22T10:00:00+00:00', 'success'),
+                    ),
+                },
+            ],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['release']['version'], '1.1.0')
+        self.assertEqual(data[0]['current_status'], 'success')
+        self.assertEqual(data[0]['last_event_at'], '2026-04-22T10:00:00Z')
+
+    def test_rollback_surfaces_older_release(self) -> None:
+        # v1.1.0 was deployed, then rolled back by re-deploying v1.0.0;
+        # the latest event lives on the v1.0.0 edge so v1.0.0 wins.
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'env': self._env('production'),
+                    'release': _release_row(version='1.0.0', id='r1'),
+                    'deployments': self._events(
+                        ('2026-04-20T10:00:00+00:00', 'success'),
+                        ('2026-04-23T10:00:00+00:00', 'success'),
+                    ),
+                },
+                {
+                    'env': self._env('production'),
+                    'release': _release_row(version='1.1.0', id='r2'),
+                    'deployments': self._events(
+                        ('2026-04-22T10:00:00+00:00', 'success'),
+                        (
+                            '2026-04-22T18:00:00+00:00',
+                            'rolled_back',
+                        ),
+                    ),
+                },
+            ],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data[0]['release']['version'], '1.0.0')
+        self.assertEqual(data[0]['current_status'], 'success')
+
+    def test_sorts_by_environment_sort_order(self) -> None:
+        events = self._events(('2026-04-20T10:00:00+00:00', 'success'))
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'env': self._env('production', sort_order=30),
+                    'release': _release_row(version='1.0.0', id='r1'),
+                    'deployments': events,
+                },
+                {
+                    'env': self._env('testing', sort_order=10),
+                    'release': _release_row(version='1.0.0', id='r1'),
+                    'deployments': events,
+                },
+                {
+                    'env': self._env('staging', sort_order=20),
+                    'release': _release_row(version='1.0.0', id='r1'),
+                    'deployments': events,
+                },
+            ],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200)
+        slugs = [row['environment']['slug'] for row in response.json()]
+        self.assertEqual(slugs, ['testing', 'staging', 'production'])
+
+    def test_undeployed_env_appears_alongside_deployed(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'env': self._env('production', sort_order=30),
+                    'release': _release_row(version='1.0.0', id='r1'),
+                    'deployments': self._events(
+                        ('2026-04-20T10:00:00+00:00', 'success'),
+                    ),
+                },
+                {
+                    'env': self._env('testing', sort_order=10),
+                    'release': None,
+                    'deployments': None,
+                },
+            ],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 2)
+        by_slug = {row['environment']['slug']: row for row in data}
+        self.assertIsNone(by_slug['testing']['release'])
+        self.assertEqual(by_slug['production']['release']['version'], '1.0.0')
