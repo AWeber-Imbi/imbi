@@ -554,3 +554,36 @@ export interface NoteTemplateCreate {
   project_type_slugs?: string[]
   sort_order?: number
 }
+
+// Releases
+export type DeploymentStatus =
+  | 'pending'
+  | 'in_progress'
+  | 'success'
+  | 'failed'
+  | 'rolled_back'
+
+export interface ReleaseLink {
+  type: string
+  url: string
+  label?: string | null
+}
+
+export interface Release {
+  id: string
+  project_id: string
+  version: string
+  title: string
+  description?: string | null
+  links: ReleaseLink[]
+  created_at: string
+  updated_at?: string | null
+  created_by: string
+}
+
+export interface CurrentReleaseEnvironment {
+  environment: { slug: string; name: string }
+  release: Release | null
+  current_status: DeploymentStatus | null
+  last_event_at: string | null
+}

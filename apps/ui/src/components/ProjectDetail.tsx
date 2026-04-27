@@ -34,6 +34,7 @@ import {
   listProjectNotes,
   listTeams,
   listProjectTypes,
+  listCurrentReleases,
 } from '@/api/endpoints'
 import { OperationsLog } from '@/components/OperationsLog'
 import type { Project } from '@/types'
@@ -107,21 +108,32 @@ export function ProjectDetail({
   const healthScore = isDev ? 66 : null
   const healthTrend = isDev ? 'down' : null
 
+  const { data: currentReleases = [] } = useQuery({
+    queryKey: ['currentReleases', orgSlug, project.id],
+    queryFn: ({ signal }) => listCurrentReleases(orgSlug, project.id, signal),
+    enabled: !!orgSlug && !!project.id,
+  })
+
   const deploymentStatus: Record<
     string,
     { version: string; status: string; updated: string }
-  > = isDev
-    ? {
-        'infrastructure-testing': {
-          version: '1962b02',
-          status: 'success',
-          updated: '2m ago',
-        },
-        testing: { version: '1962b02', status: 'success', updated: '2m ago' },
-        staging: { version: '1.0.11', status: 'success', updated: '1h ago' },
-        production: { version: '1.0.10', status: 'success', updated: '3h ago' },
+  > = useMemo(() => {
+    const out: Record<
+      string,
+      { version: string; status: string; updated: string }
+    > = {}
+    for (const row of currentReleases) {
+      if (!row.release || !row.last_event_at) continue
+      out[row.environment.slug] = {
+        version: row.release.version,
+        status: row.current_status ?? '',
+        updated: formatDistanceToNow(new Date(row.last_event_at), {
+          addSuffix: true,
+        }),
       }
-    : {}
+    }
+    return out
+  }, [currentReleases])
 
   const feed = isDev
     ? [
@@ -316,8 +328,8 @@ export function ProjectDetail({
             </div>
           </div>
 
-          {/* Deployment Pipeline (mocked, dev only) */}
-          {isDev && (
+          {/* Deployment Pipeline */}
+          {Object.keys(deploymentStatus).length > 0 && (
             <div className="flex items-center gap-2">
               {sortedEnvironments
                 .filter((env) => !!deploymentStatus[env.slug])
@@ -344,14 +356,16 @@ export function ProjectDetail({
                     </span>
                   )
                 })}
-              <Button
-                variant="outline"
-                size="sm"
-                className="ml-4 border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100"
-              >
-                <Rocket className="mr-1 h-4 w-4" />
-                Deploy
-              </Button>
+              {isDev && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="ml-4 border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                >
+                  <Rocket className="mr-1 h-4 w-4" />
+                  Deploy
+                </Button>
+              )}
             </div>
           )}
         </div>

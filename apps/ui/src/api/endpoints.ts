@@ -62,6 +62,7 @@ import type {
   NoteCreate,
   NoteListResponse,
   Tag,
+  CurrentReleaseEnvironment,
 } from '@/types'
 
 // Re-export for backward compatibility with modules that import from here.
@@ -1313,3 +1314,17 @@ export const createTag = (
     `/organizations/${encodeURIComponent(orgSlug)}/tags/`,
     data,
   )
+
+// Releases
+export const listCurrentReleases = async (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<CurrentReleaseEnvironment[]> => {
+  const response = await apiClient.get<CurrentReleaseEnvironment[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/releases/current`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}

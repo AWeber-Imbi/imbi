@@ -21,7 +21,11 @@ jobs:
           cache: 'npm'
 
       - name: Install just
-        uses: extractions/setup-just@v2
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl --fail --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh \
+            | bash -s -- --to "$HOME/.local/bin" --tag 1.47.1
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Run CI checks
         run: just ci
