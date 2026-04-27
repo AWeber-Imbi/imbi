@@ -629,3 +629,42 @@ class OperationsLogSchemaTestCase(unittest.TestCase):
             'INDEX idx_id id TYPE bloom_filter GRANULARITY 4',
             ddl,
         )
+
+
+class EventsSchemaTestCase(unittest.TestCase):
+    """Verify the events entry exists in schemata.toml."""
+
+    def _load_schemata(self) -> dict:
+        pkg = importlib.resources.files('imbi_common.clickhouse')
+        toml_bytes = (pkg / 'schemata.toml').read_bytes()
+        return tomllib.loads(toml_bytes.decode())
+
+    def test_events_table_present(self) -> None:
+        schemata = self._load_schemata()
+        self.assertIn('events', schemata)
+
+    def test_events_enabled(self) -> None:
+        schemata = self._load_schemata()
+        self.assertTrue(schemata['events']['enabled'])
+
+    def test_events_ddl_columns(self) -> None:
+        schemata = self._load_schemata()
+        ddl = schemata['events']['query']
+        expected_columns = [
+            'project_id',
+            'recorded_at',
+            'third_party_service',
+            'attributed_to',
+            'metadata',
+            'payload',
+        ]
+        for col in expected_columns:
+            self.assertIn(col, ddl, f'Column {col!r} missing from DDL')
+
+    def test_events_engine(self) -> None:
+        schemata = self._load_schemata()
+        ddl = schemata['events']['query']
+        self.assertIn('ENGINE = MergeTree()', ddl)
+        self.assertNotIn('ReplacingMergeTree', ddl)
+        self.assertIn('PARTITION BY toYYYYMM(recorded_at)', ddl)
+        self.assertIn('ORDER BY (project_id, recorded_at)', ddl)

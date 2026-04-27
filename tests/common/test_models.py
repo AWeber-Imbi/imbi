@@ -602,6 +602,74 @@ class OperationLogFieldsTests(unittest.TestCase):
         self.assertFalse(dumped['is_deleted'])
 
 
+class EventTestCase(unittest.TestCase):
+    """Tests for the Event model."""
+
+    def _make(self, **overrides) -> models.Event:
+        defaults = {
+            'project_id': 'abc123',
+            'third_party_service': 'github',
+        }
+        defaults.update(overrides)
+        return models.Event(**defaults)
+
+    def test_recorded_at_defaults_to_utc_now(self) -> None:
+        event = self._make()
+        self.assertIsNotNone(event.recorded_at)
+        self.assertEqual(event.recorded_at.tzinfo, datetime.UTC)
+
+    def test_attributed_to_defaults_to_none(self) -> None:
+        event = self._make()
+        self.assertIsNone(event.attributed_to)
+
+    def test_metadata_and_payload_default_to_empty_dict(self) -> None:
+        event = self._make()
+        self.assertEqual(event.metadata, {})
+        self.assertEqual(event.payload, {})
+
+    def test_optional_fields_can_be_set(self) -> None:
+        now = datetime.datetime.now(datetime.UTC)
+        event = self._make(
+            recorded_at=now,
+            attributed_to='user@example.com',
+            metadata={'source': 'webhook'},
+            payload={'action': 'opened', 'number': 42},
+        )
+        self.assertEqual(event.recorded_at, now)
+        self.assertEqual(event.attributed_to, 'user@example.com')
+        self.assertEqual(event.metadata, {'source': 'webhook'})
+        self.assertEqual(event.payload, {'action': 'opened', 'number': 42})
+
+    def test_required_fields(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.Event(third_party_service='github')
+        with self.assertRaises(pydantic.ValidationError):
+            models.Event(project_id='abc123')
+
+    def test_model_dump_column_order_matches_ddl(self) -> None:
+        """key order from model_dump(by_alias=True) must mirror DDL."""
+        event = self._make()
+        keys = list(event.model_dump(by_alias=True).keys())
+        expected = [
+            'project_id',
+            'recorded_at',
+            'third_party_service',
+            'attributed_to',
+            'metadata',
+            'payload',
+        ]
+        self.assertEqual(keys, expected)
+
+    def test_event_in_all(self) -> None:
+        self.assertIn('Event', models.__all__)
+
+    def test_metadata_default_is_isolated_per_instance(self) -> None:
+        a = self._make()
+        b = self._make()
+        a.metadata['k'] = 'v'
+        self.assertEqual(b.metadata, {})
+
+
 def _make_project() -> models.Project:
     org = models.Organization(name='Org', slug='org')
     team = models.Team(name='Team', slug='team', organization=org)

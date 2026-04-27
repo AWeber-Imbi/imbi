@@ -17,6 +17,7 @@ __all__ = [
     'Embeddable',
     'Embedding',
     'Environment',
+    'Event',
     'GraphModel',
     'LinkDefinition',
     'Node',
@@ -517,3 +518,16 @@ class OperationLog(pydantic.BaseModel):
         lt=2**64,
     )
     is_deleted: bool = False
+
+
+class Event(pydantic.BaseModel):
+    """A third-party service event recorded in ClickHouse."""
+
+    project_id: str
+    recorded_at: datetime.datetime = pydantic.Field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    third_party_service: str
+    attributed_to: str | None = None
+    metadata: dict[str, typing.Any] = {}
+    payload: dict[str, typing.Any] = {}
