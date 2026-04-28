@@ -1,9 +1,9 @@
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Button } from '@/components/ui/button'
-import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/hooks/useAuth'
 
 export function SettingsAccount() {
@@ -20,21 +20,21 @@ export function SettingsAccount() {
           <div>
             <Label htmlFor="display-name">Display name</Label>
             <Input
-              id="display-name"
-              defaultValue={user?.display_name || ''}
               className="mt-2"
+              defaultValue={user?.display_name || ''}
+              id="display-name"
               style={{ borderWidth: '0.5px' }}
             />
           </div>
           <div>
             <Label htmlFor="email">Email address</Label>
             <Input
-              id="email"
-              type="email"
+              className="mt-2"
               defaultValue={user?.email || ''}
               disabled
-              className="mt-2"
+              id="email"
               style={{ borderWidth: '0.5px' }}
+              type="email"
             />
           </div>
         </div>
@@ -75,9 +75,9 @@ export function SettingsAccount() {
 
         <div className="flex justify-end gap-3">
           <Button
-            variant="outline"
             className=""
             style={{ borderWidth: '0.5px' }}
+            variant="outline"
           >
             Cancel
           </Button>

@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
+
 import { useAuthStore } from './authStore'
 
 describe('authStore', () => {
@@ -63,9 +64,9 @@ describe('authStore', () => {
       const futureTimestamp = Math.floor(Date.now() / 1000) + 3600
       const payload = btoa(
         JSON.stringify({
-          sub: 'test@example.com',
           exp: futureTimestamp,
           iat: 1600000000,
+          sub: 'test@example.com',
         }),
       )
       const futureToken = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${payload}.test`

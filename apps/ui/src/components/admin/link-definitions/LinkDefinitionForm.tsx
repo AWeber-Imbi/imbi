@@ -1,33 +1,35 @@
 import { useState } from 'react'
-import { Save, AlertCircle, X } from 'lucide-react'
+
+import { AlertCircle, Save, X } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
+import { Input } from '@/components/ui/input'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { slugify } from '@/lib/utils'
 import type { LinkDefinition, LinkDefinitionCreate } from '@/types'
 
 interface LinkDefinitionFormProps {
-  linkDefinition: LinkDefinition | null
-  onSave: (orgSlug: string, data: LinkDefinitionCreate) => void
-  onCancel: () => void
-  isLoading?: boolean
   error?: unknown
+  isLoading?: boolean
+  linkDefinition: LinkDefinition | null
+  onCancel: () => void
+  onSave: (orgSlug: string, data: LinkDefinitionCreate) => void
 }
 
 export function LinkDefinitionForm({
-  linkDefinition,
-  onSave,
-  onCancel,
-  isLoading = false,
   error,
+  isLoading = false,
+  linkDefinition,
+  onCancel,
+  onSave,
 }: LinkDefinitionFormProps) {
   const isEditing = !!linkDefinition
-  const { selectedOrganization, organizations } = useOrganization()
+  const { organizations, selectedOrganization } = useOrganization()
 
   const [name, setName] = useState(linkDefinition?.name || '')
   const [slug, setSlug] = useState(linkDefinition?.slug || '')
@@ -62,10 +64,10 @@ export function LinkDefinitionForm({
     if (isLoading || !validate()) return
 
     onSave(orgSlug, {
-      name: name.trim(),
-      slug: slug.trim(),
       description: description.trim() || null,
       icon: icon.trim() || null,
+      name: name.trim(),
+      slug: slug.trim(),
       url_template: urlTemplate.trim() || null,
     })
   }
@@ -92,19 +94,19 @@ export function LinkDefinitionForm({
         </div>
         <div className="flex items-center gap-2">
           <Button
+            disabled={isLoading}
+            onClick={onCancel}
             type="button"
             variant="outline"
-            onClick={onCancel}
-            disabled={isLoading}
           >
             <X className="mr-2 h-4 w-4" />
             Cancel
           </Button>
           <Button
-            type="button"
-            onClick={handleSubmit}
-            disabled={isLoading}
             className="bg-action text-action-foreground hover:bg-action-hover"
+            disabled={isLoading}
+            onClick={handleSubmit}
+            type="button"
           >
             <Save className="mr-2 h-4 w-4" />
             {isLoading ? 'Saving...' : 'Save'}
@@ -114,28 +116,28 @@ export function LinkDefinitionForm({
 
       {/* API Error */}
       {!!error && (
-        <ErrorBanner title="Failed to save link definition" error={error} />
+        <ErrorBanner error={error} title="Failed to save link definition" />
       )}
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form className="space-y-6" onSubmit={handleSubmit}>
         <Card>
           <CardContent className="space-y-4 pt-6">
             <div>
               <label
-                htmlFor="link-def-org"
                 className="mb-1.5 block text-sm text-secondary"
+                htmlFor="link-def-org"
               >
                 Organization <span className="text-red-500">*</span>
               </label>
               <select
-                id="link-def-org"
-                value={orgSlug}
-                onChange={(e) => setOrgSlug(e.target.value)}
-                disabled={isEditing || isLoading || organizations.length <= 1}
                 className={`w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing || isLoading || organizations.length <= 1 ? 'cursor-not-allowed opacity-60' : ''} ${
                   errors.organization ? 'border-red-500' : ''
                 }`}
+                disabled={isEditing || isLoading || organizations.length <= 1}
+                id="link-def-org"
+                onChange={(e) => setOrgSlug(e.target.value)}
+                value={orgSlug}
               >
                 <option value="">Select organization...</option>
                 {organizations.map((org) => (
@@ -157,18 +159,18 @@ export function LinkDefinitionForm({
             >
               <div>
                 <label
-                  htmlFor="link-def-name"
                   className="mb-1.5 block text-sm text-secondary"
+                  htmlFor="link-def-name"
                 >
                   Name <span className="text-red-500">*</span>
                 </label>
                 <Input
+                  className={` ${errors.name ? 'border-red-500' : ''}`}
+                  disabled={isLoading}
                   id="link-def-name"
-                  value={name}
                   onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="e.g., GitHub Repository"
-                  disabled={isLoading}
-                  className={` ${errors.name ? 'border-red-500' : ''}`}
+                  value={name}
                 />
                 {errors.name && (
                   <div className="mt-1 flex items-center gap-1 text-xs text-danger">
@@ -181,18 +183,18 @@ export function LinkDefinitionForm({
               {!isEditing && (
                 <div>
                   <label
-                    htmlFor="link-def-slug"
                     className="mb-1.5 block text-sm text-secondary"
+                    htmlFor="link-def-slug"
                   >
                     Slug <span className="text-red-500">*</span>
                   </label>
                   <Input
+                    className={` ${errors.slug ? 'border-red-500' : ''}`}
+                    disabled={isLoading}
                     id="link-def-slug"
-                    value={slug}
                     onChange={(e) => setSlug(e.target.value)}
                     placeholder="e.g., github-repository"
-                    disabled={isLoading}
-                    className={` ${errors.slug ? 'border-red-500' : ''}`}
+                    value={slug}
                   />
                   {errors.slug && (
                     <div className="mt-1 flex items-center gap-1 text-xs text-danger">
@@ -206,19 +208,19 @@ export function LinkDefinitionForm({
 
             <div>
               <label
-                htmlFor="link-def-description"
                 className="mb-1.5 block text-sm text-secondary"
+                htmlFor="link-def-description"
               >
                 Description
               </label>
               <textarea
-                id="link-def-description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                disabled={isLoading}
-                placeholder="Brief description of this link definition"
                 className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground"
+                disabled={isLoading}
+                id="link-def-description"
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Brief description of this link definition"
+                rows={3}
+                value={description}
               />
             </div>
 
@@ -230,12 +232,12 @@ export function LinkDefinitionForm({
                 <div>
                   <p className="mb-1.5 text-xs text-tertiary">Pick an icon</p>
                   <IconPicker
+                    onChange={handleIconChange}
                     value={
                       !icon.startsWith('/') && !icon.startsWith('http')
                         ? icon
                         : ''
                     }
-                    onChange={handleIconChange}
                   />
                 </div>
                 <div>
@@ -243,12 +245,12 @@ export function LinkDefinitionForm({
                     Or upload a custom image
                   </p>
                   <IconUpload
+                    onChange={handleIconChange}
                     value={
                       icon.startsWith('/') || icon.startsWith('http')
                         ? icon
                         : ''
                     }
-                    onChange={handleIconChange}
                   />
                 </div>
               </div>
@@ -256,18 +258,18 @@ export function LinkDefinitionForm({
 
             <div>
               <label
-                htmlFor="link-def-url-template"
                 className="mb-1.5 block text-sm text-secondary"
+                htmlFor="link-def-url-template"
               >
                 URL Template
               </label>
               <Input
+                className=""
+                disabled={isLoading}
                 id="link-def-url-template"
-                value={urlTemplate}
                 onChange={(e) => setUrlTemplate(e.target.value)}
                 placeholder="e.g., https://github.com/{organization}/{project}"
-                disabled={isLoading}
-                className=""
+                value={urlTemplate}
               />
               <p className="mt-1 text-xs text-tertiary">
                 URL template with placeholders in curly braces

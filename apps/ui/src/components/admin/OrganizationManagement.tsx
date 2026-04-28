@@ -1,53 +1,56 @@
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
+
 import { Building2 } from 'lucide-react'
-import { formatRelativeDate } from '@/lib/formatDate'
-import { EntityIcon } from '@/components/ui/entity-icon'
-import { AdminTable } from '@/components/ui/admin-table'
-import type { CanDeleteResult } from '@/components/ui/admin-table'
-import { AdminSection } from './AdminSection'
-import { OrganizationForm } from './organizations/OrganizationForm'
-import { OrganizationDetail } from './organizations/OrganizationDetail'
-import { useAdminNav } from '@/hooks/useAdminNav'
-import { useAdminCrud } from '@/hooks/useAdminCrud'
+
 import {
-  listOrganizations,
-  deleteOrganization,
   createOrganization,
+  deleteOrganization,
+  listOrganizations,
   updateOrganization,
 } from '@/api/endpoints'
+import { AdminTable } from '@/components/ui/admin-table'
+import type { CanDeleteResult } from '@/components/ui/admin-table'
+import { EntityIcon } from '@/components/ui/entity-icon'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
+import { useAdminNav } from '@/hooks/useAdminNav'
+import { formatRelativeDate } from '@/lib/formatDate'
 import { buildDiffPatch } from '@/lib/json-patch'
 import type { Organization, OrganizationCreate, PatchOperation } from '@/types'
 
+import { AdminSection } from './AdminSection'
+import { OrganizationDetail } from './organizations/OrganizationDetail'
+import { OrganizationForm } from './organizations/OrganizationForm'
+
 export function OrganizationManagement() {
   const {
-    viewMode,
-    slug: selectedOrgSlug,
-    goToList,
     goToCreate,
     goToEdit,
+    goToList,
+    slug: selectedOrgSlug,
+    viewMode,
   } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
 
   const {
-    items: organizations,
-    isLoading,
-    error,
     createMutation,
-    updateMutation,
     deleteMutation,
+    error,
+    isLoading,
+    items: organizations,
+    updateMutation,
   } = useAdminCrud<
     Organization,
     OrganizationCreate,
-    { slug: string; operations: PatchOperation[] },
+    { operations: PatchOperation[]; slug: string },
     string
   >({
-    queryKey: ['organizations'],
-    listFn: listOrganizations,
     createFn: createOrganization,
-    updateFn: ({ slug, operations }) => updateOrganization(slug, operations),
-    deleteFn: deleteOrganization,
-    onMutationSuccess: goToList,
     deleteErrorLabel: 'organization',
+    deleteFn: deleteOrganization,
+    listFn: listOrganizations,
+    onMutationSuccess: goToList,
+    queryKey: ['organizations'],
+    updateFn: ({ operations, slug }) => updateOrganization(slug, operations),
   })
 
   const canDeleteOrganization = (org: Organization): CanDeleteResult => {
@@ -58,7 +61,7 @@ export function OrganizationManagement() {
     if (teamCount > 0) {
       return {
         allowed: false,
-        blockedBy: [{ count: teamCount, label: 'team', href: '/admin/teams' }],
+        blockedBy: [{ count: teamCount, href: '/admin/teams', label: 'team' }],
       }
     }
     return { allowed: true }
@@ -98,7 +101,7 @@ export function OrganizationManagement() {
         goToList()
         return
       }
-      updateMutation.mutate({ slug: selectedOrgSlug, operations })
+      updateMutation.mutate({ operations, slug: selectedOrgSlug })
     }
   }
 
@@ -124,11 +127,11 @@ export function OrganizationManagement() {
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <OrganizationForm
-        organization={selectedOrg}
-        onSave={handleSave}
-        onCancel={handleCancel}
-        isLoading={createMutation.isPending || updateMutation.isPending}
         error={createMutation.error || updateMutation.error}
+        isLoading={createMutation.isPending || updateMutation.isPending}
+        onCancel={handleCancel}
+        onSave={handleSave}
+        organization={selectedOrg}
       />
     )
   }
@@ -136,32 +139,33 @@ export function OrganizationManagement() {
   if (viewMode === 'detail' && selectedOrg) {
     return (
       <OrganizationDetail
-        organization={selectedOrg}
-        onEdit={() => goToEdit(selectedOrg.slug)}
         onBack={handleCancel}
+        onEdit={() => goToEdit(selectedOrg.slug)}
+        organization={selectedOrg}
       />
     )
   }
 
   return (
     <AdminSection
-      searchPlaceholder="Search organizations..."
-      search={searchQuery}
-      onSearchChange={setSearchQuery}
       createLabel="New Organization"
-      onCreate={goToCreate}
-      isLoading={isLoading}
-      loadingLabel="Loading organizations..."
       error={error}
       errorTitle="Failed to load organizations"
+      isLoading={isLoading}
+      loadingLabel="Loading organizations..."
+      onCreate={goToCreate}
+      onSearchChange={setSearchQuery}
+      search={searchQuery}
+      searchPlaceholder="Search organizations..."
     >
       <AdminTable
+        canDelete={canDeleteOrganization}
         columns={[
           {
-            key: 'name',
+            cellAlign: 'left',
             header: 'Organization',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'name',
             render: (org) => (
               <div className="flex items-center gap-3">
                 <div
@@ -171,8 +175,8 @@ export function OrganizationManagement() {
                 >
                   {org.icon ? (
                     <EntityIcon
-                      icon={org.icon}
                       className="size-5 rounded object-cover"
+                      icon={org.icon}
                     />
                   ) : (
                     <Building2 className="h-4 w-4 text-info" />
@@ -190,10 +194,10 @@ export function OrganizationManagement() {
             ),
           },
           {
-            key: 'slug',
+            cellAlign: 'center',
             header: 'Slug',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'slug',
             render: (org) => (
               <code className="rounded bg-secondary px-2 py-1 text-primary">
                 {org.slug}
@@ -201,10 +205,10 @@ export function OrganizationManagement() {
             ),
           },
           {
-            key: 'teams',
+            cellAlign: 'right',
             header: 'Teams',
             headerAlign: 'right',
-            cellAlign: 'right',
+            key: 'teams',
             render: (org) => (
               <span
                 className={
@@ -218,10 +222,10 @@ export function OrganizationManagement() {
             ),
           },
           {
-            key: 'members',
+            cellAlign: 'right',
             header: 'Members',
             headerAlign: 'right',
-            cellAlign: 'right',
+            key: 'members',
             render: (org) => (
               <span
                 className={
@@ -235,10 +239,10 @@ export function OrganizationManagement() {
             ),
           },
           {
-            key: 'projects',
+            cellAlign: 'right',
             header: 'Projects',
             headerAlign: 'right',
-            cellAlign: 'right',
+            key: 'projects',
             render: (org) => (
               <span
                 className={
@@ -252,26 +256,25 @@ export function OrganizationManagement() {
             ),
           },
           {
-            key: 'updated',
+            cellAlign: 'center',
             header: 'Last Updated',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'updated',
             render: (org) =>
               formatRelativeDate(org.updated_at ?? org.created_at),
           },
         ]}
-        rows={filteredOrgs}
-        getRowKey={(org) => org.slug}
-        getDeleteLabel={(org) => org.name}
-        onRowClick={(org) => goToEdit(org.slug)}
-        onDelete={handleDelete}
-        canDelete={canDeleteOrganization}
-        isDeleting={deleteMutation.isPending}
         emptyMessage={
           searchQuery
             ? 'No organizations match your search.'
             : 'No organizations created yet.'
         }
+        getDeleteLabel={(org) => org.name}
+        getRowKey={(org) => org.slug}
+        isDeleting={deleteMutation.isPending}
+        onDelete={handleDelete}
+        onRowClick={(org) => goToEdit(org.slug)}
+        rows={filteredOrgs}
       />
     </AdminSection>
   )

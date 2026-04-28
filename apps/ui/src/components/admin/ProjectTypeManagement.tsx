@@ -1,57 +1,60 @@
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
+
 import { Layers } from 'lucide-react'
-import { formatRelativeDate } from '@/lib/formatDate'
-import { EntityIcon } from '@/components/ui/entity-icon'
-import { AdminTable } from '@/components/ui/admin-table'
-import type { CanDeleteResult } from '@/components/ui/admin-table'
-import { AdminSection } from './AdminSection'
-import { ProjectTypeForm } from './project-types/ProjectTypeForm'
-import { ProjectTypeDetail } from './project-types/ProjectTypeDetail'
-import { useOrganization } from '@/contexts/OrganizationContext'
-import { useAdminNav } from '@/hooks/useAdminNav'
-import { useAdminCrud } from '@/hooks/useAdminCrud'
+
 import {
-  listProjectTypes,
-  deleteProjectType,
   createProjectType,
+  deleteProjectType,
+  listProjectTypes,
   updateProjectType,
 } from '@/api/endpoints'
+import { AdminTable } from '@/components/ui/admin-table'
+import type { CanDeleteResult } from '@/components/ui/admin-table'
+import { EntityIcon } from '@/components/ui/entity-icon'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
+import { useAdminNav } from '@/hooks/useAdminNav'
+import { formatRelativeDate } from '@/lib/formatDate'
 import { buildDiffPatch } from '@/lib/json-patch'
-import type { ProjectType, ProjectTypeCreate, PatchOperation } from '@/types'
+import type { PatchOperation, ProjectType, ProjectTypeCreate } from '@/types'
+
+import { AdminSection } from './AdminSection'
+import { ProjectTypeDetail } from './project-types/ProjectTypeDetail'
+import { ProjectTypeForm } from './project-types/ProjectTypeForm'
 
 export function ProjectTypeManagement() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
   const {
-    viewMode,
-    slug: selectedPtSlug,
-    goToList,
     goToCreate,
     goToEdit,
+    goToList,
+    slug: selectedPtSlug,
+    viewMode,
   } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
 
   const {
-    items: projectTypes,
-    isLoading,
-    error,
     createMutation,
-    updateMutation,
     deleteMutation,
+    error,
+    isLoading,
+    items: projectTypes,
+    updateMutation,
   } = useAdminCrud<
     ProjectType,
     { orgSlug: string; pt: ProjectTypeCreate },
-    { orgSlug: string; slug: string; operations: PatchOperation[] },
+    { operations: PatchOperation[]; orgSlug: string; slug: string },
     { orgSlug: string; slug: string }
   >({
-    queryKey: ['projectTypes', orgSlug],
-    listFn: orgSlug ? (signal) => listProjectTypes(orgSlug, signal) : null,
     createFn: ({ orgSlug, pt }) => createProjectType(orgSlug, pt),
-    updateFn: ({ orgSlug, slug, operations }) =>
-      updateProjectType(orgSlug, slug, operations),
-    deleteFn: ({ orgSlug, slug }) => deleteProjectType(orgSlug, slug),
-    onMutationSuccess: goToList,
     deleteErrorLabel: 'project type',
+    deleteFn: ({ orgSlug, slug }) => deleteProjectType(orgSlug, slug),
+    listFn: orgSlug ? (signal) => listProjectTypes(orgSlug, signal) : null,
+    onMutationSuccess: goToList,
+    queryKey: ['projectTypes', orgSlug],
+    updateFn: ({ operations, orgSlug, slug }) =>
+      updateProjectType(orgSlug, slug, operations),
   })
 
   const filteredProjectTypes = projectTypes.filter((pt) => {
@@ -80,7 +83,7 @@ export function ProjectTypeManagement() {
     if (projects === 0) return { allowed: true }
     return {
       allowed: false,
-      blockedBy: [{ count: projects, label: 'project', href: '/projects' }],
+      blockedBy: [{ count: projects, href: '/projects', label: 'project' }],
     }
   }
 
@@ -98,9 +101,9 @@ export function ProjectTypeManagement() {
         return
       }
       updateMutation.mutate({
+        operations,
         orgSlug: selectedProjectType.organization.slug || formOrgSlug,
         slug: selectedPtSlug,
-        operations,
       })
     }
   }
@@ -120,11 +123,11 @@ export function ProjectTypeManagement() {
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <ProjectTypeForm
-        projectType={selectedProjectType}
-        onSave={handleSave}
-        onCancel={handleCancel}
-        isLoading={createMutation.isPending || updateMutation.isPending}
         error={createMutation.error || updateMutation.error}
+        isLoading={createMutation.isPending || updateMutation.isPending}
+        onCancel={handleCancel}
+        onSave={handleSave}
+        projectType={selectedProjectType}
       />
     )
   }
@@ -132,32 +135,33 @@ export function ProjectTypeManagement() {
   if (viewMode === 'detail' && selectedProjectType) {
     return (
       <ProjectTypeDetail
-        projectType={selectedProjectType}
-        onEdit={() => goToEdit(selectedProjectType.slug)}
         onBack={handleCancel}
+        onEdit={() => goToEdit(selectedProjectType.slug)}
+        projectType={selectedProjectType}
       />
     )
   }
 
   return (
     <AdminSection
-      searchPlaceholder="Search project types..."
-      search={searchQuery}
-      onSearchChange={setSearchQuery}
       createLabel="New Project Type"
-      onCreate={goToCreate}
-      isLoading={isLoading}
-      loadingLabel="Loading project types..."
       error={error}
       errorTitle="Failed to load project types"
+      isLoading={isLoading}
+      loadingLabel="Loading project types..."
+      onCreate={goToCreate}
+      onSearchChange={setSearchQuery}
+      search={searchQuery}
+      searchPlaceholder="Search project types..."
     >
       <AdminTable
+        canDelete={canDeleteProjectType}
         columns={[
           {
-            key: 'name',
+            cellAlign: 'left',
             header: 'Project Type',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'name',
             render: (pt) => (
               <div className="flex items-center gap-3">
                 <div
@@ -167,8 +171,8 @@ export function ProjectTypeManagement() {
                 >
                   {pt.icon ? (
                     <EntityIcon
-                      icon={pt.icon}
                       className="size-5 rounded object-cover"
+                      icon={pt.icon}
                     />
                   ) : (
                     <Layers className="h-4 w-4 text-purple-600 dark:text-purple-400" />
@@ -186,10 +190,10 @@ export function ProjectTypeManagement() {
             ),
           },
           {
-            key: 'slug',
+            cellAlign: 'center',
             header: 'Slug',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'slug',
             render: (pt) => (
               <code className="rounded bg-secondary px-2 py-1 text-primary">
                 {pt.slug}
@@ -197,10 +201,10 @@ export function ProjectTypeManagement() {
             ),
           },
           {
-            key: 'projects',
+            cellAlign: 'right',
             header: 'Projects',
             headerAlign: 'right',
-            cellAlign: 'right',
+            key: 'projects',
             render: (pt) => (
               <span
                 className={
@@ -214,20 +218,13 @@ export function ProjectTypeManagement() {
             ),
           },
           {
-            key: 'updated',
+            cellAlign: 'center',
             header: 'Last Updated',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'updated',
             render: (pt) => formatRelativeDate(pt.updated_at ?? pt.created_at),
           },
         ]}
-        rows={filteredProjectTypes}
-        getRowKey={(pt) => pt.slug}
-        getDeleteLabel={(pt) => pt.name}
-        onRowClick={(pt) => goToEdit(pt.slug)}
-        onDelete={handleDelete}
-        canDelete={canDeleteProjectType}
-        isDeleting={deleteMutation.isPending}
         emptyMessage={
           searchQuery
             ? 'No project types found matching your search.'
@@ -235,6 +232,12 @@ export function ProjectTypeManagement() {
               ? `No project types in ${selectedOrganization.name} yet.`
               : 'No project types created yet.'
         }
+        getDeleteLabel={(pt) => pt.name}
+        getRowKey={(pt) => pt.slug}
+        isDeleting={deleteMutation.isPending}
+        onDelete={handleDelete}
+        onRowClick={(pt) => goToEdit(pt.slug)}
+        rows={filteredProjectTypes}
       />
     </AdminSection>
   )

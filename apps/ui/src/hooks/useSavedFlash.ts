@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 export interface UseSavedFlashResult {
-  saved: Record<string, boolean>
   flash: (key: string) => void
+  saved: Record<string, boolean>
 }
 
 export function useSavedFlash(durationMs = 2000): UseSavedFlashResult {
@@ -32,5 +32,5 @@ export function useSavedFlash(durationMs = 2000): UseSavedFlashResult {
     [durationMs],
   )
 
-  return { saved, flash }
+  return { flash, saved }
 }

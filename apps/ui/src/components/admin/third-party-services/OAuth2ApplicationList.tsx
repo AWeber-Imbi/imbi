@@ -1,8 +1,16 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AlertCircle, ExternalLink, Key, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { extractApiErrorDetail } from '@/lib/apiError'
-import { Plus, Trash2, Key, AlertCircle, ExternalLink } from 'lucide-react'
+
+import {
+  createServiceApplication,
+  deleteServiceApplication,
+  listServiceApplications,
+  updateServiceApplication,
+} from '@/api/endpoints'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
@@ -14,50 +22,45 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
-  listServiceApplications,
-  deleteServiceApplication,
-  createServiceApplication,
-  updateServiceApplication,
-} from '@/api/endpoints'
-import { OAuth2ApplicationForm } from './OAuth2ApplicationForm'
-import { ApplicationSecretsPanel } from './ApplicationSecretsPanel'
-import { buildDiffPatch } from '@/lib/json-patch'
-import type {
-  ServiceApplication,
-  ServiceApplicationCreate,
-  ServiceApplicationUpdate,
-  PatchOperation,
-} from '@/types'
-import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { extractApiErrorDetail } from '@/lib/apiError'
+import { buildDiffPatch } from '@/lib/json-patch'
 import { statusBadgeVariant } from '@/lib/status-colors'
-import { Badge } from '@/components/ui/badge'
+import type {
+  PatchOperation,
+  ServiceApplication,
+  ServiceApplicationCreate,
+  ServiceApplicationUpdate,
+} from '@/types'
 
-type ViewMode = 'list' | 'create' | 'edit'
+import { ApplicationSecretsPanel } from './ApplicationSecretsPanel'
+import { OAuth2ApplicationForm } from './OAuth2ApplicationForm'
 
 interface OAuth2ApplicationListProps {
+  onViewModeChange?: (mode: ViewMode) => void
   orgSlug: string
   serviceSlug: string
-  onViewModeChange?: (mode: ViewMode) => void
 }
 
+type ViewMode = 'create' | 'edit' | 'list'
+
 export function OAuth2ApplicationList({
+  onViewModeChange,
   orgSlug,
   serviceSlug,
-  onViewModeChange,
 }: OAuth2ApplicationListProps) {
   const queryClient = useQueryClient()
   const [viewMode, setViewModeInternal] = useState<ViewMode>('list')
-  const [editingApp, setEditingApp] = useState<ServiceApplication | null>(null)
-  const [confirm, setConfirm] = useState<{
+  const [editingApp, setEditingApp] = useState<null | ServiceApplication>(null)
+  const [confirm, setConfirm] = useState<null | {
     action: 'delete'
-    appSlug: string
     appName: string
-  } | null>(null)
+    appSlug: string
+  }>(null)
 
   const setViewMode = (mode: ViewMode) => {
     setViewModeInternal(mode)
@@ -66,12 +69,12 @@ export function OAuth2ApplicationList({
 
   const {
     data: applications = [],
-    isLoading,
     error,
+    isLoading,
   } = useQuery({
-    queryKey: ['service-applications', orgSlug, serviceSlug],
     queryFn: ({ signal }) =>
       listServiceApplications(orgSlug, serviceSlug, signal),
+    queryKey: ['service-applications', orgSlug, serviceSlug],
   })
 
   const createMutation = useMutation({
@@ -105,20 +108,20 @@ export function OAuth2ApplicationList({
   const deleteMutation = useMutation({
     mutationFn: (appSlug: string) =>
       deleteServiceApplication(orgSlug, serviceSlug, appSlug),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['service-applications', orgSlug, serviceSlug],
-      })
-    },
     onError: (error: unknown) => {
       toast.error(
         `Failed to delete application: ${extractApiErrorDetail(error)}`,
       )
     },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['service-applications', orgSlug, serviceSlug],
+      })
+    },
   })
 
   const handleDelete = (app: ServiceApplication) => {
-    setConfirm({ action: 'delete', appSlug: app.slug, appName: app.name })
+    setConfirm({ action: 'delete', appName: app.name, appSlug: app.slug })
   }
 
   const handleSave = (
@@ -146,13 +149,13 @@ export function OAuth2ApplicationList({
     return (
       <OAuth2ApplicationForm
         application={null}
-        onSave={handleSave}
+        error={createMutation.error}
+        isLoading={createMutation.isPending}
         onCancel={() => {
           setViewMode('list')
           setEditingApp(null)
         }}
-        isLoading={createMutation.isPending}
-        error={createMutation.error}
+        onSave={handleSave}
       />
     )
   }
@@ -162,19 +165,19 @@ export function OAuth2ApplicationList({
       <div className="space-y-6">
         <OAuth2ApplicationForm
           application={editingApp}
-          onSave={handleSave}
+          error={updateMutation.error}
+          isLoading={updateMutation.isPending}
           onCancel={() => {
             setViewMode('list')
             setEditingApp(null)
           }}
-          isLoading={updateMutation.isPending}
-          error={updateMutation.error}
+          onSave={handleSave}
         />
         <ApplicationSecretsPanel
-          orgSlug={orgSlug}
-          serviceSlug={serviceSlug}
           appSlug={editingApp.slug}
           appType={editingApp.app_type}
+          orgSlug={orgSlug}
+          serviceSlug={serviceSlug}
         />
       </div>
     )
@@ -211,12 +214,12 @@ export function OAuth2ApplicationList({
           {applications.length !== 1 ? 's' : ''}
         </div>
         <Button
+          className="bg-action text-action-foreground hover:bg-action-hover"
           onClick={() => {
             setEditingApp(null)
             setViewMode('create')
           }}
           size="sm"
-          className="bg-action text-action-foreground hover:bg-action-hover"
         >
           <Plus className="mr-2 h-4 w-4" />
           Add Application
@@ -259,8 +262,8 @@ export function OAuth2ApplicationList({
                 const statusVariant = statusBadgeVariant(app.status)
                 return (
                   <TableRow
-                    key={app.slug}
                     className="hover:bg-secondary/50 cursor-pointer"
+                    key={app.slug}
                     onClick={() => {
                       setEditingApp(app)
                       setViewMode('edit')
@@ -292,11 +295,11 @@ export function OAuth2ApplicationList({
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <a
-                                  href={app.application_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
                                   aria-label={`Open ${app.name} application`}
                                   className="inline-flex items-center rounded p-1.5 text-info hover:bg-info"
+                                  href={app.application_url}
+                                  rel="noopener noreferrer"
+                                  target="_blank"
                                 >
                                   <ExternalLink className="h-4 w-4" />
                                 </a>
@@ -308,12 +311,12 @@ export function OAuth2ApplicationList({
                           </TooltipProvider>
                         )}
                         <Button
-                          variant="ghost"
-                          size="sm"
                           aria-label={`Delete application ${app.name}`}
-                          onClick={() => handleDelete(app)}
-                          disabled={deleteMutation.isPending}
                           className="text-danger hover:bg-danger"
+                          disabled={deleteMutation.isPending}
+                          onClick={() => handleDelete(app)}
+                          size="sm"
+                          variant="ghost"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -327,21 +330,21 @@ export function OAuth2ApplicationList({
         </div>
       )}
       <ConfirmDialog
-        open={confirm?.action === 'delete'}
-        title="Delete application"
+        confirmLabel="Delete"
         description={
           confirm?.action === 'delete'
             ? `Delete application "${confirm.appName}"? This cannot be undone.`
             : 'This action cannot be undone.'
         }
-        confirmLabel="Delete"
+        onCancel={() => setConfirm(null)}
         onConfirm={() => {
           if (confirm?.action === 'delete') {
             deleteMutation.mutate(confirm.appSlug)
           }
           setConfirm(null)
         }}
-        onCancel={() => setConfirm(null)}
+        open={confirm?.action === 'delete'}
+        title="Delete application"
       />
     </div>
   )

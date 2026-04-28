@@ -1,19 +1,30 @@
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useMemo } from 'react'
+
+import { useLocation, useNavigate } from 'react-router-dom'
+
 import {
-  Settings,
-  User,
-  Rocket,
-  FolderKanban,
   Activity,
   BarChart3,
-  Plus,
+  Building2,
   ChevronDown,
-  UserCircle,
+  FolderKanban,
   LogOut,
   Moon,
+  Plus,
+  Rocket,
+  Settings,
   Sun,
-  Building2,
+  User,
+  UserCircle,
 } from 'lucide-react'
+
+import logoDark from '@/assets/logo-dark.svg'
+import logoLight from '@/assets/logo-light.svg'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { useTheme } from '@/contexts/ThemeContext'
+import { useAuth } from '@/hooks/useAuth'
+import { UserResponse } from '@/types'
+
 import { Button } from './ui/button'
 import {
   DropdownMenu,
@@ -23,69 +34,62 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu'
 import { Gravatar } from './ui/gravatar'
-import { useAuth } from '@/hooks/useAuth'
-import { useOrganization } from '@/contexts/OrganizationContext'
-import { useTheme } from '@/contexts/ThemeContext'
-import { UserResponse } from '@/types'
-import logoLight from '@/assets/logo-light.svg'
-import logoDark from '@/assets/logo-dark.svg'
-import { useMemo } from 'react'
 
 interface NavigationProps {
   currentView?: string
-  onViewChange?: (view: string) => void
+  onNewDeployment?: () => void
   onNewOpsEntry?: () => void
   onNewProject?: () => void
-  onNewDeployment?: () => void
+  onViewChange?: (view: string) => void
 }
 
 export function Navigation({
   currentView,
-  onViewChange,
-  onNewOpsEntry,
   onNewDeployment,
+  onNewOpsEntry,
   onNewProject,
+  onViewChange,
 }: NavigationProps) {
   const { isDarkMode, toggleTheme } = useTheme()
-  const { user, logout } = useAuth()
+  const { logout, user } = useAuth()
   const { organizations, selectedOrganization, setSelectedOrganization } =
     useOrganization()
   const navigate = useNavigate()
   const location = useLocation()
 
   // Check if user is admin (safely cast to UserResponse to access is_admin)
-  const isAdmin = (user as UserResponse | null)?.is_admin === true
+  const isAdmin = (user as null | UserResponse)?.is_admin === true
 
   // Memoize navItems to avoid array mutation on every render
   const navItems = useMemo(() => {
     const items = [
       {
+        icon: FolderKanban,
         id: 'projects',
         label: 'Projects',
-        icon: FolderKanban,
         path: '/projects',
       },
       {
+        icon: Rocket,
         id: 'deployments',
         label: 'Deployments',
-        icon: Rocket,
         path: '/deployments',
       },
       {
+        icon: Activity,
         id: 'operations',
         label: 'Operations Log',
-        icon: Activity,
         path: '/operations-log',
       },
-      { id: 'reports', label: 'Reports', icon: BarChart3, path: '/reports' },
+      { icon: BarChart3, id: 'reports', label: 'Reports', path: '/reports' },
     ]
 
     // Add Admin nav item if user is admin
     if (isAdmin) {
       items.push({
+        icon: Settings,
         id: 'admin',
         label: 'Admin',
-        icon: Settings,
         path: '/admin',
       })
     }
@@ -105,14 +109,14 @@ export function Navigation({
         {/* Logo and Brand */}
         <div className="flex items-center gap-8">
           <Button
-            variant="ghost"
-            onClick={() => navigate('/dashboard')}
             className="h-auto rounded-lg px-2 py-1.5 transition-all hover:bg-secondary"
+            onClick={() => navigate('/dashboard')}
+            variant="ghost"
           >
             <img
-              src={isDarkMode ? logoDark : logoLight}
               alt="Imbi"
               className="h-8 w-8"
+              src={isDarkMode ? logoDark : logoLight}
             />
             <span className="text-primary" style={{ fontWeight: 800 }}>
               Imbi
@@ -126,14 +130,14 @@ export function Navigation({
               const isActive = activeView === item.id
               return (
                 <Button
-                  key={item.id}
-                  variant="ghost"
-                  onClick={() => navigate(item.path)}
                   className={`h-auto rounded-lg px-4 py-2 transition-colors ${
                     isActive
                       ? 'bg-amber-bg text-amber-text hover:bg-amber-bg hover:text-amber-text'
                       : 'text-secondary hover:bg-secondary hover:text-primary'
                   }`}
+                  key={item.id}
+                  onClick={() => navigate(item.path)}
+                  variant="ghost"
                 >
                   <Icon className="h-4 w-4" />
                   <span>{item.label}</span>
@@ -150,15 +154,15 @@ export function Navigation({
             selectedOrganization &&
             (organizations.length === 1 ? (
               <Button
-                variant="outline"
-                size="sm"
                 className="pointer-events-none max-w-[200px] cursor-default gap-2 border-tertiary bg-primary text-primary"
+                size="sm"
+                variant="outline"
               >
                 {selectedOrganization.icon ? (
                   <img
-                    src={selectedOrganization.icon}
                     alt=""
                     className="h-4 w-4 flex-shrink-0 rounded object-cover"
+                    src={selectedOrganization.icon}
                   />
                 ) : (
                   <Building2 className="h-4 w-4 flex-shrink-0" />
@@ -169,15 +173,15 @@ export function Navigation({
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    variant="outline"
-                    size="sm"
                     className="max-w-[200px] gap-2 border-tertiary bg-primary text-primary hover:bg-secondary"
+                    size="sm"
+                    variant="outline"
                   >
                     {selectedOrganization.icon ? (
                       <img
-                        src={selectedOrganization.icon}
                         alt=""
                         className="h-4 w-4 flex-shrink-0 rounded object-cover"
+                        src={selectedOrganization.icon}
                       />
                     ) : (
                       <Building2 className="h-4 w-4 flex-shrink-0" />
@@ -191,20 +195,20 @@ export function Navigation({
                 <DropdownMenuContent align="end" className="w-56">
                   {organizations.map((org) => (
                     <DropdownMenuItem
-                      key={org.slug}
-                      onClick={() => setSelectedOrganization(org)}
                       className={
                         selectedOrganization.slug === org.slug
                           ? 'font-medium'
                           : ''
                       }
+                      key={org.slug}
+                      onClick={() => setSelectedOrganization(org)}
                     >
                       <div className="flex items-center gap-2">
                         {org.icon ? (
                           <img
-                            src={org.icon}
                             alt=""
                             className="h-4 w-4 flex-shrink-0 rounded object-cover"
+                            src={org.icon}
                           />
                         ) : (
                           <Building2 className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
@@ -226,9 +230,9 @@ export function Navigation({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
-                variant="outline"
-                size="sm"
                 className="gap-2 border-tertiary bg-primary text-primary hover:bg-secondary"
+                size="sm"
+                variant="outline"
               >
                 <Plus className="h-4 w-4" />
                 <ChevronDown className="h-3 w-3" />
@@ -254,16 +258,16 @@ export function Navigation({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
-                variant="ghost"
-                size="icon"
                 className="rounded-full p-0 hover:bg-secondary"
+                size="icon"
+                variant="ghost"
               >
                 {user?.email ? (
                   <Gravatar
-                    email={user.email}
-                    size={32}
                     alt={user?.display_name || user?.username || 'User'}
                     className="h-8 w-8 rounded-full"
+                    email={user.email}
+                    size={32}
                   />
                 ) : (
                   <User className="h-4 w-4" />
@@ -295,10 +299,10 @@ export function Navigation({
 
           {/* Theme Toggle */}
           <Button
-            variant="ghost"
-            size="icon"
             className="rounded-full text-secondary hover:bg-secondary"
             onClick={toggleTheme}
+            size="icon"
+            variant="ghost"
           >
             {isDarkMode ? (
               <Sun className="h-4 w-4" />

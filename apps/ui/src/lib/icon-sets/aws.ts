@@ -15,8 +15,8 @@ const awsResGlob = import.meta.glob<string>(
 )
 
 interface AwsEntry {
-  url: string
   label: string
+  url: string
 }
 
 function buildAwsIndex(): Record<string, AwsEntry> {
@@ -26,7 +26,7 @@ function buildAwsIndex(): Record<string, AwsEntry> {
     const match = filename.match(/^Arch_(.+)_64\.svg$/)
     if (!match) continue
     const raw = match[1]
-    index[raw.toLowerCase()] = { url, label: raw.replace(/-/g, ' ') }
+    index[raw.toLowerCase()] = { label: raw.replace(/-/g, ' '), url }
   }
   for (const [path, url] of Object.entries(awsResGlob)) {
     const filename = path.split('/').pop()!
@@ -34,7 +34,7 @@ function buildAwsIndex(): Record<string, AwsEntry> {
     if (!match) continue
     const raw = match[1]
     const name = raw.replace(/_/g, '-').toLowerCase()
-    index[name] = { url, label: raw.replace(/[_-]/g, ' ') }
+    index[name] = { label: raw.replace(/[_-]/g, ' '), url }
   }
   return index
 }
@@ -46,7 +46,13 @@ export const AWS_ICONS: IconEntry[] = Object.entries(awsIndex)
   .map(([key, entry]) => ({ label: entry.label, value: key }))
   .sort((a, b) => a.label.localeCompare(b.label))
 
-function resolveAwsUrl(iconName: string): string | null {
+function resolve(value: string): IconComponent | null {
+  if (!awsIconNames.has(value)) return null
+  const url = resolveAwsUrl(value)
+  return url ? createImgComponent(url) : null
+}
+
+function resolveAwsUrl(iconName: string): null | string {
   const key = iconName.toLowerCase()
   const direct = awsIndex[key]
   if (direct) return direct.url
@@ -56,23 +62,17 @@ function resolveAwsUrl(iconName: string): string | null {
   return null
 }
 
-function resolve(value: string): IconComponent | null {
-  if (!awsIconNames.has(value)) return null
-  const url = resolveAwsUrl(value)
-  return url ? createImgComponent(url) : null
-}
-
-function resolveUrl(value: string): string | null {
+function resolveUrl(value: string): null | string {
   if (!awsIconNames.has(value)) return null
   return resolveAwsUrl(value)
 }
 
 export const iconSet: IconSetDefinition = {
+  description: 'Amazon Web Services architecture and resource icons',
+  icons: AWS_ICONS,
   id: 'aws',
   label: 'AWS',
-  description: 'Amazon Web Services architecture and resource icons',
-  valueFormat: '{service-name}',
-  icons: AWS_ICONS,
   resolve,
   resolveUrl,
+  valueFormat: '{service-name}',
 }

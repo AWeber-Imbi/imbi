@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react'
+
 import { useNavigate, useSearchParams } from 'react-router-dom'
+
 import { useQuery } from '@tanstack/react-query'
-import { useAuth } from '@/hooks/useAuth'
+
 import { getAuthProviders } from '@/api/endpoints'
-import { extractApiErrorDetail } from '@/lib/apiError'
-import { OAuthButton } from '@/components/auth/OAuthButton'
-import { LocalLoginForm } from '@/components/auth/LocalLoginForm'
-import { AuthDivider } from '@/components/auth/AuthDivider'
-import { useTheme } from '@/contexts/ThemeContext'
-import { usePageTitle } from '@/hooks/usePageTitle'
-import logoLight from '@/assets/logo-light.svg'
 import logoDark from '@/assets/logo-dark.svg'
+import logoLight from '@/assets/logo-light.svg'
+import { AuthDivider } from '@/components/auth/AuthDivider'
+import { LocalLoginForm } from '@/components/auth/LocalLoginForm'
+import { OAuthButton } from '@/components/auth/OAuthButton'
+import { useTheme } from '@/contexts/ThemeContext'
+import { useAuth } from '@/hooks/useAuth'
+import { usePageTitle } from '@/hooks/usePageTitle'
+import { extractApiErrorDetail } from '@/lib/apiError'
 
 const REMEMBERED_EMAIL_KEY = 'imbi_remembered_email'
 
@@ -29,10 +32,10 @@ export function LoginPage() {
   const [rememberedEmail, setRememberedEmail] = useState<string>('')
 
   const { data: providersData, isLoading: providersLoading } = useQuery({
-    queryKey: ['authProviders'],
     queryFn: ({ signal }) => getAuthProviders(signal),
-    staleTime: 10 * 60 * 1000,
+    queryKey: ['authProviders'],
     retry: false,
+    staleTime: 10 * 60 * 1000,
   })
 
   // Load remembered email on mount
@@ -120,9 +123,9 @@ export function LoginPage() {
       <div className="w-full max-w-md rounded-xl border border-tertiary bg-primary p-8">
         <div className="mb-8 flex flex-col items-center">
           <img
-            src={isDarkMode ? logoDark : logoLight}
             alt="Imbi"
             className="mb-4 h-16 w-16"
+            src={isDarkMode ? logoDark : logoLight}
           />
           <h1 className="mb-2 text-2xl text-primary">Imbi</h1>
         </div>
@@ -131,10 +134,10 @@ export function LoginPage() {
           <div className="mb-6 space-y-3">
             {oauthProviders.map((provider) => (
               <OAuthButton
-                key={provider.id}
-                provider={provider}
-                onClick={() => handleOAuthLogin(provider.id)}
                 disabled={authLoading}
+                key={provider.id}
+                onClick={() => handleOAuthLogin(provider.id)}
+                provider={provider}
               />
             ))}
           </div>
@@ -144,10 +147,10 @@ export function LoginPage() {
 
         {showLocalLogin && (
           <LocalLoginForm
-            onSubmit={handlePasswordLogin}
-            isLoading={authLoading}
             error={loginError}
             initialEmail={rememberedEmail}
+            isLoading={authLoading}
+            onSubmit={handlePasswordLogin}
           />
         )}
 

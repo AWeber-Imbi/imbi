@@ -1,232 +1,48 @@
-import { useState, useCallback, useEffect } from 'react'
-import { Upload, AlertCircle, FileJson, FileText } from 'lucide-react'
-import yaml from 'js-yaml'
+import { useCallback, useEffect, useState } from 'react'
+
 import Ajv from 'ajv'
+import yaml from 'js-yaml'
+import { AlertCircle, FileJson, FileText, Upload } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog'
 import type { BlueprintCreate, BlueprintFilter } from '@/types'
 
 const ajv = new Ajv()
 
+type DetectedFormat = 'json' | 'unknown' | 'yaml'
+
 interface ImportBlueprintDialogProps {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  apiError?: any
+  blueprintTypes: string[]
+  isLoading?: boolean
   isOpen: boolean
   onClose: () => void
   onImport: (blueprint: BlueprintCreate) => void
-  blueprintTypes: string[]
-  isLoading?: boolean
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  apiError?: any
 }
 
-type DetectedFormat = 'json' | 'yaml' | 'unknown'
-
-const VALID_TYPES = new Set(['Team', 'Environment', 'ProjectType', 'Project'])
+const VALID_TYPES = new Set(['Environment', 'Project', 'ProjectType', 'Team'])
 
 const REQUIRED_FIELDS = ['name', 'json_schema'] as const
 
-function detectFormat(input: string): DetectedFormat {
-  const trimmed = input.trim()
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return 'json'
-  if (
-    trimmed.includes(':') ||
-    trimmed.includes(':\n') ||
-    trimmed.startsWith('---')
-  )
-    return 'yaml'
-  return 'unknown'
-}
-
-function validateBlueprintShape(
-  data: unknown,
-  blueprintTypes: string[],
-):
-  | { valid: true; blueprint: BlueprintCreate }
-  | { valid: false; error: string } {
-  if (!data || typeof data !== 'object' || Array.isArray(data)) {
-    return {
-      valid: false,
-      error: 'Input must be a JSON/YAML object, not an array or primitive.',
-    }
-  }
-
-  const obj = data as Record<string, unknown>
-
-  // Check required fields
-  for (const field of REQUIRED_FIELDS) {
-    if (!(field in obj) || obj[field] === undefined || obj[field] === null) {
-      return { valid: false, error: `Missing required field: "${field}".` }
-    }
-  }
-
-  // Validate name
-  if (typeof obj.name !== 'string' || !obj.name.trim()) {
-    return { valid: false, error: '"name" must be a non-empty string.' }
-  }
-
-  // Validate kind + type/relationship fields
-  const bpKind = (obj.kind as string) || 'node'
-  if (bpKind !== 'node' && bpKind !== 'relationship') {
-    return {
-      valid: false,
-      error: `"kind" must be one of: node, relationship. Got "${bpKind}".`,
-    }
-  }
-  if (bpKind === 'relationship') {
-    for (const f of ['source', 'target', 'edge'] as const) {
-      if (typeof obj[f] !== 'string' || !(obj[f] as string).trim()) {
-        return {
-          valid: false,
-          error: `"${f}" is required for relationship blueprints.`,
-        }
-      }
-    }
-  } else {
-    const typesToCheck =
-      blueprintTypes.length > 0 ? blueprintTypes : Array.from(VALID_TYPES)
-    if (typeof obj.type !== 'string' || !typesToCheck.includes(obj.type)) {
-      return {
-        valid: false,
-        error: `"type" must be one of: ${typesToCheck.join(', ')}. Got "${String(obj.type)}".`,
-      }
-    }
-  }
-
-  // Validate slug if present
-  if (obj.slug !== undefined && obj.slug !== null) {
-    if (typeof obj.slug !== 'string') {
-      return { valid: false, error: '"slug" must be a string.' }
-    }
-    if (!/^[a-z0-9-]+$/.test(obj.slug)) {
-      return {
-        valid: false,
-        error:
-          '"slug" must contain only lowercase letters, numbers, and hyphens.',
-      }
-    }
-  }
-
-  // Validate json_schema
-  let jsonSchema: Record<string, unknown>
-  if (typeof obj.json_schema === 'string') {
-    try {
-      jsonSchema = JSON.parse(obj.json_schema)
-    } catch {
-      return {
-        valid: false,
-        error: '"json_schema" is a string but not valid JSON.',
-      }
-    }
-  } else if (
-    typeof obj.json_schema === 'object' &&
-    !Array.isArray(obj.json_schema)
-  ) {
-    jsonSchema = obj.json_schema as Record<string, unknown>
-  } else {
-    return {
-      valid: false,
-      error: '"json_schema" must be a JSON object or a JSON string.',
-    }
-  }
-
-  // Validate it's a valid JSON Schema
-  const isValidSchema = ajv.validateSchema(jsonSchema)
-  if (!isValidSchema) {
-    return { valid: false, error: '"json_schema" is not a valid JSON Schema.' }
-  }
-
-  // Validate optional fields
-  if (obj.enabled !== undefined && typeof obj.enabled !== 'boolean') {
-    return { valid: false, error: '"enabled" must be a boolean.' }
-  }
-
-  if (obj.priority !== undefined && typeof obj.priority !== 'number') {
-    return { valid: false, error: '"priority" must be a number.' }
-  }
-
-  // Validate and normalize filter
-  let parsedFilter: BlueprintFilter | null = null
-  if (obj.filter !== undefined && obj.filter !== null) {
-    if (typeof obj.filter !== 'object' || Array.isArray(obj.filter)) {
-      return { valid: false, error: '"filter" must be an object or null.' }
-    }
-    const f = obj.filter as Record<string, unknown>
-    // Validate known keys
-    const allowedKeys = new Set(['project_type', 'environment'])
-    for (const key of Object.keys(f)) {
-      if (!allowedKeys.has(key)) {
-        return {
-          valid: false,
-          error: `Unknown filter key: "${key}". Allowed: project_type, environment.`,
-        }
-      }
-      if (!Array.isArray(f[key])) {
-        return {
-          valid: false,
-          error: `filter.${key} must be an array of strings.`,
-        }
-      }
-      if (!(f[key] as unknown[]).every((v) => typeof v === 'string')) {
-        return {
-          valid: false,
-          error: `filter.${key} must contain only strings.`,
-        }
-      }
-    }
-    parsedFilter = {
-      project_type: (f.project_type as string[]) || [],
-      environment: (f.environment as string[]) || [],
-    }
-  }
-
-  if (
-    obj.description !== undefined &&
-    obj.description !== null &&
-    typeof obj.description !== 'string'
-  ) {
-    return { valid: false, error: '"description" must be a string or null.' }
-  }
-
-  const blueprint: BlueprintCreate = {
-    name: (obj.name as string).trim(),
-    kind: bpKind as 'node' | 'relationship',
-    ...(bpKind === 'relationship'
-      ? {
-          type: null,
-          source: (obj.source as string).trim(),
-          target: (obj.target as string).trim(),
-          edge: (obj.edge as string).trim(),
-        }
-      : { type: obj.type as string }),
-    json_schema: jsonSchema,
-    ...(obj.slug ? { slug: obj.slug as string } : {}),
-    ...(obj.description !== undefined
-      ? { description: obj.description as string | null }
-      : {}),
-    ...(obj.enabled !== undefined ? { enabled: obj.enabled as boolean } : {}),
-    ...(obj.priority !== undefined ? { priority: obj.priority as number } : {}),
-    ...(parsedFilter ? { filter: parsedFilter } : {}),
-  }
-
-  return { valid: true, blueprint }
-}
-
 export function ImportBlueprintDialog({
+  apiError,
+  blueprintTypes,
+  isLoading = false,
   isOpen,
   onClose,
   onImport,
-  blueprintTypes,
-  isLoading = false,
-  apiError,
 }: ImportBlueprintDialogProps) {
   const [rawInput, setRawInput] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<null | string>(null)
   const [parsedPreview, setParsedPreview] = useState<BlueprintCreate | null>(
     null,
   )
@@ -355,7 +171,7 @@ export function ImportBlueprintDialog({
     ) : null
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
+    <Dialog onOpenChange={(open) => !open && handleClose()} open={isOpen}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="text-primary">Import Blueprint</DialogTitle>
@@ -407,7 +223,7 @@ export function ImportBlueprintDialog({
 
           {/* Input area */}
           <textarea
-            value={rawInput}
+            className={`w-full resize-y rounded-md border border-input bg-secondary px-4 py-3 font-mono text-sm leading-relaxed text-primary placeholder:text-muted-foreground ${error ? 'border-danger' : ''}`}
             onChange={(e) => handleInputChange(e.target.value)}
             placeholder={`{
   "name": "AWS Metadata",
@@ -426,7 +242,7 @@ export function ImportBlueprintDialog({
 }`}
             rows={14}
             spellCheck={false}
-            className={`w-full resize-y rounded-md border border-input bg-secondary px-4 py-3 font-mono text-sm leading-relaxed text-primary placeholder:text-muted-foreground ${error ? 'border-danger' : ''}`}
+            value={rawInput}
           />
 
           {/* Validation error display */}
@@ -528,13 +344,13 @@ export function ImportBlueprintDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose} disabled={isLoading}>
+          <Button disabled={isLoading} onClick={handleClose} variant="outline">
             Cancel
           </Button>
           <Button
-            onClick={handleValidateAndImport}
-            disabled={isLoading || !rawInput.trim()}
             className="bg-action text-action-foreground hover:bg-action-hover"
+            disabled={isLoading || !rawInput.trim()}
+            onClick={handleValidateAndImport}
           >
             <Upload className="mr-2 h-4 w-4" />
             {isLoading ? 'Importing...' : 'Import'}
@@ -543,4 +359,190 @@ export function ImportBlueprintDialog({
       </DialogContent>
     </Dialog>
   )
+}
+
+function detectFormat(input: string): DetectedFormat {
+  const trimmed = input.trim()
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return 'json'
+  if (
+    trimmed.includes(':') ||
+    trimmed.includes(':\n') ||
+    trimmed.startsWith('---')
+  )
+    return 'yaml'
+  return 'unknown'
+}
+
+function validateBlueprintShape(
+  data: unknown,
+  blueprintTypes: string[],
+):
+  | { blueprint: BlueprintCreate; valid: true }
+  | { error: string; valid: false } {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return {
+      error: 'Input must be a JSON/YAML object, not an array or primitive.',
+      valid: false,
+    }
+  }
+
+  const obj = data as Record<string, unknown>
+
+  // Check required fields
+  for (const field of REQUIRED_FIELDS) {
+    if (!(field in obj) || obj[field] === undefined || obj[field] === null) {
+      return { error: `Missing required field: "${field}".`, valid: false }
+    }
+  }
+
+  // Validate name
+  if (typeof obj.name !== 'string' || !obj.name.trim()) {
+    return { error: '"name" must be a non-empty string.', valid: false }
+  }
+
+  // Validate kind + type/relationship fields
+  const bpKind = (obj.kind as string) || 'node'
+  if (bpKind !== 'node' && bpKind !== 'relationship') {
+    return {
+      error: `"kind" must be one of: node, relationship. Got "${bpKind}".`,
+      valid: false,
+    }
+  }
+  if (bpKind === 'relationship') {
+    for (const f of ['source', 'target', 'edge'] as const) {
+      if (typeof obj[f] !== 'string' || !(obj[f] as string).trim()) {
+        return {
+          error: `"${f}" is required for relationship blueprints.`,
+          valid: false,
+        }
+      }
+    }
+  } else {
+    const typesToCheck =
+      blueprintTypes.length > 0 ? blueprintTypes : Array.from(VALID_TYPES)
+    if (typeof obj.type !== 'string' || !typesToCheck.includes(obj.type)) {
+      return {
+        error: `"type" must be one of: ${typesToCheck.join(', ')}. Got "${String(obj.type)}".`,
+        valid: false,
+      }
+    }
+  }
+
+  // Validate slug if present
+  if (obj.slug !== undefined && obj.slug !== null) {
+    if (typeof obj.slug !== 'string') {
+      return { error: '"slug" must be a string.', valid: false }
+    }
+    if (!/^[a-z0-9-]+$/.test(obj.slug)) {
+      return {
+        error:
+          '"slug" must contain only lowercase letters, numbers, and hyphens.',
+        valid: false,
+      }
+    }
+  }
+
+  // Validate json_schema
+  let jsonSchema: Record<string, unknown>
+  if (typeof obj.json_schema === 'string') {
+    try {
+      jsonSchema = JSON.parse(obj.json_schema)
+    } catch {
+      return {
+        error: '"json_schema" is a string but not valid JSON.',
+        valid: false,
+      }
+    }
+  } else if (
+    typeof obj.json_schema === 'object' &&
+    !Array.isArray(obj.json_schema)
+  ) {
+    jsonSchema = obj.json_schema as Record<string, unknown>
+  } else {
+    return {
+      error: '"json_schema" must be a JSON object or a JSON string.',
+      valid: false,
+    }
+  }
+
+  // Validate it's a valid JSON Schema
+  const isValidSchema = ajv.validateSchema(jsonSchema)
+  if (!isValidSchema) {
+    return { error: '"json_schema" is not a valid JSON Schema.', valid: false }
+  }
+
+  // Validate optional fields
+  if (obj.enabled !== undefined && typeof obj.enabled !== 'boolean') {
+    return { error: '"enabled" must be a boolean.', valid: false }
+  }
+
+  if (obj.priority !== undefined && typeof obj.priority !== 'number') {
+    return { error: '"priority" must be a number.', valid: false }
+  }
+
+  // Validate and normalize filter
+  let parsedFilter: BlueprintFilter | null = null
+  if (obj.filter !== undefined && obj.filter !== null) {
+    if (typeof obj.filter !== 'object' || Array.isArray(obj.filter)) {
+      return { error: '"filter" must be an object or null.', valid: false }
+    }
+    const f = obj.filter as Record<string, unknown>
+    // Validate known keys
+    const allowedKeys = new Set(['environment', 'project_type'])
+    for (const key of Object.keys(f)) {
+      if (!allowedKeys.has(key)) {
+        return {
+          error: `Unknown filter key: "${key}". Allowed: project_type, environment.`,
+          valid: false,
+        }
+      }
+      if (!Array.isArray(f[key])) {
+        return {
+          error: `filter.${key} must be an array of strings.`,
+          valid: false,
+        }
+      }
+      if (!(f[key] as unknown[]).every((v) => typeof v === 'string')) {
+        return {
+          error: `filter.${key} must contain only strings.`,
+          valid: false,
+        }
+      }
+    }
+    parsedFilter = {
+      environment: (f.environment as string[]) || [],
+      project_type: (f.project_type as string[]) || [],
+    }
+  }
+
+  if (
+    obj.description !== undefined &&
+    obj.description !== null &&
+    typeof obj.description !== 'string'
+  ) {
+    return { error: '"description" must be a string or null.', valid: false }
+  }
+
+  const blueprint: BlueprintCreate = {
+    kind: bpKind as 'node' | 'relationship',
+    name: (obj.name as string).trim(),
+    ...(bpKind === 'relationship'
+      ? {
+          edge: (obj.edge as string).trim(),
+          source: (obj.source as string).trim(),
+          target: (obj.target as string).trim(),
+          type: null,
+        }
+      : { type: obj.type as string }),
+    json_schema: jsonSchema,
+    ...(obj.slug ? { slug: obj.slug as string } : {}),
+    ...(obj.description !== undefined
+      ? { description: obj.description as null | string }
+      : {}),
+    ...(obj.enabled !== undefined ? { enabled: obj.enabled as boolean } : {}),
+    ...(obj.priority !== undefined ? { priority: obj.priority as number } : {}),
+    ...(parsedFilter ? { filter: parsedFilter } : {}),
+  }
+
+  return { blueprint, valid: true }
 }

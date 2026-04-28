@@ -1,12 +1,13 @@
 import type { CSSProperties, ReactNode } from 'react'
+
 import { useTheme } from '@/contexts/ThemeContext'
 import { deriveChipColors } from '@/lib/chip-colors'
 import { cn } from '@/lib/utils'
 
 interface LabelChipProps {
-  hex: string
   children: ReactNode
   className?: string
+  hex: string
   style?: CSSProperties
   title?: string
 }
@@ -17,9 +18,9 @@ interface LabelChipProps {
  * Used for environment labels, blueprint type chips, and any user-picked color label.
  */
 export function LabelChip({
-  hex,
   children,
   className,
+  hex,
   style,
   title,
 }: LabelChipProps) {
@@ -27,7 +28,6 @@ export function LabelChip({
   const derived = deriveChipColors(hex, isDarkMode)
   return (
     <span
-      title={title}
       className={cn(
         'inline-flex items-center whitespace-nowrap rounded-sm border px-2 py-0.5 text-xs font-medium',
         className,
@@ -36,12 +36,13 @@ export function LabelChip({
         derived
           ? {
               backgroundColor: derived.bg,
-              color: derived.fg,
               borderColor: derived.border,
+              color: derived.fg,
               ...style,
             }
           : style
       }
+      title={title}
     >
       {children}
     </span>

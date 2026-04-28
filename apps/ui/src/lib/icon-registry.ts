@@ -1,72 +1,63 @@
 import type { ComponentType, SVGProps } from 'react'
 
+export interface AgentIconManifest {
+  sets: {
+    count: number
+    description: string
+    examples: string[]
+    id: string
+    label: string
+    valueFormat: string
+  }[]
+}
+
 export type IconComponent = ComponentType<
   SVGProps<SVGSVGElement> & { size?: number | string }
 >
 
 export interface IconEntry {
+  keywords?: string[]
   label: string
   value: string
-  keywords?: string[]
 }
 
 export interface IconSetDefinition {
-  id: string
-  label: string
   description: string
-  valueFormat: string
   icons: IconEntry[]
-  resolve: (value: string) => IconComponent | null
-  resolveUrl: (value: string, color?: string) => string | null
-}
-
-export interface IconSetMeta {
   id: string
   label: string
-  description: string
+  resolve: (value: string) => IconComponent | null
+  resolveUrl: (value: string, color?: string) => null | string
   valueFormat: string
 }
 
 export interface IconSetLoader {
-  meta: IconSetMeta
+  load: () => Promise<IconSetDefinition>
   // Does this loader own `value`? Evaluated in insertion order; first match wins.
   matches: (value: string) => boolean
-  load: () => Promise<IconSetDefinition>
+  meta: IconSetMeta
 }
 
-export interface AgentIconManifest {
-  sets: {
-    id: string
-    label: string
-    description: string
-    valueFormat: string
-    examples: string[]
-    count: number
-  }[]
+export interface IconSetMeta {
+  description: string
+  id: string
+  label: string
+  valueFormat: string
 }
 
 type Listener = () => void
 
 export class IconRegistry {
-  private loaders: Map<string, IconSetLoader> = new Map()
-  private sets: Map<string, IconSetDefinition> = new Map()
-  private loadPromises: Map<string, Promise<IconSetDefinition>> = new Map()
   private cachedMetas: IconSetMeta[] | null = null
   private cachedSets: IconSetDefinition[] | null = null
   private listeners: Set<Listener> = new Set()
+  private loaders: Map<string, IconSetLoader> = new Map()
+  private loadPromises: Map<string, Promise<IconSetDefinition>> = new Map()
+  private sets: Map<string, IconSetDefinition> = new Map()
   private version = 0
 
-  registerLoader(loader: IconSetLoader): void {
-    this.loaders.set(loader.meta.id, loader)
-    this.cachedMetas = null
-    this.emit()
-  }
-
-  register(set: IconSetDefinition): void {
-    this.sets.set(set.id, set)
-    this.cachedSets = null
-    this.cachedMetas = null
-    this.emit()
+  getLoadedSet(id: string): IconSetDefinition | null {
+    return this.sets.get(id) ?? null
   }
 
   getSetMetas(): IconSetMeta[] {
@@ -81,9 +72,9 @@ export class IconRegistry {
       for (const set of this.sets.values()) {
         if (seen.has(set.id)) continue
         metas.push({
+          description: set.description,
           id: set.id,
           label: set.label,
-          description: set.description,
           valueFormat: set.valueFormat,
         })
       }
@@ -101,8 +92,8 @@ export class IconRegistry {
     return this.cachedSets
   }
 
-  getLoadedSet(id: string): IconSetDefinition | null {
-    return this.sets.get(id) ?? null
+  getVersion(): number {
+    return this.version
   }
 
   isLoaded(id: string): boolean {
@@ -138,6 +129,19 @@ export class IconRegistry {
     return Promise.resolve(null)
   }
 
+  register(set: IconSetDefinition): void {
+    this.sets.set(set.id, set)
+    this.cachedSets = null
+    this.cachedMetas = null
+    this.emit()
+  }
+
+  registerLoader(loader: IconSetLoader): void {
+    this.loaders.set(loader.meta.id, loader)
+    this.cachedMetas = null
+    this.emit()
+  }
+
   resolve(value: string): IconComponent | null {
     for (const set of this.sets.values()) {
       const result = set.resolve(value)
@@ -146,7 +150,7 @@ export class IconRegistry {
     return null
   }
 
-  resolveUrl(value: string, color?: string): string | null {
+  resolveUrl(value: string, color?: string): null | string {
     for (const set of this.sets.values()) {
       const result = set.resolveUrl(value, color)
       if (result !== null) return result
@@ -175,19 +179,6 @@ export class IconRegistry {
     return results
   }
 
-  toAgentManifest(): AgentIconManifest {
-    return {
-      sets: this.getSets().map((set) => ({
-        id: set.id,
-        label: set.label,
-        description: set.description,
-        valueFormat: set.valueFormat,
-        examples: set.icons.slice(0, 4).map((i) => i.value),
-        count: set.icons.length,
-      })),
-    }
-  }
-
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener)
     return () => {
@@ -195,8 +186,17 @@ export class IconRegistry {
     }
   }
 
-  getVersion(): number {
-    return this.version
+  toAgentManifest(): AgentIconManifest {
+    return {
+      sets: this.getSets().map((set) => ({
+        count: set.icons.length,
+        description: set.description,
+        examples: set.icons.slice(0, 4).map((i) => i.value),
+        id: set.id,
+        label: set.label,
+        valueFormat: set.valueFormat,
+      })),
+    }
   }
 
   private emit(): void {

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+
 import {
   ArrowLeft,
   Edit2,
@@ -7,28 +8,30 @@ import {
   Key,
   Webhook,
 } from 'lucide-react'
+
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { OAuth2ApplicationList } from './OAuth2ApplicationList'
-import { ServiceWebhookList } from './ServiceWebhookList'
-import { useOrganization } from '@/contexts/OrganizationContext'
 import { EntityIcon } from '@/components/ui/entity-icon'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import { statusBadgeVariant } from '@/lib/status-colors'
-import { Badge } from '@/components/ui/badge'
 import type { ThirdPartyService } from '@/types'
 
+import { OAuth2ApplicationList } from './OAuth2ApplicationList'
+import { ServiceWebhookList } from './ServiceWebhookList'
+
+type DetailTab = 'applications' | 'details' | 'webhooks'
+
 interface ThirdPartyServiceDetailProps {
-  service: ThirdPartyService
-  onEdit: () => void
   onBack: () => void
+  onEdit: () => void
+  service: ThirdPartyService
 }
 
-type DetailTab = 'details' | 'applications' | 'webhooks'
-
 export function ThirdPartyServiceDetail({
-  service,
-  onEdit,
   onBack,
+  onEdit,
+  service,
 }: ThirdPartyServiceDetailProps) {
   const { selectedOrganization } = useOrganization()
   const [activeTab, setActiveTab] = useState<DetailTab>('details')
@@ -38,10 +41,10 @@ export function ThirdPartyServiceDetail({
   const linkEntries = Object.entries(service.links || {})
   const identifierEntries = Object.entries(service.identifiers || {})
 
-  const tabs: { id: DetailTab; label: string; icon: typeof Info }[] = [
-    { id: 'details', label: 'Details', icon: Info },
-    { id: 'applications', label: 'Applications', icon: Key },
-    { id: 'webhooks', label: 'Webhooks', icon: Webhook },
+  const tabs: { icon: typeof Info; id: DetailTab; label: string }[] = [
+    { icon: Info, id: 'details', label: 'Details' },
+    { icon: Key, id: 'applications', label: 'Applications' },
+    { icon: Webhook, id: 'webhooks', label: 'Webhooks' },
   ]
 
   return (
@@ -51,7 +54,7 @@ export function ThirdPartyServiceDetail({
         <>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Button variant="outline" onClick={onBack}>
+              <Button onClick={onBack} variant="outline">
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back
               </Button>
@@ -59,8 +62,8 @@ export function ThirdPartyServiceDetail({
                 <div className="flex items-center gap-3">
                   {service.icon && (
                     <EntityIcon
-                      icon={service.icon}
                       className="h-8 w-8 rounded object-cover"
+                      icon={service.icon}
                     />
                   )}
                   <CardTitle>{service.name}</CardTitle>
@@ -74,8 +77,8 @@ export function ThirdPartyServiceDetail({
               </div>
             </div>
             <Button
-              onClick={onEdit}
               className="bg-action text-action-foreground hover:bg-action-hover"
+              onClick={onEdit}
             >
               <Edit2 className="mr-2 h-4 w-4" />
               Edit Service
@@ -90,13 +93,13 @@ export function ThirdPartyServiceDetail({
                 const isActive = activeTab === tab.id
                 return (
                   <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
                     className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
                       isActive
                         ? 'border-info text-info'
                         : 'border-transparent text-secondary hover:text-primary'
                     }`}
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
                   >
                     <Icon className="h-4 w-4" />
                     {tab.label}
@@ -156,10 +159,10 @@ export function ThirdPartyServiceDetail({
                   <div className="mt-1">
                     {service.service_url ? (
                       <a
-                        href={service.service_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
                         className="hover:text-info/80 inline-flex items-center gap-1 text-sm text-info"
+                        href={service.service_url}
+                        rel="noopener noreferrer"
+                        target="_blank"
                       >
                         {service.service_url}
                         <ExternalLink className="h-3 w-3" />
@@ -186,10 +189,10 @@ export function ThirdPartyServiceDetail({
                       <div className="text-sm text-secondary">{label}</div>
                       <div className="mt-1">
                         <a
-                          href={String(url)}
-                          target="_blank"
-                          rel="noopener noreferrer"
                           className="hover:text-info/80 inline-flex items-center gap-1 text-sm text-info"
+                          href={String(url)}
+                          rel="noopener noreferrer"
+                          target="_blank"
                         >
                           {String(url)}
                           <ExternalLink className="h-3 w-3" />
@@ -230,22 +233,22 @@ export function ThirdPartyServiceDetail({
       {/* Applications Tab */}
       {activeTab === 'applications' && (
         <OAuth2ApplicationList
-          orgSlug={selectedOrganization?.slug || ''}
-          serviceSlug={service.slug}
           onViewModeChange={(mode) =>
             setAppDetailActive(mode === 'create' || mode === 'edit')
           }
+          orgSlug={selectedOrganization?.slug || ''}
+          serviceSlug={service.slug}
         />
       )}
 
       {/* Webhooks Tab */}
       {activeTab === 'webhooks' && (
         <ServiceWebhookList
-          orgSlug={selectedOrganization?.slug || ''}
-          serviceSlug={service.slug}
           onViewModeChange={(mode) =>
             setWebhookDetailActive(mode === 'detail' || mode === 'edit')
           }
+          orgSlug={selectedOrganization?.slug || ''}
+          serviceSlug={service.slug}
         />
       )}
     </div>

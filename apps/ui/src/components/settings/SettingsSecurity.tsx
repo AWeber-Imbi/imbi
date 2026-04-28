@@ -1,8 +1,8 @@
-import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Switch } from '@/components/ui/switch'
+import { Card } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/hooks/useAuth'
 
 export function SettingsSecurity() {
@@ -43,9 +43,9 @@ export function SettingsSecurity() {
                   </p>
                 </div>
                 <Badge
-                  variant="outline"
                   className="border-green-200 bg-green-50 text-green-700"
                   style={{ borderWidth: '0.5px' }}
+                  variant="outline"
                 >
                   Active
                 </Badge>
@@ -74,9 +74,9 @@ export function SettingsSecurity() {
               <Switch defaultChecked />
             </div>
             <Button
-              variant="outline"
               className=""
               style={{ borderWidth: '0.5px' }}
+              variant="outline"
             >
               View active sessions
             </Button>
@@ -94,9 +94,9 @@ export function SettingsSecurity() {
             View a history of access to your account
           </p>
           <Button
-            variant="outline"
             className=""
             style={{ borderWidth: '0.5px' }}
+            variant="outline"
           >
             View access logs
           </Button>

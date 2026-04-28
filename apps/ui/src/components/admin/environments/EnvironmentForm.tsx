@@ -1,41 +1,43 @@
 import { useState } from 'react'
+
 import { useQuery } from '@tanstack/react-query'
 import { AlertCircle } from 'lucide-react'
-import { Input } from '@/components/ui/input'
-import { Card, CardContent } from '@/components/ui/card'
-import { ErrorBanner } from '@/components/ui/error-banner'
-import { IconUpload } from '@/components/ui/icon-upload'
-import { IconPicker } from '@/components/ui/icon-picker'
-import { ColorPicker } from '@/components/ui/color-picker'
+
+import { getEnvironmentSchema } from '@/api/endpoints'
 import { FormHeader } from '@/components/admin/form-header'
+import { Card, CardContent } from '@/components/ui/card'
+import { ColorPicker } from '@/components/ui/color-picker'
 import {
   DynamicFormFields,
   validateDynamicFields,
 } from '@/components/ui/dynamic-fields'
+import { ErrorBanner } from '@/components/ui/error-banner'
+import { IconPicker } from '@/components/ui/icon-picker'
+import { IconUpload } from '@/components/ui/icon-upload'
+import { Input } from '@/components/ui/input'
 import { useOrganization } from '@/contexts/OrganizationContext'
-import { getEnvironmentSchema } from '@/api/endpoints'
-import { ENVIRONMENT_BASE_FIELDS_SET } from '@/lib/constants'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
+import { ENVIRONMENT_BASE_FIELDS_SET } from '@/lib/constants'
 import { extractDynamicFields, slugify } from '@/lib/utils'
 import type { Environment, EnvironmentCreate } from '@/types'
 
 interface EnvironmentFormProps {
   environment: Environment | null
-  onSave: (orgSlug: string, env: EnvironmentCreate) => void
-  onCancel: () => void
-  isLoading?: boolean
   error?: unknown
+  isLoading?: boolean
+  onCancel: () => void
+  onSave: (orgSlug: string, env: EnvironmentCreate) => void
 }
 
 export function EnvironmentForm({
   environment,
-  onSave,
-  onCancel,
-  isLoading = false,
   error,
+  isLoading = false,
+  onCancel,
+  onSave,
 }: EnvironmentFormProps) {
   const isEditing = !!environment
-  const { selectedOrganization, organizations } = useOrganization()
+  const { organizations, selectedOrganization } = useOrganization()
 
   const [name, setName] = useState(environment?.name || '')
   const [slug, setSlug] = useState(environment?.slug || '')
@@ -59,8 +61,8 @@ export function EnvironmentForm({
   )
 
   const { data: envSchema } = useQuery({
-    queryKey: ['environmentSchema'],
     queryFn: ({ signal }) => getEnvironmentSchema(signal),
+    queryKey: ['environmentSchema'],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -87,14 +89,14 @@ export function EnvironmentForm({
     if (!validate()) return
 
     onSave(orgSlug, {
-      name: name.trim(),
-      slug: slug.trim(),
-      sort_order: parseInt(sortOrder, 10) || 0,
       description: description.trim() || null,
       icon: icon.trim() || null,
       label_color: /^#[0-9A-Fa-f]{6}$/.test(labelColor)
         ? labelColor.toUpperCase()
         : null,
+      name: name.trim(),
+      slug: slug.trim(),
+      sort_order: parseInt(sortOrder, 10) || 0,
       ...dynamicFormData,
     })
   }
@@ -126,43 +128,43 @@ export function EnvironmentForm({
     <div className="space-y-6">
       {/* Header */}
       <FormHeader
-        title={isEditing ? 'Edit Environment' : 'Create New Environment'}
+        createLabel="Create Environment"
+        isEditing={isEditing}
+        isLoading={isLoading}
+        onCancel={onCancel}
+        onSave={handleSave}
         subtitle={
           isEditing
             ? 'Update environment information'
             : 'Create a new environment'
         }
-        isEditing={isEditing}
-        isLoading={isLoading}
-        onCancel={onCancel}
-        onSave={handleSave}
-        createLabel="Create Environment"
+        title={isEditing ? 'Edit Environment' : 'Create New Environment'}
       />
 
       {/* API Error */}
       {!!error && (
-        <ErrorBanner title="Failed to save environment" error={error} />
+        <ErrorBanner error={error} title="Failed to save environment" />
       )}
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form className="space-y-6" onSubmit={handleSubmit}>
         <Card>
           <CardContent className="space-y-4 pt-6">
             <div>
               <label
-                htmlFor="environment-org"
                 className="mb-1.5 block text-sm text-secondary"
+                htmlFor="environment-org"
               >
                 Organization <span className="text-red-500">*</span>
               </label>
               <select
-                id="environment-org"
-                value={orgSlug}
-                onChange={(e) => setOrgSlug(e.target.value)}
-                disabled={isEditing || isLoading || organizations.length <= 1}
                 className={`w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing || isLoading || organizations.length <= 1 ? 'cursor-not-allowed opacity-60' : ''} ${
                   errors.organization ? 'border-red-500' : ''
                 }`}
+                disabled={isEditing || isLoading || organizations.length <= 1}
+                id="environment-org"
+                onChange={(e) => setOrgSlug(e.target.value)}
+                value={orgSlug}
               >
                 <option value="">Select organization...</option>
                 {organizations.map((org) => (
@@ -184,18 +186,18 @@ export function EnvironmentForm({
             >
               <div>
                 <label
-                  htmlFor="environment-name"
                   className="mb-1.5 block text-sm text-secondary"
+                  htmlFor="environment-name"
                 >
                   Environment Name <span className="text-red-500">*</span>
                 </label>
                 <Input
+                  className={` ${errors.name ? 'border-red-500' : ''}`}
+                  disabled={isLoading}
                   id="environment-name"
-                  value={name}
                   onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="e.g., Production"
-                  disabled={isLoading}
-                  className={` ${errors.name ? 'border-red-500' : ''}`}
+                  value={name}
                 />
                 {errors.name && (
                   <div className="mt-1 flex items-center gap-1 text-xs text-danger">
@@ -208,18 +210,18 @@ export function EnvironmentForm({
               {!isEditing && (
                 <div>
                   <label
-                    htmlFor="environment-slug"
                     className="mb-1.5 block text-sm text-secondary"
+                    htmlFor="environment-slug"
                   >
                     Slug <span className="text-red-500">*</span>
                   </label>
                   <Input
+                    className={` ${errors.slug ? 'border-red-500' : ''}`}
+                    disabled={isLoading}
                     id="environment-slug"
-                    value={slug}
                     onChange={(e) => setSlug(e.target.value)}
                     placeholder="e.g., production"
-                    disabled={isLoading}
-                    className={` ${errors.slug ? 'border-red-500' : ''}`}
+                    value={slug}
                   />
                   {errors.slug && (
                     <div className="mt-1 flex items-center gap-1 text-xs text-danger">
@@ -233,19 +235,19 @@ export function EnvironmentForm({
 
             <div>
               <label
-                htmlFor="environment-sort-order"
                 className="mb-1.5 block text-sm text-secondary"
+                htmlFor="environment-sort-order"
               >
                 Sort Order
               </label>
               <Input
+                className="w-32"
+                disabled={isLoading}
                 id="environment-sort-order"
-                type="number"
-                value={sortOrder}
                 onChange={(e) => setSortOrder(e.target.value)}
                 placeholder="0"
-                disabled={isLoading}
-                className="w-32"
+                type="number"
+                value={sortOrder}
               />
               <p className="mt-1 text-xs text-tertiary">
                 Controls display order (lower numbers appear first)
@@ -254,19 +256,19 @@ export function EnvironmentForm({
 
             <div>
               <label
-                htmlFor="environment-description"
                 className="mb-1.5 block text-sm text-secondary"
+                htmlFor="environment-description"
               >
                 Description
               </label>
               <textarea
-                id="environment-description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                disabled={isLoading}
-                placeholder="Brief description of this environment"
                 className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground"
+                disabled={isLoading}
+                id="environment-description"
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Brief description of this environment"
+                rows={3}
+                value={description}
               />
             </div>
 
@@ -278,12 +280,12 @@ export function EnvironmentForm({
                 <div>
                   <p className="mb-1.5 text-xs text-tertiary">Pick an icon</p>
                   <IconPicker
+                    onChange={handleIconChange}
                     value={
                       !icon.startsWith('/') && !icon.startsWith('http')
                         ? icon
                         : ''
                     }
-                    onChange={handleIconChange}
                   />
                 </div>
                 <div>
@@ -291,32 +293,32 @@ export function EnvironmentForm({
                     Or upload a custom image
                   </p>
                   <IconUpload
+                    onChange={handleIconChange}
                     value={
                       icon.startsWith('/') || icon.startsWith('http')
                         ? icon
                         : ''
                     }
-                    onChange={handleIconChange}
                   />
                 </div>
               </div>
             </div>
 
             <ColorPicker
-              value={labelColor}
-              onChange={setLabelColor}
-              objectType="environment"
               labelValue={name}
+              objectType="environment"
+              onChange={setLabelColor}
+              value={labelColor}
             />
 
             {/* Dynamic Blueprint Fields */}
             {envSchema && (
               <DynamicFormFields
-                schema={envSchema}
                 data={dynamicFormData}
                 errors={errors}
-                onChange={handleDynamicFieldChange}
                 isLoading={isLoading}
+                onChange={handleDynamicFieldChange}
+                schema={envSchema}
               />
             )}
           </CardContent>

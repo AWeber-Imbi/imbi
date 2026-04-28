@@ -1,10 +1,10 @@
 interface StatWidgetProps {
+  icon: string
   title: string
   value: string
-  icon: string
 }
 
-export function StatWidget({ title, value, icon }: StatWidgetProps) {
+export function StatWidget({ icon, title, value }: StatWidgetProps) {
   return (
     <div className="rounded-lg border border-border bg-card p-6">
       <div className="flex items-center justify-between">

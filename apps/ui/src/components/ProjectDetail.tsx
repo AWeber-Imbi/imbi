@@ -1,59 +1,62 @@
+import { useCallback, useEffect, useMemo } from 'react'
+
+import { useNavigate } from 'react-router-dom'
+
+import { useQuery } from '@tanstack/react-query'
+import { formatDistanceToNow } from 'date-fns'
 import {
-  TrendingUp,
-  TrendingDown,
-  Settings2 as SettingsIcon,
   ArrowRight,
   Rocket,
+  Settings2 as SettingsIcon,
+  TrendingDown,
+  TrendingUp,
 } from 'lucide-react'
-import { getIcon, useIconRegistryVersion } from '@/lib/icons'
+
+import {
+  getProjectSchema,
+  listCurrentReleases,
+  listLinkDefinitions,
+  listProjectNotes,
+  listProjectTypes,
+  listTeams,
+} from '@/api/endpoints'
+import { ProjectNotesTab } from '@/components/notes/ProjectNotesTab'
+import { OperationsLog } from '@/components/OperationsLog'
+import { ProjectAttributesSection } from '@/components/ProjectAttributesSection'
+import { ProjectEnvironmentsCard } from '@/components/ProjectEnvironmentsCard'
+import { ProjectRelationshipsTab } from '@/components/ProjectRelationshipsTab'
+import { ProjectSettingsTab } from '@/components/ProjectSettingsTab'
 import { Button } from '@/components/ui/button'
 import {
   Card,
+  CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
-  CardDescription,
-  CardContent,
 } from '@/components/ui/card'
-import { LabelChip } from '@/components/ui/label-chip'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipProvider,
-} from '@/components/ui/tooltip'
-import { useCallback, useEffect, useMemo } from 'react'
-import { formatDistanceToNow } from 'date-fns'
-import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { useOrganization } from '@/contexts/OrganizationContext'
-import { sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
-import {
-  listLinkDefinitions,
-  getProjectSchema,
-  listProjectNotes,
-  listTeams,
-  listProjectTypes,
-  listCurrentReleases,
-} from '@/api/endpoints'
-import { OperationsLog } from '@/components/OperationsLog'
-import type { Project } from '@/types'
+import { InlineMultiSelect } from '@/components/ui/inline-edit/InlineMultiSelect'
+import { InlineSelect } from '@/components/ui/inline-edit/InlineSelect'
 import { InlineText } from '@/components/ui/inline-edit/InlineText'
 import { InlineTextarea } from '@/components/ui/inline-edit/InlineTextarea'
-import { InlineSelect } from '@/components/ui/inline-edit/InlineSelect'
-import { InlineMultiSelect } from '@/components/ui/inline-edit/InlineMultiSelect'
+import { LabelChip } from '@/components/ui/label-chip'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
-import { ProjectRelationshipsTab } from '@/components/ProjectRelationshipsTab'
-import { ProjectEnvironmentsCard } from '@/components/ProjectEnvironmentsCard'
-import { ProjectAttributesSection } from '@/components/ProjectAttributesSection'
-import { ProjectSettingsTab } from '@/components/ProjectSettingsTab'
-import { ProjectNotesTab } from '@/components/notes/ProjectNotesTab'
+import { getIcon, useIconRegistryVersion } from '@/lib/icons'
+import { sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
+import type { Project } from '@/types'
 
 interface ProjectDetailProps {
-  project: Project
-  initialTab?: string
-  initialSubId?: string
   initialSubAction?: string
+  initialSubId?: string
+  initialTab?: string
+  project: Project
 }
 
 const VALID_TABS = [
@@ -72,10 +75,10 @@ type TabType = (typeof VALID_TABS)[number]
 const VALID_TAB_SET: Set<string> = new Set(VALID_TABS)
 
 export function ProjectDetail({
-  project,
-  initialTab,
-  initialSubId,
   initialSubAction,
+  initialSubId,
+  initialTab,
+  project,
 }: ProjectDetailProps) {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug || ''
@@ -109,27 +112,27 @@ export function ProjectDetail({
   const healthTrend = isDev ? 'down' : null
 
   const { data: currentReleases = [] } = useQuery({
-    queryKey: ['currentReleases', orgSlug, project.id],
-    queryFn: ({ signal }) => listCurrentReleases(orgSlug, project.id, signal),
     enabled: !!orgSlug && !!project.id,
+    queryFn: ({ signal }) => listCurrentReleases(orgSlug, project.id, signal),
+    queryKey: ['currentReleases', orgSlug, project.id],
   })
 
   const deploymentStatus: Record<
     string,
-    { version: string; status: string; updated: string }
+    { status: string; updated: string; version: string }
   > = useMemo(() => {
     const out: Record<
       string,
-      { version: string; status: string; updated: string }
+      { status: string; updated: string; version: string }
     > = {}
     for (const row of currentReleases) {
       if (!row.release || !row.last_event_at) continue
       out[row.environment.slug] = {
-        version: row.release.version,
         status: row.current_status ?? '',
         updated: formatDistanceToNow(new Date(row.last_event_at), {
           addSuffix: true,
         }),
+        version: row.release.version,
       }
     }
     return out
@@ -138,46 +141,46 @@ export function ProjectDetail({
   const feed = isDev
     ? [
         {
-          user: 'Scott Miller',
           action: 'deployed in',
           environment: 'Testing',
-          version: '(1962b02)',
           time: 'Nov 22, 2025, 12:28 PM',
+          user: 'Scott Miller',
+          version: '(1962b02)',
         },
         {
-          user: 'Scott Miller',
           action: 'deployed in',
           environment: 'Production',
-          version: '(1.0.11)',
           time: 'Nov 21, 2025, 4:09 PM',
+          user: 'Scott Miller',
+          version: '(1.0.11)',
         },
         {
-          user: 'Scott Miller',
           action: 'deployed in',
           environment: 'Staging',
-          version: '(1.0.11)',
           time: 'Nov 21, 2025, 4:08 PM',
+          user: 'Scott Miller',
+          version: '(1.0.11)',
         },
         {
-          user: 'Scott Miller',
           action: 'deployed in',
           environment: 'Testing',
-          version: '(d504611)',
           time: 'Nov 21, 2025, 4:08 PM',
+          user: 'Scott Miller',
+          version: '(d504611)',
         },
         {
-          user: 'Scott Miller',
           action: 'deployed in',
           environment: 'Production',
-          version: '(1.0.10)',
           time: 'Nov 21, 2025, 3:50 PM',
+          user: 'Scott Miller',
+          version: '(1.0.10)',
         },
         {
-          user: 'Scott Miller',
           action: 'deployed in',
           environment: 'Testing',
-          version: '(089f7fd)',
           time: 'Nov 21, 2025, 3:45 PM',
+          user: 'Scott Miller',
+          version: '(089f7fd)',
         },
       ]
     : []
@@ -188,32 +191,32 @@ export function ProjectDetail({
   )
 
   const { data: linkDefs = [] } = useQuery({
-    queryKey: ['linkDefinitions', orgSlug],
-    queryFn: ({ signal }) => listLinkDefinitions(orgSlug, signal),
     enabled: !!orgSlug,
+    queryFn: ({ signal }) => listLinkDefinitions(orgSlug, signal),
+    queryKey: ['linkDefinitions', orgSlug],
   })
 
   const { data: projectSchema } = useQuery({
-    queryKey: ['projectSchema', orgSlug, project.id],
-    queryFn: ({ signal }) => getProjectSchema(orgSlug, project.id, signal),
     enabled: !!orgSlug,
+    queryFn: ({ signal }) => getProjectSchema(orgSlug, project.id, signal),
+    queryKey: ['projectSchema', orgSlug, project.id],
   })
 
   const { data: teams = [] } = useQuery({
-    queryKey: ['teams', orgSlug],
-    queryFn: ({ signal }) => listTeams(orgSlug, signal),
     enabled: !!orgSlug,
+    queryFn: ({ signal }) => listTeams(orgSlug, signal),
+    queryKey: ['teams', orgSlug],
   })
   const { data: projectTypes = [] } = useQuery({
-    queryKey: ['projectTypes', orgSlug],
-    queryFn: ({ signal }) => listProjectTypes(orgSlug, signal),
     enabled: !!orgSlug,
+    queryFn: ({ signal }) => listProjectTypes(orgSlug, signal),
+    queryKey: ['projectTypes', orgSlug],
   })
   const { data: projectNotes = [] } = useQuery({
-    queryKey: ['projectNotes', orgSlug, project.id],
+    enabled: !!orgSlug && !!project.id,
     queryFn: ({ signal }) =>
       listProjectNotes(orgSlug, project.id, undefined, signal),
-    enabled: !!orgSlug && !!project.id,
+    queryKey: ['projectNotes', orgSlug, project.id],
   })
 
   // Bumps when an icon-set chunk finishes loading; include in useMemo deps
@@ -233,10 +236,10 @@ export function ProjectDetail({
           if (!safeUrl) return null
           const def = linkDefMap[key]
           return {
-            key,
-            url: safeUrl,
             Icon: getIcon(def?.icon),
+            key,
             label: def?.name || key.replace(/_/g, ' '),
+            url: safeUrl,
           }
         })
         .filter((link): link is NonNullable<typeof link> => link !== null),
@@ -245,12 +248,12 @@ export function ProjectDetail({
   )
 
   const teamOptions = useMemo(
-    () => teams.map((t) => ({ value: t.slug, label: t.name })),
+    () => teams.map((t) => ({ label: t.name, value: t.slug })),
     [teams],
   )
 
   const projectTypeOptions = useMemo(
-    () => projectTypes.map((pt) => ({ value: pt.slug, label: pt.name })),
+    () => projectTypes.map((pt) => ({ label: pt.name, value: pt.slug })),
     [projectTypes],
   )
 
@@ -260,11 +263,11 @@ export function ProjectDetail({
   const divider = 'border-tertiary'
 
   const handleCommitName = useCallback(
-    (v: string | null) => patch('/name', v ?? ''),
+    (v: null | string) => patch('/name', v ?? ''),
     [patch],
   )
   const handleCommitDescription = useCallback(
-    (v: string | null) => patch('/description', v),
+    (v: null | string) => patch('/description', v),
     [patch],
   )
   const handleCommitTeamSlug = useCallback(
@@ -272,7 +275,7 @@ export function ProjectDetail({
     [patch],
   )
   const handleCommitSlug = useCallback(
-    (v: string | null) => patch('/slug', v ?? ''),
+    (v: null | string) => patch('/slug', v ?? ''),
     [patch],
   )
   const handleCommitProjectTypeSlugs = useCallback(
@@ -319,11 +322,11 @@ export function ProjectDetail({
           <div className="min-w-0 flex-1">
             <div className="-ml-[18px] mb-1 flex items-center gap-3">
               <InlineText
-                value={project.name}
+                className="text-[1.75rem]"
                 onCommit={handleCommitName}
                 pending={pendingPath === '/name'}
-                className="text-[1.75rem]"
                 renderValue={renderNameValue}
+                value={project.name}
               />
             </div>
           </div>
@@ -337,14 +340,14 @@ export function ProjectDetail({
                   const deployment = deploymentStatus[env.slug]
                   const color = env.label_color
                   return (
-                    <span key={env.slug} className="contents">
+                    <span className="contents" key={env.slug}>
                       {idx > 0 && (
                         <ArrowRight className="h-4 w-4 text-tertiary" />
                       )}
                       {color ? (
                         <LabelChip
-                          hex={color}
                           className="rounded-md px-3 py-1.5 text-sm"
+                          hex={color}
                         >
                           {env.name}: {deployment.version}
                         </LabelChip>
@@ -358,9 +361,9 @@ export function ProjectDetail({
                 })}
               {isDev && (
                 <Button
-                  variant="outline"
-                  size="sm"
                   className="ml-4 border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                  size="sm"
+                  variant="outline"
                 >
                   <Rocket className="mr-1 h-4 w-4" />
                   Deploy
@@ -372,11 +375,11 @@ export function ProjectDetail({
 
         <div className="-ml-[18px] mt-3 text-secondary">
           <InlineTextarea
-            value={project.description ?? null}
             onCommit={handleCommitDescription}
             pending={pendingPath === '/description'}
             placeholder="Add a description…"
             rows={2}
+            value={project.description ?? null}
           />
         </div>
 
@@ -384,16 +387,16 @@ export function ProjectDetail({
         {externalLinks.length > 0 && (
           <div className="mt-3 flex flex-wrap items-center gap-3">
             {externalLinks.map(
-              ({ key, url, Icon, label: linkLabel }, index) => (
-                <span key={key} className="flex items-center gap-1.5">
+              ({ Icon, key, label: linkLabel, url }, index) => (
+                <span className="flex items-center gap-1.5" key={key}>
                   {index > 0 && <span className="mr-1.5 text-tertiary">|</span>}
                   <a
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
                     className={
                       'flex items-center gap-1.5 text-sm text-warning hover:underline'
                     }
+                    href={url}
+                    rel="noopener noreferrer"
+                    target="_blank"
                   >
                     <Icon className="h-4 w-4" />
                     <span>{linkLabel}</span>
@@ -406,17 +409,17 @@ export function ProjectDetail({
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
+      <Tabs onValueChange={handleTabChange} value={activeTab}>
         <TabsList className="mb-6">
           {tabs.map((tab) =>
             tab.id === 'settings' ? (
-              <TooltipProvider key={tab.id} delayDuration={200}>
+              <TooltipProvider delayDuration={200} key={tab.id}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <TabsTrigger
-                      value={tab.id}
                       aria-label="Project Settings"
                       className="ml-auto"
+                      value={tab.id}
                     >
                       <SettingsIcon className="h-4 w-4" />
                     </TabsTrigger>
@@ -449,10 +452,10 @@ export function ProjectDetail({
                     >
                       <span className={`text-sm ${label}`}>Team</span>
                       <InlineSelect
-                        value={project.team.slug}
-                        options={teamOptions}
                         onCommit={handleCommitTeamSlug}
+                        options={teamOptions}
                         pending={pendingPath === '/team_slug'}
+                        value={project.team.slug}
                       />
                     </div>
 
@@ -461,10 +464,10 @@ export function ProjectDetail({
                     >
                       <span className={`text-sm ${label}`}>Slug</span>
                       <InlineText
-                        value={project.slug}
                         onCommit={handleCommitSlug}
                         pending={pendingPath === '/slug'}
                         renderValue={renderSlugValue}
+                        value={project.slug}
                       />
                     </div>
 
@@ -473,12 +476,12 @@ export function ProjectDetail({
                     >
                       <span className={`text-sm ${label}`}>Project types</span>
                       <InlineMultiSelect
+                        onCommit={handleCommitProjectTypeSlugs}
+                        options={projectTypeOptions}
+                        pending={pendingPath === '/project_type_slugs'}
                         values={(project.project_types || []).map(
                           (pt) => pt.slug,
                         )}
-                        options={projectTypeOptions}
-                        onCommit={handleCommitProjectTypeSlugs}
-                        pending={pendingPath === '/project_type_slugs'}
                       />
                     </div>
 
@@ -510,10 +513,10 @@ export function ProjectDetail({
                     )}
 
                     <ProjectAttributesSection
-                      project={project}
-                      projectSchema={projectSchema}
                       patch={patch}
                       pendingPath={pendingPath}
+                      project={project}
+                      projectSchema={projectSchema}
                     />
                   </div>
                 </CardContent>
@@ -522,8 +525,8 @@ export function ProjectDetail({
               {/* Environments */}
               {sortedEnvironments.length > 0 && (
                 <ProjectEnvironmentsCard
-                  environments={sortedEnvironments}
                   deploymentStatus={deploymentStatus}
+                  environments={sortedEnvironments}
                 />
               )}
             </div>
@@ -582,7 +585,7 @@ export function ProjectDetail({
                   <CardContent>
                     <div className="space-y-4">
                       {feed.map((item, index) => (
-                        <div key={index} className="flex items-start gap-2.5">
+                        <div className="flex items-start gap-2.5" key={index}>
                           <div className="min-w-0 flex-1">
                             <p className={`text-sm leading-snug ${value}`}>
                               <span className="font-medium">{item.user}</span>{' '}
@@ -624,8 +627,8 @@ export function ProjectDetail({
         <TabsContent value="relationships">
           <ProjectRelationshipsTab
             orgSlug={project.team.organization.slug}
-            projectId={project.id}
             project={project}
+            projectId={project.id}
           />
         </TabsContent>
         <TabsContent value="dependencies">
@@ -636,6 +639,8 @@ export function ProjectDetail({
         </TabsContent>
         <TabsContent value="notes">
           <ProjectNotesTab
+            initialAction={activeTab === 'notes' ? initialSubAction : undefined}
+            initialNoteId={activeTab === 'notes' ? initialSubId : undefined}
             orgSlug={project.team.organization.slug}
             projectId={project.id}
             projectTypeSlugs={
@@ -645,16 +650,14 @@ export function ProjectDetail({
                   ? [project.project_type.slug]
                   : []
             }
-            initialNoteId={activeTab === 'notes' ? initialSubId : undefined}
-            initialAction={activeTab === 'notes' ? initialSubAction : undefined}
           />
         </TabsContent>
         <TabsContent value="operations-log">
           <OperationsLog
-            projectSlug={project.slug}
-            showSummary={false}
-            showHeader={false}
             embedded
+            projectSlug={project.slug}
+            showHeader={false}
+            showSummary={false}
           />
         </TabsContent>
         <TabsContent value="settings">

@@ -1,30 +1,270 @@
 import { useState } from 'react'
+
 import { useQueryClient } from '@tanstack/react-query'
+import { Lock, Shield } from 'lucide-react'
 import { toast } from 'sonner'
-import { Shield, Lock } from 'lucide-react'
-import { formatRelativeDate } from '@/lib/formatDate'
-import { extractApiErrorDetail } from '@/lib/apiError'
-import { Badge } from '@/components/ui/badge'
-import { AdminTable } from '@/components/ui/admin-table'
-import type { CanDeleteResult } from '@/components/ui/admin-table'
-import { AdminSection } from './AdminSection'
-import { RoleForm } from './roles/RoleForm'
-import { RoleDetail } from './roles/RoleDetail'
-import { useAdminNav } from '@/hooks/useAdminNav'
-import { useAdminCrud } from '@/hooks/useAdminCrud'
+
 import {
-  getRoles,
-  getRole,
-  deleteRole,
   createRole,
-  updateRole,
+  deleteRole,
+  getRole,
+  getRoles,
   grantPermission,
   revokePermission,
+  updateRole,
 } from '@/api/endpoints'
+import { AdminTable } from '@/components/ui/admin-table'
+import type { CanDeleteResult } from '@/components/ui/admin-table'
+import { Badge } from '@/components/ui/badge'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
+import { useAdminNav } from '@/hooks/useAdminNav'
+import { extractApiErrorDetail } from '@/lib/apiError'
+import { formatRelativeDate } from '@/lib/formatDate'
 import { buildDiffPatch } from '@/lib/json-patch'
-import type { RoleDetail as RoleDetailType, RoleCreate } from '@/types'
+import type { RoleCreate, RoleDetail as RoleDetailType } from '@/types'
+
+import { AdminSection } from './AdminSection'
+import { RoleDetail } from './roles/RoleDetail'
+import { RoleForm } from './roles/RoleForm'
 
 type Role = Awaited<ReturnType<typeof getRoles>>[number]
+
+export function RoleManagement() {
+  const {
+    goToCreate,
+    goToDetail,
+    goToEdit,
+    goToList,
+    slug: selectedRoleSlug,
+    viewMode,
+  } = useAdminNav()
+  const [searchQuery, setSearchQuery] = useState('')
+  const queryClient = useQueryClient()
+
+  // When the role write succeeded but a subset of permission grants/revokes
+  // failed, the server state is genuinely different from both the pre-mutation
+  // and the requested post-mutation state. Invalidate the role caches so the
+  // client refetches the true state and surface the sync failure as a
+  // non-blocking toast — the role *did* commit, so we don't strand the user
+  // on the create form (for a role that now exists) or on the old slug after
+  // an edit-time rename.
+  const invalidateRoleCaches = (slug: string) => {
+    queryClient.invalidateQueries({ queryKey: ['roles'] })
+    queryClient.invalidateQueries({ queryKey: ['role', slug] })
+  }
+
+  const reportPermissionSyncFailure = (err: unknown) => {
+    toast.error(
+      `Role saved, but some permission changes failed: ${extractApiErrorDetail(err)}`,
+    )
+  }
+
+  const {
+    createMutation,
+    deleteMutation,
+    error,
+    isLoading,
+    items: roles,
+    updateMutation,
+  } = useAdminCrud<
+    Role,
+    { permissions: string[]; role: RoleCreate },
+    { permissions: string[]; role: RoleCreate; slug: string },
+    string
+  >({
+    createFn: async ({ permissions, role }) => {
+      const created = await createRole(role)
+      if (permissions.length > 0) {
+        try {
+          await syncPermissions(created.slug, permissions)
+        } catch (err) {
+          // The role itself committed — don't strand the user on a "new role"
+          // form for a role that already exists. Refetch and toast instead.
+          invalidateRoleCaches(created.slug)
+          reportPermissionSyncFailure(err)
+        }
+      }
+    },
+    deleteErrorLabel: 'role',
+    deleteFn: deleteRole,
+    extraInvalidateKeys: [['role']],
+    listFn: getRoles,
+    onMutationSuccess: goToList,
+    queryKey: ['roles'],
+    updateFn: async ({ permissions, role, slug }) => {
+      const existing = await getRole(slug)
+      const operations = buildDiffPatch(
+        existing as unknown as Record<string, unknown>,
+        role as unknown as Record<string, unknown>,
+        { fields: Object.keys(role) },
+      )
+      const updated =
+        operations.length > 0 ? await updateRole(slug, operations) : existing
+      try {
+        await syncPermissions(updated.slug, permissions)
+      } catch (err) {
+        // The role write committed (the slug may even have changed). Let the
+        // success path navigate away and surface the partial sync failure as
+        // a non-blocking toast.
+        invalidateRoleCaches(updated.slug)
+        reportPermissionSyncFailure(err)
+      }
+    },
+  })
+
+  // Filter roles locally
+  const filteredRoles = roles.filter((role) => {
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      return (
+        role.name.toLowerCase().includes(query) ||
+        role.slug.toLowerCase().includes(query) ||
+        (role.description?.toLowerCase().includes(query) ?? false)
+      )
+    }
+    return true
+  })
+
+  const handleDelete = (role: Role) => {
+    deleteMutation.mutate(role.slug)
+  }
+
+  const canDeleteRole = (role: Role): CanDeleteResult => {
+    if (isSystemRole(role))
+      return { allowed: false, reason: 'System roles cannot be deleted' }
+    return { allowed: true }
+  }
+
+  const handleSave = (roleData: RoleCreate, permissions: string[]) => {
+    if (viewMode === 'create') {
+      createMutation.mutate({ permissions, role: roleData })
+    } else if (selectedRoleSlug) {
+      updateMutation.mutate({
+        permissions,
+        role: roleData,
+        slug: selectedRoleSlug,
+      })
+    }
+  }
+
+  const handleCancel = () => {
+    goToList()
+  }
+
+  if (viewMode === 'create' || viewMode === 'edit') {
+    const isCreate = viewMode === 'create'
+    return (
+      <RoleForm
+        error={isCreate ? createMutation.error : updateMutation.error}
+        isLoading={
+          isCreate ? createMutation.isPending : updateMutation.isPending
+        }
+        onCancel={handleCancel}
+        onSave={handleSave}
+        roleSlug={selectedRoleSlug}
+      />
+    )
+  }
+
+  if (viewMode === 'detail' && selectedRoleSlug) {
+    return (
+      <RoleDetail
+        onBack={handleCancel}
+        onEdit={() => goToEdit(selectedRoleSlug)}
+        slug={selectedRoleSlug}
+      />
+    )
+  }
+
+  return (
+    <AdminSection
+      createLabel="New Role"
+      error={error}
+      errorTitle="Failed to load roles"
+      isLoading={isLoading}
+      loadingLabel="Loading roles..."
+      onCreate={goToCreate}
+      onSearchChange={setSearchQuery}
+      search={searchQuery}
+      searchPlaceholder="Search roles..."
+    >
+      <AdminTable
+        canDelete={canDeleteRole}
+        columns={[
+          {
+            cellAlign: 'left',
+            header: 'Role',
+            headerAlign: 'left',
+            key: 'name',
+            render: (role) => (
+              <div className="flex items-center gap-2">
+                <Shield className="h-4 w-4 flex-shrink-0 text-info" />
+                <span className="text-sm font-medium text-primary">
+                  {role.name}
+                </span>
+              </div>
+            ),
+          },
+          {
+            cellAlign: 'center',
+            header: 'Slug',
+            headerAlign: 'center',
+            key: 'slug',
+            render: (role) => (
+              <span className="font-mono text-sm text-secondary">
+                {role.slug}
+              </span>
+            ),
+          },
+          {
+            cellAlign: 'left',
+            header: 'Description',
+            headerAlign: 'left',
+            key: 'description',
+            render: (role) => (
+              <span className="text-sm text-secondary">
+                {role.description || '-'}
+              </span>
+            ),
+          },
+          {
+            cellAlign: 'center',
+            header: 'Type',
+            headerAlign: 'center',
+            key: 'type',
+            render: (role) =>
+              isSystemRole(role) ? (
+                <Badge className="gap-1" variant="warning">
+                  <Lock className="h-3 w-3" />
+                  System
+                </Badge>
+              ) : (
+                <Badge variant="info">Custom</Badge>
+              ),
+          },
+          {
+            cellAlign: 'center',
+            header: 'Last Updated',
+            headerAlign: 'center',
+            key: 'updated',
+            render: (role) => formatRelativeDate(role.updated_at),
+          },
+        ]}
+        emptyMessage={
+          searchQuery ? 'No roles match your search' : 'No roles created yet'
+        }
+        getDeleteLabel={(role) => role.name}
+        getRowKey={(role) => role.slug}
+        isDeleting={deleteMutation.isPending}
+        onDelete={handleDelete}
+        onRowClick={(role) =>
+          isSystemRole(role) ? goToDetail(role.slug) : goToEdit(role.slug)
+        }
+        rows={filteredRoles}
+      />
+    </AdminSection>
+  )
+}
 
 function isSystemRole(
   role: Role,
@@ -60,12 +300,12 @@ async function syncPermissions(slug: string, desired: string[]) {
   )
 
   const failures = results
-    .map((r, i) => ({ result: r, op: operations[i] }))
+    .map((r, i) => ({ op: operations[i], result: r }))
     .filter(({ result }) => result.status === 'rejected')
 
   if (failures.length > 0) {
     const detail = failures
-      .map(({ result, op }) => {
+      .map(({ op, result }) => {
         const reason =
           result.status === 'rejected'
             ? extractApiErrorDetail(result.reason, 'unknown')
@@ -77,241 +317,4 @@ async function syncPermissions(slug: string, desired: string[]) {
       `Permission sync partially failed (${failures.length}/${operations.length}): ${detail}`,
     )
   }
-}
-
-export function RoleManagement() {
-  const {
-    viewMode,
-    slug: selectedRoleSlug,
-    goToList,
-    goToCreate,
-    goToEdit,
-    goToDetail,
-  } = useAdminNav()
-  const [searchQuery, setSearchQuery] = useState('')
-  const queryClient = useQueryClient()
-
-  // When the role write succeeded but a subset of permission grants/revokes
-  // failed, the server state is genuinely different from both the pre-mutation
-  // and the requested post-mutation state. Invalidate the role caches so the
-  // client refetches the true state and surface the sync failure as a
-  // non-blocking toast — the role *did* commit, so we don't strand the user
-  // on the create form (for a role that now exists) or on the old slug after
-  // an edit-time rename.
-  const invalidateRoleCaches = (slug: string) => {
-    queryClient.invalidateQueries({ queryKey: ['roles'] })
-    queryClient.invalidateQueries({ queryKey: ['role', slug] })
-  }
-
-  const reportPermissionSyncFailure = (err: unknown) => {
-    toast.error(
-      `Role saved, but some permission changes failed: ${extractApiErrorDetail(err)}`,
-    )
-  }
-
-  const {
-    items: roles,
-    isLoading,
-    error,
-    createMutation,
-    updateMutation,
-    deleteMutation,
-  } = useAdminCrud<
-    Role,
-    { role: RoleCreate; permissions: string[] },
-    { slug: string; role: RoleCreate; permissions: string[] },
-    string
-  >({
-    queryKey: ['roles'],
-    listFn: getRoles,
-    createFn: async ({ role, permissions }) => {
-      const created = await createRole(role)
-      if (permissions.length > 0) {
-        try {
-          await syncPermissions(created.slug, permissions)
-        } catch (err) {
-          // The role itself committed — don't strand the user on a "new role"
-          // form for a role that already exists. Refetch and toast instead.
-          invalidateRoleCaches(created.slug)
-          reportPermissionSyncFailure(err)
-        }
-      }
-    },
-    updateFn: async ({ slug, role, permissions }) => {
-      const existing = await getRole(slug)
-      const operations = buildDiffPatch(
-        existing as unknown as Record<string, unknown>,
-        role as unknown as Record<string, unknown>,
-        { fields: Object.keys(role) },
-      )
-      const updated =
-        operations.length > 0 ? await updateRole(slug, operations) : existing
-      try {
-        await syncPermissions(updated.slug, permissions)
-      } catch (err) {
-        // The role write committed (the slug may even have changed). Let the
-        // success path navigate away and surface the partial sync failure as
-        // a non-blocking toast.
-        invalidateRoleCaches(updated.slug)
-        reportPermissionSyncFailure(err)
-      }
-    },
-    deleteFn: deleteRole,
-    onMutationSuccess: goToList,
-    extraInvalidateKeys: [['role']],
-    deleteErrorLabel: 'role',
-  })
-
-  // Filter roles locally
-  const filteredRoles = roles.filter((role) => {
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      return (
-        role.name.toLowerCase().includes(query) ||
-        role.slug.toLowerCase().includes(query) ||
-        (role.description?.toLowerCase().includes(query) ?? false)
-      )
-    }
-    return true
-  })
-
-  const handleDelete = (role: Role) => {
-    deleteMutation.mutate(role.slug)
-  }
-
-  const canDeleteRole = (role: Role): CanDeleteResult => {
-    if (isSystemRole(role))
-      return { allowed: false, reason: 'System roles cannot be deleted' }
-    return { allowed: true }
-  }
-
-  const handleSave = (roleData: RoleCreate, permissions: string[]) => {
-    if (viewMode === 'create') {
-      createMutation.mutate({ role: roleData, permissions })
-    } else if (selectedRoleSlug) {
-      updateMutation.mutate({
-        slug: selectedRoleSlug,
-        role: roleData,
-        permissions,
-      })
-    }
-  }
-
-  const handleCancel = () => {
-    goToList()
-  }
-
-  if (viewMode === 'create' || viewMode === 'edit') {
-    const isCreate = viewMode === 'create'
-    return (
-      <RoleForm
-        roleSlug={selectedRoleSlug}
-        onSave={handleSave}
-        onCancel={handleCancel}
-        isLoading={
-          isCreate ? createMutation.isPending : updateMutation.isPending
-        }
-        error={isCreate ? createMutation.error : updateMutation.error}
-      />
-    )
-  }
-
-  if (viewMode === 'detail' && selectedRoleSlug) {
-    return (
-      <RoleDetail
-        slug={selectedRoleSlug}
-        onEdit={() => goToEdit(selectedRoleSlug)}
-        onBack={handleCancel}
-      />
-    )
-  }
-
-  return (
-    <AdminSection
-      searchPlaceholder="Search roles..."
-      search={searchQuery}
-      onSearchChange={setSearchQuery}
-      createLabel="New Role"
-      onCreate={goToCreate}
-      isLoading={isLoading}
-      loadingLabel="Loading roles..."
-      error={error}
-      errorTitle="Failed to load roles"
-    >
-      <AdminTable
-        columns={[
-          {
-            key: 'name',
-            header: 'Role',
-            headerAlign: 'left',
-            cellAlign: 'left',
-            render: (role) => (
-              <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4 flex-shrink-0 text-info" />
-                <span className="text-sm font-medium text-primary">
-                  {role.name}
-                </span>
-              </div>
-            ),
-          },
-          {
-            key: 'slug',
-            header: 'Slug',
-            headerAlign: 'center',
-            cellAlign: 'center',
-            render: (role) => (
-              <span className="font-mono text-sm text-secondary">
-                {role.slug}
-              </span>
-            ),
-          },
-          {
-            key: 'description',
-            header: 'Description',
-            headerAlign: 'left',
-            cellAlign: 'left',
-            render: (role) => (
-              <span className="text-sm text-secondary">
-                {role.description || '-'}
-              </span>
-            ),
-          },
-          {
-            key: 'type',
-            header: 'Type',
-            headerAlign: 'center',
-            cellAlign: 'center',
-            render: (role) =>
-              isSystemRole(role) ? (
-                <Badge variant="warning" className="gap-1">
-                  <Lock className="h-3 w-3" />
-                  System
-                </Badge>
-              ) : (
-                <Badge variant="info">Custom</Badge>
-              ),
-          },
-          {
-            key: 'updated',
-            header: 'Last Updated',
-            headerAlign: 'center',
-            cellAlign: 'center',
-            render: (role) => formatRelativeDate(role.updated_at),
-          },
-        ]}
-        rows={filteredRoles}
-        getRowKey={(role) => role.slug}
-        getDeleteLabel={(role) => role.name}
-        onRowClick={(role) =>
-          isSystemRole(role) ? goToDetail(role.slug) : goToEdit(role.slug)
-        }
-        onDelete={handleDelete}
-        canDelete={canDeleteRole}
-        isDeleting={deleteMutation.isPending}
-        emptyMessage={
-          searchQuery ? 'No roles match your search' : 'No roles created yet'
-        }
-      />
-    </AdminSection>
-  )
 }

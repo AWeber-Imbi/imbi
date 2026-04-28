@@ -2,6 +2,8 @@
 import Ajv from 'ajv'
 import addFormats from 'ajv-formats'
 import { AlertCircle } from 'lucide-react'
+
+import type { DynamicFieldSchema, DynamicSchema } from '@/api/endpoints'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -10,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { DynamicFieldSchema, DynamicSchema } from '@/api/endpoints'
 
 // Radix SelectItem rejects empty-string values, so use a sentinel to represent
 // an unset non-required enum field (preserves the clear-via-placeholder
@@ -20,61 +21,58 @@ const UNSET_VALUE = '__unset__'
 const ajv = new Ajv({ allErrors: true })
 addFormats(ajv)
 
-function toTitleCase(key: string): string {
-  return key
-    .split('_')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
+interface DynamicDetailFieldsProps {
+  data: Record<string, unknown>
+  schema: DynamicSchema
 }
 
-function getInputType(field: DynamicFieldSchema): string {
-  if (field.format === 'email') return 'email'
-  if (field.format === 'uri' || field.format === 'url') return 'url'
-  if (field.type === 'integer' || field.type === 'number') return 'number'
-  return 'text'
+interface DynamicFormFieldsProps {
+  data: Record<string, unknown>
+  errors: Record<string, string>
+  isLoading?: boolean
+  onChange: (key: string, value: unknown) => void
+  schema: DynamicSchema
 }
 
-export function validateDynamicFields(
-  schema: DynamicSchema,
-  data: Record<string, unknown>,
-): Record<string, string> {
-  const jsonSchema = {
-    type: 'object' as const,
-    properties: schema.properties,
-    ...(schema.required?.length ? { required: schema.required } : {}),
-  }
-  const validate = ajv.compile(jsonSchema)
-  validate(data)
-  const fieldErrors: Record<string, string> = {}
-  if (validate.errors) {
-    for (const err of validate.errors) {
-      const field =
-        err.instancePath?.replace(/^\//, '') ||
-        ((err.params as Record<string, unknown>)?.missingProperty as string)
-      if (field) {
-        fieldErrors[field] = err.message || 'Invalid value'
-      }
-    }
-  }
-  return fieldErrors
+export function DynamicDetailFields({
+  data,
+  schema,
+}: DynamicDetailFieldsProps) {
+  const fields = Object.entries(schema.properties)
+  if (fields.length === 0) return null
+
+  return (
+    <>
+      {fields.map(([key, field]) => {
+        const label = field.title || toTitleCase(key)
+        const value = data[key]
+        if (value === undefined || value === null || value === '') return null
+
+        return (
+          <div key={key}>
+            <div className="text-sm text-secondary">{label}</div>
+            <div className="mt-1 text-primary">
+              {typeof value === 'boolean'
+                ? value
+                  ? 'Yes'
+                  : 'No'
+                : String(value)}
+            </div>
+          </div>
+        )
+      })}
+    </>
+  )
 }
 
 // --- Form mode: editable fields ---
 
-interface DynamicFormFieldsProps {
-  schema: DynamicSchema
-  data: Record<string, unknown>
-  errors: Record<string, string>
-  onChange: (key: string, value: unknown) => void
-  isLoading?: boolean
-}
-
 export function DynamicFormFields({
-  schema,
   data,
   errors,
-  onChange,
   isLoading = false,
+  onChange,
+  schema,
 }: DynamicFormFieldsProps) {
   const fields = Object.entries(schema.properties)
   if (fields.length === 0) return null
@@ -95,11 +93,11 @@ export function DynamicFormFields({
                 {isRequired && <span className="text-red-500"> *</span>}
               </label>
               <Select
-                value={value || (!isRequired ? UNSET_VALUE : '')}
+                disabled={isLoading}
                 onValueChange={(v) =>
                   onChange(key, v === UNSET_VALUE ? undefined : v)
                 }
-                disabled={isLoading}
+                value={value || (!isRequired ? UNSET_VALUE : '')}
               >
                 <SelectTrigger className={fieldError ? 'border-red-500' : ''}>
                   <SelectValue
@@ -134,18 +132,18 @@ export function DynamicFormFields({
 
         if (field.type === 'boolean') {
           return (
-            <div key={key} className="flex items-center gap-2">
+            <div className="flex items-center gap-2" key={key}>
               <input
-                type="checkbox"
-                id={`dynamic-${key}`}
                 checked={!!data[key]}
-                onChange={(e) => onChange(key, e.target.checked)}
-                disabled={isLoading}
                 className="rounded border-gray-300"
+                disabled={isLoading}
+                id={`dynamic-${key}`}
+                onChange={(e) => onChange(key, e.target.checked)}
+                type="checkbox"
               />
               <label
-                htmlFor={`dynamic-${key}`}
                 className="text-sm text-secondary"
+                htmlFor={`dynamic-${key}`}
               >
                 {label}
               </label>
@@ -165,8 +163,12 @@ export function DynamicFormFields({
               {isRequired && <span className="text-red-500"> *</span>}
             </label>
             <Input
-              type={getInputType(field)}
-              value={value}
+              className={` ${fieldError ? 'border-red-500' : ''}`}
+              disabled={isLoading}
+              max={field.maximum}
+              maxLength={field.maxLength}
+              min={field.minimum}
+              minLength={field.minLength}
               onChange={(e) => {
                 const raw = e.target.value
                 if (raw === '') return onChange(key, undefined)
@@ -176,12 +178,8 @@ export function DynamicFormFields({
                   return onChange(key, Number.parseFloat(raw))
                 return onChange(key, raw)
               }}
-              disabled={isLoading}
-              min={field.minimum}
-              max={field.maximum}
-              minLength={field.minLength}
-              maxLength={field.maxLength}
-              className={` ${fieldError ? 'border-red-500' : ''}`}
+              type={getInputType(field)}
+              value={value}
             />
             {field.description && (
               <p className="mt-1 text-xs text-tertiary">{field.description}</p>
@@ -199,40 +197,43 @@ export function DynamicFormFields({
   )
 }
 
-// --- Detail mode: read-only display ---
-
-interface DynamicDetailFieldsProps {
-  schema: DynamicSchema
-  data: Record<string, unknown>
+export function validateDynamicFields(
+  schema: DynamicSchema,
+  data: Record<string, unknown>,
+): Record<string, string> {
+  const jsonSchema = {
+    properties: schema.properties,
+    type: 'object' as const,
+    ...(schema.required?.length ? { required: schema.required } : {}),
+  }
+  const validate = ajv.compile(jsonSchema)
+  validate(data)
+  const fieldErrors: Record<string, string> = {}
+  if (validate.errors) {
+    for (const err of validate.errors) {
+      const field =
+        err.instancePath?.replace(/^\//, '') ||
+        ((err.params as Record<string, unknown>)?.missingProperty as string)
+      if (field) {
+        fieldErrors[field] = err.message || 'Invalid value'
+      }
+    }
+  }
+  return fieldErrors
 }
 
-export function DynamicDetailFields({
-  schema,
-  data,
-}: DynamicDetailFieldsProps) {
-  const fields = Object.entries(schema.properties)
-  if (fields.length === 0) return null
+// --- Detail mode: read-only display ---
 
-  return (
-    <>
-      {fields.map(([key, field]) => {
-        const label = field.title || toTitleCase(key)
-        const value = data[key]
-        if (value === undefined || value === null || value === '') return null
+function getInputType(field: DynamicFieldSchema): string {
+  if (field.format === 'email') return 'email'
+  if (field.format === 'uri' || field.format === 'url') return 'url'
+  if (field.type === 'integer' || field.type === 'number') return 'number'
+  return 'text'
+}
 
-        return (
-          <div key={key}>
-            <div className="text-sm text-secondary">{label}</div>
-            <div className="mt-1 text-primary">
-              {typeof value === 'boolean'
-                ? value
-                  ? 'Yes'
-                  : 'No'
-                : String(value)}
-            </div>
-          </div>
-        )
-      })}
-    </>
-  )
+function toTitleCase(key: string): string {
+  return key
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
 }

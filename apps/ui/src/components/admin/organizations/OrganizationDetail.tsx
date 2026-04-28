@@ -1,4 +1,5 @@
-import { ArrowLeft, Edit2, Building2 } from 'lucide-react'
+import { ArrowLeft, Building2, Edit2 } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EntityIcon } from '@/components/ui/entity-icon'
@@ -6,21 +7,21 @@ import { formatDate } from '@/lib/formatDate'
 import type { Organization } from '@/types'
 
 interface OrganizationDetailProps {
-  organization: Organization
-  onEdit: () => void
   onBack: () => void
+  onEdit: () => void
+  organization: Organization
 }
 
 export function OrganizationDetail({
-  organization,
-  onEdit,
   onBack,
+  onEdit,
+  organization,
 }: OrganizationDetailProps) {
   return (
     <div className="space-y-6">
       {/* Back button */}
       <div>
-        <Button variant="outline" onClick={onBack}>
+        <Button onClick={onBack} variant="outline">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
@@ -32,8 +33,8 @@ export function OrganizationDetail({
           <div className="flex items-center gap-3">
             {organization.icon ? (
               <EntityIcon
-                icon={organization.icon}
                 className="h-8 w-8 rounded object-cover"
+                icon={organization.icon}
               />
             ) : (
               <Building2 className="h-6 w-6 text-secondary" />
@@ -46,8 +47,8 @@ export function OrganizationDetail({
             </div>
           </div>
           <Button
-            onClick={onEdit}
             className="bg-action text-action-foreground hover:bg-action-hover"
+            onClick={onEdit}
           >
             <Edit2 className="mr-2 h-4 w-4" />
             Edit Organization

@@ -1,6 +1,6 @@
-import { Navigation } from '@/components/Navigation'
-import { CommandBar } from '@/components/CommandBar'
 import { Admin } from '@/components/Admin'
+import { CommandBar } from '@/components/CommandBar'
+import { Navigation } from '@/components/Navigation'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 export function AdminPage() {

@@ -1,38 +1,25 @@
 /* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
+  type ReactNode,
   useContext,
-  useState,
   useEffect,
   useLayoutEffect,
   useMemo,
-  type ReactNode,
+  useState,
 } from 'react'
 
-type Theme = 'light' | 'dark'
+type Theme = 'dark' | 'light'
 
 const THEME_STORAGE_KEY = 'imbi-theme'
 
 interface ThemeContextValue {
-  theme: Theme
   isDarkMode: boolean
+  theme: Theme
   toggleTheme: () => void
 }
 
-const ThemeContext = createContext<ThemeContextValue | null>(null)
-
-function readStoredTheme(): Theme | null {
-  if (typeof window === 'undefined') return null
-  const stored = window.localStorage.getItem(THEME_STORAGE_KEY)
-  return stored === 'dark' || stored === 'light' ? stored : null
-}
-
-function readSystemTheme(): Theme {
-  if (typeof window === 'undefined') return 'light'
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-    ? 'dark'
-    : 'light'
-}
+const ThemeContext = createContext<null | ThemeContextValue>(null)
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(
@@ -58,8 +45,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<ThemeContextValue>(
     () => ({
-      theme,
       isDarkMode: theme === 'dark',
+      theme,
       toggleTheme: () => {
         setTheme((prev) => {
           const next = prev === 'dark' ? 'light' : 'dark'
@@ -80,4 +67,17 @@ export function useTheme() {
     throw new Error('useTheme must be used within a ThemeProvider')
   }
   return context
+}
+
+function readStoredTheme(): null | Theme {
+  if (typeof window === 'undefined') return null
+  const stored = window.localStorage.getItem(THEME_STORAGE_KEY)
+  return stored === 'dark' || stored === 'light' ? stored : null
+}
+
+function readSystemTheme(): Theme {
+  if (typeof window === 'undefined') return 'light'
+  return window.matchMedia('(prefers-color-scheme: dark)').matches
+    ? 'dark'
+    : 'light'
 }

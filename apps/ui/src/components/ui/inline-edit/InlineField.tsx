@@ -1,79 +1,80 @@
 import type { ReactNode } from 'react'
+
 import type { ProjectSchemaSectionProperty } from '@/api/endpoints'
 import { pickInlineComponent } from '@/components/ui/inline-edit/field-policy'
-import { InlineText } from '@/components/ui/inline-edit/InlineText'
+import { InlineDate } from '@/components/ui/inline-edit/InlineDate'
+import { InlineNumber } from '@/components/ui/inline-edit/InlineNumber'
 import { InlineSelect } from '@/components/ui/inline-edit/InlineSelect'
 import { InlineSwitch } from '@/components/ui/inline-edit/InlineSwitch'
-import { InlineNumber } from '@/components/ui/inline-edit/InlineNumber'
-import { InlineDate } from '@/components/ui/inline-edit/InlineDate'
+import { InlineText } from '@/components/ui/inline-edit/InlineText'
 
 interface InlineFieldProps {
   def: ProjectSchemaSectionProperty
-  raw: unknown
+  display: ReactNode
   onCommit: (value: unknown) => Promise<void>
   pending: boolean
-  display: ReactNode
+  raw: unknown
 }
 
 export function InlineField({
   def,
-  raw,
+  display,
   onCommit,
   pending,
-  display,
+  raw,
 }: InlineFieldProps) {
   const kind = pickInlineComponent(def)
   switch (kind) {
-    case 'select':
+    case 'date':
       return (
-        <InlineSelect
-          value={raw == null ? null : String(raw)}
-          options={(def.enum ?? []).map((v) => ({
-            value: String(v),
-            label: String(v),
-          }))}
+        <InlineDate
+          mode={def.format === 'date-time' ? 'date-time' : 'date'}
           onCommit={onCommit}
           pending={pending}
           renderDisplay={display}
-        />
-      )
-    case 'switch':
-      return (
-        <InlineSwitch
-          value={raw === true || raw === 'true'}
-          onCommit={onCommit}
-          pending={pending}
+          value={raw == null ? null : String(raw)}
         />
       )
     case 'number':
       return (
         <InlineNumber
-          value={raw == null || raw === '' ? null : Number(raw)}
           integer={def.type === 'integer'}
-          min={def.minimum ?? undefined}
           max={def.maximum ?? undefined}
+          min={def.minimum ?? undefined}
           onCommit={onCommit}
           pending={pending}
           renderDisplay={display}
+          value={raw == null || raw === '' ? null : Number(raw)}
         />
       )
-    case 'date':
+    case 'select':
       return (
-        <InlineDate
-          value={raw == null ? null : String(raw)}
-          mode={def.format === 'date-time' ? 'date-time' : 'date'}
+        <InlineSelect
           onCommit={onCommit}
+          options={(def.enum ?? []).map((v) => ({
+            label: String(v),
+            value: String(v),
+          }))}
           pending={pending}
           renderDisplay={display}
+          value={raw == null ? null : String(raw)}
+        />
+      )
+    case 'switch':
+      return (
+        <InlineSwitch
+          onCommit={onCommit}
+          pending={pending}
+          value={raw === true || raw === 'true'}
         />
       )
     default:
       return (
         <InlineText
-          value={raw == null ? null : String(raw)}
           onCommit={onCommit}
           pending={pending}
           renderValue={display != null ? () => display : undefined}
+          value={raw == null ? null : String(raw)}
         />
       )
   }

@@ -1,6 +1,6 @@
+import { CommandBar } from '@/components/CommandBar'
 import { Navigation } from '@/components/Navigation'
 import { ProjectsView } from '@/components/ProjectsView'
-import { CommandBar } from '@/components/CommandBar'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 export function ProjectsPage() {

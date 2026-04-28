@@ -1,12 +1,13 @@
 import { Check } from 'lucide-react'
+
 import { cn } from '@/lib/utils'
 
 interface SavedIndicatorProps {
-  show: boolean
   className?: string
+  show: boolean
 }
 
-export function SavedIndicator({ show, className }: SavedIndicatorProps) {
+export function SavedIndicator({ className, show }: SavedIndicatorProps) {
   return (
     <Check
       aria-hidden

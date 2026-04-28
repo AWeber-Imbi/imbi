@@ -1,22 +1,32 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
-import { extractApiErrorDetail } from '@/lib/apiError'
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  AlertCircle,
   ArrowLeft,
+  Bot,
   Edit2,
-  Shield,
+  Info,
   Lock,
   Plus,
+  Shield,
   Trash2,
-  AlertCircle,
   Users,
   UsersRound,
-  Info,
-  Bot,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { toast } from 'sonner'
+
+import {
+  getAdminSettings,
+  getRole,
+  getRoleGroups,
+  getRoleServiceAccounts,
+  getRoleUsers,
+  grantPermission,
+  revokePermission,
+} from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Gravatar } from '@/components/ui/gravatar'
@@ -29,112 +39,104 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
-  getRole,
-  getAdminSettings,
-  getRoleUsers,
-  getRoleServiceAccounts,
-  getRoleGroups,
-  grantPermission,
-  revokePermission,
-} from '@/api/endpoints'
-import type { Permission, RoleUser, ServiceAccount } from '@/types'
-import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { extractApiErrorDetail } from '@/lib/apiError'
+import type { Permission, RoleUser, ServiceAccount } from '@/types'
+
+type DetailTab = 'groups' | 'permissions' | 'service-accounts' | 'users'
 
 interface RoleDetailProps {
-  slug: string
-  onEdit: () => void
   onBack: () => void
+  onEdit: () => void
+  slug: string
 }
 
-type DetailTab = 'permissions' | 'users' | 'service-accounts' | 'groups'
-
-export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
+export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<DetailTab>('permissions')
   const [showAddPermission, setShowAddPermission] = useState(false)
   const [selectedPermission, setSelectedPermission] = useState('')
-  const [confirm, setConfirm] = useState<{
+  const [confirm, setConfirm] = useState<null | {
     action: 'revoke'
     permName: string
-  } | null>(null)
+  }>(null)
 
   // Fetch role with permissions
   const {
     data: role,
-    isLoading,
     error,
+    isLoading,
   } = useQuery({
-    queryKey: ['role', slug],
     queryFn: ({ signal }) => getRole(slug, signal),
+    queryKey: ['role', slug],
   })
 
   // Fetch admin settings for available permissions
   const { data: adminSettings } = useQuery({
-    queryKey: ['adminSettings'],
     queryFn: ({ signal }) => getAdminSettings(signal),
+    queryKey: ['adminSettings'],
   })
 
   // Fetch users with this role
   const {
     data: roleUsers,
-    isLoading: usersLoading,
     error: usersError,
+    isLoading: usersLoading,
   } = useQuery({
-    queryKey: ['roleUsers', slug],
-    queryFn: ({ signal }) => getRoleUsers(slug, signal),
     enabled: activeTab === 'users',
+    queryFn: ({ signal }) => getRoleUsers(slug, signal),
+    queryKey: ['roleUsers', slug],
   })
 
   // Fetch service accounts with this role
   const {
     data: roleServiceAccounts,
-    isLoading: saLoading,
     error: saError,
+    isLoading: saLoading,
   } = useQuery({
-    queryKey: ['roleServiceAccounts', slug],
-    queryFn: ({ signal }) => getRoleServiceAccounts(slug, signal),
     enabled: activeTab === 'service-accounts',
+    queryFn: ({ signal }) => getRoleServiceAccounts(slug, signal),
+    queryKey: ['roleServiceAccounts', slug],
   })
 
   // Fetch groups with this role
   const {
     data: roleGroups,
-    isLoading: groupsLoading,
     error: groupsError,
+    isLoading: groupsLoading,
   } = useQuery({
-    queryKey: ['roleGroups', slug],
-    queryFn: ({ signal }) => getRoleGroups(slug, signal),
     enabled: activeTab === 'groups',
+    queryFn: ({ signal }) => getRoleGroups(slug, signal),
+    queryKey: ['roleGroups', slug],
   })
 
   // Grant permission mutation
   const grantMutation = useMutation({
     mutationFn: (permName: string) => grantPermission(slug, permName),
+    onError: (error: unknown) => {
+      toast.error(`Failed to grant permission: ${extractApiErrorDetail(error)}`)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['role', slug] })
       setShowAddPermission(false)
       setSelectedPermission('')
-    },
-    onError: (error: unknown) => {
-      toast.error(`Failed to grant permission: ${extractApiErrorDetail(error)}`)
     },
   })
 
   // Revoke permission mutation
   const revokeMutation = useMutation({
     mutationFn: (permName: string) => revokePermission(slug, permName),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['role', slug] })
-    },
     onError: (error: unknown) => {
       toast.error(
         `Failed to revoke permission: ${extractApiErrorDetail(error)}`,
       )
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['role', slug] })
     },
   })
 
@@ -186,18 +188,18 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
     )
   }
 
-  const tabs: { id: DetailTab; label: string; icon: typeof Shield }[] = [
-    { id: 'permissions', label: 'Permissions', icon: Shield },
-    { id: 'users', label: 'Users', icon: Users },
-    { id: 'service-accounts', label: 'Service Accounts', icon: Bot },
-    { id: 'groups', label: 'Groups', icon: UsersRound },
+  const tabs: { icon: typeof Shield; id: DetailTab; label: string }[] = [
+    { icon: Shield, id: 'permissions', label: 'Permissions' },
+    { icon: Users, id: 'users', label: 'Users' },
+    { icon: Bot, id: 'service-accounts', label: 'Service Accounts' },
+    { icon: UsersRound, id: 'groups', label: 'Groups' },
   ]
 
   return (
     <div className="space-y-6">
       {/* Back button */}
       <div>
-        <Button variant="outline" onClick={onBack}>
+        <Button onClick={onBack} variant="outline">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
@@ -214,7 +216,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
               <div className="flex items-center gap-2">
                 <CardTitle>{role.name}</CardTitle>
                 {role.is_system && (
-                  <Badge variant="warning" className="gap-1">
+                  <Badge className="gap-1" variant="warning">
                     <Lock className="h-3 w-3" />
                     System
                   </Badge>
@@ -227,8 +229,8 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
           </div>
           {!role.is_system && (
             <Button
-              onClick={onEdit}
               className="bg-action text-action-foreground hover:bg-action-hover"
+              onClick={onEdit}
             >
               <Edit2 className="mr-2 h-4 w-4" />
               Edit Role
@@ -279,13 +281,13 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
               const isActive = activeTab === tab.id
               return (
                 <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
                     isActive
                       ? 'border-info text-info'
                       : 'border-transparent text-secondary hover:text-primary'
                   }`}
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
                 >
                   <Icon className="h-4 w-4" />
                   {tab.label}
@@ -307,8 +309,8 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                   Assign Permission
                 </h3>
                 <button
-                  onClick={() => setShowAddPermission(!showAddPermission)}
                   className="hover:text-info/80 text-sm text-info"
+                  onClick={() => setShowAddPermission(!showAddPermission)}
                 >
                   {showAddPermission ? 'Cancel' : 'Add Permission'}
                 </button>
@@ -317,9 +319,9 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
               {showAddPermission && (
                 <div className="flex items-center gap-2">
                   <select
-                    value={selectedPermission}
-                    onChange={(e) => setSelectedPermission(e.target.value)}
                     className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+                    onChange={(e) => setSelectedPermission(e.target.value)}
+                    value={selectedPermission}
                   >
                     <option value="">Select a permission...</option>
                     {availablePermissions.map((perm) => (
@@ -329,9 +331,9 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                     ))}
                   </select>
                   <Button
-                    onClick={handleGrantPermission}
-                    disabled={!selectedPermission || grantMutation.isPending}
                     className="bg-action text-action-foreground hover:bg-action-hover"
+                    disabled={!selectedPermission || grantMutation.isPending}
+                    onClick={handleGrantPermission}
                     size="sm"
                   >
                     <Plus className="mr-2 h-4 w-4" />
@@ -385,8 +387,8 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                       .sort((a, b) => a.name.localeCompare(b.name))
                       .map((perm) => (
                         <TableRow
-                          key={perm.name}
                           className="hover:bg-secondary"
+                          key={perm.name}
                         >
                           <TableCell className="px-6 py-4 text-primary">
                             <code className="rounded bg-secondary px-2 py-1 text-sm text-info">
@@ -402,11 +404,11 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <button
+                                      className="rounded p-1.5 text-danger hover:bg-danger"
+                                      disabled={revokeMutation.isPending}
                                       onClick={() =>
                                         handleRevokePermission(perm.name)
                                       }
-                                      disabled={revokeMutation.isPending}
-                                      className="rounded p-1.5 text-danger hover:bg-danger"
                                     >
                                       <Trash2 className="h-4 w-4" />
                                     </button>
@@ -476,14 +478,14 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                 <div className="divide-y divide-tertiary">
                   {roleUsers.map((user: RoleUser) => (
                     <div
-                      key={user.email}
                       className="grid grid-cols-[1fr_auto_auto] items-center gap-4 px-4 py-3"
+                      key={user.email}
                     >
                       <div className="flex min-w-0 items-center gap-3">
                         <Gravatar
+                          className="flex-shrink-0 rounded-full"
                           email={user.email}
                           size={32}
-                          className="flex-shrink-0 rounded-full"
                         />
                         <div className="min-w-0">
                           <div
@@ -576,8 +578,8 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                 <div className="divide-y divide-tertiary">
                   {roleServiceAccounts.map((sa: ServiceAccount) => (
                     <div
-                      key={sa.slug}
                       className="grid grid-cols-[1fr_auto_auto] items-center gap-4 px-4 py-3"
+                      key={sa.slug}
                     >
                       <div className="flex min-w-0 items-center gap-3">
                         <div
@@ -676,13 +678,13 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                 <div className="divide-y divide-tertiary">
                   {roleGroups.map(
                     (group: {
+                      description?: null | string
                       name: string
                       slug: string
-                      description?: string | null
                     }) => (
                       <div
-                        key={group.slug}
                         className="grid grid-cols-[1fr_1fr] items-center gap-4 px-4 py-3"
+                        key={group.slug}
                       >
                         <div className="flex min-w-0 items-center gap-3">
                           <div className="rounded bg-secondary p-1.5">
@@ -718,21 +720,21 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
         </div>
       )}
       <ConfirmDialog
-        open={confirm?.action === 'revoke'}
-        title="Remove permission"
+        confirmLabel="Remove"
         description={
           confirm?.action === 'revoke'
             ? `Remove permission "${confirm.permName}" from this role?`
             : 'This action cannot be undone.'
         }
-        confirmLabel="Remove"
+        onCancel={() => setConfirm(null)}
         onConfirm={() => {
           if (confirm?.action === 'revoke') {
             revokeMutation.mutate(confirm.permName)
           }
           setConfirm(null)
         }}
-        onCancel={() => setConfirm(null)}
+        open={confirm?.action === 'revoke'}
+        title="Remove permission"
       />
     </div>
   )

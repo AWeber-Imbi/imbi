@@ -1,53 +1,57 @@
 import { useEffect, useState } from 'react'
+
+import { useNavigate, useParams } from 'react-router-dom'
+
 import {
-  Users,
-  Shield,
-  FileJson,
-  ChevronRight,
-  ChevronLeft,
-  ExternalLink,
+  Bot,
   Building2,
+  ChevronLeft,
+  ChevronRight,
+  Cloud,
+  ExternalLink,
+  FileJson,
+  FolderTree,
   Globe,
   Layers,
-  FolderTree,
-  UsersRound,
-  Bot,
-  Cloud,
   Link2,
+  Shield,
   StickyNote,
+  Users,
+  UsersRound,
   Webhook,
 } from 'lucide-react'
-import { UserManagement } from './admin/UserManagement'
-import { RoleManagement } from './admin/RoleManagement'
+
+import { Button } from '@/components/ui/button'
+import { useOrganization } from '@/contexts/OrganizationContext'
+
 import { BlueprintManagement } from './admin/BlueprintManagement'
-import { OrganizationManagement } from './admin/OrganizationManagement'
-import { TeamManagement } from './admin/TeamManagement'
-import { ServiceAccountManagement } from './admin/ServiceAccountManagement'
-import { OAuthManagement } from './admin/OAuthManagement'
 import { EnvironmentManagement } from './admin/EnvironmentManagement'
-import { ProjectTypeManagement } from './admin/ProjectTypeManagement'
-import { ThirdPartyServiceManagement } from './admin/ThirdPartyServiceManagement'
 import { LinkDefinitionManagement } from './admin/LinkDefinitionManagement'
 import { NoteTemplateManagement } from './admin/NoteTemplateManagement'
+import { OAuthManagement } from './admin/OAuthManagement'
+import { OrganizationManagement } from './admin/OrganizationManagement'
+import { ProjectTypeManagement } from './admin/ProjectTypeManagement'
+import { RoleManagement } from './admin/RoleManagement'
+import { ServiceAccountManagement } from './admin/ServiceAccountManagement'
+import { TeamManagement } from './admin/TeamManagement'
+import { ThirdPartyServiceManagement } from './admin/ThirdPartyServiceManagement'
+import { UserManagement } from './admin/UserManagement'
 import { WebhookManagement } from './admin/WebhookManagement'
-import { useOrganization } from '@/contexts/OrganizationContext'
-import { useNavigate, useParams } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
 
 type AdminSection =
-  | 'teams'
+  | 'blueprints'
   | 'environments'
-  | 'project-types'
-  | 'third-party-services'
-  | 'webhooks'
   | 'link-definitions'
   | 'note-templates'
-  | 'blueprints'
-  | 'organizations'
-  | 'users'
-  | 'service-accounts'
-  | 'roles'
   | 'oauth'
+  | 'organizations'
+  | 'project-types'
+  | 'roles'
+  | 'service-accounts'
+  | 'teams'
+  | 'third-party-services'
+  | 'users'
+  | 'webhooks'
 
 const VALID_SECTIONS: AdminSection[] = [
   'blueprints',
@@ -65,15 +69,11 @@ const VALID_SECTIONS: AdminSection[] = [
   'webhooks',
 ]
 
-function isValidSection(value: string | undefined): value is AdminSection {
-  return VALID_SECTIONS.includes(value as AdminSection)
-}
-
 interface SectionDef {
+  description: string
+  icon: typeof Users
   id: AdminSection
   label: string
-  icon: typeof Users
-  description: string
   scope: 'org' | 'system'
 }
 
@@ -96,97 +96,97 @@ export function Admin() {
 
   const orgAdminSections: SectionDef[] = [
     {
+      description: 'Configure metadata templates',
+      icon: FileJson,
       id: 'blueprints',
       label: 'Blueprints',
-      icon: FileJson,
-      description: 'Configure metadata templates',
       scope: 'org',
     },
     {
+      description: 'Manage environments',
+      icon: Layers,
       id: 'environments',
       label: 'Environments',
-      icon: Layers,
-      description: 'Manage environments',
       scope: 'org',
     },
     {
+      description: 'Manage link definitions for projects',
+      icon: Link2,
       id: 'link-definitions',
       label: 'Link Definitions',
-      icon: Link2,
-      description: 'Manage link definitions for projects',
       scope: 'org',
     },
     {
+      description: 'Manage reusable note templates',
+      icon: StickyNote,
       id: 'note-templates',
       label: 'Note Templates',
-      icon: StickyNote,
-      description: 'Manage reusable note templates',
       scope: 'org',
     },
     {
+      description: 'Manage project types',
+      icon: FolderTree,
       id: 'project-types',
       label: 'Project Types',
-      icon: FolderTree,
-      description: 'Manage project types',
       scope: 'org',
     },
     {
+      description: 'Manage teams',
+      icon: UsersRound,
       id: 'teams',
       label: 'Teams',
-      icon: UsersRound,
-      description: 'Manage teams',
       scope: 'org',
     },
     {
+      description: 'Manage external SaaS services',
+      icon: Cloud,
       id: 'third-party-services',
       label: 'Third-Party Services',
-      icon: Cloud,
-      description: 'Manage external SaaS services',
       scope: 'org',
     },
     {
+      description: 'Configure inbound webhook processing',
+      icon: Webhook,
       id: 'webhooks',
       label: 'Webhooks',
-      icon: Webhook,
-      description: 'Configure inbound webhook processing',
       scope: 'org',
     },
   ]
 
   const systemAdminSections: SectionDef[] = [
     {
+      description: 'Configure SSO authentication providers',
+      icon: ExternalLink,
       id: 'oauth',
       label: 'OAuth Providers',
-      icon: ExternalLink,
-      description: 'Configure SSO authentication providers',
       scope: 'system',
     },
     {
+      description: 'Manage organizational units and access',
+      icon: Building2,
       id: 'organizations',
       label: 'Organizations',
-      icon: Building2,
-      description: 'Manage organizational units and access',
       scope: 'system',
     },
     {
+      description: 'Define roles and permission collections',
+      icon: Shield,
       id: 'roles',
       label: 'Roles',
-      icon: Shield,
-      description: 'Define roles and permission collections',
       scope: 'system',
     },
     {
+      description: 'Manage service accounts and API keys',
+      icon: Bot,
       id: 'service-accounts',
       label: 'Service Accounts',
-      icon: Bot,
-      description: 'Manage service accounts and API keys',
       scope: 'system',
     },
     {
+      description: 'Manage user accounts and administrators',
+      icon: Users,
       id: 'users',
       label: 'User Management',
-      icon: Users,
-      description: 'Manage user accounts and administrators',
       scope: 'system',
     },
   ]
@@ -199,9 +199,6 @@ export function Admin() {
     const isActive = currentSection === sectionDef.id
     return (
       <Button
-        key={sectionDef.id}
-        variant="ghost"
-        onClick={() => navigate(`/admin/${sectionDef.id}`)}
         className={`h-auto w-full items-start justify-start rounded-lg text-left transition-colors ${
           isCollapsed ? 'justify-center px-3 py-3' : 'px-4 py-3'
         } ${
@@ -209,7 +206,10 @@ export function Admin() {
             ? 'bg-amber-bg text-amber-text hover:bg-amber-bg hover:text-amber-text'
             : 'text-secondary hover:bg-secondary hover:text-primary'
         }`}
+        key={sectionDef.id}
+        onClick={() => navigate(`/admin/${sectionDef.id}`)}
         title={isCollapsed ? sectionDef.label : undefined}
+        variant="ghost"
       >
         <Icon className="mt-0.5 h-5 w-5 flex-shrink-0" />
         {!isCollapsed && (
@@ -243,11 +243,11 @@ export function Admin() {
             style={{ top: '22px' }}
           >
             <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsCollapsed(!isCollapsed)}
               className="h-auto w-auto rounded-lg p-2 text-secondary transition-colors hover:bg-secondary hover:text-primary"
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              size="icon"
               title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              variant="ghost"
             >
               {isCollapsed ? (
                 <ChevronRight className="h-5 w-5" />
@@ -329,4 +329,8 @@ export function Admin() {
       </div>
     </div>
   )
+}
+
+function isValidSection(value: string | undefined): value is AdminSection {
+  return VALID_SECTIONS.includes(value as AdminSection)
 }

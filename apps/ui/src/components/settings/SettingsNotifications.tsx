@@ -1,7 +1,7 @@
-import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Switch } from '@/components/ui/switch'
+import { Card } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
 
 export function SettingsNotifications() {
   return (
@@ -18,18 +18,18 @@ export function SettingsNotifications() {
           </h3>
           <div className="space-y-4">
             <ToggleRow
-              label="Successful deployments"
+              defaultChecked
               description="Get notified when deployments succeed"
-              defaultChecked
+              label="Successful deployments"
             />
             <ToggleRow
-              label="Failed deployments"
+              defaultChecked
               description="Get notified when deployments fail"
-              defaultChecked
+              label="Failed deployments"
             />
             <ToggleRow
-              label="Production deployments only"
               description="Only notify for production environment"
+              label="Production deployments only"
             />
           </div>
         </div>
@@ -43,14 +43,14 @@ export function SettingsNotifications() {
           </h3>
           <div className="space-y-4">
             <ToggleRow
-              label="Health score changes"
-              description="Alert when project health drops below threshold"
               defaultChecked
+              description="Alert when project health drops below threshold"
+              label="Health score changes"
             />
             <ToggleRow
-              label="Configuration changes"
-              description="Notify when project configurations are updated"
               defaultChecked
+              description="Notify when project configurations are updated"
+              label="Configuration changes"
             />
           </div>
         </div>
@@ -64,8 +64,8 @@ export function SettingsNotifications() {
           </h3>
           <div className="space-y-4">
             <ToggleRow
-              label="New operations entries"
               description="Get notified of new operations log entries"
+              label="New operations entries"
             />
           </div>
         </div>
@@ -74,9 +74,9 @@ export function SettingsNotifications() {
 
         <div className="flex justify-end gap-3">
           <Button
-            variant="outline"
             className=""
             style={{ borderWidth: '0.5px' }}
+            variant="outline"
           >
             Reset to defaults
           </Button>
@@ -88,13 +88,13 @@ export function SettingsNotifications() {
 }
 
 function ToggleRow({
-  label,
-  description,
   defaultChecked,
+  description,
+  label,
 }: {
-  label: string
-  description: string
   defaultChecked?: boolean
+  description: string
+  label: string
 }) {
   return (
     <div className="flex items-center justify-between">

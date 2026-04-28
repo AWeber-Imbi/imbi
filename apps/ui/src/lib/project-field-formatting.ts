@@ -1,15 +1,16 @@
 import { formatDistanceToNow } from 'date-fns'
+
 import type { ProjectSchemaSection } from '@/api/endpoints'
 import type { Project } from '@/types'
 
 export const COLOR_TEXT: Record<string, string> = {
-  green: 'text-green-600',
-  red: 'text-red-600',
   amber: 'text-amber-600',
-  yellow: 'text-yellow-600',
   blue: 'text-blue-600',
   gray: 'text-gray-500',
+  green: 'text-green-600',
   grey: 'text-gray-500',
+  red: 'text-red-600',
+  yellow: 'text-yellow-600',
 }
 
 /** Format a snake_case or camelCase key as a readable label */
@@ -35,12 +36,12 @@ export function formatFieldKey(key: string): string {
 export function formatFieldValue(
   value: unknown,
   def?: {
-    type?: string | null
-    format?: string | null
-    minimum?: number | null
-    maximum?: number | null
+    format?: null | string
+    maximum?: null | number
+    minimum?: null | number
+    type?: null | string
   },
-): string | null {
+): null | string {
   if (value === null || value === undefined || value === '') return null
 
   const raw = String(value).trim()
@@ -75,8 +76,8 @@ export function formatFieldValue(
       if (def?.minimum === 0 && def?.maximum === 100) {
         return (
           n.toLocaleString(undefined, {
-            minimumFractionDigits: 2,
             maximumFractionDigits: 2,
+            minimumFractionDigits: 2,
           }) + '%'
         )
       }

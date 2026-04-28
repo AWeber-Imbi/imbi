@@ -1,19 +1,21 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Search } from 'lucide-react'
+
 import { getProjects, setProjectRelationships } from '@/api/endpoints'
-import { useOrganization } from '@/contexts/OrganizationContext'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import type { ProjectRelationship } from '@/types'
 
 interface EditRelationshipsDialogProps {
@@ -77,12 +79,12 @@ export function EditRelationshipsDialog({
 
   const {
     data: allProjects = [],
-    isLoading,
     isError,
+    isLoading,
   } = useQuery({
-    queryKey: ['projects', orgSlug],
-    queryFn: ({ signal }) => getProjects(orgSlug, signal),
     enabled: !!orgSlug && isOpen,
+    queryFn: ({ signal }) => getProjects(orgSlug, signal),
+    queryKey: ['projects', orgSlug],
   })
 
   // All projects except the current one, sorted alphabetically
@@ -144,7 +146,7 @@ export function EditRelationshipsDialog({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog onOpenChange={(open) => !open && onClose()} open={isOpen}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Edit Relationships</DialogTitle>
@@ -157,12 +159,12 @@ export function EditRelationshipsDialog({
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
           <Input
+            className="pl-9"
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search projects..."
             ref={searchRef}
             type="text"
-            placeholder="Search projects..."
-            className="pl-9"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
           />
         </div>
 
@@ -193,10 +195,10 @@ export function EditRelationshipsDialog({
 
               return (
                 <label
-                  key={p.id}
                   className={`flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-slate-50 dark:hover:bg-slate-700 ${
                     isChanged ? 'bg-amber-50 dark:bg-amber-900/30' : ''
                   }`}
+                  key={p.id}
                 >
                   <Checkbox
                     checked={isChecked}
@@ -238,14 +240,14 @@ export function EditRelationshipsDialog({
             )}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={onClose}>
+            <Button onClick={onClose} size="sm" variant="outline">
               Cancel
             </Button>
             <Button
-              size="sm"
               className="bg-action text-action-foreground hover:bg-action-hover"
-              onClick={handleSave}
               disabled={mutation.isPending}
+              onClick={handleSave}
+              size="sm"
             >
               {mutation.isPending
                 ? 'Saving...'

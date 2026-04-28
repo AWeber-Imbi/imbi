@@ -1,23 +1,25 @@
-import { useState, useRef } from 'react'
+import { useRef, useState } from 'react'
+
 import { useMutation } from '@tanstack/react-query'
-import { Upload, X, AlertCircle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { AlertCircle, Upload, X } from 'lucide-react'
+
 import {
-  uploadFile,
-  getUploadThumbnailUrl,
   deleteUpload,
+  getUploadThumbnailUrl,
+  uploadFile,
 } from '@/api/endpoints'
+import { Button } from '@/components/ui/button'
 
 interface IconUploadProps {
-  value?: string
-  onChange: (value: string) => void
   maxSizeKB?: number
+  onChange: (value: string) => void
+  value?: string
 }
 
 export function IconUpload({
-  value,
-  onChange,
   maxSizeKB = 500,
+  onChange,
+  value,
 }: IconUploadProps) {
   const [error, setError] = useState<string>('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -100,19 +102,19 @@ export function IconUpload({
         <div className="inline-flex items-center gap-3 rounded-lg border border-input bg-secondary p-3">
           <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg bg-white">
             <img
-              src={getThumbnailSrc(value)}
               alt="Icon preview"
               className="h-full w-full object-cover"
+              src={getThumbnailSrc(value)}
             />
           </div>
           <div className="text-sm text-secondary">Uploaded icon</div>
           <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={handleRemove}
             aria-label="Remove uploaded icon"
             className="text-danger hover:bg-danger"
+            onClick={handleRemove}
+            size="sm"
+            type="button"
+            variant="ghost"
           >
             <X className="h-4 w-4" />
           </Button>
@@ -122,18 +124,18 @@ export function IconUpload({
       {!value && (
         <div>
           <input
+            accept=".png,.jpg,.jpeg,.svg"
+            className="hidden"
+            onChange={handleFileChange}
             ref={fileInputRef}
             type="file"
-            accept=".png,.jpg,.jpeg,.svg"
-            onChange={handleFileChange}
-            className="hidden"
           />
           <Button
+            className="w-full"
+            disabled={uploadMutation.isPending}
+            onClick={() => fileInputRef.current?.click()}
             type="button"
             variant="outline"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploadMutation.isPending}
-            className="w-full"
           >
             {uploadMutation.isPending ? (
               <>

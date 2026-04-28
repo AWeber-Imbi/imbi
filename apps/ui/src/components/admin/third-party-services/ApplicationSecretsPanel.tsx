@@ -1,74 +1,76 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { ApiError } from '@/api/client'
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  AlertCircle,
+  Check,
+  Copy,
   Eye,
   EyeOff,
-  Copy,
-  Check,
   Save,
   Shield,
-  AlertCircle,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+
+import type { ApiError } from '@/api/client'
 import {
   getApplicationSecrets,
   updateApplicationSecrets,
 } from '@/api/endpoints'
-import { buildDiffPatch } from '@/lib/json-patch'
-import type { PatchOperation } from '@/types'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { buildDiffPatch } from '@/lib/json-patch'
+import type { PatchOperation } from '@/types'
 
 interface ApplicationSecretsPanelProps {
-  orgSlug: string
-  serviceSlug: string
   appSlug: string
   appType: string
+  orgSlug: string
+  serviceSlug: string
 }
 
 const TYPE_SECRET_FIELDS: Record<string, string[]> = {
+  generic_oauth2: ['client_secret', 'signing_secret'],
   github_app: ['client_secret', 'private_key', 'webhook_secret'],
   pagerduty_oauth: ['client_secret'],
-  generic_oauth2: ['client_secret', 'signing_secret'],
 }
 
 const FIELD_LABELS: Record<string, string> = {
   client_secret: 'Client Secret',
-  webhook_secret: 'Webhook Secret',
   private_key: 'Private Key (PEM)',
   signing_secret: 'Signing Secret',
+  webhook_secret: 'Webhook Secret',
 }
 
 export function ApplicationSecretsPanel({
-  orgSlug,
-  serviceSlug,
   appSlug,
   appType,
+  orgSlug,
+  serviceSlug,
 }: ApplicationSecretsPanelProps) {
   const queryClient = useQueryClient()
   const [revealed, setRevealed] = useState(false)
   const [editing, setEditing] = useState(false)
-  const [copiedField, setCopiedField] = useState<string | null>(null)
+  const [copiedField, setCopiedField] = useState<null | string>(null)
   const [editValues, setEditValues] = useState<Record<string, string>>({})
 
   const visibleFields = TYPE_SECRET_FIELDS[appType] || ['client_secret']
 
   const {
     data: secrets,
-    isLoading,
     error,
+    isLoading,
     refetch,
   } = useQuery({
-    queryKey: ['application-secrets', orgSlug, serviceSlug, appSlug],
+    enabled: revealed,
     queryFn: ({ signal }) =>
       getApplicationSecrets(orgSlug, serviceSlug, appSlug, signal),
-    enabled: revealed,
+    queryKey: ['application-secrets', orgSlug, serviceSlug, appSlug],
     retry: false,
   })
 
@@ -151,17 +153,17 @@ export function ApplicationSecretsPanel({
         </div>
         <div className="flex items-center gap-2">
           {revealed && !editing && (
-            <Button variant="outline" size="sm" onClick={handleStartEdit}>
+            <Button onClick={handleStartEdit} size="sm" variant="outline">
               Update Secrets
             </Button>
           )}
           {revealed ? (
-            <Button variant="outline" size="sm" onClick={handleHide}>
+            <Button onClick={handleHide} size="sm" variant="outline">
               <EyeOff className="mr-1 h-4 w-4" />
               Hide
             </Button>
           ) : (
-            <Button variant="outline" size="sm" onClick={handleReveal}>
+            <Button onClick={handleReveal} size="sm" variant="outline">
               <Eye className="mr-1 h-4 w-4" />
               Reveal Secrets
             </Button>
@@ -199,7 +201,7 @@ export function ApplicationSecretsPanel({
       {revealed && secrets && !editing && (
         <div className="space-y-3">
           {visibleFields.map((field) => {
-            const value = (secrets as unknown as Record<string, string | null>)[
+            const value = (secrets as unknown as Record<string, null | string>)[
               field
             ]
             if (value == null && field !== 'client_secret') return null
@@ -221,11 +223,11 @@ export function ApplicationSecretsPanel({
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
-                            variant="ghost"
-                            size="sm"
                             aria-label={`Copy ${FIELD_LABELS[field]}`}
-                            onClick={() => handleCopy(field, value)}
                             className=""
+                            onClick={() => handleCopy(field, value)}
+                            size="sm"
+                            variant="ghost"
                           >
                             {copiedField === field ? (
                               <Check className="h-4 w-4 text-green-500" />
@@ -272,23 +274,23 @@ export function ApplicationSecretsPanel({
               </label>
               {field === 'private_key' ? (
                 <textarea
-                  value={editValues[field] || ''}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm text-foreground"
                   onChange={(e) =>
                     setEditValues({ ...editValues, [field]: e.target.value })
                   }
                   placeholder="Paste new value to update"
                   rows={4}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm text-foreground"
+                  value={editValues[field] || ''}
                 />
               ) : (
                 <Input
-                  type="password"
-                  value={editValues[field] || ''}
+                  className=""
                   onChange={(e) =>
                     setEditValues({ ...editValues, [field]: e.target.value })
                   }
                   placeholder="Paste new value to update"
-                  className=""
+                  type="password"
+                  value={editValues[field] || ''}
                 />
               )}
             </div>
@@ -296,20 +298,20 @@ export function ApplicationSecretsPanel({
 
           <div className="flex items-center gap-2 pt-2">
             <Button
-              onClick={handleSave}
+              className="bg-action text-action-foreground hover:bg-action-hover"
               disabled={
                 updateMutation.isPending ||
                 Object.values(editValues).every((v) => !v.trim())
               }
-              className="bg-action text-action-foreground hover:bg-action-hover"
+              onClick={handleSave}
             >
               <Save className="mr-1 h-4 w-4" />
               {updateMutation.isPending ? 'Saving...' : 'Save Secrets'}
             </Button>
             <Button
-              variant="outline"
-              onClick={handleCancelEdit}
               disabled={updateMutation.isPending}
+              onClick={handleCancelEdit}
+              variant="outline"
             >
               Cancel
             </Button>

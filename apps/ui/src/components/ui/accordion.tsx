@@ -1,6 +1,8 @@
 import * as React from 'react'
+
 import * as AccordionPrimitive from '@radix-ui/react-accordion'
 import { ChevronDown } from 'lucide-react'
+
 import { cn } from '@/lib/utils'
 
 const Accordion = AccordionPrimitive.Root
@@ -10,7 +12,6 @@ const AccordionItem = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Item>
 >(({ className, ...props }, ref) => (
   <AccordionPrimitive.Item
-    ref={ref}
     className={cn(
       'relative border-b border-tertiary last:border-0 data-[state=open]:bg-secondary',
       // Amber accent bar on the left; visible on hover for closed items and
@@ -20,6 +21,7 @@ const AccordionItem = React.forwardRef<
       'hover:before:opacity-100 data-[state=open]:before:opacity-100',
       className,
     )}
+    ref={ref}
     {...props}
   />
 ))
@@ -30,15 +32,15 @@ const AccordionTrigger = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger> & {
     hideChevron?: boolean
   }
->(({ className, children, hideChevron = false, ...props }, ref) => (
+>(({ children, className, hideChevron = false, ...props }, ref) => (
   <AccordionPrimitive.Header className="flex">
     <AccordionPrimitive.Trigger
-      ref={ref}
       className={cn(
         'group flex flex-1 items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-secondary focus:bg-secondary focus:outline-none',
         'data-[state=open]:hover:bg-transparent',
         className,
       )}
+      ref={ref}
       {...props}
     >
       {children}
@@ -53,10 +55,10 @@ AccordionTrigger.displayName = AccordionPrimitive.Trigger.displayName
 const AccordionContent = React.forwardRef<
   React.ElementRef<typeof AccordionPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+>(({ children, className, ...props }, ref) => (
   <AccordionPrimitive.Content
-    ref={ref}
     className="overflow-hidden text-sm data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
+    ref={ref}
     {...props}
   >
     <div className={className}>{children}</div>
@@ -64,4 +66,4 @@ const AccordionContent = React.forwardRef<
 ))
 AccordionContent.displayName = AccordionPrimitive.Content.displayName
 
-export { Accordion, AccordionItem, AccordionTrigger, AccordionContent }
+export { Accordion, AccordionContent, AccordionItem, AccordionTrigger }

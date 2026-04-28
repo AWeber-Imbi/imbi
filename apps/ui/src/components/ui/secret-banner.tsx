@@ -1,6 +1,8 @@
 import { useState } from 'react'
+
 import { Copy } from 'lucide-react'
 import { toast } from 'sonner'
+
 import {
   Tooltip,
   TooltipContent,
@@ -9,26 +11,26 @@ import {
 } from '@/components/ui/tooltip'
 
 export interface SecretBannerSecret {
-  label?: string
-  value: string
-  monospace?: boolean
   copyAriaLabel?: string
+  label?: string
+  monospace?: boolean
+  value: string
 }
 
 interface SecretBannerProps {
-  title: string
   description?: string
-  secrets: SecretBannerSecret[]
   onDismiss: () => void
+  secrets: SecretBannerSecret[]
+  title: string
 }
 
 export function SecretBanner({
-  title,
   description,
-  secrets,
   onDismiss,
+  secrets,
+  title,
 }: SecretBannerProps) {
-  const [copiedField, setCopiedField] = useState<string | null>(null)
+  const [copiedField, setCopiedField] = useState<null | string>(null)
 
   const copyToClipboard = async (text: string, id: string) => {
     try {
@@ -66,14 +68,14 @@ export function SecretBanner({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
-                        type="button"
                         aria-label={copyLabel}
-                        onClick={() => copyToClipboard(secret.value, fieldId)}
                         className={`rounded-lg p-2 ${
                           copiedField === fieldId
                             ? 'bg-green-600 text-white'
                             : 'text-secondary hover:bg-secondary'
                         }`}
+                        onClick={() => copyToClipboard(secret.value, fieldId)}
+                        type="button"
                       >
                         <Copy className="h-4 w-4" />
                       </button>
@@ -89,9 +91,9 @@ export function SecretBanner({
         })}
       </div>
       <button
-        type="button"
-        onClick={onDismiss}
         className="hover:text-success/80 mt-2 text-sm text-success"
+        onClick={onDismiss}
+        type="button"
       >
         Dismiss
       </button>

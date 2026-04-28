@@ -1,48 +1,49 @@
 import { memo, useCallback, useMemo } from 'react'
-import { getIcon } from '@/lib/icons'
-import { resolveColor, resolveIcon } from '@/lib/ui-maps'
-import type { XUiMaps } from '@/lib/ui-maps'
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipProvider,
-} from '@/components/ui/tooltip'
+
 import type {
   ProjectSchemaResponse,
   ProjectSchemaSectionProperty,
 } from '@/api/endpoints'
 import { isFieldEditable } from '@/components/ui/inline-edit/field-policy'
 import { InlineField } from '@/components/ui/inline-edit/InlineField'
-import type { Project } from '@/types'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { getIcon } from '@/lib/icons'
 import {
   COLOR_TEXT,
   formatFieldKey,
   formatFieldValue,
   resolveFieldValue,
 } from '@/lib/project-field-formatting'
-
-interface ProjectAttributesSectionProps {
-  project: Project
-  projectSchema: ProjectSchemaResponse | undefined
-  patch: (path: string, value: unknown) => Promise<void>
-  pendingPath: string | null
-}
+import { resolveColor, resolveIcon } from '@/lib/ui-maps'
+import type { XUiMaps } from '@/lib/ui-maps'
+import type { Project } from '@/types'
 
 interface AttributeField {
+  def: ProjectSchemaSectionProperty
   key: string
   label: string
-  value: string | null
   rawValue: unknown
   title?: string
   uiMaps: XUiMaps
-  def: ProjectSchemaSectionProperty
+  value: null | string
 }
 
 interface ProjectAttributeRowProps {
   field: AttributeField
   patch: (path: string, value: unknown) => Promise<void>
   pending: boolean
+}
+
+interface ProjectAttributesSectionProps {
+  patch: (path: string, value: unknown) => Promise<void>
+  pendingPath: null | string
+  project: Project
+  projectSchema: ProjectSchemaResponse | undefined
 }
 
 const LABEL_CLASS = 'text-tertiary'
@@ -56,13 +57,13 @@ const ProjectAttributeRow = memo(function ProjectAttributeRow({
   pending,
 }: ProjectAttributeRowProps) {
   const {
+    def,
     key,
     label: fieldLabel,
-    value: fieldValue,
     rawValue,
     title: fieldTitle,
     uiMaps,
-    def,
+    value: fieldValue,
   } = field
 
   const handleCommit = useCallback(
@@ -114,10 +115,10 @@ const ProjectAttributeRow = memo(function ProjectAttributeRow({
       {editable ? (
         <InlineField
           def={def}
-          raw={rawValue}
+          display={richDisplay}
           onCommit={handleCommit}
           pending={pending}
-          display={richDisplay}
+          raw={rawValue}
         />
       ) : richDisplay !== null ? (
         richDisplay
@@ -129,10 +130,10 @@ const ProjectAttributeRow = memo(function ProjectAttributeRow({
 })
 
 export function ProjectAttributesSection({
-  project,
-  projectSchema,
   patch,
   pendingPath,
+  project,
+  projectSchema,
 }: ProjectAttributesSectionProps) {
   const attributeFields = useMemo<AttributeField[]>(() => {
     if (!projectSchema) return []
@@ -146,23 +147,23 @@ export function ProjectAttributesSection({
         const isDate = def.format === 'date-time' || def.format === 'date'
         const xUi = def['x-ui']
         fields.push({
+          def,
           key,
           label: def.title || formatFieldKey(key),
-          value: formatFieldValue(raw, def),
           rawValue: raw,
           title:
             isDate && raw != null
               ? new Date(String(raw)).toLocaleString()
               : undefined,
           uiMaps: {
-            colorMap: xUi?.['color-map'] ?? undefined,
-            iconMap: xUi?.['icon-map'] ?? undefined,
-            colorRange: xUi?.['color-range'] ?? undefined,
-            iconRange: xUi?.['icon-range'] ?? undefined,
             colorAge: xUi?.['color-age'] ?? undefined,
+            colorMap: xUi?.['color-map'] ?? undefined,
+            colorRange: xUi?.['color-range'] ?? undefined,
             iconAge: xUi?.['icon-age'] ?? undefined,
+            iconMap: xUi?.['icon-map'] ?? undefined,
+            iconRange: xUi?.['icon-range'] ?? undefined,
           },
-          def,
+          value: formatFieldValue(raw, def),
         })
       }
     }
@@ -173,8 +174,8 @@ export function ProjectAttributesSection({
     <>
       {attributeFields.map((field) => (
         <ProjectAttributeRow
-          key={field.key}
           field={field}
+          key={field.key}
           patch={patch}
           pending={pendingPath === `/${field.key}`}
         />

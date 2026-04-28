@@ -1,65 +1,66 @@
 import {
-  TrendingUp,
-  TrendingDown,
-  CheckCircle,
-  XCircle,
   AlertTriangle,
+  CheckCircle,
   ChevronRight,
+  TrendingDown,
+  TrendingUp,
+  XCircle,
 } from 'lucide-react'
-import { Card } from '@/components/ui/card'
 
-interface ViewChangeEvent {
-  view: string
-  filter: Record<string, string>
-}
+import { Card } from '@/components/ui/card'
 
 interface TeamActivityWidgetProps {
   onViewChange?: (view: ViewChangeEvent) => void
 }
 
+interface ViewChangeEvent {
+  filter: Record<string, string>
+  view: string
+}
+
 export function TeamActivityWidget({ onViewChange }: TeamActivityWidgetProps) {
   const teams = [
     {
-      name: 'Platform Support Engineering',
+      deployments: 12,
       health: 92,
       healthTrend: 'up' as const,
+      name: 'Platform Support Engineering',
       projects: 45,
-      deployments: 12,
     },
     {
-      name: 'Database Administration',
+      deployments: 8,
       health: 88,
       healthTrend: 'up' as const,
+      name: 'Database Administration',
       projects: 23,
-      deployments: 8,
     },
     {
-      name: 'Content Creation',
+      deployments: 34,
       health: 85,
       healthTrend: 'down' as const,
+      name: 'Content Creation',
       projects: 84,
-      deployments: 34,
     },
     {
-      name: 'Control Panel',
+      deployments: 22,
       health: 89,
       healthTrend: 'up' as const,
+      name: 'Control Panel',
       projects: 70,
-      deployments: 22,
     },
     {
-      name: 'Email Delivery',
+      deployments: 18,
       health: 91,
       healthTrend: 'up' as const,
+      name: 'Email Delivery',
       projects: 56,
-      deployments: 18,
     },
     {
-      name: 'Frontend BoF',
+      deployments: 15,
       health: 87,
       healthTrend: 'down' as const,
+      name: 'Frontend BoF',
       projects: 38,
-      deployments: 15,
     },
   ]
 
@@ -76,12 +77,12 @@ export function TeamActivityWidget({ onViewChange }: TeamActivityWidgetProps) {
   }
 
   const handleTeamClick = (teamName: string) => {
-    onViewChange?.({ view: 'projects', filter: { team: teamName } })
+    onViewChange?.({ filter: { team: teamName }, view: 'projects' })
   }
 
   const handleDeploymentClick = (e: React.MouseEvent, teamName: string) => {
     e.stopPropagation()
-    onViewChange?.({ view: 'deployments', filter: { team: teamName } })
+    onViewChange?.({ filter: { team: teamName }, view: 'deployments' })
   }
 
   return (
@@ -97,9 +98,8 @@ export function TeamActivityWidget({ onViewChange }: TeamActivityWidgetProps) {
 
           return (
             <div
+              className="cursor-pointer rounded-lg border border-input bg-background p-4 text-left transition-all hover:border-secondary hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               key={team.name}
-              role="button"
-              tabIndex={0}
               onClick={() => handleTeamClick(team.name)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -107,7 +107,8 @@ export function TeamActivityWidget({ onViewChange }: TeamActivityWidgetProps) {
                   handleTeamClick(team.name)
                 }
               }}
-              className="cursor-pointer rounded-lg border border-input bg-background p-4 text-left transition-all hover:border-secondary hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              role="button"
+              tabIndex={0}
             >
               <div className="mb-3 flex items-start justify-between">
                 <div className="flex-1">
@@ -133,9 +134,9 @@ export function TeamActivityWidget({ onViewChange }: TeamActivityWidgetProps) {
                 </div>
                 <div className="text-sm text-secondary">•</div>
                 <button
-                  type="button"
-                  onClick={(e) => handleDeploymentClick(e, team.name)}
                   className="hover:text-info/80 text-sm text-info"
+                  onClick={(e) => handleDeploymentClick(e, team.name)}
+                  type="button"
                 >
                   {team.deployments} deployments
                 </button>

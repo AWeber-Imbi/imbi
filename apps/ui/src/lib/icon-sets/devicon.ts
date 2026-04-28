@@ -1,4 +1,5 @@
 import { createElement } from 'react'
+
 import type {
   IconComponent,
   IconEntry,
@@ -20,7 +21,7 @@ for (const [path, url] of Object.entries(deviconGlob)) {
 
 // For the picker: one monochrome icon per tech, preferring -plain over -line.
 // Collect which techs have plain/line variants, then pick one per tech.
-const techVariants: Record<string, { plain?: string; line?: string }> = {}
+const techVariants: Record<string, { line?: string; plain?: string }> = {}
 for (const key of Object.keys(deviconIndex)) {
   if (key.endsWith('-plain')) {
     const tech = key.slice(8, -6) // strip "devicon-" and "-plain"
@@ -43,17 +44,17 @@ export const DEVICON_ICONS: IconEntry[] = Object.entries(techVariants)
 
 function createGrayscaleImg(url: string): IconComponent {
   const Img: IconComponent = (props) => {
-    const { className, width, height, ...rest } = props as Record<
+    const { className, height, width, ...rest } = props as Record<
       string,
       unknown
     >
     return createElement('img', {
-      src: url,
       alt: '',
       className,
+      height: height ?? 16,
+      src: url,
       style: { filter: 'brightness(0)' },
       width: width ?? 16,
-      height: height ?? 16,
       ...rest,
     })
   }
@@ -67,18 +68,18 @@ function resolve(value: string): IconComponent | null {
   return createGrayscaleImg(url)
 }
 
-function resolveUrl(value: string): string | null {
+function resolveUrl(value: string): null | string {
   if (!value.startsWith('devicon-')) return null
   return deviconIndex[value] ?? null
 }
 
 export const iconSet: IconSetDefinition = {
-  id: 'devicon',
-  label: 'Devicon',
   description:
     'Technology and programming language icons, multiple style variants',
-  valueFormat: 'devicon-{tech}-{variant}',
   icons: DEVICON_ICONS,
+  id: 'devicon',
+  label: 'Devicon',
   resolve,
   resolveUrl,
+  valueFormat: 'devicon-{tech}-{variant}',
 }

@@ -1,12 +1,14 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor } from '@/test/utils'
 import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
+
+import { render, screen, waitFor } from '@/test/utils'
+
 import { InlineNumber } from '../InlineNumber'
 
 describe('InlineNumber', () => {
   it('commits parsed number on Enter', async () => {
     const onCommit = vi.fn().mockResolvedValue(undefined)
-    render(<InlineNumber value={10} onCommit={onCommit} />)
+    render(<InlineNumber onCommit={onCommit} value={10} />)
     await userEvent.click(screen.getByText('10'))
     const input = screen.getByRole('spinbutton')
     await userEvent.clear(input)
@@ -16,7 +18,7 @@ describe('InlineNumber', () => {
 
   it('commits null when cleared', async () => {
     const onCommit = vi.fn().mockResolvedValue(undefined)
-    render(<InlineNumber value={10} onCommit={onCommit} />)
+    render(<InlineNumber onCommit={onCommit} value={10} />)
     await userEvent.click(screen.getByText('10'))
     const input = screen.getByRole('spinbutton')
     await userEvent.clear(input)

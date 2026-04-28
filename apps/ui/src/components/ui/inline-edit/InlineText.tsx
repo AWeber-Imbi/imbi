@@ -1,30 +1,32 @@
 import { useCallback, useEffect, useRef } from 'react'
+
 import { Input } from '@/components/ui/input'
 import { useInlineEdit } from '@/hooks/useInlineEdit'
-import { InlineDisplay } from './InlineDisplay'
 import { cn } from '@/lib/utils'
 
+import { InlineDisplay } from './InlineDisplay'
+
 export interface InlineTextProps {
-  value: string | null
-  onCommit: (next: string | null) => Promise<void> | void
-  readOnly?: boolean
-  pending?: boolean
-  placeholder?: string
   className?: string
   inputClassName?: string
+  onCommit: (next: null | string) => Promise<void> | void
+  pending?: boolean
+  placeholder?: string
+  readOnly?: boolean
   /** Render value in a custom display element; default is a plain span. */
   renderValue?: (value: string) => React.ReactNode
+  value: null | string
 }
 
 export function InlineText({
-  value,
-  onCommit,
-  readOnly = false,
-  pending = false,
-  placeholder,
   className,
   inputClassName,
+  onCommit,
+  pending = false,
+  placeholder,
+  readOnly = false,
   renderValue,
+  value,
 }: InlineTextProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const handleCommit = useCallback(
@@ -48,10 +50,10 @@ export function InlineText({
       <span className={className}>
         <InlineDisplay
           hasValue={hasValue}
-          readOnly={readOnly}
-          pending={pending}
           onClick={edit.enter}
+          pending={pending}
           placeholder={placeholder}
+          readOnly={readOnly}
         >
           {hasValue && (renderValue ? renderValue(value!) : value)}
         </InlineDisplay>
@@ -62,12 +64,12 @@ export function InlineText({
   return (
     <span className={className}>
       <Input
-        ref={inputRef}
-        value={edit.draft}
+        className={cn('h-7 py-1', inputClassName)}
+        onBlur={edit.handleBlur}
         onChange={(e) => edit.setDraft(e.target.value)}
         onKeyDown={edit.handleKeyDown}
-        onBlur={edit.handleBlur}
-        className={cn('h-7 py-1', inputClassName)}
+        ref={inputRef}
+        value={edit.draft}
       />
       {edit.error && (
         <span className="mt-1 block text-xs text-red-600">{edit.error}</span>

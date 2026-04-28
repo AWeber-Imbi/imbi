@@ -1,17 +1,18 @@
 import Ajv from 'ajv'
+
 import type { SchemaProperty } from '@/types'
 
 export const ajv = new Ajv()
 
 // Known relationships keyed by "Source:Target"
 export const RELATIONSHIP_MAP: Record<string, string[]> = {
+  'Environment:Organization': ['BELONGS_TO'],
   'Project:Environment': ['DEPLOYED_IN'],
+  'Project:Project': ['DEPENDS_ON'],
   'Project:ProjectType': ['TYPE'],
   'Project:Team': ['OWNED_BY'],
-  'Project:Project': ['DEPENDS_ON'],
-  'Team:Organization': ['BELONGS_TO'],
-  'Environment:Organization': ['BELONGS_TO'],
   'ProjectType:Organization': ['BELONGS_TO'],
+  'Team:Organization': ['BELONGS_TO'],
   'ThirdPartyService:Organization': ['BELONGS_TO'],
 }
 
@@ -56,25 +57,14 @@ export const STRING_FORMATS = [
   'uuid',
 ]
 
-export function toSlug(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-}
-
-export function generateId(): string {
-  return Math.random().toString(36).substring(2, 9)
-}
+export type SchemaEditorMode = 'code' | 'visual'
 
 export function buildJsonSchema(
   properties: SchemaProperty[],
 ): Record<string, unknown> {
   const schema: Record<string, unknown> = {
-    type: 'object',
     properties: {} as Record<string, unknown>,
+    type: 'object',
   }
   const required: string[] = []
   const props = schema.properties as Record<string, Record<string, unknown>>
@@ -130,6 +120,10 @@ export function buildJsonSchema(
   return schema
 }
 
+export function generateId(): string {
+  return Math.random().toString(36).substring(2, 9)
+}
+
 export function schemaToProperties(
   schema: Record<string, unknown>,
 ): SchemaProperty[] {
@@ -143,32 +137,39 @@ export function schemaToProperties(
   for (const [name, propSchema] of Object.entries(props)) {
     const xUi = propSchema['x-ui'] as Record<string, unknown> | undefined
     result.push({
-      id: generateId(),
-      name,
-      type: (propSchema.type as SchemaProperty['type']) || 'string',
-      format: propSchema.format as string | undefined,
-      description: propSchema.description as string | undefined,
-      required: required.includes(name),
+      colorAge: xUi?.['color-age'] as Record<string, string> | undefined,
+      colorMap: xUi?.['color-map'] as Record<string, string> | undefined,
+      colorRange: xUi?.['color-range'] as Record<string, string> | undefined,
       defaultValue:
         propSchema.default !== undefined
           ? String(propSchema.default)
           : undefined,
-      enumValues: propSchema.enum as string[] | undefined,
-      minimum: propSchema.minimum as number | undefined,
-      maximum: propSchema.maximum as number | undefined,
-      minLength: propSchema.minLength as number | undefined,
-      maxLength: propSchema.maxLength as number | undefined,
+      description: propSchema.description as string | undefined,
       editable: xUi?.['editable'] === false ? false : undefined,
-      colorMap: xUi?.['color-map'] as Record<string, string> | undefined,
-      iconMap: xUi?.['icon-map'] as Record<string, string> | undefined,
-      colorRange: xUi?.['color-range'] as Record<string, string> | undefined,
-      iconRange: xUi?.['icon-range'] as Record<string, string> | undefined,
-      colorAge: xUi?.['color-age'] as Record<string, string> | undefined,
+      enumValues: propSchema.enum as string[] | undefined,
+      format: propSchema.format as string | undefined,
       iconAge: xUi?.['icon-age'] as Record<string, string> | undefined,
+      iconMap: xUi?.['icon-map'] as Record<string, string> | undefined,
+      iconRange: xUi?.['icon-range'] as Record<string, string> | undefined,
+      id: generateId(),
+      maximum: propSchema.maximum as number | undefined,
+      maxLength: propSchema.maxLength as number | undefined,
+      minimum: propSchema.minimum as number | undefined,
+      minLength: propSchema.minLength as number | undefined,
+      name,
+      required: required.includes(name),
+      type: (propSchema.type as SchemaProperty['type']) || 'string',
     })
   }
 
   return result
 }
 
-export type SchemaEditorMode = 'visual' | 'code'
+export function toSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}

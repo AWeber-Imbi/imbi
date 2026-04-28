@@ -1,15 +1,17 @@
-import * as TablerIcons from '@tabler/icons-react'
 import { createElement } from 'react'
+
+import * as TablerIcons from '@tabler/icons-react'
 import { renderToStaticMarkup } from 'react-dom/server'
+
 import type {
   IconComponent,
   IconEntry,
   IconSetDefinition,
 } from '@/lib/icon-registry'
 import {
-  toPascalCase,
   encodeSvgToDataUrl,
   isForwardRefComponent,
+  toPascalCase,
 } from '@/lib/icon-sets/utils'
 
 const tablerLookup = TablerIcons as Record<string, unknown>
@@ -31,14 +33,14 @@ function resolve(value: string): IconComponent | null {
   return isForwardRefComponent(Component) ? Component : null
 }
 
-function resolveUrl(value: string, color?: string): string | null {
+function resolveUrl(value: string, color?: string): null | string {
   const Component = resolve(value)
   if (!Component) return null
   try {
     const markup = renderToStaticMarkup(
       createElement(Component, {
-        width: 128,
         height: 128,
+        width: 128,
         ...(color ? { color } : {}),
       }),
     )
@@ -49,11 +51,11 @@ function resolveUrl(value: string, color?: string): string | null {
 }
 
 export const iconSet: IconSetDefinition = {
+  description: 'Clean open source SVG icons (outline and filled variants)',
+  icons: TABLER_ICONS,
   id: 'tabler',
   label: 'Tabler',
-  description: 'Clean open source SVG icons (outline and filled variants)',
-  valueFormat: 'tabler-{name}',
-  icons: TABLER_ICONS,
   resolve,
   resolveUrl,
+  valueFormat: 'tabler-{name}',
 }

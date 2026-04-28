@@ -1,7 +1,9 @@
 import { useState } from 'react'
+
 import { AlertCircle } from 'lucide-react'
-import { Input } from '@/components/ui/input'
+
 import { FormHeader } from '@/components/admin/form-header'
+import { Input } from '@/components/ui/input'
 import { slugify } from '@/lib/utils'
 import type {
   ServiceApplication,
@@ -10,17 +12,17 @@ import type {
 } from '@/types'
 
 interface OAuth2ApplicationFormProps {
-  application: ServiceApplication | null
-  onSave: (data: ServiceApplicationCreate | ServiceApplicationUpdate) => void
-  onCancel: () => void
-  isLoading: boolean
+  application: null | ServiceApplication
   error: Error | null
+  isLoading: boolean
+  onCancel: () => void
+  onSave: (data: ServiceApplicationCreate | ServiceApplicationUpdate) => void
 }
 
 const APP_TYPES = [
-  { value: 'github_app', label: 'GitHub App' },
-  { value: 'pagerduty_oauth', label: 'PagerDuty OAuth' },
-  { value: 'generic_oauth2', label: 'Generic OAuth2' },
+  { label: 'GitHub App', value: 'github_app' },
+  { label: 'PagerDuty OAuth', value: 'pagerduty_oauth' },
+  { label: 'Generic OAuth2', value: 'generic_oauth2' },
 ]
 
 const APP_STATUSES = ['active', 'inactive', 'revoked'] as const
@@ -32,17 +34,17 @@ function isAppStatus(value: unknown): value is AppStatus {
 
 // Secret fields to show per app type (create mode only)
 const TYPE_SECRET_FIELDS: Record<string, string[]> = {
+  generic_oauth2: ['signing_secret'],
   github_app: ['private_key', 'webhook_secret'],
   pagerduty_oauth: [],
-  generic_oauth2: ['signing_secret'],
 }
 
 export function OAuth2ApplicationForm({
   application,
-  onSave,
-  onCancel,
-  isLoading,
   error,
+  isLoading,
+  onCancel,
+  onSave,
 }: OAuth2ApplicationFormProps) {
   const isEdit = !!application
 
@@ -58,7 +60,7 @@ export function OAuth2ApplicationForm({
   const [status, setStatus] = useState<AppStatus>(
     isAppStatus(application?.status) ? application.status : 'active',
   )
-  const [validationError, setValidationError] = useState<string | null>(null)
+  const [validationError, setValidationError] = useState<null | string>(null)
 
   // Secret fields (create mode only)
   const [clientSecret, setClientSecret] = useState('')
@@ -96,49 +98,49 @@ export function OAuth2ApplicationForm({
 
     if (isEdit) {
       const data: ServiceApplicationUpdate = {
-        slug,
-        name,
-        description: description || null,
         app_type: appType,
         application_url: applicationUrl || null,
         client_id: clientId,
+        description: description || null,
+        name,
         scopes: scopes
           ? scopes
               .split(',')
               .map((s) => s.trim())
               .filter(Boolean)
           : [],
+        slug,
         status,
       }
       onSave(data)
     } else {
       const data: ServiceApplicationCreate = {
-        slug,
-        name,
-        description: description || null,
         app_type: appType,
         application_url: applicationUrl || null,
         client_id: clientId,
         client_secret: clientSecret,
+        description: description || null,
+        name,
+        private_key:
+          extraSecretFields.includes('private_key') && privateKey
+            ? privateKey
+            : null,
         scopes: scopes
           ? scopes
               .split(',')
               .map((s) => s.trim())
               .filter(Boolean)
           : [],
-        webhook_secret:
-          extraSecretFields.includes('webhook_secret') && webhookSecret
-            ? webhookSecret
-            : null,
-        private_key:
-          extraSecretFields.includes('private_key') && privateKey
-            ? privateKey
-            : null,
         signing_secret:
           extraSecretFields.includes('signing_secret') && signingSecret
             ? signingSecret
             : null,
+        slug,
         status,
+        webhook_secret:
+          extraSecretFields.includes('webhook_secret') && webhookSecret
+            ? webhookSecret
+            : null,
       }
       onSave(data)
     }
@@ -152,12 +154,12 @@ export function OAuth2ApplicationForm({
     <div className="space-y-6">
       {/* Header */}
       <FormHeader
-        title={isEdit ? 'Edit Application' : 'New Application'}
+        createLabel="Create"
         isEditing={isEdit}
         isLoading={isLoading}
         onCancel={onCancel}
         onSave={handleSubmit}
-        createLabel="Create"
+        title={isEdit ? 'Edit Application' : 'New Application'}
       />
 
       {/* Error display */}
@@ -177,20 +179,20 @@ export function OAuth2ApplicationForm({
           <div>
             <label className={labelClass}>Name *</label>
             <Input
-              value={name}
+              className={inputClass}
               onChange={(e) => handleNameChange(e.target.value)}
               placeholder="My GitHub App"
-              className={inputClass}
+              value={name}
             />
           </div>
           <div>
             <label className={labelClass}>Slug *</label>
             <Input
-              value={slug}
+              className={inputClass}
+              disabled={isEdit}
               onChange={(e) => setSlug(e.target.value)}
               placeholder="my-github-app"
-              disabled={isEdit}
-              className={inputClass}
+              value={slug}
             />
           </div>
         </div>
@@ -198,20 +200,20 @@ export function OAuth2ApplicationForm({
         <div>
           <label className={labelClass}>Description</label>
           <Input
-            value={description}
+            className={inputClass}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Optional description"
-            className={inputClass}
+            value={description}
           />
         </div>
 
         <div>
           <label className={labelClass}>Application URL</label>
           <Input
-            value={applicationUrl}
+            className={inputClass}
             onChange={(e) => setApplicationUrl(e.target.value)}
             placeholder="https://github.com/settings/apps/my-app"
-            className={inputClass}
+            value={applicationUrl}
           />
         </div>
 
@@ -219,10 +221,10 @@ export function OAuth2ApplicationForm({
           <div>
             <label className={labelClass}>Application Type *</label>
             <select
-              value={appType}
-              onChange={(e) => setAppType(e.target.value)}
-              disabled={isEdit}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+              disabled={isEdit}
+              onChange={(e) => setAppType(e.target.value)}
+              value={appType}
             >
               {APP_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>
@@ -234,11 +236,11 @@ export function OAuth2ApplicationForm({
           <div>
             <label className={labelClass}>Status</label>
             <select
-              value={status}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
               onChange={(e) =>
                 setStatus(e.target.value as 'active' | 'inactive' | 'revoked')
               }
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+              value={status}
             >
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
@@ -250,20 +252,20 @@ export function OAuth2ApplicationForm({
         <div>
           <label className={labelClass}>Client ID *</label>
           <Input
-            value={clientId}
+            className={inputClass}
             onChange={(e) => setClientId(e.target.value)}
             placeholder="Iv1.abc123..."
-            className={inputClass}
+            value={clientId}
           />
         </div>
 
         <div>
           <label className={labelClass}>Scopes</label>
           <Input
-            value={scopes}
+            className={inputClass}
             onChange={(e) => setScopes(e.target.value)}
             placeholder="repo, read:org (comma-separated)"
-            className={inputClass}
+            value={scopes}
           />
         </div>
 
@@ -279,11 +281,11 @@ export function OAuth2ApplicationForm({
             <div>
               <label className={labelClass}>Client Secret *</label>
               <Input
-                type="password"
-                value={clientSecret}
+                className={inputClass}
                 onChange={(e) => setClientSecret(e.target.value)}
                 placeholder="Enter client secret"
-                className={inputClass}
+                type="password"
+                value={clientSecret}
               />
             </div>
 
@@ -291,11 +293,11 @@ export function OAuth2ApplicationForm({
               <div>
                 <label className={labelClass}>Webhook Secret</label>
                 <Input
-                  type="password"
-                  value={webhookSecret}
+                  className={inputClass}
                   onChange={(e) => setWebhookSecret(e.target.value)}
                   placeholder="Enter webhook secret"
-                  className={inputClass}
+                  type="password"
+                  value={webhookSecret}
                 />
               </div>
             )}
@@ -304,11 +306,11 @@ export function OAuth2ApplicationForm({
               <div>
                 <label className={labelClass}>Private Key (PEM)</label>
                 <textarea
-                  value={privateKey}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm text-foreground"
                   onChange={(e) => setPrivateKey(e.target.value)}
                   placeholder={'-----BEGIN RSA PRIVATE KEY-----\n...'}
                   rows={4}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm text-foreground"
+                  value={privateKey}
                 />
               </div>
             )}
@@ -317,11 +319,11 @@ export function OAuth2ApplicationForm({
               <div>
                 <label className={labelClass}>Signing Secret</label>
                 <Input
-                  type="password"
-                  value={signingSecret}
+                  className={inputClass}
                   onChange={(e) => setSigningSecret(e.target.value)}
                   placeholder="Enter signing secret"
-                  className={inputClass}
+                  type="password"
+                  value={signingSecret}
                 />
               </div>
             )}

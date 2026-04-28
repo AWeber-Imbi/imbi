@@ -1,37 +1,38 @@
 import { Filter } from 'lucide-react'
+
 import { Checkbox } from '@/components/ui/checkbox'
 import type { Environment, ProjectType } from '@/types'
 
 interface BlueprintFilterEditorProps {
-  filterEnabled: boolean
-  setFilterEnabled: (value: boolean) => void
-  selectedProjectTypes: Set<string>
-  setSelectedProjectTypes: (value: Set<string>) => void
-  selectedEnvironments: Set<string>
-  setSelectedEnvironments: (value: Set<string>) => void
-  availableProjectTypes: ProjectType[]
-  ptLoading: boolean
-  ptIsError: boolean
   availableEnvironments: Environment[]
-  envLoading: boolean
+  availableProjectTypes: ProjectType[]
   envIsError: boolean
+  envLoading: boolean
+  filterEnabled: boolean
   isLoading: boolean
+  ptIsError: boolean
+  ptLoading: boolean
+  selectedEnvironments: Set<string>
+  selectedProjectTypes: Set<string>
+  setFilterEnabled: (value: boolean) => void
+  setSelectedEnvironments: (value: Set<string>) => void
+  setSelectedProjectTypes: (value: Set<string>) => void
 }
 
 export function BlueprintFilterEditor({
-  filterEnabled,
-  setFilterEnabled,
-  selectedProjectTypes,
-  setSelectedProjectTypes,
-  selectedEnvironments,
-  setSelectedEnvironments,
-  availableProjectTypes,
-  ptLoading,
-  ptIsError,
   availableEnvironments,
-  envLoading,
+  availableProjectTypes,
   envIsError,
+  envLoading,
+  filterEnabled,
   isLoading,
+  ptIsError,
+  ptLoading,
+  selectedEnvironments,
+  selectedProjectTypes,
+  setFilterEnabled,
+  setSelectedEnvironments,
+  setSelectedProjectTypes,
 }: BlueprintFilterEditorProps) {
   return (
     <div className="rounded-lg border border-border bg-card p-6">
@@ -44,8 +45,9 @@ export function BlueprintFilterEditor({
         </div>
         <div className="flex items-center gap-2">
           <Checkbox
-            id="filter-enabled"
             checked={filterEnabled}
+            disabled={isLoading}
+            id="filter-enabled"
             onCheckedChange={(checked) => {
               setFilterEnabled(checked === true)
               if (!checked) {
@@ -53,11 +55,10 @@ export function BlueprintFilterEditor({
                 setSelectedEnvironments(new Set())
               }
             }}
-            disabled={isLoading}
           />
           <label
-            htmlFor="filter-enabled"
             className="cursor-pointer select-none text-sm text-secondary"
+            htmlFor="filter-enabled"
           >
             Enable filter
           </label>
@@ -91,10 +92,11 @@ export function BlueprintFilterEditor({
             ) : (
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
                 {availableProjectTypes.map((pt) => (
-                  <div key={pt.slug} className="flex items-center gap-2">
+                  <div className="flex items-center gap-2" key={pt.slug}>
                     <Checkbox
-                      id={`filter-pt-${pt.slug}`}
                       checked={selectedProjectTypes.has(pt.slug)}
+                      disabled={isLoading}
+                      id={`filter-pt-${pt.slug}`}
                       onCheckedChange={(checked) => {
                         const next = new Set(selectedProjectTypes)
                         if (checked) {
@@ -104,13 +106,12 @@ export function BlueprintFilterEditor({
                         }
                         setSelectedProjectTypes(next)
                       }}
-                      disabled={isLoading}
                     />
                     <label
-                      htmlFor={`filter-pt-${pt.slug}`}
                       className={
                         'cursor-pointer select-none text-sm text-secondary'
                       }
+                      htmlFor={`filter-pt-${pt.slug}`}
                     >
                       {pt.name}
                     </label>
@@ -140,10 +141,11 @@ export function BlueprintFilterEditor({
             ) : (
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
                 {availableEnvironments.map((env) => (
-                  <div key={env.slug} className="flex items-center gap-2">
+                  <div className="flex items-center gap-2" key={env.slug}>
                     <Checkbox
-                      id={`filter-env-${env.slug}`}
                       checked={selectedEnvironments.has(env.slug)}
+                      disabled={isLoading}
+                      id={`filter-env-${env.slug}`}
                       onCheckedChange={(checked) => {
                         const next = new Set(selectedEnvironments)
                         if (checked) {
@@ -153,13 +155,12 @@ export function BlueprintFilterEditor({
                         }
                         setSelectedEnvironments(next)
                       }}
-                      disabled={isLoading}
                     />
                     <label
-                      htmlFor={`filter-env-${env.slug}`}
                       className={
                         'cursor-pointer select-none text-sm text-secondary'
                       }
+                      htmlFor={`filter-env-${env.slug}`}
                     >
                       {env.name}
                     </label>

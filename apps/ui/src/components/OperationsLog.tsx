@@ -1,13 +1,15 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
 import { useQuery } from '@tanstack/react-query'
 import { useWindowVirtualizer } from '@tanstack/react-virtual'
 import { Activity, LoaderCircle, SearchX, X } from 'lucide-react'
+
+import { getProjects, listAdminUsers, listEnvironments } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { LoadingState } from '@/components/ui/loading-state'
-import { cn } from '@/lib/utils'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useInfiniteOperationsLog } from '@/hooks/useInfiniteOperationsLog'
-import { listEnvironments, getProjects, listAdminUsers } from '@/api/endpoints'
+import { cn } from '@/lib/utils'
 import type {
   Environment,
   OperationsLogEntryType,
@@ -15,23 +17,24 @@ import type {
   OperationsLogRecord,
   Project,
 } from '@/types'
-import {
-  OperationsLogToolbar,
-  type ToolbarCounts,
-} from './operations-log/OperationsLogToolbar'
-import { OperationsLogSummary } from './operations-log/OperationsLogSummary'
+
 import {
   OperationsLogFeedItem,
   type VItem,
 } from './operations-log/OperationsLogFeedItem'
+import { OperationsLogSummary } from './operations-log/OperationsLogSummary'
+import {
+  OperationsLogToolbar,
+  type ToolbarCounts,
+} from './operations-log/OperationsLogToolbar'
 import {
   bucketByDay,
   cleanName,
-  groupReleases,
-  toMs,
   type FeedItem,
+  groupReleases,
   type OperationsLogView,
   type TimeRange,
+  toMs,
 } from './operations-log/opsLogHelpers'
 
 // Memoised + WAAPI-driven so the spin animation has its own lifetime
@@ -44,64 +47,73 @@ const LoadingIndicator = memo(function LoadingIndicator({
 }: {
   loading: boolean
 }) {
-  const spinnerRef = useRef<SVGSVGElement | null>(null)
+  const spinnerRef = useRef<null | SVGSVGElement>(null)
   useEffect(() => {
     const el = spinnerRef.current
     if (!el || typeof el.animate !== 'function') return
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
     const animation = el.animate(
       [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }],
-      { duration: 1200, iterations: Infinity, easing: 'linear' },
+      { duration: 1200, easing: 'linear', iterations: Infinity },
     )
     return () => animation.cancel()
   }, [])
   return (
     <span
+      aria-label={loading ? 'Loading' : undefined}
       className="relative inline-block h-5 w-5"
       style={{
         contain: 'layout paint',
         transform: 'translateZ(0)',
         willChange: 'transform',
       }}
-      aria-label={loading ? 'Loading' : undefined}
     >
       <Activity
+        aria-hidden
         className={cn(
           'absolute inset-0 h-5 w-5 text-secondary transition-opacity duration-200',
           loading && 'opacity-0',
         )}
-        aria-hidden
       />
       <LoaderCircle
-        ref={spinnerRef}
+        aria-hidden
         className={cn(
           'absolute inset-0 h-5 w-5 text-secondary transition-opacity duration-200',
           !loading && 'opacity-0',
         )}
+        ref={spinnerRef}
         style={{
+          backfaceVisibility: 'hidden',
           transformOrigin: 'center',
           willChange: 'transform',
-          backfaceVisibility: 'hidden',
         }}
-        aria-hidden
       />
     </span>
   )
 })
 
 const RANGE_DELTA: Record<Exclude<TimeRange, 'all'>, number> = {
-  '24h': 24 * 60 * 60 * 1000,
   '7d': 7 * 24 * 60 * 60 * 1000,
+  '24h': 24 * 60 * 60 * 1000,
   '30d': 30 * 24 * 60 * 60 * 1000,
   '90d': 90 * 24 * 60 * 60 * 1000,
 }
 
 const RANGE_LABEL: Record<TimeRange, string> = {
-  '24h': 'last 24h',
   '7d': 'last 7 days',
+  '24h': 'last 24h',
   '30d': 'last 30 days',
   '90d': 'last 90 days',
   all: 'all time',
+}
+
+interface ScreenFilters {
+  entry_types: OperationsLogEntryType[]
+  environment_slugs: string[]
+  performed_by?: string
+  project_slugs: string[]
+  q?: string
+  range: TimeRange
 }
 
 function rangeToSince(range: TimeRange): string | undefined {
@@ -109,34 +121,25 @@ function rangeToSince(range: TimeRange): string | undefined {
   return new Date(Date.now() - RANGE_DELTA[range]).toISOString()
 }
 
-interface ScreenFilters {
-  range: TimeRange
-  entry_types: OperationsLogEntryType[]
-  environment_slugs: string[]
-  project_slugs: string[]
-  performed_by?: string
-  q?: string
-}
-
 const DEFAULT_FILTERS: ScreenFilters = {
-  range: '30d',
   entry_types: [],
   environment_slugs: [],
   project_slugs: [],
+  range: '30d',
 }
 
 export interface OperationsLogProps {
-  projectSlug?: string
-  showSummary?: boolean
-  showHeader?: boolean
   embedded?: boolean
+  projectSlug?: string
+  showHeader?: boolean
+  showSummary?: boolean
 }
 
 export function OperationsLog({
-  projectSlug,
-  showSummary = true,
-  showHeader = true,
   embedded = false,
+  projectSlug,
+  showHeader = true,
+  showSummary = true,
 }: OperationsLogProps = {}) {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug || ''
@@ -148,8 +151,8 @@ export function OperationsLog({
     if (!projectSlug) return
     setFilters((prev) => ({
       ...prev,
-      range: 'all',
       project_slugs: [],
+      range: 'all',
     }))
   }, [projectSlug])
   const [view, setView] = useState<OperationsLogView>('grouped')
@@ -165,26 +168,26 @@ export function OperationsLog({
     isError: projectsError,
     refetch: refetchProjects,
   } = useQuery({
-    queryKey: ['projects', orgSlug],
-    queryFn: ({ signal }) => getProjects(orgSlug, signal),
     enabled: !!orgSlug,
+    queryFn: ({ signal }) => getProjects(orgSlug, signal),
+    queryKey: ['projects', orgSlug],
   })
   const {
     data: environments = [],
     isError: environmentsError,
     refetch: refetchEnvironments,
   } = useQuery({
-    queryKey: ['environments', orgSlug],
-    queryFn: ({ signal }) => listEnvironments(orgSlug, signal),
     enabled: !!orgSlug,
+    queryFn: ({ signal }) => listEnvironments(orgSlug, signal),
+    queryKey: ['environments', orgSlug],
   })
   const {
     data: users = [],
     isError: usersError,
     refetch: refetchUsers,
   } = useQuery({
-    queryKey: ['admin-users', 'active'],
     queryFn: ({ signal }) => listAdminUsers({ is_active: true }, signal),
+    queryKey: ['admin-users', 'active'],
   })
   // Metadata queries back the filter dropdowns and the slug→name
   // lookups. When any of them fail we surface a non-blocking banner so
@@ -204,19 +207,19 @@ export function OperationsLog({
   const apiFilters: OperationsLogFilters = useMemo(
     () => ({
       performed_by: filters.performed_by,
-      since: rangeToSince(filters.range),
       project_slug: projectSlug,
+      since: rangeToSince(filters.range),
     }),
     [filters.performed_by, filters.range, projectSlug],
   )
 
   const {
     data,
-    isLoading,
-    isError,
-    hasNextPage,
-    isFetchingNextPage,
     fetchNextPage,
+    hasNextPage,
+    isError,
+    isFetchingNextPage,
+    isLoading,
     refetch,
   } = useInfiniteOperationsLog(orgSlug, apiFilters)
 
@@ -323,7 +326,7 @@ export function OperationsLog({
       }
       project[e.project_slug] = (project[e.project_slug] ?? 0) + 1
     }
-    return { type, env, project }
+    return { env, project, type }
   }, [rawEntries, sinceCutoffMs])
 
   // Stable Map so the sidebar's project section doesn't see a new ref
@@ -347,7 +350,7 @@ export function OperationsLog({
     decorated.sort((a, b) => b[0] - a[0])
     const sorted = decorated.map(([, entry]) => entry)
     if (view === 'grouped') return groupReleases(sorted)
-    return sorted.map((entry) => ({ kind: 'single', entry }) as FeedItem)
+    return sorted.map((entry) => ({ entry, kind: 'single' }) as FeedItem)
   }, [visibleEntries, view])
 
   const buckets = useMemo(() => bucketByDay(items), [items])
@@ -360,21 +363,21 @@ export function OperationsLog({
     const out: VItem[] = []
     for (const bucket of buckets) {
       out.push({
-        kind: 'header',
-        key: `h-${bucket.key}`,
-        label: bucket.label,
-        date: bucket.date,
         count: bucket.items.length,
+        date: bucket.date,
+        key: `h-${bucket.key}`,
+        kind: 'header',
+        label: bucket.label,
       })
       for (const it of bucket.items) {
         if (it.kind === 'release') {
           const id = it.group.latestEntry.id
           const isOpen =
             openId === id || it.group.stops.some((s) => s.entry.id === openId)
-          out.push({ kind: 'rel', key: `rel-${id}`, id, isOpen })
+          out.push({ id, isOpen, key: `rel-${id}`, kind: 'rel' })
         } else {
           const id = it.entry.id
-          out.push({ kind: 'evt', key: `evt-${id}`, id, isOpen: openId === id })
+          out.push({ id, isOpen: openId === id, key: `evt-${id}`, kind: 'evt' })
         }
       }
     }
@@ -395,8 +398,8 @@ export function OperationsLog({
   const virtualizer = useWindowVirtualizer({
     count: virtualItems.length,
     estimateSize: (index) => (virtualItems[index]?.kind === 'header' ? 34 : 72),
-    overscan: 8,
     getItemKey: (index) => virtualItems[index]?.key ?? index,
+    overscan: 8,
   })
 
   // Pull the next page as soon as the virtualizer renders within a few
@@ -418,47 +421,47 @@ export function OperationsLog({
   ])
 
   const activeChips = useMemo(() => {
-    const chips: { key: string; label: string; clear: () => void }[] = []
+    const chips: { clear: () => void; key: string; label: string }[] = []
     for (const t of filters.entry_types) {
       chips.push({
-        key: `type-${t}`,
-        label: t,
         clear: () =>
           setFilters((f) => ({
             ...f,
             entry_types: f.entry_types.filter((x) => x !== t),
           })),
+        key: `type-${t}`,
+        label: t,
       })
     }
     for (const slug of filters.environment_slugs) {
       const env = environmentsBySlug.get(slug)
       chips.push({
-        key: `env-${slug}`,
-        label: env?.name ?? slug,
         clear: () =>
           setFilters((f) => ({
             ...f,
             environment_slugs: f.environment_slugs.filter((x) => x !== slug),
           })),
+        key: `env-${slug}`,
+        label: env?.name ?? slug,
       })
     }
     for (const slug of filters.project_slugs) {
       chips.push({
-        key: `project-${slug}`,
-        label: projectsBySlug.get(slug)?.name ?? slug,
         clear: () =>
           setFilters((f) => ({
             ...f,
             project_slugs: f.project_slugs.filter((x) => x !== slug),
           })),
+        key: `project-${slug}`,
+        label: projectsBySlug.get(slug)?.name ?? slug,
       })
     }
     if (filters.performed_by) {
       const pb = filters.performed_by
       chips.push({
+        clear: () => setFilters((f) => ({ ...f, performed_by: undefined })),
         key: 'person',
         label: performerDisplayNames.get(pb) ?? cleanName(pb),
-        clear: () => setFilters((f) => ({ ...f, performed_by: undefined })),
       })
     }
     return chips
@@ -491,46 +494,46 @@ export function OperationsLog({
           )}
 
           <div
-            inert={isPageLoading}
             aria-busy={isPageLoading}
             className={cn(
               'transition-opacity duration-200',
               isPageLoading && 'cursor-wait opacity-50',
             )}
+            inert={isPageLoading}
           >
             {showSummary && (
               <OperationsLogSummary
                 entries={visibleEntries}
                 environments={environments}
-                rangeLabel={RANGE_LABEL[filters.range]}
-                range={filters.range}
                 loading={isPageLoading}
+                range={filters.range}
+                rangeLabel={RANGE_LABEL[filters.range]}
                 serverMetrics={serverMetrics}
               />
             )}
 
             <OperationsLogToolbar
               counts={counts}
-              range={filters.range}
-              onRange={(range) => setFilters({ ...filters, range })}
               entryTypes={filters.entry_types}
+              environments={environments}
+              environmentSlugs={filters.environment_slugs}
+              hideProjectFilter={!!projectSlug}
+              hideTimeRange={!!projectSlug}
               onEntryTypes={(entry_types) =>
                 setFilters({ ...filters, entry_types })
               }
-              view={view}
-              onView={setView}
-              environmentSlugs={filters.environment_slugs}
               onEnvironmentSlugs={(environment_slugs) =>
                 setFilters({ ...filters, environment_slugs })
               }
-              environments={environments}
-              projectSlugs={filters.project_slugs}
               onProjectSlugs={(project_slugs) =>
                 setFilters({ ...filters, project_slugs })
               }
+              onRange={(range) => setFilters({ ...filters, range })}
+              onView={setView}
               projectNames={projectNames}
-              hideProjectFilter={!!projectSlug}
-              hideTimeRange={!!projectSlug}
+              projectSlugs={filters.project_slugs}
+              range={filters.range}
+              view={view}
             />
 
             {activeChips.length > 0 && (
@@ -540,29 +543,29 @@ export function OperationsLog({
                 </span>
                 {activeChips.map((c) => (
                   <Button
+                    className="h-6 rounded bg-secondary px-2 text-[12px] text-secondary hover:text-primary"
                     key={c.key}
+                    onClick={c.clear}
                     type="button"
                     variant="ghost"
-                    onClick={c.clear}
-                    className="h-6 rounded bg-secondary px-2 text-[12px] text-secondary hover:text-primary"
                   >
                     <span className="truncate">{c.label}</span>
                     <X className="h-3 w-3" />
                   </Button>
                 ))}
                 <Button
-                  type="button"
-                  variant="ghost"
+                  className="ml-1 h-auto rounded px-2 py-0.5 text-[12px] text-tertiary hover:bg-secondary hover:text-primary"
                   onClick={() =>
                     setFilters({
-                      range: filters.range,
-                      q: filters.q,
                       entry_types: [],
                       environment_slugs: [],
                       project_slugs: [],
+                      q: filters.q,
+                      range: filters.range,
                     })
                   }
-                  className="ml-1 h-auto rounded px-2 py-0.5 text-[12px] text-tertiary hover:bg-secondary hover:text-primary"
+                  type="button"
+                  variant="ghost"
                 >
                   Clear all
                 </Button>
@@ -573,10 +576,10 @@ export function OperationsLog({
               <div className="bg-danger/10 mb-3 rounded-md border border-danger px-3 py-2 text-sm text-danger">
                 Failed to load operations log.{' '}
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => refetch()}
                   className="ml-2"
+                  onClick={() => refetch()}
+                  size="sm"
+                  variant="ghost"
                 >
                   Retry
                 </Button>
@@ -588,10 +591,10 @@ export function OperationsLog({
                 Some filter metadata failed to load — projects, environments, or
                 users may show as slugs.{' '}
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={retryMetadata}
                   className="ml-2"
+                  onClick={retryMetadata}
+                  size="sm"
+                  variant="ghost"
                 >
                   Retry
                 </Button>
@@ -618,19 +621,19 @@ export function OperationsLog({
                       if (!vi) return null
                       return (
                         <div
-                          key={v.key}
-                          data-index={v.index}
-                          ref={virtualizer.measureElement}
                           className="absolute left-0 right-0 top-0"
+                          data-index={v.index}
+                          key={v.key}
+                          ref={virtualizer.measureElement}
                           style={{ transform: `translateY(${v.start}px)` }}
                         >
                           <OperationsLogFeedItem
-                            vi={vi}
-                            groupsById={groupsById}
-                            projectsBySlug={projectsBySlug}
                             environmentsBySlug={environmentsBySlug}
+                            groupsById={groupsById}
                             performerDisplayNames={performerDisplayNames}
+                            projectsBySlug={projectsBySlug}
                             toggleOpen={toggleOpen}
+                            vi={vi}
                           />
                         </div>
                       )

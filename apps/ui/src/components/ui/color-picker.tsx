@@ -1,62 +1,40 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
+
 import { Check } from 'lucide-react'
+
 import { useTheme } from '@/contexts/ThemeContext'
 import { deriveChipColors, hexToRgb } from '@/lib/chip-colors'
 
 interface Swatch {
-  name: string
   hex: string
+  name: string
 }
 
 const SWATCHES: Swatch[] = [
-  { name: 'Clay', hex: '#C86B5E' },
-  { name: 'Ember', hex: '#D98847' },
-  { name: 'Honey', hex: '#C9A227' },
-  { name: 'Moss', hex: '#6B9A3F' },
-  { name: 'Dusk', hex: '#5A89C9' },
-  { name: 'Lilac', hex: '#8C82D4' },
-  { name: 'Rose', hex: '#C96B97' },
-  { name: 'Stone', hex: '#7A7873' },
+  { hex: '#C86B5E', name: 'Clay' },
+  { hex: '#D98847', name: 'Ember' },
+  { hex: '#C9A227', name: 'Honey' },
+  { hex: '#6B9A3F', name: 'Moss' },
+  { hex: '#5A89C9', name: 'Dusk' },
+  { hex: '#8C82D4', name: 'Lilac' },
+  { hex: '#C96B97', name: 'Rose' },
+  { hex: '#7A7873', name: 'Stone' },
 ]
 
 interface ColorPickerProps {
-  value: string
-  onChange: (color: string) => void
-  /** What kind of object this color labels (e.g. "environment", "project type"). */
-  objectType: string
   /** The label/name value previewed in the chip. Mirrors the name field above. */
   labelValue: string
-}
-
-function relativeLuminance(r: number, g: number, b: number): number {
-  const a = [r, g, b].map((v) => {
-    const s = v / 255
-    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
-  })
-  return a[0] * 0.2126 + a[1] * 0.7152 + a[2] * 0.0722
-}
-
-function parseRgb(color: string): { r: number; g: number; b: number } | null {
-  if (color.startsWith('#')) return hexToRgb(color)
-  const m = color.match(/\d+/g)
-  if (!m || m.length < 3) return null
-  return { r: +m[0], g: +m[1], b: +m[2] }
-}
-
-function contrastRatio(fg: string, bg: string): number | null {
-  const f = parseRgb(fg)
-  const b = parseRgb(bg)
-  if (!f || !b) return null
-  const L1 = relativeLuminance(f.r, f.g, f.b)
-  const L2 = relativeLuminance(b.r, b.g, b.b)
-  return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05)
+  /** What kind of object this color labels (e.g. "environment", "project type"). */
+  objectType: string
+  onChange: (color: string) => void
+  value: string
 }
 
 export function ColorPicker({
-  value,
-  onChange,
-  objectType,
   labelValue,
+  objectType,
+  onChange,
+  value,
 }: ColorPickerProps) {
   const { isDarkMode } = useTheme()
   const [hexInput, setHexInput] = useState(value)
@@ -105,13 +83,13 @@ export function ColorPicker({
   // Chip bg is rgba at 20% alpha composited on the page surface (bg-tertiary).
   // Contrast must be measured against that effective color, not the saturated hex.
   const surface = isDarkMode
-    ? { r: 0x14, g: 0x14, b: 0x13 }
-    : { r: 0xf5, g: 0xf4, b: 0xf0 }
+    ? { b: 0x13, g: 0x14, r: 0x14 }
+    : { b: 0xf0, g: 0xf4, r: 0xf5 }
   const effectiveBg = swatchRgb
     ? {
-        r: Math.round(swatchRgb.r * 0.2 + surface.r * 0.8),
-        g: Math.round(swatchRgb.g * 0.2 + surface.g * 0.8),
         b: Math.round(swatchRgb.b * 0.2 + surface.b * 0.8),
+        g: Math.round(swatchRgb.g * 0.2 + surface.g * 0.8),
+        r: Math.round(swatchRgb.r * 0.2 + surface.r * 0.8),
       }
     : null
   const contrast =
@@ -142,8 +120,8 @@ export function ColorPicker({
   return (
     <div className="space-y-3">
       <label
-        htmlFor="color-picker-swatches"
         className="mb-1.5 block text-sm text-secondary"
+        htmlFor="color-picker-swatches"
       >
         Label color
         <span className="ml-1 text-xs text-tertiary">
@@ -154,37 +132,37 @@ export function ColorPicker({
       <div className="max-w-md rounded-md bg-tertiary p-3.5">
         {/* Swatch radio group */}
         <div
-          id="color-picker-swatches"
-          role="radiogroup"
           aria-label="Label color"
-          onKeyDown={handleKeyDown}
           className="grid grid-cols-8 gap-2"
+          id="color-picker-swatches"
+          onKeyDown={handleKeyDown}
+          role="radiogroup"
         >
           {SWATCHES.map((s, i) => {
             const checked = selectedIdx === i
             return (
               <button
-                key={s.hex}
-                ref={(el) => {
-                  swatchRefs.current[i] = el
-                }}
-                type="button"
-                role="radio"
                 aria-checked={checked}
                 aria-label={`${s.name} · ${s.hex}`}
-                title={`${s.name} · ${s.hex}`}
-                tabIndex={checked || (selectedIdx < 0 && i === 0) ? 0 : -1}
-                onClick={() => commit(s.hex)}
-                style={{ backgroundColor: s.hex }}
                 className={`relative flex aspect-square items-center justify-center rounded-[10px] border-2 transition-transform hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-offset-2 ${
                   checked ? 'border-primary' : 'border-transparent'
                 }`}
+                key={s.hex}
+                onClick={() => commit(s.hex)}
+                ref={(el) => {
+                  swatchRefs.current[i] = el
+                }}
+                role="radio"
+                style={{ backgroundColor: s.hex }}
+                tabIndex={checked || (selectedIdx < 0 && i === 0) ? 0 : -1}
+                title={`${s.name} · ${s.hex}`}
+                type="button"
               >
                 {checked && (
                   <Check
+                    aria-hidden
                     className="h-3.5 w-3.5 text-white"
                     style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' }}
-                    aria-hidden
                   />
                 )}
               </button>
@@ -196,8 +174,8 @@ export function ColorPicker({
         <div className="mt-1.5 grid grid-cols-8 gap-2">
           {SWATCHES.map((s) => (
             <span
-              key={s.hex}
               className="text-center font-mono text-[10.5px] text-tertiary"
+              key={s.hex}
             >
               {s.name}
             </span>
@@ -214,24 +192,22 @@ export function ColorPicker({
         {/* Hex input group */}
         <div className="flex items-center gap-1 rounded-md border border-tertiary bg-primary p-1 transition-colors focus-within:border-secondary">
           <label
+            aria-label="Open OS color picker"
             className="relative h-7 w-7 flex-shrink-0 cursor-pointer rounded-md border border-tertiary"
             style={{ backgroundColor: pipBackground }}
-            aria-label="Open OS color picker"
           >
             <input
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              onChange={(e) => commit(e.target.value)}
               ref={nativeColorRef}
               type="color"
               value={isValidHex ? hexInput : '#000000'}
-              onChange={(e) => commit(e.target.value)}
-              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
             />
           </label>
           <input
-            type="text"
-            value={hexInput}
-            spellCheck={false}
-            maxLength={7}
             aria-label="Hex color"
+            className="flex-1 border-0 bg-transparent px-2 font-mono text-[13px] text-primary outline-none placeholder:text-tertiary"
+            maxLength={7}
             onChange={(e) => {
               const raw = e.target.value.toUpperCase()
               if (!/^$|^#[0-9A-F]{0,6}$/.test(raw)) return
@@ -241,7 +217,9 @@ export function ColorPicker({
               }
             }}
             placeholder="#C9A227"
-            className="flex-1 border-0 bg-transparent px-2 font-mono text-[13px] text-primary outline-none placeholder:text-tertiary"
+            spellCheck={false}
+            type="text"
+            value={hexInput}
           />
           {statusLabel && (
             <span
@@ -304,4 +282,28 @@ export function ColorPicker({
       )}
     </div>
   )
+}
+
+function contrastRatio(fg: string, bg: string): null | number {
+  const f = parseRgb(fg)
+  const b = parseRgb(bg)
+  if (!f || !b) return null
+  const L1 = relativeLuminance(f.r, f.g, f.b)
+  const L2 = relativeLuminance(b.r, b.g, b.b)
+  return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05)
+}
+
+function parseRgb(color: string): null | { b: number; g: number; r: number } {
+  if (color.startsWith('#')) return hexToRgb(color)
+  const m = color.match(/\d+/g)
+  if (!m || m.length < 3) return null
+  return { b: +m[2], g: +m[1], r: +m[0] }
+}
+
+function relativeLuminance(r: number, g: number, b: number): number {
+  const a = [r, g, b].map((v) => {
+    const s = v / 255
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+  })
+  return a[0] * 0.2126 + a[1] * 0.7152 + a[2] * 0.0722
 }

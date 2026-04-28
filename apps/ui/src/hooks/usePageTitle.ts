@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-export function usePageTitle(title: string | undefined | null) {
+export function usePageTitle(title: null | string | undefined) {
   useEffect(() => {
     if (!title) return
     const previous = document.title

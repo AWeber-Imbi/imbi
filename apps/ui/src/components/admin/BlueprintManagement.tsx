@@ -1,94 +1,48 @@
 /* eslint-disable react-refresh/only-export-components */
 import React from 'react'
-import { useState, useMemo } from 'react'
-import { FileJson, CheckCircle, XCircle, Upload, Filter } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { useMemo, useState } from 'react'
+
+import { CheckCircle, FileJson, Filter, Upload, XCircle } from 'lucide-react'
+
+import {
+  createBlueprint,
+  deleteBlueprint,
+  listBlueprints,
+  updateBlueprint,
+} from '@/api/endpoints'
 import { AdminTable } from '@/components/ui/admin-table'
+import { Button } from '@/components/ui/button'
 import { LabelChip } from '@/components/ui/label-chip'
-import { LABEL_SWATCHES, swatchForType } from '@/lib/chip-colors'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { AdminSection } from './AdminSection'
-import { BlueprintForm } from './blueprints/BlueprintForm'
-import { BlueprintDetail } from './blueprints/BlueprintDetail'
-import { ImportBlueprintDialog } from './blueprints/ImportBlueprintDialog'
-import { useAdminNav } from '@/hooks/useAdminNav'
 import { useAdminCrud } from '@/hooks/useAdminCrud'
-import {
-  listBlueprints,
-  deleteBlueprint,
-  createBlueprint,
-  updateBlueprint,
-} from '@/api/endpoints'
-import { parseFilterFromBlueprint } from '@/lib/utils'
+import { useAdminNav } from '@/hooks/useAdminNav'
+import { LABEL_SWATCHES, swatchForType } from '@/lib/chip-colors'
 import { buildDiffPatch } from '@/lib/json-patch'
+import { parseFilterFromBlueprint } from '@/lib/utils'
 import type { Blueprint, BlueprintCreate, PatchOperation } from '@/types'
 
+import { AdminSection } from './AdminSection'
+import { BlueprintDetail } from './blueprints/BlueprintDetail'
+import { BlueprintForm } from './blueprints/BlueprintForm'
+import { ImportBlueprintDialog } from './blueprints/ImportBlueprintDialog'
+
 interface BlueprintKey {
-  type: string
   slug: string
-}
-
-/** Return the path type used in API URLs and compound keys. */
-export function blueprintPathType(bp: Blueprint): string {
-  return bp.kind === 'relationship' ? 'relationship' : bp.type || 'unknown'
-}
-
-/** Label shown in the type badge. */
-export function blueprintTypeLabel(bp: Blueprint): string {
-  if (bp.kind === 'relationship') {
-    return `${bp.source ?? '?'} → ${bp.target ?? '?'} (${bp.edge ?? '?'})`
-  }
-  return bp.type || 'unknown'
-}
-
-/** Pick a label palette hex for a blueprint type. Relationship is pinned to Honey. */
-export function getTypeSwatch(type: string, allTypes: string[]): string {
-  if (type === 'relationship') {
-    return (
-      LABEL_SWATCHES.find((s) => s.name === 'Honey')?.hex ??
-      LABEL_SWATCHES[2].hex
-    )
-  }
-  return swatchForType(type, allTypes)
-}
-
-function renderFilterCell(filter: string | null | undefined): React.ReactNode {
-  const f = parseFilterFromBlueprint(filter)
-  if (!f) return null
-  const tooltipLines = [
-    f.project_type?.length ? `Project Types: ${f.project_type.join(', ')}` : '',
-    f.environment?.length ? `Environments: ${f.environment.join(', ')}` : '',
-  ].filter(Boolean)
-  return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span>
-            <Filter className="mx-auto h-4 w-4 text-warning" />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>
-          {tooltipLines.map((line) => (
-            <p key={line}>{line}</p>
-          ))}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  )
+  type: string
 }
 
 export function BlueprintManagement() {
   const {
-    viewMode,
-    slug: selectedSlug,
-    goToList,
     goToCreate,
     goToEdit,
+    goToList,
+    slug: selectedSlug,
+    viewMode,
   } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('')
@@ -101,8 +55,8 @@ export function BlueprintManagement() {
     const colonIdx = selectedSlug.indexOf(':')
     if (colonIdx === -1) return null
     return {
-      type: selectedSlug.substring(0, colonIdx),
       slug: selectedSlug.substring(colonIdx + 1),
+      type: selectedSlug.substring(0, colonIdx),
     }
   }, [selectedSlug])
 
@@ -117,25 +71,21 @@ export function BlueprintManagement() {
   ]
 
   const {
-    items: blueprints,
-    isLoading,
-    error,
     createMutation,
-    updateMutation,
     deleteMutation,
+    error,
+    isLoading,
+    items: blueprints,
+    updateMutation,
   } = useAdminCrud<
     Blueprint,
     BlueprintCreate,
-    { type: string; slug: string; operations: PatchOperation[] },
+    { operations: PatchOperation[]; slug: string; type: string },
     BlueprintKey
   >({
-    queryKey: ['blueprints'],
-    listFn: (signal) => listBlueprints(undefined, signal),
     createFn: (blueprint) => createBlueprint(blueprint),
-    updateFn: ({ type, slug, operations }) =>
-      updateBlueprint(type, slug, operations),
-    deleteFn: ({ type, slug }) => deleteBlueprint(type, slug),
-    onMutationSuccess: goToList,
+    deleteErrorLabel: 'blueprint',
+    deleteFn: ({ slug, type }) => deleteBlueprint(type, slug),
     // The backend auto-refreshes its OpenAPI schema cache on blueprint CRUD;
     // invalidate frontend caches derived from it.
     extraInvalidateKeys: [
@@ -145,7 +95,11 @@ export function BlueprintManagement() {
       ['environmentSchema'],
       ['projectTypeSchema'],
     ],
-    deleteErrorLabel: 'blueprint',
+    listFn: (signal) => listBlueprints(undefined, signal),
+    onMutationSuccess: goToList,
+    queryKey: ['blueprints'],
+    updateFn: ({ operations, slug, type }) =>
+      updateBlueprint(type, slug, operations),
   })
 
   // Filter blueprints
@@ -192,9 +146,9 @@ export function BlueprintManagement() {
         return
       }
       updateMutation.mutate({
-        type: selectedKey.type,
-        slug: selectedKey.slug,
         operations,
+        slug: selectedKey.slug,
+        type: selectedKey.type,
       })
     }
   }
@@ -246,15 +200,15 @@ export function BlueprintManagement() {
     const isCreate = viewMode === 'create'
     return (
       <BlueprintForm
-        key={selectedKey ? `${selectedKey.type}/${selectedKey.slug}` : 'create'}
         blueprintKey={selectedKey}
         blueprintTypes={blueprintTypes}
-        onSave={handleSave}
-        onCancel={handleCancel}
+        error={isCreate ? createMutation.error : updateMutation.error}
         isLoading={
           isCreate ? createMutation.isPending : updateMutation.isPending
         }
-        error={isCreate ? createMutation.error : updateMutation.error}
+        key={selectedKey ? `${selectedKey.type}/${selectedKey.slug}` : 'create'}
+        onCancel={handleCancel}
+        onSave={handleSave}
       />
     )
   }
@@ -262,33 +216,37 @@ export function BlueprintManagement() {
   if (viewMode === 'detail' && selectedKey) {
     return (
       <BlueprintDetail
-        key={`${selectedKey.type}/${selectedKey.slug}`}
         blueprintKey={selectedKey}
         blueprintTypes={blueprintTypes}
-        onEdit={() => handleEditClick(selectedKey)}
+        key={`${selectedKey.type}/${selectedKey.slug}`}
         onBack={handleCancel}
+        onEdit={() => handleEditClick(selectedKey)}
       />
     )
   }
 
   return (
     <AdminSection
-      searchPlaceholder="Search blueprints..."
-      search={searchQuery}
-      onSearchChange={setSearchQuery}
       createLabel="New Blueprint"
-      onCreate={handleCreate}
-      isLoading={isLoading}
-      loadingLabel="Loading blueprints..."
       error={error}
       errorTitle="Failed to load blueprints"
+      headerActions={
+        <Button
+          className="border-tertiary text-secondary hover:bg-secondary hover:text-primary"
+          onClick={handleOpenImport}
+          variant="outline"
+        >
+          <Upload className="mr-2 h-4 w-4" />
+          Import
+        </Button>
+      }
       headerExtras={
         <>
           <select
             aria-label="Filter blueprints by type"
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
             className="h-10 rounded-md border border-tertiary bg-primary px-3 py-2 text-sm text-primary"
+            onChange={(e) => setTypeFilter(e.target.value)}
+            value={typeFilter}
           >
             <option value="">All Types</option>
             {blueprintTypes.map((t) => (
@@ -300,9 +258,9 @@ export function BlueprintManagement() {
           </select>
           <select
             aria-label="Filter blueprints by status"
-            value={enabledFilter}
-            onChange={(e) => setEnabledFilter(e.target.value)}
             className="h-10 rounded-md border border-tertiary bg-primary px-3 py-2 text-sm text-primary"
+            onChange={(e) => setEnabledFilter(e.target.value)}
+            value={enabledFilter}
           >
             <option value="">All Status</option>
             <option value="enabled">Enabled</option>
@@ -310,24 +268,20 @@ export function BlueprintManagement() {
           </select>
         </>
       }
-      headerActions={
-        <Button
-          variant="outline"
-          onClick={handleOpenImport}
-          className="border-tertiary text-secondary hover:bg-secondary hover:text-primary"
-        >
-          <Upload className="mr-2 h-4 w-4" />
-          Import
-        </Button>
-      }
+      isLoading={isLoading}
+      loadingLabel="Loading blueprints..."
+      onCreate={handleCreate}
+      onSearchChange={setSearchQuery}
+      search={searchQuery}
+      searchPlaceholder="Search blueprints..."
     >
       <AdminTable<Blueprint>
         columns={[
           {
-            key: 'name',
+            cellAlign: 'left',
             header: 'Name',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'name',
             render: (bp) => (
               <div className="flex items-center gap-2.5">
                 <FileJson className="h-4 w-4 flex-shrink-0 text-amber-text-mid" />
@@ -345,10 +299,10 @@ export function BlueprintManagement() {
             ),
           },
           {
-            key: 'slug',
+            cellAlign: 'left',
             header: 'Slug',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'slug',
             render: (bp) => (
               <span className="whitespace-nowrap font-mono text-sm text-secondary">
                 {bp.slug}
@@ -356,10 +310,10 @@ export function BlueprintManagement() {
             ),
           },
           {
-            key: 'type',
+            cellAlign: 'left',
             header: 'Type',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'type',
             render: (bp) => (
               <LabelChip
                 hex={getTypeSwatch(blueprintPathType(bp), blueprintTypes)}
@@ -369,10 +323,10 @@ export function BlueprintManagement() {
             ),
           },
           {
-            key: 'enabled',
+            cellAlign: 'center',
             header: 'Enabled',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'enabled',
             render: (bp) =>
               bp.enabled ? (
                 <CheckCircle className="mx-auto h-4 w-4 text-success" />
@@ -381,20 +335,20 @@ export function BlueprintManagement() {
               ),
           },
           {
-            key: 'filter',
+            cellAlign: 'center',
             header: 'Filter',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'filter',
             render: (bp) =>
               renderFilterCell(bp.filter) || (
                 <span className="text-xs text-tertiary">&mdash;</span>
               ),
           },
           {
-            key: 'priority',
+            cellAlign: 'center',
             header: 'Priority',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'priority',
             render: (bp) => (
               <span className="whitespace-nowrap text-sm text-primary">
                 {bp.priority}
@@ -402,10 +356,10 @@ export function BlueprintManagement() {
             ),
           },
           {
-            key: 'version',
+            cellAlign: 'center',
             header: 'Version',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'version',
             render: (bp) => (
               <span className="whitespace-nowrap font-mono text-sm text-secondary">
                 v{bp.version}
@@ -413,43 +367,92 @@ export function BlueprintManagement() {
             ),
           },
         ]}
-        rows={filteredBlueprints}
-        getRowKey={(bp) => `${blueprintPathType(bp)}/${bp.slug}`}
-        getDeleteLabel={(bp) => bp.name}
-        onRowClick={(bp) => {
-          if (!bp.slug) return
-          handleViewClick({
-            type: blueprintPathType(bp),
-            slug: bp.slug,
-          })
-        }}
-        onDelete={(bp) => {
-          if (!bp.slug) return
-          deleteMutation.mutate({
-            type: blueprintPathType(bp),
-            slug: bp.slug,
-          })
-        }}
-        isDeleting={deleteMutation.isPending}
         emptyMessage={
           searchQuery || typeFilter || enabledFilter
             ? 'No blueprints match your filters'
             : 'No blueprints created yet'
         }
+        getDeleteLabel={(bp) => bp.name}
+        getRowKey={(bp) => `${blueprintPathType(bp)}/${bp.slug}`}
+        isDeleting={deleteMutation.isPending}
+        onDelete={(bp) => {
+          if (!bp.slug) return
+          deleteMutation.mutate({
+            slug: bp.slug,
+            type: blueprintPathType(bp),
+          })
+        }}
+        onRowClick={(bp) => {
+          if (!bp.slug) return
+          handleViewClick({
+            slug: bp.slug,
+            type: blueprintPathType(bp),
+          })
+        }}
+        rows={filteredBlueprints}
       />
 
       {/* Import Dialog */}
       <ImportBlueprintDialog
+        apiError={importDialogOpen ? createMutation.error : null}
+        blueprintTypes={blueprintTypes}
+        isLoading={createMutation.isPending}
         isOpen={importDialogOpen}
         onClose={() => {
           setImportDialogOpen(false)
           createMutation.reset()
         }}
         onImport={handleImport}
-        blueprintTypes={blueprintTypes}
-        isLoading={createMutation.isPending}
-        apiError={importDialogOpen ? createMutation.error : null}
       />
     </AdminSection>
+  )
+}
+
+/** Return the path type used in API URLs and compound keys. */
+export function blueprintPathType(bp: Blueprint): string {
+  return bp.kind === 'relationship' ? 'relationship' : bp.type || 'unknown'
+}
+
+/** Label shown in the type badge. */
+export function blueprintTypeLabel(bp: Blueprint): string {
+  if (bp.kind === 'relationship') {
+    return `${bp.source ?? '?'} → ${bp.target ?? '?'} (${bp.edge ?? '?'})`
+  }
+  return bp.type || 'unknown'
+}
+
+/** Pick a label palette hex for a blueprint type. Relationship is pinned to Honey. */
+export function getTypeSwatch(type: string, allTypes: string[]): string {
+  if (type === 'relationship') {
+    return (
+      LABEL_SWATCHES.find((s) => s.name === 'Honey')?.hex ??
+      LABEL_SWATCHES[2].hex
+    )
+  }
+  return swatchForType(type, allTypes)
+}
+
+function renderFilterCell(filter: null | string | undefined): React.ReactNode {
+  const f = parseFilterFromBlueprint(filter)
+  if (!f) return null
+  const tooltipLines = [
+    f.project_type?.length ? `Project Types: ${f.project_type.join(', ')}` : '',
+    f.environment?.length ? `Environments: ${f.environment.join(', ')}` : '',
+  ].filter(Boolean)
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span>
+            <Filter className="mx-auto h-4 w-4 text-warning" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          {tooltipLines.map((line) => (
+            <p key={line}>{line}</p>
+          ))}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }

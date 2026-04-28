@@ -1,37 +1,40 @@
 import { useState } from 'react'
+
 import { useQuery } from '@tanstack/react-query'
 import {
+  AlertCircle,
   AlertTriangle,
+  Check,
   Eye,
   EyeOff,
-  Check,
   X as XIcon,
-  AlertCircle,
 } from 'lucide-react'
-import { Input } from '../../ui/input'
-import { FormField } from '@/components/ui/form-field'
-import { FormHeader } from '@/components/admin/form-header'
-import { Gravatar } from '../../ui/gravatar'
-import { Card, CardContent } from '../../ui/card'
+
 import { getRoles } from '@/api/endpoints'
+import { FormHeader } from '@/components/admin/form-header'
+import { FormField } from '@/components/ui/form-field'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useFormScaffold } from '@/hooks/useFormScaffold'
 import type { AdminUser, AdminUserCreate } from '@/types'
 
+import { Card, CardContent } from '../../ui/card'
+import { Gravatar } from '../../ui/gravatar'
+import { Input } from '../../ui/input'
+
 interface UserFormProps {
-  user: AdminUser | null
-  onSave: (user: AdminUserCreate) => void
-  onCancel: () => void
+  error?: null | { message?: string; response?: { data?: { detail?: string } } }
   isLoading?: boolean
-  error?: { response?: { data?: { detail?: string } }; message?: string } | null
+  onCancel: () => void
+  onSave: (user: AdminUserCreate) => void
+  user: AdminUser | null
 }
 
 export function UserForm({
-  user,
-  onSave,
-  onCancel,
-  isLoading = false,
   error,
+  isLoading = false,
+  onCancel,
+  onSave,
+  user,
 }: UserFormProps) {
   const isEditing = !!user
 
@@ -61,24 +64,24 @@ export function UserForm({
 
   // Fetch available roles
   const { data: availableRoles = [], isLoading: rolesLoading } = useQuery({
-    queryKey: ['roles'],
     queryFn: ({ signal }) => getRoles(signal),
+    queryKey: ['roles'],
   })
 
   // Validation state
   const {
-    validationErrors,
+    handleFieldChange,
+    setTouched,
     setValidationErrors,
     touched,
-    setTouched,
-    handleFieldChange,
+    validationErrors,
   } = useFormScaffold()
 
   // Password strength
   const getPasswordStrength = (
     pwd: string,
-  ): { score: number; label: string; color: string } => {
-    if (!pwd) return { score: 0, label: '', color: '' }
+  ): { color: string; label: string; score: number } => {
+    if (!pwd) return { color: '', label: '', score: 0 }
 
     let score = 0
     if (pwd.length >= 12) score++
@@ -88,9 +91,9 @@ export function UserForm({
     if (/[0-9]/.test(pwd)) score++
     if (/[^a-zA-Z0-9]/.test(pwd)) score++
 
-    if (score <= 2) return { score, label: 'Weak', color: 'red' }
-    if (score <= 4) return { score, label: 'Medium', color: 'yellow' }
-    return { score, label: 'Strong', color: 'green' }
+    if (score <= 2) return { color: 'red', label: 'Weak', score }
+    if (score <= 4) return { color: 'yellow', label: 'Medium', score }
+    return { color: 'green', label: 'Strong', score }
   }
 
   const passwordStrength = getPasswordStrength(password)
@@ -149,11 +152,11 @@ export function UserForm({
 
     setValidationErrors(errors)
     setTouched({
-      email: true,
-      display_name: true,
-      password: true,
       confirmPassword: true,
+      display_name: true,
+      email: true,
       organization_slug: true,
+      password: true,
       role_slug: true,
     })
 
@@ -166,8 +169,8 @@ export function UserForm({
     }
 
     const userData: AdminUserCreate = {
-      email: email.trim(),
       display_name: displayName.trim(),
+      email: email.trim(),
       is_active: isActive,
       is_admin: isAdmin,
       is_service_account: isServiceAccount,
@@ -187,17 +190,17 @@ export function UserForm({
     <div className="space-y-6">
       {/* Header */}
       <FormHeader
-        title={isEditing ? 'Edit User' : 'Create New User'}
+        createLabel="Create User"
+        isEditing={isEditing}
+        isLoading={isLoading}
+        onCancel={onCancel}
+        onSave={handleSave}
         subtitle={
           isEditing
             ? `Editing ${user?.display_name}`
             : 'Add a new user account to the system'
         }
-        isEditing={isEditing}
-        isLoading={isLoading}
-        onCancel={onCancel}
-        onSave={handleSave}
-        createLabel="Create User"
+        title={isEditing ? 'Edit User' : 'Create New User'}
       />
 
       {/* API Error Display */}
@@ -225,18 +228,14 @@ export function UserForm({
             {!isEditing && (
               <div className="col-span-2">
                 <FormField
+                  error={validationErrors.email}
                   label="Email"
                   required
                   touched={touched.email}
-                  error={validationErrors.email}
                 >
                   <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => {
-                      setEmail(e.target.value)
-                      handleFieldChange('email')
-                    }}
+                    className=""
+                    disabled={isLoading}
                     onBlur={() => {
                       setTouched({ ...touched, email: true })
                       const error = validateEmail(email)
@@ -247,9 +246,13 @@ export function UserForm({
                         })
                       }
                     }}
-                    disabled={isLoading}
+                    onChange={(e) => {
+                      setEmail(e.target.value)
+                      handleFieldChange('email')
+                    }}
                     placeholder="john.doe@company.com"
-                    className=""
+                    type="email"
+                    value={email}
                   />
                 </FormField>
               </div>
@@ -258,17 +261,14 @@ export function UserForm({
             {/* Display Name */}
             <div className="col-span-2">
               <FormField
+                error={validationErrors.display_name}
                 label="Display Name"
                 required
                 touched={touched.display_name}
-                error={validationErrors.display_name}
               >
                 <Input
-                  value={displayName}
-                  onChange={(e) => {
-                    setDisplayName(e.target.value)
-                    handleFieldChange('display_name')
-                  }}
+                  className=""
+                  disabled={isLoading}
                   onBlur={() => {
                     setTouched({ ...touched, display_name: true })
                     const error = validateDisplayName(displayName)
@@ -279,9 +279,12 @@ export function UserForm({
                       })
                     }
                   }}
-                  disabled={isLoading}
+                  onChange={(e) => {
+                    setDisplayName(e.target.value)
+                    handleFieldChange('display_name')
+                  }}
                   placeholder="John Doe"
-                  className=""
+                  value={displayName}
                 />
               </FormField>
             </div>
@@ -292,17 +295,17 @@ export function UserForm({
                 <FormField label="Avatar (Gravatar)">
                   <div className="flex items-center gap-3">
                     <Gravatar
+                      className="h-16 w-16 rounded-full border-2 border-gray-300 dark:border-gray-600"
                       email={email}
                       size={64}
-                      className="h-16 w-16 rounded-full border-2 border-gray-300 dark:border-gray-600"
                     />
                     <p className="text-sm text-secondary">
                       Avatar will be loaded from{' '}
                       <a
-                        href="https://gravatar.com"
-                        target="_blank"
-                        rel="noopener noreferrer"
                         className="text-blue-500 hover:underline"
+                        href="https://gravatar.com"
+                        rel="noopener noreferrer"
+                        target="_blank"
                       >
                         Gravatar
                       </a>{' '}
@@ -318,11 +321,11 @@ export function UserForm({
               <div className="col-span-2">
                 <label className="flex cursor-pointer items-center gap-2">
                   <input
-                    type="checkbox"
                     checked={changePassword}
-                    onChange={(e) => setChangePassword(e.target.checked)}
-                    disabled={isLoading}
                     className="rounded"
+                    disabled={isLoading}
+                    onChange={(e) => setChangePassword(e.target.checked)}
+                    type="checkbox"
                   />
                   <span className="text-secondary">Change Password</span>
                 </label>
@@ -333,19 +336,15 @@ export function UserForm({
               <>
                 <div className="col-span-2">
                   <FormField
+                    error={validationErrors.password}
                     label="Password"
                     required
                     touched={touched.password}
-                    error={validationErrors.password}
                   >
                     <div className="relative">
                       <Input
-                        type={showPassword ? 'text' : 'password'}
-                        value={password}
-                        onChange={(e) => {
-                          setPassword(e.target.value)
-                          handleFieldChange('password')
-                        }}
+                        className="pr-10"
+                        disabled={isLoading}
                         onBlur={() => {
                           setTouched({ ...touched, password: true })
                           const error = validatePassword(password)
@@ -356,15 +355,19 @@ export function UserForm({
                             })
                           }
                         }}
-                        disabled={isLoading}
+                        onChange={(e) => {
+                          setPassword(e.target.value)
+                          handleFieldChange('password')
+                        }}
                         placeholder="Minimum 12 characters"
-                        className="pr-10"
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
                       />
                       <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        disabled={isLoading}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-tertiary hover:text-secondary"
+                        disabled={isLoading}
+                        onClick={() => setShowPassword(!showPassword)}
+                        type="button"
                       >
                         {showPassword ? (
                           <EyeOff className="h-4 w-4" />
@@ -461,18 +464,14 @@ export function UserForm({
 
                 <div className="col-span-2">
                   <FormField
+                    error={validationErrors.confirmPassword}
                     label="Confirm Password"
                     required
                     touched={touched.confirmPassword}
-                    error={validationErrors.confirmPassword}
                   >
                     <Input
-                      type={showPassword ? 'text' : 'password'}
-                      value={confirmPassword}
-                      onChange={(e) => {
-                        setConfirmPassword(e.target.value)
-                        handleFieldChange('confirmPassword')
-                      }}
+                      className=""
+                      disabled={isLoading}
                       onBlur={() => {
                         setTouched({ ...touched, confirmPassword: true })
                         const error = validateConfirmPassword(confirmPassword)
@@ -483,9 +482,13 @@ export function UserForm({
                           })
                         }
                       }}
-                      disabled={isLoading}
+                      onChange={(e) => {
+                        setConfirmPassword(e.target.value)
+                        handleFieldChange('confirmPassword')
+                      }}
                       placeholder="Re-enter password"
-                      className=""
+                      type={showPassword ? 'text' : 'password'}
+                      value={confirmPassword}
                     />
                   </FormField>
                 </div>
@@ -511,15 +514,15 @@ export function UserForm({
                 }`}
               >
                 <input
-                  type="radio"
-                  name="accountType"
                   checked={!isAdmin && !isServiceAccount}
+                  className="mt-0.5"
+                  disabled={isLoading}
+                  name="accountType"
                   onChange={() => {
                     setIsAdmin(false)
                     setIsServiceAccount(false)
                   }}
-                  disabled={isLoading}
-                  className="mt-0.5"
+                  type="radio"
                 />
                 <div className="flex-1">
                   <div className="text-primary">Regular User</div>
@@ -537,15 +540,15 @@ export function UserForm({
                 }`}
               >
                 <input
-                  type="radio"
-                  name="accountType"
                   checked={isServiceAccount}
+                  className="mt-0.5"
+                  disabled={isLoading}
+                  name="accountType"
                   onChange={() => {
                     setIsServiceAccount(true)
                     setIsAdmin(false)
                   }}
-                  disabled={isLoading}
-                  className="mt-0.5"
+                  type="radio"
                 />
                 <div className="flex-1">
                   <div className="text-primary">Service Account</div>
@@ -561,15 +564,15 @@ export function UserForm({
                 }`}
               >
                 <input
-                  type="radio"
-                  name="accountType"
                   checked={isAdmin}
+                  className="mt-0.5"
+                  disabled={isLoading}
+                  name="accountType"
                   onChange={() => {
                     setIsAdmin(true)
                     setIsServiceAccount(false)
                   }}
-                  disabled={isLoading}
-                  className="mt-0.5"
+                  type="radio"
                 />
                 <div className="flex-1">
                   <div className="flex items-center gap-2 text-primary">
@@ -588,11 +591,11 @@ export function UserForm({
           <div>
             <label className="flex cursor-pointer items-center gap-2">
               <input
-                type="checkbox"
                 checked={isActive}
-                onChange={(e) => setIsActive(e.target.checked)}
-                disabled={isLoading}
                 className="rounded"
+                disabled={isLoading}
+                onChange={(e) => setIsActive(e.target.checked)}
+                type="checkbox"
               />
               <span className="text-secondary">Account Active</span>
             </label>
@@ -615,19 +618,19 @@ export function UserForm({
             <div className="grid grid-cols-2 gap-4">
               {/* Organization */}
               <FormField
+                error={validationErrors.organization_slug}
                 label="Organization"
                 required
                 touched={touched.organization_slug}
-                error={validationErrors.organization_slug}
               >
                 <select
-                  value={organizationSlug}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={isLoading}
                   onChange={(e) => {
                     setOrganizationSlug(e.target.value)
                     handleFieldChange('organization_slug')
                   }}
-                  disabled={isLoading}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={organizationSlug}
                 >
                   <option value="">Select an organization...</option>
                   {organizations.map((org) => (
@@ -640,22 +643,22 @@ export function UserForm({
 
               {/* Role */}
               <FormField
+                error={validationErrors.role_slug}
                 label="Role"
                 required
                 touched={touched.role_slug}
-                error={validationErrors.role_slug}
               >
                 {rolesLoading ? (
                   <p className="text-sm text-secondary">Loading roles...</p>
                 ) : (
                   <select
-                    value={roleSlug}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={isLoading}
                     onChange={(e) => {
                       setRoleSlug(e.target.value)
                       handleFieldChange('role_slug')
                     }}
-                    disabled={isLoading}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={roleSlug}
                   >
                     <option value="">Select a role...</option>
                     {availableRoles.map((role) => (

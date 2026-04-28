@@ -1,58 +1,61 @@
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
+
 import { Globe } from 'lucide-react'
-import { formatRelativeDate } from '@/lib/formatDate'
-import { EntityIcon } from '@/components/ui/entity-icon'
-import { AdminTable } from '@/components/ui/admin-table'
-import type { CanDeleteResult } from '@/components/ui/admin-table'
-import { LabelChip } from '@/components/ui/label-chip'
-import { AdminSection } from './AdminSection'
-import { EnvironmentForm } from './environments/EnvironmentForm'
-import { EnvironmentDetail } from './environments/EnvironmentDetail'
-import { useOrganization } from '@/contexts/OrganizationContext'
-import { useAdminNav } from '@/hooks/useAdminNav'
-import { useAdminCrud } from '@/hooks/useAdminCrud'
+
 import {
-  listEnvironments,
-  deleteEnvironment,
   createEnvironment,
+  deleteEnvironment,
+  listEnvironments,
   updateEnvironment,
 } from '@/api/endpoints'
+import { AdminTable } from '@/components/ui/admin-table'
+import type { CanDeleteResult } from '@/components/ui/admin-table'
+import { EntityIcon } from '@/components/ui/entity-icon'
+import { LabelChip } from '@/components/ui/label-chip'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
+import { useAdminNav } from '@/hooks/useAdminNav'
+import { formatRelativeDate } from '@/lib/formatDate'
 import { buildDiffPatch } from '@/lib/json-patch'
 import type { Environment, EnvironmentCreate, PatchOperation } from '@/types'
+
+import { AdminSection } from './AdminSection'
+import { EnvironmentDetail } from './environments/EnvironmentDetail'
+import { EnvironmentForm } from './environments/EnvironmentForm'
 
 export function EnvironmentManagement() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
   const {
-    viewMode,
-    slug: selectedEnvSlug,
-    goToList,
     goToCreate,
     goToEdit,
+    goToList,
+    slug: selectedEnvSlug,
+    viewMode,
   } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
 
   const {
-    items: environments,
-    isLoading,
-    error,
     createMutation,
-    updateMutation,
     deleteMutation,
+    error,
+    isLoading,
+    items: environments,
+    updateMutation,
   } = useAdminCrud<
     Environment,
-    { orgSlug: string; env: EnvironmentCreate },
-    { orgSlug: string; slug: string; operations: PatchOperation[] },
+    { env: EnvironmentCreate; orgSlug: string },
+    { operations: PatchOperation[]; orgSlug: string; slug: string },
     { orgSlug: string; slug: string }
   >({
-    queryKey: ['environments', orgSlug],
-    listFn: orgSlug ? (signal) => listEnvironments(orgSlug, signal) : null,
-    createFn: ({ orgSlug, env }) => createEnvironment(orgSlug, env),
-    updateFn: ({ orgSlug, slug, operations }) =>
-      updateEnvironment(orgSlug, slug, operations),
-    deleteFn: ({ orgSlug, slug }) => deleteEnvironment(orgSlug, slug),
-    onMutationSuccess: goToList,
+    createFn: ({ env, orgSlug }) => createEnvironment(orgSlug, env),
     deleteErrorLabel: 'environment',
+    deleteFn: ({ orgSlug, slug }) => deleteEnvironment(orgSlug, slug),
+    listFn: orgSlug ? (signal) => listEnvironments(orgSlug, signal) : null,
+    onMutationSuccess: goToList,
+    queryKey: ['environments', orgSlug],
+    updateFn: ({ operations, orgSlug, slug }) =>
+      updateEnvironment(orgSlug, slug, operations),
   })
 
   const filteredEnvironments = environments.filter((env) => {
@@ -81,13 +84,13 @@ export function EnvironmentManagement() {
     if (projects === 0) return { allowed: true }
     return {
       allowed: false,
-      blockedBy: [{ count: projects, label: 'project', href: '/projects' }],
+      blockedBy: [{ count: projects, href: '/projects', label: 'project' }],
     }
   }
 
   const handleSave = (formOrgSlug: string, envData: EnvironmentCreate) => {
     if (viewMode === 'create') {
-      createMutation.mutate({ orgSlug: formOrgSlug, env: envData })
+      createMutation.mutate({ env: envData, orgSlug: formOrgSlug })
     } else if (selectedEnvSlug && selectedEnvironment) {
       const operations = buildDiffPatch(
         selectedEnvironment as unknown as Record<string, unknown>,
@@ -99,9 +102,9 @@ export function EnvironmentManagement() {
         return
       }
       updateMutation.mutate({
+        operations,
         orgSlug: selectedEnvironment.organization.slug || formOrgSlug,
         slug: selectedEnvSlug,
-        operations,
       })
     }
   }
@@ -122,10 +125,10 @@ export function EnvironmentManagement() {
     return (
       <EnvironmentForm
         environment={selectedEnvironment}
-        onSave={handleSave}
-        onCancel={handleCancel}
-        isLoading={createMutation.isPending || updateMutation.isPending}
         error={createMutation.error || updateMutation.error}
+        isLoading={createMutation.isPending || updateMutation.isPending}
+        onCancel={handleCancel}
+        onSave={handleSave}
       />
     )
   }
@@ -134,31 +137,32 @@ export function EnvironmentManagement() {
     return (
       <EnvironmentDetail
         environment={selectedEnvironment}
-        onEdit={() => goToEdit(selectedEnvironment.slug)}
         onBack={handleCancel}
+        onEdit={() => goToEdit(selectedEnvironment.slug)}
       />
     )
   }
 
   return (
     <AdminSection
-      searchPlaceholder="Search environments..."
-      search={searchQuery}
-      onSearchChange={setSearchQuery}
       createLabel="New Environment"
-      onCreate={goToCreate}
-      isLoading={isLoading}
-      loadingLabel="Loading environments..."
       error={error}
       errorTitle="Failed to load environments"
+      isLoading={isLoading}
+      loadingLabel="Loading environments..."
+      onCreate={goToCreate}
+      onSearchChange={setSearchQuery}
+      search={searchQuery}
+      searchPlaceholder="Search environments..."
     >
       <AdminTable
+        canDelete={canDeleteEnvironment}
         columns={[
           {
-            key: 'name',
+            cellAlign: 'left',
             header: 'Environment',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'name',
             render: (env) => (
               <div className="flex items-center gap-3">
                 <div
@@ -168,8 +172,8 @@ export function EnvironmentManagement() {
                 >
                   {env.icon ? (
                     <EntityIcon
-                      icon={env.icon}
                       className="size-5 rounded object-cover"
+                      icon={env.icon}
                     />
                   ) : (
                     <Globe className="h-4 w-4 text-success" />
@@ -187,13 +191,13 @@ export function EnvironmentManagement() {
             ),
           },
           {
-            key: 'slug',
+            cellAlign: 'center',
             header: 'Slug',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'slug',
             render: (env) =>
               env.label_color ? (
-                <LabelChip hex={env.label_color} className="font-mono">
+                <LabelChip className="font-mono" hex={env.label_color}>
                   {env.slug}
                 </LabelChip>
               ) : (
@@ -207,19 +211,19 @@ export function EnvironmentManagement() {
               ),
           },
           {
-            key: 'order',
+            cellAlign: 'center',
             header: 'Order',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'order',
             render: (env) => (
               <span className="text-secondary">{env.sort_order ?? 0}</span>
             ),
           },
           {
-            key: 'projects',
+            cellAlign: 'right',
             header: 'Projects',
             headerAlign: 'right',
-            cellAlign: 'right',
+            key: 'projects',
             render: (env) => (
               <span
                 className={
@@ -233,21 +237,14 @@ export function EnvironmentManagement() {
             ),
           },
           {
-            key: 'updated',
+            cellAlign: 'center',
             header: 'Last Updated',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'updated',
             render: (env) =>
               formatRelativeDate(env.updated_at ?? env.created_at),
           },
         ]}
-        rows={filteredEnvironments}
-        getRowKey={(env) => env.slug}
-        getDeleteLabel={(env) => env.name}
-        onRowClick={(env) => goToEdit(env.slug)}
-        onDelete={handleDelete}
-        canDelete={canDeleteEnvironment}
-        isDeleting={deleteMutation.isPending}
         emptyMessage={
           searchQuery
             ? 'No environments found matching your search.'
@@ -255,6 +252,12 @@ export function EnvironmentManagement() {
               ? `No environments in ${selectedOrganization.name} yet.`
               : 'No environments created yet.'
         }
+        getDeleteLabel={(env) => env.name}
+        getRowKey={(env) => env.slug}
+        isDeleting={deleteMutation.isPending}
+        onDelete={handleDelete}
+        onRowClick={(env) => goToEdit(env.slug)}
+        rows={filteredEnvironments}
       />
     </AdminSection>
   )

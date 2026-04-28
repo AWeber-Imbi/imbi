@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from 'react'
+
 import { ExternalLink } from 'lucide-react'
+
 import { iconRegistry } from '@/lib/icon-registry'
 import type { IconComponent } from '@/lib/icon-registry'
 import { createImgComponent } from '@/lib/icon-sets/utils'
@@ -15,79 +17,79 @@ import { createImgComponent } from '@/lib/icon-sets/utils'
 // ---------------------------------------------------------------------------
 
 iconRegistry.registerLoader({
+  load: () => import('@/lib/icon-sets/lucide').then((m) => m.iconSet),
+  matches: (v) => v.startsWith('lucide-'),
   meta: {
+    description: 'General purpose outline icons for UI elements',
     id: 'lucide',
     label: 'Lucide',
-    description: 'General purpose outline icons for UI elements',
     valueFormat: 'lucide-{name}',
   },
-  matches: (v) => v.startsWith('lucide-'),
-  load: () => import('@/lib/icon-sets/lucide').then((m) => m.iconSet),
 })
 
 iconRegistry.registerLoader({
+  load: () => import('@/lib/icon-sets/simple-icons').then((m) => m.iconSet),
+  matches: (v) => v.startsWith('si-'),
   meta: {
+    description: 'Brand icons for popular services, frameworks, and tools',
     id: 'simple-icons',
     label: 'Simple Icons',
-    description: 'Brand icons for popular services, frameworks, and tools',
     valueFormat: 'si-{name}',
   },
-  matches: (v) => v.startsWith('si-'),
-  load: () => import('@/lib/icon-sets/simple-icons').then((m) => m.iconSet),
 })
 
 iconRegistry.registerLoader({
+  load: () => import('@/lib/icon-sets/phosphor').then((m) => m.iconSet),
+  matches: (v) => v.startsWith('phosphor-'),
   meta: {
-    id: 'phosphor',
-    label: 'Phosphor',
     description:
       'Flexible icon family for interfaces and diagrams (regular weight)',
+    id: 'phosphor',
+    label: 'Phosphor',
     valueFormat: 'phosphor-{name}',
   },
-  matches: (v) => v.startsWith('phosphor-'),
-  load: () => import('@/lib/icon-sets/phosphor').then((m) => m.iconSet),
 })
 
 iconRegistry.registerLoader({
+  load: () => import('@/lib/icon-sets/tabler').then((m) => m.iconSet),
+  matches: (v) => v.startsWith('tabler-'),
   meta: {
+    description: 'Clean open source SVG icons (outline and filled variants)',
     id: 'tabler',
     label: 'Tabler',
-    description: 'Clean open source SVG icons (outline and filled variants)',
     valueFormat: 'tabler-{name}',
   },
-  matches: (v) => v.startsWith('tabler-'),
-  load: () => import('@/lib/icon-sets/tabler').then((m) => m.iconSet),
 })
 
 iconRegistry.registerLoader({
+  load: () => import('@/lib/icon-sets/devicon').then((m) => m.iconSet),
+  matches: (v) => v.startsWith('devicon-'),
   meta: {
-    id: 'devicon',
-    label: 'Devicon',
     description:
       'Technology and programming language icons, multiple style variants',
+    id: 'devicon',
+    label: 'Devicon',
     valueFormat: 'devicon-{tech}-{variant}',
   },
-  matches: (v) => v.startsWith('devicon-'),
-  load: () => import('@/lib/icon-sets/devicon').then((m) => m.iconSet),
 })
 
 // AWS values have no prefix, so this matcher is the fallback for any value
 // that doesn't belong to a prefixed set. Registered last so prefixed loaders
 // claim matching values first.
 iconRegistry.registerLoader({
-  meta: {
-    id: 'aws',
-    label: 'AWS',
-    description: 'Amazon Web Services architecture and resource icons',
-    valueFormat: '{service-name}',
-  },
+  load: () => import('@/lib/icon-sets/aws').then((m) => m.iconSet),
   matches: (v) =>
     !v.startsWith('lucide-') &&
     !v.startsWith('si-') &&
     !v.startsWith('phosphor-') &&
     !v.startsWith('tabler-') &&
     !v.startsWith('devicon-'),
-  load: () => import('@/lib/icon-sets/aws').then((m) => m.iconSet),
+  meta: {
+    description: 'Amazon Web Services architecture and resource icons',
+    id: 'aws',
+    label: 'AWS',
+    valueFormat: '{service-name}',
+  },
 })
 
 // Re-exports
@@ -95,7 +97,7 @@ export { iconRegistry } from '@/lib/icon-registry'
 export type { IconComponent } from '@/lib/icon-registry'
 
 const MAX_ICON_CACHE_SIZE = 500
-const iconUrlCache = new Map<string, string | null>()
+const iconUrlCache = new Map<string, null | string>()
 
 const KNOWN_PREFIXES = [
   'lucide-',
@@ -105,11 +107,10 @@ const KNOWN_PREFIXES = [
   'devicon-',
 ] as const
 
-function hasKnownPrefix(value: string): boolean {
-  for (const p of KNOWN_PREFIXES) if (value.startsWith(p)) return true
-  return false
-}
-
+export function getIcon(
+  iconName: null | string | undefined,
+  fallback: null,
+): IconComponent | null
 // ---------------------------------------------------------------------------
 // Synchronous resolution
 //
@@ -118,17 +119,12 @@ function hasKnownPrefix(value: string): boolean {
 // (fire-and-forget) and return a fallback / null for now. Components that
 // need to re-render when the set arrives should use the hooks below.
 // ---------------------------------------------------------------------------
-
 export function getIcon(
-  iconName: string | null | undefined,
-  fallback: null,
-): IconComponent | null
-export function getIcon(
-  iconName: string | null | undefined,
+  iconName: null | string | undefined,
   fallback?: IconComponent,
 ): IconComponent
 export function getIcon(
-  iconName: string | null | undefined,
+  iconName: null | string | undefined,
   fallback?: IconComponent | null,
 ): IconComponent | null {
   const fb = fallback === undefined ? (ExternalLink as IconComponent) : fallback
@@ -164,11 +160,10 @@ export function getIcon(
   }
   return fb
 }
-
 export function getIconUrl(
-  iconName: string | null | undefined,
+  iconName: null | string | undefined,
   color?: string,
-): string | null {
+): null | string {
   if (!iconName) return null
   const cacheKey = color ? `${iconName}@${color}` : iconName
   const cached = iconUrlCache.get(cacheKey)
@@ -187,27 +182,25 @@ export function getIconUrl(
   return result
 }
 
-function computeIconUrl(iconName: string, color?: string): string | null {
-  if (iconName.startsWith('/uploads/')) {
-    const baseUrl = import.meta.env.VITE_API_URL || '/api'
-    return `${baseUrl}${iconName}`
-  }
-  if (iconName.startsWith('http://') || iconName.startsWith('https://')) {
-    return iconName
-  }
-  return iconRegistry.resolveUrl(iconName, color)
-}
-
+export function useIcon(
+  iconName: null | string | undefined,
+  fallback: null,
+): IconComponent | null
+export function useIcon(
+  iconName: null | string | undefined,
+  fallback?: IconComponent,
+): IconComponent
 // ---------------------------------------------------------------------------
 // React hooks
 // ---------------------------------------------------------------------------
-
-function subscribe(listener: () => void): () => void {
-  return iconRegistry.subscribe(listener)
-}
-
-function getVersion(): number {
-  return iconRegistry.getVersion()
+export function useIcon(
+  iconName: null | string | undefined,
+  fallback?: IconComponent | null,
+): IconComponent | null {
+  useIconRegistryVersion()
+  if (fallback === null) return getIcon(iconName, null)
+  if (fallback === undefined) return getIcon(iconName)
+  return getIcon(iconName, fallback)
 }
 
 /**
@@ -219,28 +212,32 @@ export function useIconRegistryVersion(): number {
   return useSyncExternalStore(subscribe, getVersion, getVersion)
 }
 
-export function useIcon(
-  iconName: string | null | undefined,
-  fallback: null,
-): IconComponent | null
-export function useIcon(
-  iconName: string | null | undefined,
-  fallback?: IconComponent,
-): IconComponent
-export function useIcon(
-  iconName: string | null | undefined,
-  fallback?: IconComponent | null,
-): IconComponent | null {
-  useIconRegistryVersion()
-  if (fallback === null) return getIcon(iconName, null)
-  if (fallback === undefined) return getIcon(iconName)
-  return getIcon(iconName, fallback)
-}
-
 export function useIconUrl(
-  iconName: string | null | undefined,
+  iconName: null | string | undefined,
   color?: string,
-): string | null {
+): null | string {
   useIconRegistryVersion()
   return getIconUrl(iconName, color)
+}
+
+function computeIconUrl(iconName: string, color?: string): null | string {
+  if (iconName.startsWith('/uploads/')) {
+    const baseUrl = import.meta.env.VITE_API_URL || '/api'
+    return `${baseUrl}${iconName}`
+  }
+  if (iconName.startsWith('http://') || iconName.startsWith('https://')) {
+    return iconName
+  }
+  return iconRegistry.resolveUrl(iconName, color)
+}
+function getVersion(): number {
+  return iconRegistry.getVersion()
+}
+function hasKnownPrefix(value: string): boolean {
+  for (const p of KNOWN_PREFIXES) if (value.startsWith(p)) return true
+  return false
+}
+
+function subscribe(listener: () => void): () => void {
+  return iconRegistry.subscribe(listener)
 }

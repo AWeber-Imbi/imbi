@@ -4,27 +4,27 @@ import * as React from 'react'
 // Layout (grid-span etc.) stays with the caller; this only wraps the
 // label, the input slot, optional description, and the error message.
 export interface FormFieldProps {
+  children: React.ReactNode
+  description?: string
+  error?: string
+  htmlFor?: string
   label: string
   required?: boolean
-  error?: string
   touched?: boolean
-  description?: string
-  htmlFor?: string
-  children: React.ReactNode
 }
 
 export function FormField({
+  children,
+  description,
+  error,
+  htmlFor,
   label,
   required,
-  error,
   touched,
-  description,
-  htmlFor,
-  children,
 }: FormFieldProps) {
   return (
     <div>
-      <label htmlFor={htmlFor} className="mb-1.5 block text-sm text-secondary">
+      <label className="mb-1.5 block text-sm text-secondary" htmlFor={htmlFor}>
         {label}
         {required && <span className="text-red-500"> *</span>}
       </label>

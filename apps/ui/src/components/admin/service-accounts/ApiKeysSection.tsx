@@ -1,51 +1,53 @@
 import { useEffect, useState } from 'react'
+
 import { useQuery } from '@tanstack/react-query'
 import type { UseMutationResult } from '@tanstack/react-query'
-import { Plus, Trash2, AlertCircle, RotateCw, Key } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { AlertCircle, Key, Plus, RotateCw, Trash2 } from 'lucide-react'
+
+import { listServiceAccountApiKeys } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { SecretBanner } from '@/components/ui/secret-banner'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { SecretBanner } from '@/components/ui/secret-banner'
-import { listServiceAccountApiKeys } from '@/api/endpoints'
-import type { ServiceAccount, ApiKey, ApiKeyCreated } from '@/types'
+import type { ApiKey, ApiKeyCreated, ServiceAccount } from '@/types'
 
 interface ApiKeysSectionProps {
   account: ServiceAccount
   createApiKeyMutation: UseMutationResult<ApiKeyCreated, unknown, string>
-  revokeApiKeyMutation: UseMutationResult<unknown, unknown, string>
-  rotateApiKeyMutation: UseMutationResult<ApiKeyCreated, unknown, string>
   newlyCreatedKey: ApiKeyCreated | null
-  onNewlyCreatedKeyChange: (key: ApiKeyCreated | null) => void
   onConfirmRevoke: (keyId: string) => void
   onConfirmRotate: (keyId: string) => void
+  onNewlyCreatedKeyChange: (key: ApiKeyCreated | null) => void
+  revokeApiKeyMutation: UseMutationResult<unknown, unknown, string>
+  rotateApiKeyMutation: UseMutationResult<ApiKeyCreated, unknown, string>
 }
 
-const formatDate = (dateString?: string | null) => {
+const formatDate = (dateString?: null | string) => {
   if (!dateString) return 'Never'
   return new Date(dateString).toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'long',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    month: 'long',
+    year: 'numeric',
   })
 }
 
 export function ApiKeysSection({
   account,
   createApiKeyMutation,
-  revokeApiKeyMutation,
-  rotateApiKeyMutation,
   newlyCreatedKey,
-  onNewlyCreatedKeyChange,
   onConfirmRevoke,
   onConfirmRotate,
+  onNewlyCreatedKeyChange,
+  revokeApiKeyMutation,
+  rotateApiKeyMutation,
 }: ApiKeysSectionProps) {
   const [newKeyName, setNewKeyName] = useState('')
   const [showCreateKey, setShowCreateKey] = useState(false)
@@ -57,11 +59,11 @@ export function ApiKeysSection({
 
   const {
     data: apiKeys = [],
-    isLoading: keysLoading,
     error: keysError,
+    isLoading: keysLoading,
   } = useQuery({
-    queryKey: ['serviceAccountApiKeys', account.slug],
     queryFn: ({ signal }) => listServiceAccountApiKeys(account.slug, signal),
+    queryKey: ['serviceAccountApiKeys', account.slug],
   })
 
   const handleCreateKey = () => {
@@ -83,10 +85,10 @@ export function ApiKeysSection({
           <CardTitle>API Keys</CardTitle>
         </div>
         <Button
-          onClick={() => setShowCreateKey(!showCreateKey)}
-          variant="outline"
-          size="sm"
           className=""
+          onClick={() => setShowCreateKey(!showCreateKey)}
+          size="sm"
+          variant="outline"
         >
           <Plus className="mr-2 h-4 w-4" />
           Create API Key
@@ -102,26 +104,26 @@ export function ApiKeysSection({
                   Key Name
                 </label>
                 <input
-                  type="text"
-                  value={newKeyName}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
                   onChange={(e) => setNewKeyName(e.target.value)}
                   placeholder="e.g., production, staging"
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+                  type="text"
+                  value={newKeyName}
                 />
               </div>
               <Button
-                onClick={handleCreateKey}
-                disabled={createApiKeyMutation.isPending}
                 className="bg-action text-action-foreground hover:bg-action-hover"
+                disabled={createApiKeyMutation.isPending}
+                onClick={handleCreateKey}
               >
                 {createApiKeyMutation.isPending ? 'Creating...' : 'Create'}
               </Button>
               <Button
-                variant="outline"
                 onClick={() => {
                   setShowCreateKey(false)
                   setNewKeyName('')
                 }}
+                variant="outline"
               >
                 Cancel
               </Button>
@@ -132,15 +134,15 @@ export function ApiKeysSection({
         {/* Newly Created Key Banner */}
         {newlyCreatedKey && (
           <SecretBanner
-            title="API Key Created"
             description="Copy it now, it will not be shown again!"
+            onDismiss={() => onNewlyCreatedKeyChange(null)}
             secrets={[
               {
-                value: newlyCreatedKey.key_secret,
                 copyAriaLabel: 'Copy API key',
+                value: newlyCreatedKey.key_secret,
               },
             ]}
-            onDismiss={() => onNewlyCreatedKeyChange(null)}
+            title="API Key Created"
           />
         )}
 
@@ -164,12 +166,12 @@ export function ApiKeysSection({
           <div className="space-y-2">
             {apiKeys.map((key: ApiKey) => (
               <div
-                key={key.key_id}
                 className={`flex items-center justify-between rounded-lg border p-3 ${
                   key.revoked
                     ? 'border-input bg-secondary opacity-50'
                     : 'border-input bg-secondary'
                 }`}
+                key={key.key_id}
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
@@ -195,11 +197,11 @@ export function ApiKeysSection({
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
-                            type="button"
                             aria-label={`Rotate API key ${key.name}`}
-                            onClick={() => onConfirmRotate(key.key_id)}
-                            disabled={rotateApiKeyMutation.isPending}
                             className="rounded p-1.5 text-info hover:bg-secondary"
+                            disabled={rotateApiKeyMutation.isPending}
+                            onClick={() => onConfirmRotate(key.key_id)}
+                            type="button"
                           >
                             <RotateCw className="h-4 w-4" />
                           </button>
@@ -213,11 +215,11 @@ export function ApiKeysSection({
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
-                            type="button"
                             aria-label={`Revoke API key ${key.name}`}
-                            onClick={() => onConfirmRevoke(key.key_id)}
-                            disabled={revokeApiKeyMutation.isPending}
                             className="rounded p-1.5 text-danger hover:bg-secondary"
+                            disabled={revokeApiKeyMutation.isPending}
+                            onClick={() => onConfirmRevoke(key.key_id)}
+                            type="button"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>

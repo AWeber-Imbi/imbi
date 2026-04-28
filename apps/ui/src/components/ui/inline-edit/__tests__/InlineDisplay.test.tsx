@@ -1,6 +1,8 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@/test/utils'
 import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
+
+import { render, screen } from '@/test/utils'
+
 import { InlineDisplay } from '../InlineDisplay'
 
 describe('InlineDisplay', () => {
@@ -32,7 +34,7 @@ describe('InlineDisplay', () => {
   it('does not fire onClick when readOnly', async () => {
     const onClick = vi.fn()
     render(
-      <InlineDisplay hasValue readOnly onClick={onClick}>
+      <InlineDisplay hasValue onClick={onClick} readOnly>
         Alpha
       </InlineDisplay>,
     )

@@ -2,57 +2,25 @@ import { useQuery } from '@tanstack/react-query'
 import { ExternalLink } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+
+import { getOperationsLogEntry } from '@/api/endpoints'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { getOperationsLogEntry } from '@/api/endpoints'
 import type { OperationsLogRecord } from '@/types'
 
 interface Props {
   entry: OperationsLogRecord
 }
 
-function parseUtcIso(iso: string): Date {
-  const hasOffset = /(Z|[+-]\d\d:?\d\d)$/.test(iso)
-  return new Date(hasOffset ? iso : iso + 'Z')
-}
-
-function formatAbsolute(iso: string): string {
-  try {
-    return parseUtcIso(iso).toLocaleString(undefined, {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    })
-  } catch {
-    return iso
-  }
-}
-
-function MetaChip({
-  label,
-  children,
-  title,
-}: {
-  label: string
-  children: React.ReactNode
-  title?: string
-}) {
-  return (
-    <span className="inline-flex items-baseline gap-1.5" title={title}>
-      <span className="text-overline uppercase text-tertiary">{label}</span>
-      <span className="text-primary">{children}</span>
-    </span>
-  )
-}
-
 export function OperationsLogEntryDetails({ entry }: Props) {
   const { data } = useQuery({
-    queryKey: ['operationsLog', 'entry', entry.id],
-    queryFn: ({ signal }) => getOperationsLogEntry(entry.id, signal),
     initialData: entry,
+    queryFn: ({ signal }) => getOperationsLogEntry(entry.id, signal),
+    queryKey: ['operationsLog', 'entry', entry.id],
     staleTime: 30_000,
   })
 
@@ -88,10 +56,10 @@ export function OperationsLogEntryDetails({ entry }: Props) {
         <div>
           <h3 className="mb-1.5 text-overline uppercase text-tertiary">Link</h3>
           <a
-            href={record.link}
-            target="_blank"
-            rel="noreferrer"
             className="inline-flex items-center gap-1.5 break-all text-sm text-amber-text hover:underline"
+            href={record.link}
+            rel="noreferrer"
+            target="_blank"
           >
             <ExternalLink className="h-3.5 w-3.5 flex-shrink-0" />
             {record.link}
@@ -137,4 +105,37 @@ export function OperationsLogEntryDetails({ entry }: Props) {
       )}
     </div>
   )
+}
+
+function formatAbsolute(iso: string): string {
+  try {
+    return parseUtcIso(iso).toLocaleString(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    })
+  } catch {
+    return iso
+  }
+}
+
+function MetaChip({
+  children,
+  label,
+  title,
+}: {
+  children: React.ReactNode
+  label: string
+  title?: string
+}) {
+  return (
+    <span className="inline-flex items-baseline gap-1.5" title={title}>
+      <span className="text-overline uppercase text-tertiary">{label}</span>
+      <span className="text-primary">{children}</span>
+    </span>
+  )
+}
+
+function parseUtcIso(iso: string): Date {
+  const hasOffset = /(Z|[+-]\d\d:?\d\d)$/.test(iso)
+  return new Date(hasOffset ? iso : iso + 'Z')
 }

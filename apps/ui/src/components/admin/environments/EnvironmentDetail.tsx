@@ -1,28 +1,29 @@
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Edit2 } from 'lucide-react'
+
+import { getEnvironmentSchema } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DynamicDetailFields } from '@/components/ui/dynamic-fields'
-import { getEnvironmentSchema } from '@/api/endpoints'
-import { ENVIRONMENT_BASE_FIELDS_SET } from '@/lib/constants'
 import { EntityIcon } from '@/components/ui/entity-icon'
+import { ENVIRONMENT_BASE_FIELDS_SET } from '@/lib/constants'
 import { extractDynamicFields } from '@/lib/utils'
 import type { Environment } from '@/types'
 
 interface EnvironmentDetailProps {
   environment: Environment
-  onEdit: () => void
   onBack: () => void
+  onEdit: () => void
 }
 
 export function EnvironmentDetail({
   environment,
-  onEdit,
   onBack,
+  onEdit,
 }: EnvironmentDetailProps) {
   const { data: envSchema } = useQuery({
-    queryKey: ['environmentSchema'],
     queryFn: ({ signal }) => getEnvironmentSchema(signal),
+    queryKey: ['environmentSchema'],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -30,7 +31,7 @@ export function EnvironmentDetail({
     <div className="space-y-6">
       {/* Back button */}
       <div>
-        <Button variant="outline" onClick={onBack}>
+        <Button onClick={onBack} variant="outline">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
@@ -43,8 +44,8 @@ export function EnvironmentDetail({
             <div className="flex items-center gap-3">
               {environment.icon && (
                 <EntityIcon
-                  icon={environment.icon}
                   className="h-8 w-8 rounded object-cover"
+                  icon={environment.icon}
                 />
               )}
               <CardTitle>{environment.name}</CardTitle>
@@ -56,8 +57,8 @@ export function EnvironmentDetail({
             )}
           </div>
           <Button
-            onClick={onEdit}
             className="bg-action text-action-foreground hover:bg-action-hover"
+            onClick={onEdit}
           >
             <Edit2 className="mr-2 h-4 w-4" />
             Edit Environment
@@ -106,11 +107,11 @@ export function EnvironmentDetail({
             </div>
             {envSchema && (
               <DynamicDetailFields
-                schema={envSchema}
                 data={extractDynamicFields(
                   environment,
                   ENVIRONMENT_BASE_FIELDS_SET,
                 )}
+                schema={envSchema}
               />
             )}
           </div>

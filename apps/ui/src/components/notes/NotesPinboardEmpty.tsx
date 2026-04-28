@@ -1,30 +1,32 @@
 import { useQuery } from '@tanstack/react-query'
 import { Plus, StickyNote } from 'lucide-react'
+
+import { listNoteTemplates } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { EntityIcon } from '@/components/ui/entity-icon'
-import { listNoteTemplates } from '@/api/endpoints'
-import { NoteTagChip } from './NoteTagChip'
 import type { NoteTemplate } from '@/types'
 
+import { NoteTagChip } from './NoteTagChip'
+
 interface Props {
+  onCreate: (template?: NoteTemplate) => void
   orgSlug: string
   projectTypeSlugs?: string[]
-  onCreate: (template?: NoteTemplate) => void
 }
 
 export function NotesPinboardEmpty({
+  onCreate,
   orgSlug,
   projectTypeSlugs,
-  onCreate,
 }: Props) {
   const {
     data: templates = [],
-    isLoading: templatesLoading,
     error: templatesError,
+    isLoading: templatesLoading,
   } = useQuery<NoteTemplate[]>({
-    queryKey: ['noteTemplates', orgSlug],
-    queryFn: ({ signal }) => listNoteTemplates(orgSlug, signal),
     enabled: !!orgSlug,
+    queryFn: ({ signal }) => listNoteTemplates(orgSlug, signal),
+    queryKey: ['noteTemplates', orgSlug],
   })
 
   const projectTypeSet =
@@ -79,15 +81,15 @@ export function NotesPinboardEmpty({
           <div className="flex w-full max-w-[864px] flex-wrap justify-center gap-2.5 text-left">
             {visibleTemplates.map((t) => (
               <button
-                key={t.id}
-                type="button"
-                onClick={() => onCreate(t)}
                 className="flex w-[281px] cursor-pointer flex-col gap-1.5 rounded-lg border border-tertiary bg-primary p-3.5 text-left hover:border-secondary hover:shadow-sm"
+                key={t.id}
+                onClick={() => onCreate(t)}
+                type="button"
               >
                 <div className="flex items-center gap-2">
                   <div className="inline-flex h-[26px] w-[26px] items-center justify-center rounded-md bg-secondary text-secondary">
                     {t.icon ? (
-                      <EntityIcon icon={t.icon} className="h-3.5 w-3.5" />
+                      <EntityIcon className="h-3.5 w-3.5" icon={t.icon} />
                     ) : (
                       <StickyNote className="h-3.5 w-3.5" />
                     )}
@@ -97,7 +99,7 @@ export function NotesPinboardEmpty({
                   </span>
                   {t.tags && t.tags.length > 0 && (
                     <span className="ml-auto">
-                      <NoteTagChip tag={t.tags[0]} size="sm" />
+                      <NoteTagChip size="sm" tag={t.tags[0]} />
                     </span>
                   )}
                 </div>

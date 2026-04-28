@@ -1,41 +1,42 @@
 import { Plus, X } from 'lucide-react'
+
 import { Input } from '@/components/ui/input'
 
 interface BlueprintUiMapEditorProps {
-  mapType: string
-  label: string
-  keyPh: string
-  valPh: string
-  defaultVal: string
-  isColor: boolean
-  entries: [string, string][]
-  setEntries: (next: [string, string][]) => void
   commit: (next: [string, string][]) => void
+  defaultVal: string
+  entries: [string, string][]
+  isColor: boolean
+  keyPh: string
+  label: string
+  mapType: string
+  setEntries: (next: [string, string][]) => void
+  valPh: string
 }
 
 export function BlueprintUiMapEditor({
-  mapType,
-  label: mapLabel,
-  keyPh,
-  valPh,
-  defaultVal,
-  isColor,
-  entries,
-  setEntries,
   commit,
+  defaultVal,
+  entries,
+  isColor,
+  keyPh,
+  label: mapLabel,
+  mapType,
+  setEntries,
+  valPh,
 }: BlueprintUiMapEditorProps) {
   return (
     <div key={mapType}>
       <div className="mb-1 flex items-center justify-between">
         <label className="text-xs text-secondary">{mapLabel}</label>
         <button
-          type="button"
-          onClick={() => {
-            setEntries([...entries, ['', defaultVal]])
-          }}
           className={
             'hover:text-info/80 flex items-center gap-1 text-xs text-info'
           }
+          onClick={() => {
+            setEntries([...entries, ['', defaultVal]])
+          }}
+          type="button"
         >
           <Plus className="h-3 w-3" />
           Add entry
@@ -48,22 +49,22 @@ export function BlueprintUiMapEditor({
       ) : (
         <div className="space-y-1.5">
           {entries.map(([eKey, eVal], idx) => (
-            <div key={idx} className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5" key={idx}>
               <Input
-                value={eKey}
+                className="flex-1 text-xs"
+                onBlur={() => commit(entries)}
                 onChange={(e) => {
                   const next = entries.map((row, i): [string, string] =>
                     i === idx ? [e.target.value, row[1]] : row,
                   )
                   setEntries(next)
                 }}
-                onBlur={() => commit(entries)}
                 placeholder={keyPh}
-                className="flex-1 text-xs"
+                value={eKey}
               />
               {isColor ? (
                 <select
-                  value={eVal}
+                  className="rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground"
                   onChange={(e) => {
                     const next = entries.map((row, i): [string, string] =>
                       i === idx ? [row[0], e.target.value] : row,
@@ -71,7 +72,7 @@ export function BlueprintUiMapEditor({
                     setEntries(next)
                     commit(next)
                   }}
-                  className="rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground"
+                  value={eVal}
                 >
                   {['green', 'red', 'amber', 'yellow', 'blue', 'gray'].map(
                     (c) => (
@@ -83,26 +84,26 @@ export function BlueprintUiMapEditor({
                 </select>
               ) : (
                 <Input
-                  value={eVal}
+                  className="flex-1 text-xs"
+                  onBlur={() => commit(entries)}
                   onChange={(e) => {
                     const next = entries.map((row, i): [string, string] =>
                       i === idx ? [row[0], e.target.value] : row,
                     )
                     setEntries(next)
                   }}
-                  onBlur={() => commit(entries)}
                   placeholder={valPh}
-                  className="flex-1 text-xs"
+                  value={eVal}
                 />
               )}
               <button
-                type="button"
+                className={'flex-shrink-0 text-tertiary hover:text-danger'}
                 onClick={() => {
                   const next = entries.filter((_, i) => i !== idx)
                   setEntries(next)
                   commit(next)
                 }}
-                className={'flex-shrink-0 text-tertiary hover:text-danger'}
+                type="button"
               >
                 <X className="h-3.5 w-3.5" />
               </button>

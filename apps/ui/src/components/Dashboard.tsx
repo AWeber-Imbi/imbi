@@ -1,121 +1,124 @@
-import { useState, useEffect, type ReactElement } from 'react'
-import { Settings } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { type ReactElement, useEffect, useState } from 'react'
+
 import {
-  DndContext,
   closestCenter,
+  DndContext,
+  DragEndEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  DragEndEvent,
 } from '@dnd-kit/core'
 import {
   arrayMove,
+  rectSortingStrategy,
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
-  rectSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { WidgetSelector, WidgetConfig } from './dashboard/WidgetSelector'
-import { StatWidget } from './dashboard/widgets/StatWidget'
-import { TeamActivityWidget } from './dashboard/widgets/TeamActivityWidget'
-import { RecentActivityWidget } from './dashboard/widgets/RecentActivityWidget'
-import { MyPullRequestsWidget } from './dashboard/widgets/MyPullRequestsWidget'
-import { OutdatedComponentsWidget } from './dashboard/widgets/OutdatedComponentsWidget'
-import { RecentDeploymentsWidget } from './dashboard/widgets/RecentDeploymentsWidget'
 import { useQuery } from '@tanstack/react-query'
+import { Settings } from 'lucide-react'
+
 import { getProjects } from '@/api/endpoints'
+import { Button } from '@/components/ui/button'
 import { useOrganization } from '@/contexts/OrganizationContext'
 
-interface ViewChangeEvent {
-  view: string
-  filter: Record<string, string>
-}
+import { MyPullRequestsWidget } from './dashboard/widgets/MyPullRequestsWidget'
+import { OutdatedComponentsWidget } from './dashboard/widgets/OutdatedComponentsWidget'
+import { RecentActivityWidget } from './dashboard/widgets/RecentActivityWidget'
+import { RecentDeploymentsWidget } from './dashboard/widgets/RecentDeploymentsWidget'
+import { StatWidget } from './dashboard/widgets/StatWidget'
+import { TeamActivityWidget } from './dashboard/widgets/TeamActivityWidget'
+import { WidgetConfig, WidgetSelector } from './dashboard/WidgetSelector'
 
 interface DashboardProps {
-  onViewChange?: (view: ViewChangeEvent) => void
-  onUserSelect?: (userName: string) => void
   onProjectSelect?: (projectId: string) => void
+  onUserSelect?: (userName: string) => void
+  onViewChange?: (view: ViewChangeEvent) => void
+}
+
+interface ViewChangeEvent {
+  filter: Record<string, string>
+  view: string
 }
 
 const WIDGET_STORAGE_KEY = 'imbi-dashboard-widgets-v3'
 
 type WidgetId =
-  | 'stat-total-projects'
-  | 'stat-active-deployments'
-  | 'stat-teams'
-  | 'team-activity'
-  | 'recent-activity'
-  | 'recent-deployments'
   | 'my-pull-requests'
   | 'outdated-components'
+  | 'recent-activity'
+  | 'recent-deployments'
+  | 'stat-active-deployments'
+  | 'stat-teams'
+  | 'stat-total-projects'
+  | 'team-activity'
 
 const availableWidgets: WidgetConfig[] = [
   {
-    id: 'stat-total-projects',
-    name: 'Total Projects',
+    category: 'stats',
+    columnSpan: 1,
     description: 'Total number of projects',
     icon: '📁',
-    category: 'stats',
-    columnSpan: 1,
+    id: 'stat-total-projects',
+    name: 'Total Projects',
   },
   {
-    id: 'stat-active-deployments',
-    name: 'Active Deployments',
+    category: 'stats',
+    columnSpan: 1,
     description: 'Number of active deployments',
     icon: '🚀',
-    category: 'stats',
-    columnSpan: 1,
+    id: 'stat-active-deployments',
+    name: 'Active Deployments',
   },
   {
-    id: 'stat-teams',
-    name: 'Teams',
+    category: 'stats',
+    columnSpan: 1,
     description: 'Total number of teams',
     icon: '👥',
-    category: 'stats',
-    columnSpan: 1,
+    id: 'stat-teams',
+    name: 'Teams',
   },
   {
-    id: 'team-activity',
-    name: 'Team Activity',
+    category: 'activity',
+    columnSpan: 2,
     description: 'Overview of team projects and deployments',
     icon: '👥',
-    category: 'activity',
-    columnSpan: 2,
+    id: 'team-activity',
+    name: 'Team Activity',
   },
   {
-    id: 'recent-activity',
-    name: 'Recent Activity',
+    category: 'activity',
+    columnSpan: 2,
     description: 'Latest actions and updates across projects',
     icon: '📝',
-    category: 'activity',
-    columnSpan: 2,
+    id: 'recent-activity',
+    name: 'Recent Activity',
   },
   {
-    id: 'recent-deployments',
-    name: 'Recent Deployments',
+    category: 'activity',
+    columnSpan: 2,
     description: 'Latest deployment activity across environments',
     icon: '🚀',
-    category: 'activity',
-    columnSpan: 2,
+    id: 'recent-deployments',
+    name: 'Recent Deployments',
   },
   {
-    id: 'my-pull-requests',
-    name: 'My Pull Requests',
-    description: 'Your pending code reviews and PR status',
-    icon: '🔀',
     category: 'development',
     columnSpan: 2,
+    description: 'Your pending code reviews and PR status',
+    icon: '🔀',
+    id: 'my-pull-requests',
+    name: 'My Pull Requests',
   },
   {
-    id: 'outdated-components',
-    name: 'Outdated Components',
-    description: 'Dependencies that need updating',
-    icon: '📦',
     category: 'health',
     columnSpan: 2,
+    description: 'Dependencies that need updating',
+    icon: '📦',
+    id: 'outdated-components',
+    name: 'Outdated Components',
   },
 ]
 
@@ -129,65 +132,28 @@ const defaultWidgets: WidgetId[] = [
 ]
 
 const WIDGET_IDS: ReadonlySet<WidgetId> = new Set<WidgetId>([
-  'stat-total-projects',
-  'stat-active-deployments',
-  'stat-teams',
-  'team-activity',
-  'recent-activity',
-  'recent-deployments',
   'my-pull-requests',
   'outdated-components',
+  'recent-activity',
+  'recent-deployments',
+  'stat-active-deployments',
+  'stat-teams',
+  'stat-total-projects',
+  'team-activity',
 ])
 
 const isWidgetId = (value: unknown): value is WidgetId =>
   typeof value === 'string' && WIDGET_IDS.has(value as WidgetId)
 
 interface SortableWidgetProps {
-  id: string
   children: React.ReactNode
-}
-
-function SortableWidget({ id, children }: SortableWidgetProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id })
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  }
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className="group relative mb-4 break-inside-avoid"
-    >
-      {/* Drag handle - appears on hover */}
-      <div
-        {...attributes}
-        {...listeners}
-        className="bg-secondary/80 absolute left-2 top-2 z-20 cursor-grab rounded p-1 text-tertiary opacity-0 transition-opacity hover:text-primary active:cursor-grabbing group-hover:opacity-100"
-      >
-        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
-        </svg>
-      </div>
-      {children}
-    </div>
-  )
+  id: string
 }
 
 export function Dashboard({
-  onViewChange,
-  onUserSelect,
   onProjectSelect,
+  onUserSelect,
+  onViewChange,
 }: DashboardProps) {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug || ''
@@ -222,9 +188,9 @@ export function Dashboard({
 
   // Fetch real data for stats
   const { data: projects } = useQuery({
-    queryKey: ['projects', orgSlug],
-    queryFn: ({ signal }) => getProjects(orgSlug, signal),
     enabled: !!orgSlug,
+    queryFn: ({ signal }) => getProjects(orgSlug, signal),
+    queryKey: ['projects', orgSlug],
   })
 
   const projectCount = projects?.length || 0
@@ -263,35 +229,35 @@ export function Dashboard({
   }
 
   const widgetRegistry: Record<WidgetId, () => ReactElement> = {
-    'stat-total-projects': () => (
-      <StatWidget
-        title="Total Projects"
-        value={projectCount.toLocaleString()}
-        icon="📁"
-      />
-    ),
-    'stat-active-deployments': () => (
-      <StatWidget title="Active Deployments" value="1,429" icon="🚀" />
-    ),
-    'stat-teams': () => (
-      <StatWidget title="Teams" value={teamCount.toLocaleString()} icon="👥" />
-    ),
-    'team-activity': () => <TeamActivityWidget onViewChange={onViewChange} />,
-    'recent-activity': () => (
-      <RecentActivityWidget
-        onUserSelect={onUserSelect}
-        onProjectSelect={onProjectSelect}
-      />
-    ),
-    'recent-deployments': () => (
-      <RecentDeploymentsWidget onProjectSelect={onProjectSelect} />
-    ),
     'my-pull-requests': () => (
       <MyPullRequestsWidget onUserSelect={onUserSelect} />
     ),
     'outdated-components': () => (
       <OutdatedComponentsWidget onProjectSelect={onProjectSelect} />
     ),
+    'recent-activity': () => (
+      <RecentActivityWidget
+        onProjectSelect={onProjectSelect}
+        onUserSelect={onUserSelect}
+      />
+    ),
+    'recent-deployments': () => (
+      <RecentDeploymentsWidget onProjectSelect={onProjectSelect} />
+    ),
+    'stat-active-deployments': () => (
+      <StatWidget icon="🚀" title="Active Deployments" value="1,429" />
+    ),
+    'stat-teams': () => (
+      <StatWidget icon="👥" title="Teams" value={teamCount.toLocaleString()} />
+    ),
+    'stat-total-projects': () => (
+      <StatWidget
+        icon="📁"
+        title="Total Projects"
+        value={projectCount.toLocaleString()}
+      />
+    ),
+    'team-activity': () => <TeamActivityWidget onViewChange={onViewChange} />,
   }
 
   const renderWidget = (widgetId: WidgetId) => widgetRegistry[widgetId]()
@@ -311,9 +277,9 @@ export function Dashboard({
           </p>
         </div>
         <Button
+          className="gap-2"
           onClick={() => setShowWidgetSelector(true)}
           variant="outline"
-          className="gap-2"
         >
           <Settings className="h-4 w-4" />
           Customize
@@ -331,17 +297,17 @@ export function Dashboard({
             Customize your dashboard by selecting widgets to display
           </p>
           <Button
-            onClick={() => setShowWidgetSelector(true)}
             className="bg-action text-action-foreground hover:bg-action-hover"
+            onClick={() => setShowWidgetSelector(true)}
           >
             Add Widgets
           </Button>
         </div>
       ) : (
         <DndContext
-          sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
+          sensors={sensors}
         >
           <div className="space-y-4">
             {/* Stats Row - always in a grid row, also sortable */}
@@ -352,7 +318,7 @@ export function Dashboard({
               >
                 <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                   {statWidgets.map((widgetId) => (
-                    <SortableWidget key={widgetId} id={widgetId}>
+                    <SortableWidget id={widgetId} key={widgetId}>
                       {renderWidget(widgetId)}
                     </SortableWidget>
                   ))}
@@ -371,7 +337,7 @@ export function Dashboard({
                   style={{ columnFill: 'balance' }}
                 >
                   {otherWidgets.map((widgetId) => (
-                    <SortableWidget key={widgetId} id={widgetId}>
+                    <SortableWidget id={widgetId} key={widgetId}>
                       {renderWidget(widgetId)}
                     </SortableWidget>
                   ))}
@@ -386,11 +352,48 @@ export function Dashboard({
       {showWidgetSelector && (
         <WidgetSelector
           availableWidgets={availableWidgets}
-          selectedWidgets={selectedWidgets}
-          onToggleWidget={handleToggleWidget}
           onClose={() => setShowWidgetSelector(false)}
+          onToggleWidget={handleToggleWidget}
+          selectedWidgets={selectedWidgets}
         />
       )}
+    </div>
+  )
+}
+
+function SortableWidget({ children, id }: SortableWidgetProps) {
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id })
+
+  const style = {
+    opacity: isDragging ? 0.5 : 1,
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <div
+      className="group relative mb-4 break-inside-avoid"
+      ref={setNodeRef}
+      style={style}
+    >
+      {/* Drag handle - appears on hover */}
+      <div
+        {...attributes}
+        {...listeners}
+        className="bg-secondary/80 absolute left-2 top-2 z-20 cursor-grab rounded p-1 text-tertiary opacity-0 transition-opacity hover:text-primary active:cursor-grabbing group-hover:opacity-100"
+      >
+        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
+        </svg>
+      </div>
+      {children}
     </div>
   )
 }

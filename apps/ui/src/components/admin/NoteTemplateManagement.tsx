@@ -1,55 +1,58 @@
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
+
 import { StickyNote } from 'lucide-react'
-import { EntityIcon } from '@/components/ui/entity-icon'
-import { formatRelativeDate } from '@/lib/formatDate'
-import { AdminTable } from '@/components/ui/admin-table'
-import { AdminSection } from './AdminSection'
-import { NoteTemplateForm } from './note-templates/NoteTemplateForm'
-import { useOrganization } from '@/contexts/OrganizationContext'
-import { useAdminNav } from '@/hooks/useAdminNav'
-import { useAdminCrud } from '@/hooks/useAdminCrud'
+
 import {
-  listNoteTemplates,
-  deleteNoteTemplate,
   createNoteTemplate,
+  deleteNoteTemplate,
+  listNoteTemplates,
   updateNoteTemplate,
 } from '@/api/endpoints'
+import { AdminTable } from '@/components/ui/admin-table'
+import { EntityIcon } from '@/components/ui/entity-icon'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
+import { useAdminNav } from '@/hooks/useAdminNav'
+import { formatRelativeDate } from '@/lib/formatDate'
 import { buildDiffPatch } from '@/lib/json-patch'
 import type { NoteTemplate, NoteTemplateCreate, PatchOperation } from '@/types'
+
+import { AdminSection } from './AdminSection'
+import { NoteTemplateForm } from './note-templates/NoteTemplateForm'
 
 export function NoteTemplateManagement() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
   const {
-    viewMode,
-    slug: selectedSlug,
-    goToList,
     goToCreate,
     goToEdit,
+    goToList,
+    slug: selectedSlug,
+    viewMode,
   } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
 
   const {
-    items: noteTemplates,
-    isLoading,
-    error,
     createMutation,
-    updateMutation,
     deleteMutation,
+    error,
+    isLoading,
+    items: noteTemplates,
+    updateMutation,
   } = useAdminCrud<
     NoteTemplate,
-    { orgSlug: string; data: NoteTemplateCreate },
-    { orgSlug: string; slug: string; operations: PatchOperation[] },
+    { data: NoteTemplateCreate; orgSlug: string },
+    { operations: PatchOperation[]; orgSlug: string; slug: string },
     { orgSlug: string; slug: string }
   >({
-    queryKey: ['noteTemplates', orgSlug],
-    listFn: orgSlug ? (signal) => listNoteTemplates(orgSlug, signal) : null,
-    createFn: ({ orgSlug, data }) => createNoteTemplate(orgSlug, data),
-    updateFn: ({ orgSlug, slug, operations }) =>
-      updateNoteTemplate(orgSlug, slug, operations),
-    deleteFn: ({ orgSlug, slug }) => deleteNoteTemplate(orgSlug, slug),
-    onMutationSuccess: goToList,
+    createFn: ({ data, orgSlug }) => createNoteTemplate(orgSlug, data),
     deleteErrorLabel: 'note template',
+    deleteFn: ({ orgSlug, slug }) => deleteNoteTemplate(orgSlug, slug),
+    listFn: orgSlug ? (signal) => listNoteTemplates(orgSlug, signal) : null,
+    onMutationSuccess: goToList,
+    queryKey: ['noteTemplates', orgSlug],
+    updateFn: ({ operations, orgSlug, slug }) =>
+      updateNoteTemplate(orgSlug, slug, operations),
   })
 
   const filteredNoteTemplates = noteTemplates.filter((nt) => {
@@ -75,18 +78,18 @@ export function NoteTemplateManagement() {
 
   const handleSave = (formOrgSlug: string, data: NoteTemplateCreate) => {
     if (viewMode === 'create') {
-      createMutation.mutate({ orgSlug: formOrgSlug, data })
+      createMutation.mutate({ data, orgSlug: formOrgSlug })
     } else if (selectedSlug && selectedNoteTemplate) {
       const beforeFields: Record<string, unknown> = {
-        name: selectedNoteTemplate.name,
-        slug: selectedNoteTemplate.slug,
+        content: selectedNoteTemplate.content ?? '',
         description: selectedNoteTemplate.description ?? null,
         icon: selectedNoteTemplate.icon ?? null,
-        title: selectedNoteTemplate.title ?? null,
-        content: selectedNoteTemplate.content ?? '',
-        tags: (selectedNoteTemplate.tags ?? []).map((t) => t.slug),
+        name: selectedNoteTemplate.name,
         project_type_slugs: selectedNoteTemplate.project_type_slugs ?? [],
+        slug: selectedNoteTemplate.slug,
         sort_order: selectedNoteTemplate.sort_order ?? 0,
+        tags: (selectedNoteTemplate.tags ?? []).map((t) => t.slug),
+        title: selectedNoteTemplate.title ?? null,
       }
       const operations = buildDiffPatch(
         beforeFields,
@@ -98,9 +101,9 @@ export function NoteTemplateManagement() {
         return
       }
       updateMutation.mutate({
+        operations,
         orgSlug: selectedNoteTemplate.organization.slug || formOrgSlug,
         slug: selectedSlug,
-        operations,
       })
     }
   }
@@ -128,12 +131,12 @@ export function NoteTemplateManagement() {
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <NoteTemplateForm
+        error={createMutation.error || updateMutation.error}
+        isLoading={createMutation.isPending || updateMutation.isPending}
         key={selectedSlug ?? 'create'}
         noteTemplate={selectedNoteTemplate}
-        onSave={handleSave}
         onCancel={handleCancel}
-        isLoading={createMutation.isPending || updateMutation.isPending}
-        error={createMutation.error || updateMutation.error}
+        onSave={handleSave}
       />
     )
   }
@@ -141,41 +144,41 @@ export function NoteTemplateManagement() {
   if (viewMode === 'detail' && selectedNoteTemplate) {
     return (
       <NoteTemplateForm
-        noteTemplate={selectedNoteTemplate}
-        onSave={handleSave}
-        onCancel={handleCancel}
-        isLoading={updateMutation.isPending}
         error={updateMutation.error}
+        isLoading={updateMutation.isPending}
+        noteTemplate={selectedNoteTemplate}
+        onCancel={handleCancel}
+        onSave={handleSave}
       />
     )
   }
 
   return (
     <AdminSection
-      searchPlaceholder="Search note templates..."
-      search={searchQuery}
-      onSearchChange={setSearchQuery}
       createLabel="New Note Template"
-      onCreate={goToCreate}
-      isLoading={isLoading}
-      loadingLabel="Loading note templates..."
       error={error}
       errorTitle="Failed to load note templates"
+      isLoading={isLoading}
+      loadingLabel="Loading note templates..."
+      onCreate={goToCreate}
+      onSearchChange={setSearchQuery}
+      search={searchQuery}
+      searchPlaceholder="Search note templates..."
     >
       <AdminTable
         columns={[
           {
-            key: 'name',
+            cellAlign: 'left',
             header: 'Name',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'name',
             render: (nt) => (
               <div className="flex items-center gap-3">
                 <div className="flex size-8 flex-shrink-0 items-center justify-center rounded-lg bg-info">
                   {nt.icon ? (
                     <EntityIcon
-                      icon={nt.icon}
                       className="size-5 object-cover"
+                      icon={nt.icon}
                     />
                   ) : (
                     <StickyNote className="h-4 w-4 text-info" />
@@ -193,10 +196,10 @@ export function NoteTemplateManagement() {
             ),
           },
           {
-            key: 'slug',
+            cellAlign: 'center',
             header: 'Slug',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'slug',
             render: (nt) => (
               <code className="rounded bg-secondary px-2 py-1 text-primary">
                 {nt.slug}
@@ -204,10 +207,10 @@ export function NoteTemplateManagement() {
             ),
           },
           {
-            key: 'project_types',
+            cellAlign: 'center',
             header: 'Project Types',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'project_types',
             render: (nt) => {
               const count = nt.project_type_slugs?.length ?? 0
               return (
@@ -220,10 +223,10 @@ export function NoteTemplateManagement() {
             },
           },
           {
-            key: 'tags',
+            cellAlign: 'center',
             header: 'Tags',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'tags',
             render: (nt) => {
               const count = nt.tags?.length ?? 0
               return (
@@ -236,28 +239,22 @@ export function NoteTemplateManagement() {
             },
           },
           {
-            key: 'sort_order',
+            cellAlign: 'center',
             header: 'Sort',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'sort_order',
             render: (nt) => (
               <span className="text-secondary">{nt.sort_order ?? 0}</span>
             ),
           },
           {
-            key: 'updated',
+            cellAlign: 'center',
             header: 'Last Updated',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'updated',
             render: (nt) => formatRelativeDate(nt.updated_at ?? nt.created_at),
           },
         ]}
-        rows={filteredNoteTemplates}
-        getRowKey={(nt) => nt.slug}
-        getDeleteLabel={(nt) => nt.name}
-        onRowClick={(nt) => goToEdit(nt.slug)}
-        onDelete={handleDelete}
-        isDeleting={deleteMutation.isPending}
         emptyMessage={
           searchQuery
             ? 'No note templates found matching your search.'
@@ -265,6 +262,12 @@ export function NoteTemplateManagement() {
               ? `No note templates in ${selectedOrganization.name} yet.`
               : 'No note templates created yet.'
         }
+        getDeleteLabel={(nt) => nt.name}
+        getRowKey={(nt) => nt.slug}
+        isDeleting={deleteMutation.isPending}
+        onDelete={handleDelete}
+        onRowClick={(nt) => goToEdit(nt.slug)}
+        rows={filteredNoteTemplates}
       />
     </AdminSection>
   )

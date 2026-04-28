@@ -1,64 +1,67 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Crown, Power } from 'lucide-react'
 import { toast } from 'sonner'
-import { extractApiErrorDetail } from '@/lib/apiError'
-import { Power, Crown } from 'lucide-react'
-import { Badge } from '../ui/badge'
-import { Gravatar } from '../ui/gravatar'
+
+import {
+  createAdminUser,
+  deleteAdminUser,
+  getAdminUser,
+  listAdminUsers,
+  updateAdminUser,
+} from '@/api/endpoints'
 import { AdminTable } from '@/components/ui/admin-table'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { LoadingState } from '@/components/ui/loading-state'
-import { AdminSection } from './AdminSection'
-import { UserForm } from './users/UserForm'
-import { UserDetail } from './users/UserDetail'
-import { useAdminNav } from '@/hooks/useAdminNav'
 import { useAdminCrud } from '@/hooks/useAdminCrud'
-import {
-  listAdminUsers,
-  getAdminUser,
-  deleteAdminUser,
-  updateAdminUser,
-  createAdminUser,
-} from '@/api/endpoints'
+import { useAdminNav } from '@/hooks/useAdminNav'
+import { extractApiErrorDetail } from '@/lib/apiError'
 import { buildDiffPatch, buildReplacePatch } from '@/lib/json-patch'
 import type { AdminUser, AdminUserCreate, PatchOperation } from '@/types'
 
-type UserFilter = 'all' | 'users' | 'admins'
-type StatusFilter = 'all' | 'active' | 'inactive'
+import { Badge } from '../ui/badge'
+import { Gravatar } from '../ui/gravatar'
+import { AdminSection } from './AdminSection'
+import { UserDetail } from './users/UserDetail'
+import { UserForm } from './users/UserForm'
+
+type StatusFilter = 'active' | 'all' | 'inactive'
+type UserFilter = 'admins' | 'all' | 'users'
 
 export function UserManagement() {
   const queryClient = useQueryClient()
   const {
-    viewMode,
-    slug: selectedUserEmail,
-    goToList,
     goToCreate,
     goToEdit,
+    goToList,
+    slug: selectedUserEmail,
+    viewMode,
   } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
   const [userFilter, setUserFilter] = useState<UserFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
   const {
-    items: users,
-    isLoading,
-    error,
     createMutation,
-    updateMutation,
     deleteMutation,
+    error,
+    isLoading,
+    items: users,
+    updateMutation,
   } = useAdminCrud<
     AdminUser,
     AdminUserCreate,
     { email: string; operations: PatchOperation[] },
     string
   >({
-    queryKey: ['adminUsers'],
-    listFn: (signal) => listAdminUsers(undefined, signal),
     createFn: createAdminUser,
-    updateFn: ({ email, operations }) => updateAdminUser(email, operations),
-    deleteFn: deleteAdminUser,
-    onMutationSuccess: goToList,
     deleteErrorLabel: 'user',
+    deleteFn: deleteAdminUser,
+    listFn: (signal) => listAdminUsers(undefined, signal),
+    onMutationSuccess: goToList,
+    queryKey: ['adminUsers'],
+    updateFn: ({ email, operations }) => updateAdminUser(email, operations),
   })
 
   // Toggle-active is a bespoke mutation: it fires in the list view, mustn't
@@ -71,11 +74,11 @@ export function UserManagement() {
       email: string
       operations: PatchOperation[]
     }) => updateAdminUser(email, operations),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
-    },
     onError: (error: unknown) => {
       toast.error(`Failed to update user: ${extractApiErrorDetail(error)}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
     },
   })
 
@@ -111,14 +114,14 @@ export function UserManagement() {
     deleteMutation.mutate(user.email)
   }
 
-  const formatDate = (dateString?: string | null) => {
+  const formatDate = (dateString?: null | string) => {
     if (!dateString) return 'Never'
     return new Date(dateString).toLocaleString('en-US', {
-      month: 'short',
       day: 'numeric',
-      year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      month: 'short',
+      year: 'numeric',
     })
   }
 
@@ -130,13 +133,13 @@ export function UserManagement() {
   // Fetch full user detail (with orgs) when viewing/editing a specific user
   const {
     data: selectedUser = null,
-    isLoading: selectedUserLoading,
     error: selectedUserError,
+    isLoading: selectedUserLoading,
   } = useQuery({
-    queryKey: ['adminUser', selectedUserEmail],
-    queryFn: ({ signal }) => getAdminUser(selectedUserEmail!, signal),
     enabled:
       !!selectedUserEmail && (viewMode === 'detail' || viewMode === 'edit'),
+    queryFn: ({ signal }) => getAdminUser(selectedUserEmail!, signal),
+    queryKey: ['adminUser', selectedUserEmail],
   })
 
   const handleEditClick = (user: AdminUser) => {
@@ -178,7 +181,7 @@ export function UserManagement() {
     }
     if (selectedUserError) {
       return (
-        <ErrorBanner title="Failed to load user" error={selectedUserError} />
+        <ErrorBanner error={selectedUserError} title="Failed to load user" />
       )
     }
     if (!selectedUser) {
@@ -193,11 +196,11 @@ export function UserManagement() {
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <UserForm
-        user={selectedUser}
-        onSave={handleSave}
-        onCancel={handleCancel}
-        isLoading={createMutation.isPending || updateMutation.isPending}
         error={createMutation.error || updateMutation.error}
+        isLoading={createMutation.isPending || updateMutation.isPending}
+        onCancel={handleCancel}
+        onSave={handleSave}
+        user={selectedUser}
       />
     )
   }
@@ -205,31 +208,25 @@ export function UserManagement() {
   if (viewMode === 'detail' && selectedUser) {
     return (
       <UserDetail
-        user={selectedUser}
-        onEdit={() => handleEditClick(selectedUser)}
         onBack={handleCancel}
+        onEdit={() => handleEditClick(selectedUser)}
+        user={selectedUser}
       />
     )
   }
 
   return (
     <AdminSection
-      searchPlaceholder="Search users..."
-      search={searchQuery}
-      onSearchChange={setSearchQuery}
       createLabel="New User"
-      onCreate={goToCreate}
-      isLoading={isLoading}
-      loadingLabel="Loading users..."
       error={error}
       errorTitle="Failed to load users"
       headerExtras={
         <>
           <select
             aria-label="Filter users by type"
-            value={userFilter}
-            onChange={(e) => setUserFilter(e.target.value as UserFilter)}
             className="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+            onChange={(e) => setUserFilter(e.target.value as UserFilter)}
+            value={userFilter}
           >
             <option value="all">All Types</option>
             <option value="users">Regular Users</option>
@@ -237,9 +234,9 @@ export function UserManagement() {
           </select>
           <select
             aria-label="Filter users by status"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
             className="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            value={statusFilter}
           >
             <option value="all">All Status</option>
             <option value="active">Active</option>
@@ -247,21 +244,27 @@ export function UserManagement() {
           </select>
         </>
       }
+      isLoading={isLoading}
+      loadingLabel="Loading users..."
+      onCreate={goToCreate}
+      onSearchChange={setSearchQuery}
+      search={searchQuery}
+      searchPlaceholder="Search users..."
     >
       <AdminTable
         columns={[
           {
-            key: 'user',
+            cellAlign: 'left',
             header: 'User',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'user',
             render: (user) => (
               <div className="flex items-center gap-3">
                 <Gravatar
-                  email={user.email}
-                  size={32}
                   alt={user.display_name}
                   className="size-8 rounded-full"
+                  email={user.email}
+                  size={32}
                 />
                 <div>
                   <div className="text-sm font-medium text-primary">
@@ -275,22 +278,22 @@ export function UserManagement() {
             ),
           },
           {
-            key: 'email',
+            cellAlign: 'left',
             header: 'Email',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'email',
             render: (user) => (
               <span className="text-sm text-secondary">{user.email}</span>
             ),
           },
           {
-            key: 'type',
+            cellAlign: 'left',
             header: 'Type',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'type',
             render: (user) =>
               user.is_admin ? (
-                <Badge variant="danger" className="gap-1">
+                <Badge className="gap-1" variant="danger">
                   <Crown className="h-3 w-3" />
                   Admin
                 </Badge>
@@ -299,22 +302,22 @@ export function UserManagement() {
               ),
           },
           {
-            key: 'status',
+            cellAlign: 'center',
             header: 'Status',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'status',
             render: (user) => (
               <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleToggleActive(user)
-                }}
-                disabled={toggleActiveMutation.isPending}
                 className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${
                   user.is_active
                     ? 'bg-success text-success'
                     : 'bg-secondary text-secondary'
                 }`}
+                disabled={toggleActiveMutation.isPending}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleToggleActive(user)
+                }}
               >
                 <Power className="h-3 w-3" />
                 {user.is_active ? 'Active' : 'Inactive'}
@@ -322,10 +325,10 @@ export function UserManagement() {
             ),
           },
           {
-            key: 'last_login',
+            cellAlign: 'left',
             header: 'Last Login',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'last_login',
             render: (user) => (
               <span className="text-xs text-secondary">
                 {formatDate(user.last_login)}
@@ -333,17 +336,17 @@ export function UserManagement() {
             ),
           },
         ]}
-        rows={filteredUsers}
-        getRowKey={(user) => user.email}
-        getDeleteLabel={(user) => user.display_name}
-        onRowClick={(user) => handleViewClick(user)}
-        onDelete={handleDelete}
-        isDeleting={deleteMutation.isPending}
         emptyMessage={
           searchQuery || userFilter !== 'all' || statusFilter !== 'all'
             ? 'No users match your filters'
             : 'No users created yet'
         }
+        getDeleteLabel={(user) => user.display_name}
+        getRowKey={(user) => user.email}
+        isDeleting={deleteMutation.isPending}
+        onDelete={handleDelete}
+        onRowClick={(user) => handleViewClick(user)}
+        rows={filteredUsers}
       />
     </AdminSection>
   )

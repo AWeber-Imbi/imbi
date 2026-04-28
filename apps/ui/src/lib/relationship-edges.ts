@@ -1,12 +1,12 @@
 import type { ProjectRelationship } from '@/types'
 
 export interface GraphEdge {
+  arrowPlacement?: 'end' | 'mid' | 'none'
+  fill?: string
   id: string
+  label: string
   source: string
   target: string
-  label: string
-  fill?: string
-  arrowPlacement?: 'none' | 'mid' | 'end'
 }
 
 /** Orange for "depends on" (outbound), blue for "depended upon" (inbound). */
@@ -29,12 +29,12 @@ export function buildRelationshipEdges(
     const source = isOutbound ? projectId : r.project.id
     const target = isOutbound ? r.project.id : projectId
     return {
+      arrowPlacement: 'end',
+      fill: isOutbound ? EDGE_COLOR_DEPENDS_ON : EDGE_COLOR_DEPENDED_UPON,
       id: `${source}->${target}`,
+      label: isOutbound ? 'depends on' : 'depended upon',
       source,
       target,
-      label: isOutbound ? 'depends on' : 'depended upon',
-      fill: isOutbound ? EDGE_COLOR_DEPENDS_ON : EDGE_COLOR_DEPENDED_UPON,
-      arrowPlacement: 'end',
     }
   })
 }

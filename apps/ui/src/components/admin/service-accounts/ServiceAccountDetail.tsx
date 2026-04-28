@@ -1,38 +1,41 @@
 import { useEffect, useState } from 'react'
+
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Edit2, Power, Clock, Calendar, Tag } from 'lucide-react'
+import { ArrowLeft, Calendar, Clock, Edit2, Power, Tag } from 'lucide-react'
+
+import { getRoles } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { getRoles } from '@/api/endpoints'
-import { OrgMembershipsCard } from './OrgMembershipsCard'
-import { ClientCredentialsSection } from './ClientCredentialsSection'
-import { ApiKeysSection } from './ApiKeysSection'
-import { useServiceAccountMutations } from './useServiceAccountMutations'
 import type {
-  ServiceAccount,
   ApiKeyCreated,
   ClientCredentialCreated,
+  ServiceAccount,
 } from '@/types'
+
+import { ApiKeysSection } from './ApiKeysSection'
+import { ClientCredentialsSection } from './ClientCredentialsSection'
+import { OrgMembershipsCard } from './OrgMembershipsCard'
+import { useServiceAccountMutations } from './useServiceAccountMutations'
+
+type ConfirmState =
+  | null
+  | { action: 'remove-org'; orgName: string; orgSlug: string }
+  | { action: 'revoke-credential'; clientId: string }
+  | { action: 'revoke-key'; keyId: string }
+  | { action: 'rotate-credential'; clientId: string }
+  | { action: 'rotate-key'; keyId: string }
 
 interface ServiceAccountDetailProps {
   account: ServiceAccount
-  onEdit: () => void
   onBack: () => void
+  onEdit: () => void
 }
-
-type ConfirmState =
-  | { action: 'revoke-key'; keyId: string }
-  | { action: 'rotate-key'; keyId: string }
-  | { action: 'revoke-credential'; clientId: string }
-  | { action: 'rotate-credential'; clientId: string }
-  | { action: 'remove-org'; orgSlug: string; orgName: string }
-  | null
 
 export function ServiceAccountDetail({
   account,
-  onEdit,
   onBack,
+  onEdit,
 }: ServiceAccountDetailProps) {
   const [confirm, setConfirm] = useState<ConfirmState>(null)
 
@@ -49,20 +52,20 @@ export function ServiceAccountDetail({
     isError: rolesError,
     isLoading: rolesLoading,
   } = useQuery({
-    queryKey: ['roles'],
     queryFn: ({ signal }) => getRoles(signal),
+    queryKey: ['roles'],
   })
 
   const {
     addOrgMutation,
-    updateOrgRoleMutation,
-    removeOrgMutation,
     createApiKeyMutation,
-    revokeApiKeyMutation,
-    rotateApiKeyMutation,
     createCredentialMutation,
+    removeOrgMutation,
+    revokeApiKeyMutation,
     revokeCredentialMutation,
+    rotateApiKeyMutation,
     rotateCredentialMutation,
+    updateOrgRoleMutation,
   } = useServiceAccountMutations(account)
 
   // Reset cross-boundary state when the viewed account changes
@@ -71,14 +74,14 @@ export function ServiceAccountDetail({
     setNewlyCreatedCredential(null)
   }, [account.slug])
 
-  const formatDate = (dateString?: string | null) => {
+  const formatDate = (dateString?: null | string) => {
     if (!dateString) return 'Never'
     return new Date(dateString).toLocaleString(undefined, {
-      year: 'numeric',
-      month: 'long',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      month: 'long',
+      year: 'numeric',
     })
   }
 
@@ -86,7 +89,7 @@ export function ServiceAccountDetail({
     <div className="space-y-6">
       {/* Back button */}
       <div>
-        <Button variant="outline" onClick={onBack}>
+        <Button onClick={onBack} variant="outline">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
@@ -100,8 +103,8 @@ export function ServiceAccountDetail({
             <p className="mt-1 text-secondary">{account.slug}</p>
           </div>
           <Button
-            onClick={onEdit}
             className="bg-action text-action-foreground hover:bg-action-hover"
+            onClick={onEdit}
           >
             <Edit2 className="mr-2 h-4 w-4" />
             Edit Account
@@ -130,41 +133,41 @@ export function ServiceAccountDetail({
 
       <OrgMembershipsCard
         account={account}
-        availableRoles={availableRoles}
-        rolesLoading={rolesLoading}
-        rolesError={rolesError}
         addOrgMutation={addOrgMutation}
-        updateOrgRoleMutation={updateOrgRoleMutation}
-        removeOrgMutation={removeOrgMutation}
+        availableRoles={availableRoles}
         onConfirmRemove={(orgSlug, orgName) =>
-          setConfirm({ action: 'remove-org', orgSlug, orgName })
+          setConfirm({ action: 'remove-org', orgName, orgSlug })
         }
+        removeOrgMutation={removeOrgMutation}
+        rolesError={rolesError}
+        rolesLoading={rolesLoading}
+        updateOrgRoleMutation={updateOrgRoleMutation}
       />
 
       <ClientCredentialsSection
         account={account}
         createCredentialMutation={createCredentialMutation}
-        revokeCredentialMutation={revokeCredentialMutation}
-        rotateCredentialMutation={rotateCredentialMutation}
         newlyCreatedCredential={newlyCreatedCredential}
-        onNewlyCreatedCredentialChange={setNewlyCreatedCredential}
         onConfirmRevoke={(clientId) =>
           setConfirm({ action: 'revoke-credential', clientId })
         }
         onConfirmRotate={(clientId) =>
           setConfirm({ action: 'rotate-credential', clientId })
         }
+        onNewlyCreatedCredentialChange={setNewlyCreatedCredential}
+        revokeCredentialMutation={revokeCredentialMutation}
+        rotateCredentialMutation={rotateCredentialMutation}
       />
 
       <ApiKeysSection
         account={account}
         createApiKeyMutation={createApiKeyMutation}
-        revokeApiKeyMutation={revokeApiKeyMutation}
-        rotateApiKeyMutation={rotateApiKeyMutation}
         newlyCreatedKey={newlyCreatedKey}
-        onNewlyCreatedKeyChange={setNewlyCreatedKey}
         onConfirmRevoke={(keyId) => setConfirm({ action: 'revoke-key', keyId })}
         onConfirmRotate={(keyId) => setConfirm({ action: 'rotate-key', keyId })}
+        onNewlyCreatedKeyChange={setNewlyCreatedKey}
+        revokeApiKeyMutation={revokeApiKeyMutation}
+        rotateApiKeyMutation={rotateApiKeyMutation}
       />
 
       {/* Basic Information */}
@@ -241,23 +244,22 @@ export function ServiceAccountDetail({
         </CardContent>
       </Card>
       <ConfirmDialog
-        open={confirm?.action === 'revoke-key'}
-        title="Revoke API key"
-        description="Are you sure you want to revoke this API key? This action cannot be undone."
         confirmLabel="Revoke"
+        description="Are you sure you want to revoke this API key? This action cannot be undone."
+        onCancel={() => setConfirm(null)}
         onConfirm={() => {
           if (confirm?.action === 'revoke-key') {
             revokeApiKeyMutation.mutate(confirm.keyId)
           }
           setConfirm(null)
         }}
-        onCancel={() => setConfirm(null)}
+        open={confirm?.action === 'revoke-key'}
+        title="Revoke API key"
       />
       <ConfirmDialog
-        open={confirm?.action === 'rotate-key'}
-        title="Rotate API key"
-        description="Are you sure you want to rotate this API key? The old key will stop working immediately."
         confirmLabel="Rotate"
+        description="Are you sure you want to rotate this API key? The old key will stop working immediately."
+        onCancel={() => setConfirm(null)}
         onConfirm={() => {
           if (confirm?.action === 'rotate-key') {
             rotateApiKeyMutation.mutate(confirm.keyId, {
@@ -266,26 +268,26 @@ export function ServiceAccountDetail({
           }
           setConfirm(null)
         }}
-        onCancel={() => setConfirm(null)}
+        open={confirm?.action === 'rotate-key'}
+        title="Rotate API key"
       />
       <ConfirmDialog
-        open={confirm?.action === 'revoke-credential'}
-        title="Revoke credential"
-        description="Are you sure you want to revoke this credential? This action cannot be undone."
         confirmLabel="Revoke"
+        description="Are you sure you want to revoke this credential? This action cannot be undone."
+        onCancel={() => setConfirm(null)}
         onConfirm={() => {
           if (confirm?.action === 'revoke-credential') {
             revokeCredentialMutation.mutate(confirm.clientId)
           }
           setConfirm(null)
         }}
-        onCancel={() => setConfirm(null)}
+        open={confirm?.action === 'revoke-credential'}
+        title="Revoke credential"
       />
       <ConfirmDialog
-        open={confirm?.action === 'rotate-credential'}
-        title="Rotate credential"
-        description="Are you sure you want to rotate this credential? The old secret will stop working immediately."
         confirmLabel="Rotate"
+        description="Are you sure you want to rotate this credential? The old secret will stop working immediately."
+        onCancel={() => setConfirm(null)}
         onConfirm={() => {
           if (confirm?.action === 'rotate-credential') {
             rotateCredentialMutation.mutate(confirm.clientId, {
@@ -294,24 +296,25 @@ export function ServiceAccountDetail({
           }
           setConfirm(null)
         }}
-        onCancel={() => setConfirm(null)}
+        open={confirm?.action === 'rotate-credential'}
+        title="Rotate credential"
       />
       <ConfirmDialog
-        open={confirm?.action === 'remove-org'}
-        title="Remove from organization"
+        confirmLabel="Remove"
         description={
           confirm?.action === 'remove-org'
             ? `Remove ${account.display_name} from ${confirm.orgName}?`
             : 'This action cannot be undone.'
         }
-        confirmLabel="Remove"
+        onCancel={() => setConfirm(null)}
         onConfirm={() => {
           if (confirm?.action === 'remove-org') {
             removeOrgMutation.mutate(confirm.orgSlug)
           }
           setConfirm(null)
         }}
-        onCancel={() => setConfirm(null)}
+        open={confirm?.action === 'remove-org'}
+        title="Remove from organization"
       />
     </div>
   )

@@ -1,5 +1,7 @@
-import { ChevronDown } from 'lucide-react'
 import { memo } from 'react'
+
+import { ChevronDown } from 'lucide-react'
+
 import { Gravatar } from '@/components/ui/gravatar'
 import {
   Tooltip,
@@ -12,28 +14,29 @@ import { deriveChipColors } from '@/lib/chip-colors'
 import { ENTRY_TYPE_ICONS } from '@/lib/ops-log-icons'
 import { cn } from '@/lib/utils'
 import type { Environment, OperationsLogRecord, Project } from '@/types'
+
 import { OperationsLogEntryDetails } from './OperationsLogEntryDetails'
-import { OPS_ROW_GRID, OPS_ROW_PAD } from './opsRowLayout'
 import { absTime, cleanDescription, relTime } from './opsLogHelpers'
+import { OPS_ROW_GRID, OPS_ROW_PAD } from './opsRowLayout'
 
 interface Props {
-  id: string
   entry: OperationsLogRecord
-  project?: Project
   environment?: Environment
+  id: string
   isOpen: boolean
   onToggle: (id: string) => void
   performerDisplayNames: Map<string, string>
+  project?: Project
 }
 
 export const OperationsLogStreamRow = memo(function OperationsLogStreamRow({
-  id,
   entry,
-  project,
   environment,
+  id,
   isOpen,
   onToggle,
   performerDisplayNames,
+  project,
 }: Props) {
   const { isDarkMode } = useTheme()
   const performer = entry.performed_by ?? entry.recorded_by
@@ -56,26 +59,27 @@ export const OperationsLogStreamRow = memo(function OperationsLogStreamRow({
         isOpen && 'bg-secondary',
       )}
       style={{
-        contentVisibility: 'auto',
         containIntrinsicSize: 'auto 72px',
+        contentVisibility: 'auto',
       }}
     >
       <button
-        type="button"
-        onClick={() => onToggle(id)}
-        aria-expanded={isOpen}
         aria-controls={`ops-log-details-${id}`}
+        aria-expanded={isOpen}
         className={cn(
           'group grid w-full cursor-pointer items-center gap-x-3 gap-y-1 text-left transition-colors',
           OPS_ROW_PAD,
           !isOpen && 'hover:bg-secondary',
         )}
+        onClick={() => onToggle(id)}
         style={{
           gridTemplateColumns: OPS_ROW_GRID,
           gridTemplateRows: desc ? 'auto auto' : 'auto',
         }}
+        type="button"
       >
         <span
+          aria-hidden
           className={cn(
             'self-stretch rounded-r-sm',
             isRestart && 'bg-danger',
@@ -86,7 +90,6 @@ export const OperationsLogStreamRow = memo(function OperationsLogStreamRow({
             gridColumn: 1,
             gridRow: '1 / -1',
           }}
-          aria-hidden
         />
         <span
           className={cn(
@@ -132,8 +135,8 @@ export const OperationsLogStreamRow = memo(function OperationsLogStreamRow({
               envColors
                 ? {
                     backgroundColor: envColors.bg,
-                    color: envColors.fg,
                     borderColor: envColors.border,
+                    color: envColors.fg,
                   }
                 : undefined
             }
@@ -147,9 +150,9 @@ export const OperationsLogStreamRow = memo(function OperationsLogStreamRow({
           title={displayName}
         >
           <Gravatar
+            className="h-[22px] w-[22px] rounded-full"
             email={performer}
             size={22}
-            className="h-[22px] w-[22px] rounded-full"
           />
         </span>
         <TooltipProvider delayDuration={250}>
@@ -187,8 +190,8 @@ export const OperationsLogStreamRow = memo(function OperationsLogStreamRow({
       </button>
       {isOpen ? (
         <div
-          id={`ops-log-details-${id}`}
           className="border-t border-dashed border-tertiary"
+          id={`ops-log-details-${id}`}
         >
           <OperationsLogEntryDetails entry={entry} />
         </div>

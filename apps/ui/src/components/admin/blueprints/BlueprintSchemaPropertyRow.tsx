@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
-import { Input } from '@/components/ui/input'
+
 import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 import {
   Tooltip,
   TooltipContent,
@@ -8,37 +9,38 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import type { SchemaProperty } from '@/types'
+
 import { PROPERTY_TYPES, STRING_FORMATS } from './blueprint-schema-utils'
 import { BlueprintUiMapEditor } from './BlueprintUiMapEditor'
 
 interface BlueprintSchemaPropertyRowProps {
-  prop: SchemaProperty
-  index: number
-  totalCount: number
-  isExpanded: boolean
-  toggleExpandProp: (id: string) => void
-  moveProperty: (index: number, direction: 'up' | 'down') => void
-  updateProperty: (id: string, updates: Partial<SchemaProperty>) => void
-  removeProperty: (id: string) => void
-  uiMapEntries: Record<string, [string, string][]>
-  setUiMapEntries: (value: Record<string, [string, string][]>) => void
   enumRawText: Record<string, string>
+  index: number
+  isExpanded: boolean
+  moveProperty: (index: number, direction: 'down' | 'up') => void
+  prop: SchemaProperty
+  removeProperty: (id: string) => void
   setEnumRawText: (value: Record<string, string>) => void
+  setUiMapEntries: (value: Record<string, [string, string][]>) => void
+  toggleExpandProp: (id: string) => void
+  totalCount: number
+  uiMapEntries: Record<string, [string, string][]>
+  updateProperty: (id: string, updates: Partial<SchemaProperty>) => void
 }
 
 export function BlueprintSchemaPropertyRow({
-  prop,
-  index,
-  totalCount,
-  isExpanded,
-  toggleExpandProp,
-  moveProperty,
-  updateProperty,
-  removeProperty,
-  uiMapEntries,
-  setUiMapEntries,
   enumRawText,
+  index,
+  isExpanded,
+  moveProperty,
+  prop,
+  removeProperty,
   setEnumRawText,
+  setUiMapEntries,
+  toggleExpandProp,
+  totalCount,
+  uiMapEntries,
+  updateProperty,
 }: BlueprintSchemaPropertyRowProps) {
   return (
     <div className="rounded-lg border border-input bg-secondary">
@@ -50,15 +52,15 @@ export function BlueprintSchemaPropertyRow({
               <TooltipTrigger asChild>
                 <span className="inline-flex">
                   <button
-                    type="button"
                     aria-label="Move property up"
-                    onClick={() => moveProperty(index, 'up')}
-                    disabled={index === 0}
                     className={`rounded p-0.5 ${
                       index === 0
                         ? 'cursor-not-allowed opacity-30'
                         : 'text-secondary hover:bg-secondary'
                     }`}
+                    disabled={index === 0}
+                    onClick={() => moveProperty(index, 'up')}
+                    type="button"
                   >
                     <ChevronUp className="h-3 w-3" />
                   </button>
@@ -74,15 +76,15 @@ export function BlueprintSchemaPropertyRow({
               <TooltipTrigger asChild>
                 <span className="inline-flex">
                   <button
-                    type="button"
                     aria-label="Move property down"
-                    onClick={() => moveProperty(index, 'down')}
-                    disabled={index === totalCount - 1}
                     className={`rounded p-0.5 ${
                       index === totalCount - 1
                         ? 'cursor-not-allowed opacity-30'
                         : 'text-secondary hover:bg-secondary'
                     }`}
+                    disabled={index === totalCount - 1}
+                    onClick={() => moveProperty(index, 'down')}
+                    type="button"
                   >
                     <ChevronDown className="h-3 w-3" />
                   </button>
@@ -96,24 +98,24 @@ export function BlueprintSchemaPropertyRow({
         </div>
 
         <Input
-          value={prop.name}
+          className="flex-1 font-mono text-sm"
           onChange={(e) =>
             updateProperty(prop.id, {
               name: e.target.value,
             })
           }
           placeholder="Property name"
-          className="flex-1 font-mono text-sm"
+          value={prop.name}
         />
 
         <select
-          value={prop.type}
+          className="w-28 rounded-md border border-input bg-background px-2 py-2 text-sm text-foreground"
           onChange={(e) =>
             updateProperty(prop.id, {
               type: e.target.value as SchemaProperty['type'],
             })
           }
-          className="w-28 rounded-md border border-input bg-background px-2 py-2 text-sm text-foreground"
+          value={prop.type}
         >
           {PROPERTY_TYPES.map((t) => (
             <option key={t} value={t}>
@@ -124,8 +126,8 @@ export function BlueprintSchemaPropertyRow({
 
         <div className="flex items-center gap-1.5">
           <Checkbox
-            id={`req-${prop.id}`}
             checked={prop.required}
+            id={`req-${prop.id}`}
             onCheckedChange={(checked) =>
               updateProperty(prop.id, {
                 required: checked === true,
@@ -133,8 +135,8 @@ export function BlueprintSchemaPropertyRow({
             }
           />
           <label
-            htmlFor={`req-${prop.id}`}
             className={'cursor-pointer select-none text-xs text-secondary'}
+            htmlFor={`req-${prop.id}`}
           >
             Required
           </label>
@@ -142,8 +144,8 @@ export function BlueprintSchemaPropertyRow({
 
         <div className="flex items-center gap-1.5">
           <Checkbox
-            id={`editable-${prop.id}`}
             checked={prop.editable !== false}
+            id={`editable-${prop.id}`}
             onCheckedChange={(checked) =>
               updateProperty(prop.id, {
                 editable: checked === true ? undefined : false,
@@ -151,8 +153,8 @@ export function BlueprintSchemaPropertyRow({
             }
           />
           <label
-            htmlFor={`editable-${prop.id}`}
             className={'cursor-pointer select-none text-xs text-secondary'}
+            htmlFor={`editable-${prop.id}`}
           >
             Editable
           </label>
@@ -162,14 +164,14 @@ export function BlueprintSchemaPropertyRow({
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                type="button"
                 aria-label={
                   isExpanded
                     ? 'Collapse advanced options'
                     : 'Expand advanced options'
                 }
-                onClick={() => toggleExpandProp(prop.id)}
                 className="rounded p-1.5 text-xs text-secondary hover:bg-secondary"
+                onClick={() => toggleExpandProp(prop.id)}
+                type="button"
               >
                 {isExpanded ? (
                   <ChevronUp className="h-3.5 w-3.5" />
@@ -188,10 +190,10 @@ export function BlueprintSchemaPropertyRow({
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                type="button"
                 aria-label="Remove property"
-                onClick={() => removeProperty(prop.id)}
                 className="rounded p-1.5 text-danger hover:bg-danger"
+                onClick={() => removeProperty(prop.id)}
+                type="button"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -212,14 +214,14 @@ export function BlueprintSchemaPropertyRow({
                 Description
               </label>
               <Input
-                value={prop.description || ''}
+                className="text-sm"
                 onChange={(e) =>
                   updateProperty(prop.id, {
                     description: e.target.value || undefined,
                   })
                 }
                 placeholder="Property description"
-                className="text-sm"
+                value={prop.description || ''}
               />
             </div>
             <div>
@@ -227,14 +229,14 @@ export function BlueprintSchemaPropertyRow({
                 Default Value
               </label>
               <Input
-                value={prop.defaultValue || ''}
+                className="text-sm"
                 onChange={(e) =>
                   updateProperty(prop.id, {
                     defaultValue: e.target.value || undefined,
                   })
                 }
                 placeholder="Default value"
-                className="text-sm"
+                value={prop.defaultValue || ''}
               />
             </div>
           </div>
@@ -246,13 +248,13 @@ export function BlueprintSchemaPropertyRow({
                   Format
                 </label>
                 <select
-                  value={prop.format || ''}
+                  className="w-full rounded-md border border-input bg-background px-2 py-2 text-sm text-foreground"
                   onChange={(e) =>
                     updateProperty(prop.id, {
                       format: e.target.value || undefined,
                     })
                   }
-                  className="w-full rounded-md border border-input bg-background px-2 py-2 text-sm text-foreground"
+                  value={prop.format || ''}
                 >
                   {STRING_FORMATS.map((f) => (
                     <option key={f} value={f}>
@@ -266,8 +268,7 @@ export function BlueprintSchemaPropertyRow({
                   Min Length
                 </label>
                 <Input
-                  type="number"
-                  value={prop.minLength ?? ''}
+                  className="text-sm"
                   onChange={(e) =>
                     updateProperty(prop.id, {
                       minLength: e.target.value
@@ -275,7 +276,8 @@ export function BlueprintSchemaPropertyRow({
                         : undefined,
                     })
                   }
-                  className="text-sm"
+                  type="number"
+                  value={prop.minLength ?? ''}
                 />
               </div>
               <div>
@@ -283,8 +285,7 @@ export function BlueprintSchemaPropertyRow({
                   Max Length
                 </label>
                 <Input
-                  type="number"
-                  value={prop.maxLength ?? ''}
+                  className="text-sm"
                   onChange={(e) =>
                     updateProperty(prop.id, {
                       maxLength: e.target.value
@@ -292,7 +293,8 @@ export function BlueprintSchemaPropertyRow({
                         : undefined,
                     })
                   }
-                  className="text-sm"
+                  type="number"
+                  value={prop.maxLength ?? ''}
                 />
               </div>
             </div>
@@ -305,8 +307,7 @@ export function BlueprintSchemaPropertyRow({
                   Minimum
                 </label>
                 <Input
-                  type="number"
-                  value={prop.minimum ?? ''}
+                  className="text-sm"
                   onChange={(e) =>
                     updateProperty(prop.id, {
                       minimum: e.target.value
@@ -314,7 +315,8 @@ export function BlueprintSchemaPropertyRow({
                         : undefined,
                     })
                   }
-                  className="text-sm"
+                  type="number"
+                  value={prop.minimum ?? ''}
                 />
               </div>
               <div>
@@ -322,8 +324,7 @@ export function BlueprintSchemaPropertyRow({
                   Maximum
                 </label>
                 <Input
-                  type="number"
-                  value={prop.maximum ?? ''}
+                  className="text-sm"
                   onChange={(e) =>
                     updateProperty(prop.id, {
                       maximum: e.target.value
@@ -331,7 +332,8 @@ export function BlueprintSchemaPropertyRow({
                         : undefined,
                     })
                   }
-                  className="text-sm"
+                  type="number"
+                  value={prop.maximum ?? ''}
                 />
               </div>
             </div>
@@ -342,13 +344,7 @@ export function BlueprintSchemaPropertyRow({
               Enum Values (comma-separated)
             </label>
             <Input
-              value={enumRawText[prop.id] ?? prop.enumValues?.join(', ') ?? ''}
-              onChange={(e) =>
-                setEnumRawText({
-                  ...enumRawText,
-                  [prop.id]: e.target.value,
-                })
-              }
+              className="text-sm"
               onBlur={() => {
                 const raw = enumRawText[prop.id]
                 if (raw !== undefined) {
@@ -367,69 +363,75 @@ export function BlueprintSchemaPropertyRow({
                   setEnumRawText(next)
                 }
               }}
+              onChange={(e) =>
+                setEnumRawText({
+                  ...enumRawText,
+                  [prop.id]: e.target.value,
+                })
+              }
               placeholder="e.g. small, medium, large"
-              className="text-sm"
+              value={enumRawText[prop.id] ?? prop.enumValues?.join(', ') ?? ''}
             />
           </div>
 
           {/* UI Maps */}
           {[
             {
-              mapType: 'colorMap' as const,
+              defaultVal: 'green',
+              isColor: true,
+              keyPh: 'value',
               label: 'Color Map',
-              keyPh: 'value',
+              mapType: 'colorMap' as const,
               valPh: 'e.g. green',
-              defaultVal: 'green',
-              isColor: true,
             },
             {
-              mapType: 'iconMap' as const,
+              defaultVal: '',
+              isColor: false,
+              keyPh: 'value',
               label: 'Icon Map',
-              keyPh: 'value',
+              mapType: 'iconMap' as const,
               valPh: 'e.g. circle-check-big',
-              defaultVal: '',
-              isColor: false,
             },
             {
-              mapType: 'colorRange' as const,
-              label: 'Color Range',
-              keyPh: 'e.g. >=90',
-              valPh: 'e.g. green',
               defaultVal: 'green',
               isColor: true,
+              keyPh: 'e.g. >=90',
+              label: 'Color Range',
+              mapType: 'colorRange' as const,
+              valPh: 'e.g. green',
             },
             {
-              mapType: 'iconRange' as const,
-              label: 'Icon Range',
-              keyPh: 'e.g. >=90',
-              valPh: 'e.g. check-circle',
               defaultVal: '',
               isColor: false,
+              keyPh: 'e.g. >=90',
+              label: 'Icon Range',
+              mapType: 'iconRange' as const,
+              valPh: 'e.g. check-circle',
             },
             {
-              mapType: 'colorAge' as const,
-              label: 'Color Age',
-              keyPh: 'e.g. >30d',
-              valPh: 'e.g. red',
               defaultVal: 'red',
               isColor: true,
+              keyPh: 'e.g. >30d',
+              label: 'Color Age',
+              mapType: 'colorAge' as const,
+              valPh: 'e.g. red',
             },
             {
-              mapType: 'iconAge' as const,
-              label: 'Icon Age',
-              keyPh: 'e.g. >30d',
-              valPh: 'e.g. alert-triangle',
               defaultVal: '',
               isColor: false,
+              keyPh: 'e.g. >30d',
+              label: 'Icon Age',
+              mapType: 'iconAge' as const,
+              valPh: 'e.g. alert-triangle',
             },
           ].map(
             ({
-              mapType,
-              label: mapLabel,
-              keyPh,
-              valPh,
               defaultVal,
               isColor,
+              keyPh,
+              label: mapLabel,
+              mapType,
+              valPh,
             }) => {
               const stateKey = `${mapType}:${prop.id}`
               const entries = uiMapEntries[stateKey] ?? []
@@ -449,16 +451,16 @@ export function BlueprintSchemaPropertyRow({
               }
               return (
                 <BlueprintUiMapEditor
-                  key={mapType}
-                  mapType={mapType}
-                  label={mapLabel}
-                  keyPh={keyPh}
-                  valPh={valPh}
-                  defaultVal={defaultVal}
-                  isColor={isColor}
-                  entries={entries}
-                  setEntries={setEntries}
                   commit={commit}
+                  defaultVal={defaultVal}
+                  entries={entries}
+                  isColor={isColor}
+                  key={mapType}
+                  keyPh={keyPh}
+                  label={mapLabel}
+                  mapType={mapType}
+                  setEntries={setEntries}
+                  valPh={valPh}
                 />
               )
             },

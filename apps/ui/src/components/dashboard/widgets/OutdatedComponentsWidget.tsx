@@ -1,6 +1,7 @@
-import { Package, AlertTriangle, TrendingUp, ExternalLink } from 'lucide-react'
-import { Card } from '@/components/ui/card'
+import { AlertTriangle, ExternalLink, Package, TrendingUp } from 'lucide-react'
+
 import { Badge, type BadgeProps } from '@/components/ui/badge'
+import { Card } from '@/components/ui/card'
 
 interface OutdatedComponentsWidgetProps {
   onProjectSelect?: (projectId: string) => void
@@ -11,65 +12,65 @@ export function OutdatedComponentsWidget({
 }: OutdatedComponentsWidgetProps) {
   const outdatedComponents = [
     {
-      projectId: 'proj-123',
-      project: 'frontend-applications/navigation',
+      behindBy: 15,
       component: 'react',
       currentVersion: '17.0.2',
       latestVersion: '18.2.0',
-      severity: 'high' as const,
-      behindBy: 15,
+      project: 'frontend-applications/navigation',
+      projectId: 'proj-123',
       releaseDate: '2 months ago',
+      severity: 'high' as const,
     },
     {
-      projectId: 'proj-456',
-      project: 'backend/api-gateway',
+      behindBy: 8,
       component: 'express',
       currentVersion: '4.17.1',
       latestVersion: '4.18.2',
-      severity: 'medium' as const,
-      behindBy: 8,
+      project: 'backend/api-gateway',
+      projectId: 'proj-456',
       releaseDate: '3 weeks ago',
+      severity: 'medium' as const,
     },
     {
-      projectId: 'proj-789',
-      project: 'platform/deployment-service',
+      behindBy: 4,
       component: 'node',
       currentVersion: '16.14.0',
       latestVersion: '20.10.0',
-      severity: 'high' as const,
-      behindBy: 4,
+      project: 'platform/deployment-service',
+      projectId: 'proj-789',
       releaseDate: '1 week ago',
+      severity: 'high' as const,
     },
     {
-      projectId: 'proj-234',
-      project: 'security/auth-service',
+      behindBy: 12,
       component: 'jsonwebtoken',
       currentVersion: '8.5.1',
       latestVersion: '9.0.2',
-      severity: 'critical' as const,
-      behindBy: 12,
+      project: 'security/auth-service',
+      projectId: 'proj-234',
       releaseDate: '1 month ago',
+      severity: 'critical' as const,
     },
     {
-      projectId: 'proj-567',
-      project: 'data/analytics-processor',
+      behindBy: 20,
       component: 'pandas',
       currentVersion: '1.3.5',
       latestVersion: '2.1.4',
-      severity: 'medium' as const,
-      behindBy: 20,
+      project: 'data/analytics-processor',
+      projectId: 'proj-567',
       releaseDate: '2 weeks ago',
+      severity: 'medium' as const,
     },
   ]
 
   const severityConfig: Record<
-    'critical' | 'high' | 'medium' | 'low',
+    'critical' | 'high' | 'low' | 'medium',
     { label: string; variant: BadgeProps['variant'] }
   > = {
     critical: { label: 'Critical', variant: 'danger' },
     high: { label: 'High', variant: 'warning' },
-    medium: { label: 'Medium', variant: 'warning' },
     low: { label: 'Low', variant: 'info' },
+    medium: { label: 'Medium', variant: 'warning' },
   }
 
   return (
@@ -88,8 +89,8 @@ export function OutdatedComponentsWidget({
 
           return (
             <div
-              key={item.projectId}
               className="rounded-lg border border-input bg-background p-4 transition-colors hover:border-secondary"
+              key={item.projectId}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
@@ -99,15 +100,15 @@ export function OutdatedComponentsWidget({
                       <code className="text-sm font-medium text-primary">
                         {item.component}
                       </code>
-                      <Badge variant={config.variant} className="rounded-full">
+                      <Badge className="rounded-full" variant={config.variant}>
                         {config.label}
                       </Badge>
                     </div>
 
                     <button
-                      type="button"
-                      onClick={() => onProjectSelect?.(item.projectId)}
                       className="mb-2 text-sm text-info hover:underline"
+                      onClick={() => onProjectSelect?.(item.projectId)}
+                      type="button"
                     >
                       {item.project}
                     </button>
@@ -128,10 +129,10 @@ export function OutdatedComponentsWidget({
                 </div>
 
                 <button
-                  type="button"
-                  onClick={() => onProjectSelect?.(item.projectId)}
-                  className="flex-shrink-0 rounded p-2 text-secondary transition-colors hover:bg-secondary hover:text-primary"
                   aria-label={`View update details for ${item.component}`}
+                  className="flex-shrink-0 rounded p-2 text-secondary transition-colors hover:bg-secondary hover:text-primary"
+                  onClick={() => onProjectSelect?.(item.projectId)}
+                  type="button"
                 >
                   <TrendingUp className="h-4 w-4" />
                 </button>
@@ -143,9 +144,9 @@ export function OutdatedComponentsWidget({
 
       <div className="mt-4 border-t border-tertiary pt-4">
         <button
-          type="button"
-          onClick={() => onProjectSelect?.('outdated-components')}
           className="hover:text-info/80 flex items-center gap-1 text-sm text-info"
+          onClick={() => onProjectSelect?.('outdated-components')}
+          type="button"
         >
           View all outdated components
           <ExternalLink className="h-3 w-3" />

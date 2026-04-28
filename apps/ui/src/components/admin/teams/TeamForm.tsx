@@ -1,39 +1,42 @@
 import { useState } from 'react'
+
 import { useQuery } from '@tanstack/react-query'
-import { Save, X, AlertCircle } from 'lucide-react'
-import { Button } from '../../ui/button'
-import { Input } from '../../ui/input'
+import { AlertCircle, Save, X } from 'lucide-react'
+
+import { getTeamSchema } from '@/api/endpoints'
 import { Card, CardContent } from '@/components/ui/card'
-import { IconUpload } from '../../ui/icon-upload'
 import { IconPicker } from '@/components/ui/icon-picker'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
+import { TEAM_BASE_FIELDS_SET } from '@/lib/constants'
+import { extractDynamicFields, slugify } from '@/lib/utils'
+import type { Team, TeamCreate } from '@/types'
+
+import { Button } from '../../ui/button'
 import {
   DynamicFormFields,
   validateDynamicFields,
 } from '../../ui/dynamic-fields'
-import { useOrganization } from '@/contexts/OrganizationContext'
-import { getTeamSchema } from '@/api/endpoints'
-import { TEAM_BASE_FIELDS_SET } from '@/lib/constants'
-import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
-import { extractDynamicFields, slugify } from '@/lib/utils'
-import type { Team, TeamCreate } from '@/types'
+import { IconUpload } from '../../ui/icon-upload'
+import { Input } from '../../ui/input'
 
 interface TeamFormProps {
-  team: Team | null
-  onSave: (orgSlug: string, team: TeamCreate) => void
-  onCancel: () => void
+  error?: null | { message?: string; response?: { data?: { detail?: string } } }
   isLoading?: boolean
-  error?: { response?: { data?: { detail?: string } }; message?: string } | null
+  onCancel: () => void
+  onSave: (orgSlug: string, team: TeamCreate) => void
+  team: null | Team
 }
 
 export function TeamForm({
-  team,
-  onSave,
-  onCancel,
-  isLoading = false,
   error,
+  isLoading = false,
+  onCancel,
+  onSave,
+  team,
 }: TeamFormProps) {
   const isEditing = !!team
-  const { selectedOrganization, organizations } = useOrganization()
+  const { organizations, selectedOrganization } = useOrganization()
 
   const [name, setName] = useState(team?.name || '')
   const [slug, setSlug] = useState(team?.slug || '')
@@ -49,8 +52,8 @@ export function TeamForm({
   >(team ? extractDynamicFields(team, TEAM_BASE_FIELDS_SET) : {})
 
   const { data: teamSchema } = useQuery({
-    queryKey: ['teamSchema'],
     queryFn: ({ signal }) => getTeamSchema(signal),
+    queryKey: ['teamSchema'],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -78,10 +81,10 @@ export function TeamForm({
     if (!validate()) return
 
     onSave(orgSlug, {
-      name: name.trim(),
-      slug: slug.trim(),
       description: description.trim() || null,
       icon: icon.trim() || null,
+      name: name.trim(),
+      slug: slug.trim(),
       ...dynamicFormData,
     })
   }
@@ -117,14 +120,14 @@ export function TeamForm({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
+          <Button disabled={isLoading} onClick={onCancel} variant="outline">
             <X className="mr-2 h-4 w-4" />
             Cancel
           </Button>
           <Button
-            onClick={handleSubmit}
-            disabled={isLoading}
             className="bg-action text-action-foreground hover:bg-action-hover"
+            disabled={isLoading}
+            onClick={handleSubmit}
           >
             <Save className="mr-2 h-4 w-4" />
             {isLoading
@@ -154,7 +157,7 @@ export function TeamForm({
       )}
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form className="space-y-6" onSubmit={handleSubmit}>
         <Card>
           <CardContent className="space-y-4 pt-6">
             <div>
@@ -162,12 +165,12 @@ export function TeamForm({
                 Organization <span className="text-red-500">*</span>
               </label>
               <select
-                value={orgSlug}
-                onChange={(e) => setOrgSlug(e.target.value)}
-                disabled={isEditing || isLoading || organizations.length <= 1}
                 className={`w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing || organizations.length <= 1 ? 'cursor-not-allowed opacity-60' : ''} ${
                   errors.organization ? 'border-red-500' : ''
                 }`}
+                disabled={isEditing || isLoading || organizations.length <= 1}
+                onChange={(e) => setOrgSlug(e.target.value)}
+                value={orgSlug}
               >
                 <option value="">Select organization...</option>
                 {organizations.map((org) => (
@@ -192,11 +195,11 @@ export function TeamForm({
                   Team Name <span className="text-red-500">*</span>
                 </label>
                 <Input
-                  value={name}
+                  className={` ${errors.name ? 'border-red-500' : ''}`}
+                  disabled={isLoading}
                   onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="e.g., Platform Support Engineering"
-                  disabled={isLoading}
-                  className={` ${errors.name ? 'border-red-500' : ''}`}
+                  value={name}
                 />
                 {errors.name && (
                   <div className="mt-1 flex items-center gap-1 text-xs text-danger">
@@ -212,11 +215,11 @@ export function TeamForm({
                     Slug <span className="text-red-500">*</span>
                   </label>
                   <Input
-                    value={slug}
+                    className={` ${errors.slug ? 'border-red-500' : ''}`}
+                    disabled={isLoading}
                     onChange={(e) => setSlug(e.target.value)}
                     placeholder="e.g., platform-support"
-                    disabled={isLoading}
-                    className={` ${errors.slug ? 'border-red-500' : ''}`}
+                    value={slug}
                   />
                   {errors.slug && (
                     <div className="mt-1 flex items-center gap-1 text-xs text-danger">
@@ -233,12 +236,12 @@ export function TeamForm({
                 Description
               </label>
               <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                disabled={isLoading}
-                placeholder="Brief description of the team's purpose"
                 className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground"
+                disabled={isLoading}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Brief description of the team's purpose"
+                rows={3}
+                value={description}
               />
             </div>
 
@@ -250,12 +253,12 @@ export function TeamForm({
                 <div>
                   <p className="mb-1.5 text-xs text-tertiary">Pick an icon</p>
                   <IconPicker
+                    onChange={handleIconChange}
                     value={
                       !icon.startsWith('/') && !icon.startsWith('http')
                         ? icon
                         : ''
                     }
-                    onChange={handleIconChange}
                   />
                 </div>
                 <div>
@@ -263,12 +266,12 @@ export function TeamForm({
                     Or upload a custom image
                   </p>
                   <IconUpload
+                    onChange={handleIconChange}
                     value={
                       icon.startsWith('/') || icon.startsWith('http')
                         ? icon
                         : ''
                     }
-                    onChange={handleIconChange}
                   />
                 </div>
               </div>
@@ -277,11 +280,11 @@ export function TeamForm({
             {/* Dynamic Blueprint Fields */}
             {teamSchema && (
               <DynamicFormFields
-                schema={teamSchema}
                 data={dynamicFormData}
                 errors={errors}
-                onChange={handleDynamicFieldChange}
                 isLoading={isLoading}
+                onChange={handleDynamicFieldChange}
+                schema={teamSchema}
               />
             )}
           </CardContent>

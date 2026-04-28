@@ -10,7 +10,7 @@ export const STATUS_VARIANTS: Record<string, BadgeProps['variant']> = {
 }
 
 export function statusBadgeVariant(
-  status: string | undefined | null,
+  status: null | string | undefined,
 ): BadgeProps['variant'] {
   return (status && STATUS_VARIANTS[status]) || 'neutral'
 }

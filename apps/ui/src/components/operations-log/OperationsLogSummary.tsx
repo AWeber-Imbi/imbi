@@ -1,15 +1,17 @@
-import type { OperationsLogMetrics } from '@/api/endpoints'
-import type { Environment, OperationsLogRecord } from '@/types'
 import { useMemo } from 'react'
+
+import type { OperationsLogMetrics } from '@/api/endpoints'
 import { sortEnvironments } from '@/lib/utils'
-import { toMs, type TimeRange } from './opsLogHelpers'
+import type { Environment, OperationsLogRecord } from '@/types'
+
+import { type TimeRange, toMs } from './opsLogHelpers'
 
 interface SummaryProps {
   entries: OperationsLogRecord[]
   environments: Environment[]
-  rangeLabel: string
-  range: TimeRange
   loading?: boolean
+  range: TimeRange
+  rangeLabel: string
   // When the backend returns aggregate metrics for the full filter
   // universe, the tiles display those numbers rather than stats derived
   // only from `entries` (which is just the loaded pages).
@@ -19,15 +21,15 @@ interface SummaryProps {
 function SkeletonBlock({ className }: { className: string }) {
   return (
     <span
-      className={`bg-tertiary/40 inline-block animate-pulse rounded ${className}`}
       aria-hidden
+      className={`bg-tertiary/40 inline-block animate-pulse rounded ${className}`}
     />
   )
 }
 
 const RANGE_WINDOW_MS: Record<Exclude<TimeRange, 'all'>, number> = {
-  '24h': 24 * 60 * 60 * 1000,
   '7d': 7 * 24 * 60 * 60 * 1000,
+  '24h': 24 * 60 * 60 * 1000,
   '30d': 30 * 24 * 60 * 60 * 1000,
   '90d': 90 * 24 * 60 * 60 * 1000,
 }
@@ -37,9 +39,9 @@ const BARS = 12
 export function OperationsLogSummary({
   entries,
   environments,
-  rangeLabel,
-  range,
   loading = false,
+  range,
+  rangeLabel,
   serverMetrics,
 }: SummaryProps) {
   // Terminal promotion target = highest sort_order env, matching the
@@ -102,13 +104,13 @@ export function OperationsLogSummary({
     let max = 1
     for (const v of buckets) if (v > max) max = v
     return {
-      deploys,
-      terminalDeploys,
-      projects: projectSlugs.size,
-      envCount: envSlugs.size,
-      people: people.size,
       buckets,
+      deploys,
+      envCount: envSlugs.size,
       max,
+      people: people.size,
+      projects: projectSlugs.size,
+      terminalDeploys,
     }
   }, [entries, range, terminalEnvSlug])
 
@@ -141,18 +143,18 @@ export function OperationsLogSummary({
             </span>
           </span>
         )}
-        <div className="mt-1 flex h-4 items-end gap-[2px]" aria-hidden="true">
+        <div aria-hidden="true" className="mt-1 flex h-4 items-end gap-[2px]">
           {loading
             ? Array.from({ length: BARS }).map((_, i) => (
                 <span
-                  key={i}
                   className="bg-tertiary/30 h-full flex-1 rounded-[1px]"
+                  key={i}
                 />
               ))
             : buckets.map((v, i) => (
                 <span
-                  key={i}
                   className="flex-1 rounded-[1px] bg-amber-bg"
+                  key={i}
                   style={{
                     height: v === 0 ? '0%' : `${Math.max(8, (v / max) * 100)}%`,
                   }}

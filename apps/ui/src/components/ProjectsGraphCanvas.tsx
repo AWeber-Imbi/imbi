@@ -1,43 +1,46 @@
-import { useRef, useState, useMemo, useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+import { useNavigate } from 'react-router-dom'
+
 import {
+  ChevronDown,
+  Expand,
+  Maximize2,
+  Shrink,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react'
+import {
+  darkTheme,
   GraphCanvas,
   GraphCanvasRef,
   LayoutTypes,
   lightTheme,
-  darkTheme,
   useSelection,
 } from 'reagraph'
 import type { GraphEdge, InternalGraphNode } from 'reagraph'
-import {
-  ZoomIn,
-  ZoomOut,
-  Maximize2,
-  ChevronDown,
-  Expand,
-  Shrink,
-} from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+
 import { Button } from '@/components/ui/button'
-import { useTheme } from '@/contexts/ThemeContext'
-import { Card, CardHeader, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { useTheme } from '@/contexts/ThemeContext'
 import { getIconUrl, useIconRegistryVersion } from '@/lib/icons'
 import {
-  EDGE_COLOR_DEPENDS_ON,
   EDGE_COLOR_DEPENDED_UPON,
+  EDGE_COLOR_DEPENDS_ON,
 } from '@/lib/relationship-edges'
 
 export interface GraphProject {
   id: string
   name: string
   project_types?: {
+    icon?: null | string
     slug: string
-    icon?: string | null
   }[]
 }
 
@@ -53,47 +56,16 @@ const LAYOUT_OPTIONS: { label: string; value: LayoutTypes }[] = [
 // Increase to zoom out further at 100%, decrease to zoom in closer.
 const ZOOM_100_DISTANCE = 1800
 
-/** Returns the IDs of the largest connected component in the graph. */
-function largestComponent(
-  nodeIds: string[],
-  edges: { source: string; target: string }[],
-): string[] {
-  const adj = new Map<string, Set<string>>()
-  for (const id of nodeIds) adj.set(id, new Set())
-  for (const e of edges) {
-    adj.get(e.source)?.add(e.target)
-    adj.get(e.target)?.add(e.source)
-  }
-  const visited = new Set<string>()
-  let best: string[] = []
-  for (const start of nodeIds) {
-    if (visited.has(start)) continue
-    const component: string[] = []
-    const queue = [start]
-    while (queue.length) {
-      const node = queue.pop()!
-      if (visited.has(node)) continue
-      visited.add(node)
-      component.push(node)
-      for (const neighbor of adj.get(node) ?? []) {
-        if (!visited.has(neighbor)) queue.push(neighbor)
-      }
-    }
-    if (component.length > best.length) best = component
-  }
-  return best
-}
-
 interface ProjectsGraphCanvasProps {
-  projects: GraphProject[]
-  edges: GraphEdge[]
   centerId?: string
+  edges: GraphEdge[]
+  projects: GraphProject[]
 }
 
 export function ProjectsGraphCanvas({
-  projects,
-  edges,
   centerId,
+  edges,
+  projects,
 }: ProjectsGraphCanvasProps) {
   const navigate = useNavigate()
   const { isDarkMode } = useTheme()
@@ -205,9 +177,9 @@ export function ProjectsGraphCanvas({
         )
         const fill = isCenter ? '#f59e0b' : '#64748b'
         return {
+          fill,
           id: p.id,
           label: p.name,
-          fill,
           ...(iconUrl ? { icon: iconUrl } : {}),
           data: p,
         }
@@ -217,17 +189,17 @@ export function ProjectsGraphCanvas({
   )
 
   const {
-    selections,
     actives,
-    onNodeClick: selectNode,
     onCanvasClick,
+    onNodeClick: selectNode,
+    selections,
   } = useSelection({
-    ref,
-    nodes,
     edges,
-    type: 'single',
-    pathSelectionType: 'all',
     focusOnSelect: false,
+    nodes,
+    pathSelectionType: 'all',
+    ref,
+    type: 'single',
   })
 
   const handleNodeClick = useCallback(
@@ -251,8 +223,8 @@ export function ProjectsGraphCanvas({
 
   return (
     <div
-      ref={containerRef}
       className={isFullscreen ? 'flex h-screen flex-col' : 'h-full'}
+      ref={containerRef}
     >
       <Card
         className={`flex flex-col overflow-hidden ${
@@ -264,9 +236,9 @@ export function ProjectsGraphCanvas({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
-                variant="outline"
-                size="sm"
                 className={`gap-2 ${btnClass}`}
+                size="sm"
+                variant="outline"
               >
                 {currentLayoutLabel}
                 <ChevronDown className="h-3 w-3" />
@@ -275,8 +247,8 @@ export function ProjectsGraphCanvas({
             <DropdownMenuContent align="start">
               {LAYOUT_OPTIONS.map((opt) => (
                 <DropdownMenuItem
-                  key={opt.value}
                   className={layout === opt.value ? 'font-medium' : ''}
+                  key={opt.value}
                   onClick={() => setLayout(opt.value)}
                 >
                   {opt.label}
@@ -287,54 +259,54 @@ export function ProjectsGraphCanvas({
 
           <div className="flex items-center gap-1">
             <Button
-              variant="outline"
+              aria-label="Zoom in"
+              className={btnClass}
+              onClick={() => ref.current?.zoomIn()}
               size="sm"
               title="Zoom in"
-              aria-label="Zoom in"
-              onClick={() => ref.current?.zoomIn()}
-              className={btnClass}
+              variant="outline"
             >
               <ZoomIn className="h-4 w-4" />
             </Button>
             <Button
-              variant="outline"
+              aria-label="Zoom out"
+              className={btnClass}
+              onClick={() => ref.current?.zoomOut()}
               size="sm"
               title="Zoom out"
-              aria-label="Zoom out"
-              onClick={() => ref.current?.zoomOut()}
-              className={btnClass}
+              variant="outline"
             >
               <ZoomOut className="h-4 w-4" />
             </Button>
             <Button
-              variant="outline"
-              size="sm"
-              title="Reset to 100% zoom"
+              className={btnClass}
               disabled={currentZoom === 100}
               onClick={() =>
                 ref.current?.getControls().dollyTo(ZOOM_100_DISTANCE, true)
               }
-              className={btnClass}
+              size="sm"
+              title="Reset to 100% zoom"
+              variant="outline"
             >
               {currentZoom}%
             </Button>
             <Button
-              variant="outline"
+              aria-label="Fit to view"
+              className={btnClass}
+              onClick={() => ref.current?.fitNodesInView()}
               size="sm"
               title="Fit to view"
-              aria-label="Fit to view"
-              onClick={() => ref.current?.fitNodesInView()}
-              className={btnClass}
+              variant="outline"
             >
               <Maximize2 className="h-4 w-4" />
             </Button>
             <Button
-              variant="outline"
+              aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+              className={btnClass}
+              onClick={toggleFullscreen}
               size="sm"
               title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-              aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-              onClick={toggleFullscreen}
-              className={btnClass}
+              variant="outline"
             >
               {isFullscreen ? (
                 <Shrink className="h-4 w-4" />
@@ -353,9 +325,9 @@ export function ProjectsGraphCanvas({
               <span
                 className="inline-block"
                 style={{
+                  borderBottom: '3px solid transparent',
                   borderLeft: `5px solid ${EDGE_COLOR_DEPENDS_ON}`,
                   borderTop: '3px solid transparent',
-                  borderBottom: '3px solid transparent',
                 }}
               />
               Uses
@@ -368,9 +340,9 @@ export function ProjectsGraphCanvas({
               <span
                 className="inline-block"
                 style={{
+                  borderBottom: '3px solid transparent',
                   borderLeft: `5px solid ${EDGE_COLOR_DEPENDED_UPON}`,
                   borderTop: '3px solid transparent',
-                  borderBottom: '3px solid transparent',
                 }}
               />
               Used by
@@ -400,25 +372,56 @@ export function ProjectsGraphCanvas({
             </div>
           ) : (
             <GraphCanvas
-              key={graphKey}
-              ref={ref}
-              nodes={nodes}
-              edges={edges}
-              layoutType={layout}
-              theme={isDarkMode ? darkTheme : lightTheme}
-              labelType="nodes"
-              edgeArrowPosition="end"
-              selections={selections}
               actives={actives}
-              draggable
               cameraMode="pan"
-              onNodeClick={handleNodeClick}
+              draggable
+              edgeArrowPosition="end"
+              edges={edges}
+              key={graphKey}
+              labelType="nodes"
+              layoutType={layout}
+              nodes={nodes}
               onCanvasClick={onCanvasClick}
+              onNodeClick={handleNodeClick}
               onNodeDoubleClick={handleNodeDoubleClick}
+              ref={ref}
+              selections={selections}
+              theme={isDarkMode ? darkTheme : lightTheme}
             />
           )}
         </CardContent>
       </Card>
     </div>
   )
+}
+
+/** Returns the IDs of the largest connected component in the graph. */
+function largestComponent(
+  nodeIds: string[],
+  edges: { source: string; target: string }[],
+): string[] {
+  const adj = new Map<string, Set<string>>()
+  for (const id of nodeIds) adj.set(id, new Set())
+  for (const e of edges) {
+    adj.get(e.source)?.add(e.target)
+    adj.get(e.target)?.add(e.source)
+  }
+  const visited = new Set<string>()
+  let best: string[] = []
+  for (const start of nodeIds) {
+    if (visited.has(start)) continue
+    const component: string[] = []
+    const queue = [start]
+    while (queue.length) {
+      const node = queue.pop()!
+      if (visited.has(node)) continue
+      visited.add(node)
+      component.push(node)
+      for (const neighbor of adj.get(node) ?? []) {
+        if (!visited.has(neighbor)) queue.push(neighbor)
+      }
+    }
+    if (component.length > best.length) best = component
+  }
+  return best
 }

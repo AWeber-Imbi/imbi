@@ -1,5 +1,6 @@
 import { ExternalLink } from 'lucide-react'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EnvironmentBadge } from '@/components/ui/environment-badge'
 import { sanitizeHttpUrl } from '@/lib/utils'
 import type { Project } from '@/types'
@@ -7,16 +8,16 @@ import type { Project } from '@/types'
 type Environment = NonNullable<Project['environments']>[number]
 
 interface ProjectEnvironmentsCardProps {
-  environments: Environment[]
   deploymentStatus: Record<
     string,
-    { version: string; status: string; updated: string }
+    { status: string; updated: string; version: string }
   >
+  environments: Environment[]
 }
 
 export function ProjectEnvironmentsCard({
-  environments,
   deploymentStatus,
+  environments,
 }: ProjectEnvironmentsCardProps) {
   const muted = 'text-tertiary'
   const divider = 'border-tertiary'
@@ -34,14 +35,14 @@ export function ProjectEnvironmentsCard({
             const deployment = deploymentStatus[env.slug]
             return (
               <div
-                key={env.slug}
                 className={`flex items-center border-b py-2 ${divider} last:border-0`}
+                key={env.slug}
               >
                 <div className="w-32 flex-shrink-0">
                   <EnvironmentBadge
+                    label_color={env.label_color}
                     name={env.name}
                     slug={env.slug}
-                    label_color={env.label_color}
                   />
                 </div>
                 <div className="flex-1 text-center">
@@ -52,12 +53,12 @@ export function ProjectEnvironmentsCard({
                 <div className="flex-1 text-right">
                   {url ? (
                     <a
-                      href={url}
-                      target="_blank"
-                      rel="noopener noreferrer"
                       className={
                         'inline-flex items-center gap-1.5 text-sm text-warning hover:underline'
                       }
+                      href={url}
+                      rel="noopener noreferrer"
+                      target="_blank"
                     >
                       {url}
                       <ExternalLink className="h-3 w-3 text-warning" />

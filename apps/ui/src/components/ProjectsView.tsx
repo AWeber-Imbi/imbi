@@ -1,7 +1,20 @@
-import { Search, Plus, Grid3x3, List, Network } from 'lucide-react'
+import { useMemo, useState } from 'react'
+
+import { useNavigate, useSearchParams } from 'react-router-dom'
+
+import { useQuery } from '@tanstack/react-query'
+import { Grid3x3, List, Network, Plus, Search } from 'lucide-react'
+
+import { getProjects } from '@/api/endpoints'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { sortEnvironments } from '@/lib/utils'
+
+import { NewProjectDialog } from './NewProjectDialog'
+import { ProjectGraphView } from './ProjectGraphView'
 import { Button } from './ui/button'
-import { Input } from './ui/input'
 import { Card } from './ui/card'
+import { EnvironmentBadge } from './ui/environment-badge'
+import { Input } from './ui/input'
 import {
   Table,
   TableBody,
@@ -10,15 +23,6 @@ import {
   TableHeader,
   TableRow,
 } from './ui/table'
-import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { getProjects } from '@/api/endpoints'
-import { EnvironmentBadge } from './ui/environment-badge'
-import { sortEnvironments } from '@/lib/utils'
-import { useOrganization } from '@/contexts/OrganizationContext'
-import { NewProjectDialog } from './NewProjectDialog'
-import { ProjectGraphView } from './ProjectGraphView'
 
 export function ProjectsView() {
   const navigate = useNavigate()
@@ -27,13 +31,13 @@ export function ProjectsView() {
   const orgSlug = selectedOrganization?.slug || ''
 
   const rawView = searchParams.get('view')
-  const viewMode: 'grid' | 'list' | 'graph' =
+  const viewMode: 'graph' | 'grid' | 'list' =
     rawView === 'grid' || rawView === 'list' || rawView === 'graph'
       ? rawView
       : 'grid'
   const searchQuery = searchParams.get('q') ?? ''
 
-  const setViewMode = (v: 'grid' | 'list' | 'graph') =>
+  const setViewMode = (v: 'graph' | 'grid' | 'list') =>
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev)
@@ -57,9 +61,9 @@ export function ProjectsView() {
   const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false)
 
   const { data: projects, isLoading } = useQuery({
-    queryKey: ['projects', orgSlug],
-    queryFn: ({ signal }) => getProjects(orgSlug, signal),
     enabled: !!orgSlug,
+    queryFn: ({ signal }) => getProjects(orgSlug, signal),
+    queryKey: ['projects', orgSlug],
   })
 
   const getHealthColor = (health: number) => {
@@ -120,9 +124,9 @@ export function ProjectsView() {
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-2xl font-semibold text-primary">Projects</h1>
           <Button
-            size="sm"
             className="bg-action text-action-foreground hover:bg-action-hover"
             onClick={() => setNewProjectDialogOpen(true)}
+            size="sm"
           >
             <Plus className="mr-2 h-4 w-4" />
             New Project
@@ -135,39 +139,39 @@ export function ProjectsView() {
             <div className="relative max-w-md flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary" />
               <Input
-                type="text"
-                placeholder="Search projects..."
                 className={`pl-9 ${''}`}
-                value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search projects..."
+                type="text"
+                value={searchQuery}
               />
             </div>
 
             <div className="flex items-center rounded-lg border border-secondary">
               <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setViewMode('grid')}
-                className={`rounded-r-none ${viewMode === 'grid' ? 'bg-amber-bg text-amber-text' : ''}`}
                 aria-label="Grid view"
+                className={`rounded-r-none ${viewMode === 'grid' ? 'bg-amber-bg text-amber-text' : ''}`}
+                onClick={() => setViewMode('grid')}
+                size="sm"
+                variant="ghost"
               >
                 <Grid3x3 className="h-4 w-4" />
               </Button>
               <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setViewMode('list')}
-                className={`rounded-none ${viewMode === 'list' ? 'bg-amber-bg text-amber-text' : ''}`}
                 aria-label="List view"
+                className={`rounded-none ${viewMode === 'list' ? 'bg-amber-bg text-amber-text' : ''}`}
+                onClick={() => setViewMode('list')}
+                size="sm"
+                variant="ghost"
               >
                 <List className="h-4 w-4" />
               </Button>
               <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setViewMode('graph')}
-                className={`rounded-l-none ${viewMode === 'graph' ? 'bg-amber-bg text-amber-text' : ''}`}
                 aria-label="Graph view"
+                className={`rounded-l-none ${viewMode === 'graph' ? 'bg-amber-bg text-amber-text' : ''}`}
+                onClick={() => setViewMode('graph')}
+                size="sm"
+                variant="ghost"
               >
                 <Network className="h-4 w-4" />
               </Button>
@@ -185,8 +189,8 @@ export function ProjectsView() {
             const health = getMockHealth(project.slug)
             return (
               <Card
-                key={`card-${project.id}`}
                 className={`cursor-pointer p-5 transition-shadow hover:shadow-md ${''}`}
+                key={`card-${project.id}`}
                 onClick={() => handleProjectSelect(project.id)}
               >
                 <div className="mb-3 flex items-start justify-between">
@@ -224,9 +228,9 @@ export function ProjectsView() {
                     {sortEnvironments(project.environments || []).map((env) => (
                       <EnvironmentBadge
                         key={env.slug}
+                        label_color={env.label_color}
                         name={env.name}
                         slug={env.slug}
-                        label_color={env.label_color}
                       />
                     ))}
                   </div>
@@ -283,8 +287,8 @@ export function ProjectsView() {
                   const health = getMockHealth(project.slug)
                   return (
                     <TableRow
-                      key={`table-${project.id}`}
                       className="cursor-pointer transition-colors hover:bg-secondary"
+                      key={`table-${project.id}`}
                       onClick={() => handleProjectSelect(project.id)}
                     >
                       <TableCell className="px-6 py-4 font-medium text-primary">
@@ -306,9 +310,9 @@ export function ProjectsView() {
                                 (env) => (
                                   <EnvironmentBadge
                                     key={env.slug}
+                                    label_color={env.label_color}
                                     name={env.name}
                                     slug={env.slug}
-                                    label_color={env.label_color}
                                   />
                                 ),
                               )}

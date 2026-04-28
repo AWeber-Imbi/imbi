@@ -1,16 +1,17 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
+
 import { applyJsonPatch } from '../json-patch'
 
 describe('applyJsonPatch', () => {
   it('replaces a top-level key', () => {
-    const out = applyJsonPatch({ name: 'old', description: 'keep' }, [
+    const out = applyJsonPatch({ description: 'keep', name: 'old' }, [
       { op: 'replace', path: '/name', value: 'new' },
     ])
-    expect(out).toEqual({ name: 'new', description: 'keep' })
+    expect(out).toEqual({ description: 'keep', name: 'new' })
   })
 
   it('removes a top-level key', () => {
-    const out = applyJsonPatch({ name: 'n', description: 'gone' }, [
+    const out = applyJsonPatch({ description: 'gone', name: 'n' }, [
       { op: 'remove', path: '/description' },
     ])
     expect(out).toEqual({ name: 'n' })
@@ -27,7 +28,7 @@ describe('applyJsonPatch', () => {
 
   it('throws on unsupported op', () => {
     expect(() =>
-      applyJsonPatch({}, [{ op: 'move', path: '/a', from: '/b' }]),
+      applyJsonPatch({}, [{ from: '/b', op: 'move', path: '/a' }]),
     ).toThrow(/unsupported/i)
   })
 

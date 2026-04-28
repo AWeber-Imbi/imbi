@@ -1,50 +1,53 @@
 import { useState } from 'react'
+
 import { AlertCircle, Code, List, Plus } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import type { SchemaProperty } from '@/types'
+
 import { type SchemaEditorMode } from './blueprint-schema-utils'
 import { BlueprintSchemaPropertyRow } from './BlueprintSchemaPropertyRow'
 
 interface BlueprintSchemaEditorProps {
-  editorMode: SchemaEditorMode
-  schemaProperties: SchemaProperty[]
-  rawSchema: string
-  setRawSchema: (value: string) => void
-  schemaError: string | null
-  setSchemaError: (value: string | null) => void
-  handleEditorModeSwitch: (mode: SchemaEditorMode) => void
-  validationErrors: Record<string, string>
-  touched: Record<string, boolean>
-  expandedProps: Set<string>
-  setExpandedProps: (value: Set<string>) => void
-  uiMapEntries: Record<string, [string, string][]>
-  setUiMapEntries: (value: Record<string, [string, string][]>) => void
   addProperty: () => void
-  updateProperty: (id: string, updates: Partial<SchemaProperty>) => void
-  moveProperty: (index: number, direction: 'up' | 'down') => void
+  editorMode: SchemaEditorMode
+  expandedProps: Set<string>
+  handleEditorModeSwitch: (mode: SchemaEditorMode) => void
+  moveProperty: (index: number, direction: 'down' | 'up') => void
+  rawSchema: string
   removeProperty: (id: string) => void
+  schemaError: null | string
+  schemaProperties: SchemaProperty[]
+  setExpandedProps: (value: Set<string>) => void
+  setRawSchema: (value: string) => void
+  setSchemaError: (value: null | string) => void
+  setUiMapEntries: (value: Record<string, [string, string][]>) => void
   syncCodeToVisual: (raw: string) => boolean
+  touched: Record<string, boolean>
+  uiMapEntries: Record<string, [string, string][]>
+  updateProperty: (id: string, updates: Partial<SchemaProperty>) => void
+  validationErrors: Record<string, string>
 }
 
 export function BlueprintSchemaEditor({
-  editorMode,
-  schemaProperties,
-  rawSchema,
-  setRawSchema,
-  schemaError,
-  setSchemaError,
-  handleEditorModeSwitch,
-  validationErrors,
-  touched,
-  expandedProps,
-  setExpandedProps,
-  uiMapEntries,
-  setUiMapEntries,
   addProperty,
-  updateProperty,
+  editorMode,
+  expandedProps,
+  handleEditorModeSwitch,
   moveProperty,
+  rawSchema,
   removeProperty,
+  schemaError,
+  schemaProperties,
+  setExpandedProps,
+  setRawSchema,
+  setSchemaError,
+  setUiMapEntries,
   syncCodeToVisual,
+  touched,
+  uiMapEntries,
+  updateProperty,
+  validationErrors,
 }: BlueprintSchemaEditorProps) {
   const [enumRawText, setEnumRawText] = useState<Record<string, string>>({})
 
@@ -64,23 +67,23 @@ export function BlueprintSchemaEditor({
         <h3 className="text-sm font-medium text-primary">JSON Schema</h3>
         <div className="flex items-center rounded-lg border border-input">
           <button
-            onClick={() => handleEditorModeSwitch('visual')}
             className={`flex items-center gap-1.5 rounded-l-lg px-3 py-1.5 text-sm transition-colors ${
               editorMode === 'visual'
                 ? 'bg-info text-info'
                 : 'text-secondary hover:text-primary'
             }`}
+            onClick={() => handleEditorModeSwitch('visual')}
           >
             <List className="h-3.5 w-3.5" />
             Visual
           </button>
           <button
-            onClick={() => handleEditorModeSwitch('code')}
             className={`flex items-center gap-1.5 rounded-r-lg px-3 py-1.5 text-sm transition-colors ${
               editorMode === 'code'
                 ? 'bg-info text-info'
                 : 'text-secondary hover:text-primary'
             }`}
+            onClick={() => handleEditorModeSwitch('code')}
           >
             <Code className="h-3.5 w-3.5" />
             Code
@@ -113,25 +116,25 @@ export function BlueprintSchemaEditor({
               const isExpanded = expandedProps.has(prop.id)
               return (
                 <BlueprintSchemaPropertyRow
-                  key={prop.id}
-                  prop={prop}
-                  index={index}
-                  totalCount={schemaProperties.length}
-                  isExpanded={isExpanded}
-                  toggleExpandProp={toggleExpandProp}
-                  moveProperty={moveProperty}
-                  updateProperty={updateProperty}
-                  removeProperty={removeProperty}
-                  uiMapEntries={uiMapEntries}
-                  setUiMapEntries={setUiMapEntries}
                   enumRawText={enumRawText}
+                  index={index}
+                  isExpanded={isExpanded}
+                  key={prop.id}
+                  moveProperty={moveProperty}
+                  prop={prop}
+                  removeProperty={removeProperty}
                   setEnumRawText={setEnumRawText}
+                  setUiMapEntries={setUiMapEntries}
+                  toggleExpandProp={toggleExpandProp}
+                  totalCount={schemaProperties.length}
+                  uiMapEntries={uiMapEntries}
+                  updateProperty={updateProperty}
                 />
               )
             })
           )}
 
-          <Button onClick={addProperty} variant="outline" className="w-full">
+          <Button className="w-full" onClick={addProperty} variant="outline">
             <Plus className="mr-2 h-4 w-4" />
             Add Property
           </Button>
@@ -141,15 +144,15 @@ export function BlueprintSchemaEditor({
       {/* Code Mode */}
       {editorMode === 'code' && (
         <textarea
-          value={rawSchema}
+          className="w-full resize-y rounded-md border border-input bg-secondary px-4 py-3 font-mono text-sm text-primary"
+          onBlur={() => syncCodeToVisual(rawSchema)}
           onChange={(e) => {
             setRawSchema(e.target.value)
             setSchemaError(null)
           }}
-          onBlur={() => syncCodeToVisual(rawSchema)}
           rows={20}
           spellCheck={false}
-          className="w-full resize-y rounded-md border border-input bg-secondary px-4 py-3 font-mono text-sm text-primary"
+          value={rawSchema}
         />
       )}
     </div>

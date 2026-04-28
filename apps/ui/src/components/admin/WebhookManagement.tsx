@@ -1,64 +1,67 @@
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
+
 import { Webhook as WebhookIcon } from 'lucide-react'
-import { Card, CardContent, CardDescription } from '@/components/ui/card'
-import { AdminTable } from '@/components/ui/admin-table'
-import { AdminSection } from './AdminSection'
-import { WebhookForm } from './webhooks/WebhookForm'
-import { WebhookDetail } from './webhooks/WebhookDetail'
-import { useOrganization } from '@/contexts/OrganizationContext'
-import { useAdminNav } from '@/hooks/useAdminNav'
-import { useAdminCrud } from '@/hooks/useAdminCrud'
+
 import {
-  listWebhooks,
-  deleteWebhook,
   createWebhook,
+  deleteWebhook,
+  listWebhooks,
   updateWebhook,
 } from '@/api/endpoints'
+import { AdminTable } from '@/components/ui/admin-table'
+import { Card, CardContent, CardDescription } from '@/components/ui/card'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
+import { useAdminNav } from '@/hooks/useAdminNav'
 import { buildDiffPatch } from '@/lib/json-patch'
-import type { Webhook, WebhookCreate, PatchOperation } from '@/types'
+import type { PatchOperation, Webhook, WebhookCreate } from '@/types'
+
+import { AdminSection } from './AdminSection'
+import { WebhookDetail } from './webhooks/WebhookDetail'
+import { WebhookForm } from './webhooks/WebhookForm'
 
 export function WebhookManagement() {
   const { selectedOrganization } = useOrganization()
   const {
-    viewMode,
-    slug: selectedSlug,
-    goToList,
     goToCreate,
     goToEdit,
+    goToList,
+    slug: selectedSlug,
+    viewMode,
   } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
 
   const orgSlug = selectedOrganization?.slug
 
   const {
-    items: webhooks,
-    isLoading,
-    error,
     createMutation,
-    updateMutation,
     deleteMutation,
+    error,
+    isLoading,
+    items: webhooks,
+    updateMutation,
   } = useAdminCrud<
     Webhook,
     WebhookCreate,
-    { slug: string; operations: PatchOperation[] },
+    { operations: PatchOperation[]; slug: string },
     string
   >({
-    queryKey: ['webhooks', orgSlug],
-    listFn: orgSlug ? (signal) => listWebhooks(orgSlug, signal) : null,
     createFn: (data) => {
       if (!orgSlug) throw new Error('No organization selected')
       return createWebhook(orgSlug, data)
     },
-    updateFn: ({ slug, operations }) => {
-      if (!orgSlug) throw new Error('No organization selected')
-      return updateWebhook(orgSlug, slug, operations)
-    },
+    deleteErrorLabel: 'webhook',
     deleteFn: (slug) => {
       if (!orgSlug) throw new Error('No organization selected')
       return deleteWebhook(orgSlug, slug)
     },
+    listFn: orgSlug ? (signal) => listWebhooks(orgSlug, signal) : null,
     onMutationSuccess: goToList,
-    deleteErrorLabel: 'webhook',
+    queryKey: ['webhooks', orgSlug],
+    updateFn: ({ operations, slug }) => {
+      if (!orgSlug) throw new Error('No organization selected')
+      return updateWebhook(orgSlug, slug, operations)
+    },
   })
 
   const filteredWebhooks = webhooks.filter((wh) => {
@@ -96,18 +99,18 @@ export function WebhookManagement() {
         goToList()
         return
       }
-      updateMutation.mutate({ slug: selectedSlug, operations })
+      updateMutation.mutate({ operations, slug: selectedSlug })
     }
   }
 
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <WebhookForm
-        webhook={viewMode === 'edit' ? selectedWebhook : null}
-        onSave={handleSave}
-        onCancel={goToList}
-        isLoading={createMutation.isPending || updateMutation.isPending}
         error={createMutation.error || updateMutation.error}
+        isLoading={createMutation.isPending || updateMutation.isPending}
+        onCancel={goToList}
+        onSave={handleSave}
+        webhook={viewMode === 'edit' ? selectedWebhook : null}
       />
     )
   }
@@ -115,24 +118,24 @@ export function WebhookManagement() {
   if (viewMode === 'detail' && selectedWebhook) {
     return (
       <WebhookDetail
-        webhook={selectedWebhook}
-        onEdit={() => goToEdit(selectedWebhook.slug)}
         onBack={goToList}
+        onEdit={() => goToEdit(selectedWebhook.slug)}
+        webhook={selectedWebhook}
       />
     )
   }
 
   return (
     <AdminSection
-      searchPlaceholder="Search webhooks..."
-      search={searchQuery}
-      onSearchChange={setSearchQuery}
       createLabel="New Webhook"
-      onCreate={goToCreate}
-      isLoading={isLoading}
-      loadingLabel="Loading webhooks..."
       error={error}
       errorTitle="Failed to load webhooks"
+      isLoading={isLoading}
+      loadingLabel="Loading webhooks..."
+      onCreate={goToCreate}
+      onSearchChange={setSearchQuery}
+      search={searchQuery}
+      searchPlaceholder="Search webhooks..."
     >
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
@@ -172,10 +175,10 @@ export function WebhookManagement() {
       <AdminTable
         columns={[
           {
-            key: 'name',
+            cellAlign: 'left',
             header: 'Webhook',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'name',
             render: (wh) => (
               <div className="flex items-center gap-3">
                 <div
@@ -197,10 +200,10 @@ export function WebhookManagement() {
             ),
           },
           {
-            key: 'path',
+            cellAlign: 'left',
             header: 'Path',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'path',
             render: (wh) => (
               <code
                 className={
@@ -212,31 +215,25 @@ export function WebhookManagement() {
             ),
           },
           {
-            key: 'service',
+            cellAlign: 'left',
             header: 'Service',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'service',
             render: (wh) =>
               (wh.third_party_service?.name as string | undefined) || (
                 <span className="text-tertiary">--</span>
               ),
           },
           {
-            key: 'rules',
+            cellAlign: 'left',
             header: 'Rules',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'rules',
             render: (wh) => (
               <span className="text-secondary">{wh.rules.length}</span>
             ),
           },
         ]}
-        rows={filteredWebhooks}
-        getRowKey={(wh) => wh.slug}
-        getDeleteLabel={(wh) => wh.name}
-        onRowClick={(wh) => goToEdit(wh.slug)}
-        onDelete={handleDelete}
-        isDeleting={deleteMutation.isPending}
         emptyMessage={
           searchQuery
             ? 'No webhooks found matching your search.'
@@ -244,6 +241,12 @@ export function WebhookManagement() {
               ? `No webhooks in ${selectedOrganization.name} yet.`
               : 'No webhooks created yet.'
         }
+        getDeleteLabel={(wh) => wh.name}
+        getRowKey={(wh) => wh.slug}
+        isDeleting={deleteMutation.isPending}
+        onDelete={handleDelete}
+        onRowClick={(wh) => goToEdit(wh.slug)}
+        rows={filteredWebhooks}
       />
     </AdminSection>
   )

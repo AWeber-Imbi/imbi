@@ -1,27 +1,29 @@
 import { useCallback, useEffect, useRef } from 'react'
+
 import { Textarea } from '@/components/ui/textarea'
 import { useInlineEdit } from '@/hooks/useInlineEdit'
-import { InlineDisplay } from './InlineDisplay'
 import { cn } from '@/lib/utils'
 
+import { InlineDisplay } from './InlineDisplay'
+
 export interface InlineTextareaProps {
-  value: string | null
-  onCommit: (next: string | null) => Promise<void> | void
-  readOnly?: boolean
+  className?: string
+  onCommit: (next: null | string) => Promise<void> | void
   pending?: boolean
   placeholder?: string
-  className?: string
+  readOnly?: boolean
   rows?: number
+  value: null | string
 }
 
 export function InlineTextarea({
-  value,
+  className,
   onCommit,
-  readOnly = false,
   pending = false,
   placeholder,
-  className,
+  readOnly = false,
   rows = 3,
+  value,
 }: InlineTextareaProps) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const handleCommit = useCallback(
@@ -45,10 +47,10 @@ export function InlineTextarea({
       <span className={className}>
         <InlineDisplay
           hasValue={hasValue}
-          readOnly={readOnly}
-          pending={pending}
           onClick={edit.enter}
+          pending={pending}
           placeholder={placeholder}
+          readOnly={readOnly}
         >
           {hasValue && value}
         </InlineDisplay>
@@ -72,12 +74,12 @@ export function InlineTextarea({
   return (
     <span className={cn('block', className)}>
       <Textarea
+        onBlur={edit.handleBlur}
+        onChange={(e) => edit.setDraft(e.target.value)}
+        onKeyDown={handleKeyDown}
         ref={ref}
         rows={rows}
         value={edit.draft}
-        onChange={(e) => edit.setDraft(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onBlur={edit.handleBlur}
       />
       {edit.error && (
         <span className="mt-1 block text-xs text-red-600">{edit.error}</span>

@@ -1,12 +1,12 @@
 import type { ProjectSchemaSectionProperty } from '@/api/endpoints'
 
 export const READ_ONLY_KEYS: ReadonlySet<string> = new Set([
-  'id',
   'created_at',
+  'id',
   'updated_at',
 ])
 
-export type InlineKind = 'text' | 'select' | 'switch' | 'number' | 'date'
+export type InlineKind = 'date' | 'number' | 'select' | 'switch' | 'text'
 
 export function isFieldEditable(
   key: string,

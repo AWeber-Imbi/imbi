@@ -17,24 +17,6 @@ export function colorForTag(slug: string): string {
 const TITLE_MAX = 120
 const EXCERPT_MAX = 240
 
-/**
- * Prefer the note's explicit title; fall back to the first heading or line
- * of content for rows written before the title column existed.
- */
-export function noteTitle(note: Note): string {
-  const explicit = (note.title ?? '').trim()
-  if (explicit) return truncate(explicit, TITLE_MAX)
-  const lines = note.content.split('\n')
-  for (const raw of lines) {
-    const line = raw.trim()
-    if (!line) continue
-    const heading = line.match(/^#{1,6}\s+(.+?)\s*#*$/)
-    if (heading) return truncate(heading[1], TITLE_MAX)
-    return truncate(line.replace(/^[*_>`~-]+\s*/, ''), TITLE_MAX)
-  }
-  return 'Untitled note'
-}
-
 /** First paragraph of body text (after title), stripped of basic markdown. */
 export function deriveExcerpt(content: string): string {
   const lines = content.split('\n')
@@ -67,17 +49,7 @@ export function deriveExcerpt(content: string): string {
   return truncate(text, EXCERPT_MAX)
 }
 
-function truncate(s: string, max: number): string {
-  if (s.length <= max) return s
-  return s.slice(0, max - 1).trimEnd() + '…'
-}
-
-export function formatUpdated(note: Note): string {
-  const iso = note.updated_at ?? note.created_at
-  return relativeShort(iso)
-}
-
-export function formatFull(iso: string | null | undefined): string {
+export function formatFull(iso: null | string | undefined): string {
   if (!iso) return ''
   try {
     return new Date(iso).toLocaleString(undefined, {
@@ -89,7 +61,38 @@ export function formatFull(iso: string | null | undefined): string {
   }
 }
 
-function relativeShort(iso: string | null | undefined): string {
+export function formatUpdated(note: Note): string {
+  const iso = note.updated_at ?? note.created_at
+  return relativeShort(iso)
+}
+
+export function initials(name: string): string {
+  const trimmed = name.trim()
+  if (!trimmed) return '?'
+  const parts = trimmed.split(/\s+/)
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+/**
+ * Prefer the note's explicit title; fall back to the first heading or line
+ * of content for rows written before the title column existed.
+ */
+export function noteTitle(note: Note): string {
+  const explicit = (note.title ?? '').trim()
+  if (explicit) return truncate(explicit, TITLE_MAX)
+  const lines = note.content.split('\n')
+  for (const raw of lines) {
+    const line = raw.trim()
+    if (!line) continue
+    const heading = line.match(/^#{1,6}\s+(.+?)\s*#*$/)
+    if (heading) return truncate(heading[1], TITLE_MAX)
+    return truncate(line.replace(/^[*_>`~-]+\s*/, ''), TITLE_MAX)
+  }
+  return 'Untitled note'
+}
+
+function relativeShort(iso: null | string | undefined): string {
   if (!iso) return ''
   const then = new Date(iso).getTime()
   if (!Number.isFinite(then)) return ''
@@ -104,17 +107,14 @@ function relativeShort(iso: string | null | undefined): string {
   const w = Math.round(d / 7)
   if (w < 8) return `${w}w ago`
   return new Date(iso).toLocaleDateString(undefined, {
-    month: 'short',
     day: 'numeric',
+    month: 'short',
   })
 }
 
-export function initials(name: string): string {
-  const trimmed = name.trim()
-  if (!trimmed) return '?'
-  const parts = trimmed.split(/\s+/)
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s
+  return s.slice(0, max - 1).trimEnd() + '…'
 }
 
 export const EMPTY_ACTIVE: ReadonlySet<string> = new Set()

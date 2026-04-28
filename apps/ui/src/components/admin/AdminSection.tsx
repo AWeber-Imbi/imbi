@@ -1,55 +1,57 @@
 import type { ReactNode } from 'react'
+
 import { Plus, Search } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
 import { LoadingState } from '@/components/ui/loading-state'
-import { ErrorBanner } from '@/components/ui/error-banner'
 
 interface AdminSectionProps {
-  /** Placeholder for the search input. */
-  searchPlaceholder: string
-  /** Controlled search value. */
-  search: string
-  onSearchChange: (value: string) => void
+  /** List content (stats, table, etc.). */
+  children: ReactNode
   /** Label for the create button, e.g. "New Team". */
   createLabel: string
-  onCreate: () => void
-  /** Whether the list query is loading. */
-  isLoading: boolean
-  /** Loading label, e.g. "Loading teams...". */
-  loadingLabel: string
   /** List query error, if any. */
   error?: unknown
   /** Error banner title, e.g. "Failed to load teams". */
   errorTitle: string
-  /** Optional extra controls rendered in the header (filters, etc.). */
-  headerExtras?: ReactNode
   /** Optional extra action buttons (e.g. Import) rendered before Create. */
   headerActions?: ReactNode
-  /** List content (stats, table, etc.). */
-  children: ReactNode
+  /** Optional extra controls rendered in the header (filters, etc.). */
+  headerExtras?: ReactNode
+  /** Whether the list query is loading. */
+  isLoading: boolean
+  /** Loading label, e.g. "Loading teams...". */
+  loadingLabel: string
+  onCreate: () => void
+  onSearchChange: (value: string) => void
+  /** Controlled search value. */
+  search: string
+  /** Placeholder for the search input. */
+  searchPlaceholder: string
 }
 
 export function AdminSection({
-  searchPlaceholder,
-  search,
-  onSearchChange,
+  children,
   createLabel,
-  onCreate,
-  isLoading,
-  loadingLabel,
   error,
   errorTitle,
-  headerExtras,
   headerActions,
-  children,
+  headerExtras,
+  isLoading,
+  loadingLabel,
+  onCreate,
+  onSearchChange,
+  search,
+  searchPlaceholder,
 }: AdminSectionProps) {
   if (isLoading) {
     return <LoadingState label={loadingLabel} />
   }
 
   if (error) {
-    return <ErrorBanner title={errorTitle} error={error} />
+    return <ErrorBanner error={error} title={errorTitle} />
   }
 
   return (
@@ -65,10 +67,10 @@ export function AdminSection({
             />
             <Input
               aria-label={searchPlaceholder}
+              className="pl-10"
+              onChange={(e) => onSearchChange(e.target.value)}
               placeholder={searchPlaceholder}
               value={search}
-              onChange={(e) => onSearchChange(e.target.value)}
-              className="pl-10"
             />
           </div>
           {headerExtras}
@@ -76,8 +78,8 @@ export function AdminSection({
         <div className="flex items-center gap-2">
           {headerActions}
           <Button
-            onClick={onCreate}
             className="bg-action text-action-foreground hover:bg-action-hover"
+            onClick={onCreate}
           >
             <Plus className="mr-2 h-4 w-4" />
             {createLabel}

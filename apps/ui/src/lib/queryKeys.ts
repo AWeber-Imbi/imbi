@@ -7,16 +7,6 @@ export function getQueryKeysForResource(
   orgSlug?: string,
 ): string[][] {
   switch (resource) {
-    case 'projects':
-      return [['projects']]
-    case 'project_types':
-      return orgSlug ? [['projectTypes', orgSlug]] : [['projectTypes']]
-    case 'environments':
-      return orgSlug ? [['environments', orgSlug]] : [['environments']]
-    case 'teams':
-      return orgSlug ? [['teams', orgSlug]] : [['teams']]
-    case 'organizations':
-      return [['organizations']]
     case 'blueprints':
       return [
         ['blueprints'],
@@ -26,12 +16,22 @@ export function getQueryKeysForResource(
         ['environmentSchema'],
         ['projectTypeSchema'],
       ]
+    case 'environments':
+      return orgSlug ? [['environments', orgSlug]] : [['environments']]
+    case 'organizations':
+      return [['organizations']]
+    case 'project_types':
+      return orgSlug ? [['projectTypes', orgSlug]] : [['projectTypes']]
+    case 'projects':
+      return [['projects']]
     case 'roles':
       return [['roles'], ['role']]
-    case 'users':
-      return [['adminUsers']]
     case 'service_accounts':
       return [['serviceAccounts']]
+    case 'teams':
+      return orgSlug ? [['teams', orgSlug]] : [['teams']]
+    case 'users':
+      return [['adminUsers']]
     default:
       return []
   }

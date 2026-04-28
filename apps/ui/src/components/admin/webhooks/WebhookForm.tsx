@@ -1,50 +1,40 @@
 import { useState } from 'react'
+
 import { useQuery } from '@tanstack/react-query'
-import { AlertCircle, Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react'
+import { AlertCircle, ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
+
+import { ApiError } from '@/api/client'
+import { listThirdPartyServices } from '@/api/endpoints'
+import { FormHeader } from '@/components/admin/form-header'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ErrorBanner } from '@/components/ui/error-banner'
-import { IconUpload } from '@/components/ui/icon-upload'
 import { IconPicker } from '@/components/ui/icon-picker'
-import { FormHeader } from '@/components/admin/form-header'
+import { IconUpload } from '@/components/ui/icon-upload'
+import { Input } from '@/components/ui/input'
 import { useOrganization } from '@/contexts/OrganizationContext'
-import { listThirdPartyServices } from '@/api/endpoints'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { slugify } from '@/lib/utils'
-import { ApiError } from '@/api/client'
 import type { Webhook, WebhookCreate, WebhookRule } from '@/types'
-
-// Per-row client id so React preserves correct instances after reorder/remove.
-// crypto.randomUUID is available in modern browsers; fall back for older envs.
-function makeClientId(): string {
-  if (
-    typeof crypto !== 'undefined' &&
-    typeof crypto.randomUUID === 'function'
-  ) {
-    return crypto.randomUUID()
-  }
-  return `r-${Math.random().toString(36).slice(2)}-${Date.now()}`
-}
 
 type RuleDraft = WebhookRule & { _clientId: string }
 
 interface WebhookFormProps {
-  webhook: Webhook | null
-  onSave: (data: WebhookCreate) => void
-  onCancel: () => void
-  isLoading?: boolean
-  error?: ApiError<{ detail?: string }> | Error | null
   defaultServiceSlug?: string
+  error?: ApiError<{ detail?: string }> | Error | null
+  isLoading?: boolean
+  onCancel: () => void
+  onSave: (data: WebhookCreate) => void
+  webhook: null | Webhook
 }
 
 export function WebhookForm({
-  webhook,
-  onSave,
-  onCancel,
-  isLoading = false,
-  error,
   defaultServiceSlug,
+  error,
+  isLoading = false,
+  onCancel,
+  onSave,
+  webhook,
 }: WebhookFormProps) {
   const isEditing = !!webhook
   const { selectedOrganization } = useOrganization()
@@ -73,9 +63,9 @@ export function WebhookForm({
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const { data: services = [] } = useQuery({
-    queryKey: ['third-party-services', orgSlug],
-    queryFn: ({ signal }) => listThirdPartyServices(orgSlug, signal),
     enabled: !!orgSlug,
+    queryFn: ({ signal }) => listThirdPartyServices(orgSlug, signal),
+    queryKey: ['third-party-services', orgSlug],
   })
 
   const validate = () => {
@@ -111,19 +101,19 @@ export function WebhookForm({
     if (!validate()) return
 
     onSave({
-      name: name.trim(),
-      slug: slug.trim(),
       description: description.trim() || null,
       icon: icon.trim() || null,
-      notification_path: notificationPath.trim(),
-      secret: secret.trim() || null,
-      third_party_service_slug: tpsSlug || null,
       identifier_selector: identifierSelector.trim() || null,
+      name: name.trim(),
+      notification_path: notificationPath.trim(),
       rules: rules.map((r) => ({
         filter_expression: r.filter_expression.trim(),
         handler: r.handler.trim(),
         handler_config: r.handler_config,
       })),
+      secret: secret.trim() || null,
+      slug: slug.trim(),
+      third_party_service_slug: tpsSlug || null,
     })
   }
 
@@ -184,7 +174,7 @@ export function WebhookForm({
     }
   }
 
-  const moveRule = (index: number, direction: 'up' | 'down') => {
+  const moveRule = (index: number, direction: 'down' | 'up') => {
     const newIndex = direction === 'up' ? index - 1 : index + 1
     if (newIndex < 0 || newIndex >= rules.length) return
     const newRules = [...rules]
@@ -201,24 +191,24 @@ export function WebhookForm({
     <div className="space-y-6">
       {/* Header */}
       <FormHeader
-        title={isEditing ? 'Edit Webhook' : 'Add Webhook'}
+        createLabel="Create Webhook"
+        isEditing={isEditing}
+        isLoading={isLoading}
+        onCancel={onCancel}
+        onSave={handleSave}
         subtitle={
           isEditing
             ? 'Update webhook configuration'
             : 'Configure a new inbound webhook'
         }
-        isEditing={isEditing}
-        isLoading={isLoading}
-        onCancel={onCancel}
-        onSave={handleSave}
-        createLabel="Create Webhook"
+        title={isEditing ? 'Edit Webhook' : 'Add Webhook'}
       />
 
       {/* API Error */}
-      {error && <ErrorBanner title="Failed to save webhook" error={error} />}
+      {error && <ErrorBanner error={error} title="Failed to save webhook" />}
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form className="space-y-6" onSubmit={handleSubmit}>
         {/* Basic Information */}
         <Card>
           <CardContent className="space-y-4 pt-6">
@@ -230,11 +220,11 @@ export function WebhookForm({
                   Name <span className="text-red-500">*</span>
                 </label>
                 <Input
-                  value={name}
+                  className={` ${errors.name ? 'border-red-500' : ''}`}
+                  disabled={isLoading}
                   onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="e.g., GitHub Push Events"
-                  disabled={isLoading}
-                  className={` ${errors.name ? 'border-red-500' : ''}`}
+                  value={name}
                 />
                 {errors.name && (
                   <div
@@ -254,11 +244,11 @@ export function WebhookForm({
                     Slug <span className="text-red-500">*</span>
                   </label>
                   <Input
-                    value={slug}
+                    className={` ${errors.slug ? 'border-red-500' : ''}`}
+                    disabled={isLoading}
                     onChange={(e) => setSlug(e.target.value)}
                     placeholder="e.g., github-push-events"
-                    disabled={isLoading}
-                    className={` ${errors.slug ? 'border-red-500' : ''}`}
+                    value={slug}
                   />
                   {errors.slug && (
                     <div
@@ -280,13 +270,13 @@ export function WebhookForm({
                   Notification Path <span className="text-red-500">*</span>
                 </label>
                 <Input
-                  value={notificationPath}
-                  onChange={(e) => setNotificationPath(e.target.value)}
-                  placeholder="/webhooks/github"
-                  disabled={isLoading}
                   className={` ${
                     errors.notification_path ? 'border-red-500' : ''
                   }`}
+                  disabled={isLoading}
+                  onChange={(e) => setNotificationPath(e.target.value)}
+                  placeholder="/webhooks/github"
+                  value={notificationPath}
                 />
                 {errors.notification_path && (
                   <div
@@ -310,14 +300,14 @@ export function WebhookForm({
                   )}
                 </label>
                 <Input
-                  type="password"
-                  value={secret}
+                  className=""
+                  disabled={isLoading}
                   onChange={(e) => setSecret(e.target.value)}
                   placeholder={
                     isEditing ? '(unchanged)' : 'HMAC verification secret'
                   }
-                  disabled={isLoading}
-                  className=""
+                  type="password"
+                  value={secret}
                 />
               </div>
             </div>
@@ -327,12 +317,12 @@ export function WebhookForm({
                 Description
               </label>
               <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                disabled={isLoading}
-                placeholder="Brief description of this webhook"
                 className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground"
+                disabled={isLoading}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Brief description of this webhook"
+                rows={3}
+                value={description}
               />
             </div>
 
@@ -344,12 +334,12 @@ export function WebhookForm({
                 <div>
                   <p className="mb-1.5 text-xs text-tertiary">Pick an icon</p>
                   <IconPicker
+                    onChange={handleIconChange}
                     value={
                       !icon.startsWith('/') && !icon.startsWith('http')
                         ? icon
                         : ''
                     }
-                    onChange={handleIconChange}
                   />
                 </div>
                 <div>
@@ -357,12 +347,12 @@ export function WebhookForm({
                     Or upload a custom image
                   </p>
                   <IconUpload
+                    onChange={handleIconChange}
                     value={
                       icon.startsWith('/') || icon.startsWith('http')
                         ? icon
                         : ''
                     }
-                    onChange={handleIconChange}
                   />
                 </div>
               </div>
@@ -384,13 +374,13 @@ export function WebhookForm({
                   Third-Party Service
                 </label>
                 <select
-                  value={tpsSlug}
+                  className={selectClass}
+                  disabled={isLoading}
                   onChange={(e) => {
                     setTpsSlug(e.target.value)
                     if (!e.target.value) setIdentifierSelector('')
                   }}
-                  disabled={isLoading}
-                  className={selectClass}
+                  value={tpsSlug}
                 >
                   <option value="">None</option>
                   {services.map((svc) => (
@@ -407,13 +397,13 @@ export function WebhookForm({
                     Identifier Selector (JSON Path)
                   </label>
                   <Input
-                    value={identifierSelector}
-                    onChange={(e) => setIdentifierSelector(e.target.value)}
-                    placeholder="e.g., $.repository.full_name"
-                    disabled={isLoading}
                     className={`font-mono text-sm ${
                       errors.identifier_selector ? 'border-red-500' : ''
                     }`}
+                    disabled={isLoading}
+                    onChange={(e) => setIdentifierSelector(e.target.value)}
+                    placeholder="e.g., $.repository.full_name"
+                    value={identifierSelector}
                   />
                   {errors.identifier_selector && (
                     <div
@@ -446,11 +436,11 @@ export function WebhookForm({
               </p>
             </div>
             <Button
+              disabled={isLoading}
+              onClick={addRule}
+              size="sm"
               type="button"
               variant="outline"
-              size="sm"
-              onClick={addRule}
-              disabled={isLoading}
             >
               <Plus className="mr-1 h-4 w-4" />
               Add Rule
@@ -465,37 +455,37 @@ export function WebhookForm({
               <div className="space-y-3">
                 {rules.map((rule, index) => (
                   <div
-                    key={rule._clientId}
                     className="bg-secondary/50 rounded-lg border border-input p-4"
+                    key={rule._clientId}
                   >
                     <div className="flex items-start gap-3">
                       {/* Order controls */}
                       <div className="flex flex-col gap-1 pt-1">
                         <button
-                          type="button"
-                          onClick={() => moveRule(index, 'up')}
-                          disabled={index === 0 || isLoading}
                           aria-label={`Move rule ${index + 1} up`}
-                          title={`Move rule ${index + 1} up`}
                           className={`rounded p-1 transition-colors ${
                             index === 0
                               ? 'cursor-not-allowed opacity-30'
                               : 'text-tertiary hover:bg-secondary'
                           }`}
+                          disabled={index === 0 || isLoading}
+                          onClick={() => moveRule(index, 'up')}
+                          title={`Move rule ${index + 1} up`}
+                          type="button"
                         >
                           <ArrowUp className="h-3 w-3" />
                         </button>
                         <button
-                          type="button"
-                          onClick={() => moveRule(index, 'down')}
-                          disabled={index === rules.length - 1 || isLoading}
                           aria-label={`Move rule ${index + 1} down`}
-                          title={`Move rule ${index + 1} down`}
                           className={`rounded p-1 transition-colors ${
                             index === rules.length - 1
                               ? 'cursor-not-allowed opacity-30'
                               : 'text-tertiary hover:bg-secondary'
                           }`}
+                          disabled={index === rules.length - 1 || isLoading}
+                          onClick={() => moveRule(index, 'down')}
+                          title={`Move rule ${index + 1} down`}
+                          type="button"
                         >
                           <ArrowDown className="h-3 w-3" />
                         </button>
@@ -515,7 +505,12 @@ export function WebhookForm({
                               <span className="text-red-500">*</span>
                             </label>
                             <Input
-                              value={rule.filter_expression}
+                              className={`font-mono text-sm ${
+                                errors[`rule_${index}_filter`]
+                                  ? 'border-red-500'
+                                  : ''
+                              }`}
+                              disabled={isLoading}
                               onChange={(e) =>
                                 updateRuleField(
                                   index,
@@ -524,12 +519,7 @@ export function WebhookForm({
                                 )
                               }
                               placeholder='e.g., body.action == "push"'
-                              disabled={isLoading}
-                              className={`font-mono text-sm ${
-                                errors[`rule_${index}_filter`]
-                                  ? 'border-red-500'
-                                  : ''
-                              }`}
+                              value={rule.filter_expression}
                             />
                             {errors[`rule_${index}_filter`] && (
                               <div
@@ -547,7 +537,12 @@ export function WebhookForm({
                               Handler <span className="text-red-500">*</span>
                             </label>
                             <Input
-                              value={rule.handler}
+                              className={`font-mono text-sm ${
+                                errors[`rule_${index}_handler`]
+                                  ? 'border-red-500'
+                                  : ''
+                              }`}
+                              disabled={isLoading}
                               onChange={(e) =>
                                 updateRuleField(
                                   index,
@@ -556,12 +551,7 @@ export function WebhookForm({
                                 )
                               }
                               placeholder="e.g., imbi_gateway.handlers.sync_project"
-                              disabled={isLoading}
-                              className={`font-mono text-sm ${
-                                errors[`rule_${index}_handler`]
-                                  ? 'border-red-500'
-                                  : ''
-                              }`}
+                              value={rule.handler}
                             />
                             {errors[`rule_${index}_handler`] && (
                               <div
@@ -580,22 +570,22 @@ export function WebhookForm({
                             Handler Config (JSON)
                           </label>
                           <textarea
-                            defaultValue={JSON.stringify(
-                              rule.handler_config,
-                              null,
-                              2,
-                            )}
-                            onBlur={(e) =>
-                              updateRuleConfig(index, e.target.value)
-                            }
-                            rows={6}
-                            disabled={isLoading}
-                            placeholder="{}"
                             className={`w-full resize-y rounded-lg border border-input bg-background px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground ${
                               errors[`rule_${index}_config`]
                                 ? 'border-red-500'
                                 : ''
                             }`}
+                            defaultValue={JSON.stringify(
+                              rule.handler_config,
+                              null,
+                              2,
+                            )}
+                            disabled={isLoading}
+                            onBlur={(e) =>
+                              updateRuleConfig(index, e.target.value)
+                            }
+                            placeholder="{}"
+                            rows={6}
                           />
                           {errors[`rule_${index}_config`] && (
                             <div
@@ -612,12 +602,12 @@ export function WebhookForm({
 
                       {/* Delete */}
                       <button
-                        type="button"
-                        onClick={() => removeRule(index)}
-                        disabled={isLoading}
                         aria-label={`Delete rule ${index + 1}`}
-                        title={`Delete rule ${index + 1}`}
                         className="rounded p-1.5 text-danger transition-colors hover:bg-danger"
+                        disabled={isLoading}
+                        onClick={() => removeRule(index)}
+                        title={`Delete rule ${index + 1}`}
+                        type="button"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -631,4 +621,16 @@ export function WebhookForm({
       </form>
     </div>
   )
+}
+
+// Per-row client id so React preserves correct instances after reorder/remove.
+// crypto.randomUUID is available in modern browsers; fall back for older envs.
+function makeClientId(): string {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
+    return crypto.randomUUID()
+  }
+  return `r-${Math.random().toString(36).slice(2)}-${Date.now()}`
 }

@@ -1,21 +1,23 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor } from '@/test/utils'
 import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
+
+import { render, screen, waitFor } from '@/test/utils'
+
 import { InlineMultiSelect } from '../InlineMultiSelect'
 
 const options = [
-  { value: 'a', label: 'Alpha' },
-  { value: 'b', label: 'Beta' },
-  { value: 'c', label: 'Charlie' },
+  { label: 'Alpha', value: 'a' },
+  { label: 'Beta', value: 'b' },
+  { label: 'Charlie', value: 'c' },
 ]
 
 describe('InlineMultiSelect', () => {
   it('renders current labels', () => {
     render(
       <InlineMultiSelect
-        values={['a', 'b']}
-        options={options}
         onCommit={vi.fn()}
+        options={options}
+        values={['a', 'b']}
       />,
     )
     expect(screen.getByText('Alpha, Beta')).toBeInTheDocument()
@@ -25,9 +27,9 @@ describe('InlineMultiSelect', () => {
     const onCommit = vi.fn().mockResolvedValue(undefined)
     render(
       <InlineMultiSelect
-        values={['a']}
-        options={options}
         onCommit={onCommit}
+        options={options}
+        values={['a']}
       />,
     )
     await userEvent.click(screen.getByText('Alpha'))

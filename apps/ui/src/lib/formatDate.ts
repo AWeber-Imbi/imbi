@@ -2,13 +2,13 @@
  * Format an ISO date string as a localized short date.
  * Returns '—' for null/undefined values.
  */
-export function formatDate(dateString?: string | null): string {
+export function formatDate(dateString?: null | string): string {
   if (!dateString) return '—'
   try {
     return new Date(dateString).toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
       day: 'numeric',
+      month: 'short',
+      year: 'numeric',
     })
   } catch {
     return '—'
@@ -19,7 +19,7 @@ export function formatDate(dateString?: string | null): string {
  * Format an ISO date string as a relative time (e.g. "2 hours ago").
  * Returns '—' for null/undefined values.
  */
-export function formatRelativeDate(dateString?: string | null): string {
+export function formatRelativeDate(dateString?: null | string): string {
   if (!dateString) return '—'
   try {
     const date = new Date(dateString)

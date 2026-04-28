@@ -1,7 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest'
 import type { FC } from 'react'
+
+import { beforeEach, describe, expect, it } from 'vitest'
+
 import { IconRegistry } from '@/lib/icon-registry'
-import type { IconSetDefinition, IconComponent } from '@/lib/icon-registry'
+import type { IconComponent, IconSetDefinition } from '@/lib/icon-registry'
 
 function makeSet(
   id: string,
@@ -9,15 +11,15 @@ function makeSet(
   icons: { label: string; value: string }[] = [],
 ): IconSetDefinition {
   return {
+    description: `${label} icons`,
+    icons,
     id,
     label,
-    description: `${label} icons`,
-    valueFormat: `${id}-{name}`,
-    icons,
     resolve: (v) =>
       v.startsWith(`${id}-`) ? ((() => null) as FC as IconComponent) : null,
     resolveUrl: (v) =>
       v.startsWith(`${id}-`) ? `https://example.com/${v}` : null,
+    valueFormat: `${id}-{name}`,
   }
 }
 
@@ -128,9 +130,9 @@ describe('IconRegistry', () => {
       registry.register(
         makeSet('aaa', 'Aaa', [
           {
+            keywords: ['favorite', 'bookmark'],
             label: 'Star',
             value: 'aaa-star',
-            keywords: ['favorite', 'bookmark'],
           },
         ]),
       )

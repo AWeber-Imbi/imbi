@@ -1,58 +1,41 @@
 export interface Conversation {
-  id: string
-  user_email: string
-  title: string | null
   created_at: string
-  updated_at: string
-  model: string
+  id: string
   is_archived: boolean
+  model: string
+  title: null | string
+  updated_at: string
+  user_email: string
 }
 
 export interface ConversationWithMessages extends Conversation {
   messages: Message[]
 }
 
+export interface CreateConversationRequest {
+  model?: string
+}
+
 export interface Message {
-  id: string
+  content: string
   conversation_id: string
-  role: 'user' | 'assistant'
-  content: string
-  tool_use: ToolUseBlock[] | null
-  tool_results: ToolResultBlock[] | null
   created_at: string
+  id: string
+  role: 'assistant' | 'user'
   sequence: number
-  token_usage: TokenUsage | null
+  token_usage: null | TokenUsage
+  tool_results: null | ToolResultBlock[]
+  tool_use: null | ToolUseBlock[]
 }
 
-export interface ToolUseBlock {
-  id: string
-  name: string
-  input: Record<string, unknown>
-}
-
-export interface ToolResultBlock {
-  tool_use_id: string
+export interface SendMessageRequest {
   content: string
-  is_error?: boolean
 }
 
-export interface TokenUsage {
-  input_tokens: number
-  output_tokens: number
-}
-
-// SSE event payloads
-export interface SSETextEvent {
-  text: string
-}
-
-export interface SSEToolUseStartEvent {
+export interface SSEClientActionEvent {
+  action: 'navigate_to' | 'refresh_data'
   id: string
-  name: string
-}
-
-export interface SSEToolInputEvent {
-  partial_json: string
+  params: Record<string, string>
 }
 
 export interface SSEDoneEvent {
@@ -64,21 +47,38 @@ export interface SSEErrorEvent {
   message: string
 }
 
-export interface SSEClientActionEvent {
+// SSE event payloads
+export interface SSETextEvent {
+  text: string
+}
+
+export interface SSEToolInputEvent {
+  partial_json: string
+}
+
+export interface SSEToolUseStartEvent {
   id: string
-  action: 'navigate_to' | 'refresh_data'
-  params: Record<string, string>
+  name: string
 }
 
-export interface CreateConversationRequest {
-  model?: string
+export interface TokenUsage {
+  input_tokens: number
+  output_tokens: number
 }
 
-export interface SendMessageRequest {
+export interface ToolResultBlock {
   content: string
+  is_error?: boolean
+  tool_use_id: string
+}
+
+export interface ToolUseBlock {
+  id: string
+  input: Record<string, unknown>
+  name: string
 }
 
 export interface UpdateConversationRequest {
-  title?: string
   is_archived?: boolean
+  title?: string
 }

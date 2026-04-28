@@ -1,4 +1,5 @@
 import { ArrowLeft, Edit2, Webhook } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EntityIcon } from '@/components/ui/entity-icon'
@@ -13,18 +14,18 @@ import {
 import type { Webhook as WebhookType } from '@/types'
 
 interface WebhookDetailProps {
-  webhook: WebhookType
-  onEdit: () => void
   onBack: () => void
+  onEdit: () => void
+  webhook: WebhookType
 }
 
-export function WebhookDetail({ webhook, onEdit, onBack }: WebhookDetailProps) {
+export function WebhookDetail({ onBack, onEdit, webhook }: WebhookDetailProps) {
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="outline" onClick={onBack}>
+          <Button onClick={onBack} variant="outline">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
@@ -32,8 +33,8 @@ export function WebhookDetail({ webhook, onEdit, onBack }: WebhookDetailProps) {
             <div className="flex items-center gap-3">
               {webhook.icon ? (
                 <EntityIcon
-                  icon={webhook.icon}
                   className="h-8 w-8 rounded object-cover"
+                  icon={webhook.icon}
                 />
               ) : (
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-900/30">
@@ -50,8 +51,8 @@ export function WebhookDetail({ webhook, onEdit, onBack }: WebhookDetailProps) {
           </div>
         </div>
         <Button
-          onClick={onEdit}
           className="bg-action text-action-foreground hover:bg-action-hover"
+          onClick={onEdit}
         >
           <Edit2 className="mr-2 h-4 w-4" />
           Edit Webhook

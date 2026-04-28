@@ -1,17 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
 import { useSavedFlash } from '@/hooks/useSavedFlash'
 
 export interface UseEditableKeyValueMapOptions<V> {
   /**
-   * Raw server-supplied map. The hook normalizes it and uses it both as the
-   * baseline for patches and as the source that drafts resync from.
+   * Treat a value as "empty" for the purposes of the blur-delete flow.
+   * Strings default to `trim() === ''`. Non-string shapes must supply this
+   * or set `confirmEmptyDelete: false`.
    */
-  serverMap: Record<string, V>
-  /**
-   * Persist a full key→value map. The hook never calls this with a partial
-   * payload; callers that need to strip empties should pass `transformPatch`.
-   */
-  onPatch: (payload: Record<string, V>) => Promise<void>
+  isEmpty?: (value: V) => boolean
   /**
    * Optional value normalization applied to `serverMap` before it becomes
    * drafts. Useful when the server can return heterogeneous shapes
@@ -19,54 +16,48 @@ export interface UseEditableKeyValueMapOptions<V> {
    */
   normalize?: (raw: Record<string, V>) => Record<string, V>
   /**
-   * Optional transform applied to the merged payload immediately before it
-   * is sent to `onPatch`. Links use this to drop empty-string entries so
-   * they aren't persisted alongside real values.
-   */
-  transformPatch?: (payload: Record<string, V>) => Record<string, V>
-  /**
    * Trim/normalize an individual value before comparing and patching. For
    * strings this is typically `.trim()`; omit for non-string values.
    */
   normalizeValue?: (value: V) => V
   /**
-   * Treat a value as "empty" for the purposes of the blur-delete flow.
-   * Strings default to `trim() === ''`. Non-string shapes must supply this
-   * or set `confirmEmptyDelete: false`.
+   * Persist a full key→value map. The hook never calls this with a partial
+   * payload; callers that need to strip empties should pass `transformPatch`.
    */
-  isEmpty?: (value: V) => boolean
+  onPatch: (payload: Record<string, V>) => Promise<void>
+  /**
+   * Raw server-supplied map. The hook normalizes it and uses it both as the
+   * baseline for patches and as the source that drafts resync from.
+   */
+  serverMap: Record<string, V>
+  /**
+   * Optional transform applied to the merged payload immediately before it
+   * is sent to `onPatch`. Links use this to drop empty-string entries so
+   * they aren't persisted alongside real values.
+   */
+  transformPatch?: (payload: Record<string, V>) => Record<string, V>
 }
 
 export interface UseEditableKeyValueMapResult<V> {
-  drafts: Record<string, V>
-  setDraft: (key: string, value: V) => void
-  handleBlur: (key: string) => Promise<void>
-  requestDelete: (key: string) => void
   cancelDelete: () => void
   confirmDelete: () => Promise<void>
-  pendingDelete: string | null
-  newKey: string | null
-  newValue: V | null
-  setNewKey: (key: string) => void
-  setNewValue: (value: V) => void
-  handleNewBlur: () => Promise<void>
-  /** Bump this on the Select's `key` prop to force remount after an add. */
-  selectKey: number
-  saved: Record<string, boolean>
+  drafts: Record<string, V>
   /** Fire the per-key "saved ✓" indicator manually (e.g., from a bespoke blur). */
   flash: (key: string) => void
+  handleBlur: (key: string) => Promise<void>
+  handleNewBlur: () => Promise<void>
+  newKey: null | string
+  newValue: null | V
   /** Attach to the new-value input so it focuses after a key is picked. */
   newValueRef: React.RefObject<HTMLInputElement | null>
-}
-
-function defaultIsEmpty<V>(value: V): boolean {
-  if (value == null) return true
-  if (typeof value === 'string') return value.trim() === ''
-  return false
-}
-
-function identity<T>(x: T): T {
-  return x
+  pendingDelete: null | string
+  requestDelete: (key: string) => void
+  saved: Record<string, boolean>
+  /** Bump this on the Select's `key` prop to force remount after an add. */
+  selectKey: number
+  setDraft: (key: string, value: V) => void
+  setNewKey: (key: string) => void
+  setNewValue: (value: V) => void
 }
 
 /**
@@ -83,12 +74,12 @@ export function useEditableKeyValueMap<V>(
   options: UseEditableKeyValueMapOptions<V>,
 ): UseEditableKeyValueMapResult<V> {
   const {
-    serverMap: rawServerMap,
-    onPatch,
-    normalize,
-    transformPatch = identity,
-    normalizeValue = identity,
     isEmpty = defaultIsEmpty,
+    normalize,
+    normalizeValue = identity,
+    onPatch,
+    serverMap: rawServerMap,
+    transformPatch = identity,
   } = options
 
   const serverMap = useMemo(
@@ -97,13 +88,13 @@ export function useEditableKeyValueMap<V>(
   )
 
   const [drafts, setDrafts] = useState<Record<string, V>>(serverMap)
-  const [pendingDelete, setPendingDelete] = useState<string | null>(null)
-  const [newKey, setNewKeyState] = useState<string | null>(null)
-  const [newValue, setNewValueState] = useState<V | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<null | string>(null)
+  const [newKey, setNewKeyState] = useState<null | string>(null)
+  const [newValue, setNewValueState] = useState<null | V>(null)
   const [selectKey, setSelectKey] = useState(0)
   const newValueRef = useRef<HTMLInputElement>(null)
   const shouldFocusNewValue = useRef(false)
-  const { saved, flash } = useSavedFlash()
+  const { flash, saved } = useSavedFlash()
 
   useEffect(() => {
     setDrafts(serverMap)
@@ -253,21 +244,31 @@ export function useEditableKeyValueMap<V>(
   ])
 
   return {
-    drafts,
-    setDraft,
-    handleBlur,
-    requestDelete,
     cancelDelete,
     confirmDelete,
-    pendingDelete,
+    drafts,
+    flash,
+    handleBlur,
+    handleNewBlur,
     newKey,
     newValue,
+    newValueRef,
+    pendingDelete,
+    requestDelete,
+    saved,
+    selectKey,
+    setDraft,
     setNewKey,
     setNewValue,
-    handleNewBlur,
-    selectKey,
-    saved,
-    flash,
-    newValueRef,
   }
+}
+
+function defaultIsEmpty<V>(value: V): boolean {
+  if (value == null) return true
+  if (typeof value === 'string') return value.trim() === ''
+  return false
+}
+
+function identity<T>(x: T): T {
+  return x
 }

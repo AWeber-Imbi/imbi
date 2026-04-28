@@ -1,125 +1,54 @@
-import { ArrowLeft, Clock, Pencil, Pin, PinOff, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+
+import { ArrowLeft, Clock, Pencil, Pin, PinOff, Trash2 } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { UserDisplay } from '@/components/ui/user-display'
 import { cn } from '@/lib/utils'
+import type { Note } from '@/types'
+
 import { NotesFilterRail } from './NotesFilterRail'
-import { NoteTagChip } from './NoteTagChip'
 import {
   EMPTY_ACTIVE,
-  noteTitle,
   formatFull,
   formatUpdated,
+  noteTitle,
   tagCounts,
   uniqueTagsFromNotes,
 } from './notesHelpers'
-import type { Note } from '@/types'
-
-interface Props {
-  note: Note
-  allNotes: Note[]
-  displayNames?: Map<string, string>
-  onBack: () => void
-  onOpen: (noteId: string) => void
-  onTogglePin: () => void
-  onEdit?: () => void
-  onDelete?: () => void
-  deleting?: boolean
-}
+import { NoteTagChip } from './NoteTagChip'
 
 interface Heading {
   level: 2 | 3
-  text: string
   slug: string
+  text: string
 }
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-}
-
-function headingTextFromChildren(children: React.ReactNode): string {
-  let out = ''
-  const visit = (node: React.ReactNode) => {
-    if (typeof node === 'string' || typeof node === 'number') {
-      out += String(node)
-    } else if (Array.isArray(node)) {
-      node.forEach(visit)
-    } else if (
-      typeof node === 'object' &&
-      node !== null &&
-      'props' in node &&
-      (node as { props?: { children?: React.ReactNode } }).props
-    ) {
-      visit((node as { props: { children?: React.ReactNode } }).props.children)
-    }
-  }
-  visit(children)
-  return out
-}
-
-function extractHeadings(content: string): Heading[] {
-  const out: Heading[] = []
-  for (const raw of content.split('\n')) {
-    const m = raw.match(/^(#{2,3})\s+(.+?)\s*#*$/)
-    if (!m) continue
-    const level = (m[1].length === 2 ? 2 : 3) as 2 | 3
-    const text = m[2].trim()
-    out.push({ level, text, slug: slugify(text) })
-  }
-  return out
-}
-
-/**
- * Track which heading is currently nearest the top of the viewport. Picks the
- * last heading whose top has scrolled above the offset; falls back to the
- * first when nothing has scrolled past yet.
- */
-function useActiveHeading(slugs: string[]): string | null {
-  const [active, setActive] = useState<string | null>(slugs[0] ?? null)
-  useEffect(() => {
-    if (!slugs.length) {
-      setActive(null)
-      return
-    }
-    const offset = 120
-    const update = () => {
-      let current = slugs[0]
-      for (const slug of slugs) {
-        const el = document.getElementById(slug)
-        if (!el) continue
-        if (el.getBoundingClientRect().top - offset <= 0) current = slug
-        else break
-      }
-      setActive((prev) => (prev === current ? prev : current))
-    }
-    update()
-    window.addEventListener('scroll', update, { passive: true })
-    window.addEventListener('resize', update)
-    return () => {
-      window.removeEventListener('scroll', update)
-      window.removeEventListener('resize', update)
-    }
-  }, [slugs])
-  return active
+interface Props {
+  allNotes: Note[]
+  deleting?: boolean
+  displayNames?: Map<string, string>
+  note: Note
+  onBack: () => void
+  onDelete?: () => void
+  onEdit?: () => void
+  onOpen: (noteId: string) => void
+  onTogglePin: () => void
 }
 
 export function NotesPinboardReader({
-  note,
   allNotes,
-  onBack,
-  onOpen,
-  onTogglePin,
-  onEdit,
-  onDelete,
   deleting = false,
   displayNames,
+  note,
+  onBack,
+  onDelete,
+  onEdit,
+  onOpen,
+  onTogglePin,
 }: Props) {
   const [search, setSearch] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -150,34 +79,34 @@ export function NotesPinboardReader({
   return (
     <div className="grid grid-cols-[220px_1fr] gap-5">
       <NotesFilterRail
-        tags={tags}
-        counts={counts}
         active={EMPTY_ACTIVE}
-        onToggle={() => onBack()}
-        onClear={() => onBack()}
-        search={search}
-        onSearchChange={setSearch}
-        totalFiltered={allNotes.length}
+        counts={counts}
         highlightedSlugs={highlightedSlugs}
+        onClear={() => onBack()}
+        onSearchChange={setSearch}
+        onToggle={() => onBack()}
+        search={search}
+        tags={tags}
+        totalFiltered={allNotes.length}
       />
 
       <div>
         <div className="mb-3.5 grid items-start gap-5 [grid-template-columns:minmax(0,1fr)_260px]">
           <div className="flex flex-wrap items-center gap-2.5">
             <button
-              type="button"
-              onClick={onBack}
               className="inline-flex cursor-pointer items-center gap-1.5 rounded border-0 bg-transparent px-1.5 py-1 text-xs text-secondary hover:bg-secondary hover:text-primary"
+              onClick={onBack}
+              type="button"
             >
               <ArrowLeft className="h-3 w-3" />
               All notes
             </button>
             <div className="ml-auto flex items-center gap-1">
               <Button
-                variant="ghost"
-                size="sm"
                 className="gap-1.5"
                 onClick={onTogglePin}
+                size="sm"
+                variant="ghost"
               >
                 {pinned ? (
                   <>
@@ -192,21 +121,21 @@ export function NotesPinboardReader({
                 )}
               </Button>
               <Button
-                variant="ghost"
-                size="sm"
                 className="gap-1.5"
-                onClick={onEdit}
                 disabled={!onEdit}
+                onClick={onEdit}
+                size="sm"
+                variant="ghost"
               >
                 <Pencil className="h-3 w-3" />
                 Edit
               </Button>
               <Button
-                variant="ghost"
+                disabled={!onDelete || deleting}
+                onClick={() => setConfirmDelete(true)}
                 size="sm"
                 title="Delete note"
-                onClick={() => setConfirmDelete(true)}
-                disabled={!onDelete || deleting}
+                variant="ghost"
               >
                 <Trash2 className="h-3 w-3" />
               </Button>
@@ -223,10 +152,10 @@ export function NotesPinboardReader({
             <div className="mt-3.5 flex flex-wrap items-center gap-2.5">
               <div className="inline-flex items-center gap-2 text-[12.5px] text-tertiary">
                 <UserDisplay
-                  email={note.created_by}
-                  displayNames={displayNames}
-                  size={22}
                   className="text-secondary"
+                  displayNames={displayNames}
+                  email={note.created_by}
+                  size={22}
                   textClassName="text-[12.5px] text-secondary"
                 />
                 <span className="text-tertiary">·</span>
@@ -242,12 +171,11 @@ export function NotesPinboardReader({
 
             <div className="note-markdown mt-6">
               <Markdown
-                remarkPlugins={[remarkGfm]}
                 components={{
                   h2: ({ children, ...props }) => (
                     <h2
-                      id={slugify(headingTextFromChildren(children))}
                       className="scroll-mt-20"
+                      id={slugify(headingTextFromChildren(children))}
                       {...props}
                     >
                       {children}
@@ -255,14 +183,15 @@ export function NotesPinboardReader({
                   ),
                   h3: ({ children, ...props }) => (
                     <h3
-                      id={slugify(headingTextFromChildren(children))}
                       className="scroll-mt-20"
+                      id={slugify(headingTextFromChildren(children))}
                       {...props}
                     >
                       {children}
                     </h3>
                   ),
                 }}
+                remarkPlugins={[remarkGfm]}
               >
                 {note.content}
               </Markdown>
@@ -291,8 +220,6 @@ export function NotesPinboardReader({
                     const isActive = h.slug === activeSlug
                     return (
                       <a
-                        key={`${h.slug}-${i}`}
-                        href={`#${h.slug}`}
                         className={cn(
                           '-ml-px border-l-2 text-[12.5px] no-underline transition-colors',
                           h.level === 3
@@ -307,6 +234,8 @@ export function NotesPinboardReader({
                                   : 'text-primary',
                               ),
                         )}
+                        href={`#${h.slug}`}
+                        key={`${h.slug}-${i}`}
                       >
                         {h.text}
                       </a>
@@ -324,18 +253,18 @@ export function NotesPinboardReader({
                 <div className="flex flex-col gap-2">
                   {related.map((r) => (
                     <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => onOpen(r.id)}
                       className="block cursor-pointer rounded-lg border border-tertiary bg-primary p-2 text-left hover:border-secondary"
+                      key={r.id}
+                      onClick={() => onOpen(r.id)}
+                      type="button"
                     >
                       <div className="line-clamp-2 text-[12.5px] font-medium leading-[1.35] text-primary">
                         {noteTitle(r)}
                       </div>
                       <div className="mt-1 flex items-center gap-1.5 text-[11px] text-tertiary">
                         <UserDisplay
-                          email={r.created_by}
                           displayNames={displayNames}
+                          email={r.created_by}
                           size={14}
                         />
                         <span>· {formatUpdated(r)}</span>
@@ -349,16 +278,90 @@ export function NotesPinboardReader({
         </div>
       </div>
       <ConfirmDialog
-        open={confirmDelete}
-        title="Delete note?"
-        description={`"${title}" will be permanently removed.`}
         confirmLabel={deleting ? 'Deleting…' : 'Delete'}
+        description={`"${title}" will be permanently removed.`}
+        onCancel={() => setConfirmDelete(false)}
         onConfirm={() => {
           setConfirmDelete(false)
           onDelete?.()
         }}
-        onCancel={() => setConfirmDelete(false)}
+        open={confirmDelete}
+        title="Delete note?"
       />
     </div>
   )
+}
+
+function extractHeadings(content: string): Heading[] {
+  const out: Heading[] = []
+  for (const raw of content.split('\n')) {
+    const m = raw.match(/^(#{2,3})\s+(.+?)\s*#*$/)
+    if (!m) continue
+    const level = (m[1].length === 2 ? 2 : 3) as 2 | 3
+    const text = m[2].trim()
+    out.push({ level, slug: slugify(text), text })
+  }
+  return out
+}
+
+function headingTextFromChildren(children: React.ReactNode): string {
+  let out = ''
+  const visit = (node: React.ReactNode) => {
+    if (typeof node === 'string' || typeof node === 'number') {
+      out += String(node)
+    } else if (Array.isArray(node)) {
+      node.forEach(visit)
+    } else if (
+      typeof node === 'object' &&
+      node !== null &&
+      'props' in node &&
+      (node as { props?: { children?: React.ReactNode } }).props
+    ) {
+      visit((node as { props: { children?: React.ReactNode } }).props.children)
+    }
+  }
+  visit(children)
+  return out
+}
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+}
+
+/**
+ * Track which heading is currently nearest the top of the viewport. Picks the
+ * last heading whose top has scrolled above the offset; falls back to the
+ * first when nothing has scrolled past yet.
+ */
+function useActiveHeading(slugs: string[]): null | string {
+  const [active, setActive] = useState<null | string>(slugs[0] ?? null)
+  useEffect(() => {
+    if (!slugs.length) {
+      setActive(null)
+      return
+    }
+    const offset = 120
+    const update = () => {
+      let current = slugs[0]
+      for (const slug of slugs) {
+        const el = document.getElementById(slug)
+        if (!el) continue
+        if (el.getBoundingClientRect().top - offset <= 0) current = slug
+        else break
+      }
+      setActive((prev) => (prev === current ? prev : current))
+    }
+    update()
+    window.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [slugs])
+  return active
 }

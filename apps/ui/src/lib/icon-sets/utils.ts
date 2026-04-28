@@ -1,25 +1,19 @@
 import { createElement } from 'react'
-import type { IconComponent } from '@/lib/icon-registry'
 
-export function toPascalCase(str: string): string {
-  return str
-    .split('-')
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-    .join('')
-}
+import type { IconComponent } from '@/lib/icon-registry'
 
 export function createImgComponent(url: string): IconComponent {
   const ImgIcon: IconComponent = (props) => {
-    const { className, width, height, ...rest } = props as Record<
+    const { className, height, width, ...rest } = props as Record<
       string,
       unknown
     >
     return createElement('img', {
-      src: url,
       alt: '',
       className,
-      width: width ?? 16,
       height: height ?? 16,
+      src: url,
+      width: width ?? 16,
       ...rest,
     })
   }
@@ -28,6 +22,13 @@ export function createImgComponent(url: string): IconComponent {
 
 export function encodeSvgToDataUrl(markup: string): string {
   return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(markup)))}`
+}
+
+export function toPascalCase(str: string): string {
+  return str
+    .split('-')
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join('')
 }
 
 // Phosphor and Tabler export React.forwardRef wrappers, not plain functions.

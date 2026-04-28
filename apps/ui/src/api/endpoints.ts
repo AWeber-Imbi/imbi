@@ -1,69 +1,70 @@
-import { apiClient } from './client'
 import {
-  TEAM_BASE_FIELDS,
   ENVIRONMENT_BASE_FIELDS,
   PROJECT_TYPE_BASE_FIELDS,
+  TEAM_BASE_FIELDS,
 } from '@/lib/constants'
 import type {
-  ApiStatus,
-  User,
-  Project,
-  ProjectCreate,
-  LinkDefinition,
-  LinkDefinitionCreate,
-  NoteTemplate,
-  NoteTemplateCreate,
   ActivityFeedEntry,
-  Environment,
-  EnvironmentCreate,
-  ProjectType,
-  ProjectTypeCreate,
-  CollectionResponse,
-  AuthProvider,
-  TokenResponse,
-  LoginRequest,
-  UserResponse,
+  AdminSettings,
   AdminUser,
   AdminUserCreate,
-  AdminSettings,
-  Role,
-  RoleDetail,
-  RoleCreate,
-  RoleUser,
+  ApiKey,
+  ApiKeyCreated,
+  ApiStatus,
+  AuthProvider,
   Blueprint,
   BlueprintCreate,
+  ClientCredential,
+  ClientCredentialCreate,
+  ClientCredentialCreated,
+  CollectionResponse,
+  CurrentReleaseEnvironment,
+  Environment,
+  EnvironmentCreate,
+  LinkDefinition,
+  LinkDefinitionCreate,
+  LoginRequest,
+  Note,
+  NoteCreate,
+  NoteListResponse,
+  NoteTemplate,
+  NoteTemplateCreate,
+  OperationsLogFilters,
+  OperationsLogRecord,
   Organization,
   OrganizationCreate,
+  PatchOperation,
+  Project,
+  ProjectCreate,
+  ProjectRelationshipsResponse,
+  ProjectService,
+  ProjectServiceCreate,
+  ProjectType,
+  ProjectTypeCreate,
+  Role,
+  RoleCreate,
+  RoleDetail,
+  RoleUser,
+  ServiceAccount,
+  ServiceAccountCreate,
+  ServiceApplication,
+  ServiceApplicationCreate,
+  ServiceApplicationSecrets,
+  Tag,
   Team,
   TeamCreate,
   TeamMember,
   ThirdPartyService,
   ThirdPartyServiceCreate,
-  ServiceApplication,
-  ServiceApplicationCreate,
-  ServiceApplicationSecrets,
+  TokenResponse,
   Upload,
-  ApiKey,
-  ApiKeyCreated,
-  ServiceAccount,
-  ServiceAccountCreate,
-  ClientCredential,
-  ClientCredentialCreated,
-  ClientCredentialCreate,
+  User,
+  UserResponse,
   Webhook,
   WebhookCreate,
-  ProjectService,
-  ProjectServiceCreate,
-  ProjectRelationshipsResponse,
-  PatchOperation,
-  OperationsLogRecord,
-  OperationsLogFilters,
-  Note,
-  NoteCreate,
-  NoteListResponse,
-  Tag,
-  CurrentReleaseEnvironment,
 } from '@/types'
+
+import { apiClient } from './client'
 
 // Re-export for backward compatibility with modules that import from here.
 export type { PatchOperation }
@@ -74,7 +75,7 @@ export const getStatus = (signal?: AbortSignal) =>
 
 // User/Auth
 export const getAuthProviders = (signal?: AbortSignal) =>
-  apiClient.get<{ providers: AuthProvider[]; default_redirect: string }>(
+  apiClient.get<{ default_redirect: string; providers: AuthProvider[] }>(
     '/auth/providers',
     undefined,
     signal,
@@ -122,35 +123,35 @@ export const getProject = (
     signal,
   )
 
-export interface ProjectSchemaSectionProperty {
-  type?: string | null
-  format?: string | null
-  title?: string | null
-  description?: string | null
-  enum?: string[] | null
-  default?: unknown
-  minimum?: number | null
-  maximum?: number | null
-  'x-ui'?: {
-    editable?: boolean
-    'color-map'?: Record<string, string>
-    'icon-map'?: Record<string, string>
-    'color-range'?: Record<string, string>
-    'icon-range'?: Record<string, string>
-    'color-age'?: Record<string, string>
-    'icon-age'?: Record<string, string>
-  } | null
+export interface ProjectSchemaResponse {
+  sections: ProjectSchemaSection[]
 }
 
 export interface ProjectSchemaSection {
+  description?: null | string
   name: string
-  slug: string
-  description?: string | null
   properties: Record<string, ProjectSchemaSectionProperty>
+  slug: string
 }
 
-export interface ProjectSchemaResponse {
-  sections: ProjectSchemaSection[]
+export interface ProjectSchemaSectionProperty {
+  default?: unknown
+  description?: null | string
+  enum?: null | string[]
+  format?: null | string
+  maximum?: null | number
+  minimum?: null | number
+  title?: null | string
+  type?: null | string
+  'x-ui'?: null | {
+    'color-age'?: Record<string, string>
+    'color-map'?: Record<string, string>
+    'color-range'?: Record<string, string>
+    editable?: boolean
+    'icon-age'?: Record<string, string>
+    'icon-map'?: Record<string, string>
+    'icon-range'?: Record<string, string>
+  }
 }
 
 export const getProjectSchema = (
@@ -323,12 +324,12 @@ export const getActivityFeed = async (
 
 // Operations Log
 export interface OperationsLogMetrics {
-  event_count: number
   deploys: number
-  projects: number
-  environments: number
-  team_members: number
   deploys_by_environment: Record<string, number>
+  environments: number
+  event_count: number
+  projects: number
+  team_members: number
 }
 
 export interface OperationsLogPage {
@@ -338,8 +339,8 @@ export interface OperationsLogPage {
 }
 
 interface OperationsLogEnvelope {
-  metrics: OperationsLogMetrics | null
   data: OperationsLogRecord[]
+  metrics: null | OperationsLogMetrics
 }
 
 function parseNextCursor(headers: Headers): string | undefined {
@@ -357,9 +358,9 @@ function parseNextCursor(headers: Headers): string | undefined {
 
 export const listOperationsLog = async (
   params: {
-    limit?: number
     cursor?: string
     filters?: OperationsLogFilters
+    limit?: number
   },
   signal?: AbortSignal,
 ): Promise<OperationsLogPage> => {
@@ -725,21 +726,33 @@ export const deleteOrganization = (slug: string) =>
 // Dynamic blueprint schema extraction from OpenAPI spec
 
 export interface DynamicFieldSchema {
-  type?: string
-  format?: string
-  title?: string
+  default?: unknown
   description?: string
   enum?: string[]
-  default?: unknown
-  minLength?: number
+  format?: string
+  maximum?: number
   maxLength?: number
   minimum?: number
-  maximum?: number
+  minLength?: number
+  title?: string
+  type?: string
 }
 
 export interface DynamicSchema {
   properties: Record<string, DynamicFieldSchema>
   required?: string[]
+}
+
+interface OpenApiResponse {
+  components?: {
+    schemas?: Record<
+      string,
+      {
+        properties?: Record<string, Record<string, unknown>>
+        required?: string[]
+      }
+    >
+  }
 }
 
 // Flatten Pydantic/OpenAPI 3.1 anyOf nullable patterns.
@@ -755,18 +768,6 @@ function flattenNullableAnyOf(
     return { ...rest, ...nonNull[0] } as DynamicFieldSchema
   }
   return prop as DynamicFieldSchema
-}
-
-interface OpenApiResponse {
-  components?: {
-    schemas?: Record<
-      string,
-      {
-        properties?: Record<string, Record<string, unknown>>
-        required?: string[]
-      }
-    >
-  }
 }
 
 /**
@@ -1124,10 +1125,10 @@ export const listServiceAccountApiKeys = (slug: string, signal?: AbortSignal) =>
 export const createServiceAccountApiKey = (
   slug: string,
   data: {
-    name: string
     description?: string
-    scopes?: string[]
     expires_in_days?: number
+    name: string
+    scopes?: string[]
   },
 ) =>
   apiClient.post<ApiKeyCreated>(
@@ -1240,7 +1241,7 @@ export const deleteProjectService = (
 export const listProjectNotes = async (
   orgSlug: string,
   projectId: string,
-  params?: { limit?: number; cursor?: string; tag?: string },
+  params?: { cursor?: string; limit?: number; tag?: string },
   signal?: AbortSignal,
 ): Promise<Note[]> => {
   const response = await apiClient.get<NoteListResponse>(
@@ -1308,7 +1309,7 @@ export const listTags = async (
 
 export const createTag = (
   orgSlug: string,
-  data: { name: string; slug?: string | null; description?: string | null },
+  data: { description?: null | string; name: string; slug?: null | string },
 ) =>
   apiClient.post<Tag>(
     `/organizations/${encodeURIComponent(orgSlug)}/tags/`,

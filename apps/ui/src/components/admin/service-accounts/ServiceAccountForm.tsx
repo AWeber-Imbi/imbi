@@ -1,29 +1,31 @@
 import { useState } from 'react'
+
 import { useQuery } from '@tanstack/react-query'
 import { AlertCircle } from 'lucide-react'
-import { Input } from '@/components/ui/input'
-import { Card, CardContent } from '@/components/ui/card'
-import { FormHeader } from '@/components/admin/form-header'
+
 import { getRoles } from '@/api/endpoints'
+import { FormHeader } from '@/components/admin/form-header'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useDirtyState } from '@/hooks/useDirtyState'
 import { useFormScaffold } from '@/hooks/useFormScaffold'
 import type { ServiceAccount, ServiceAccountCreate } from '@/types'
 
 interface ServiceAccountFormProps {
-  account: ServiceAccount | null
-  onSave: (data: ServiceAccountCreate) => void
-  onCancel: () => void
+  account: null | ServiceAccount
+  error?: null | { message?: string; response?: { data?: { detail?: string } } }
   isLoading?: boolean
-  error?: { response?: { data?: { detail?: string } }; message?: string } | null
+  onCancel: () => void
+  onSave: (data: ServiceAccountCreate) => void
 }
 
 export function ServiceAccountForm({
   account,
-  onSave,
-  onCancel,
-  isLoading = false,
   error,
+  isLoading = false,
+  onCancel,
+  onSave,
 }: ServiceAccountFormProps) {
   const isEditing = !!account
 
@@ -45,40 +47,40 @@ export function ServiceAccountForm({
   // Fetch available roles
   const {
     data: availableRoles = [],
-    isLoading: rolesLoading,
     isError: rolesError,
+    isLoading: rolesLoading,
   } = useQuery({
-    queryKey: ['roles'],
     queryFn: ({ signal }) => getRoles(signal),
+    queryKey: ['roles'],
   })
 
   // Validation state
   const {
-    validationErrors,
+    handleFieldChange,
+    setTouched,
     setValidationErrors,
     touched,
-    setTouched,
-    handleFieldChange,
+    validationErrors,
   } = useFormScaffold()
 
   // Warn on unsaved navigation. Snapshot the initial values once at mount so
   // the baseline doesn't drift when `organizations` loads asynchronously (which
   // would otherwise flip an untouched form into "dirty").
   const [initialFormData] = useState(() => ({
-    slug: account?.slug ?? '',
-    display_name: account?.display_name ?? '',
     description: account?.description ?? '',
+    display_name: account?.display_name ?? '',
     is_active: account?.is_active ?? true,
     organization_slug: organizations.length === 1 ? organizations[0].slug : '',
     role_slug: '',
+    slug: account?.slug ?? '',
   }))
   const currentFormData = {
-    slug,
-    display_name: displayName,
     description,
+    display_name: displayName,
     is_active: isActive,
     organization_slug: organizationSlug,
     role_slug: roleSlug,
+    slug,
   }
   useDirtyState(initialFormData, currentFormData, { enabled: !isLoading })
 
@@ -114,10 +116,10 @@ export function ServiceAccountForm({
 
     setValidationErrors(errors)
     setTouched({
-      slug: true,
       display_name: true,
       organization_slug: true,
       role_slug: true,
+      slug: true,
     })
 
     return Object.keys(errors).length === 0
@@ -127,12 +129,12 @@ export function ServiceAccountForm({
     if (!validateForm()) return
 
     const data: ServiceAccountCreate = {
-      slug: slug.trim(),
-      display_name: displayName.trim(),
       description: description.trim() || null,
+      display_name: displayName.trim(),
       is_active: isActive,
       organization_slug: organizationSlug,
       role_slug: roleSlug,
+      slug: slug.trim(),
     }
 
     onSave(data)
@@ -149,17 +151,17 @@ export function ServiceAccountForm({
     <div className="space-y-6">
       {/* Header */}
       <FormHeader
-        title={isEditing ? 'Edit Service Account' : 'Create Service Account'}
+        createLabel="Create Service Account"
+        isEditing={isEditing}
+        isLoading={isLoading}
+        onCancel={onCancel}
+        onSave={handleSave}
         subtitle={
           isEditing
             ? `Editing ${account?.display_name}`
             : 'Create an automated service account for API access'
         }
-        isEditing={isEditing}
-        isLoading={isLoading}
-        onCancel={onCancel}
-        onSave={handleSave}
-        createLabel="Create Service Account"
+        title={isEditing ? 'Edit Service Account' : 'Create Service Account'}
       />
 
       {/* API Error Display */}
@@ -192,8 +194,8 @@ export function ServiceAccountForm({
                   Slug <span className="text-red-500">*</span>
                 </label>
                 <Input
-                  value={slug}
-                  onChange={(e) => handleSlugChange(e.target.value)}
+                  className=""
+                  disabled={isLoading}
                   onBlur={() => {
                     setTouched({ ...touched, slug: true })
                     const error = validateSlug(slug)
@@ -204,9 +206,9 @@ export function ServiceAccountForm({
                       })
                     }
                   }}
-                  disabled={isLoading}
+                  onChange={(e) => handleSlugChange(e.target.value)}
                   placeholder="my-service-account"
-                  className=""
+                  value={slug}
                 />
                 <p className="mt-1 text-xs text-tertiary">
                   Lowercase letters, numbers, and hyphens only. Must start with
@@ -226,11 +228,8 @@ export function ServiceAccountForm({
                 Display Name <span className="text-red-500">*</span>
               </label>
               <Input
-                value={displayName}
-                onChange={(e) => {
-                  setDisplayName(e.target.value)
-                  handleFieldChange('display_name')
-                }}
+                className=""
+                disabled={isLoading}
                 onBlur={() => {
                   setTouched({ ...touched, display_name: true })
                   const error = validateDisplayName(displayName)
@@ -241,9 +240,12 @@ export function ServiceAccountForm({
                     })
                   }
                 }}
-                disabled={isLoading}
+                onChange={(e) => {
+                  setDisplayName(e.target.value)
+                  handleFieldChange('display_name')
+                }}
                 placeholder="CI/CD Pipeline"
-                className=""
+                value={displayName}
               />
               {touched.display_name && validationErrors.display_name && (
                 <p className="mt-1 text-sm text-red-600">
@@ -258,12 +260,12 @@ export function ServiceAccountForm({
                 Description
               </label>
               <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
                 disabled={isLoading}
+                onChange={(e) => setDescription(e.target.value)}
                 placeholder="What does this service account do?"
                 rows={3}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={description}
               />
             </div>
           </div>
@@ -286,13 +288,13 @@ export function ServiceAccountForm({
                   Organization <span className="text-red-500">*</span>
                 </label>
                 <select
-                  value={organizationSlug}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={isLoading}
                   onChange={(e) => {
                     setOrganizationSlug(e.target.value)
                     handleFieldChange('organization_slug')
                   }}
-                  disabled={isLoading}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={organizationSlug}
                 >
                   <option value="">Select an organization...</option>
                   {organizations.map((org) => (
@@ -322,13 +324,13 @@ export function ServiceAccountForm({
                   </p>
                 ) : (
                   <select
-                    value={roleSlug}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={isLoading}
                     onChange={(e) => {
                       setRoleSlug(e.target.value)
                       handleFieldChange('role_slug')
                     }}
-                    disabled={isLoading}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={roleSlug}
                   >
                     <option value="">Select a role...</option>
                     {availableRoles.map((role) => (
@@ -355,11 +357,11 @@ export function ServiceAccountForm({
           <div>
             <label className="flex cursor-pointer items-center gap-2">
               <input
-                type="checkbox"
                 checked={isActive}
-                onChange={(e) => setIsActive(e.target.checked)}
-                disabled={isLoading}
                 className="rounded"
+                disabled={isLoading}
+                onChange={(e) => setIsActive(e.target.checked)}
+                type="checkbox"
               />
               <span className="text-secondary">Account Active</span>
             </label>

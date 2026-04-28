@@ -2,11 +2,11 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 interface SessionEntryProps {
-  role: 'user' | 'assistant'
   content: string
+  role: 'assistant' | 'user'
 }
 
-export function SessionEntry({ role, content }: SessionEntryProps) {
+export function SessionEntry({ content, role }: SessionEntryProps) {
   if (role === 'user') {
     return (
       <div className="font-mono text-sm text-info">

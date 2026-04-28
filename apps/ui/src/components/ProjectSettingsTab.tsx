@@ -1,30 +1,33 @@
 import { useMemo, useState } from 'react'
+
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+
+import {
+  deleteProject,
+  listEnvironments,
+  listLinkDefinitions,
+  patchProject,
+} from '@/api/endpoints'
+import { EditEnvironmentsCard } from '@/components/EditEnvironmentsCard'
+import { EditIdentifiersCard } from '@/components/EditIdentifiersCard'
+import { EditLinksCard } from '@/components/EditLinksCard'
 import { Button } from '@/components/ui/button'
 import {
   Card,
+  CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
-  CardDescription,
-  CardContent,
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { sortEnvironments } from '@/lib/utils'
-import {
-  listLinkDefinitions,
-  listEnvironments,
-  patchProject,
-  deleteProject,
-} from '@/api/endpoints'
-import { EditIdentifiersCard } from '@/components/EditIdentifiersCard'
-import { EditLinksCard } from '@/components/EditLinksCard'
-import { EditEnvironmentsCard } from '@/components/EditEnvironmentsCard'
 import type { Project } from '@/types'
-import { useProjectPatch } from '@/hooks/useProjectPatch'
 
 export function ProjectSettingsTab({ project }: { project: Project }) {
   const { selectedOrganization } = useOrganization()
@@ -47,18 +50,18 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteProject(orgSlug, project.id),
-    onSuccess: () => navigate('/'),
     onError: mutationErrorHandler('delete project'),
+    onSuccess: () => navigate('/'),
   })
 
   const {
     data: linkDefs = [],
-    isLoading: linkDefsLoading,
     isError: linkDefsError,
+    isLoading: linkDefsLoading,
   } = useQuery({
-    queryKey: ['linkDefinitions', orgSlug],
-    queryFn: ({ signal }) => listLinkDefinitions(orgSlug, signal),
     enabled: !!orgSlug,
+    queryFn: ({ signal }) => listLinkDefinitions(orgSlug, signal),
+    queryKey: ['linkDefinitions', orgSlug],
   })
 
   const sortedEnvironments = useMemo(
@@ -67,9 +70,9 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
   )
 
   const { data: availableEnvironments = [] } = useQuery({
-    queryKey: ['environments', orgSlug],
-    queryFn: ({ signal }) => listEnvironments(orgSlug, signal),
     enabled: !!orgSlug,
+    queryFn: ({ signal }) => listEnvironments(orgSlug, signal),
+    queryKey: ['environments', orgSlug],
   })
 
   return (
@@ -99,8 +102,8 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
       )}
 
       <EditEnvironmentsCard
-        environments={sortedEnvironments}
         availableEnvironments={availableEnvironments}
+        environments={sortedEnvironments}
         onPatch={async (envData) => {
           try {
             await patchProject(orgSlug, project.id, [
@@ -130,7 +133,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button variant="outline" size="sm" disabled>
+          <Button disabled size="sm" variant="outline">
             Archive project
           </Button>
         </CardContent>
@@ -155,11 +158,11 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
         <CardContent>
           {!showDeleteConfirm ? (
             <Button
-              variant="outline"
-              size="sm"
               className="border-danger bg-red-700 text-white hover:bg-red-800"
-              onClick={() => setShowDeleteConfirm(true)}
               disabled={!project.id}
+              onClick={() => setShowDeleteConfirm(true)}
+              size="sm"
+              variant="outline"
             >
               Delete Project
             </Button>
@@ -177,35 +180,35 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
                 to confirm deletion:
               </p>
               <Input
-                value={deleteConfirmSlug}
+                className=""
+                disabled={deleteMutation.isPending}
                 onChange={(e) => setDeleteConfirmSlug(e.target.value)}
                 placeholder={project.slug}
-                disabled={deleteMutation.isPending}
-                className=""
+                value={deleteConfirmSlug}
               />
               <div className="flex gap-2">
                 <Button
-                  variant="outline"
-                  size="sm"
                   className={
                     'border-danger bg-red-700 text-white hover:bg-red-800'
                   }
-                  onClick={() => deleteMutation.mutate()}
                   disabled={
                     deleteConfirmSlug !== project.slug ||
                     deleteMutation.isPending
                   }
+                  onClick={() => deleteMutation.mutate()}
+                  size="sm"
+                  variant="outline"
                 >
                   {deleteMutation.isPending ? 'Deleting...' : 'Confirm Delete'}
                 </Button>
                 <Button
-                  variant="outline"
-                  size="sm"
+                  disabled={deleteMutation.isPending}
                   onClick={() => {
                     setShowDeleteConfirm(false)
                     setDeleteConfirmSlug('')
                   }}
-                  disabled={deleteMutation.isPending}
+                  size="sm"
+                  variant="outline"
                 >
                   Cancel
                 </Button>

@@ -1,48 +1,32 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
-import {
-  Send,
-  ChevronUp,
-  ChevronDown,
-  X,
-  Terminal,
-  HelpCircle,
-  Sparkles,
-} from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+
 import { useNavigate } from 'react-router-dom'
-import { useAssistantStore } from '@/stores/assistantStore'
+
 import {
-  sendMessageSSE,
+  ChevronDown,
+  ChevronUp,
+  HelpCircle,
+  Send,
+  Sparkles,
+  Terminal,
+  X,
+} from 'lucide-react'
+
+import {
   createConversation,
   getConversation,
+  sendMessageSSE,
 } from '@/api/assistant'
-import { useAuth } from '@/hooks/useAuth'
+import { Button } from '@/components/ui/button'
 import { useOrganization } from '@/contexts/OrganizationContext'
-import { queryClient } from '@/main'
+import { useAuth } from '@/hooks/useAuth'
 import { getQueryKeysForResource } from '@/lib/queryKeys'
+import { queryClient } from '@/main'
+import { useAssistantStore } from '@/stores/assistantStore'
+
+import { ConversationHistory } from './assistant/ConversationHistory'
 import { SessionEntry } from './assistant/MessageBubble'
 import { ToolUseIndicator } from './assistant/ToolUseIndicator'
-import { ConversationHistory } from './assistant/ConversationHistory'
-import { Button } from '@/components/ui/button'
-
-function buildUserContext(
-  user: {
-    display_name: string
-    email: string
-    groups?: string[]
-    roles?: string[]
-    is_admin?: boolean
-  } | null,
-  org: { name: string; slug: string } | null,
-): string {
-  if (!user) return ''
-  const parts: string[] = []
-  parts.push(`User: ${user.display_name} (${user.email})`)
-  if (user.is_admin) parts.push('Role: Administrator')
-  if (user.groups?.length) parts.push(`Groups: ${user.groups.join(', ')}`)
-  if (user.roles?.length) parts.push(`Roles: ${user.roles.join(', ')}`)
-  if (org) parts.push(`Organization: ${org.name} (${org.slug})`)
-  return `<context>\n${parts.join('\n')}\n</context>\n\n`
-}
 
 export function CommandBar() {
   const { user } = useAuth()
@@ -56,25 +40,25 @@ export function CommandBar() {
   const inputRef = useRef<HTMLInputElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
-  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null)
+  const dragRef = useRef<null | { startHeight: number; startY: number }>(null)
 
   const {
-    isExpanded,
-    setExpanded,
-    currentConversationId,
-    setCurrentConversation,
-    messages,
-    isStreaming,
-    streamingContent,
     activeToolUse,
     addMessage,
+    addPendingToolUse,
+    appendStreamingContent,
+    clearConversation,
+    currentConversationId,
+    finishStreaming,
+    isExpanded,
+    isStreaming,
+    messages,
+    setActiveToolUse,
+    setCurrentConversation,
+    setExpanded,
     setMessages,
     startStreaming,
-    appendStreamingContent,
-    setActiveToolUse,
-    addPendingToolUse,
-    finishStreaming,
-    clearConversation,
+    streamingContent,
   } = useAssistantStore()
 
   // Set CSS custom property so page content can avoid being hidden
@@ -108,14 +92,14 @@ export function CommandBar() {
         setCurrentConversation(id)
         setMessages(
           conv.messages.map((m) => ({
+            content: m.content,
             id: m.id,
             role: m.role,
-            content: m.content,
             timestamp: new Date(m.created_at),
             toolUse: m.tool_use?.map((t) => ({
               id: t.id,
-              name: t.name,
               input: JSON.stringify(t.input),
+              name: t.name,
             })),
           })),
         )
@@ -154,9 +138,9 @@ export function CommandBar() {
         } catch (err) {
           console.error('[Assistant] Failed to create conversation:', err)
           addMessage({
+            content: 'Failed to start conversation. Please try again.',
             id: (Date.now() + 1).toString(),
             role: 'assistant',
-            content: 'Failed to start conversation. Please try again.',
             timestamp: new Date(),
           })
           return
@@ -166,9 +150,9 @@ export function CommandBar() {
       // Add user message optimistically after conversation
       // context is set (setCurrentConversation clears messages)
       const userMessage = {
+        content: userText,
         id: Date.now().toString(),
         role: 'user' as const,
-        content: userText,
         timestamp: new Date(),
       }
       addMessage(userMessage)
@@ -190,28 +174,6 @@ export function CommandBar() {
           conversationId,
           messageContent,
           {
-            onText: (text) => {
-              appendStreamingContent(text)
-            },
-            onToolUseStart: (id, name) => {
-              setActiveToolUse({ id, name, input: '' })
-            },
-            onToolInput: (partialJson) => {
-              const current = useAssistantStore.getState().activeToolUse
-              if (current) {
-                setActiveToolUse({
-                  ...current,
-                  input: current.input + partialJson,
-                })
-              }
-            },
-            onContentBlockStop: () => {
-              const current = useAssistantStore.getState().activeToolUse
-              if (current) {
-                addPendingToolUse(current)
-                setActiveToolUse(null)
-              }
-            },
             onClientAction: (action, params) => {
               if (action === 'navigate_to' && params.path) {
                 navigate(params.path)
@@ -227,23 +189,45 @@ export function CommandBar() {
                 }
               }
             },
+            onContentBlockStop: () => {
+              const current = useAssistantStore.getState().activeToolUse
+              if (current) {
+                addPendingToolUse(current)
+                setActiveToolUse(null)
+              }
+            },
             onDone: (messageId) => {
               finishStreaming(messageId)
             },
             onError: (message) => {
               const {
-                streamingContent: previousContent,
                 finishStreaming: finish,
+                streamingContent: previousContent,
               } = useAssistantStore.getState()
               finish(Date.now().toString())
               if (!previousContent) {
                 addMessage({
+                  content: `Error: ${message}`,
                   id: (Date.now() + 1).toString(),
                   role: 'assistant',
-                  content: `Error: ${message}`,
                   timestamp: new Date(),
                 })
               }
+            },
+            onText: (text) => {
+              appendStreamingContent(text)
+            },
+            onToolInput: (partialJson) => {
+              const current = useAssistantStore.getState().activeToolUse
+              if (current) {
+                setActiveToolUse({
+                  ...current,
+                  input: current.input + partialJson,
+                })
+              }
+            },
+            onToolUseStart: (id, name) => {
+              setActiveToolUse({ id, input: '', name })
             },
           },
           abort.signal,
@@ -279,7 +263,7 @@ export function CommandBar() {
   const handleDragStart = useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault()
-      dragRef.current = { startY: e.clientY, startHeight: panelHeight }
+      dragRef.current = { startHeight: panelHeight, startY: e.clientY }
       ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
     },
     [panelHeight],
@@ -321,10 +305,10 @@ export function CommandBar() {
       >
         {/* Resize Handle */}
         <div
+          className="group flex h-1.5 cursor-ns-resize items-center justify-center transition-colors hover:bg-secondary"
           onPointerDown={handleDragStart}
           onPointerMove={handleDragMove}
           onPointerUp={handleDragEnd}
-          className="group flex h-1.5 cursor-ns-resize items-center justify-center transition-colors hover:bg-secondary"
         >
           <div className="h-0.5 w-8 rounded-full bg-secondary transition-colors group-hover:bg-muted-foreground/40" />
         </div>
@@ -344,39 +328,39 @@ export function CommandBar() {
           </div>
           <div className="flex items-center gap-1">
             <Button
-              variant="ghost"
-              size="icon"
+              aria-label="Help"
+              className="h-auto w-auto rounded p-1 text-tertiary hover:bg-secondary hover:text-secondary"
               onClick={() => {
                 setInput('help')
                 inputRef.current?.focus()
               }}
-              aria-label="Help"
+              size="icon"
               type="button"
-              className="h-auto w-auto rounded p-1 text-tertiary hover:bg-secondary hover:text-secondary"
+              variant="ghost"
             >
               <HelpCircle className="h-3.5 w-3.5" />
             </Button>
             <ConversationHistory
               currentConversationId={currentConversationId}
-              onSelectConversation={handleSelectConversation}
               onNewConversation={handleNewConversation}
+              onSelectConversation={handleSelectConversation}
             />
             {messages.length > 0 && (
               <Button
-                variant="ghost"
-                onClick={handleClearHistory}
                 className="h-auto rounded px-2 py-0.5 font-mono text-xs text-tertiary hover:bg-secondary hover:text-secondary"
+                onClick={handleClearHistory}
+                variant="ghost"
               >
                 clear
               </Button>
             )}
             <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setExpanded(false)}
               aria-label="Close assistant"
-              type="button"
               className="h-auto w-auto rounded p-1 text-tertiary hover:bg-secondary hover:text-secondary"
+              onClick={() => setExpanded(false)}
+              size="icon"
+              type="button"
+              variant="ghost"
             >
               <X className="h-3.5 w-3.5" />
             </Button>
@@ -385,8 +369,8 @@ export function CommandBar() {
 
         {/* Session Output */}
         <div
-          ref={scrollRef}
           className="space-y-3 overflow-y-auto bg-tertiary px-6 py-4"
+          ref={scrollRef}
           style={{ height: 'calc(100% - 43px)' }}
         >
           {messages.length === 0 && !isStreaming ? (
@@ -395,9 +379,9 @@ export function CommandBar() {
             <>
               {messages.map((message) => (
                 <SessionEntry
+                  content={message.content}
                   key={message.id}
                   role={message.role}
-                  content={message.content}
                 />
               ))}
               {isStreaming && (
@@ -406,7 +390,7 @@ export function CommandBar() {
                     <ToolUseIndicator toolName={activeToolUse.name} />
                   )}
                   {streamingContent && (
-                    <SessionEntry role="assistant" content={streamingContent} />
+                    <SessionEntry content={streamingContent} role="assistant" />
                   )}
                   {!streamingContent && !activeToolUse && (
                     <div className="pl-4 font-mono text-sm text-tertiary">
@@ -425,11 +409,11 @@ export function CommandBar() {
         {/* Tray Toggle */}
         <div className="flex justify-center">
           <Button
-            variant="ghost"
-            onClick={() => setExpanded(!isExpanded)}
             aria-label={isExpanded ? 'Collapse assistant' : 'Expand assistant'}
-            type="button"
             className={`-mt-3 h-auto rounded-t-md border border-b-0 border-tertiary bg-card px-4 py-0.5 font-mono text-xs text-tertiary transition-all hover:text-secondary ${isExpanded ? 'shadow-lg' : ''}`}
+            onClick={() => setExpanded(!isExpanded)}
+            type="button"
+            variant="ghost"
           >
             {isExpanded ? (
               <ChevronDown className="h-3 w-3" />
@@ -445,28 +429,28 @@ export function CommandBar() {
         </div>
 
         {/* Input */}
-        <form onSubmit={handleSubmit} className="px-3 pb-1.5 pt-2">
+        <form className="px-3 pb-1.5 pt-2" onSubmit={handleSubmit}>
           <div className="flex items-center gap-2 rounded-md border border-tertiary bg-tertiary px-3 py-2 text-sm transition-colors focus-within:border-secondary">
             <span className="select-none text-sm text-tertiary">&gt;</span>
             <input
-              ref={inputRef}
-              type="text"
-              value={input}
+              className="flex-1 bg-transparent text-sm text-primary outline-none placeholder:text-muted-foreground disabled:opacity-50"
+              disabled={isStreaming}
               onChange={(e) => setInput(e.target.value)}
               placeholder={
                 isStreaming
                   ? 'waiting...'
                   : "Search projects, ask about deployments, or type 'help'..."
               }
-              disabled={isStreaming}
-              className="flex-1 bg-transparent text-sm text-primary outline-none placeholder:text-muted-foreground disabled:opacity-50"
+              ref={inputRef}
+              type="text"
+              value={input}
             />
             {input.trim() && !isStreaming && (
               <Button
-                variant="ghost"
+                className="h-auto w-auto rounded p-1 text-tertiary transition-colors hover:text-secondary"
                 size="icon"
                 type="submit"
-                className="h-auto w-auto rounded p-1 text-tertiary transition-colors hover:text-secondary"
+                variant="ghost"
               >
                 <Send className="h-3.5 w-3.5" />
               </Button>
@@ -485,4 +469,24 @@ export function CommandBar() {
       </div>
     </>
   )
+}
+
+function buildUserContext(
+  user: null | {
+    display_name: string
+    email: string
+    groups?: string[]
+    is_admin?: boolean
+    roles?: string[]
+  },
+  org: null | { name: string; slug: string },
+): string {
+  if (!user) return ''
+  const parts: string[] = []
+  parts.push(`User: ${user.display_name} (${user.email})`)
+  if (user.is_admin) parts.push('Role: Administrator')
+  if (user.groups?.length) parts.push(`Groups: ${user.groups.join(', ')}`)
+  if (user.roles?.length) parts.push(`Roles: ${user.roles.join(', ')}`)
+  if (org) parts.push(`Organization: ${org.name} (${org.slug})`)
+  return `<context>\n${parts.join('\n')}\n</context>\n\n`
 }

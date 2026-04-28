@@ -1,5 +1,7 @@
-import { ArrowUpRight, Pin, Plus } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+
+import { ArrowUpRight, Pin, Plus } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -10,30 +12,31 @@ import {
 } from '@/components/ui/card'
 import { UserDisplay } from '@/components/ui/user-display'
 import { cn } from '@/lib/utils'
+import type { Note } from '@/types'
+
 import { NotesFilterRail } from './NotesFilterRail'
-import { NoteTagChip } from './NoteTagChip'
 import {
   deriveExcerpt,
-  noteTitle,
   formatUpdated,
+  noteTitle,
   tagCounts,
   uniqueTagsFromNotes,
 } from './notesHelpers'
-import type { Note } from '@/types'
+import { NoteTagChip } from './NoteTagChip'
 
 interface Props {
-  notes: Note[]
   displayNames?: Map<string, string>
-  onOpen: (noteId: string) => void
+  notes: Note[]
   onCreate: () => void
+  onOpen: (noteId: string) => void
   onTogglePin: (note: Note) => void
 }
 
 export function NotesPinboard({
-  notes,
   displayNames,
-  onOpen,
+  notes,
   onCreate,
+  onOpen,
   onTogglePin,
 }: Props) {
   const [active, setActive] = useState<Set<string>>(new Set())
@@ -70,13 +73,13 @@ export function NotesPinboard({
   return (
     <div className="grid grid-cols-[220px_1fr] gap-5">
       <NotesFilterRail
-        tags={tags}
-        counts={counts}
         active={active}
-        onToggle={toggle}
+        counts={counts}
         onClear={() => setActive(new Set())}
-        search={search}
         onSearchChange={setSearch}
+        onToggle={toggle}
+        search={search}
+        tags={tags}
         totalFiltered={filtered.length}
       />
 
@@ -86,18 +89,18 @@ export function NotesPinboard({
             <div className="grid min-w-0 flex-1 grid-cols-2 gap-3.5">
               {pinned.map((n) => (
                 <HeroCard
+                  displayNames={displayNames}
                   key={n.id}
                   note={n}
-                  displayNames={displayNames}
                   onOpen={onOpen}
                 />
               ))}
             </div>
           )}
           <Button
-            size="sm"
-            onClick={onCreate}
             className={cn('gap-1.5', pinned.length === 0 && 'ml-auto')}
+            onClick={onCreate}
+            size="sm"
           >
             <Plus className="h-3 w-3" />
             New note
@@ -121,9 +124,9 @@ export function NotesPinboard({
             </div>
             {rest.map((n) => (
               <IndexRow
+                displayNames={displayNames}
                 key={n.id}
                 note={n}
-                displayNames={displayNames}
                 onOpen={onOpen}
                 onTogglePin={onTogglePin}
               />
@@ -143,20 +146,20 @@ export function NotesPinboard({
 }
 
 function HeroCard({
-  note,
   displayNames,
+  note,
   onOpen,
 }: {
-  note: Note
   displayNames?: Map<string, string>
+  note: Note
   onOpen: (noteId: string) => void
 }) {
   const title = noteTitle(note)
   const excerpt = deriveExcerpt(note.content)
   return (
     <Card
-      onClick={() => onOpen(note.id)}
       className="flex cursor-pointer flex-col transition-colors hover:border-secondary hover:shadow-md"
+      onClick={() => onOpen(note.id)}
     >
       <CardHeader className="space-y-2">
         <div className="flex items-start justify-between gap-2">
@@ -176,17 +179,17 @@ function HeroCard({
         {note.tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {note.tags.map((t) => (
-              <NoteTagChip key={t.slug} tag={t} size="sm" />
+              <NoteTagChip key={t.slug} size="sm" tag={t} />
             ))}
           </div>
         )}
       </CardContent>
       <CardFooter className="mt-auto gap-2 border-t border-tertiary pt-3 text-[11.5px] text-tertiary">
         <UserDisplay
-          email={note.created_by}
-          displayNames={displayNames}
-          size={16}
           className="text-secondary"
+          displayNames={displayNames}
+          email={note.created_by}
+          size={16}
           textClassName="font-medium"
         />
         <span className="text-tertiary">·</span>
@@ -197,13 +200,13 @@ function HeroCard({
 }
 
 function IndexRow({
-  note,
   displayNames,
+  note,
   onOpen,
   onTogglePin,
 }: {
-  note: Note
   displayNames?: Map<string, string>
+  note: Note
   onOpen: (noteId: string) => void
   onTogglePin: (note: Note) => void
 }) {
@@ -213,8 +216,8 @@ function IndexRow({
   const author = note.created_by
   return (
     <div
-      onClick={() => onOpen(note.id)}
       className="grid cursor-pointer items-center gap-3.5 border-b border-tertiary px-3.5 py-2.5 last:border-b-0 hover:bg-secondary"
+      onClick={() => onOpen(note.id)}
       style={{
         gridTemplateColumns: 'minmax(0, 1.6fr) minmax(0, 1fr) 100px 60px 60px',
       }}
@@ -231,10 +234,10 @@ function IndexRow({
         ))}
       </div>
       <UserDisplay
-        email={author}
-        displayNames={displayNames}
-        size={18}
         className="text-xs text-secondary"
+        displayNames={displayNames}
+        email={author}
+        size={18}
       />
       <div className="text-right font-mono text-[11.5px] text-tertiary">
         {formatUpdated(note)}
@@ -276,10 +279,10 @@ function RowIconButton({
 }) {
   return (
     <button
-      type="button"
-      title={title}
-      onClick={onClick}
       className="inline-flex h-[22px] w-[22px] cursor-pointer items-center justify-center rounded border-0 bg-transparent text-tertiary hover:bg-tertiary"
+      onClick={onClick}
+      title={title}
+      type="button"
     >
       {children}
     </button>

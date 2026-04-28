@@ -1,19 +1,12 @@
-import { apiClient } from './client'
 import { useQuery } from '@tanstack/react-query'
+
+import { apiClient } from './client'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type OpenApiSpec = Record<string, any>
 
 export const fetchOpenApiSpec = (signal?: AbortSignal) =>
   apiClient.get<OpenApiSpec>('/openapi.json', undefined, signal)
-
-export function useOpenApiSpec() {
-  return useQuery({
-    queryKey: ['openapi-spec'],
-    queryFn: ({ signal }) => fetchOpenApiSpec(signal),
-    staleTime: Infinity,
-  })
-}
 
 export function getSchemaEnum(
   spec: OpenApiSpec,
@@ -36,4 +29,12 @@ export function getSchemaProperties(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Record<string, any> {
   return spec?.components?.schemas?.[schemaName]?.properties || {}
+}
+
+export function useOpenApiSpec() {
+  return useQuery({
+    queryFn: ({ signal }) => fetchOpenApiSpec(signal),
+    queryKey: ['openapi-spec'],
+    staleTime: Infinity,
+  })
 }

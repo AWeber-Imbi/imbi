@@ -43,15 +43,15 @@ async function assistantFetch<T>(
 // REST endpoints
 export const createConversation = (data?: CreateConversationRequest) =>
   assistantFetch<Conversation>('/conversations', {
-    method: 'POST',
     body: JSON.stringify(data ?? {}),
+    method: 'POST',
   })
 
 export const listConversations = (
   params?: {
+    include_archived?: boolean
     limit?: number
     offset?: number
-    include_archived?: boolean
   },
   signal?: AbortSignal,
 ) => {
@@ -81,22 +81,22 @@ export const updateConversation = (
   data: UpdateConversationRequest,
 ) =>
   assistantFetch<Conversation>(`/conversations/${id}`, {
-    method: 'PATCH',
     body: JSON.stringify(data),
+    method: 'PATCH',
   })
 
 // SSE streaming via native fetch (Axios doesn't support streaming)
 export type SSEEventHandler = {
-  onText?: (text: string) => void
-  onToolUseStart?: (id: string, name: string) => void
-  onToolInput?: (partialJson: string) => void
-  onContentBlockStop?: () => void
   onClientAction?: (action: string, params: Record<string, string>) => void
+  onContentBlockStop?: () => void
   onDone?: (
     messageId: string,
     usage: { input_tokens: number; output_tokens: number },
   ) => void
   onError?: (message: string) => void
+  onText?: (text: string) => void
+  onToolInput?: (partialJson: string) => void
+  onToolUseStart?: (id: string, name: string) => void
 }
 
 export async function sendMessageSSE(
@@ -110,12 +110,12 @@ export async function sendMessageSSE(
 
   const response = await withAuthRetry(path, (token) =>
     fetch(url, {
-      method: 'POST',
+      body: JSON.stringify({ content }),
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ content }),
+      method: 'POST',
       signal,
     }),
   )
@@ -156,21 +156,6 @@ export async function sendMessageSSE(
         try {
           const parsed = JSON.parse(data)
           switch (currentEvent) {
-            case 'text':
-              handlers.onText?.(parsed.text)
-              break
-            case 'tool_use_start':
-              handlers.onToolUseStart?.(parsed.id, parsed.name)
-              break
-            case 'tool_input':
-              handlers.onToolInput?.(parsed.partial_json)
-              break
-            case 'content_block_stop':
-              handlers.onContentBlockStop?.()
-              break
-            case 'done':
-              handlers.onDone?.(parsed.message_id, parsed.usage)
-              break
             case 'client_action': {
               if (
                 typeof parsed.action === 'string' &&
@@ -188,8 +173,23 @@ export async function sendMessageSSE(
               }
               break
             }
+            case 'content_block_stop':
+              handlers.onContentBlockStop?.()
+              break
+            case 'done':
+              handlers.onDone?.(parsed.message_id, parsed.usage)
+              break
             case 'error':
               handlers.onError?.(parsed.message)
+              break
+            case 'text':
+              handlers.onText?.(parsed.text)
+              break
+            case 'tool_input':
+              handlers.onToolInput?.(parsed.partial_json)
+              break
+            case 'tool_use_start':
+              handlers.onToolUseStart?.(parsed.id, parsed.name)
               break
           }
         } catch {

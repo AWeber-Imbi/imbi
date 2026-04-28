@@ -1,20 +1,22 @@
 import { useState } from 'react'
+
 import { useQuery } from '@tanstack/react-query'
-import { Search, Power, AlertCircle, CheckCircle } from 'lucide-react'
-import { Input } from '@/components/ui/input'
+import { AlertCircle, CheckCircle, Power, Search } from 'lucide-react'
+
+import { getAuthProviders } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { LoadingState } from '@/components/ui/loading-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
-import { getAuthProviders } from '@/api/endpoints'
+import { Input } from '@/components/ui/input'
+import { LoadingState } from '@/components/ui/loading-state'
 import type { AuthProvider } from '@/types'
 
 export function OAuthManagement() {
   const [searchQuery, setSearchQuery] = useState('')
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['authProviders'],
+  const { data, error, isLoading } = useQuery({
     queryFn: ({ signal }) => getAuthProviders(signal),
+    queryKey: ['authProviders'],
   })
 
   const providers = data?.providers || []
@@ -35,7 +37,7 @@ export function OAuthManagement() {
   }
 
   if (error) {
-    return <ErrorBanner title="Failed to load OAuth providers" error={error} />
+    return <ErrorBanner error={error} title="Failed to load OAuth providers" />
   }
 
   return (
@@ -51,10 +53,10 @@ export function OAuthManagement() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary" />
         <Input
+          className="border-input bg-background pl-10 text-foreground placeholder:text-muted-foreground"
+          onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search providers..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="border-input bg-background pl-10 text-foreground placeholder:text-muted-foreground"
         />
       </div>
 

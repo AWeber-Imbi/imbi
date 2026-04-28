@@ -1,5 +1,7 @@
-import { ChevronDown, Rocket } from 'lucide-react'
 import { memo } from 'react'
+
+import { ChevronDown, Rocket } from 'lucide-react'
+
 import { Gravatar } from '@/components/ui/gravatar'
 import {
   ReleaseTrain,
@@ -15,34 +17,35 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { deriveChipColors } from '@/lib/chip-colors'
 import { cn } from '@/lib/utils'
 import type { Environment, Project } from '@/types'
+
 import { OperationsLogEntryDetails } from './OperationsLogEntryDetails'
-import { OPS_ROW_GRID, OPS_ROW_PAD } from './opsRowLayout'
 import {
   absTime,
   cleanDescription,
   cleanName,
-  relTime,
   type ReleaseGroup,
+  relTime,
 } from './opsLogHelpers'
+import { OPS_ROW_GRID, OPS_ROW_PAD } from './opsRowLayout'
 
 interface Props {
-  id: string
-  group: ReleaseGroup
-  project?: Project
   environmentsBySlug: Map<string, Environment>
+  group: ReleaseGroup
+  id: string
   isOpen: boolean
   onToggle: (id: string) => void
   performerDisplayNames: Map<string, string>
+  project?: Project
 }
 
 export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
-  id,
-  group,
-  project,
   environmentsBySlug,
+  group,
+  id,
   isOpen,
   onToggle,
   performerDisplayNames,
+  project,
 }: Props) {
   const { isDarkMode } = useTheme()
   const latest = group.latestEntry
@@ -73,10 +76,10 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
     const stop = stopByEnvSlug.get(env.slug)
     return {
       environment: env,
-      value: stop?.entry.version ?? null,
       title: stop
         ? `${env.name}: ${stop.entry.version ?? '—'} · ${absTime(stop.entry.occurred_at)}`
         : `${env.name} · not deployed`,
+      value: stop?.entry.version ?? null,
     }
   })
 
@@ -97,26 +100,27 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
         isOpen && 'bg-secondary',
       )}
       style={{
-        contentVisibility: 'auto',
         containIntrinsicSize: 'auto 72px',
+        contentVisibility: 'auto',
       }}
     >
       <button
-        type="button"
-        onClick={() => onToggle(id)}
-        aria-expanded={isOpen}
         aria-controls={`ops-log-details-${id}`}
+        aria-expanded={isOpen}
         className={cn(
           'group grid w-full cursor-pointer items-center gap-x-3 gap-y-1 text-left transition-colors',
           OPS_ROW_PAD,
           !isOpen && 'hover:bg-secondary',
         )}
+        onClick={() => onToggle(id)}
         style={{
           gridTemplateColumns: OPS_ROW_GRID,
           gridTemplateRows: desc ? 'auto auto' : 'auto',
         }}
+        type="button"
       >
         <span
+          aria-hidden
           className={cn(
             'self-stretch rounded-r-sm',
             !railColors && 'bg-tertiary',
@@ -126,7 +130,6 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
             gridColumn: 1,
             gridRow: '1 / -1',
           }}
-          aria-hidden
         />
         <span
           className="flex h-[26px] w-[26px] items-center justify-center rounded-md bg-success text-success"
@@ -159,7 +162,7 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
           className="flex items-center justify-center"
           style={{ gridColumn: 6, gridRow: '1 / -1' }}
         >
-          <ReleaseTrain stops={trainStops} size="compact" />
+          <ReleaseTrain size="compact" stops={trainStops} />
         </span>
         <span
           className="self-center justify-self-end"
@@ -167,9 +170,9 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
           title={displayName}
         >
           <Gravatar
+            className="h-[22px] w-[22px] rounded-full"
             email={performer}
             size={22}
-            className="h-[22px] w-[22px] rounded-full"
           />
         </span>
         <TooltipProvider delayDuration={250}>
@@ -207,8 +210,8 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
       </button>
       {isOpen ? (
         <div
-          id={`ops-log-details-${id}`}
           className="border-t border-dashed border-tertiary"
+          id={`ops-log-details-${id}`}
         >
           <OperationsLogEntryDetails entry={latest} />
           <div className="space-y-2 px-4 pb-4 pl-[60px]">
@@ -229,8 +232,8 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
                   : null
                 return (
                   <div
-                    key={s.entry.environment_slug}
                     className="grid grid-cols-[24px_120px_1fr_auto] items-center gap-3 rounded-md border border-tertiary bg-primary px-3 py-2 text-sm"
+                    key={s.entry.environment_slug}
                   >
                     <Rocket className="h-3.5 w-3.5 text-tertiary" />
                     <span
@@ -239,8 +242,8 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
                         colors
                           ? {
                               backgroundColor: colors.bg,
-                              color: colors.fg,
                               borderColor: colors.border,
+                              color: colors.fg,
                             }
                           : undefined
                       }
@@ -253,10 +256,10 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
                       </div>
                       {s.entry.link ? (
                         <a
-                          href={s.entry.link}
-                          target="_blank"
-                          rel="noreferrer"
                           className="mt-0.5 block truncate text-xs text-amber-text hover:underline"
+                          href={s.entry.link}
+                          rel="noreferrer"
+                          target="_blank"
                         >
                           {s.entry.link}
                         </a>

@@ -1,32 +1,10 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+
 import type { BlueprintFilter, Environment } from '@/types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
-}
-
-/**
- * Parse a blueprint's filter field (string or object) into a typed
- * BlueprintFilter, returning null on missing/invalid input.
- */
-export function parseFilterFromBlueprint(
-  filter: string | BlueprintFilter | null | undefined,
-): BlueprintFilter | null {
-  if (!filter) return null
-  try {
-    const parsed: BlueprintFilter =
-      typeof filter === 'string' ? JSON.parse(filter) : filter
-    if (
-      (parsed.project_type?.length ?? 0) > 0 ||
-      (parsed.environment?.length ?? 0) > 0
-    ) {
-      return parsed
-    }
-  } catch {
-    // ignore parse errors
-  }
-  return null
 }
 
 /**
@@ -47,15 +25,44 @@ export function extractDynamicFields(
 }
 
 /**
- * Return a new array of environments sorted by sort_order (ascending,
- * nullish treated as 0) and falling back to name.localeCompare for ties.
+ * Parse a blueprint's filter field (string or object) into a typed
+ * BlueprintFilter, returning null on missing/invalid input.
  */
-export function sortEnvironments(environments: Environment[]): Environment[] {
-  if (!Array.isArray(environments)) return []
-  return [...environments].sort((a, b) => {
-    const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0)
-    return orderDiff !== 0 ? orderDiff : a.name.localeCompare(b.name)
-  })
+export function parseFilterFromBlueprint(
+  filter: BlueprintFilter | null | string | undefined,
+): BlueprintFilter | null {
+  if (!filter) return null
+  try {
+    const parsed: BlueprintFilter =
+      typeof filter === 'string' ? JSON.parse(filter) : filter
+    if (
+      (parsed.project_type?.length ?? 0) > 0 ||
+      (parsed.environment?.length ?? 0) > 0
+    ) {
+      return parsed
+    }
+  } catch {
+    // ignore parse errors
+  }
+  return null
+}
+
+/**
+ * Parse an arbitrary value as an http(s) URL. Returns the canonical URL
+ * string if valid, else null. Guards against javascript:/data:/etc schemes
+ * in user-supplied link values.
+ */
+export function sanitizeHttpUrl(raw: unknown): null | string {
+  if (typeof raw !== 'string' || raw === '') return null
+  try {
+    const parsed = new URL(raw)
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.toString()
+    }
+  } catch {
+    // not a valid URL
+  }
+  return null
 }
 
 /**
@@ -71,19 +78,13 @@ export function slugify(value: string): string {
 }
 
 /**
- * Parse an arbitrary value as an http(s) URL. Returns the canonical URL
- * string if valid, else null. Guards against javascript:/data:/etc schemes
- * in user-supplied link values.
+ * Return a new array of environments sorted by sort_order (ascending,
+ * nullish treated as 0) and falling back to name.localeCompare for ties.
  */
-export function sanitizeHttpUrl(raw: unknown): string | null {
-  if (typeof raw !== 'string' || raw === '') return null
-  try {
-    const parsed = new URL(raw)
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-      return parsed.toString()
-    }
-  } catch {
-    // not a valid URL
-  }
-  return null
+export function sortEnvironments(environments: Environment[]): Environment[] {
+  if (!Array.isArray(environments)) return []
+  return [...environments].sort((a, b) => {
+    const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0)
+    return orderDiff !== 0 ? orderDiff : a.name.localeCompare(b.name)
+  })
 }

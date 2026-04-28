@@ -1,6 +1,7 @@
 import {
   ArrowRightLeft,
   ArrowUp,
+  type LucideIcon,
   PackagePlus,
   Rocket,
   RotateCw,
@@ -8,8 +9,8 @@ import {
   SlidersHorizontal,
   Trash2,
   Undo2,
-  type LucideIcon,
 } from 'lucide-react'
+
 import type { OperationsLogEntryType } from '@/types'
 
 export const ENTRY_TYPE_ICONS: Record<OperationsLogEntryType, LucideIcon> = {

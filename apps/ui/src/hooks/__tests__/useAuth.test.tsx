@@ -8,42 +8,44 @@
 //   HB-3 — bootstrap fires at most once across multiple useAuth() consumers
 //   HB-4 — currentUser auto-fires once the store flips isTokenExpired → false
 //   HB-5 — 401 with detail "not found or inactive" → translated error
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, renderHook, waitFor } from '@testing-library/react'
-import { useEffect, type ReactNode } from 'react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { type ReactNode, useEffect } from 'react'
+
 import { MemoryRouter, useLocation } from 'react-router-dom'
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, render, renderHook, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { ApiError } from '../../api/client'
+import * as endpoints from '../../api/endpoints'
+import { BootstrapGate } from '../../components/BootstrapGate'
+import { useAuthStore } from '../../stores/authStore'
+import { useAuth } from '../useAuth'
+
 vi.mock('@/api/endpoints', () => ({
+  getUserByUsername: vi.fn(),
   loginWithPassword: vi.fn(),
   logoutAuth: vi.fn(),
   refreshToken: vi.fn(),
-  getUserByUsername: vi.fn(),
 }))
 
-import * as endpoints from '@/api/endpoints'
-import { ApiError } from '@/api/client'
-import { BootstrapGate } from '@/components/BootstrapGate'
-import { useAuthStore } from '@/stores/authStore'
-import { useAuth } from '../useAuth'
-
 function makeJwt({
-  sub = 'user@example.com',
   exp = Math.floor(Date.now() / 1000) + 3600,
-}: { sub?: string; exp?: number } = {}) {
+  sub = 'user@example.com',
+}: { exp?: number; sub?: string } = {}) {
   const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
-  const payload = btoa(JSON.stringify({ sub, exp, iat: 1600000000 }))
+  const payload = btoa(JSON.stringify({ exp, iat: 1600000000, sub }))
   return `${header}.${payload}.signature`
 }
 
 const validUser = {
-  username: 'user@example.com',
   display_name: 'Test User',
   email: 'user@example.com',
   email_address: 'user@example.com',
-  user_type: 'standard',
-  is_admin: false,
   is_active: true,
+  is_admin: false,
+  user_type: 'standard',
+  username: 'user@example.com',
 }
 
 let latestLocation: { pathname: string; search: string } = {
@@ -59,11 +61,25 @@ function LocationProbe() {
   return null
 }
 
+function setExpiredAccess({
+  refreshToken = 'rt',
+}: {
+  refreshToken?: null | string
+} = {}) {
+  const token = makeJwt({ exp: Math.floor(Date.now() / 1000) - 3600 })
+  useAuthStore.setState({
+    accessToken: token,
+    refreshToken,
+    tokenExpiry: Date.now() - 1000,
+  })
+  return token
+}
+
 function setupEnv(initialPath: string) {
   const qc = new QueryClient({
     defaultOptions: {
-      queries: { retry: false, gcTime: 0 },
       mutations: { retry: false },
+      queries: { gcTime: 0, retry: false },
     },
   })
   // Match App.tsx: session bootstrap happens inside BootstrapGate, not inside
@@ -78,18 +94,6 @@ function setupEnv(initialPath: string) {
     </QueryClientProvider>
   )
   return { qc, Wrapper }
-}
-
-function setExpiredAccess({
-  refreshToken = 'rt',
-}: { refreshToken?: string | null } = {}) {
-  const token = makeJwt({ exp: Math.floor(Date.now() / 1000) - 3600 })
-  useAuthStore.setState({
-    accessToken: token,
-    refreshToken,
-    tokenExpiry: Date.now() - 1000,
-  })
-  return token
 }
 
 function setValidAccess() {
@@ -112,12 +116,16 @@ beforeEach(() => {
   Object.defineProperty(window, 'location', {
     configurable: true,
     value: {
+      assign: vi.fn((v: string) => {
+        locationHref = v
+      }),
       get href() {
         return locationHref
       },
       set href(v: string) {
         locationHref = v
       },
+      origin: 'http://localhost',
       get pathname() {
         try {
           return new URL(locationHref, 'http://localhost').pathname
@@ -125,6 +133,9 @@ beforeEach(() => {
           return '/'
         }
       },
+      replace: vi.fn((v: string) => {
+        locationHref = v
+      }),
       get search() {
         try {
           return new URL(locationHref, 'http://localhost').search
@@ -132,13 +143,6 @@ beforeEach(() => {
           return ''
         }
       },
-      origin: 'http://localhost',
-      assign: vi.fn((v: string) => {
-        locationHref = v
-      }),
-      replace: vi.fn((v: string) => {
-        locationHref = v
-      }),
     },
   })
 })
@@ -207,9 +211,9 @@ describe('useAuth', () => {
     const newToken = makeJwt({ exp: Math.floor(Date.now() / 1000) + 3600 })
     vi.mocked(endpoints.refreshToken).mockResolvedValue({
       access_token: newToken,
+      expires_in: 3600,
       refresh_token: 'rt-new',
       token_type: 'bearer',
-      expires_in: 3600,
     } as never)
     vi.mocked(endpoints.getUserByUsername).mockResolvedValue(validUser as never)
 
@@ -260,9 +264,9 @@ describe('useAuth', () => {
     const newToken = makeJwt({ exp: Math.floor(Date.now() / 1000) + 3600 })
     vi.mocked(endpoints.refreshToken).mockResolvedValue({
       access_token: newToken,
+      expires_in: 3600,
       refresh_token: 'rt-new',
       token_type: 'bearer',
-      expires_in: 3600,
     } as never)
     vi.mocked(endpoints.getUserByUsername).mockResolvedValue(validUser as never)
 
@@ -327,13 +331,13 @@ describe('useAuth', () => {
     const token = makeJwt({ exp: Math.floor(Date.now() / 1000) + 3600 })
     vi.mocked(endpoints.loginWithPassword).mockResolvedValue({
       access_token: token,
+      expires_in: 3600,
       refresh_token: 'rt-new',
       token_type: 'bearer',
-      expires_in: 3600,
     } as never)
     vi.mocked(endpoints.getUserByUsername).mockResolvedValue(validUser as never)
 
-    const { Wrapper, qc } = setupEnv('/login')
+    const { qc, Wrapper } = setupEnv('/login')
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
     const { result } = renderHook(() => useAuth(), { wrapper: Wrapper })
 
@@ -378,7 +382,7 @@ describe('useAuth', () => {
     vi.mocked(endpoints.getUserByUsername).mockResolvedValue(validUser as never)
     vi.mocked(endpoints.logoutAuth).mockResolvedValue(undefined as never)
 
-    const { Wrapper, qc } = setupEnv('/dashboard')
+    const { qc, Wrapper } = setupEnv('/dashboard')
     const clearSpy = vi.spyOn(qc, 'clear')
     const { result } = renderHook(() => useAuth(), { wrapper: Wrapper })
 
@@ -398,7 +402,7 @@ describe('useAuth', () => {
     vi.mocked(endpoints.getUserByUsername).mockResolvedValue(validUser as never)
     vi.mocked(endpoints.logoutAuth).mockRejectedValue(new Error('server down'))
 
-    const { Wrapper, qc } = setupEnv('/dashboard')
+    const { qc, Wrapper } = setupEnv('/dashboard')
     const clearSpy = vi.spyOn(qc, 'clear')
     const { result } = renderHook(() => useAuth(), { wrapper: Wrapper })
 
@@ -419,9 +423,9 @@ describe('useAuth', () => {
     const newToken = makeJwt({ exp: Math.floor(Date.now() / 1000) + 7200 })
     vi.mocked(endpoints.refreshToken).mockResolvedValue({
       access_token: newToken,
+      expires_in: 7200,
       refresh_token: 'rt-new',
       token_type: 'bearer',
-      expires_in: 7200,
     } as never)
 
     const { Wrapper } = setupEnv('/dashboard')

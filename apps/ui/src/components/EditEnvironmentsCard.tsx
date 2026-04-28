@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
+
 import { Trash2 } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -17,33 +19,17 @@ import { useEditableKeyValueMap } from '@/hooks/useEditableKeyValueMap'
 import { ENVIRONMENT_BASE_FIELDS_SET } from '@/lib/constants'
 import type { Environment } from '@/types'
 
-type EnvFields = Record<string, string>
-
 interface EditEnvironmentsCardProps {
-  environments: Environment[]
   availableEnvironments: Environment[]
+  environments: Environment[]
   onPatch: (envData: Record<string, EnvFields>) => Promise<void>
 }
 
-function toLabel(key: string): string {
-  return key
-    .split('_')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ')
-}
-
-function extractFields(env: Environment): EnvFields {
-  const out: EnvFields = {}
-  for (const [key, val] of Object.entries(env)) {
-    if (ENVIRONMENT_BASE_FIELDS_SET.has(key)) continue
-    out[key] = val != null ? String(val) : ''
-  }
-  return out
-}
+type EnvFields = Record<string, string>
 
 export function EditEnvironmentsCard({
-  environments,
   availableEnvironments,
+  environments,
   onPatch,
 }: EditEnvironmentsCardProps) {
   const serverMap = useMemo<Record<string, EnvFields>>(() => {
@@ -53,15 +39,15 @@ export function EditEnvironmentsCard({
   }, [environments])
 
   const {
-    drafts,
-    setDraft,
-    pendingDelete,
-    requestDelete,
     cancelDelete,
     confirmDelete,
-    saved,
+    drafts,
     flash,
-  } = useEditableKeyValueMap<EnvFields>({ serverMap, onPatch })
+    pendingDelete,
+    requestDelete,
+    saved,
+    setDraft,
+  } = useEditableKeyValueMap<EnvFields>({ onPatch, serverMap })
 
   const dynamicFields = useMemo(() => {
     const fieldSet = new Set<string>()
@@ -140,12 +126,12 @@ export function EditEnvironmentsCard({
 
       <div className="divide-y divide-border">
         {environments.map((env) => (
-          <div key={env.slug} className="flex gap-3 py-4 first:pt-0 last:pb-0">
+          <div className="flex gap-3 py-4 first:pt-0 last:pb-0" key={env.slug}>
             <div className="w-[15%] flex-shrink-0 pt-1">
               <EnvironmentBadge
+                label_color={env.label_color}
                 name={env.name}
                 slug={env.slug}
-                label_color={env.label_color}
               />
             </div>
             <div className="flex-1 space-y-2">
@@ -155,24 +141,24 @@ export function EditEnvironmentsCard({
                 </p>
               ) : (
                 dynamicFields.map((field) => (
-                  <div key={field} className="flex items-center gap-3">
+                  <div className="flex items-center gap-3" key={field}>
                     <label
-                      htmlFor={`env-${env.slug}-${field}`}
                       className="w-20 flex-shrink-0 text-xs font-medium text-tertiary"
+                      htmlFor={`env-${env.slug}-${field}`}
                     >
                       {toLabel(field)}
                     </label>
                     <div className="relative flex-1">
                       <Input
+                        className="pr-8 text-sm"
                         id={`env-${env.slug}-${field}`}
-                        value={drafts[env.slug]?.[field] ?? ''}
+                        onBlur={() => handleFieldBlur(env.slug, field)}
                         onChange={(e) =>
                           setDraft(env.slug, {
                             ...(drafts[env.slug] ?? {}),
                             [field]: e.target.value,
                           })
                         }
-                        onBlur={() => handleFieldBlur(env.slug, field)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             e.preventDefault()
@@ -180,7 +166,7 @@ export function EditEnvironmentsCard({
                           }
                         }}
                         placeholder={toLabel(field)}
-                        className="pr-8 text-sm"
+                        value={drafts[env.slug]?.[field] ?? ''}
                       />
                       <SavedIndicator show={!!saved[`${env.slug}:${field}`]} />
                     </div>
@@ -190,12 +176,12 @@ export function EditEnvironmentsCard({
             </div>
             <div className="flex-shrink-0 pt-1">
               <Button
-                type="button"
-                variant="ghost"
-                size="icon"
                 aria-label={`Remove ${env.name} environment`}
                 className="h-8 w-8 text-secondary hover:text-danger"
                 onClick={() => requestDelete(env.slug)}
+                size="icon"
+                type="button"
+                variant="ghost"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -206,7 +192,7 @@ export function EditEnvironmentsCard({
         {unassignedEnvs.length > 0 && (
           <div className="flex items-center gap-3 pt-4">
             <div className="w-[15%] flex-shrink-0">
-              <Select value="" onValueChange={handleAdd}>
+              <Select onValueChange={handleAdd} value="">
                 <SelectTrigger className="text-sm">
                   <SelectValue placeholder="Add environment…" />
                 </SelectTrigger>
@@ -220,23 +206,39 @@ export function EditEnvironmentsCard({
               </Select>
             </div>
             <div className="flex-1" />
-            <div className="h-8 w-8 flex-shrink-0" aria-hidden />
+            <div aria-hidden className="h-8 w-8 flex-shrink-0" />
           </div>
         )}
       </div>
 
       <ConfirmDialog
+        confirmLabel="Remove"
+        description="This will remove the environment from the project along with any environment-specific field values."
+        onCancel={cancelDelete}
+        onConfirm={confirmDelete}
         open={pendingDelete !== null}
         title={
           pendingEnv
             ? `Remove ${pendingEnv.name} environment?`
             : 'Remove environment?'
         }
-        description="This will remove the environment from the project along with any environment-specific field values."
-        confirmLabel="Remove"
-        onConfirm={confirmDelete}
-        onCancel={cancelDelete}
       />
     </Card>
   )
+}
+
+function extractFields(env: Environment): EnvFields {
+  const out: EnvFields = {}
+  for (const [key, val] of Object.entries(env)) {
+    if (ENVIRONMENT_BASE_FIELDS_SET.has(key)) continue
+    out[key] = val != null ? String(val) : ''
+  }
+  return out
+}
+
+function toLabel(key: string): string {
+  return key
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
 }

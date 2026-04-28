@@ -1,19 +1,20 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { extractApiErrorDetail } from '@/lib/apiError'
+
 import {
-  createServiceAccountApiKey,
-  revokeServiceAccountApiKey,
-  rotateServiceAccountApiKey,
-  createClientCredential,
-  revokeClientCredential,
-  rotateClientCredential,
   addServiceAccountToOrg,
-  updateServiceAccountOrgRole,
+  createClientCredential,
+  createServiceAccountApiKey,
   removeServiceAccountFromOrg,
+  revokeClientCredential,
+  revokeServiceAccountApiKey,
+  rotateClientCredential,
+  rotateServiceAccountApiKey,
+  updateServiceAccountOrgRole,
 } from '@/api/endpoints'
+import { extractApiErrorDetail } from '@/lib/apiError'
 import { buildReplacePatch } from '@/lib/json-patch'
-import type { ServiceAccount, ClientCredentialCreate } from '@/types'
+import type { ClientCredentialCreate, ServiceAccount } from '@/types'
 
 export function useServiceAccountMutations(account: ServiceAccount) {
   const queryClient = useQueryClient()
@@ -21,16 +22,16 @@ export function useServiceAccountMutations(account: ServiceAccount) {
   const addOrgMutation = useMutation({
     mutationFn: (data: { organization_slug: string; role_slug: string }) =>
       addServiceAccountToOrg(account.slug, data),
+    onError: (error: unknown) => {
+      toast.error(
+        `Failed to add to organization: ${extractApiErrorDetail(error)}`,
+      )
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['serviceAccounts'] })
       queryClient.invalidateQueries({
         queryKey: ['serviceAccount', account.slug],
       })
-    },
-    onError: (error: unknown) => {
-      toast.error(
-        `Failed to add to organization: ${extractApiErrorDetail(error)}`,
-      )
     },
   })
 
@@ -47,126 +48,126 @@ export function useServiceAccountMutations(account: ServiceAccount) {
         orgSlug,
         buildReplacePatch({ role_slug: roleSlug }),
       ),
+    onError: (error: unknown) => {
+      toast.error(`Failed to update role: ${extractApiErrorDetail(error)}`)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['serviceAccounts'] })
       queryClient.invalidateQueries({
         queryKey: ['serviceAccount', account.slug],
       })
-    },
-    onError: (error: unknown) => {
-      toast.error(`Failed to update role: ${extractApiErrorDetail(error)}`)
     },
   })
 
   const removeOrgMutation = useMutation({
     mutationFn: (orgSlug: string) =>
       removeServiceAccountFromOrg(account.slug, orgSlug),
+    onError: (error: unknown) => {
+      toast.error(
+        `Failed to remove from organization: ${extractApiErrorDetail(error)}`,
+      )
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['serviceAccounts'] })
       queryClient.invalidateQueries({
         queryKey: ['serviceAccount', account.slug],
       })
     },
-    onError: (error: unknown) => {
-      toast.error(
-        `Failed to remove from organization: ${extractApiErrorDetail(error)}`,
-      )
-    },
   })
 
   const createApiKeyMutation = useMutation({
     mutationFn: (name: string) =>
       createServiceAccountApiKey(account.slug, { name }),
+    onError: (error: unknown) => {
+      toast.error(`Failed to create API key: ${extractApiErrorDetail(error)}`)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ['serviceAccountApiKeys', account.slug],
       })
-    },
-    onError: (error: unknown) => {
-      toast.error(`Failed to create API key: ${extractApiErrorDetail(error)}`)
     },
   })
 
   const revokeApiKeyMutation = useMutation({
     mutationFn: (keyId: string) =>
       revokeServiceAccountApiKey(account.slug, keyId),
+    onError: (error: unknown) => {
+      toast.error(`Failed to revoke API key: ${extractApiErrorDetail(error)}`)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ['serviceAccountApiKeys', account.slug],
       })
-    },
-    onError: (error: unknown) => {
-      toast.error(`Failed to revoke API key: ${extractApiErrorDetail(error)}`)
     },
   })
 
   const rotateApiKeyMutation = useMutation({
     mutationFn: (keyId: string) =>
       rotateServiceAccountApiKey(account.slug, keyId),
+    onError: (error: unknown) => {
+      toast.error(`Failed to rotate API key: ${extractApiErrorDetail(error)}`)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ['serviceAccountApiKeys', account.slug],
       })
-    },
-    onError: (error: unknown) => {
-      toast.error(`Failed to rotate API key: ${extractApiErrorDetail(error)}`)
     },
   })
 
   const createCredentialMutation = useMutation({
     mutationFn: (data: ClientCredentialCreate) =>
       createClientCredential(account.slug, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['clientCredentials', account.slug],
-      })
-    },
     onError: (error: unknown) => {
       toast.error(
         `Failed to create credential: ${extractApiErrorDetail(error)}`,
       )
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['clientCredentials', account.slug],
+      })
     },
   })
 
   const revokeCredentialMutation = useMutation({
     mutationFn: (clientId: string) =>
       revokeClientCredential(account.slug, clientId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['clientCredentials', account.slug],
-      })
-    },
     onError: (error: unknown) => {
       toast.error(
         `Failed to revoke credential: ${extractApiErrorDetail(error)}`,
       )
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['clientCredentials', account.slug],
+      })
     },
   })
 
   const rotateCredentialMutation = useMutation({
     mutationFn: (clientId: string) =>
       rotateClientCredential(account.slug, clientId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['clientCredentials', account.slug],
-      })
-    },
     onError: (error: unknown) => {
       toast.error(
         `Failed to rotate credential: ${extractApiErrorDetail(error)}`,
       )
     },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['clientCredentials', account.slug],
+      })
+    },
   })
 
   return {
     addOrgMutation,
-    updateOrgRoleMutation,
-    removeOrgMutation,
     createApiKeyMutation,
-    revokeApiKeyMutation,
-    rotateApiKeyMutation,
     createCredentialMutation,
+    removeOrgMutation,
+    revokeApiKeyMutation,
     revokeCredentialMutation,
+    rotateApiKeyMutation,
     rotateCredentialMutation,
+    updateOrgRoleMutation,
   }
 }

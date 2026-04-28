@@ -1,21 +1,16 @@
 import { useCallback, useState } from 'react'
+
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+
 import { patchProject } from '@/api/endpoints'
-import { applyJsonPatch } from '@/lib/json-patch'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { applyJsonPatch } from '@/lib/json-patch'
 import type { PatchOperation, Project } from '@/types'
 
 export interface UseProjectPatchResult {
   patch: (path: string, value: unknown) => Promise<void>
-  pendingPath: string | null
-}
-
-function buildOp(path: string, value: unknown): PatchOperation {
-  if (value === null || value === undefined || value === '') {
-    return { op: 'remove', path }
-  }
-  return { op: 'replace', path, value }
+  pendingPath: null | string
 }
 
 export function useProjectPatch(
@@ -23,7 +18,7 @@ export function useProjectPatch(
   projectId: string,
 ): UseProjectPatchResult {
   const qc = useQueryClient()
-  const [pendingPath, setPendingPath] = useState<string | null>(null)
+  const [pendingPath, setPendingPath] = useState<null | string>(null)
 
   const patch = useCallback(
     async (path: string, value: unknown) => {
@@ -71,4 +66,11 @@ export function useProjectPatch(
   )
 
   return { patch, pendingPath }
+}
+
+function buildOp(path: string, value: unknown): PatchOperation {
+  if (value === null || value === undefined || value === '') {
+    return { op: 'remove', path }
+  }
+  return { op: 'replace', path, value }
 }

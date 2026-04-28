@@ -1,3 +1,4 @@
+import { Button } from './button'
 import {
   Dialog,
   DialogContent,
@@ -6,31 +7,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from './dialog'
-import { Button } from './button'
 
 interface ConfirmDialogProps {
+  confirmLabel?: string
+  description?: string
+  onCancel: () => void
+  onConfirm: () => void
   open: boolean
   title: string
-  description?: string
-  confirmLabel?: string
-  onConfirm: () => void
-  onCancel: () => void
 }
 
 export function ConfirmDialog({
+  confirmLabel = 'Delete',
+  description = 'This action cannot be undone.',
+  onCancel,
+  onConfirm,
   open,
   title,
-  description = 'This action cannot be undone.',
-  confirmLabel = 'Delete',
-  onConfirm,
-  onCancel,
 }: ConfirmDialogProps) {
   return (
     <Dialog
-      open={open}
       onOpenChange={(open) => {
         if (!open) onCancel()
       }}
+      open={open}
     >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -38,10 +38,10 @@ export function ConfirmDialog({
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" onClick={onCancel}>
+          <Button onClick={onCancel} variant="outline">
             Cancel
           </Button>
-          <Button variant="destructive" onClick={onConfirm}>
+          <Button onClick={onConfirm} variant="destructive">
             {confirmLabel}
           </Button>
         </DialogFooter>

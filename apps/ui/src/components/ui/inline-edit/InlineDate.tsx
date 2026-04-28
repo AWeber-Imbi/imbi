@@ -1,63 +1,60 @@
 import { useState } from 'react'
+
 import { DayPicker } from 'react-day-picker'
 import 'react-day-picker/dist/style.css'
+import { toast } from 'sonner'
+
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+
 import { InlineDisplay } from './InlineDisplay'
-import { toast } from 'sonner'
 
 export interface InlineDateProps {
-  value: string | null
-  onCommit: (next: string | null) => Promise<void> | void
-  readOnly?: boolean
-  pending?: boolean
-  placeholder?: string
   /** 'date' → YYYY-MM-DD, 'date-time' → ISO 8601 string */
   mode?: 'date' | 'date-time'
+  onCommit: (next: null | string) => Promise<void> | void
+  pending?: boolean
+  placeholder?: string
+  readOnly?: boolean
   /** Override the display-mode rendering. */
   renderDisplay?: React.ReactNode
-}
-
-function toIso(d: Date, mode: 'date' | 'date-time'): string {
-  if (mode === 'date') return d.toISOString().slice(0, 10)
-  return d.toISOString()
+  value: null | string
 }
 
 export function InlineDate({
-  value,
+  mode = 'date',
   onCommit,
-  readOnly = false,
   pending = false,
   placeholder,
-  mode = 'date',
+  readOnly = false,
   renderDisplay,
+  value,
 }: InlineDateProps) {
   const [open, setOpen] = useState(false)
   const current = value ? new Date(value) : undefined
   const hasValid = !!current && !Number.isNaN(current.getTime())
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover onOpenChange={setOpen} open={open}>
       <PopoverTrigger asChild>
         <span>
           <InlineDisplay
             hasValue={hasValid}
-            readOnly={readOnly}
-            pending={pending}
             onClick={() => setOpen(true)}
+            pending={pending}
             placeholder={placeholder}
+            readOnly={readOnly}
           >
             {renderDisplay ?? (hasValid && current!.toLocaleDateString())}
           </InlineDisplay>
         </span>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-2" align="start">
+      <PopoverContent align="start" className="w-auto p-2">
         <DayPicker
           mode="single"
-          selected={hasValid ? current : undefined}
           onSelect={async (d) => {
             setOpen(false)
             if (!d) return
@@ -67,8 +64,14 @@ export function InlineDate({
               toast.error(e instanceof Error ? e.message : 'Save failed')
             }
           }}
+          selected={hasValid ? current : undefined}
         />
       </PopoverContent>
     </Popover>
   )
+}
+
+function toIso(d: Date, mode: 'date' | 'date-time'): string {
+  if (mode === 'date') return d.toISOString().slice(0, 10)
+  return d.toISOString()
 }

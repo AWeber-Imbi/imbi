@@ -1,28 +1,29 @@
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Edit2 } from 'lucide-react'
+
+import { getProjectTypeSchema } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DynamicDetailFields } from '@/components/ui/dynamic-fields'
-import { getProjectTypeSchema } from '@/api/endpoints'
 import { PROJECT_TYPE_BASE_FIELDS_SET } from '@/lib/constants'
 import { useIcon } from '@/lib/icons'
 import { extractDynamicFields } from '@/lib/utils'
 import type { ProjectType } from '@/types'
 
 interface ProjectTypeDetailProps {
-  projectType: ProjectType
-  onEdit: () => void
   onBack: () => void
+  onEdit: () => void
+  projectType: ProjectType
 }
 
 export function ProjectTypeDetail({
-  projectType,
-  onEdit,
   onBack,
+  onEdit,
+  projectType,
 }: ProjectTypeDetailProps) {
   const { data: ptSchema } = useQuery({
-    queryKey: ['projectTypeSchema'],
     queryFn: ({ signal }) => getProjectTypeSchema(signal),
+    queryKey: ['projectTypeSchema'],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -32,7 +33,7 @@ export function ProjectTypeDetail({
     <div className="space-y-6">
       {/* Back button */}
       <div>
-        <Button variant="outline" onClick={onBack}>
+        <Button onClick={onBack} variant="outline">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
@@ -46,9 +47,9 @@ export function ProjectTypeDetail({
               {projectType.icon &&
                 (projectType.icon.startsWith('/uploads/') ? (
                   <img
-                    src={projectType.icon}
                     alt=""
                     className="h-8 w-8 rounded object-cover"
+                    src={projectType.icon}
                   />
                 ) : HeaderIcon ? (
                   <HeaderIcon className="h-8 w-8" />
@@ -62,8 +63,8 @@ export function ProjectTypeDetail({
             )}
           </div>
           <Button
-            onClick={onEdit}
             className="bg-action text-action-foreground hover:bg-action-hover"
+            onClick={onEdit}
           >
             <Edit2 className="mr-2 h-4 w-4" />
             Edit Project Type
@@ -88,11 +89,11 @@ export function ProjectTypeDetail({
             </div>
             {ptSchema && (
               <DynamicDetailFields
-                schema={ptSchema}
                 data={extractDynamicFields(
                   projectType,
                   PROJECT_TYPE_BASE_FIELDS_SET,
                 )}
+                schema={ptSchema}
               />
             )}
           </div>

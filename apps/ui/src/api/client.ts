@@ -4,10 +4,10 @@ import type { TokenResponse } from '@/types'
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
 
 export class ApiError<T = unknown> extends Error {
+  readonly data: T | undefined
+  readonly response: { data: T | undefined; status: number; statusText: string }
   readonly status: number
   readonly statusText: string
-  readonly data: T | undefined
-  readonly response: { status: number; statusText: string; data: T | undefined }
 
   constructor(status: number, statusText: string, data?: T) {
     super(`HTTP ${status}: ${statusText}`)
@@ -16,11 +16,11 @@ export class ApiError<T = unknown> extends Error {
     this.statusText = statusText
     this.data = data
     // Provide a response shape compatible with existing AxiosError usage
-    this.response = { status, statusText, data }
+    this.response = { data, status, statusText }
   }
 }
 
-let refreshPromise: Promise<string> | null = null
+let refreshPromise: null | Promise<string> = null
 
 async function refreshAccessToken(): Promise<string> {
   if (refreshPromise) {
@@ -37,10 +37,10 @@ async function refreshAccessToken(): Promise<string> {
       }
 
       const response = await fetch(`${API_BASE_URL}/auth/token/refresh`, {
-        method: 'POST',
+        body: JSON.stringify({ refresh_token: currentRefreshToken }),
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: currentRefreshToken }),
+        method: 'POST',
       })
 
       if (!response.ok) {
@@ -71,51 +71,146 @@ const SKIP_AUTH_PATHS = [
   '/status',
 ]
 
-function shouldSkipAuth(url: string): boolean {
-  return SKIP_AUTH_PATHS.some((path) => url.includes(path))
-}
-
-function redirectToLogin(): void {
-  const currentPath = window.location.pathname + window.location.search
-  if (currentPath !== '/login') {
-    sessionStorage.setItem('imbi_redirect_after_login', currentPath)
-    window.location.href = '/login'
+class ApiClient {
+  async delete<T>(url: string, signal?: AbortSignal): Promise<T> {
+    return this.request<T>('DELETE', url, { signal })
   }
-}
 
-function buildUrl(url: string, params?: Record<string, unknown>): string {
-  let fullUrl = `${API_BASE_URL}${url}`
-  if (params) {
-    const searchParams = new URLSearchParams()
-    for (const [key, value] of Object.entries(params)) {
-      if (value !== undefined && value !== null) {
-        searchParams.set(key, String(value))
+  async get<T>(
+    url: string,
+    params?: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    return this.request<T>('GET', url, { params, signal })
+  }
+
+  async getWithHeaders<T>(
+    url: string,
+    params?: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<{ data: T; headers: Headers }> {
+    const fullUrl = buildUrl(url, params)
+
+    const response = await withAuthRetry(
+      url,
+      (token) => {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        }
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`
+        }
+
+        return fetch(fullUrl, {
+          credentials: 'include',
+          headers,
+          method: 'GET',
+          signal,
+        })
+      },
+      signal,
+    )
+
+    if (!response.ok) {
+      let errorData: unknown
+      try {
+        errorData = await response.json()
+      } catch {
+        /* no body */
       }
+      throw new ApiError(response.status, response.statusText, errorData)
     }
-    const qs = searchParams.toString()
-    if (qs) fullUrl += `?${qs}`
-  }
-  return fullUrl
-}
 
-async function resolveAuthToken(url: string): Promise<string | null> {
-  if (shouldSkipAuth(url)) return null
-  const authStore = useAuthStore.getState()
-  if (authStore.isTokenExpired()) {
-    try {
-      return await refreshAccessToken()
-    } catch (error) {
-      // Proactive refresh failed; tokens already cleared by
-      // refreshAccessToken. Redirect to login and surface the failure
-      // rather than sending an unauthenticated request and triggering a
-      // second refresh via the 401 handler.
-      redirectToLogin()
-      throw error instanceof ApiError
-        ? error
-        : new ApiError(401, 'Token refresh failed')
-    }
+    const data = (await response.json()) as T
+    return { data, headers: response.headers }
   }
-  return authStore.accessToken
+
+  async patch<T>(
+    url: string,
+    data?: unknown,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    return this.request<T>('PATCH', url, { body: data, signal })
+  }
+
+  async post<T>(url: string, data?: unknown, signal?: AbortSignal): Promise<T> {
+    return this.request<T>('POST', url, { body: data, signal })
+  }
+
+  async postFormData<T>(
+    url: string,
+    formData: FormData,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const response = await withAuthRetry(
+      url,
+      (token) => {
+        const headers: Record<string, string> = {}
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`
+        }
+
+        // Don't set Content-Type — browser sets it with boundary for FormData
+        return fetch(`${API_BASE_URL}${url}`, {
+          body: formData,
+          credentials: 'include',
+          headers,
+          method: 'POST',
+          signal,
+        })
+      },
+      signal,
+    )
+
+    return parseResponse<T>(response)
+  }
+
+  async put<T>(url: string, data?: unknown, signal?: AbortSignal): Promise<T> {
+    return this.request<T>('PUT', url, { body: data, signal })
+  }
+
+  private async request<T>(
+    method: string,
+    url: string,
+    options: {
+      body?: unknown
+      headers?: Record<string, string>
+      params?: Record<string, unknown>
+      signal?: AbortSignal
+    } = {},
+  ): Promise<T> {
+    const { body, headers: extraHeaders, params, signal } = options
+    const fullUrl = buildUrl(url, params)
+
+    const response = await withAuthRetry(
+      url,
+      (token) => {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          ...extraHeaders,
+        }
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`
+        }
+
+        const init: RequestInit = {
+          credentials: 'include',
+          headers,
+          method,
+          signal,
+        }
+
+        if (body !== undefined) {
+          init.body = JSON.stringify(body)
+        }
+
+        return fetch(fullUrl, init)
+      },
+      signal,
+    )
+
+    return parseResponse<T>(response)
+  }
 }
 
 /**
@@ -128,7 +223,7 @@ async function resolveAuthToken(url: string): Promise<string | null> {
  */
 export async function withAuthRetry(
   url: string,
-  fetcher: (token: string | null) => Promise<Response>,
+  fetcher: (token: null | string) => Promise<Response>,
   signal?: AbortSignal,
 ): Promise<Response> {
   const token = await resolveAuthToken(url)
@@ -152,6 +247,21 @@ export async function withAuthRetry(
   }
 }
 
+function buildUrl(url: string, params?: Record<string, unknown>): string {
+  let fullUrl = `${API_BASE_URL}${url}`
+  if (params) {
+    const searchParams = new URLSearchParams()
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null) {
+        searchParams.set(key, String(value))
+      }
+    }
+    const qs = searchParams.toString()
+    if (qs) fullUrl += `?${qs}`
+  }
+  return fullUrl
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let errorData: unknown
@@ -167,146 +277,36 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return (await response.json()) as T
 }
 
-class ApiClient {
-  private async request<T>(
-    method: string,
-    url: string,
-    options: {
-      params?: Record<string, unknown>
-      body?: unknown
-      headers?: Record<string, string>
-      signal?: AbortSignal
-    } = {},
-  ): Promise<T> {
-    const { params, body, headers: extraHeaders, signal } = options
-    const fullUrl = buildUrl(url, params)
-
-    const response = await withAuthRetry(
-      url,
-      (token) => {
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-          ...extraHeaders,
-        }
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`
-        }
-
-        const init: RequestInit = {
-          method,
-          credentials: 'include',
-          headers,
-          signal,
-        }
-
-        if (body !== undefined) {
-          init.body = JSON.stringify(body)
-        }
-
-        return fetch(fullUrl, init)
-      },
-      signal,
-    )
-
-    return parseResponse<T>(response)
+function redirectToLogin(): void {
+  const currentPath = window.location.pathname + window.location.search
+  if (currentPath !== '/login') {
+    sessionStorage.setItem('imbi_redirect_after_login', currentPath)
+    window.location.href = '/login'
   }
+}
 
-  async get<T>(
-    url: string,
-    params?: Record<string, unknown>,
-    signal?: AbortSignal,
-  ): Promise<T> {
-    return this.request<T>('GET', url, { params, signal })
-  }
-
-  async post<T>(url: string, data?: unknown, signal?: AbortSignal): Promise<T> {
-    return this.request<T>('POST', url, { body: data, signal })
-  }
-
-  async put<T>(url: string, data?: unknown, signal?: AbortSignal): Promise<T> {
-    return this.request<T>('PUT', url, { body: data, signal })
-  }
-
-  async patch<T>(
-    url: string,
-    data?: unknown,
-    signal?: AbortSignal,
-  ): Promise<T> {
-    return this.request<T>('PATCH', url, { body: data, signal })
-  }
-
-  async delete<T>(url: string, signal?: AbortSignal): Promise<T> {
-    return this.request<T>('DELETE', url, { signal })
-  }
-
-  async postFormData<T>(
-    url: string,
-    formData: FormData,
-    signal?: AbortSignal,
-  ): Promise<T> {
-    const response = await withAuthRetry(
-      url,
-      (token) => {
-        const headers: Record<string, string> = {}
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`
-        }
-
-        // Don't set Content-Type — browser sets it with boundary for FormData
-        return fetch(`${API_BASE_URL}${url}`, {
-          method: 'POST',
-          credentials: 'include',
-          headers,
-          body: formData,
-          signal,
-        })
-      },
-      signal,
-    )
-
-    return parseResponse<T>(response)
-  }
-
-  async getWithHeaders<T>(
-    url: string,
-    params?: Record<string, unknown>,
-    signal?: AbortSignal,
-  ): Promise<{ data: T; headers: Headers }> {
-    const fullUrl = buildUrl(url, params)
-
-    const response = await withAuthRetry(
-      url,
-      (token) => {
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-        }
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`
-        }
-
-        return fetch(fullUrl, {
-          method: 'GET',
-          credentials: 'include',
-          headers,
-          signal,
-        })
-      },
-      signal,
-    )
-
-    if (!response.ok) {
-      let errorData: unknown
-      try {
-        errorData = await response.json()
-      } catch {
-        /* no body */
-      }
-      throw new ApiError(response.status, response.statusText, errorData)
+async function resolveAuthToken(url: string): Promise<null | string> {
+  if (shouldSkipAuth(url)) return null
+  const authStore = useAuthStore.getState()
+  if (authStore.isTokenExpired()) {
+    try {
+      return await refreshAccessToken()
+    } catch (error) {
+      // Proactive refresh failed; tokens already cleared by
+      // refreshAccessToken. Redirect to login and surface the failure
+      // rather than sending an unauthenticated request and triggering a
+      // second refresh via the 401 handler.
+      redirectToLogin()
+      throw error instanceof ApiError
+        ? error
+        : new ApiError(401, 'Token refresh failed')
     }
-
-    const data = (await response.json()) as T
-    return { data, headers: response.headers }
   }
+  return authStore.accessToken
+}
+
+function shouldSkipAuth(url: string): boolean {
+  return SKIP_AUTH_PATHS.some((path) => url.includes(path))
 }
 
 export const apiClient = new ApiClient()

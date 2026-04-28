@@ -10,95 +10,47 @@
  * Age values use duration suffixes: s (seconds), m (minutes), h (hours), d (days), w (weeks)
  */
 
-type ThresholdMap = Record<string, string>
-
 interface ThresholdEntry {
-  op: '>=' | '>' | '<=' | '<' | '=='
-  threshold: number
+  op: '<' | '<=' | '==' | '>' | '>='
   result: string
+  threshold: number
 }
+
+type ThresholdMap = Record<string, string>
 
 const OP_REGEX = /^(>=|>|<=|<|==)\s*(.+)$/
 
 const DURATION_UNITS: Record<string, number> = {
-  s: 1,
-  m: 60,
-  h: 3600,
   d: 86400,
+  h: 3600,
+  m: 60,
+  s: 1,
   w: 604800,
 }
 
 const DURATION_REGEX = /^(\d+(?:\.\d+)?)\s*([smhdw])$/
 
-function parseDuration(value: string): number | null {
-  const match = value.match(DURATION_REGEX)
-  if (!match) return null
-  const amount = parseFloat(match[1])
-  const unit = DURATION_UNITS[match[2]]
-  return amount * unit
-}
-
-function parseThresholds(
-  map: ThresholdMap,
-  parseFn: (v: string) => number | null,
-): ThresholdEntry[] {
-  const entries: ThresholdEntry[] = []
-  for (const [key, result] of Object.entries(map)) {
-    const match = key.match(OP_REGEX)
-    if (!match) continue
-    const op = match[1] as ThresholdEntry['op']
-    const threshold = parseFn(match[2].trim())
-    if (threshold === null) continue
-    entries.push({ op, threshold, result })
-  }
-  return entries
-}
-
-function evaluateThreshold(
-  entries: ThresholdEntry[],
-  value: number,
-): string | undefined {
-  for (const { op, threshold, result } of entries) {
-    let matches = false
-    switch (op) {
-      case '>=':
-        matches = value >= threshold
-        break
-      case '>':
-        matches = value > threshold
-        break
-      case '<=':
-        matches = value <= threshold
-        break
-      case '<':
-        matches = value < threshold
-        break
-      case '==':
-        matches = value === threshold
-        break
-    }
-    if (matches) return result
-  }
-  return undefined
+export interface XUiMaps {
+  colorAge?: ThresholdMap
+  colorMap?: ThresholdMap
+  colorRange?: ThresholdMap
+  iconAge?: ThresholdMap
+  iconMap?: ThresholdMap
+  iconRange?: ThresholdMap
 }
 
 /**
- * Evaluate a color-range or icon-range map against a numeric value.
- * Keys are operator-prefixed numbers: ">=90", "<70", "==0"
- * Evaluated in document order; first match wins.
+ * Returns true if any x-ui display maps are configured for this field.
  */
-export function resolveRange(
-  map: ThresholdMap,
-  rawValue: unknown,
-): string | undefined {
-  const num =
-    typeof rawValue === 'number' ? rawValue : parseFloat(String(rawValue))
-  if (isNaN(num)) return undefined
-  const entries = parseThresholds(map, (v) => {
-    const n = parseFloat(v)
-    return isNaN(n) ? null : n
-  })
-  return evaluateThreshold(entries, num)
+export function hasAnyUiMap(maps: XUiMaps): boolean {
+  return !!(
+    maps.colorMap ||
+    maps.iconMap ||
+    maps.colorRange ||
+    maps.iconRange ||
+    maps.colorAge ||
+    maps.iconAge
+  )
 }
 
 /**
@@ -117,15 +69,6 @@ export function resolveAge(
   const elapsedSeconds = (Date.now() - date.getTime()) / 1000
   const entries = parseThresholds(map, parseDuration)
   return evaluateThreshold(entries, elapsedSeconds)
-}
-
-export interface XUiMaps {
-  colorMap?: ThresholdMap
-  iconMap?: ThresholdMap
-  colorRange?: ThresholdMap
-  iconRange?: ThresholdMap
-  colorAge?: ThresholdMap
-  iconAge?: ThresholdMap
 }
 
 /**
@@ -177,17 +120,22 @@ export function resolveIcon(
 }
 
 /**
- * Returns true if any x-ui display maps are configured for this field.
+ * Evaluate a color-range or icon-range map against a numeric value.
+ * Keys are operator-prefixed numbers: ">=90", "<70", "==0"
+ * Evaluated in document order; first match wins.
  */
-export function hasAnyUiMap(maps: XUiMaps): boolean {
-  return !!(
-    maps.colorMap ||
-    maps.iconMap ||
-    maps.colorRange ||
-    maps.iconRange ||
-    maps.colorAge ||
-    maps.iconAge
-  )
+export function resolveRange(
+  map: ThresholdMap,
+  rawValue: unknown,
+): string | undefined {
+  const num =
+    typeof rawValue === 'number' ? rawValue : parseFloat(String(rawValue))
+  if (isNaN(num)) return undefined
+  const entries = parseThresholds(map, (v) => {
+    const n = parseFloat(v)
+    return isNaN(n) ? null : n
+  })
+  return evaluateThreshold(entries, num)
 }
 
 /** Case-insensitive lookup in a string-keyed record. */
@@ -201,4 +149,56 @@ function caseInsensitiveLookup(
     if (k.toLowerCase() === lower) return map[k]
   }
   return undefined
+}
+
+function evaluateThreshold(
+  entries: ThresholdEntry[],
+  value: number,
+): string | undefined {
+  for (const { op, result, threshold } of entries) {
+    let matches = false
+    switch (op) {
+      case '<':
+        matches = value < threshold
+        break
+      case '<=':
+        matches = value <= threshold
+        break
+      case '==':
+        matches = value === threshold
+        break
+      case '>':
+        matches = value > threshold
+        break
+      case '>=':
+        matches = value >= threshold
+        break
+    }
+    if (matches) return result
+  }
+  return undefined
+}
+
+function parseDuration(value: string): null | number {
+  const match = value.match(DURATION_REGEX)
+  if (!match) return null
+  const amount = parseFloat(match[1])
+  const unit = DURATION_UNITS[match[2]]
+  return amount * unit
+}
+
+function parseThresholds(
+  map: ThresholdMap,
+  parseFn: (v: string) => null | number,
+): ThresholdEntry[] {
+  const entries: ThresholdEntry[] = []
+  for (const [key, result] of Object.entries(map)) {
+    const match = key.match(OP_REGEX)
+    if (!match) continue
+    const op = match[1] as ThresholdEntry['op']
+    const threshold = parseFn(match[2].trim())
+    if (threshold === null) continue
+    entries.push({ op, result, threshold })
+  }
+  return entries
 }

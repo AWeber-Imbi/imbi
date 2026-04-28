@@ -1,25 +1,27 @@
 import { useEffect, useState } from 'react'
+
 import { useQuery } from '@tanstack/react-query'
 import type { UseMutationResult } from '@tanstack/react-query'
+import { AlertCircle, Plus, RotateCw, Shield, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { Plus, Trash2, AlertCircle, RotateCw, Shield } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+
+import { listClientCredentials } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { SecretBanner } from '@/components/ui/secret-banner'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { SecretBanner } from '@/components/ui/secret-banner'
-import { listClientCredentials } from '@/api/endpoints'
 import type {
-  ServiceAccount,
   ClientCredential,
   ClientCredentialCreate,
   ClientCredentialCreated,
+  ServiceAccount,
 } from '@/types'
 
 interface ClientCredentialsSectionProps {
@@ -29,28 +31,28 @@ interface ClientCredentialsSectionProps {
     unknown,
     ClientCredentialCreate
   >
+  newlyCreatedCredential: ClientCredentialCreated | null
+  onConfirmRevoke: (clientId: string) => void
+  onConfirmRotate: (clientId: string) => void
+  onNewlyCreatedCredentialChange: (
+    credential: ClientCredentialCreated | null,
+  ) => void
   revokeCredentialMutation: UseMutationResult<unknown, unknown, string>
   rotateCredentialMutation: UseMutationResult<
     ClientCredentialCreated,
     unknown,
     string
   >
-  newlyCreatedCredential: ClientCredentialCreated | null
-  onNewlyCreatedCredentialChange: (
-    credential: ClientCredentialCreated | null,
-  ) => void
-  onConfirmRevoke: (clientId: string) => void
-  onConfirmRotate: (clientId: string) => void
 }
 
-const formatDate = (dateString?: string | null) => {
+const formatDate = (dateString?: null | string) => {
   if (!dateString) return 'Never'
   return new Date(dateString).toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'long',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    month: 'long',
+    year: 'numeric',
   })
 }
 
@@ -62,12 +64,12 @@ const truncateClientId = (clientId: string) => {
 export function ClientCredentialsSection({
   account,
   createCredentialMutation,
-  revokeCredentialMutation,
-  rotateCredentialMutation,
   newlyCreatedCredential,
-  onNewlyCreatedCredentialChange,
   onConfirmRevoke,
   onConfirmRotate,
+  onNewlyCreatedCredentialChange,
+  revokeCredentialMutation,
+  rotateCredentialMutation,
 }: ClientCredentialsSectionProps) {
   const [showCreateCredential, setShowCreateCredential] = useState(false)
   const [credentialName, setCredentialName] = useState('')
@@ -85,11 +87,11 @@ export function ClientCredentialsSection({
 
   const {
     data: credentials = [],
-    isLoading: credentialsLoading,
     error: credentialsError,
+    isLoading: credentialsLoading,
   } = useQuery({
-    queryKey: ['clientCredentials', account.slug],
     queryFn: ({ signal }) => listClientCredentials(account.slug, signal),
+    queryKey: ['clientCredentials', account.slug],
   })
 
   const resetCredentialForm = () => {
@@ -116,10 +118,10 @@ export function ClientCredentialsSection({
     }
 
     const data: ClientCredentialCreate = {
-      name: credentialName.trim(),
       description: credentialDescription.trim() || null,
-      scopes: scopes.length > 0 ? scopes : undefined,
       expires_in_days: expiresInDays,
+      name: credentialName.trim(),
+      scopes: scopes.length > 0 ? scopes : undefined,
     }
     createCredentialMutation.mutate(data, {
       onSuccess: (created) => {
@@ -138,10 +140,10 @@ export function ClientCredentialsSection({
           <CardTitle>Client Credentials</CardTitle>
         </div>
         <Button
-          onClick={() => setShowCreateCredential(!showCreateCredential)}
-          variant="outline"
-          size="sm"
           className=""
+          onClick={() => setShowCreateCredential(!showCreateCredential)}
+          size="sm"
+          variant="outline"
         >
           <Plus className="mr-2 h-4 w-4" />
           Create Credential
@@ -157,10 +159,10 @@ export function ClientCredentialsSection({
                   Name <span className="text-red-500">*</span>
                 </label>
                 <Input
-                  value={credentialName}
+                  className=""
                   onChange={(e) => setCredentialName(e.target.value)}
                   placeholder="e.g., production-api"
-                  className=""
+                  value={credentialName}
                 />
               </div>
               <div>
@@ -168,10 +170,10 @@ export function ClientCredentialsSection({
                   Description
                 </label>
                 <Input
-                  value={credentialDescription}
+                  className=""
                   onChange={(e) => setCredentialDescription(e.target.value)}
                   placeholder="What is this credential used for?"
-                  className=""
+                  value={credentialDescription}
                 />
               </div>
               <div>
@@ -182,10 +184,10 @@ export function ClientCredentialsSection({
                   </span>
                 </label>
                 <Input
-                  value={credentialScopes}
+                  className=""
                   onChange={(e) => setCredentialScopes(e.target.value)}
                   placeholder="e.g., read:projects, write:projects"
-                  className=""
+                  value={credentialScopes}
                 />
               </div>
               <div>
@@ -196,33 +198,33 @@ export function ClientCredentialsSection({
                   </span>
                 </label>
                 <Input
-                  type="number"
+                  className=""
                   min="1"
-                  value={credentialExpiresDays}
                   onChange={(e) => setCredentialExpiresDays(e.target.value)}
                   placeholder="e.g., 90"
-                  className=""
+                  type="number"
+                  value={credentialExpiresDays}
                 />
               </div>
               <div className="flex items-center gap-2 pt-2">
                 <Button
-                  onClick={handleCreateCredential}
+                  className="bg-action text-action-foreground hover:bg-action-hover"
                   disabled={
                     !credentialName.trim() || createCredentialMutation.isPending
                   }
-                  className="bg-action text-action-foreground hover:bg-action-hover"
+                  onClick={handleCreateCredential}
                 >
                   {createCredentialMutation.isPending
                     ? 'Creating...'
                     : 'Create'}
                 </Button>
                 <Button
-                  variant="outline"
+                  className=""
                   onClick={() => {
                     setShowCreateCredential(false)
                     resetCredentialForm()
                   }}
-                  className=""
+                  variant="outline"
                 >
                   Cancel
                 </Button>
@@ -234,21 +236,21 @@ export function ClientCredentialsSection({
         {/* Newly Created Credential Banner */}
         {newlyCreatedCredential && (
           <SecretBanner
-            title="Client Credential Created"
             description="Copy the secret now, it will not be shown again!"
+            onDismiss={() => onNewlyCreatedCredentialChange(null)}
             secrets={[
               {
+                copyAriaLabel: 'Copy client ID',
                 label: 'Client ID',
                 value: newlyCreatedCredential.client_id,
-                copyAriaLabel: 'Copy client ID',
               },
               {
+                copyAriaLabel: 'Copy client secret',
                 label: 'Client Secret',
                 value: newlyCreatedCredential.client_secret,
-                copyAriaLabel: 'Copy client secret',
               },
             ]}
-            onDismiss={() => onNewlyCreatedCredentialChange(null)}
+            title="Client Credential Created"
           />
         )}
 
@@ -274,12 +276,12 @@ export function ClientCredentialsSection({
           <div className="space-y-2">
             {credentials.map((cred: ClientCredential) => (
               <div
-                key={cred.client_id}
                 className={`flex items-center justify-between rounded-lg border p-3 ${
                   cred.revoked
                     ? 'border-input bg-secondary opacity-50'
                     : 'border-input bg-secondary'
                 }`}
+                key={cred.client_id}
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
@@ -310,11 +312,11 @@ export function ClientCredentialsSection({
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
-                            type="button"
                             aria-label={`Rotate credential ${cred.name}`}
-                            onClick={() => onConfirmRotate(cred.client_id)}
-                            disabled={rotateCredentialMutation.isPending}
                             className="rounded p-1.5 text-info hover:bg-secondary"
+                            disabled={rotateCredentialMutation.isPending}
+                            onClick={() => onConfirmRotate(cred.client_id)}
+                            type="button"
                           >
                             <RotateCw className="h-4 w-4" />
                           </button>
@@ -328,11 +330,11 @@ export function ClientCredentialsSection({
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
-                            type="button"
                             aria-label={`Revoke credential ${cred.name}`}
-                            onClick={() => onConfirmRevoke(cred.client_id)}
-                            disabled={revokeCredentialMutation.isPending}
                             className="rounded p-1.5 text-danger hover:bg-secondary"
+                            disabled={revokeCredentialMutation.isPending}
+                            onClick={() => onConfirmRevoke(cred.client_id)}
+                            type="button"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>

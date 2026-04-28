@@ -1,15 +1,17 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@/test/utils'
 import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
+
+import { render, screen } from '@/test/utils'
+
 import { OAuthButton } from './OAuthButton'
 
 describe('OAuthButton', () => {
   const mockOnClick = vi.fn()
 
   const defaultProvider = {
+    icon: 'google',
     id: 'google',
     name: 'Google',
-    icon: 'google',
   }
 
   beforeEach(() => {
@@ -17,7 +19,7 @@ describe('OAuthButton', () => {
   })
 
   it('should render button with provider name', () => {
-    render(<OAuthButton provider={defaultProvider} onClick={mockOnClick} />)
+    render(<OAuthButton onClick={mockOnClick} provider={defaultProvider} />)
 
     expect(
       screen.getByRole('button', { name: /continue with google/i }),
@@ -25,7 +27,7 @@ describe('OAuthButton', () => {
   })
 
   it('should render correct icon for Google', () => {
-    render(<OAuthButton provider={defaultProvider} onClick={mockOnClick} />)
+    render(<OAuthButton onClick={mockOnClick} provider={defaultProvider} />)
 
     const button = screen.getByRole('button')
     const icon = button.querySelector('svg')
@@ -33,8 +35,8 @@ describe('OAuthButton', () => {
   })
 
   it('should render correct icon for GitHub', () => {
-    const githubProvider = { id: 'github', name: 'GitHub', icon: 'github' }
-    render(<OAuthButton provider={githubProvider} onClick={mockOnClick} />)
+    const githubProvider = { icon: 'github', id: 'github', name: 'GitHub' }
+    render(<OAuthButton onClick={mockOnClick} provider={githubProvider} />)
 
     expect(
       screen.getByRole('button', { name: /continue with github/i }),
@@ -42,8 +44,8 @@ describe('OAuthButton', () => {
   })
 
   it('should render correct icon for OIDC', () => {
-    const oidcProvider = { id: 'oidc', name: 'OIDC', icon: 'oidc' }
-    render(<OAuthButton provider={oidcProvider} onClick={mockOnClick} />)
+    const oidcProvider = { icon: 'oidc', id: 'oidc', name: 'OIDC' }
+    render(<OAuthButton onClick={mockOnClick} provider={oidcProvider} />)
 
     expect(
       screen.getByRole('button', { name: /continue with oidc/i }),
@@ -52,7 +54,7 @@ describe('OAuthButton', () => {
 
   it('should call onClick when clicked', async () => {
     const user = userEvent.setup()
-    render(<OAuthButton provider={defaultProvider} onClick={mockOnClick} />)
+    render(<OAuthButton onClick={mockOnClick} provider={defaultProvider} />)
 
     const button = screen.getByRole('button')
     await user.click(button)
@@ -63,9 +65,9 @@ describe('OAuthButton', () => {
   it('should be disabled when disabled prop is true', () => {
     render(
       <OAuthButton
-        provider={defaultProvider}
-        onClick={mockOnClick}
         disabled={true}
+        onClick={mockOnClick}
+        provider={defaultProvider}
       />,
     )
 
@@ -77,9 +79,9 @@ describe('OAuthButton', () => {
     const user = userEvent.setup()
     render(
       <OAuthButton
-        provider={defaultProvider}
-        onClick={mockOnClick}
         disabled={true}
+        onClick={mockOnClick}
+        provider={defaultProvider}
       />,
     )
 
@@ -90,8 +92,8 @@ describe('OAuthButton', () => {
   })
 
   it('should use fallback icon for unknown provider', () => {
-    const unknownProvider = { id: 'unknown', name: 'Unknown', icon: 'unknown' }
-    render(<OAuthButton provider={unknownProvider} onClick={mockOnClick} />)
+    const unknownProvider = { icon: 'unknown', id: 'unknown', name: 'Unknown' }
+    render(<OAuthButton onClick={mockOnClick} provider={unknownProvider} />)
 
     const button = screen.getByRole('button')
     const icon = button.querySelector('svg')

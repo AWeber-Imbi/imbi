@@ -8,12 +8,12 @@ afterEach(() => {
 
 // Mock localStorage for Zustand persist middleware
 const localStorageMock = {
-  getItem: vi.fn(() => null),
-  setItem: vi.fn(() => undefined),
-  removeItem: vi.fn(() => undefined),
   clear: vi.fn(() => undefined),
-  length: 0,
+  getItem: vi.fn(() => null),
   key: vi.fn(() => null),
+  length: 0,
+  removeItem: vi.fn(() => undefined),
+  setItem: vi.fn(() => undefined),
 }
 
 Object.defineProperty(globalThis, 'localStorage', {
@@ -21,16 +21,16 @@ Object.defineProperty(globalThis, 'localStorage', {
   writable: true,
 })
 
-class ResizeObserverMock implements ResizeObserver {
-  observe = vi.fn()
-  unobserve = vi.fn()
+class MutationObserverMock implements MutationObserver {
   disconnect = vi.fn()
+  observe = vi.fn()
+  takeRecords = vi.fn(() => [] as MutationRecord[])
 }
 
-class MutationObserverMock implements MutationObserver {
-  observe = vi.fn()
+class ResizeObserverMock implements ResizeObserver {
   disconnect = vi.fn()
-  takeRecords = vi.fn(() => [] as MutationRecord[])
+  observe = vi.fn()
+  unobserve = vi.fn()
 }
 
 globalThis.ResizeObserver = ResizeObserverMock
@@ -40,15 +40,15 @@ globalThis.MutationObserver = MutationObserverMock
 Element.prototype.scrollIntoView = vi.fn()
 
 Object.defineProperty(window, 'matchMedia', {
-  writable: true,
   value: vi.fn().mockImplementation((query) => ({
+    addEventListener: vi.fn(),
+    addListener: vi.fn(),
+    dispatchEvent: vi.fn(),
     matches: false,
     media: query,
     onchange: null,
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn(),
+    removeListener: vi.fn(),
   })),
+  writable: true,
 })

@@ -1,4 +1,5 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
+
 import { apiClient } from '@/api/client'
 import type { ActivityFeedEntry } from '@/types'
 
@@ -7,17 +8,20 @@ interface ActivityFeedResponse {
   nextToken?: string
 }
 
-function parseLinkHeader(headers: Headers): string | undefined {
-  const linkHeader = headers.get('link')
-  if (!linkHeader) return undefined
-
-  // Parse Link header: <url>; rel="next"
-  const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/)
-  if (!nextMatch) return undefined
-
-  // Extract token parameter from URL
-  const url = new URL(nextMatch[1], window.location.origin)
-  return url.searchParams.get('token') || undefined
+export function useInfiniteActivityFeed(orgSlug: string) {
+  return useInfiniteQuery({
+    enabled: Boolean(orgSlug),
+    getNextPageParam: (lastPage) => lastPage.nextToken,
+    initialPageParam: undefined,
+    queryFn: fetchActivityFeed,
+    queryKey: ['activityFeed', 'infinite', orgSlug],
+    select: (data) => ({
+      // Flatten all pages into a single array
+      activities: data.pages.flatMap((page) => page.data),
+      pageParams: data.pageParams,
+      pages: data.pages,
+    }),
+  })
 }
 
 async function fetchActivityFeed({
@@ -60,18 +64,15 @@ async function fetchActivityFeed({
   }
 }
 
-export function useInfiniteActivityFeed(orgSlug: string) {
-  return useInfiniteQuery({
-    queryKey: ['activityFeed', 'infinite', orgSlug],
-    enabled: Boolean(orgSlug),
-    queryFn: fetchActivityFeed,
-    initialPageParam: undefined,
-    getNextPageParam: (lastPage) => lastPage.nextToken,
-    select: (data) => ({
-      pages: data.pages,
-      pageParams: data.pageParams,
-      // Flatten all pages into a single array
-      activities: data.pages.flatMap((page) => page.data),
-    }),
-  })
+function parseLinkHeader(headers: Headers): string | undefined {
+  const linkHeader = headers.get('link')
+  if (!linkHeader) return undefined
+
+  // Parse Link header: <url>; rel="next"
+  const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/)
+  if (!nextMatch) return undefined
+
+  // Extract token parameter from URL
+  const url = new URL(nextMatch[1], window.location.origin)
+  return url.searchParams.get('token') || undefined
 }

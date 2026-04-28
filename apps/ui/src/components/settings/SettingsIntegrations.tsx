@@ -1,43 +1,43 @@
-import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 
 interface Integration {
-  name: string
+  account: null | string
+  connected: boolean
   description: string
   icon: string
-  connected: boolean
-  account: string | null
+  name: string
 }
 
 const integrations: Integration[] = [
   {
-    name: 'GitHub',
+    account: 'github.ghe.com/gavinr',
+    connected: true,
     description: 'Connect your GitHub account to link repositories',
     icon: '⑂',
-    connected: true,
-    account: 'github.ghe.com/gavinr',
+    name: 'GitHub',
   },
   {
-    name: 'Sentry',
+    account: 'sentry.io/aweber-communications',
+    connected: true,
     description: 'Monitor errors and performance',
     icon: '⚠',
-    connected: true,
-    account: 'sentry.io/aweber-communications',
+    name: 'Sentry',
   },
   {
-    name: 'Slack',
+    account: null,
+    connected: false,
     description: 'Get notifications in Slack channels',
     icon: '💬',
-    connected: false,
-    account: null,
+    name: 'Slack',
   },
   {
-    name: 'PagerDuty',
+    account: null,
+    connected: false,
     description: 'Integrate incident management',
     icon: '⚡',
-    connected: false,
-    account: null,
+    name: 'PagerDuty',
   },
 ]
 
@@ -46,8 +46,8 @@ export function SettingsIntegrations() {
     <div className="space-y-4">
       {integrations.map((integration) => (
         <Card
-          key={integration.name}
           className="p-6"
+          key={integration.name}
           style={{ borderWidth: '0.5px' }}
         >
           <div className="flex items-start justify-between">
@@ -62,9 +62,9 @@ export function SettingsIntegrations() {
                   </h3>
                   {integration.connected && (
                     <Badge
-                      variant="outline"
                       className="border-green-200 bg-green-50 text-green-700"
                       style={{ borderWidth: '0.5px' }}
+                      variant="outline"
                     >
                       ✓ Connected
                     </Badge>
@@ -84,18 +84,18 @@ export function SettingsIntegrations() {
               {integration.connected ? (
                 <>
                   <Button
-                    variant="outline"
-                    size="sm"
                     className=""
+                    size="sm"
                     style={{ borderWidth: '0.5px' }}
+                    variant="outline"
                   >
                     Configure
                   </Button>
                   <Button
-                    variant="outline"
-                    size="sm"
                     className="text-red-600 hover:text-red-700"
+                    size="sm"
                     style={{ borderWidth: '0.5px' }}
+                    variant="outline"
                   >
                     Disconnect
                   </Button>

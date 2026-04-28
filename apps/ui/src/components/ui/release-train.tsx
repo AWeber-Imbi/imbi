@@ -1,6 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
-import { ArrowRight } from 'lucide-react'
 import type { CSSProperties } from 'react'
+
+import { ArrowRight } from 'lucide-react'
+
 import { useTheme } from '@/contexts/ThemeContext'
 import { deriveChipColors } from '@/lib/chip-colors'
 import { cn } from '@/lib/utils'
@@ -8,44 +10,58 @@ import { sortEnvironments } from '@/lib/utils'
 import type { Environment } from '@/types'
 
 export interface ReleaseTrainStop {
-  environment: Environment
-  // Short value displayed next to the environment name (e.g. a version or
-  // SHA). Absent means the stop is shown as pending.
-  value?: string | null
   // Optional override — treat the stop as done without a value.
   done?: boolean
+  environment: Environment
   title?: string
+  // Short value displayed next to the environment name (e.g. a version or
+  // SHA). Absent means the stop is shown as pending.
+  value?: null | string
 }
 
 interface ReleaseTrainProps {
+  className?: string
+  // Compact = ops-log sized; default = project-header sized.
+  size?: 'compact' | 'default'
   // Caller decides which environments appear; the component orders them
   // by each environment's sort_order.
   stops: ReleaseTrainStop[]
-  // Compact = ops-log sized; default = project-header sized.
-  size?: 'compact' | 'default'
-  className?: string
 }
 
 const SIZE_STYLES: Record<
   NonNullable<ReleaseTrainProps['size']>,
-  { chip: string; arrow: string; gap: string }
+  { arrow: string; chip: string; gap: string }
 > = {
-  default: {
-    chip: 'rounded-md px-3 py-1.5 text-sm',
-    arrow: 'h-4 w-4',
-    gap: 'gap-2',
-  },
   compact: {
-    chip: 'rounded px-2 py-0.5 text-[11px] font-mono',
     arrow: 'h-3 w-3',
+    chip: 'rounded px-2 py-0.5 text-[11px] font-mono',
     gap: 'gap-1.5',
+  },
+  default: {
+    arrow: 'h-4 w-4',
+    chip: 'rounded-md px-3 py-1.5 text-sm',
+    gap: 'gap-2',
   },
 }
 
+// Convenience helper: given a project's environments and a map of
+// env_slug → value (version/SHA), produce the stops array sorted for the
+// train. Environments with no matching value render as pending.
+export function buildReleaseTrainStops(
+  environments: Environment[] | undefined,
+  valueBySlug: Map<string, null | string | undefined>,
+): ReleaseTrainStop[] {
+  if (!environments?.length) return []
+  return sortEnvironments(environments).map((env) => ({
+    environment: env,
+    value: valueBySlug.get(env.slug) ?? null,
+  }))
+}
+
 export function ReleaseTrain({
-  stops,
-  size = 'default',
   className,
+  size = 'default',
+  stops,
 }: ReleaseTrainProps) {
   const { isDarkMode } = useTheme()
   const s = SIZE_STYLES[size]
@@ -67,20 +83,20 @@ export function ReleaseTrain({
         const style: CSSProperties | undefined = derived
           ? {
               backgroundColor: derived.bg,
-              color: derived.fg,
               borderColor: derived.border,
+              color: derived.fg,
             }
           : undefined
         const title =
           stop.title ??
           `${stop.environment.name}${stop.value ? `: ${stop.value}` : ' · not deployed'}`
         return (
-          <span key={stop.environment.slug} className="flex items-center">
+          <span className="flex items-center" key={stop.environment.slug}>
             {idx > 0 ? (
               <ArrowRight
+                aria-hidden
                 className={cn('mr-2 text-tertiary', s.arrow)}
                 style={size === 'compact' ? { marginRight: 6 } : undefined}
-                aria-hidden
               />
             ) : null}
             <span
@@ -110,18 +126,4 @@ export function ReleaseTrain({
       })}
     </div>
   )
-}
-
-// Convenience helper: given a project's environments and a map of
-// env_slug → value (version/SHA), produce the stops array sorted for the
-// train. Environments with no matching value render as pending.
-export function buildReleaseTrainStops(
-  environments: Environment[] | undefined,
-  valueBySlug: Map<string, string | null | undefined>,
-): ReleaseTrainStop[] {
-  if (!environments?.length) return []
-  return sortEnvironments(environments).map((env) => ({
-    environment: env,
-    value: valueBySlug.get(env.slug) ?? null,
-  }))
 }

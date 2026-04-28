@@ -1,6 +1,7 @@
-import { Rocket, CheckCircle, XCircle, Clock, ChevronRight } from 'lucide-react'
-import { Card } from '@/components/ui/card'
+import { CheckCircle, ChevronRight, Clock, Rocket, XCircle } from 'lucide-react'
+
 import { Badge, type BadgeProps } from '@/components/ui/badge'
+import { Card } from '@/components/ui/card'
 
 interface RecentDeploymentsWidgetProps {
   onProjectSelect?: (projectId: string) => void
@@ -11,64 +12,64 @@ export function RecentDeploymentsWidget({
 }: RecentDeploymentsWidgetProps) {
   const deployments = [
     {
-      id: 1,
-      projectId: 'proj-123',
-      project: 'frontend-applications/navigation',
-      version: '3.68.0',
-      environment: 'Production' as const,
-      status: 'success' as const,
-      deployedBy: 'Scott Miller',
       deployedAt: '12 minutes ago',
-    },
-    {
-      id: 2,
-      projectId: 'proj-456',
-      project: 'backend/api-gateway',
-      version: '2.45.1',
-      environment: 'Staging' as const,
-      status: 'in-progress' as const,
-      deployedBy: 'Dave Shawley',
-      deployedAt: '23 minutes ago',
-    },
-    {
-      id: 3,
-      projectId: 'proj-789',
-      project: 'platform/deployment-service',
-      version: '1.12.3',
-      environment: 'Production' as const,
-      status: 'failed' as const,
-      deployedBy: 'Gavin Roy',
-      deployedAt: '1 hour ago',
-    },
-    {
-      id: 4,
-      projectId: 'proj-234',
-      project: 'security/auth-service',
-      version: '4.2.0',
-      environment: 'Production' as const,
-      status: 'success' as const,
-      deployedBy: 'Jim Fitzpatrick',
-      deployedAt: '2 hours ago',
-    },
-    {
-      id: 5,
-      projectId: 'proj-567',
-      project: 'data/analytics-processor',
-      version: '5.8.2',
-      environment: 'Testing' as const,
-      status: 'success' as const,
       deployedBy: 'Scott Miller',
+      environment: 'Production' as const,
+      id: 1,
+      project: 'frontend-applications/navigation',
+      projectId: 'proj-123',
+      status: 'success' as const,
+      version: '3.68.0',
+    },
+    {
+      deployedAt: '23 minutes ago',
+      deployedBy: 'Dave Shawley',
+      environment: 'Staging' as const,
+      id: 2,
+      project: 'backend/api-gateway',
+      projectId: 'proj-456',
+      status: 'in-progress' as const,
+      version: '2.45.1',
+    },
+    {
+      deployedAt: '1 hour ago',
+      deployedBy: 'Gavin Roy',
+      environment: 'Production' as const,
+      id: 3,
+      project: 'platform/deployment-service',
+      projectId: 'proj-789',
+      status: 'failed' as const,
+      version: '1.12.3',
+    },
+    {
+      deployedAt: '2 hours ago',
+      deployedBy: 'Jim Fitzpatrick',
+      environment: 'Production' as const,
+      id: 4,
+      project: 'security/auth-service',
+      projectId: 'proj-234',
+      status: 'success' as const,
+      version: '4.2.0',
+    },
+    {
       deployedAt: '3 hours ago',
+      deployedBy: 'Scott Miller',
+      environment: 'Testing' as const,
+      id: 5,
+      project: 'data/analytics-processor',
+      projectId: 'proj-567',
+      status: 'success' as const,
+      version: '5.8.2',
     },
   ]
 
   const statusConfig: Record<
-    'success' | 'failed' | 'in-progress',
-    { label: string; icon: typeof CheckCircle; variant: BadgeProps['variant'] }
+    'failed' | 'in-progress' | 'success',
+    { icon: typeof CheckCircle; label: string; variant: BadgeProps['variant'] }
   > = {
-    success: { label: 'Success', icon: CheckCircle, variant: 'success' },
-    failed: { label: 'Failed', icon: XCircle, variant: 'danger' },
-    'in-progress': { label: 'In Progress', icon: Clock, variant: 'info' },
+    failed: { icon: XCircle, label: 'Failed', variant: 'danger' },
+    'in-progress': { icon: Clock, label: 'In Progress', variant: 'info' },
+    success: { icon: CheckCircle, label: 'Success', variant: 'success' },
   }
 
   const envConfig: Record<
@@ -94,10 +95,10 @@ export function RecentDeploymentsWidget({
 
           return (
             <button
-              type="button"
+              className="w-full rounded-lg border border-input bg-background p-3 text-left transition-colors hover:border-secondary"
               key={deployment.id}
               onClick={() => onProjectSelect?.(deployment.projectId)}
-              className="w-full rounded-lg border border-input bg-background p-3 text-left transition-colors hover:border-secondary"
+              type="button"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
@@ -110,12 +111,12 @@ export function RecentDeploymentsWidget({
                       <code className="rounded bg-secondary px-2 py-0.5 text-xs text-primary">
                         {deployment.version}
                       </code>
-                      <Badge variant={env.variant} className="rounded-full">
+                      <Badge className="rounded-full" variant={env.variant}>
                         {deployment.environment}
                       </Badge>
                       <Badge
-                        variant={status.variant}
                         className="gap-1 rounded-full"
+                        variant={status.variant}
                       >
                         <StatusIcon className="h-3 w-3" />
                         {status.label}

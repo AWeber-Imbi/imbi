@@ -1,52 +1,54 @@
 import { Search } from 'lucide-react'
-import { cn } from '@/lib/utils'
+
 import { Input } from '@/components/ui/input'
-import { colorForTag } from './notesHelpers'
+import { cn } from '@/lib/utils'
 import type { TagRef } from '@/types'
 
+import { colorForTag } from './notesHelpers'
+
 interface Props {
-  tags: TagRef[]
-  counts: Record<string, number>
   active: ReadonlySet<string>
-  onToggle: (slug: string) => void
-  onClear: () => void
-  search: string
-  onSearchChange: (value: string) => void
-  totalFiltered: number
-  highlightedSlugs?: ReadonlySet<string>
+  counts: Record<string, number>
   disabled?: boolean
+  highlightedSlugs?: ReadonlySet<string>
+  onClear: () => void
+  onSearchChange: (value: string) => void
+  onToggle: (slug: string) => void
+  search: string
+  tags: TagRef[]
+  totalFiltered: number
 }
 
 export function NotesFilterRail({
-  tags,
-  counts,
   active,
-  onToggle,
-  onClear,
-  search,
-  onSearchChange,
-  totalFiltered,
-  highlightedSlugs,
+  counts,
   disabled = false,
+  highlightedSlugs,
+  onClear,
+  onSearchChange,
+  onToggle,
+  search,
+  tags,
+  totalFiltered,
 }: Props) {
   const activeCount = active.size
   return (
     <aside
+      aria-disabled={disabled || undefined}
       className={cn(
         'sticky top-5 self-start',
         disabled && 'pointer-events-none select-none opacity-50',
       )}
-      aria-disabled={disabled || undefined}
     >
       <div className="relative mb-3">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-tertiary" />
         <Input
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search notes"
           className="h-8 pl-8 text-xs"
           disabled={disabled}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder="Search notes"
           tabIndex={disabled ? -1 : undefined}
+          value={search}
         />
       </div>
 
@@ -57,9 +59,9 @@ export function NotesFilterRail({
             notes
           </span>
           <button
-            type="button"
-            onClick={onClear}
             className="cursor-pointer border-0 bg-transparent p-0 text-[11.5px] text-warning hover:underline"
+            onClick={onClear}
+            type="button"
           >
             Clear
           </button>
@@ -77,12 +79,12 @@ export function NotesFilterRail({
               if (!count) return null
               return (
                 <TagButton
-                  key={t.slug}
-                  tag={t}
-                  count={count}
                   active={active.has(t.slug)}
+                  count={count}
                   highlighted={highlightedSlugs?.has(t.slug)}
+                  key={t.slug}
                   onClick={() => onToggle(t.slug)}
+                  tag={t}
                 />
               )
             })}
@@ -94,36 +96,36 @@ export function NotesFilterRail({
 }
 
 function TagButton({
-  tag,
-  count,
   active,
+  count,
   highlighted,
   onClick,
+  tag,
 }: {
-  tag: TagRef
-  count: number
   active: boolean
+  count: number
   highlighted?: boolean
   onClick: () => void
+  tag: TagRef
 }) {
   const hex = colorForTag(tag.slug)
   return (
     <button
-      type="button"
-      onClick={onClick}
       className={cn(
         'flex w-full items-center gap-2 rounded-md border-0 px-2 py-1 text-left transition-colors',
         active ? 'bg-secondary' : 'bg-transparent hover:bg-secondary',
       )}
+      onClick={onClick}
+      type="button"
     >
       <span
         aria-hidden
         className="flex-shrink-0 rounded-sm"
         style={{
-          width: 10,
-          height: 10,
           backgroundColor: `${hex}55`,
           border: `0.5px solid ${hex}`,
+          height: 10,
+          width: 10,
         }}
       />
       <span

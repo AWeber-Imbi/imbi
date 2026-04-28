@@ -1,23 +1,23 @@
 import { useCallback, useEffect, useState } from 'react'
 
 export interface UseInlineEditOptions<T> {
-  initial: T
-  onCommit: (value: T) => Promise<void> | void
   /** Compare draft and initial. Defaults to `Object.is`. */
   equals?: (a: T, b: T) => boolean
+  initial: T
+  onCommit: (value: T) => Promise<void> | void
 }
 
 export interface UseInlineEditResult<T> {
-  isEditing: boolean
-  enter: () => void
   cancel: () => void
   commit: () => Promise<void>
   draft: T
+  enter: () => void
+  error: null | string
+  handleBlur: (e: React.FocusEvent) => Promise<void> | void
+  handleKeyDown: (e: React.KeyboardEvent) => Promise<void> | void
+  isEditing: boolean
   setDraft: (v: T) => void
-  handleKeyDown: (e: React.KeyboardEvent) => void | Promise<void>
-  handleBlur: (e: React.FocusEvent) => void | Promise<void>
-  error: string | null
-  setError: (s: string | null) => void
+  setError: (s: null | string) => void
 }
 
 export function useInlineEdit<T>(
@@ -27,7 +27,7 @@ export function useInlineEdit<T>(
   const { initial, onCommit } = opts
   const [isEditing, setEditing] = useState(false)
   const [draft, setDraft] = useState<T>(initial)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<null | string>(null)
 
   // Keep draft in sync with external value when not editing.
   useEffect(() => {
@@ -82,15 +82,15 @@ export function useInlineEdit<T>(
   }, [draft, initial, equals, commit])
 
   return {
-    isEditing,
-    enter,
     cancel,
     commit,
     draft,
-    setDraft,
-    handleKeyDown,
-    handleBlur,
+    enter,
     error,
+    handleBlur,
+    handleKeyDown,
+    isEditing,
+    setDraft,
     setError,
   }
 }

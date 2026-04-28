@@ -1,15 +1,17 @@
-import * as PhosphorIcons from '@phosphor-icons/react'
 import { type ComponentType, createElement } from 'react'
+
+import * as PhosphorIcons from '@phosphor-icons/react'
 import { renderToStaticMarkup } from 'react-dom/server'
+
 import type {
   IconComponent,
   IconEntry,
   IconSetDefinition,
 } from '@/lib/icon-registry'
 import {
-  toPascalCase,
   encodeSvgToDataUrl,
   isForwardRefComponent,
+  toPascalCase,
 } from '@/lib/icon-sets/utils'
 
 const phosphorLookup = PhosphorIcons as Record<string, unknown>
@@ -18,7 +20,7 @@ const phosphorLookup = PhosphorIcons as Record<string, unknown>
 // pointing to the same component; 18 icons exist only under the *Icon name)
 export const PHOSPHOR_ICONS: IconEntry[] = Object.keys(phosphorLookup)
   .filter((k) => isForwardRefComponent(phosphorLookup[k]) && /^[A-Z]/.test(k))
-  .reduce<{ seen: Set<unknown>; entries: IconEntry[] }>(
+  .reduce<{ entries: IconEntry[]; seen: Set<unknown> }>(
     (acc, k) => {
       const comp = phosphorLookup[k]
       if (acc.seen.has(comp)) return acc
@@ -29,7 +31,7 @@ export const PHOSPHOR_ICONS: IconEntry[] = Object.keys(phosphorLookup)
       })
       return acc
     },
-    { seen: new Set(), entries: [] },
+    { entries: [], seen: new Set() },
   )
   .entries.sort((a, b) => a.label.localeCompare(b.label))
 
@@ -40,15 +42,15 @@ function resolve(value: string): IconComponent | null {
   return isForwardRefComponent(Component) ? Component : null
 }
 
-function resolveUrl(value: string, color?: string): string | null {
+function resolveUrl(value: string, color?: string): null | string {
   const Component = resolve(value)
   if (!Component) return null
   try {
     const markup = renderToStaticMarkup(
       createElement(Component as ComponentType<Record<string, unknown>>, {
+        height: 128,
         weight: 'regular',
         width: 128,
-        height: 128,
         ...(color ? { color } : {}),
       }),
     )
@@ -59,12 +61,12 @@ function resolveUrl(value: string, color?: string): string | null {
 }
 
 export const iconSet: IconSetDefinition = {
-  id: 'phosphor',
-  label: 'Phosphor',
   description:
     'Flexible icon family for interfaces and diagrams (regular weight)',
-  valueFormat: 'phosphor-{name}',
   icons: PHOSPHOR_ICONS,
+  id: 'phosphor',
+  label: 'Phosphor',
   resolve,
   resolveUrl,
+  valueFormat: 'phosphor-{name}',
 }

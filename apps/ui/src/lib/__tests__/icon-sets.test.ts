@@ -1,11 +1,12 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
+
 import { iconRegistry } from '@/lib/icon-registry'
-import { iconSet as lucideSet } from '@/lib/icon-sets/lucide'
-import { iconSet as simpleIconsSet } from '@/lib/icon-sets/simple-icons'
-import { iconSet as phosphorSet } from '@/lib/icon-sets/phosphor'
-import { iconSet as tablerSet } from '@/lib/icon-sets/tabler'
-import { iconSet as deviconSet } from '@/lib/icon-sets/devicon'
 import { iconSet as awsSet } from '@/lib/icon-sets/aws'
+import { iconSet as deviconSet } from '@/lib/icon-sets/devicon'
+import { iconSet as lucideSet } from '@/lib/icon-sets/lucide'
+import { iconSet as phosphorSet } from '@/lib/icon-sets/phosphor'
+import { iconSet as simpleIconsSet } from '@/lib/icon-sets/simple-icons'
+import { iconSet as tablerSet } from '@/lib/icon-sets/tabler'
 
 beforeAll(() => {
   iconRegistry.register(lucideSet)

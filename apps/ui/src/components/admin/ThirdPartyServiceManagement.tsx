@@ -1,74 +1,77 @@
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
+
 import { Cloud } from 'lucide-react'
-import { EntityIcon } from '@/components/ui/entity-icon'
-import { Card, CardContent, CardDescription } from '@/components/ui/card'
-import { AdminTable, type AdminTableColumn } from '@/components/ui/admin-table'
-import { AdminSection } from './AdminSection'
-import { ThirdPartyServiceForm } from './third-party-services/ThirdPartyServiceForm'
-import { ThirdPartyServiceDetail } from './third-party-services/ThirdPartyServiceDetail'
-import { useOrganization } from '@/contexts/OrganizationContext'
-import { useAdminNav } from '@/hooks/useAdminNav'
-import { useAdminCrud } from '@/hooks/useAdminCrud'
+
 import {
-  listThirdPartyServices,
-  deleteThirdPartyService,
   createThirdPartyService,
+  deleteThirdPartyService,
+  listThirdPartyServices,
   updateThirdPartyService,
 } from '@/api/endpoints'
-import { statusBadgeVariant } from '@/lib/status-colors'
+import { AdminTable, type AdminTableColumn } from '@/components/ui/admin-table'
 import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardDescription } from '@/components/ui/card'
+import { EntityIcon } from '@/components/ui/entity-icon'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
+import { useAdminNav } from '@/hooks/useAdminNav'
 import { buildDiffPatch } from '@/lib/json-patch'
+import { statusBadgeVariant } from '@/lib/status-colors'
 import type {
+  PatchOperation,
   ThirdPartyService,
   ThirdPartyServiceCreate,
-  PatchOperation,
 } from '@/types'
+
+import { AdminSection } from './AdminSection'
+import { ThirdPartyServiceDetail } from './third-party-services/ThirdPartyServiceDetail'
+import { ThirdPartyServiceForm } from './third-party-services/ThirdPartyServiceForm'
 
 export function ThirdPartyServiceManagement() {
   const { selectedOrganization } = useOrganization()
   const {
-    viewMode,
-    slug: selectedSlug,
-    goToList,
     goToCreate,
     goToDetail,
     goToEdit,
+    goToList,
+    slug: selectedSlug,
+    viewMode,
   } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
 
   const orgSlug = selectedOrganization?.slug
 
   const {
-    items: services,
-    isLoading,
-    error,
     createMutation,
-    updateMutation,
     deleteMutation,
+    error,
+    isLoading,
+    items: services,
+    updateMutation,
   } = useAdminCrud<
     ThirdPartyService,
     ThirdPartyServiceCreate,
-    { slug: string; operations: PatchOperation[] },
+    { operations: PatchOperation[]; slug: string },
     string
   >({
-    queryKey: ['third-party-services', orgSlug],
-    listFn: orgSlug
-      ? (signal) => listThirdPartyServices(orgSlug, signal)
-      : null,
     createFn: (svc) => {
       if (!orgSlug) throw new Error('No organization selected')
       return createThirdPartyService(orgSlug, svc)
     },
-    updateFn: ({ slug, operations }) => {
-      if (!orgSlug) throw new Error('No organization selected')
-      return updateThirdPartyService(orgSlug, slug, operations)
-    },
+    deleteErrorLabel: 'service',
     deleteFn: (slug) => {
       if (!orgSlug) throw new Error('No organization selected')
       return deleteThirdPartyService(orgSlug, slug)
     },
+    listFn: orgSlug
+      ? (signal) => listThirdPartyServices(orgSlug, signal)
+      : null,
     onMutationSuccess: goToList,
-    deleteErrorLabel: 'service',
+    queryKey: ['third-party-services', orgSlug],
+    updateFn: ({ operations, slug }) => {
+      if (!orgSlug) throw new Error('No organization selected')
+      return updateThirdPartyService(orgSlug, slug, operations)
+    },
   })
 
   const filteredServices = services.filter((svc) => {
@@ -116,18 +119,18 @@ export function ThirdPartyServiceManagement() {
         goToList()
         return
       }
-      updateMutation.mutate({ slug: selectedSlug, operations })
+      updateMutation.mutate({ operations, slug: selectedSlug })
     }
   }
 
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <ThirdPartyServiceForm
-        service={selectedService}
-        onSave={handleSave}
-        onCancel={goToList}
-        isLoading={createMutation.isPending || updateMutation.isPending}
         error={createMutation.error || updateMutation.error}
+        isLoading={createMutation.isPending || updateMutation.isPending}
+        onCancel={goToList}
+        onSave={handleSave}
+        service={selectedService}
       />
     )
   }
@@ -135,26 +138,26 @@ export function ThirdPartyServiceManagement() {
   if (viewMode === 'detail' && selectedService) {
     return (
       <ThirdPartyServiceDetail
-        service={selectedService}
-        onEdit={() => goToEdit(selectedService.slug)}
         onBack={goToList}
+        onEdit={() => goToEdit(selectedService.slug)}
+        service={selectedService}
       />
     )
   }
 
   const columns: AdminTableColumn<ThirdPartyService>[] = [
     {
-      key: 'service',
+      cellAlign: 'left',
       header: 'Service',
       headerAlign: 'left',
-      cellAlign: 'left',
+      key: 'service',
       render: (svc) => (
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-purple-50 dark:bg-purple-900/30">
             {svc.icon ? (
               <EntityIcon
-                icon={svc.icon}
                 className="h-5 w-5 rounded object-cover"
+                icon={svc.icon}
               />
             ) : (
               <Cloud className="h-4 w-4 text-purple-600 dark:text-purple-400" />
@@ -172,36 +175,36 @@ export function ThirdPartyServiceManagement() {
       ),
     },
     {
-      key: 'vendor',
+      cellAlign: 'left',
       header: 'Vendor',
       headerAlign: 'left',
-      cellAlign: 'left',
+      key: 'vendor',
       render: (svc) => (
         <span className="text-sm text-muted-foreground">{svc.vendor}</span>
       ),
     },
     {
-      key: 'category',
+      cellAlign: 'left',
       header: 'Category',
       headerAlign: 'left',
-      cellAlign: 'left',
+      key: 'category',
       render: (svc) =>
         svc.category ?? <span className="text-muted-foreground">--</span>,
     },
     {
-      key: 'status',
+      cellAlign: 'center',
       header: 'Status',
       headerAlign: 'center',
-      cellAlign: 'center',
+      key: 'status',
       render: (svc) => (
         <Badge variant={statusBadgeVariant(svc.status)}>{svc.status}</Badge>
       ),
     },
     {
-      key: 'team',
+      cellAlign: 'left',
       header: 'Team',
       headerAlign: 'left',
-      cellAlign: 'left',
+      key: 'team',
       render: (svc) =>
         (svc.team?.name as string | undefined) ?? (
           <span className="text-muted-foreground">--</span>
@@ -211,15 +214,15 @@ export function ThirdPartyServiceManagement() {
 
   return (
     <AdminSection
-      searchPlaceholder="Search services..."
-      search={searchQuery}
-      onSearchChange={setSearchQuery}
       createLabel="New Service"
-      onCreate={goToCreate}
-      isLoading={isLoading}
-      loadingLabel="Loading third-party services..."
       error={error}
       errorTitle="Failed to load third-party services"
+      isLoading={isLoading}
+      loadingLabel="Loading third-party services..."
+      onCreate={goToCreate}
+      onSearchChange={setSearchQuery}
+      search={searchQuery}
+      searchPlaceholder="Search services..."
     >
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -266,12 +269,6 @@ export function ThirdPartyServiceManagement() {
       {/* Services Table */}
       <AdminTable<ThirdPartyService>
         columns={columns}
-        rows={filteredServices}
-        getRowKey={(svc) => svc.slug}
-        getDeleteLabel={(svc) => svc.name}
-        onRowClick={(svc) => goToDetail(svc.slug)}
-        onDelete={(svc) => deleteMutation.mutate(svc.slug)}
-        isDeleting={deleteMutation.isPending}
         emptyMessage={
           searchQuery
             ? 'No services found matching your search.'
@@ -279,6 +276,12 @@ export function ThirdPartyServiceManagement() {
               ? `No third-party services in ${selectedOrganization.name} yet.`
               : 'No third-party services created yet.'
         }
+        getDeleteLabel={(svc) => svc.name}
+        getRowKey={(svc) => svc.slug}
+        isDeleting={deleteMutation.isPending}
+        onDelete={(svc) => deleteMutation.mutate(svc.slug)}
+        onRowClick={(svc) => goToDetail(svc.slug)}
+        rows={filteredServices}
       />
     </AdminSection>
   )

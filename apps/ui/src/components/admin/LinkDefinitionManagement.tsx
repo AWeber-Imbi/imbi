@@ -1,19 +1,19 @@
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
+
 import { Link2 } from 'lucide-react'
-import { EntityIcon } from '@/components/ui/entity-icon'
-import { formatRelativeDate } from '@/lib/formatDate'
-import { AdminTable, type CanDeleteResult } from '@/components/ui/admin-table'
-import { AdminSection } from './AdminSection'
-import { LinkDefinitionForm } from './link-definitions/LinkDefinitionForm'
-import { useOrganization } from '@/contexts/OrganizationContext'
-import { useAdminNav } from '@/hooks/useAdminNav'
-import { useAdminCrud } from '@/hooks/useAdminCrud'
+
 import {
-  listLinkDefinitions,
-  deleteLinkDefinition,
   createLinkDefinition,
+  deleteLinkDefinition,
+  listLinkDefinitions,
   updateLinkDefinition,
 } from '@/api/endpoints'
+import { AdminTable, type CanDeleteResult } from '@/components/ui/admin-table'
+import { EntityIcon } from '@/components/ui/entity-icon'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
+import { useAdminNav } from '@/hooks/useAdminNav'
+import { formatRelativeDate } from '@/lib/formatDate'
 import { buildDiffPatch } from '@/lib/json-patch'
 import type {
   LinkDefinition,
@@ -21,39 +21,42 @@ import type {
   PatchOperation,
 } from '@/types'
 
+import { AdminSection } from './AdminSection'
+import { LinkDefinitionForm } from './link-definitions/LinkDefinitionForm'
+
 export function LinkDefinitionManagement() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
   const {
-    viewMode,
-    slug: selectedSlug,
-    goToList,
     goToCreate,
     goToEdit,
+    goToList,
+    slug: selectedSlug,
+    viewMode,
   } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
 
   const {
-    items: linkDefinitions,
-    isLoading,
-    error,
     createMutation,
-    updateMutation,
     deleteMutation,
+    error,
+    isLoading,
+    items: linkDefinitions,
+    updateMutation,
   } = useAdminCrud<
     LinkDefinition,
-    { orgSlug: string; data: LinkDefinitionCreate },
-    { orgSlug: string; slug: string; operations: PatchOperation[] },
+    { data: LinkDefinitionCreate; orgSlug: string },
+    { operations: PatchOperation[]; orgSlug: string; slug: string },
     { orgSlug: string; slug: string }
   >({
-    queryKey: ['linkDefinitions', orgSlug],
-    listFn: orgSlug ? (signal) => listLinkDefinitions(orgSlug, signal) : null,
-    createFn: ({ orgSlug, data }) => createLinkDefinition(orgSlug, data),
-    updateFn: ({ orgSlug, slug, operations }) =>
-      updateLinkDefinition(orgSlug, slug, operations),
-    deleteFn: ({ orgSlug, slug }) => deleteLinkDefinition(orgSlug, slug),
-    onMutationSuccess: goToList,
+    createFn: ({ data, orgSlug }) => createLinkDefinition(orgSlug, data),
     deleteErrorLabel: 'link definition',
+    deleteFn: ({ orgSlug, slug }) => deleteLinkDefinition(orgSlug, slug),
+    listFn: orgSlug ? (signal) => listLinkDefinitions(orgSlug, signal) : null,
+    onMutationSuccess: goToList,
+    queryKey: ['linkDefinitions', orgSlug],
+    updateFn: ({ operations, orgSlug, slug }) =>
+      updateLinkDefinition(orgSlug, slug, operations),
   })
 
   const filteredLinkDefinitions = linkDefinitions.filter((ld) => {
@@ -82,13 +85,13 @@ export function LinkDefinitionManagement() {
     if (projects === 0) return { allowed: true }
     return {
       allowed: false,
-      blockedBy: [{ count: projects, label: 'project', href: '/projects' }],
+      blockedBy: [{ count: projects, href: '/projects', label: 'project' }],
     }
   }
 
   const handleSave = (formOrgSlug: string, data: LinkDefinitionCreate) => {
     if (viewMode === 'create') {
-      createMutation.mutate({ orgSlug: formOrgSlug, data })
+      createMutation.mutate({ data, orgSlug: formOrgSlug })
     } else if (selectedSlug && selectedLinkDefinition) {
       const operations = buildDiffPatch(
         selectedLinkDefinition as unknown as Record<string, unknown>,
@@ -100,9 +103,9 @@ export function LinkDefinitionManagement() {
         return
       }
       updateMutation.mutate({
+        operations,
         orgSlug: selectedLinkDefinition.organization.slug || formOrgSlug,
         slug: selectedSlug,
-        operations,
       })
     }
   }
@@ -122,11 +125,11 @@ export function LinkDefinitionManagement() {
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <LinkDefinitionForm
-        linkDefinition={selectedLinkDefinition}
-        onSave={handleSave}
-        onCancel={handleCancel}
-        isLoading={createMutation.isPending || updateMutation.isPending}
         error={createMutation.error || updateMutation.error}
+        isLoading={createMutation.isPending || updateMutation.isPending}
+        linkDefinition={selectedLinkDefinition}
+        onCancel={handleCancel}
+        onSave={handleSave}
       />
     )
   }
@@ -134,34 +137,35 @@ export function LinkDefinitionManagement() {
   if (viewMode === 'detail' && selectedLinkDefinition) {
     return (
       <LinkDefinitionForm
-        linkDefinition={selectedLinkDefinition}
-        onSave={handleSave}
-        onCancel={handleCancel}
-        isLoading={updateMutation.isPending}
         error={updateMutation.error}
+        isLoading={updateMutation.isPending}
+        linkDefinition={selectedLinkDefinition}
+        onCancel={handleCancel}
+        onSave={handleSave}
       />
     )
   }
 
   return (
     <AdminSection
-      searchPlaceholder="Search link definitions..."
-      search={searchQuery}
-      onSearchChange={setSearchQuery}
       createLabel="New Link Definition"
-      onCreate={goToCreate}
-      isLoading={isLoading}
-      loadingLabel="Loading link definitions..."
       error={error}
       errorTitle="Failed to load link definitions"
+      isLoading={isLoading}
+      loadingLabel="Loading link definitions..."
+      onCreate={goToCreate}
+      onSearchChange={setSearchQuery}
+      search={searchQuery}
+      searchPlaceholder="Search link definitions..."
     >
       <AdminTable
+        canDelete={canDeleteLinkDefinition}
         columns={[
           {
-            key: 'name',
+            cellAlign: 'left',
             header: 'Name',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'name',
             render: (ld) => (
               <div className="flex items-center gap-3">
                 <div
@@ -171,8 +175,8 @@ export function LinkDefinitionManagement() {
                 >
                   {ld.icon ? (
                     <EntityIcon
-                      icon={ld.icon}
                       className="size-5 object-cover"
+                      icon={ld.icon}
                     />
                   ) : (
                     <Link2 className="h-4 w-4 text-info" />
@@ -190,10 +194,10 @@ export function LinkDefinitionManagement() {
             ),
           },
           {
-            key: 'slug',
+            cellAlign: 'center',
             header: 'Slug',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'slug',
             render: (ld) => (
               <code className="rounded bg-secondary px-2 py-1 text-primary">
                 {ld.slug}
@@ -201,10 +205,10 @@ export function LinkDefinitionManagement() {
             ),
           },
           {
-            key: 'url_template',
+            cellAlign: 'left',
             header: 'URL Template',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'url_template',
             render: (ld) =>
               ld.url_template ? (
                 <code
@@ -219,10 +223,10 @@ export function LinkDefinitionManagement() {
               ),
           },
           {
-            key: 'projects',
+            cellAlign: 'center',
             header: 'Projects',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'projects',
             render: (ld) => (
               <span
                 className={
@@ -236,20 +240,13 @@ export function LinkDefinitionManagement() {
             ),
           },
           {
-            key: 'updated',
+            cellAlign: 'center',
             header: 'Last Updated',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'updated',
             render: (ld) => formatRelativeDate(ld.updated_at ?? ld.created_at),
           },
         ]}
-        rows={filteredLinkDefinitions}
-        getRowKey={(ld) => ld.slug}
-        getDeleteLabel={(ld) => ld.name}
-        onRowClick={(ld) => goToEdit(ld.slug)}
-        onDelete={handleDelete}
-        canDelete={canDeleteLinkDefinition}
-        isDeleting={deleteMutation.isPending}
         emptyMessage={
           searchQuery
             ? 'No link definitions found matching your search.'
@@ -257,6 +254,12 @@ export function LinkDefinitionManagement() {
               ? `No link definitions in ${selectedOrganization.name} yet.`
               : 'No link definitions created yet.'
         }
+        getDeleteLabel={(ld) => ld.name}
+        getRowKey={(ld) => ld.slug}
+        isDeleting={deleteMutation.isPending}
+        onDelete={handleDelete}
+        onRowClick={(ld) => goToEdit(ld.slug)}
+        rows={filteredLinkDefinitions}
       />
     </AdminSection>
   )

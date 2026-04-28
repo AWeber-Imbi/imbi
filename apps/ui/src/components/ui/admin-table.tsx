@@ -1,9 +1,11 @@
-import { useState, useEffect, type MouseEvent, type ReactNode } from 'react'
+import { type MouseEvent, type ReactNode, useEffect, useState } from 'react'
+
 import { useNavigate } from 'react-router-dom'
+
 import { Trash2 } from 'lucide-react'
+
 import { cn } from '@/lib/utils'
-import { Button } from './button'
-import { Card, CardContent } from './card'
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,6 +16,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from './alert-dialog'
+import { Button } from './button'
+import { Card, CardContent } from './card'
 import {
   Dialog,
   DialogContent,
@@ -38,72 +42,72 @@ import {
 } from './tooltip'
 
 export interface AdminTableColumn<T> {
-  key: string
+  cellAlign?: 'center' | 'left' | 'right'
   header: string
-  headerAlign?: 'left' | 'center' | 'right'
-  cellAlign?: 'left' | 'center' | 'right'
+  headerAlign?: 'center' | 'left' | 'right'
+  key: string
   render: (row: T) => ReactNode
 }
 
 export interface BlockedReason {
   count: number
-  label: string // e.g. "project", "team", "member"
   href?: string // optional link to filtered view
+  label: string // e.g. "project", "team", "member"
 }
 
 export interface CanDeleteResult {
   allowed: boolean
-  reason?: string // free-form fallback (system roles, etc.)
   blockedBy?: BlockedReason[] // structured blocking conditions
+  reason?: string // free-form fallback (system roles, etc.)
 }
 
 interface AdminTableProps<T> {
+  actions?: (row: T) => ReactNode
+  canDelete?: (row: T) => CanDeleteResult
   columns: AdminTableColumn<T>[]
-  rows: T[]
+  emptyMessage?: string
+  getDeleteLabel: (row: T) => string
   getRowKey: (row: T) => string
   getRowLabel?: (row: T) => string
-  getDeleteLabel: (row: T) => string
-  onRowClick?: (row: T) => void
+  isDeleting?: boolean
   isRowClickable?: (row: T) => boolean
   onDelete: (row: T) => void
-  canDelete?: (row: T) => CanDeleteResult
-  isDeleting?: boolean
-  actions?: (row: T) => ReactNode
-  emptyMessage?: string
+  onRowClick?: (row: T) => void
+  rows: T[]
 }
 
 const HEADER_ALIGN: Record<string, string> = {
-  left: 'text-left',
   center: 'text-center',
+  left: 'text-left',
   right: 'text-right',
 }
 
 const CELL_ALIGN: Record<string, string> = {
-  left: 'text-left',
   center: 'text-center',
+  left: 'text-left',
   right: 'text-right',
 }
 
 export function AdminTable<T>({
+  actions,
+  canDelete,
   columns,
-  rows,
+  emptyMessage = 'No items found.',
+  getDeleteLabel,
   getRowKey,
   getRowLabel,
-  getDeleteLabel,
-  onRowClick,
+  isDeleting = false,
   isRowClickable,
   onDelete,
-  canDelete,
-  isDeleting = false,
-  actions,
-  emptyMessage = 'No items found.',
+  onRowClick,
+  rows,
 }: AdminTableProps<T>) {
   const navigate = useNavigate()
-  const [deleteTarget, setDeleteTarget] = useState<T | null>(null)
-  const [blockedTarget, setBlockedTarget] = useState<{
-    row: T
+  const [deleteTarget, setDeleteTarget] = useState<null | T>(null)
+  const [blockedTarget, setBlockedTarget] = useState<null | {
     result: CanDeleteResult
-  } | null>(null)
+    row: T
+  }>(null)
   const [wasDeleting, setWasDeleting] = useState(false)
 
   useEffect(() => {
@@ -122,7 +126,7 @@ export function AdminTable<T>({
   ) => {
     e.stopPropagation()
     if (!deleteCheck.allowed) {
-      setBlockedTarget({ row, result: deleteCheck })
+      setBlockedTarget({ result: deleteCheck, row })
     } else {
       setDeleteTarget(row)
     }
@@ -138,10 +142,10 @@ export function AdminTable<T>({
   return (
     <>
       <Dialog
-        open={blockedTarget !== null}
         onOpenChange={(open) => {
           if (!open) setBlockedTarget(null)
         }}
+        open={blockedTarget !== null}
       >
         <DialogContent>
           <DialogHeader>
@@ -159,12 +163,12 @@ export function AdminTable<T>({
                   <span key={i}>
                     {b.href ? (
                       <Button
-                        variant="link"
                         className="h-auto p-0 font-medium text-primary underline underline-offset-2 hover:opacity-80"
                         onClick={() => {
                           setBlockedTarget(null)
                           navigate(b.href!)
                         }}
+                        variant="link"
                       >
                         {b.count} {b.label}
                         {b.count !== 1 ? 's' : ''}
@@ -213,10 +217,10 @@ export function AdminTable<T>({
       </Dialog>
 
       <AlertDialog
-        open={deleteTarget !== null}
         onOpenChange={(open) => {
           if (!open && !isDeleting) setDeleteTarget(null)
         }}
+        open={deleteTarget !== null}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -231,8 +235,8 @@ export function AdminTable<T>({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDeleteConfirm}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleDeleteConfirm}
             >
               Delete
             </AlertDialogAction>
@@ -247,8 +251,8 @@ export function AdminTable<T>({
               <TableRow>
                 {columns.map((col) => (
                   <TableHead
-                    key={col.key}
                     className={HEADER_ALIGN[col.headerAlign ?? 'left']}
+                    key={col.key}
                   >
                     {col.header}
                   </TableHead>
@@ -260,8 +264,8 @@ export function AdminTable<T>({
               {rows.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={columns.length + 1}
                     className="py-12 text-center text-muted-foreground"
+                    colSpan={columns.length + 1}
                   >
                     {emptyMessage}
                   </TableCell>
@@ -282,6 +286,8 @@ export function AdminTable<T>({
 
                   return (
                     <TableRow
+                      aria-label={rowClickable ? `Edit ${label}` : undefined}
+                      className={cn(rowClickable && 'cursor-pointer')}
                       key={key}
                       onClick={rowClickable ? () => onRowClick(row) : undefined}
                       onKeyDown={
@@ -296,13 +302,11 @@ export function AdminTable<T>({
                           : undefined
                       }
                       tabIndex={rowClickable ? 0 : undefined}
-                      aria-label={rowClickable ? `Edit ${label}` : undefined}
-                      className={cn(rowClickable && 'cursor-pointer')}
                     >
                       {columns.map((col) => (
                         <TableCell
-                          key={col.key}
                           className={CELL_ALIGN[col.cellAlign ?? 'left']}
+                          key={col.key}
                         >
                           {col.render(row)}
                         </TableCell>
@@ -319,19 +323,19 @@ export function AdminTable<T>({
                               <TooltipTrigger asChild>
                                 <span className="inline-flex">
                                   <Button
-                                    variant="ghost"
-                                    size="sm"
                                     aria-label={`Delete ${label}`}
-                                    onClick={(e) =>
-                                      handleDeleteClick(row, e, deleteCheck)
-                                    }
-                                    disabled={isDeleting}
                                     className={cn(
                                       'text-destructive hover:bg-destructive/10 hover:text-destructive',
                                       isDeleting &&
                                         'pointer-events-none opacity-30',
                                       !canDeleteRow && 'opacity-30',
                                     )}
+                                    disabled={isDeleting}
+                                    onClick={(e) =>
+                                      handleDeleteClick(row, e, deleteCheck)
+                                    }
+                                    size="sm"
+                                    variant="ghost"
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </Button>

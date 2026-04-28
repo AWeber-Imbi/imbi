@@ -1,14 +1,16 @@
 /* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
-  useContext,
-  useState,
+  type ReactNode,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
-  type ReactNode,
+  useState,
 } from 'react'
+
 import { useQuery } from '@tanstack/react-query'
+
 import { listOrganizations } from '@/api/endpoints'
 import { useAuthStore } from '@/stores/authStore'
 import type { Organization } from '@/types'
@@ -16,25 +18,25 @@ import type { Organization } from '@/types'
 const ORG_STORAGE_KEY = 'imbi-selected-org'
 
 interface OrganizationContextValue {
-  organizations: Organization[]
-  selectedOrganization: Organization | null
-  setSelectedOrganization: (org: Organization) => void
   isLoading: boolean
+  organizations: Organization[]
+  selectedOrganization: null | Organization
+  setSelectedOrganization: (org: Organization) => void
 }
 
-const OrganizationContext = createContext<OrganizationContextValue | null>(null)
+const OrganizationContext = createContext<null | OrganizationContextValue>(null)
 
 export function OrganizationProvider({ children }: { children: ReactNode }) {
-  const [selectedSlug, setSelectedSlug] = useState<string | null>(() =>
+  const [selectedSlug, setSelectedSlug] = useState<null | string>(() =>
     localStorage.getItem(ORG_STORAGE_KEY),
   )
 
   const { accessToken, isTokenExpired } = useAuthStore()
 
   const { data: organizations = [], isLoading } = useQuery({
-    queryKey: ['organizations'],
-    queryFn: ({ signal }) => listOrganizations(signal),
     enabled: !!accessToken && !isTokenExpired(),
+    queryFn: ({ signal }) => listOrganizations(signal),
+    queryKey: ['organizations'],
     retry: 1,
   })
 
@@ -59,10 +61,10 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<OrganizationContextValue>(
     () => ({
+      isLoading,
       organizations,
       selectedOrganization,
       setSelectedOrganization,
-      isLoading,
     }),
     [organizations, selectedOrganization, setSelectedOrganization, isLoading],
   )

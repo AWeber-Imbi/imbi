@@ -1,10 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { act, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useProjectPatch } from '../useProjectPatch'
-import * as endpoints from '@/api/endpoints'
-import { ApiError } from '@/api/client'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { ApiError } from '@/api/client'
+import * as endpoints from '@/api/endpoints'
+
+import { useProjectPatch } from '../useProjectPatch'
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 
@@ -15,11 +17,11 @@ function wrapper(qc: QueryClient) {
 }
 
 const baseProject = {
+  description: 'desc',
   id: 'p1',
   name: 'Alpha',
   slug: 'alpha',
-  description: 'desc',
-  team: { slug: 't', name: 'T', organization: { slug: 'o' } },
+  team: { name: 'T', organization: { slug: 'o' }, slug: 't' },
 } as unknown as import('@/types').Project
 
 describe('useProjectPatch', () => {
@@ -28,8 +30,8 @@ describe('useProjectPatch', () => {
   beforeEach(() => {
     qc = new QueryClient({
       defaultOptions: {
-        queries: { retry: false },
         mutations: { retry: false },
+        queries: { retry: false },
       },
     })
     qc.setQueryData(['project', 'o', 'p1'], baseProject)

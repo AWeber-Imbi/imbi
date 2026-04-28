@@ -1,38 +1,39 @@
-import { Button } from '@/components/ui/button'
 import {
-  LucideIcon,
-  Mail as GoogleIcon,
   Github as GitHubIcon,
-  Clock as OIDCIcon,
+  Mail as GoogleIcon,
   Key as KeyIcon,
+  LucideIcon,
+  Clock as OIDCIcon,
 } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
+
 interface OAuthButtonProps {
+  disabled?: boolean
+  onClick: () => void
   provider: {
+    icon?: null | string
     id: string
     name: string
-    icon?: string | null
   }
-  onClick: () => void
-  disabled?: boolean
 }
 
 const iconMap: Record<string, LucideIcon> = {
-  google: GoogleIcon,
   github: GitHubIcon,
-  oidc: OIDCIcon,
+  google: GoogleIcon,
   key: KeyIcon,
+  oidc: OIDCIcon,
 }
 
-export function OAuthButton({ provider, onClick, disabled }: OAuthButtonProps) {
+export function OAuthButton({ disabled, onClick, provider }: OAuthButtonProps) {
   const Icon = iconMap[provider.icon ?? ''] || KeyIcon
 
   return (
     <Button
-      variant="outline"
       className="w-full gap-2"
-      onClick={onClick}
       disabled={disabled}
+      onClick={onClick}
+      variant="outline"
     >
       <Icon className="h-4 w-4" />
       Continue with {provider.name}

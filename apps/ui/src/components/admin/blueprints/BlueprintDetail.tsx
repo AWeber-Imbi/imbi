@@ -1,125 +1,69 @@
 import { useState } from 'react'
+
 import { useQuery } from '@tanstack/react-query'
 import {
+  AlertCircle,
   ArrowLeft,
+  Braces,
+  Check,
+  CheckCircle,
+  ChevronDown,
+  ChevronRight,
+  Copy,
   Edit2,
   FileJson,
   Filter,
-  AlertCircle,
-  CheckCircle,
-  XCircle,
-  Copy,
-  Check,
-  ChevronDown,
-  ChevronRight,
   Hash,
+  List,
   ToggleLeft,
   Type,
-  List,
-  Braces,
+  XCircle,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { CardTitle } from '@/components/ui/card'
-import { LoadingState } from '@/components/ui/loading-state'
+
 import { getBlueprint } from '@/api/endpoints'
-import { getTypeSwatch } from '../BlueprintManagement'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { CardTitle } from '@/components/ui/card'
 import { LabelChip } from '@/components/ui/label-chip'
+import { LoadingState } from '@/components/ui/loading-state'
 import { parseFilterFromBlueprint } from '@/lib/utils'
 import type { SchemaProperty } from '@/types'
 
+import { getTypeSwatch } from '../BlueprintManagement'
+
 interface BlueprintDetailProps {
-  blueprintKey: { type: string; slug: string }
+  blueprintKey: { slug: string; type: string }
   blueprintTypes: string[]
-  onEdit: () => void
   onBack: () => void
+  onEdit: () => void
 }
 
 const TYPE_ICONS: Record<string, typeof Type> = {
-  string: Type,
+  array: List,
+  boolean: ToggleLeft,
   integer: Hash,
   number: Hash,
-  boolean: ToggleLeft,
-  array: List,
   object: Braces,
-}
-
-function parseSchemaProperties(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  schema: any,
-): { properties: SchemaProperty[]; raw: string } {
-  let parsed = schema
-  if (typeof schema === 'string') {
-    try {
-      parsed = JSON.parse(schema)
-    } catch {
-      return {
-        properties: [],
-        raw: typeof schema === 'string' ? schema : '{}',
-      }
-    }
-  }
-
-  const raw = JSON.stringify(parsed, null, 2)
-  const props = parsed?.properties || {}
-  const required = (parsed?.required || []) as string[]
-  const properties: SchemaProperty[] = []
-
-  for (const [name, propSchema] of Object.entries(props)) {
-    const ps = propSchema as Record<string, unknown>
-    const xUi = ps['x-ui'] as Record<string, unknown> | undefined
-    properties.push({
-      id: name,
-      name,
-      type: (ps.type as SchemaProperty['type']) || 'string',
-      format: ps.format as string | undefined,
-      description: ps.description as string | undefined,
-      required: required.includes(name),
-      defaultValue: ps.default !== undefined ? String(ps.default) : undefined,
-      enumValues: ps.enum as string[] | undefined,
-      minimum: ps.minimum as number | undefined,
-      maximum: ps.maximum as number | undefined,
-      minLength: ps.minLength as number | undefined,
-      maxLength: ps.maxLength as number | undefined,
-      colorMap: xUi?.['color-map'] as Record<string, string> | undefined,
-      iconMap: xUi?.['icon-map'] as Record<string, string> | undefined,
-      colorRange: xUi?.['color-range'] as Record<string, string> | undefined,
-      iconRange: xUi?.['icon-range'] as Record<string, string> | undefined,
-      colorAge: xUi?.['color-age'] as Record<string, string> | undefined,
-      iconAge: xUi?.['icon-age'] as Record<string, string> | undefined,
-    })
-  }
-
-  return { properties, raw }
-}
-
-function hasConstraints(prop: SchemaProperty): boolean {
-  return (
-    prop.defaultValue !== undefined ||
-    prop.minimum !== undefined ||
-    prop.maximum !== undefined ||
-    prop.minLength !== undefined ||
-    prop.maxLength !== undefined
-  )
+  string: Type,
 }
 
 export function BlueprintDetail({
   blueprintKey,
   blueprintTypes,
-  onEdit,
   onBack,
+  onEdit,
 }: BlueprintDetailProps) {
   const [rawSchemaOpen, setRawSchemaOpen] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const {
     data: blueprint,
-    isLoading,
     error,
+    isLoading,
   } = useQuery({
-    queryKey: ['blueprint', blueprintKey.type, blueprintKey.slug],
     queryFn: ({ signal }) =>
       getBlueprint(blueprintKey.type, blueprintKey.slug, signal),
+    queryKey: ['blueprint', blueprintKey.type, blueprintKey.slug],
   })
 
   if (isLoading) {
@@ -159,14 +103,14 @@ export function BlueprintDetail({
     }
 
     const exportObj: Record<string, unknown> = {
+      kind: blueprint.kind || 'node',
       name: blueprint.name,
       slug: blueprint.slug,
-      kind: blueprint.kind || 'node',
       ...(blueprint.kind === 'relationship'
         ? {
+            edge: blueprint.edge ?? '',
             source: blueprint.source ?? '',
             target: blueprint.target ?? '',
-            edge: blueprint.edge ?? '',
           }
         : { type: blueprint.type }),
       ...(blueprint.description ? { description: blueprint.description } : {}),
@@ -192,7 +136,7 @@ export function BlueprintDetail({
     <div className="space-y-6">
       {/* Back button */}
       <div>
-        <Button variant="outline" onClick={onBack}>
+        <Button onClick={onBack} variant="outline">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
@@ -228,7 +172,7 @@ export function BlueprintDetail({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={handleCopy}>
+            <Button onClick={handleCopy} variant="outline">
               {copied ? (
                 <Check className="mr-2 h-4 w-4 text-green-500" />
               ) : (
@@ -237,8 +181,8 @@ export function BlueprintDetail({
               {copied ? 'Copied' : 'Copy'}
             </Button>
             <Button
-              onClick={onEdit}
               className="bg-action text-action-foreground hover:bg-action-hover"
+              onClick={onEdit}
             >
               <Edit2 className="mr-2 h-4 w-4" />
               Edit Blueprint
@@ -330,9 +274,9 @@ export function BlueprintDetail({
                 <div className="flex flex-wrap gap-1.5">
                   {parsedFilter.project_type.map((pt) => (
                     <Badge
+                      className="rounded-md border-info px-2.5 py-1 text-sm"
                       key={pt}
                       variant="info"
-                      className="rounded-md border-info px-2.5 py-1 text-sm"
                     >
                       {pt}
                     </Badge>
@@ -352,9 +296,9 @@ export function BlueprintDetail({
                 <div className="flex flex-wrap gap-1.5">
                   {parsedFilter.environment.map((env) => (
                     <Badge
+                      className="rounded-md border-success px-2.5 py-1 text-sm"
                       key={env}
                       variant="success"
-                      className="rounded-md border-success px-2.5 py-1 text-sm"
                     >
                       {env}
                     </Badge>
@@ -384,7 +328,7 @@ export function BlueprintDetail({
             {properties.map((prop) => {
               const IconComponent = TYPE_ICONS[prop.type] || Type
               return (
-                <div key={prop.name} className="px-6 py-4">
+                <div className="px-6 py-4" key={prop.name}>
                   <div className="flex items-center gap-3">
                     <IconComponent className="h-4 w-4 flex-shrink-0 text-tertiary" />
                     <code className="rounded bg-secondary px-2 py-1 text-sm font-medium text-info">
@@ -408,9 +352,9 @@ export function BlueprintDetail({
                     <div className="ml-7 mt-2 flex flex-wrap gap-1.5">
                       {prop.enumValues.map((val) => (
                         <Badge
+                          className="border border-input font-mono text-secondary"
                           key={val}
                           variant="secondary"
-                          className="border border-input font-mono text-secondary"
                         >
                           {val}
                         </Badge>
@@ -447,9 +391,9 @@ export function BlueprintDetail({
                             <div className="mt-1 flex flex-wrap gap-1.5">
                               {Object.entries(map!).map(([key, val]) => (
                                 <Badge
+                                  className="gap-1.5 border border-input font-mono text-secondary"
                                   key={key}
                                   variant="secondary"
-                                  className="gap-1.5 border border-input font-mono text-secondary"
                                 >
                                   {isColorType(name) ? (
                                     <>
@@ -532,8 +476,8 @@ export function BlueprintDetail({
       {/* Raw JSON Schema (collapsible) */}
       <div className="rounded-lg border border-border bg-card">
         <button
-          onClick={() => setRawSchemaOpen(!rawSchemaOpen)}
           className={`flex w-full items-center gap-2 px-6 py-4 text-left hover:bg-secondary ${rawSchemaOpen ? 'border-b border-tertiary' : ''}`}
+          onClick={() => setRawSchemaOpen(!rawSchemaOpen)}
         >
           {rawSchemaOpen ? (
             <ChevronDown className="h-4 w-4 text-tertiary" />
@@ -553,4 +497,63 @@ export function BlueprintDetail({
       </div>
     </div>
   )
+}
+
+function hasConstraints(prop: SchemaProperty): boolean {
+  return (
+    prop.defaultValue !== undefined ||
+    prop.minimum !== undefined ||
+    prop.maximum !== undefined ||
+    prop.minLength !== undefined ||
+    prop.maxLength !== undefined
+  )
+}
+
+function parseSchemaProperties(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  schema: any,
+): { properties: SchemaProperty[]; raw: string } {
+  let parsed = schema
+  if (typeof schema === 'string') {
+    try {
+      parsed = JSON.parse(schema)
+    } catch {
+      return {
+        properties: [],
+        raw: typeof schema === 'string' ? schema : '{}',
+      }
+    }
+  }
+
+  const raw = JSON.stringify(parsed, null, 2)
+  const props = parsed?.properties || {}
+  const required = (parsed?.required || []) as string[]
+  const properties: SchemaProperty[] = []
+
+  for (const [name, propSchema] of Object.entries(props)) {
+    const ps = propSchema as Record<string, unknown>
+    const xUi = ps['x-ui'] as Record<string, unknown> | undefined
+    properties.push({
+      colorAge: xUi?.['color-age'] as Record<string, string> | undefined,
+      colorMap: xUi?.['color-map'] as Record<string, string> | undefined,
+      colorRange: xUi?.['color-range'] as Record<string, string> | undefined,
+      defaultValue: ps.default !== undefined ? String(ps.default) : undefined,
+      description: ps.description as string | undefined,
+      enumValues: ps.enum as string[] | undefined,
+      format: ps.format as string | undefined,
+      iconAge: xUi?.['icon-age'] as Record<string, string> | undefined,
+      iconMap: xUi?.['icon-map'] as Record<string, string> | undefined,
+      iconRange: xUi?.['icon-range'] as Record<string, string> | undefined,
+      id: name,
+      maximum: ps.maximum as number | undefined,
+      maxLength: ps.maxLength as number | undefined,
+      minimum: ps.minimum as number | undefined,
+      minLength: ps.minLength as number | undefined,
+      name,
+      required: required.includes(name),
+      type: (ps.type as SchemaProperty['type']) || 'string',
+    })
+  }
+
+  return { properties, raw }
 }

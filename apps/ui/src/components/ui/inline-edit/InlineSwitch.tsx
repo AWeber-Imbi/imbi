@@ -1,18 +1,19 @@
-import { Switch } from '@/components/ui/switch'
 import { toast } from 'sonner'
 
+import { Switch } from '@/components/ui/switch'
+
 export interface InlineSwitchProps {
-  value: boolean | null
   onCommit: (next: boolean) => Promise<void> | void
-  readOnly?: boolean
   pending?: boolean
+  readOnly?: boolean
+  value: boolean | null
 }
 
 export function InlineSwitch({
-  value,
   onCommit,
-  readOnly = false,
   pending = false,
+  readOnly = false,
+  value,
 }: InlineSwitchProps) {
   return (
     <Switch

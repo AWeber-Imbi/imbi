@@ -1,34 +1,35 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
 import { bootstrapAuth, type BootstrapDeps } from '../authBootstrap'
 
 function makeDeps(overrides: Partial<BootstrapDeps> = {}): {
-  deps: BootstrapDeps
-  setTokens: ReturnType<typeof vi.fn>
   clearTokens: ReturnType<typeof vi.fn>
-  refreshTokenApi: ReturnType<typeof vi.fn>
+  deps: BootstrapDeps
   onRedirect: ReturnType<typeof vi.fn>
+  refreshTokenApi: ReturnType<typeof vi.fn>
+  setTokens: ReturnType<typeof vi.fn>
 } {
   const setTokens = vi.fn()
   const clearTokens = vi.fn()
   const refreshTokenApi = vi.fn()
   const onRedirect = vi.fn()
   return {
+    clearTokens,
     deps: {
       accessToken: null,
-      refreshToken: null,
-      isTokenExpired: () => true,
-      setTokens,
       clearTokens,
-      refreshTokenApi,
-      pathname: '/dashboard',
-      search: '',
+      isTokenExpired: () => true,
       onRedirect,
+      pathname: '/dashboard',
+      refreshToken: null,
+      refreshTokenApi,
+      search: '',
+      setTokens,
       ...overrides,
     },
-    setTokens,
-    clearTokens,
-    refreshTokenApi,
     onRedirect,
+    refreshTokenApi,
+    setTokens,
   }
 }
 
@@ -38,7 +39,7 @@ describe('bootstrapAuth', () => {
   })
 
   it('valid access token: no-op (no refresh, no redirect, no setTokens)', async () => {
-    const { deps, clearTokens, refreshTokenApi, setTokens, onRedirect } =
+    const { clearTokens, deps, onRedirect, refreshTokenApi, setTokens } =
       makeDeps({
         accessToken: 'good',
         isTokenExpired: () => false,
@@ -54,7 +55,7 @@ describe('bootstrapAuth', () => {
   })
 
   it('no tokens on a protected path: clears, saves redirect, calls onRedirect', async () => {
-    const { deps, clearTokens, refreshTokenApi, onRedirect } = makeDeps({
+    const { clearTokens, deps, onRedirect, refreshTokenApi } = makeDeps({
       pathname: '/projects',
       search: '?filter=x',
     })
@@ -70,7 +71,7 @@ describe('bootstrapAuth', () => {
   })
 
   it('no tokens on /login: clears but does NOT save redirect or call onRedirect', async () => {
-    const { deps, clearTokens, onRedirect } = makeDeps({ pathname: '/login' })
+    const { clearTokens, deps, onRedirect } = makeDeps({ pathname: '/login' })
 
     await bootstrapAuth(deps)
 
@@ -80,16 +81,16 @@ describe('bootstrapAuth', () => {
   })
 
   it('expired access + valid refresh, refresh succeeds: setTokens, no redirect', async () => {
-    const { deps, setTokens, clearTokens, onRedirect, refreshTokenApi } =
+    const { clearTokens, deps, onRedirect, refreshTokenApi, setTokens } =
       makeDeps({
         accessToken: 'old',
         refreshToken: 'rt',
       })
     refreshTokenApi.mockResolvedValue({
       access_token: 'new',
+      expires_in: 3600,
       refresh_token: 'rt-new',
       token_type: 'bearer',
-      expires_in: 3600,
     })
 
     await bootstrapAuth(deps)
@@ -102,11 +103,11 @@ describe('bootstrapAuth', () => {
   })
 
   it('expired access + valid refresh, refresh fails on protected path: clears, saves, redirects', async () => {
-    const { deps, setTokens, clearTokens, onRedirect, refreshTokenApi } =
+    const { clearTokens, deps, onRedirect, refreshTokenApi, setTokens } =
       makeDeps({
         accessToken: 'old',
-        refreshToken: 'rt',
         pathname: '/projects',
+        refreshToken: 'rt',
       })
     refreshTokenApi.mockRejectedValue(new Error('boom'))
 
@@ -122,10 +123,10 @@ describe('bootstrapAuth', () => {
   })
 
   it('expired access + valid refresh, refresh fails on /login: clears, no redirect, no save', async () => {
-    const { deps, clearTokens, onRedirect, refreshTokenApi } = makeDeps({
+    const { clearTokens, deps, onRedirect, refreshTokenApi } = makeDeps({
       accessToken: 'old',
-      refreshToken: 'rt',
       pathname: '/login',
+      refreshToken: 'rt',
     })
     refreshTokenApi.mockRejectedValue(new Error('boom'))
 
@@ -137,10 +138,10 @@ describe('bootstrapAuth', () => {
   })
 
   it('expired access + no refresh token: clears, saves, redirects', async () => {
-    const { deps, clearTokens, onRedirect, refreshTokenApi } = makeDeps({
+    const { clearTokens, deps, onRedirect, refreshTokenApi } = makeDeps({
       accessToken: 'old',
-      refreshToken: null,
       pathname: '/dashboard',
+      refreshToken: null,
     })
 
     await bootstrapAuth(deps)

@@ -1,8 +1,8 @@
 import { useIcon } from '@/lib/icons'
 
 interface EntityIconProps {
-  icon: string
   className?: string
+  icon: string
 }
 
 /**
@@ -13,7 +13,7 @@ interface EntityIconProps {
  * Uses `useIcon` so the component re-renders when the owning icon set
  * finishes its dynamic import.
  */
-export function EntityIcon({ icon, className }: EntityIconProps) {
+export function EntityIcon({ className, icon }: EntityIconProps) {
   const Icon = useIcon(icon)
   return <Icon className={className} />
 }

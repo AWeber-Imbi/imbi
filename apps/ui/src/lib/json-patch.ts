@@ -2,41 +2,33 @@ import type { PatchOperation } from '@/types'
 
 export type { PatchOperation }
 
-function encodePointerSegment(seg: string): string {
-  return seg.replace(/~/g, '~0').replace(/\//g, '~1')
-}
-
-function deepEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true
-  if (a === null || b === null) return false
-  if (typeof a !== typeof b) return false
-  if (typeof a !== 'object') return false
-  if (Array.isArray(a) !== Array.isArray(b)) return false
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false
-    return a.every((v, i) => deepEqual(v, b[i]))
-  }
-  const ao = a as Record<string, unknown>
-  const bo = b as Record<string, unknown>
-  const keys = new Set([...Object.keys(ao), ...Object.keys(bo)])
-  for (const k of keys) {
-    if (!deepEqual(ao[k], bo[k])) return false
-  }
-  return true
-}
-
 /**
- * Emit one `replace` op per provided key. Use for "set these fields"
- * mutations that don't need to diff against a prior state.
+ * Apply JSON Patch operations to a top-level object.
+ * Supports only `replace` and `remove` on top-level paths (`/<key>`).
+ * Returns a new object; input is not mutated.
  */
-export function buildReplacePatch(
-  updates: Record<string, unknown>,
-): PatchOperation[] {
-  return Object.entries(updates).map(([key, value]) => ({
-    op: 'replace',
-    path: `/${encodePointerSegment(key)}`,
-    value,
-  }))
+export function applyJsonPatch<T extends Record<string, unknown>>(
+  doc: T,
+  ops: PatchOperation[],
+): T {
+  let out: Record<string, unknown> = { ...doc }
+  for (const op of ops) {
+    if (op.op !== 'replace' && op.op !== 'remove') {
+      throw new Error(`unsupported op: ${op.op}`)
+    }
+    const parts = op.path.split('/')
+    if (parts.length !== 2 || parts[0] !== '') {
+      throw new Error(`only top-level paths supported, got: ${op.path}`)
+    }
+    const key = decodePointerSegment(parts[1])
+    if (op.op === 'replace') {
+      out = { ...out, [key]: op.value }
+    } else {
+      const { [key]: _removed, ...rest } = out
+      out = rest
+    }
+  }
+  return out as T
 }
 
 /**
@@ -83,34 +75,42 @@ export function buildDiffPatch(
 }
 
 /**
- * Apply JSON Patch operations to a top-level object.
- * Supports only `replace` and `remove` on top-level paths (`/<key>`).
- * Returns a new object; input is not mutated.
+ * Emit one `replace` op per provided key. Use for "set these fields"
+ * mutations that don't need to diff against a prior state.
  */
-export function applyJsonPatch<T extends Record<string, unknown>>(
-  doc: T,
-  ops: PatchOperation[],
-): T {
-  let out: Record<string, unknown> = { ...doc }
-  for (const op of ops) {
-    if (op.op !== 'replace' && op.op !== 'remove') {
-      throw new Error(`unsupported op: ${op.op}`)
-    }
-    const parts = op.path.split('/')
-    if (parts.length !== 2 || parts[0] !== '') {
-      throw new Error(`only top-level paths supported, got: ${op.path}`)
-    }
-    const key = decodePointerSegment(parts[1])
-    if (op.op === 'replace') {
-      out = { ...out, [key]: op.value }
-    } else {
-      const { [key]: _removed, ...rest } = out
-      out = rest
-    }
-  }
-  return out as T
+export function buildReplacePatch(
+  updates: Record<string, unknown>,
+): PatchOperation[] {
+  return Object.entries(updates).map(([key, value]) => ({
+    op: 'replace',
+    path: `/${encodePointerSegment(key)}`,
+    value,
+  }))
 }
 
 function decodePointerSegment(seg: string): string {
   return seg.replace(/~1/g, '/').replace(/~0/g, '~')
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (a === null || b === null) return false
+  if (typeof a !== typeof b) return false
+  if (typeof a !== 'object') return false
+  if (Array.isArray(a) !== Array.isArray(b)) return false
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false
+    return a.every((v, i) => deepEqual(v, b[i]))
+  }
+  const ao = a as Record<string, unknown>
+  const bo = b as Record<string, unknown>
+  const keys = new Set([...Object.keys(ao), ...Object.keys(bo)])
+  for (const k of keys) {
+    if (!deepEqual(ao[k], bo[k])) return false
+  }
+  return true
+}
+
+function encodePointerSegment(seg: string): string {
+  return seg.replace(/~/g, '~0').replace(/\//g, '~1')
 }

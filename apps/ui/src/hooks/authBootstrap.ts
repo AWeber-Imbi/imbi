@@ -1,15 +1,15 @@
 import type { TokenResponse } from '@/types'
 
 export interface BootstrapDeps {
-  accessToken: string | null
-  refreshToken: string | null
-  isTokenExpired: () => boolean
-  setTokens: (access: string, refresh: string) => void
+  accessToken: null | string
   clearTokens: () => void
-  refreshTokenApi: (rt: string) => Promise<TokenResponse>
-  pathname: string
-  search: string
+  isTokenExpired: () => boolean
   onRedirect: () => void
+  pathname: string
+  refreshToken: null | string
+  refreshTokenApi: (rt: string) => Promise<TokenResponse>
+  search: string
+  setTokens: (access: string, refresh: string) => void
 }
 
 // Direct port of the previous `['authInit']` queryFn, minus the throws (which

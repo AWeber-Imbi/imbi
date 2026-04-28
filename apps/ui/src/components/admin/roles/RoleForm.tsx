@@ -1,90 +1,60 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+
 import { useQuery } from '@tanstack/react-query'
 import {
-  Save,
-  X,
   AlertCircle,
   AlertTriangle,
   ChevronDown,
   ChevronRight,
+  Save,
+  X,
 } from 'lucide-react'
+
+import { getAdminSettings, getRole } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { FormField } from '@/components/ui/form-field'
+import { Input } from '@/components/ui/input'
 import { useFormScaffold } from '@/hooks/useFormScaffold'
-import { getRole, getAdminSettings } from '@/api/endpoints'
-import type { RoleCreate, Permission } from '@/types'
+import type { Permission, RoleCreate } from '@/types'
 
 interface RoleFormProps {
-  roleSlug: string | null
-  onSave: (role: RoleCreate, permissions: string[]) => void
-  onCancel: () => void
+  error?: null | { message?: string; response?: { data?: { detail?: string } } }
   isLoading?: boolean
-  error?: { response?: { data?: { detail?: string } }; message?: string } | null
-}
-
-function toSlug(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-}
-
-// Group permissions by resource_type dynamically
-function groupPermissionsByResource(
-  permissions: Permission[],
-): Record<string, Permission[]> {
-  const grouped: Record<string, Permission[]> = {}
-  for (const perm of permissions) {
-    const key = perm.resource_type
-    if (!grouped[key]) grouped[key] = []
-    grouped[key].push(perm)
-  }
-  return grouped
-}
-
-// Generate a human-readable label from a resource_type key
-function resourceLabel(resource: string): string {
-  return (
-    resource
-      .split(/[-_]/)
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(' ') + ' Management'
-  )
+  onCancel: () => void
+  onSave: (role: RoleCreate, permissions: string[]) => void
+  roleSlug: null | string
 }
 
 export function RoleForm({
-  roleSlug,
-  onSave,
-  onCancel,
-  isLoading = false,
   error,
+  isLoading = false,
+  onCancel,
+  onSave,
+  roleSlug,
 }: RoleFormProps) {
   const isEditing = !!roleSlug
 
   // Fetch existing role when editing
   const {
     data: existingRole,
-    isLoading: roleLoading,
     error: roleError,
+    isLoading: roleLoading,
   } = useQuery({
-    queryKey: ['role', roleSlug],
-    queryFn: ({ signal }) => getRole(roleSlug!, signal),
     enabled: isEditing,
+    queryFn: ({ signal }) => getRole(roleSlug!, signal),
+    queryKey: ['role', roleSlug],
   })
 
   // Fetch available permissions
   const {
     data: adminSettings,
-    isLoading: adminSettingsLoading,
     error: adminSettingsError,
+    isLoading: adminSettingsLoading,
   } = useQuery({
-    queryKey: ['adminSettings'],
     queryFn: ({ signal }) => getAdminSettings(signal),
+    queryKey: ['adminSettings'],
   })
 
   const [name, setName] = useState('')
@@ -99,11 +69,11 @@ export function RoleForm({
 
   // Validation
   const {
-    validationErrors,
+    handleFieldChange,
+    setTouched,
     setValidationErrors,
     touched,
-    setTouched,
-    handleFieldChange,
+    validationErrors,
   } = useFormScaffold()
 
   // Group available permissions by resource_type
@@ -182,10 +152,10 @@ export function RoleForm({
     if (!validateForm()) return
 
     const roleData: RoleCreate = {
-      name: name.trim(),
-      slug: slug.trim(),
       description: description.trim() || null,
+      name: name.trim(),
       priority,
+      slug: slug.trim(),
     }
     onSave(roleData, Array.from(selectedPermissions))
   }
@@ -266,18 +236,18 @@ export function RoleForm({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
+          <Button disabled={isLoading} onClick={onCancel} variant="outline">
             <X className="mr-2 h-4 w-4" />
             Cancel
           </Button>
           {!isSystemRole && (
             <Button
-              onClick={handleSave}
+              className="bg-action text-action-foreground hover:bg-action-hover"
               disabled={
                 isLoading ||
                 (!isEditing && (adminSettingsLoading || !!adminSettingsError))
               }
-              className="bg-action text-action-foreground hover:bg-action-hover"
+              onClick={handleSave}
             >
               <Save className="mr-2 h-4 w-4" />
               {isLoading
@@ -330,25 +300,25 @@ export function RoleForm({
             {/* Name */}
             <div className="col-span-2">
               <FormField
+                error={validationErrors.name}
                 label="Name"
                 required
                 touched={touched.name}
-                error={validationErrors.name}
               >
                 <Input
-                  value={name}
-                  onChange={(e) => handleNameChange(e.target.value)}
+                  className={` ${
+                    isSystemRole ? 'cursor-not-allowed opacity-60' : ''
+                  }`}
+                  disabled={isLoading || isSystemRole}
                   onBlur={() => {
                     setTouched({ ...touched, name: true })
                     const err = validateName(name)
                     if (err)
                       setValidationErrors({ ...validationErrors, name: err })
                   }}
-                  disabled={isLoading || isSystemRole}
+                  onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="e.g. Project Manager"
-                  className={` ${
-                    isSystemRole ? 'cursor-not-allowed opacity-60' : ''
-                  }`}
+                  value={name}
                 />
               </FormField>
             </div>
@@ -360,19 +330,19 @@ export function RoleForm({
                   Slug <span className="text-red-500">*</span>
                 </label>
                 <Input
-                  value={slug}
-                  onChange={(e) => handleSlugChange(e.target.value)}
+                  className={`font-mono ${
+                    isSystemRole ? 'cursor-not-allowed opacity-60' : ''
+                  }`}
+                  disabled={isLoading || isSystemRole}
                   onBlur={() => {
                     setTouched({ ...touched, slug: true })
                     const err = validateSlug(slug)
                     if (err)
                       setValidationErrors({ ...validationErrors, slug: err })
                   }}
-                  disabled={isLoading || isSystemRole}
+                  onChange={(e) => handleSlugChange(e.target.value)}
                   placeholder="e.g. project-manager"
-                  className={`font-mono ${
-                    isSystemRole ? 'cursor-not-allowed opacity-60' : ''
-                  }`}
+                  value={slug}
                 />
                 {!slugManuallyEdited && name && (
                   <p className="mt-1 text-xs text-tertiary">
@@ -393,12 +363,12 @@ export function RoleForm({
                 Description
               </label>
               <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                className={`w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground ${isSystemRole ? 'cursor-not-allowed opacity-60' : ''}`}
                 disabled={isLoading || isSystemRole}
+                onChange={(e) => setDescription(e.target.value)}
                 placeholder="Brief description of this role's purpose and scope"
                 rows={3}
-                className={`w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground ${isSystemRole ? 'cursor-not-allowed opacity-60' : ''}`}
+                value={description}
               />
             </div>
 
@@ -408,14 +378,14 @@ export function RoleForm({
                 Priority
               </label>
               <Input
-                type="number"
-                value={priority}
-                onChange={(e) => setPriority(parseInt(e.target.value, 10) || 0)}
-                disabled={isLoading || isSystemRole}
-                placeholder="0"
                 className={` ${
                   isSystemRole ? 'cursor-not-allowed opacity-60' : ''
                 }`}
+                disabled={isLoading || isSystemRole}
+                onChange={(e) => setPriority(parseInt(e.target.value, 10) || 0)}
+                placeholder="0"
+                type="number"
+                value={priority}
               />
               <p className="mt-1 text-xs text-tertiary">
                 Higher priority roles take precedence. System roles use
@@ -470,21 +440,21 @@ export function RoleForm({
 
                 return (
                   <div
-                    key={resource}
                     className="rounded-lg border border-input bg-secondary"
+                    key={resource}
                   >
                     {/* Group Header */}
                     <div className="flex items-center gap-3 p-3">
                       <button
-                        type="button"
-                        onClick={() => toggleGroup(resource)}
+                        aria-expanded={isExpanded}
                         aria-label={
                           isExpanded
                             ? 'Collapse permissions group'
                             : 'Expand permissions group'
                         }
-                        aria-expanded={isExpanded}
                         className="rounded p-0.5 hover:bg-secondary"
+                        onClick={() => toggleGroup(resource)}
+                        type="button"
                       >
                         {isExpanded ? (
                           <ChevronDown className="h-4 w-4 text-secondary" />
@@ -495,7 +465,6 @@ export function RoleForm({
 
                       <div className="flex flex-1 items-center gap-2">
                         <Checkbox
-                          id={`group-${resource}`}
                           checked={
                             allSelected
                               ? true
@@ -504,11 +473,12 @@ export function RoleForm({
                                 : false
                           }
                           disabled={isSystemRole}
+                          id={`group-${resource}`}
                           onCheckedChange={() => toggleAllInGroup(resource)}
                         />
                         <label
-                          htmlFor={`group-${resource}`}
                           className="flex-1 cursor-pointer select-none text-primary"
+                          htmlFor={`group-${resource}`}
                         >
                           {resourceLabel(resource)}
                         </label>
@@ -531,21 +501,21 @@ export function RoleForm({
                           .sort((a, b) => a.action.localeCompare(b.action))
                           .map((perm) => (
                             <div
-                              key={perm.name}
                               className="flex items-start gap-3 rounded p-2.5 hover:bg-primary"
+                              key={perm.name}
                             >
                               <Checkbox
-                                id={perm.name}
                                 checked={selectedPermissions.has(perm.name)}
+                                className="mt-0.5"
                                 disabled={isSystemRole}
+                                id={perm.name}
                                 onCheckedChange={() =>
                                   togglePermission(perm.name)
                                 }
-                                className="mt-0.5"
                               />
                               <label
-                                htmlFor={perm.name}
                                 className="flex-1 cursor-pointer select-none"
+                                htmlFor={perm.name}
                               >
                                 <div className="text-sm text-primary">
                                   <code className="rounded bg-secondary px-1.5 py-0.5 text-xs text-info">
@@ -580,4 +550,36 @@ export function RoleForm({
       </Card>
     </div>
   )
+}
+
+// Group permissions by resource_type dynamically
+function groupPermissionsByResource(
+  permissions: Permission[],
+): Record<string, Permission[]> {
+  const grouped: Record<string, Permission[]> = {}
+  for (const perm of permissions) {
+    const key = perm.resource_type
+    if (!grouped[key]) grouped[key] = []
+    grouped[key].push(perm)
+  }
+  return grouped
+}
+
+// Generate a human-readable label from a resource_type key
+function resourceLabel(resource: string): string {
+  return (
+    resource
+      .split(/[-_]/)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ') + ' Management'
+  )
+}
+
+function toSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
 }

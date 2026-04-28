@@ -1,23 +1,31 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
-import { extractApiErrorDetail } from '@/lib/apiError'
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  AlertCircle,
   ArrowLeft,
   Edit2,
-  Users,
-  UserPlus,
-  X,
   Search,
-  AlertCircle,
+  UserPlus,
+  Users,
+  X,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { toast } from 'sonner'
+
+import {
+  addTeamMember,
+  getTeamMembers,
+  getTeamSchema,
+  removeTeamMember,
+} from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { Gravatar } from '@/components/ui/gravatar'
 import { DynamicDetailFields } from '@/components/ui/dynamic-fields'
+import { EntityIcon } from '@/components/ui/entity-icon'
+import { Gravatar } from '@/components/ui/gravatar'
+import { Input } from '@/components/ui/input'
 import {
   Table,
   TableBody,
@@ -27,56 +35,53 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
-  getTeamMembers,
-  addTeamMember,
-  removeTeamMember,
-  getTeamSchema,
-} from '@/api/endpoints'
-import { TEAM_BASE_FIELDS_SET } from '@/lib/constants'
-import { EntityIcon } from '@/components/ui/entity-icon'
-import { extractDynamicFields } from '@/lib/utils'
-import type { Team } from '@/types'
-import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { extractApiErrorDetail } from '@/lib/apiError'
+import { TEAM_BASE_FIELDS_SET } from '@/lib/constants'
+import { extractDynamicFields } from '@/lib/utils'
+import type { Team } from '@/types'
 
 interface TeamDetailProps {
-  team: Team
-  onEdit: () => void
   onBack: () => void
+  onEdit: () => void
+  team: Team
 }
 
-export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
+export function TeamDetail({ onBack, onEdit, team }: TeamDetailProps) {
   const queryClient = useQueryClient()
   const [showAddMember, setShowAddMember] = useState(false)
   const [newMemberEmail, setNewMemberEmail] = useState('')
-  const [confirm, setConfirm] = useState<{
+  const [confirm, setConfirm] = useState<null | {
     action: 'remove'
     email: string
-  } | null>(null)
+  }>(null)
 
   const {
     data: members = [],
-    isLoading: membersLoading,
     error: membersError,
+    isLoading: membersLoading,
   } = useQuery({
-    queryKey: ['teamMembers', team.organization.slug, team.slug],
     queryFn: ({ signal }) =>
       getTeamMembers(team.organization.slug, team.slug, signal),
+    queryKey: ['teamMembers', team.organization.slug, team.slug],
   })
 
   const { data: teamSchema } = useQuery({
-    queryKey: ['teamSchema'],
     queryFn: ({ signal }) => getTeamSchema(signal),
+    queryKey: ['teamSchema'],
     staleTime: 5 * 60 * 1000,
   })
 
   const addMemberMutation = useMutation({
     mutationFn: (email: string) =>
       addTeamMember(team.organization.slug, team.slug, email),
+    onError: (error: unknown) => {
+      toast.error(`Failed to add member: ${extractApiErrorDetail(error)}`)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ['teamMembers', team.organization.slug, team.slug],
@@ -84,21 +89,18 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
       setNewMemberEmail('')
       setShowAddMember(false)
     },
-    onError: (error: unknown) => {
-      toast.error(`Failed to add member: ${extractApiErrorDetail(error)}`)
-    },
   })
 
   const removeMemberMutation = useMutation({
     mutationFn: (email: string) =>
       removeTeamMember(team.organization.slug, team.slug, email),
+    onError: (error: unknown) => {
+      toast.error(`Failed to remove member: ${extractApiErrorDetail(error)}`)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ['teamMembers', team.organization.slug, team.slug],
       })
-    },
-    onError: (error: unknown) => {
-      toast.error(`Failed to remove member: ${extractApiErrorDetail(error)}`)
     },
   })
 
@@ -115,7 +117,7 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
     <div className="space-y-6">
       {/* Back button */}
       <div>
-        <Button variant="outline" onClick={onBack}>
+        <Button onClick={onBack} variant="outline">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
@@ -128,8 +130,8 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
             <div className="flex items-center gap-3">
               {team.icon && (
                 <EntityIcon
-                  icon={team.icon}
                   className="h-8 w-8 rounded object-cover"
+                  icon={team.icon}
                 />
               )}
               <CardTitle>{team.name}</CardTitle>
@@ -139,8 +141,8 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
             )}
           </div>
           <Button
-            onClick={onEdit}
             className="bg-action text-action-foreground hover:bg-action-hover"
+            onClick={onEdit}
           >
             <Edit2 className="mr-2 h-4 w-4" />
             Edit Team
@@ -163,8 +165,8 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
             </div>
             {teamSchema && (
               <DynamicDetailFields
-                schema={teamSchema}
                 data={extractDynamicFields(team, TEAM_BASE_FIELDS_SET)}
+                schema={teamSchema}
               />
             )}
           </div>
@@ -198,19 +200,19 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary" />
                   <Input
-                    placeholder="Enter user email address..."
-                    value={newMemberEmail}
+                    className="pl-10"
                     onChange={(e) => setNewMemberEmail(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
-                    className="pl-10"
+                    placeholder="Enter user email address..."
+                    value={newMemberEmail}
                   />
                 </div>
                 <Button
-                  onClick={handleAddMember}
+                  className="bg-action text-action-foreground hover:bg-action-hover"
                   disabled={
                     !newMemberEmail.trim() || addMemberMutation.isPending
                   }
-                  className="bg-action text-action-foreground hover:bg-action-hover"
+                  onClick={handleAddMember}
                 >
                   {addMemberMutation.isPending ? 'Adding...' : 'Add'}
                 </Button>
@@ -265,14 +267,14 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
               </TableHeader>
               <TableBody className="divide-y divide-tertiary">
                 {members.map((member) => (
-                  <TableRow key={member.email} className="hover:bg-secondary">
+                  <TableRow className="hover:bg-secondary" key={member.email}>
                     <TableCell className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <Gravatar
-                          email={member.email}
-                          size={32}
                           alt={member.display_name}
                           className="h-8 w-8 rounded-full"
+                          email={member.email}
+                          size={32}
                         />
                         <div className="text-primary">
                           {member.display_name}
@@ -292,12 +294,12 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
-                              type="button"
-                              onClick={() => handleRemoveMember(member.email)}
-                              disabled={removeMemberMutation.isPending}
                               aria-label={`Remove ${member.display_name} from team`}
-                              title="Remove from team"
                               className="rounded p-1.5 text-danger hover:bg-danger"
+                              disabled={removeMemberMutation.isPending}
+                              onClick={() => handleRemoveMember(member.email)}
+                              title="Remove from team"
+                              type="button"
                             >
                               <X className="h-4 w-4" />
                             </button>
@@ -316,17 +318,17 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
         </CardContent>
       </Card>
       <ConfirmDialog
-        open={confirm?.action === 'remove'}
-        title="Remove team member"
-        description="Remove this member from the team?"
         confirmLabel="Remove"
+        description="Remove this member from the team?"
+        onCancel={() => setConfirm(null)}
         onConfirm={() => {
           if (confirm?.action === 'remove') {
             removeMemberMutation.mutate(confirm.email)
           }
           setConfirm(null)
         }}
-        onCancel={() => setConfirm(null)}
+        open={confirm?.action === 'remove'}
+        title="Remove team member"
       />
     </div>
   )

@@ -1,17 +1,20 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CornerDownLeft, Plus, Tag as TagIcon, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
+
 import { createTag, listTags } from '@/api/endpoints'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { cn } from '@/lib/utils'
-import { NoteTagChip } from './NoteTagChip'
 import type { Tag, TagRef } from '@/types'
 
+import { NoteTagChip } from './NoteTagChip'
+
 interface Props {
+  onChange: (tags: TagRef[]) => void
   orgSlug: string
   selected: TagRef[]
-  onChange: (tags: TagRef[]) => void
   /**
    * Layout variant. `'compact'` (default) is the right-aligned inline pill
    * used in the note composer header. `'full'` stretches to fill its
@@ -25,9 +28,9 @@ interface Props {
  * unmatched query creates a new tag server-side and attaches it.
  */
 export function TagCombobox({
+  onChange,
   orgSlug,
   selected,
-  onChange,
   variant = 'compact',
 }: Props) {
   const [query, setQuery] = useState('')
@@ -39,21 +42,21 @@ export function TagCombobox({
 
   const tagsKey = ['tags', orgSlug] as const
   const { data: allTags = [] } = useQuery({
-    queryKey: tagsKey,
-    queryFn: ({ signal }) => listTags(orgSlug, signal),
     enabled: !!orgSlug,
+    queryFn: ({ signal }) => listTags(orgSlug, signal),
+    queryKey: tagsKey,
   })
 
   const createMutation = useMutation({
     mutationFn: (name: string) => createTag(orgSlug, { name }),
+    onError: (err) => {
+      toast.error(`Create tag failed: ${extractApiErrorDetail(err)}`)
+    },
     onSuccess: (tag) => {
       qc.setQueryData<Tag[]>(tagsKey, (prev) => [...(prev ?? []), tag])
       onChange([...selected, { name: tag.name, slug: tag.slug }])
       setQuery('')
       setActiveIdx(0)
-    },
-    onError: (err) => {
-      toast.error(`Create tag failed: ${extractApiErrorDetail(err)}`)
     },
   })
 
@@ -132,17 +135,13 @@ export function TagCombobox({
 
   return (
     <div
-      ref={rootRef}
       className={cn(
         'relative flex flex-col gap-2',
         isFull ? 'w-full items-stretch' : 'items-end',
       )}
+      ref={rootRef}
     >
       <div
-        onClick={() => {
-          setOpen(true)
-          inputRef.current?.focus()
-        }}
         className={cn(
           'flex flex-wrap items-center gap-1 rounded-lg border bg-primary transition-colors',
           isFull
@@ -152,6 +151,10 @@ export function TagCombobox({
             ? 'ring-action/20 border-action ring-2'
             : 'border-secondary hover:border-primary',
         )}
+        onClick={() => {
+          setOpen(true)
+          inputRef.current?.focus()
+        }}
       >
         <TagIcon
           className={cn(
@@ -161,33 +164,33 @@ export function TagCombobox({
         />
         {selected.map((t) => (
           <span
-            key={t.slug}
             className="inline-flex items-center gap-1"
+            key={t.slug}
             onClick={(e) => e.stopPropagation()}
           >
-            <NoteTagChip tag={t} size="sm" />
+            <NoteTagChip size="sm" tag={t} />
             <button
-              type="button"
-              onClick={() => removeTag(t.slug)}
-              className="rounded border-0 bg-transparent p-0 text-tertiary hover:text-primary"
               aria-label={`Remove tag ${t.name}`}
+              className="rounded border-0 bg-transparent p-0 text-tertiary hover:text-primary"
+              onClick={() => removeTag(t.slug)}
+              type="button"
             >
               <X className="h-2.5 w-2.5" />
             </button>
           </span>
         ))}
         <input
-          ref={inputRef}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onFocus={() => setOpen(true)}
-          onKeyDown={handleKey}
-          placeholder={selected.length === 0 ? 'Add tags…' : ''}
           className={cn(
             'flex-1 border-0 bg-transparent p-0 text-primary outline-none placeholder:text-tertiary',
             isFull ? 'text-sm' : 'text-xs',
           )}
+          onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleKey}
+          placeholder={selected.length === 0 ? 'Add tags…' : ''}
+          ref={inputRef}
           style={{ minWidth: 80 }}
+          value={query}
         />
       </div>
 
@@ -207,19 +210,19 @@ export function TagCombobox({
                 const isActive = i === activeIdx
                 return (
                   <button
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded border-0 px-2 py-1.5 text-left',
+                      isActive ? 'bg-secondary' : 'bg-transparent',
+                    )}
                     key={t.slug}
-                    type="button"
                     onMouseDown={(e) => {
                       e.preventDefault()
                       addExisting(t)
                     }}
                     onMouseEnter={() => setActiveIdx(i)}
-                    className={cn(
-                      'flex w-full items-center gap-2 rounded border-0 px-2 py-1.5 text-left',
-                      isActive ? 'bg-secondary' : 'bg-transparent',
-                    )}
+                    type="button"
                   >
-                    <NoteTagChip tag={t} size="sm" />
+                    <NoteTagChip size="sm" tag={t} />
                     <span className="ml-auto text-[11px] text-tertiary">
                       {isActive && (
                         <CornerDownLeft className="h-3 w-3 text-tertiary" />
@@ -234,20 +237,20 @@ export function TagCombobox({
             <>
               {matches.length > 0 && <div className="my-1 h-px bg-secondary" />}
               <button
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  if (!createMutation.isPending)
-                    createMutation.mutate(query.trim())
-                }}
-                onMouseEnter={() => setActiveIdx(matches.length)}
-                disabled={createMutation.isPending}
                 className={cn(
                   'flex w-full items-center gap-2 rounded border-0 px-2 py-1.5 text-left text-xs text-secondary',
                   activeIdx === matches.length
                     ? 'bg-secondary'
                     : 'bg-transparent',
                 )}
+                disabled={createMutation.isPending}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  if (!createMutation.isPending)
+                    createMutation.mutate(query.trim())
+                }}
+                onMouseEnter={() => setActiveIdx(matches.length)}
+                type="button"
               >
                 <Plus className="h-3 w-3 text-tertiary" />
                 Create{' '}

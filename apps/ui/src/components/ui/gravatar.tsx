@@ -1,20 +1,21 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useMemo } from 'react'
+
 import SparkMD5 from 'spark-md5'
 
 interface GravatarProps {
-  email: string
-  size?: number
-  className?: string
   alt?: string
+  className?: string
   defaultImage?:
-    | 'mp'
     | '404'
     | 'identicon'
     | 'monsterid'
-    | 'wavatar'
+    | 'mp'
     | 'retro'
     | 'robohash'
+    | 'wavatar'
+  email: string
+  size?: number
 }
 
 /**
@@ -27,11 +28,11 @@ interface GravatarProps {
  * @param defaultImage - Default image type if email has no Gravatar (default: 'mp' - mystery person)
  */
 export function Gravatar({
+  alt,
+  className = '',
+  defaultImage = 'mp',
   email,
   size = 80,
-  className = '',
-  alt,
-  defaultImage = 'mp',
 }: GravatarProps) {
   const gravatarUrl = useMemo(() => {
     const hash = SparkMD5.hash(email.toLowerCase().trim())
@@ -42,11 +43,11 @@ export function Gravatar({
 
   return (
     <img
-      src={gravatarUrl}
       alt={displayName}
       className={className}
-      width={size}
       height={size}
+      src={gravatarUrl}
+      width={size}
     />
   )
 }

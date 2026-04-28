@@ -1,11 +1,18 @@
-import { useState, useMemo, useCallback } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useMemo, useState } from 'react'
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AlertCircle, Plus, Search, Trash2, Webhook } from 'lucide-react'
 import { toast } from 'sonner'
-import { extractApiErrorDetail } from '@/lib/apiError'
-import { Plus, Search, Trash2, Webhook, AlertCircle } from 'lucide-react'
+
+import {
+  createWebhook,
+  deleteWebhook,
+  listServiceWebhooks,
+  updateWebhook,
+} from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Input } from '@/components/ui/input'
 import {
   Table,
   TableBody,
@@ -14,38 +21,34 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { WebhookForm } from '../webhooks/WebhookForm'
-import { WebhookDetail } from '../webhooks/WebhookDetail'
-import {
-  listServiceWebhooks,
-  createWebhook,
-  updateWebhook,
-  deleteWebhook,
-} from '@/api/endpoints'
-import { buildDiffPatch } from '@/lib/json-patch'
-import type { WebhookCreate, PatchOperation } from '@/types'
 import type { ViewMode } from '@/hooks/useAdminNav'
+import { extractApiErrorDetail } from '@/lib/apiError'
+import { buildDiffPatch } from '@/lib/json-patch'
+import type { PatchOperation, WebhookCreate } from '@/types'
+
+import { WebhookDetail } from '../webhooks/WebhookDetail'
+import { WebhookForm } from '../webhooks/WebhookForm'
 
 interface ServiceWebhookListProps {
+  onViewModeChange?: (mode: ViewMode) => void
   orgSlug: string
   serviceSlug: string
-  onViewModeChange?: (mode: ViewMode) => void
 }
 
 export function ServiceWebhookList({
+  onViewModeChange,
   orgSlug,
   serviceSlug,
-  onViewModeChange,
 }: ServiceWebhookListProps) {
   const queryClient = useQueryClient()
   const [viewMode, _setViewMode] = useState<ViewMode>('list')
-  const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
+  const [selectedSlug, setSelectedSlug] = useState<null | string>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [confirm, setConfirm] = useState<{
+  const [confirm, setConfirm] = useState<null | {
     action: 'delete'
-    slug: string
     name: string
-  } | null>(null)
+    slug: string
+  }>(null)
 
   const setViewMode = useCallback(
     (mode: ViewMode) => {
@@ -57,11 +60,11 @@ export function ServiceWebhookList({
 
   const {
     data: webhooks = [],
-    isLoading,
     error,
+    isLoading,
   } = useQuery({
-    queryKey: ['service-webhooks', orgSlug, serviceSlug],
     queryFn: ({ signal }) => listServiceWebhooks(orgSlug, serviceSlug, signal),
+    queryKey: ['service-webhooks', orgSlug, serviceSlug],
   })
 
   const createMutation = useMutation({
@@ -80,11 +83,11 @@ export function ServiceWebhookList({
 
   const updateMutation = useMutation({
     mutationFn: ({
-      slug,
       operations,
+      slug,
     }: {
-      slug: string
       operations: PatchOperation[]
+      slug: string
     }) => updateWebhook(orgSlug, slug, operations),
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -100,6 +103,9 @@ export function ServiceWebhookList({
 
   const deleteMutation = useMutation({
     mutationFn: (slug: string) => deleteWebhook(orgSlug, slug),
+    onError: (error: unknown) => {
+      toast.error(`Failed to delete webhook: ${extractApiErrorDetail(error)}`)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ['service-webhooks', orgSlug, serviceSlug],
@@ -107,9 +113,6 @@ export function ServiceWebhookList({
       queryClient.invalidateQueries({
         queryKey: ['webhooks', orgSlug],
       })
-    },
-    onError: (error: unknown) => {
-      toast.error(`Failed to delete webhook: ${extractApiErrorDetail(error)}`)
     },
   })
 
@@ -134,7 +137,7 @@ export function ServiceWebhookList({
   const handleDelete = (slug: string) => {
     const wh = webhooks.find((w) => w.slug === slug)
     if (wh) {
-      setConfirm({ action: 'delete', slug, name: wh.name })
+      setConfirm({ action: 'delete', name: wh.name, slug })
     }
   }
 
@@ -155,7 +158,7 @@ export function ServiceWebhookList({
         setSelectedSlug(null)
         return
       }
-      updateMutation.mutate({ slug: selectedSlug, operations })
+      updateMutation.mutate({ operations, slug: selectedSlug })
     }
   }
 
@@ -171,14 +174,14 @@ export function ServiceWebhookList({
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <WebhookForm
-        webhook={viewMode === 'edit' ? selectedWebhook : null}
-        onSave={handleSave}
+        defaultServiceSlug={serviceSlug}
+        error={createMutation.error || updateMutation.error}
+        isLoading={createMutation.isPending || updateMutation.isPending}
         onCancel={
           viewMode === 'edit' ? handleCancelToDetail : handleCancelToList
         }
-        isLoading={createMutation.isPending || updateMutation.isPending}
-        error={createMutation.error || updateMutation.error}
-        defaultServiceSlug={serviceSlug}
+        onSave={handleSave}
+        webhook={viewMode === 'edit' ? selectedWebhook : null}
       />
     )
   }
@@ -186,12 +189,12 @@ export function ServiceWebhookList({
   if (viewMode === 'detail' && selectedWebhook) {
     return (
       <WebhookDetail
-        webhook={selectedWebhook}
+        onBack={handleCancelToList}
         onEdit={() => {
           setSelectedSlug(selectedWebhook.slug)
           setViewMode('edit')
         }}
-        onBack={handleCancelToList}
+        webhook={selectedWebhook}
       />
     )
   }
@@ -231,21 +234,21 @@ export function ServiceWebhookList({
             <div className="relative max-w-xs">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary" />
               <Input
+                className="pl-10"
+                onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search webhooks..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
               />
             </div>
           )}
         </div>
         <Button
+          className="bg-action text-action-foreground hover:bg-action-hover"
           onClick={() => {
             setSelectedSlug(null)
             setViewMode('create')
           }}
           size="sm"
-          className="bg-action text-action-foreground hover:bg-action-hover"
         >
           <Plus className="mr-2 h-4 w-4" />
           New Webhook
@@ -289,6 +292,8 @@ export function ServiceWebhookList({
             <TableBody className="divide-y divide-tertiary">
               {filteredWebhooks.map((wh) => (
                 <TableRow
+                  aria-label={`View webhook ${wh.name}`}
+                  className="hover:bg-secondary/50 cursor-pointer"
                   key={wh.slug}
                   onClick={() => {
                     setSelectedSlug(wh.slug)
@@ -303,8 +308,6 @@ export function ServiceWebhookList({
                     }
                   }}
                   tabIndex={0}
-                  aria-label={`View webhook ${wh.name}`}
-                  className="hover:bg-secondary/50 cursor-pointer"
                 >
                   <TableCell className="px-6 py-4">
                     <div className="flex items-center gap-3">
@@ -344,12 +347,12 @@ export function ServiceWebhookList({
                   >
                     <div className="flex items-center justify-end gap-2">
                       <Button
-                        variant="ghost"
-                        size="sm"
                         aria-label={`Delete webhook ${wh.name}`}
-                        onClick={() => handleDelete(wh.slug)}
-                        disabled={deleteMutation.isPending}
                         className="text-danger hover:bg-danger"
+                        disabled={deleteMutation.isPending}
+                        onClick={() => handleDelete(wh.slug)}
+                        size="sm"
+                        variant="ghost"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -362,21 +365,21 @@ export function ServiceWebhookList({
         </div>
       )}
       <ConfirmDialog
-        open={confirm?.action === 'delete'}
-        title="Delete webhook"
+        confirmLabel="Delete"
         description={
           confirm?.action === 'delete'
             ? `Delete webhook "${confirm.name}"? This action cannot be undone.`
             : 'This action cannot be undone.'
         }
-        confirmLabel="Delete"
+        onCancel={() => setConfirm(null)}
         onConfirm={() => {
           if (confirm?.action === 'delete') {
             deleteMutation.mutate(confirm.slug)
           }
           setConfirm(null)
         }}
-        onCancel={() => setConfirm(null)}
+        open={confirm?.action === 'delete'}
+        title="Delete webhook"
       />
     </div>
   )

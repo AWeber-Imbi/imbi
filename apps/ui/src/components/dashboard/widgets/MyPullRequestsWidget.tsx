@@ -1,6 +1,7 @@
-import { GitPullRequest, Clock, MessageSquare, CheckCircle } from 'lucide-react'
-import { Card } from '@/components/ui/card'
+import { CheckCircle, Clock, GitPullRequest, MessageSquare } from 'lucide-react'
+
 import { Badge, type BadgeProps } from '@/components/ui/badge'
+import { Card } from '@/components/ui/card'
 
 interface MyPullRequestsWidgetProps {
   onUserSelect?: (userName: string) => void
@@ -11,64 +12,64 @@ export function MyPullRequestsWidget({
 }: MyPullRequestsWidgetProps) {
   const pullRequests = [
     {
-      id: 1,
-      title: 'Add health score tracking to dashboard',
-      repo: 'frontend-applications/navigation',
       author: 'You',
-      status: 'ready' as const,
-      comments: 3,
-      reviewers: ['Scott Miller', 'Dave Shawley'],
-      createdAt: '2 hours ago',
       branch: 'feature/health-tracking',
+      comments: 3,
+      createdAt: '2 hours ago',
+      id: 1,
+      repo: 'frontend-applications/navigation',
+      reviewers: ['Scott Miller', 'Dave Shawley'],
+      status: 'ready' as const,
+      title: 'Add health score tracking to dashboard',
     },
     {
-      id: 2,
-      title: 'Fix deployment status indicator',
-      repo: 'platform/deployment-service',
       author: 'You',
-      status: 'pending' as const,
-      comments: 0,
-      reviewers: ['Gavin Roy'],
-      createdAt: '5 hours ago',
       branch: 'bugfix/status-indicator',
+      comments: 0,
+      createdAt: '5 hours ago',
+      id: 2,
+      repo: 'platform/deployment-service',
+      reviewers: ['Gavin Roy'],
+      status: 'pending' as const,
+      title: 'Fix deployment status indicator',
     },
     {
-      id: 3,
-      title: 'Update authentication flow',
-      repo: 'security/auth-service',
       author: 'You',
-      status: 'changes-requested' as const,
-      comments: 7,
-      reviewers: ['Jim Fitzpatrick', 'Scott Miller'],
-      createdAt: '1 day ago',
       branch: 'feature/oauth-updates',
+      comments: 7,
+      createdAt: '1 day ago',
+      id: 3,
+      repo: 'security/auth-service',
+      reviewers: ['Jim Fitzpatrick', 'Scott Miller'],
+      status: 'changes-requested' as const,
+      title: 'Update authentication flow',
     },
     {
-      id: 4,
-      title: 'Optimize database queries for reports',
-      repo: 'backend/analytics',
       author: 'You',
-      status: 'approved' as const,
-      comments: 2,
-      reviewers: ['Dave Shawley'],
-      createdAt: '2 days ago',
       branch: 'perf/query-optimization',
+      comments: 2,
+      createdAt: '2 days ago',
+      id: 4,
+      repo: 'backend/analytics',
+      reviewers: ['Dave Shawley'],
+      status: 'approved' as const,
+      title: 'Optimize database queries for reports',
     },
   ]
 
   const statusConfig = {
-    ready: {
-      label: 'Ready for Review',
-      color: 'blue' as const,
-      icon: GitPullRequest,
-    },
-    pending: { label: 'Pending Review', color: 'yellow' as const, icon: Clock },
+    approved: { color: 'green' as const, icon: CheckCircle, label: 'Approved' },
     'changes-requested': {
-      label: 'Changes Requested',
       color: 'red' as const,
       icon: MessageSquare,
+      label: 'Changes Requested',
     },
-    approved: { label: 'Approved', color: 'green' as const, icon: CheckCircle },
+    pending: { color: 'yellow' as const, icon: Clock, label: 'Pending Review' },
+    ready: {
+      color: 'blue' as const,
+      icon: GitPullRequest,
+      label: 'Ready for Review',
+    },
   }
 
   return (
@@ -87,8 +88,8 @@ export function MyPullRequestsWidget({
 
           return (
             <div
-              key={pr.id}
               className="rounded-lg border border-input bg-background p-4 transition-colors hover:border-secondary"
+              key={pr.id}
             >
               <div className="flex items-start gap-3">
                 <GitPullRequest className="mt-0.5 h-5 w-5 flex-shrink-0 text-tertiary" />
@@ -102,15 +103,15 @@ export function MyPullRequestsWidget({
 
                   <div className="flex flex-wrap items-center gap-3">
                     <Badge
+                      className="gap-1.5 rounded-full"
                       variant={
                         ({
                           blue: 'info',
-                          yellow: 'warning',
                           red: 'danger',
+                          yellow: 'warning',
                         }[config.color as string] ??
                           'success') as BadgeProps['variant']
                       }
-                      className="gap-1.5 rounded-full"
                     >
                       <StatusIcon className="h-3 w-3" />
                       {config.label}
@@ -133,12 +134,12 @@ export function MyPullRequestsWidget({
                       Reviewers:{' '}
                       {pr.reviewers.map((reviewer, idx) => (
                         <button
-                          type="button"
-                          key={idx}
-                          onClick={() => onUserSelect?.(reviewer)}
                           className={`hover:text-info/80 text-info ${
                             idx > 0 ? 'ml-1' : ''
                           }`}
+                          key={idx}
+                          onClick={() => onUserSelect?.(reviewer)}
+                          type="button"
                         >
                           {reviewer}
                           {idx < pr.reviewers.length - 1 ? ',' : ''}

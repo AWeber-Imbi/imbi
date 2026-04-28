@@ -1,61 +1,64 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+
 import { useQuery } from '@tanstack/react-query'
-import { Save, X, AlertCircle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Checkbox } from '@/components/ui/checkbox'
+import { AlertCircle, Save, X } from 'lucide-react'
+
 import {
   getBlueprint,
   listEnvironments,
   listProjectTypes,
 } from '@/api/endpoints'
+import { Button } from '@/components/ui/button'
+import { CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { parseFilterFromBlueprint } from '@/lib/utils'
 import type { BlueprintCreate, BlueprintFilter, SchemaProperty } from '@/types'
+
 import {
   ajv,
   buildJsonSchema,
   generateId,
   getRelationshipTypes,
+  type SchemaEditorMode,
   schemaToProperties,
   toSlug,
   toTitleCase,
-  type SchemaEditorMode,
 } from './blueprint-schema-utils'
 import { BlueprintFilterEditor } from './BlueprintFilterEditor'
 import { BlueprintSchemaEditor } from './BlueprintSchemaEditor'
 
 interface BlueprintFormProps {
-  blueprintKey: { type: string; slug: string } | null
+  blueprintKey: null | { slug: string; type: string }
   blueprintTypes: string[]
-  onSave: (data: BlueprintCreate) => void
-  onCancel: () => void
-  isLoading?: boolean
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error?: any
+  isLoading?: boolean
+  onCancel: () => void
+  onSave: (data: BlueprintCreate) => void
 }
 
 export function BlueprintForm({
   blueprintKey,
   blueprintTypes,
-  onSave,
-  onCancel,
-  isLoading = false,
   error,
+  isLoading = false,
+  onCancel,
+  onSave,
 }: BlueprintFormProps) {
   const isEditing = !!blueprintKey
 
   // Fetch existing blueprint when editing
   const {
     data: existingBlueprint,
-    isLoading: bpLoading,
     error: bpError,
+    isLoading: bpLoading,
   } = useQuery({
-    queryKey: ['blueprint', blueprintKey?.type, blueprintKey?.slug],
+    enabled: isEditing,
     queryFn: ({ signal }) =>
       getBlueprint(blueprintKey!.type, blueprintKey!.slug, signal),
-    enabled: isEditing,
+    queryKey: ['blueprint', blueprintKey?.type, blueprintKey?.slug],
   })
 
   // Fetch available entities for filter checkboxes
@@ -64,22 +67,22 @@ export function BlueprintForm({
 
   const {
     data: availableProjectTypes = [],
-    isLoading: ptLoading,
     isError: ptIsError,
+    isLoading: ptLoading,
   } = useQuery({
-    queryKey: ['projectTypes', orgSlug],
-    queryFn: ({ signal }) => listProjectTypes(orgSlug!, signal),
     enabled: !!orgSlug,
+    queryFn: ({ signal }) => listProjectTypes(orgSlug!, signal),
+    queryKey: ['projectTypes', orgSlug],
   })
 
   const {
     data: availableEnvironments = [],
-    isLoading: envLoading,
     isError: envIsError,
+    isLoading: envLoading,
   } = useQuery({
-    queryKey: ['environments', orgSlug],
-    queryFn: ({ signal }) => listEnvironments(orgSlug!, signal),
     enabled: !!orgSlug,
+    queryFn: ({ signal }) => listEnvironments(orgSlug!, signal),
+    queryKey: ['environments', orgSlug],
   })
 
   // Form state
@@ -115,7 +118,7 @@ export function BlueprintForm({
   const [uiMapEntries, setUiMapEntries] = useState<
     Record<string, [string, string][]>
   >({})
-  const [schemaError, setSchemaError] = useState<string | null>(null)
+  const [schemaError, setSchemaError] = useState<null | string>(null)
   const [expandedProps, setExpandedProps] = useState<Set<string>>(new Set())
 
   // Validation
@@ -297,8 +300,8 @@ export function BlueprintForm({
     const newProp: SchemaProperty = {
       id: generateId(),
       name: '',
-      type: 'string',
       required: false,
+      type: 'string',
     }
     const updated = [...schemaProperties, newProp]
     setSchemaProperties(updated)
@@ -320,7 +323,7 @@ export function BlueprintForm({
     syncVisualToCode(updated)
   }
 
-  const moveProperty = (index: number, direction: 'up' | 'down') => {
+  const moveProperty = (index: number, direction: 'down' | 'up') => {
     const newIndex = direction === 'up' ? index - 1 : index + 1
     if (newIndex < 0 || newIndex >= schemaProperties.length) return
     const updated = [...schemaProperties]
@@ -375,13 +378,13 @@ export function BlueprintForm({
 
     setValidationErrors(errors)
     setTouched({
+      edge: true,
       name: true,
-      slug: true,
-      type: true,
       schema: true,
+      slug: true,
       source: true,
       target: true,
-      edge: true,
+      type: true,
     })
     return Object.keys(errors).length === 0
   }
@@ -401,29 +404,29 @@ export function BlueprintForm({
       const envArr = Array.from(selectedEnvironments)
       if (ptArr.length > 0 || envArr.length > 0) {
         filterObj = {
-          project_type: ptArr,
           environment: envArr,
+          project_type: ptArr,
         }
       }
     }
 
     const data: BlueprintCreate = {
+      kind,
       name: name.trim(),
       slug: slug.trim() || undefined,
-      kind,
       ...(kind === 'node'
         ? { type }
         : {
-            type: null,
+            edge: edge.trim(),
             source: source.trim(),
             target: target.trim(),
-            edge: edge.trim(),
+            type: null,
           }),
       description: description.trim() || null,
       enabled,
-      priority,
       filter: filterObj,
       json_schema: schemaObj,
+      priority,
       ...(isEditing && existingBlueprint
         ? { version: existingBlueprint.version }
         : {}),
@@ -468,14 +471,14 @@ export function BlueprintForm({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
+          <Button disabled={isLoading} onClick={onCancel} variant="outline">
             <X className="mr-2 h-4 w-4" />
             Cancel
           </Button>
           <Button
-            onClick={handleSave}
-            disabled={isLoading}
             className="bg-action text-action-foreground hover:bg-action-hover"
+            disabled={isLoading}
+            onClick={handleSave}
           >
             <Save className="mr-2 h-4 w-4" />
             {isLoading
@@ -502,7 +505,7 @@ export function BlueprintForm({
                   if (Array.isArray(detail)) {
                     return detail
                       .map(
-                        (e: { msg?: string; loc?: Array<string | number> }) => {
+                        (e: { loc?: Array<number | string>; msg?: string }) => {
                           const field =
                             e.loc
                               ?.filter((segment) => segment !== 'body')
@@ -538,8 +541,8 @@ export function BlueprintForm({
               Name <span className="text-red-500">*</span>
             </label>
             <Input
-              value={name}
-              onChange={(e) => handleNameChange(e.target.value)}
+              className=""
+              disabled={isLoading}
               onBlur={() => {
                 setTouched({ ...touched, name: true })
                 if (!name.trim())
@@ -548,9 +551,9 @@ export function BlueprintForm({
                     name: 'Name is required',
                   })
               }}
-              disabled={isLoading}
+              onChange={(e) => handleNameChange(e.target.value)}
               placeholder="e.g. AWS Metadata"
-              className=""
+              value={name}
             />
             {touched.name && validationErrors.name && (
               <p className="mt-1 text-sm text-red-600">
@@ -566,11 +569,11 @@ export function BlueprintForm({
                 Slug
               </label>
               <Input
-                value={slug}
-                onChange={(e) => handleSlugChange(e.target.value)}
-                disabled={isLoading}
-                placeholder="auto-generated"
                 className="font-mono"
+                disabled={isLoading}
+                onChange={(e) => handleSlugChange(e.target.value)}
+                placeholder="auto-generated"
+                value={slug}
               />
               {!slugManuallyEdited && name && (
                 <p className="mt-1 text-xs text-tertiary">
@@ -591,12 +594,12 @@ export function BlueprintForm({
               Kind <span className="text-red-500">*</span>
             </label>
             <select
-              value={kind}
+              className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+              disabled={isLoading || isEditing}
               onChange={(e) =>
                 setKind(e.target.value as 'node' | 'relationship')
               }
-              disabled={isLoading || isEditing}
-              className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+              value={kind}
             >
               <option value="node">Object</option>
               <option value="relationship">Relationship</option>
@@ -615,13 +618,13 @@ export function BlueprintForm({
                 Type <span className="text-red-500">*</span>
               </label>
               <select
-                value={type}
+                className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                disabled={isLoading || isEditing}
                 onChange={(e) => {
                   setType(e.target.value)
                   handleFieldChange('type')
                 }}
-                disabled={isLoading || isEditing}
-                className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                value={type}
               >
                 <option value="">Select a type...</option>
                 {blueprintTypes.map((t) => (
@@ -643,15 +646,15 @@ export function BlueprintForm({
                   Source <span className="text-red-500">*</span>
                 </label>
                 <select
-                  value={source}
+                  className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                  disabled={isLoading || isEditing}
                   onChange={(e) => {
                     setSource(e.target.value)
                     handleFieldChange('source')
                     const valid = getRelationshipTypes(e.target.value, target)
                     if (edge && !valid.includes(edge)) setEdge('')
                   }}
-                  disabled={isLoading || isEditing}
-                  className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                  value={source}
                 >
                   <option value="">Select source...</option>
                   {blueprintTypes.map((t) => (
@@ -677,24 +680,24 @@ export function BlueprintForm({
                   (edge &&
                     !getRelationshipTypes(source, target).includes(edge))) ? (
                   <Input
-                    value={edge}
+                    className={`w-full ${''}`}
+                    disabled={isLoading || isEditing}
                     onChange={(e) => {
                       setEdge(e.target.value)
                       handleFieldChange('edge')
                     }}
-                    disabled={isLoading || isEditing}
                     placeholder="Enter relationship type..."
-                    className={`w-full ${''}`}
+                    value={edge}
                   />
                 ) : (
                   <select
-                    value={edge}
+                    className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                    disabled={isLoading || isEditing || !source || !target}
                     onChange={(e) => {
                       setEdge(e.target.value)
                       handleFieldChange('edge')
                     }}
-                    disabled={isLoading || isEditing || !source || !target}
-                    className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                    value={edge}
                   >
                     <option value="">
                       {source && target
@@ -720,15 +723,15 @@ export function BlueprintForm({
                   Target <span className="text-red-500">*</span>
                 </label>
                 <select
-                  value={target}
+                  className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                  disabled={isLoading || isEditing}
                   onChange={(e) => {
                     setTarget(e.target.value)
                     handleFieldChange('target')
                     const valid = getRelationshipTypes(source, e.target.value)
                     if (edge && !valid.includes(edge)) setEdge('')
                   }}
-                  disabled={isLoading || isEditing}
-                  className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                  value={target}
                 >
                   <option value="">Select target...</option>
                   {blueprintTypes.map((t) => (
@@ -752,17 +755,17 @@ export function BlueprintForm({
               Priority
             </label>
             <Input
-              type="text"
+              className=""
+              disabled={isLoading}
               inputMode="numeric"
-              pattern="[0-9]*"
-              value={String(priority)}
               onChange={(e) => {
                 const val = e.target.value.replace(/[^0-9]/g, '')
                 setPriority(val === '' ? 0 : parseInt(val, 10))
               }}
-              disabled={isLoading}
+              pattern="[0-9]*"
               placeholder="0"
-              className=""
+              type="text"
+              value={String(priority)}
             />
             <p className="mt-1 text-xs text-tertiary">
               Higher priority blueprints are applied later and can override
@@ -776,12 +779,12 @@ export function BlueprintForm({
               Description
             </label>
             <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
               disabled={isLoading}
+              onChange={(e) => setDescription(e.target.value)}
               placeholder="Brief description of what this blueprint defines"
               rows={3}
-              className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+              value={description}
             />
           </div>
 
@@ -789,14 +792,14 @@ export function BlueprintForm({
           <div className="col-span-2">
             <div className="flex items-center gap-2">
               <Checkbox
-                id="blueprint-enabled"
                 checked={enabled}
-                onCheckedChange={(checked) => setEnabled(checked === true)}
                 disabled={isLoading}
+                id="blueprint-enabled"
+                onCheckedChange={(checked) => setEnabled(checked === true)}
               />
               <label
-                htmlFor="blueprint-enabled"
                 className="cursor-pointer select-none text-sm text-secondary"
+                htmlFor="blueprint-enabled"
               >
                 Enabled
               </label>
@@ -810,41 +813,41 @@ export function BlueprintForm({
 
       {/* Conditional Filter */}
       <BlueprintFilterEditor
-        filterEnabled={filterEnabled}
-        setFilterEnabled={setFilterEnabled}
-        selectedProjectTypes={selectedProjectTypes}
-        setSelectedProjectTypes={setSelectedProjectTypes}
-        selectedEnvironments={selectedEnvironments}
-        setSelectedEnvironments={setSelectedEnvironments}
-        availableProjectTypes={availableProjectTypes}
-        ptLoading={ptLoading}
-        ptIsError={ptIsError}
         availableEnvironments={availableEnvironments}
-        envLoading={envLoading}
+        availableProjectTypes={availableProjectTypes}
         envIsError={envIsError}
+        envLoading={envLoading}
+        filterEnabled={filterEnabled}
         isLoading={isLoading}
+        ptIsError={ptIsError}
+        ptLoading={ptLoading}
+        selectedEnvironments={selectedEnvironments}
+        selectedProjectTypes={selectedProjectTypes}
+        setFilterEnabled={setFilterEnabled}
+        setSelectedEnvironments={setSelectedEnvironments}
+        setSelectedProjectTypes={setSelectedProjectTypes}
       />
 
       {/* JSON Schema Editor */}
       <BlueprintSchemaEditor
-        editorMode={editorMode}
-        schemaProperties={schemaProperties}
-        rawSchema={rawSchema}
-        setRawSchema={setRawSchema}
-        schemaError={schemaError}
-        setSchemaError={setSchemaError}
-        handleEditorModeSwitch={handleEditorModeSwitch}
-        validationErrors={validationErrors}
-        touched={touched}
-        expandedProps={expandedProps}
-        setExpandedProps={setExpandedProps}
-        uiMapEntries={uiMapEntries}
-        setUiMapEntries={setUiMapEntries}
         addProperty={addProperty}
-        updateProperty={updateProperty}
+        editorMode={editorMode}
+        expandedProps={expandedProps}
+        handleEditorModeSwitch={handleEditorModeSwitch}
         moveProperty={moveProperty}
+        rawSchema={rawSchema}
         removeProperty={removeProperty}
+        schemaError={schemaError}
+        schemaProperties={schemaProperties}
+        setExpandedProps={setExpandedProps}
+        setRawSchema={setRawSchema}
+        setSchemaError={setSchemaError}
+        setUiMapEntries={setUiMapEntries}
         syncCodeToVisual={syncCodeToVisual}
+        touched={touched}
+        uiMapEntries={uiMapEntries}
+        updateProperty={updateProperty}
+        validationErrors={validationErrors}
       />
     </div>
   )

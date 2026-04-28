@@ -1,4 +1,7 @@
 import { useState } from 'react'
+
+import { toast } from 'sonner'
+
 import {
   Select,
   SelectContent,
@@ -6,33 +9,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+
 import { InlineDisplay } from './InlineDisplay'
-import { toast } from 'sonner'
 
 export interface InlineSelectOption {
-  value: string
   label: string
+  value: string
 }
 
 export interface InlineSelectProps {
-  value: string | null
-  options: InlineSelectOption[]
   onCommit: (next: string) => Promise<void> | void
-  readOnly?: boolean
+  options: InlineSelectOption[]
   pending?: boolean
   placeholder?: string
+  readOnly?: boolean
   /** Override the display-mode rendering (e.g. include icon/color). */
   renderDisplay?: React.ReactNode
+  value: null | string
 }
 
 export function InlineSelect({
-  value,
-  options,
   onCommit,
-  readOnly = false,
+  options,
   pending = false,
   placeholder = 'Select…',
+  readOnly = false,
   renderDisplay,
+  value,
 }: InlineSelectProps) {
   const [editing, setEditing] = useState(false)
   const current = options.find((o) => o.value === value)
@@ -41,10 +44,10 @@ export function InlineSelect({
     return (
       <InlineDisplay
         hasValue={!!current}
-        readOnly={readOnly}
-        pending={pending}
         onClick={() => setEditing(true)}
+        pending={pending}
         placeholder={placeholder}
+        readOnly={readOnly}
       >
         {renderDisplay ?? current?.label}
       </InlineDisplay>
@@ -54,7 +57,9 @@ export function InlineSelect({
   return (
     <Select
       defaultOpen
-      value={value ?? undefined}
+      onOpenChange={(open) => {
+        if (!open) setEditing(false)
+      }}
       onValueChange={async (next) => {
         setEditing(false)
         if (next === value) return
@@ -64,9 +69,7 @@ export function InlineSelect({
           toast.error(e instanceof Error ? e.message : 'Save failed')
         }
       }}
-      onOpenChange={(open) => {
-        if (!open) setEditing(false)
-      }}
+      value={value ?? undefined}
     >
       <SelectTrigger className="h-7 w-auto min-w-[8rem] gap-2 py-1">
         <SelectValue />

@@ -1,77 +1,79 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
-import { extractApiErrorDetail } from '@/lib/apiError'
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,
-  Edit2,
-  Power,
-  Clock,
-  User,
-  Mail,
-  Calendar,
-  Shield,
-  Plus,
-  Trash2,
   Building2,
+  Calendar,
+  Clock,
+  Edit2,
+  Mail,
+  Plus,
+  Power,
+  Shield,
+  Trash2,
+  User,
 } from 'lucide-react'
+import { toast } from 'sonner'
+
+import {
+  addUserToOrg,
+  getRoles,
+  removeUserFromOrg,
+  updateUserOrgRole,
+} from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Gravatar } from '@/components/ui/gravatar'
-import {
-  getRoles,
-  addUserToOrg,
-  updateUserOrgRole,
-  removeUserFromOrg,
-} from '@/api/endpoints'
-import { useOrganization } from '@/contexts/OrganizationContext'
-import { buildReplacePatch } from '@/lib/json-patch'
-import type { AdminUser, OrgMembership } from '@/types'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { extractApiErrorDetail } from '@/lib/apiError'
+import { buildReplacePatch } from '@/lib/json-patch'
+import type { AdminUser, OrgMembership } from '@/types'
 
 interface UserDetailProps {
-  user: AdminUser
-  onEdit: () => void
   onBack: () => void
+  onEdit: () => void
+  user: AdminUser
 }
 
-export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
+export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
   const queryClient = useQueryClient()
   const { organizations: allOrgs } = useOrganization()
   const [showAddOrg, setShowAddOrg] = useState(false)
   const [newOrgSlug, setNewOrgSlug] = useState('')
   const [newRoleSlug, setNewRoleSlug] = useState('')
-  const [confirm, setConfirm] = useState<{
+  const [confirm, setConfirm] = useState<null | {
     action: 'remove-org'
-    orgSlug: string
     orgName: string
-  } | null>(null)
+    orgSlug: string
+  }>(null)
 
   const { data: availableRoles = [] } = useQuery({
-    queryKey: ['roles'],
     queryFn: ({ signal }) => getRoles(signal),
+    queryKey: ['roles'],
   })
 
   const addOrgMutation = useMutation({
     mutationFn: (data: { organization_slug: string; role_slug: string }) =>
       addUserToOrg(user.email, data),
+    onError: (error: unknown) => {
+      toast.error(
+        `Failed to add to organization: ${extractApiErrorDetail(error)}`,
+      )
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
       queryClient.invalidateQueries({ queryKey: ['adminUser', user.email] })
       setShowAddOrg(false)
       setNewOrgSlug('')
       setNewRoleSlug('')
-    },
-    onError: (error: unknown) => {
-      toast.error(
-        `Failed to add to organization: ${extractApiErrorDetail(error)}`,
-      )
     },
   })
 
@@ -88,25 +90,25 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
         orgSlug,
         buildReplacePatch({ role_slug: roleSlug }),
       ),
+    onError: (error: unknown) => {
+      toast.error(`Failed to update role: ${extractApiErrorDetail(error)}`)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
       queryClient.invalidateQueries({ queryKey: ['adminUser', user.email] })
-    },
-    onError: (error: unknown) => {
-      toast.error(`Failed to update role: ${extractApiErrorDetail(error)}`)
     },
   })
 
   const removeOrgMutation = useMutation({
     mutationFn: (orgSlug: string) => removeUserFromOrg(user.email, orgSlug),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
-      queryClient.invalidateQueries({ queryKey: ['adminUser', user.email] })
-    },
     onError: (error: unknown) => {
       toast.error(
         `Failed to remove from organization: ${extractApiErrorDetail(error)}`,
       )
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
+      queryClient.invalidateQueries({ queryKey: ['adminUser', user.email] })
     },
   })
 
@@ -116,14 +118,14 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
   )
   const availableOrgs = allOrgs.filter((o) => !memberOrgSlugs.has(o.slug))
 
-  const formatDate = (dateString?: string | null) => {
+  const formatDate = (dateString?: null | string) => {
     if (!dateString) return 'Never'
     return new Date(dateString).toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'long',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      month: 'long',
+      year: 'numeric',
     })
   }
 
@@ -131,7 +133,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
     <div className="space-y-6">
       {/* Back button */}
       <div>
-        <Button variant="outline" onClick={onBack}>
+        <Button onClick={onBack} variant="outline">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
@@ -142,10 +144,10 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
         <CardHeader className="flex flex-row items-start justify-between space-y-0 border-b px-6 py-5">
           <div className="flex items-center gap-3">
             <Gravatar
-              email={user.email}
-              size={48}
               alt={user.display_name}
               className="h-12 w-12 rounded-full"
+              email={user.email}
+              size={48}
             />
             <div>
               <CardTitle>{user.display_name}</CardTitle>
@@ -153,8 +155,8 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
             </div>
           </div>
           <Button
-            onClick={onEdit}
             className="bg-action text-action-foreground hover:bg-action-hover"
+            onClick={onEdit}
           >
             <Edit2 className="mr-2 h-4 w-4" />
             Edit User
@@ -251,10 +253,10 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
           </div>
           {availableOrgs.length > 0 && (
             <Button
-              onClick={() => setShowAddOrg(!showAddOrg)}
-              variant="outline"
-              size="sm"
               className=""
+              onClick={() => setShowAddOrg(!showAddOrg)}
+              size="sm"
+              variant="outline"
             >
               <Plus className="mr-2 h-4 w-4" />
               Add to Organization
@@ -271,9 +273,9 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
                     Organization
                   </label>
                   <select
-                    value={newOrgSlug}
-                    onChange={(e) => setNewOrgSlug(e.target.value)}
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                    onChange={(e) => setNewOrgSlug(e.target.value)}
+                    value={newOrgSlug}
                   >
                     <option value="">Select...</option>
                     {availableOrgs.map((org) => (
@@ -288,9 +290,9 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
                     Role
                   </label>
                   <select
-                    value={newRoleSlug}
-                    onChange={(e) => setNewRoleSlug(e.target.value)}
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                    onChange={(e) => setNewRoleSlug(e.target.value)}
+                    value={newRoleSlug}
                   >
                     <option value="">Select...</option>
                     {availableRoles.map((role) => (
@@ -303,28 +305,28 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
               </div>
               <div className="mt-3 flex items-center gap-2">
                 <Button
+                  className="bg-action text-action-foreground hover:bg-action-hover"
+                  disabled={
+                    !newOrgSlug || !newRoleSlug || addOrgMutation.isPending
+                  }
                   onClick={() =>
                     addOrgMutation.mutate({
                       organization_slug: newOrgSlug,
                       role_slug: newRoleSlug,
                     })
                   }
-                  disabled={
-                    !newOrgSlug || !newRoleSlug || addOrgMutation.isPending
-                  }
-                  className="bg-action text-action-foreground hover:bg-action-hover"
                   size="sm"
                 >
                   {addOrgMutation.isPending ? 'Adding...' : 'Add'}
                 </Button>
                 <Button
-                  variant="outline"
-                  size="sm"
                   onClick={() => {
                     setShowAddOrg(false)
                     setNewOrgSlug('')
                     setNewRoleSlug('')
                   }}
+                  size="sm"
+                  variant="outline"
                 >
                   Cancel
                 </Button>
@@ -337,8 +339,8 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
             <div className="space-y-2">
               {(user.organizations ?? []).map((membership: OrgMembership) => (
                 <div
-                  key={membership.organization_slug}
                   className="flex items-center justify-between rounded-lg border border-input bg-secondary p-3"
+                  key={membership.organization_slug}
                 >
                   <div className="flex-1">
                     <div className="text-sm font-medium text-primary">
@@ -350,15 +352,15 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
                   </div>
                   <div className="flex items-center gap-2">
                     <select
-                      value={membership.role}
+                      className="rounded border border-input bg-background px-2 py-1 text-xs text-foreground"
+                      disabled={updateRoleMutation.isPending}
                       onChange={(e) =>
                         updateRoleMutation.mutate({
                           orgSlug: membership.organization_slug,
                           roleSlug: e.target.value,
                         })
                       }
-                      disabled={updateRoleMutation.isPending}
-                      className="rounded border border-input bg-background px-2 py-1 text-xs text-foreground"
+                      value={membership.role}
                     >
                       {availableRoles.map((role) => (
                         <option key={role.slug} value={role.slug}>
@@ -370,15 +372,15 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
+                            className="rounded p-1.5 text-danger hover:bg-secondary"
+                            disabled={removeOrgMutation.isPending}
                             onClick={() =>
                               setConfirm({
                                 action: 'remove-org',
-                                orgSlug: membership.organization_slug,
                                 orgName: membership.organization_name,
+                                orgSlug: membership.organization_slug,
                               })
                             }
-                            disabled={removeOrgMutation.isPending}
-                            className="rounded p-1.5 text-danger hover:bg-secondary"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -419,21 +421,21 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
         </CardContent>
       </Card>
       <ConfirmDialog
-        open={confirm?.action === 'remove-org'}
-        title="Remove from organization"
+        confirmLabel="Remove"
         description={
           confirm?.action === 'remove-org'
             ? `Remove ${user.display_name} from ${confirm.orgName}?`
             : 'This action cannot be undone.'
         }
-        confirmLabel="Remove"
+        onCancel={() => setConfirm(null)}
         onConfirm={() => {
           if (confirm?.action === 'remove-org') {
             removeOrgMutation.mutate(confirm.orgSlug)
           }
           setConfirm(null)
         }}
-        onCancel={() => setConfirm(null)}
+        open={confirm?.action === 'remove-org'}
+        title="Remove from organization"
       />
     </div>
   )

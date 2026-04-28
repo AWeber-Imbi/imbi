@@ -6,24 +6,26 @@
 // against the server (with confirm dialog + saved indicator + Select from a
 // pre-known key set), use EditableKeyValueMap (./EditableKeyValueMap) instead.
 import { useState } from 'react'
+
 import { Plus, Trash2 } from 'lucide-react'
+
 import { Button } from './button'
 import { Input } from './input'
 
 interface KeyValueEditorProps {
-  value: Record<string, string | number>
-  onChange: (value: Record<string, string | number>) => void
-  keyPlaceholder?: string
-  valuePlaceholder?: string
   disabled?: boolean
+  keyPlaceholder?: string
+  onChange: (value: Record<string, number | string>) => void
+  value: Record<string, number | string>
+  valuePlaceholder?: string
 }
 
 export function KeyValueEditor({
-  value,
-  onChange,
-  keyPlaceholder = 'Key',
-  valuePlaceholder = 'Value',
   disabled = false,
+  keyPlaceholder = 'Key',
+  onChange,
+  value,
+  valuePlaceholder = 'Value',
 }: KeyValueEditorProps) {
   const [newKey, setNewKey] = useState('')
   const [newValue, setNewValue] = useState('')
@@ -55,17 +57,17 @@ export function KeyValueEditor({
   return (
     <div className="space-y-2">
       {entries.map(([k, v]) => (
-        <div key={k} className="flex items-center gap-2">
-          <Input value={k} disabled className="flex-1 opacity-70" />
-          <Input value={String(v)} disabled className="flex-1 opacity-70" />
+        <div className="flex items-center gap-2" key={k}>
+          <Input className="flex-1 opacity-70" disabled value={k} />
+          <Input className="flex-1 opacity-70" disabled value={String(v)} />
           <Button
+            aria-label={`Remove ${k}`}
+            className="text-danger hover:bg-danger"
+            disabled={disabled}
+            onClick={() => handleRemove(k)}
+            size="sm"
             type="button"
             variant="ghost"
-            size="sm"
-            aria-label={`Remove ${k}`}
-            onClick={() => handleRemove(k)}
-            disabled={disabled}
-            className="text-danger hover:bg-danger"
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -74,29 +76,29 @@ export function KeyValueEditor({
 
       <div className="flex items-center gap-2">
         <Input
-          value={newKey}
+          className="flex-1"
+          disabled={disabled}
           onChange={(e) => setNewKey(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={keyPlaceholder}
-          disabled={disabled}
-          className="flex-1"
+          value={newKey}
         />
         <Input
-          value={newValue}
+          className="flex-1"
+          disabled={disabled}
           onChange={(e) => setNewValue(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={valuePlaceholder}
-          disabled={disabled}
-          className="flex-1"
+          value={newValue}
         />
         <Button
+          aria-label="Add key value pair"
+          className="hover:text-info/80 text-info"
+          disabled={disabled || !newKey.trim() || !newValue.trim()}
+          onClick={handleAdd}
+          size="sm"
           type="button"
           variant="ghost"
-          size="sm"
-          aria-label="Add key value pair"
-          onClick={handleAdd}
-          disabled={disabled || !newKey.trim() || !newValue.trim()}
-          className="hover:text-info/80 text-info"
         >
           <Plus className="h-4 w-4" />
         </Button>

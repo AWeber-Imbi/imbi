@@ -1,27 +1,28 @@
 import { useCallback, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
 
-export type ViewMode = 'list' | 'create' | 'edit' | 'detail'
+import { useNavigate, useParams } from 'react-router-dom'
+
+export type ViewMode = 'create' | 'detail' | 'edit' | 'list'
 
 interface AdminNavState {
-  viewMode: ViewMode
-  slug: string | null
-  goToList: () => void
   goToCreate: () => void
   goToDetail: (slug: string) => void
   goToEdit: (slug: string) => void
+  goToList: () => void
+  slug: null | string
+  viewMode: ViewMode
 }
 
 export function useAdminNav(): AdminNavState {
-  const { section, slug, action } = useParams<{
+  const { action, section, slug } = useParams<{
+    action?: string
     section?: string
     slug?: string
-    action?: string
   }>()
   const navigate = useNavigate()
 
   let viewMode: ViewMode = 'list'
-  let itemSlug: string | null = null
+  let itemSlug: null | string = null
 
   if (slug === 'new') {
     viewMode = 'create'
@@ -51,16 +52,16 @@ export function useAdminNav(): AdminNavState {
 
   useEffect(() => {
     if (viewMode === 'edit' || viewMode === 'create') {
-      window.scrollTo({ top: 0, behavior: 'instant' })
+      window.scrollTo({ behavior: 'instant', top: 0 })
     }
   }, [viewMode])
 
   return {
-    viewMode,
-    slug: itemSlug,
-    goToList,
     goToCreate,
     goToDetail,
     goToEdit,
+    goToList,
+    slug: itemSlug,
+    viewMode,
   }
 }

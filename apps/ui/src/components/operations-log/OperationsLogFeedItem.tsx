@@ -1,29 +1,30 @@
 import type { Environment, Project } from '@/types'
+
 import { OperationsLogReleaseCard } from './OperationsLogReleaseCard'
 import { OperationsLogStreamRow } from './OperationsLogStreamRow'
 import type { FeedItem } from './opsLogHelpers'
 
 export type VItem =
-  | { kind: 'header'; key: string; label: string; date: Date; count: number }
-  | { kind: 'rel'; key: string; id: string; isOpen: boolean }
-  | { kind: 'evt'; key: string; id: string; isOpen: boolean }
+  | { count: number; date: Date; key: string; kind: 'header'; label: string }
+  | { id: string; isOpen: boolean; key: string; kind: 'evt' }
+  | { id: string; isOpen: boolean; key: string; kind: 'rel' }
 
 interface Props {
-  vi: VItem
-  groupsById: Map<string, FeedItem>
-  projectsBySlug: Map<string, Project>
   environmentsBySlug: Map<string, Environment>
+  groupsById: Map<string, FeedItem>
   performerDisplayNames: Map<string, string>
+  projectsBySlug: Map<string, Project>
   toggleOpen: (id: string) => void
+  vi: VItem
 }
 
 export function OperationsLogFeedItem({
-  vi,
-  groupsById,
-  projectsBySlug,
   environmentsBySlug,
+  groupsById,
   performerDisplayNames,
+  projectsBySlug,
   toggleOpen,
+  vi,
 }: Props) {
   if (vi.kind === 'header') {
     return (
@@ -33,8 +34,8 @@ export function OperationsLogFeedItem({
         </span>
         <span className="font-mono text-[11px] text-tertiary">
           {vi.date.toLocaleDateString(undefined, {
-            month: 'short',
             day: 'numeric',
+            month: 'short',
           })}
         </span>
         <span className="flex-1" />
@@ -49,26 +50,26 @@ export function OperationsLogFeedItem({
   if (vi.kind === 'rel' && feed.kind === 'release') {
     return (
       <OperationsLogReleaseCard
-        id={vi.id}
-        group={feed.group}
-        project={projectsBySlug.get(feed.group.project_slug)}
         environmentsBySlug={environmentsBySlug}
+        group={feed.group}
+        id={vi.id}
         isOpen={vi.isOpen}
         onToggle={toggleOpen}
         performerDisplayNames={performerDisplayNames}
+        project={projectsBySlug.get(feed.group.project_slug)}
       />
     )
   }
   if (vi.kind === 'evt' && feed.kind === 'single') {
     return (
       <OperationsLogStreamRow
-        id={vi.id}
         entry={feed.entry}
-        project={projectsBySlug.get(feed.entry.project_slug)}
         environment={environmentsBySlug.get(feed.entry.environment_slug)}
+        id={vi.id}
         isOpen={vi.isOpen}
         onToggle={toggleOpen}
         performerDisplayNames={performerDisplayNames}
+        project={projectsBySlug.get(feed.entry.project_slug)}
       />
     )
   }

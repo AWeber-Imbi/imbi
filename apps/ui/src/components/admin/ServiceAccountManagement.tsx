@@ -1,60 +1,63 @@
 import { useState } from 'react'
+
 import { useQuery } from '@tanstack/react-query'
-import { Power, Bot } from 'lucide-react'
-import { Badge } from '../ui/badge'
-import { AdminTable } from '@/components/ui/admin-table'
-import { AdminSection } from './AdminSection'
-import { ServiceAccountForm } from './service-accounts/ServiceAccountForm'
-import { ServiceAccountDetail } from './service-accounts/ServiceAccountDetail'
-import { useAdminNav } from '@/hooks/useAdminNav'
-import { useAdminCrud } from '@/hooks/useAdminCrud'
+import { Bot, Power } from 'lucide-react'
+
 import {
-  listServiceAccounts,
-  getServiceAccount,
   createServiceAccount,
-  updateServiceAccount,
   deleteServiceAccount,
+  getServiceAccount,
+  listServiceAccounts,
+  updateServiceAccount,
 } from '@/api/endpoints'
+import { AdminTable } from '@/components/ui/admin-table'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
+import { useAdminNav } from '@/hooks/useAdminNav'
 import { buildDiffPatch } from '@/lib/json-patch'
 import type {
+  PatchOperation,
   ServiceAccount,
   ServiceAccountCreate,
-  PatchOperation,
 } from '@/types'
 
-type StatusFilter = 'all' | 'active' | 'inactive'
+import { Badge } from '../ui/badge'
+import { AdminSection } from './AdminSection'
+import { ServiceAccountDetail } from './service-accounts/ServiceAccountDetail'
+import { ServiceAccountForm } from './service-accounts/ServiceAccountForm'
+
+type StatusFilter = 'active' | 'all' | 'inactive'
 
 export function ServiceAccountManagement() {
   const {
-    viewMode,
-    slug: selectedAccountSlug,
-    goToList,
     goToCreate,
     goToEdit,
+    goToList,
+    slug: selectedAccountSlug,
+    viewMode,
   } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
   const {
-    items: serviceAccounts,
-    isLoading,
-    error,
     createMutation,
-    updateMutation,
     deleteMutation,
+    error,
+    isLoading,
+    items: serviceAccounts,
+    updateMutation,
   } = useAdminCrud<
     ServiceAccount,
     ServiceAccountCreate,
-    { slug: string; operations: PatchOperation[] },
+    { operations: PatchOperation[]; slug: string },
     string
   >({
-    queryKey: ['serviceAccounts'],
-    listFn: (signal) => listServiceAccounts(undefined, signal),
     createFn: createServiceAccount,
-    updateFn: ({ slug, operations }) => updateServiceAccount(slug, operations),
-    deleteFn: deleteServiceAccount,
-    onMutationSuccess: goToList,
     deleteErrorLabel: 'service account',
+    deleteFn: deleteServiceAccount,
+    listFn: (signal) => listServiceAccounts(undefined, signal),
+    onMutationSuccess: goToList,
+    queryKey: ['serviceAccounts'],
+    updateFn: ({ operations, slug }) => updateServiceAccount(slug, operations),
   })
 
   // Filter service accounts
@@ -75,10 +78,10 @@ export function ServiceAccountManagement() {
 
   // Fetch full SA detail (with orgs) when viewing/editing a specific account
   const { data: selectedAccount = null } = useQuery({
-    queryKey: ['serviceAccount', selectedAccountSlug],
-    queryFn: ({ signal }) => getServiceAccount(selectedAccountSlug!, signal),
     enabled:
       !!selectedAccountSlug && (viewMode === 'detail' || viewMode === 'edit'),
+    queryFn: ({ signal }) => getServiceAccount(selectedAccountSlug!, signal),
+    queryKey: ['serviceAccount', selectedAccountSlug],
   })
 
   const handleDelete = (account: ServiceAccount) => {
@@ -108,7 +111,7 @@ export function ServiceAccountManagement() {
         goToList()
         return
       }
-      updateMutation.mutate({ slug: selectedAccount.slug, operations })
+      updateMutation.mutate({ operations, slug: selectedAccount.slug })
     }
   }
 
@@ -116,14 +119,14 @@ export function ServiceAccountManagement() {
     goToList()
   }
 
-  const formatDate = (dateString?: string | null) => {
+  const formatDate = (dateString?: null | string) => {
     if (!dateString) return 'Never'
     return new Date(dateString).toLocaleString('en-US', {
-      month: 'short',
       day: 'numeric',
-      year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      month: 'short',
+      year: 'numeric',
     })
   }
 
@@ -131,10 +134,10 @@ export function ServiceAccountManagement() {
     return (
       <ServiceAccountForm
         account={selectedAccount}
-        onSave={handleSave}
-        onCancel={handleCancel}
-        isLoading={createMutation.isPending || updateMutation.isPending}
         error={createMutation.error || updateMutation.error}
+        isLoading={createMutation.isPending || updateMutation.isPending}
+        onCancel={handleCancel}
+        onSave={handleSave}
       />
     )
   }
@@ -143,43 +146,43 @@ export function ServiceAccountManagement() {
     return (
       <ServiceAccountDetail
         account={selectedAccount}
-        onEdit={() => handleEditClick(selectedAccount)}
         onBack={handleCancel}
+        onEdit={() => handleEditClick(selectedAccount)}
       />
     )
   }
 
   return (
     <AdminSection
-      searchPlaceholder="Search service accounts..."
-      search={searchQuery}
-      onSearchChange={setSearchQuery}
       createLabel="New Service Account"
-      onCreate={goToCreate}
-      isLoading={isLoading}
-      loadingLabel="Loading service accounts..."
       error={error}
       errorTitle="Failed to load service accounts"
       headerExtras={
         <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
           className="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+          value={statusFilter}
         >
           <option value="all">All Status</option>
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
         </select>
       }
+      isLoading={isLoading}
+      loadingLabel="Loading service accounts..."
+      onCreate={goToCreate}
+      onSearchChange={setSearchQuery}
+      search={searchQuery}
+      searchPlaceholder="Search service accounts..."
     >
       {/* Service Accounts Table */}
       <AdminTable
         columns={[
           {
-            key: 'name',
+            cellAlign: 'left',
             header: 'Service Account',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'name',
             render: (account) => (
               <div className="flex items-center gap-3">
                 <div
@@ -203,10 +206,10 @@ export function ServiceAccountManagement() {
             ),
           },
           {
-            key: 'slug',
+            cellAlign: 'left',
             header: 'Slug',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'slug',
             render: (account) => (
               <code
                 className={
@@ -218,14 +221,14 @@ export function ServiceAccountManagement() {
             ),
           },
           {
-            key: 'status',
+            cellAlign: 'center',
             header: 'Status',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'status',
             render: (account) => (
               <Badge
-                variant={account.is_active ? 'success' : 'neutral'}
                 className="gap-1.5"
+                variant={account.is_active ? 'success' : 'neutral'}
               >
                 <Power className="h-3 w-3" />
                 {account.is_active ? 'Active' : 'Inactive'}
@@ -233,10 +236,10 @@ export function ServiceAccountManagement() {
             ),
           },
           {
-            key: 'last_auth',
+            cellAlign: 'left',
             header: 'Last Authenticated',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'last_auth',
             render: (account) => (
               <span className="text-xs text-secondary">
                 {formatDate(account.last_authenticated)}
@@ -244,17 +247,17 @@ export function ServiceAccountManagement() {
             ),
           },
         ]}
-        rows={filteredAccounts}
-        getRowKey={(account) => account.slug}
-        getDeleteLabel={(account) => account.display_name}
-        onRowClick={(account) => handleViewClick(account)}
-        onDelete={handleDelete}
-        isDeleting={deleteMutation.isPending}
         emptyMessage={
           searchQuery || statusFilter !== 'all'
             ? 'No service accounts match your filters'
             : 'No service accounts created yet'
         }
+        getDeleteLabel={(account) => account.display_name}
+        getRowKey={(account) => account.slug}
+        isDeleting={deleteMutation.isPending}
+        onDelete={handleDelete}
+        onRowClick={(account) => handleViewClick(account)}
+        rows={filteredAccounts}
       />
 
       {/* Summary */}

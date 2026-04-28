@@ -1,7 +1,8 @@
 import { lazy, Suspense } from 'react'
 import type { ComponentProps } from 'react'
-import { Card } from '@/components/ui/card'
+
 import type { GraphProject } from '@/components/ProjectsGraphCanvas'
+import { Card } from '@/components/ui/card'
 
 export type { GraphProject }
 
@@ -13,6 +14,14 @@ const ProjectsGraphCanvas = lazy(() =>
 
 type ProjectsGraphCanvasProps = ComponentProps<typeof ProjectsGraphCanvas>
 
+export function LazyProjectsGraphCanvas(props: ProjectsGraphCanvasProps) {
+  return (
+    <Suspense fallback={<GraphFallback />}>
+      <ProjectsGraphCanvas {...props} />
+    </Suspense>
+  )
+}
+
 function GraphFallback() {
   return (
     <Card className="flex items-center justify-center p-12">
@@ -21,13 +30,5 @@ function GraphFallback() {
         <p className="text-sm text-tertiary">Loading graph…</p>
       </div>
     </Card>
-  )
-}
-
-export function LazyProjectsGraphCanvas(props: ProjectsGraphCanvasProps) {
-  return (
-    <Suspense fallback={<GraphFallback />}>
-      <ProjectsGraphCanvas {...props} />
-    </Suspense>
   )
 }

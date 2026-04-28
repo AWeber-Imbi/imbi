@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
+
 import { useQueries } from '@tanstack/react-query'
+
 import { getProjectRelationships } from '@/api/endpoints'
 import { LazyProjectsGraphCanvas } from '@/components/LazyProjectsGraphCanvas'
 import { Card } from '@/components/ui/card'
@@ -21,9 +23,9 @@ export function ProjectGraphView({ projects }: ProjectGraphViewProps) {
     queries: projects.map((p) => {
       const orgSlug = p.team?.organization?.slug ?? ''
       return {
-        queryKey: ['project-relationships', orgSlug, p.id],
-        queryFn: ({ signal }) => getProjectRelationships(orgSlug, p.id, signal),
         enabled: Boolean(orgSlug && p.id),
+        queryFn: ({ signal }) => getProjectRelationships(orgSlug, p.id, signal),
+        queryKey: ['project-relationships', orgSlug, p.id],
       }
     }),
   })
@@ -87,7 +89,7 @@ export function ProjectGraphView({ projects }: ProjectGraphViewProps) {
         height: 'calc(100vh - 280px - var(--assistant-height, 64px))',
       }}
     >
-      <LazyProjectsGraphCanvas projects={projects} edges={edges} />
+      <LazyProjectsGraphCanvas edges={edges} projects={projects} />
     </div>
   )
 }

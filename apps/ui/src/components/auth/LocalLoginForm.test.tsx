@@ -1,14 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@/test/utils'
 import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { render, screen, waitFor } from '@/test/utils'
+
 import { LocalLoginForm } from './LocalLoginForm'
 
 describe('LocalLoginForm', () => {
   const mockOnSubmit = vi.fn()
 
   const defaultProps = {
-    onSubmit: mockOnSubmit,
     isLoading: false,
+    onSubmit: mockOnSubmit,
   }
 
   beforeEach(() => {

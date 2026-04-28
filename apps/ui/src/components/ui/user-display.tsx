@@ -1,13 +1,14 @@
 import { cn } from '@/lib/utils'
+
 import { Gravatar } from './gravatar'
 
 interface Props {
-  email: string
-  displayNames?: Map<string, string>
-  size?: number
   className?: string
-  textClassName?: string
+  displayNames?: Map<string, string>
+  email: string
   hideName?: boolean
+  size?: number
+  textClassName?: string
   title?: string
 }
 
@@ -16,12 +17,12 @@ interface Props {
  * Pass `displayNames` to resolve email → display_name.
  */
 export function UserDisplay({
-  email,
-  displayNames,
-  size = 18,
   className,
-  textClassName,
+  displayNames,
+  email,
   hideName = false,
+  size = 18,
+  textClassName,
   title,
 }: Props) {
   const name = displayNames?.get(email) ?? email.split('@')[0] ?? email
@@ -31,9 +32,9 @@ export function UserDisplay({
       title={title ?? name}
     >
       <Gravatar
+        className="flex-shrink-0 rounded-full"
         email={email}
         size={size}
-        className="flex-shrink-0 rounded-full"
       />
       {!hideName && (
         <span className={cn('truncate', textClassName)}>{name}</span>

@@ -1,22 +1,14 @@
 import { useMemo } from 'react'
-import { getIcon, useIconRegistryVersion } from '@/lib/icons'
+
 import { EditableKeyValueMap } from '@/components/ui/EditableKeyValueMap'
 import { useEditableKeyValueMap } from '@/hooks/useEditableKeyValueMap'
+import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import type { LinkDefinition } from '@/types'
 
 interface EditLinksCardProps {
   linkDefs: LinkDefinition[]
   links: Record<string, string>
   onPatch: (links: Record<string, string>) => Promise<void>
-}
-
-function stripEmpty(map: Record<string, string>): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const [k, v] of Object.entries(map)) {
-    const t = (v ?? '').trim()
-    if (t) out[k] = t
-  }
-  return out
 }
 
 export function EditLinksCard({
@@ -29,9 +21,9 @@ export function EditLinksCard({
   const serverMap = useMemo(() => links ?? {}, [links])
 
   const state = useEditableKeyValueMap<string>({
-    serverMap,
-    onPatch,
     normalizeValue: (v) => v.trim(),
+    onPatch,
+    serverMap,
     transformPatch: stripEmpty,
   })
 
@@ -61,12 +53,20 @@ export function EditLinksCard({
 
   return (
     <EditableKeyValueMap
-      state={state}
-      title="Links"
-      visibleKeys={visibleKeys}
-      unassignedKeys={unassignedKeys}
-      valueInputClassName="text-sm"
-      valueInputType="url"
+      deleteDialogDescription="This will remove the link from the project."
+      getDeleteDialogTitle={(slug) =>
+        slug ? `Remove ${defBySlug.get(slug)?.name ?? 'link'}?` : 'Remove link?'
+      }
+      getNewValuePlaceholder={(slug) =>
+        (slug && defBySlug.get(slug)?.url_template) || 'https://...'
+      }
+      getRemoveAriaLabel={(slug) =>
+        `Remove ${defBySlug.get(slug)?.name ?? 'link'} link`
+      }
+      getValuePlaceholder={(slug) =>
+        defBySlug.get(slug)?.url_template || 'https://...'
+      }
+      newKeyPlaceholder="Pick Link Type to Add"
       renderKeyLabel={(slug) => {
         const def = defBySlug.get(slug)!
         const Icon = getIcon(def.icon)
@@ -74,17 +74,6 @@ export function EditLinksCard({
           <div className="flex w-[15%] flex-shrink-0 items-center gap-2 text-secondary">
             <Icon className="h-4 w-4 flex-shrink-0" />
             <span className="truncate text-sm">{def.name}</span>
-          </div>
-        )
-      }}
-      renderSelectTrigger={(slug) => {
-        const def = defBySlug.get(slug)
-        if (!def) return null
-        const Icon = getIcon(def.icon)
-        return (
-          <div className="flex min-w-0 items-center gap-2 text-secondary">
-            <Icon className="h-4 w-4 flex-shrink-0" />
-            <span className="truncate">{def.name}</span>
           </div>
         )
       }}
@@ -98,20 +87,32 @@ export function EditLinksCard({
           </span>
         )
       }}
-      getValuePlaceholder={(slug) =>
-        defBySlug.get(slug)?.url_template || 'https://...'
-      }
-      getNewValuePlaceholder={(slug) =>
-        (slug && defBySlug.get(slug)?.url_template) || 'https://...'
-      }
-      newKeyPlaceholder="Pick Link Type to Add"
-      getRemoveAriaLabel={(slug) =>
-        `Remove ${defBySlug.get(slug)?.name ?? 'link'} link`
-      }
-      getDeleteDialogTitle={(slug) =>
-        slug ? `Remove ${defBySlug.get(slug)?.name ?? 'link'}?` : 'Remove link?'
-      }
-      deleteDialogDescription="This will remove the link from the project."
+      renderSelectTrigger={(slug) => {
+        const def = defBySlug.get(slug)
+        if (!def) return null
+        const Icon = getIcon(def.icon)
+        return (
+          <div className="flex min-w-0 items-center gap-2 text-secondary">
+            <Icon className="h-4 w-4 flex-shrink-0" />
+            <span className="truncate">{def.name}</span>
+          </div>
+        )
+      }}
+      state={state}
+      title="Links"
+      unassignedKeys={unassignedKeys}
+      valueInputClassName="text-sm"
+      valueInputType="url"
+      visibleKeys={visibleKeys}
     />
   )
+}
+
+function stripEmpty(map: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(map)) {
+    const t = (v ?? '').trim()
+    if (t) out[k] = t
+  }
+  return out
 }

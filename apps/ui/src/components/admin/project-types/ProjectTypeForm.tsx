@@ -1,39 +1,41 @@
 import { useState } from 'react'
+
 import { useQuery } from '@tanstack/react-query'
-import { Save, X, AlertCircle } from 'lucide-react'
+import { AlertCircle, Save, X } from 'lucide-react'
+
+import { getProjectTypeSchema } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { IconUpload } from '@/components/ui/icon-upload'
 import { Card, CardContent } from '@/components/ui/card'
-import { IconPicker } from '@/components/ui/icon-picker'
 import {
   DynamicFormFields,
   validateDynamicFields,
 } from '@/components/ui/dynamic-fields'
+import { IconPicker } from '@/components/ui/icon-picker'
+import { IconUpload } from '@/components/ui/icon-upload'
+import { Input } from '@/components/ui/input'
 import { useOrganization } from '@/contexts/OrganizationContext'
-import { getProjectTypeSchema } from '@/api/endpoints'
-import { PROJECT_TYPE_BASE_FIELDS_SET } from '@/lib/constants'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
+import { PROJECT_TYPE_BASE_FIELDS_SET } from '@/lib/constants'
 import { extractDynamicFields, slugify } from '@/lib/utils'
 import type { ProjectType, ProjectTypeCreate } from '@/types'
 
 interface ProjectTypeFormProps {
-  projectType: ProjectType | null
-  onSave: (orgSlug: string, pt: ProjectTypeCreate) => void
-  onCancel: () => void
+  error?: null | { message?: string; response?: { data?: { detail?: string } } }
   isLoading?: boolean
-  error?: { response?: { data?: { detail?: string } }; message?: string } | null
+  onCancel: () => void
+  onSave: (orgSlug: string, pt: ProjectTypeCreate) => void
+  projectType: null | ProjectType
 }
 
 export function ProjectTypeForm({
-  projectType,
-  onSave,
-  onCancel,
-  isLoading = false,
   error,
+  isLoading = false,
+  onCancel,
+  onSave,
+  projectType,
 }: ProjectTypeFormProps) {
   const isEditing = !!projectType
-  const { selectedOrganization, organizations } = useOrganization()
+  const { organizations, selectedOrganization } = useOrganization()
 
   const [name, setName] = useState(projectType?.name || '')
   const [slug, setSlug] = useState(projectType?.slug || '')
@@ -53,8 +55,8 @@ export function ProjectTypeForm({
   )
 
   const { data: ptSchema } = useQuery({
-    queryKey: ['projectTypeSchema'],
     queryFn: ({ signal }) => getProjectTypeSchema(signal),
+    queryKey: ['projectTypeSchema'],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -82,10 +84,10 @@ export function ProjectTypeForm({
     if (!validate()) return
 
     onSave(orgSlug, {
-      name: name.trim(),
-      slug: slug.trim(),
       description: description.trim() || null,
       icon: icon.trim() || null,
+      name: name.trim(),
+      slug: slug.trim(),
       ...dynamicFormData,
     })
   }
@@ -123,14 +125,14 @@ export function ProjectTypeForm({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
+          <Button disabled={isLoading} onClick={onCancel} variant="outline">
             <X className="mr-2 h-4 w-4" />
             Cancel
           </Button>
           <Button
-            onClick={handleSubmit}
-            disabled={isLoading}
             className="bg-action text-action-foreground hover:bg-action-hover"
+            disabled={isLoading}
+            onClick={handleSubmit}
           >
             <Save className="mr-2 h-4 w-4" />
             {isLoading
@@ -162,7 +164,7 @@ export function ProjectTypeForm({
       )}
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form className="space-y-6" onSubmit={handleSubmit}>
         <Card>
           <CardContent className="space-y-4 pt-6">
             <div>
@@ -170,12 +172,12 @@ export function ProjectTypeForm({
                 Organization <span className="text-red-500">*</span>
               </label>
               <select
-                value={orgSlug}
-                onChange={(e) => setOrgSlug(e.target.value)}
-                disabled={isEditing || isLoading || organizations.length <= 1}
                 className={`w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing || isLoading || organizations.length <= 1 ? 'cursor-not-allowed opacity-60' : ''} ${
                   errors.organization ? 'border-red-500' : ''
                 }`}
+                disabled={isEditing || isLoading || organizations.length <= 1}
+                onChange={(e) => setOrgSlug(e.target.value)}
+                value={orgSlug}
               >
                 <option value="">Select organization...</option>
                 {organizations.map((org) => (
@@ -200,11 +202,11 @@ export function ProjectTypeForm({
                   Project Type Name <span className="text-red-500">*</span>
                 </label>
                 <Input
-                  value={name}
+                  className={` ${errors.name ? 'border-red-500' : ''}`}
+                  disabled={isLoading}
                   onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="e.g., REST API"
-                  disabled={isLoading}
-                  className={` ${errors.name ? 'border-red-500' : ''}`}
+                  value={name}
                 />
                 {errors.name && (
                   <div className="mt-1 flex items-center gap-1 text-xs text-danger">
@@ -220,11 +222,11 @@ export function ProjectTypeForm({
                     Slug <span className="text-red-500">*</span>
                   </label>
                   <Input
-                    value={slug}
+                    className={` ${errors.slug ? 'border-red-500' : ''}`}
+                    disabled={isLoading}
                     onChange={(e) => setSlug(e.target.value)}
                     placeholder="e.g., rest-api"
-                    disabled={isLoading}
-                    className={` ${errors.slug ? 'border-red-500' : ''}`}
+                    value={slug}
                   />
                   {errors.slug && (
                     <div className="mt-1 flex items-center gap-1 text-xs text-danger">
@@ -241,12 +243,12 @@ export function ProjectTypeForm({
                 Description
               </label>
               <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                disabled={isLoading}
-                placeholder="Brief description of this project type"
                 className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground"
+                disabled={isLoading}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Brief description of this project type"
+                rows={3}
+                value={description}
               />
             </div>
 
@@ -258,12 +260,12 @@ export function ProjectTypeForm({
                 <div>
                   <p className="mb-1.5 text-xs text-tertiary">Pick an icon</p>
                   <IconPicker
+                    onChange={handleIconChange}
                     value={
                       !icon.startsWith('/') && !icon.startsWith('http')
                         ? icon
                         : ''
                     }
-                    onChange={handleIconChange}
                   />
                 </div>
                 <div>
@@ -271,12 +273,12 @@ export function ProjectTypeForm({
                     Or upload a custom image
                   </p>
                   <IconUpload
+                    onChange={handleIconChange}
                     value={
                       icon.startsWith('/') || icon.startsWith('http')
                         ? icon
                         : ''
                     }
-                    onChange={handleIconChange}
                   />
                 </div>
               </div>
@@ -285,11 +287,11 @@ export function ProjectTypeForm({
             {/* Dynamic Blueprint Fields */}
             {ptSchema && (
               <DynamicFormFields
-                schema={ptSchema}
                 data={dynamicFormData}
                 errors={errors}
-                onChange={handleDynamicFieldChange}
                 isLoading={isLoading}
+                onChange={handleDynamicFieldChange}
+                schema={ptSchema}
               />
             )}
           </CardContent>

@@ -1,17 +1,11 @@
 import { useMemo } from 'react'
+
 import { EditableKeyValueMap } from '@/components/ui/EditableKeyValueMap'
 import { useEditableKeyValueMap } from '@/hooks/useEditableKeyValueMap'
 
 interface EditIdentifiersCardProps {
-  identifiers: Record<string, string | number>
+  identifiers: Record<string, number | string>
   onPatch: (identifiers: Record<string, string>) => Promise<void>
-}
-
-function toLabel(key: string): string {
-  return key
-    .split('_')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ')
 }
 
 export function EditIdentifiersCard({
@@ -27,9 +21,9 @@ export function EditIdentifiersCard({
   }, [identifiers])
 
   const state = useEditableKeyValueMap<string>({
-    serverMap,
-    onPatch,
     normalizeValue: (v) => v.trim(),
+    onPatch,
+    serverMap,
   })
 
   const visibleKeys = useMemo(
@@ -50,33 +44,40 @@ export function EditIdentifiersCard({
 
   return (
     <EditableKeyValueMap
-      state={state}
-      title="Identifiers"
-      visibleKeys={visibleKeys}
-      unassignedKeys={unassignedKeys}
-      valueInputClassName="font-mono text-sm"
+      deleteDialogDescription="This will clear the identifier value on the project."
+      getDeleteDialogTitle={(key) =>
+        key ? `Remove ${toLabel(key)} identifier?` : 'Remove identifier?'
+      }
+      getNewValuePlaceholder={(newKey) =>
+        newKey ? toLabel(newKey) : 'identifier'
+      }
+      getRemoveAriaLabel={(key) => `Remove ${toLabel(key)} identifier`}
+      getValuePlaceholder={(key) => toLabel(key)}
+      hideWhenEmpty
+      newKeyPlaceholder="Pick Identifier to Add"
       renderKeyLabel={(key) => (
         <div className="w-[15%] flex-shrink-0 truncate text-sm text-secondary">
           {toLabel(key)}
         </div>
       )}
+      renderSelectItem={(key) => toLabel(key)}
       renderSelectTrigger={(newKey) => (
         <div className="flex min-w-0 items-center text-secondary">
           <span className="truncate">{toLabel(newKey)}</span>
         </div>
       )}
-      renderSelectItem={(key) => toLabel(key)}
-      getValuePlaceholder={(key) => toLabel(key)}
-      getNewValuePlaceholder={(newKey) =>
-        newKey ? toLabel(newKey) : 'identifier'
-      }
-      newKeyPlaceholder="Pick Identifier to Add"
-      getRemoveAriaLabel={(key) => `Remove ${toLabel(key)} identifier`}
-      getDeleteDialogTitle={(key) =>
-        key ? `Remove ${toLabel(key)} identifier?` : 'Remove identifier?'
-      }
-      deleteDialogDescription="This will clear the identifier value on the project."
-      hideWhenEmpty
+      state={state}
+      title="Identifiers"
+      unassignedKeys={unassignedKeys}
+      valueInputClassName="font-mono text-sm"
+      visibleKeys={visibleKeys}
     />
   )
+}
+
+function toLabel(key: string): string {
+  return key
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
 }

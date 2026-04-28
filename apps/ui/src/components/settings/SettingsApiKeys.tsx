@@ -1,62 +1,64 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Card } from '@/components/ui/card'
+
+import { createApiKey, deleteApiKey, listApiKeys } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Card } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog'
-import { listApiKeys, createApiKey, deleteApiKey } from '@/api/endpoints'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { extractApiErrorDetail } from '@/lib/apiError'
-import type { ApiKey, ApiKeyCreated } from '@/types'
 import { formatDate } from '@/lib/formatDate'
+import type { ApiKey, ApiKeyCreated } from '@/types'
 
 export function SettingsApiKeys() {
   const queryClient = useQueryClient()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [newKeyName, setNewKeyName] = useState('')
   const [createdKey, setCreatedKey] = useState<ApiKeyCreated | null>(null)
-  const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null)
-  const [revokingKeyId, setRevokingKeyId] = useState<string | null>(null)
-  const [createError, setCreateError] = useState<string | null>(null)
+  const [copiedKeyId, setCopiedKeyId] = useState<null | string>(null)
+  const [revokingKeyId, setRevokingKeyId] = useState<null | string>(null)
+  const [createError, setCreateError] = useState<null | string>(null)
 
   const {
     data: apiKeys = [],
-    isLoading,
     error: listError,
+    isLoading,
   } = useQuery({
-    queryKey: ['api-keys'],
     queryFn: ({ signal }) => listApiKeys(signal),
+    queryKey: ['api-keys'],
   })
 
   const createMutation = useMutation({
     mutationFn: (name: string) => createApiKey(name),
+    onError: (error: Error) => {
+      setCreateError(error.message || 'Failed to create API key')
+    },
     onSuccess: (data) => {
       setCreatedKey(data)
       setNewKeyName('')
       setCreateError(null)
       queryClient.invalidateQueries({ queryKey: ['api-keys'] })
     },
-    onError: (error: Error) => {
-      setCreateError(error.message || 'Failed to create API key')
-    },
   })
 
   const deleteMutation = useMutation({
     mutationFn: (keyId: string) => deleteApiKey(keyId),
+    onError: (error: unknown) => {
+      toast.error(`Failed to revoke API key: ${extractApiErrorDetail(error)}`)
+    },
     onSuccess: () => {
       setRevokingKeyId(null)
       queryClient.invalidateQueries({ queryKey: ['api-keys'] })
-    },
-    onError: (error: unknown) => {
-      toast.error(`Failed to revoke API key: ${extractApiErrorDetail(error)}`)
     },
   })
 
@@ -99,9 +101,9 @@ export function SettingsApiKeys() {
           <div className="space-y-4">
             {activeKeys.map((apiKey: ApiKey) => (
               <div
-                key={apiKey.key_id}
                 className="bg-secondary/50 rounded-lg border-input p-4"
-                style={{ borderWidth: '0.5px', borderStyle: 'solid' }}
+                key={apiKey.key_id}
+                style={{ borderStyle: 'solid', borderWidth: '0.5px' }}
               >
                 <div className="mb-3 flex items-start justify-between">
                   <div>
@@ -115,10 +117,10 @@ export function SettingsApiKeys() {
                     </p>
                   </div>
                   <Button
-                    variant="ghost"
-                    size="sm"
                     className="text-red-600 hover:text-red-700"
                     onClick={() => setRevokingKeyId(apiKey.key_id)}
+                    size="sm"
+                    variant="ghost"
                   >
                     ✕ Revoke
                   </Button>
@@ -126,21 +128,21 @@ export function SettingsApiKeys() {
 
                 <div className="mb-3 flex items-center gap-2">
                   <Input
-                    value={`ik_${apiKey.key_id}_••••••••••••`}
-                    readOnly
                     className={
                       'border-input bg-card font-mono text-[12px] text-secondary'
                     }
+                    readOnly
                     style={{ borderWidth: '0.5px' }}
+                    value={`ik_${apiKey.key_id}_••••••••••••`}
                   />
                   <Button
-                    variant="outline"
-                    size="icon"
+                    className=""
                     onClick={() =>
                       handleCopyKey(`ik_${apiKey.key_id}`, apiKey.key_id)
                     }
-                    className=""
+                    size="icon"
                     style={{ borderWidth: '0.5px' }}
+                    variant="outline"
                   >
                     {copiedKeyId === apiKey.key_id ? '✓' : '⎘'}
                   </Button>
@@ -150,10 +152,10 @@ export function SettingsApiKeys() {
                   <div className="flex gap-2">
                     {apiKey.scopes?.map((scope) => (
                       <Badge
-                        key={scope}
-                        variant="outline"
                         className="text-[11px]"
+                        key={scope}
                         style={{ borderWidth: '0.5px' }}
+                        variant="outline"
                       >
                         {scope}
                       </Badge>
@@ -188,7 +190,6 @@ export function SettingsApiKeys() {
 
       {/* Create key dialog */}
       <Dialog
-        open={showCreateDialog}
         onOpenChange={(open) => {
           if (!open) {
             setShowCreateDialog(false)
@@ -196,6 +197,7 @@ export function SettingsApiKeys() {
             setNewKeyName('')
           }
         }}
+        open={showCreateDialog}
       >
         <DialogContent
           className="border-border bg-card"
@@ -214,19 +216,19 @@ export function SettingsApiKeys() {
               </p>
               <div className="flex items-center gap-2">
                 <Input
-                  value={createdKey.key_secret}
-                  readOnly
                   className="font-mono text-[12px]"
+                  readOnly
                   style={{ borderWidth: '0.5px' }}
+                  value={createdKey.key_secret}
                 />
                 <Button
-                  variant="outline"
-                  size="icon"
+                  className=""
                   onClick={() =>
                     handleCopyKey(createdKey.key_secret, 'created')
                   }
-                  className=""
+                  size="icon"
                   style={{ borderWidth: '0.5px' }}
+                  variant="outline"
                 >
                   {copiedKeyId === 'created' ? '✓' : '⎘'}
                 </Button>
@@ -247,11 +249,11 @@ export function SettingsApiKeys() {
               <div>
                 <Label>Key name</Label>
                 <Input
-                  value={newKeyName}
+                  className="mt-2"
                   onChange={(e) => setNewKeyName(e.target.value)}
                   placeholder="e.g. Production API Key"
-                  className="mt-2"
                   style={{ borderWidth: '0.5px' }}
+                  value={newKeyName}
                 />
               </div>
               {createError && (
@@ -259,19 +261,19 @@ export function SettingsApiKeys() {
               )}
               <DialogFooter>
                 <Button
-                  variant="outline"
+                  className=""
                   onClick={() => {
                     setShowCreateDialog(false)
                     setCreateError(null)
                   }}
-                  className=""
                   style={{ borderWidth: '0.5px' }}
+                  variant="outline"
                 >
                   Cancel
                 </Button>
                 <Button
-                  onClick={() => createMutation.mutate(newKeyName || 'default')}
                   disabled={createMutation.isPending}
+                  onClick={() => createMutation.mutate(newKeyName || 'default')}
                 >
                   {createMutation.isPending ? 'Creating...' : 'Create key'}
                 </Button>
@@ -283,10 +285,10 @@ export function SettingsApiKeys() {
 
       {/* Revoke confirmation dialog */}
       <Dialog
-        open={!!revokingKeyId}
         onOpenChange={(open) => {
           if (!open) setRevokingKeyId(null)
         }}
+        open={!!revokingKeyId}
       >
         <DialogContent style={{ borderWidth: '0.5px' }}>
           <DialogHeader>
@@ -298,19 +300,19 @@ export function SettingsApiKeys() {
           </p>
           <DialogFooter>
             <Button
-              variant="outline"
-              onClick={() => setRevokingKeyId(null)}
               className=""
+              onClick={() => setRevokingKeyId(null)}
               style={{ borderWidth: '0.5px' }}
+              variant="outline"
             >
               Cancel
             </Button>
             <Button
-              variant="destructive"
+              disabled={deleteMutation.isPending}
               onClick={() => {
                 if (revokingKeyId) deleteMutation.mutate(revokingKeyId)
               }}
-              disabled={deleteMutation.isPending}
+              variant="destructive"
             >
               {deleteMutation.isPending ? 'Revoking...' : 'Revoke key'}
             </Button>

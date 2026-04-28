@@ -5,13 +5,13 @@ import { useCallback, useState } from 'react'
 // setTouched directly; this hook just removes the duplicated state + the
 // handleFieldChange helper that marks a field touched and clears its error.
 export interface FormScaffold {
-  validationErrors: Record<string, string>
+  handleFieldChange: (field: string) => void
+  setTouched: React.Dispatch<React.SetStateAction<Record<string, boolean>>>
   setValidationErrors: React.Dispatch<
     React.SetStateAction<Record<string, string>>
   >
   touched: Record<string, boolean>
-  setTouched: React.Dispatch<React.SetStateAction<Record<string, boolean>>>
-  handleFieldChange: (field: string) => void
+  validationErrors: Record<string, string>
 }
 
 export function useFormScaffold(): FormScaffold {
@@ -31,10 +31,10 @@ export function useFormScaffold(): FormScaffold {
   }, [])
 
   return {
-    validationErrors,
+    handleFieldChange,
+    setTouched,
     setValidationErrors,
     touched,
-    setTouched,
-    handleFieldChange,
+    validationErrors,
   }
 }

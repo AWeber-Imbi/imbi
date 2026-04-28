@@ -1,42 +1,45 @@
-import { Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
+
+import { Search } from 'lucide-react'
+
+import { Gravatar } from '@/components/ui/gravatar'
 import { Input } from '@/components/ui/input'
 import { useTheme } from '@/contexts/ThemeContext'
 import { deriveChipColors } from '@/lib/chip-colors'
-import { cn } from '@/lib/utils'
-import { Gravatar } from '@/components/ui/gravatar'
 import { ENTRY_TYPE_ICONS } from '@/lib/ops-log-icons'
+import { cn } from '@/lib/utils'
 import { sortEnvironments } from '@/lib/utils'
 import {
-  OPERATIONS_LOG_ENTRY_TYPES,
   type Environment,
+  OPERATIONS_LOG_ENTRY_TYPES,
   type OperationsLogEntryType,
 } from '@/types'
+
 import type { TimeRange } from './opsLogHelpers'
 import { cleanName } from './opsLogHelpers'
 
 export interface SidebarCounts {
-  type: Partial<Record<OperationsLogEntryType, number>>
   env: Record<string, number>
-  project: Record<string, number>
   person: Record<string, number>
+  project: Record<string, number>
+  type: Partial<Record<OperationsLogEntryType, number>>
 }
 
 interface SidebarProps {
   counts: SidebarCounts
-  range: TimeRange
-  onRange: (r: TimeRange) => void
   entryType?: OperationsLogEntryType
-  onEntryType: (t: OperationsLogEntryType | undefined) => void
-  environmentSlug: string | undefined
-  onEnvironment: (slug: string | undefined) => void
   environments: Environment[]
-  projectSlug: string | undefined
-  onProject: (slug: string | undefined) => void
-  projectNames: Map<string, string>
-  performer: string | undefined
+  environmentSlug: string | undefined
+  onEntryType: (t: OperationsLogEntryType | undefined) => void
+  onEnvironment: (slug: string | undefined) => void
   onPerformer: (email: string | undefined) => void
+  onProject: (slug: string | undefined) => void
+  onRange: (r: TimeRange) => void
+  performer: string | undefined
   performerDisplayNames: Map<string, string>
+  projectNames: Map<string, string>
+  projectSlug: string | undefined
+  range: TimeRange
 }
 
 const RANGES: { key: TimeRange; label: string }[] = [
@@ -47,80 +50,21 @@ const RANGES: { key: TimeRange; label: string }[] = [
   { key: 'all', label: 'All' },
 ]
 
-function SideButton({
-  active,
-  onClick,
-  icon,
-  children,
-  count,
-  title,
-}: {
-  active?: boolean
-  onClick: () => void
-  icon?: React.ReactNode
-  children: React.ReactNode
-  count?: number
-  title?: string
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      className={cn(
-        'flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
-        'hover:bg-secondary',
-        active ? 'bg-secondary font-medium text-primary' : 'text-secondary',
-      )}
-    >
-      {icon ? (
-        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-tertiary">
-          {icon}
-        </span>
-      ) : null}
-      <span className="min-w-0 flex-1 truncate">{children}</span>
-      {count != null ? (
-        <span className="text-xs text-tertiary">{count}</span>
-      ) : null}
-    </button>
-  )
-}
-
-function Section({
-  title,
-  rightMeta,
-  children,
-}: {
-  title: string
-  rightMeta?: React.ReactNode
-  children: React.ReactNode
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <h3 className="mx-2 mb-1 flex items-center justify-between text-overline uppercase tracking-[0.06em] text-tertiary">
-        <span>{title}</span>
-        {rightMeta}
-      </h3>
-      {children}
-    </div>
-  )
-}
-
 export function OperationsLogSidebar({
   counts,
-  range,
-  onRange,
   entryType,
-  onEntryType,
-  environmentSlug,
-  onEnvironment,
   environments,
-  projectSlug,
-  onProject,
-  projectNames,
-  performer,
+  environmentSlug,
+  onEntryType,
+  onEnvironment,
   onPerformer,
+  onProject,
+  onRange,
+  performer,
   performerDisplayNames,
+  projectNames,
+  projectSlug,
+  range,
 }: SidebarProps) {
   const { isDarkMode } = useTheme()
   const [projectFilter, setProjectFilter] = useState('')
@@ -156,21 +100,21 @@ export function OperationsLogSidebar({
     <aside className="sticky top-20 flex flex-col gap-5 self-start text-sm">
       <Section title="Time range">
         <div
-          role="group"
           aria-label="Time range"
           className="mx-2 flex items-center rounded-md border border-tertiary bg-secondary p-0.5"
+          role="group"
         >
           {RANGES.map((r) => (
             <button
-              key={r.key}
-              type="button"
-              onClick={() => onRange(r.key)}
               className={cn(
                 'flex-1 rounded px-2 py-1 text-xs font-medium transition-colors',
                 range === r.key
                   ? 'bg-primary text-primary shadow-sm'
                   : 'text-secondary hover:text-primary',
               )}
+              key={r.key}
+              onClick={() => onRange(r.key)}
+              type="button"
             >
               {r.label}
             </button>
@@ -185,11 +129,11 @@ export function OperationsLogSidebar({
           const Icon = ENTRY_TYPE_ICONS[t]
           return (
             <SideButton
-              key={t}
               active={entryType === t}
-              onClick={() => onEntryType(entryType === t ? undefined : t)}
-              icon={<Icon className="h-3.5 w-3.5" />}
               count={counts.type[t]}
+              icon={<Icon className="h-3.5 w-3.5" />}
+              key={t}
+              onClick={() => onEntryType(entryType === t ? undefined : t)}
             >
               {t}
             </SideButton>
@@ -205,23 +149,23 @@ export function OperationsLogSidebar({
               : null
             return (
               <SideButton
-                key={env.slug}
                 active={environmentSlug === env.slug}
+                count={counts.env[env.slug] ?? 0}
+                icon={
+                  <span
+                    aria-hidden
+                    className="h-2 w-2 rounded-full"
+                    style={{
+                      backgroundColor: colors?.border ?? 'currentColor',
+                    }}
+                  />
+                }
+                key={env.slug}
                 onClick={() =>
                   onEnvironment(
                     environmentSlug === env.slug ? undefined : env.slug,
                   )
                 }
-                icon={
-                  <span
-                    className="h-2 w-2 rounded-full"
-                    style={{
-                      backgroundColor: colors?.border ?? 'currentColor',
-                    }}
-                    aria-hidden
-                  />
-                }
-                count={counts.env[env.slug] ?? 0}
               >
                 {env.name}
               </SideButton>
@@ -232,28 +176,28 @@ export function OperationsLogSidebar({
 
       {projectEntries.length > 0 && (
         <Section
-          title="Projects"
           rightMeta={
             <span className="text-xs font-normal tracking-normal text-tertiary">
               {projectEntries.length}
             </span>
           }
+          title="Projects"
         >
           <div className="relative mx-2 mb-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-tertiary" />
             <Input
-              value={projectFilter}
+              className="h-8 pl-8 text-sm"
               onChange={(e) => setProjectFilter(e.target.value)}
               placeholder="Filter projects…"
-              className="h-8 pl-8 text-sm"
+              value={projectFilter}
             />
           </div>
           {filteredProjects.map(([slug, c]) => (
             <SideButton
-              key={slug}
               active={projectSlug === slug}
-              onClick={() => onProject(projectSlug === slug ? undefined : slug)}
               count={c}
+              key={slug}
+              onClick={() => onProject(projectSlug === slug ? undefined : slug)}
               title={projectNames.get(slug) ?? slug}
             >
               <span className="font-mono text-[13px]">{slug}</span>
@@ -266,19 +210,19 @@ export function OperationsLogSidebar({
         <Section title="People">
           {topPeople.map(([email, c]) => (
             <SideButton
-              key={email}
               active={performer === email}
+              count={c}
+              icon={
+                <Gravatar
+                  className="h-4 w-4 rounded-full"
+                  email={email}
+                  size={18}
+                />
+              }
+              key={email}
               onClick={() =>
                 onPerformer(performer === email ? undefined : email)
               }
-              icon={
-                <Gravatar
-                  email={email}
-                  size={18}
-                  className="h-4 w-4 rounded-full"
-                />
-              }
-              count={c}
             >
               {performerDisplayNames.get(email) ?? cleanName(email)}
             </SideButton>
@@ -286,5 +230,64 @@ export function OperationsLogSidebar({
         </Section>
       )}
     </aside>
+  )
+}
+
+function Section({
+  children,
+  rightMeta,
+  title,
+}: {
+  children: React.ReactNode
+  rightMeta?: React.ReactNode
+  title: string
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <h3 className="mx-2 mb-1 flex items-center justify-between text-overline uppercase tracking-[0.06em] text-tertiary">
+        <span>{title}</span>
+        {rightMeta}
+      </h3>
+      {children}
+    </div>
+  )
+}
+
+function SideButton({
+  active,
+  children,
+  count,
+  icon,
+  onClick,
+  title,
+}: {
+  active?: boolean
+  children: React.ReactNode
+  count?: number
+  icon?: React.ReactNode
+  onClick: () => void
+  title?: string
+}) {
+  return (
+    <button
+      className={cn(
+        'flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
+        'hover:bg-secondary',
+        active ? 'bg-secondary font-medium text-primary' : 'text-secondary',
+      )}
+      onClick={onClick}
+      title={title}
+      type="button"
+    >
+      {icon ? (
+        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-tertiary">
+          {icon}
+        </span>
+      ) : null}
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {count != null ? (
+        <span className="text-xs text-tertiary">{count}</span>
+      ) : null}
+    </button>
   )
 }

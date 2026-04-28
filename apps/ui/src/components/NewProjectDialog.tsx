@@ -1,24 +1,26 @@
+import { useState } from 'react'
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Github,
-  Bug,
   Bell,
+  Bug,
   ExternalLink,
+  Github,
   icons,
   type LucideIcon,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card } from '@/components/ui/card'
-import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useOrganization } from '@/contexts/OrganizationContext'
+
 import {
-  listTeams,
-  listProjectTypes,
+  createProject,
   listEnvironments,
   listLinkDefinitions,
-  createProject,
+  listProjectTypes,
+  listTeams,
 } from '@/api/endpoints'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import { slugify } from '@/lib/utils'
 import type { ProjectCreate } from '@/types'
 
@@ -55,36 +57,36 @@ export function NewProjectDialog({
   const [createPagerdutyService, setCreatePagerdutyService] = useState(true)
 
   const { data: teams = [] } = useQuery({
-    queryKey: ['teams', orgSlug],
-    queryFn: ({ signal }) => listTeams(orgSlug, signal),
     enabled: !!orgSlug && isOpen,
+    queryFn: ({ signal }) => listTeams(orgSlug, signal),
+    queryKey: ['teams', orgSlug],
   })
 
   const { data: projectTypes = [] } = useQuery({
-    queryKey: ['projectTypes', orgSlug],
-    queryFn: ({ signal }) => listProjectTypes(orgSlug, signal),
     enabled: !!orgSlug && isOpen,
+    queryFn: ({ signal }) => listProjectTypes(orgSlug, signal),
+    queryKey: ['projectTypes', orgSlug],
   })
 
   const { data: environments = [] } = useQuery({
-    queryKey: ['environments', orgSlug],
-    queryFn: ({ signal }) => listEnvironments(orgSlug, signal),
     enabled: !!orgSlug && isOpen,
+    queryFn: ({ signal }) => listEnvironments(orgSlug, signal),
+    queryKey: ['environments', orgSlug],
   })
 
   const { data: linkDefs = [] } = useQuery({
-    queryKey: ['linkDefinitions', orgSlug],
-    queryFn: ({ signal }) => listLinkDefinitions(orgSlug, signal),
     enabled: !!orgSlug && isOpen,
+    queryFn: ({ signal }) => listLinkDefinitions(orgSlug, signal),
+    queryKey: ['linkDefinitions', orgSlug],
   })
 
   const createMutation = useMutation({
     mutationFn: ({
-      typeSlug,
       data,
+      typeSlug,
     }: {
-      typeSlug: string
       data: ProjectCreate
+      typeSlug: string
     }) => createProject(orgSlug, typeSlug, data),
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ['projects', orgSlug] })
@@ -122,15 +124,15 @@ export function NewProjectDialog({
   const handleSave = () => {
     if (!orgSlug || !canProceed || createMutation.isPending) return
     const projectData: ProjectCreate = {
-      name,
-      slug,
       description: description || null,
-      team_slug: teamSlug,
       environment_slugs:
         selectedEnvSlugs.length > 0 ? selectedEnvSlugs : undefined,
       links: Object.keys(links).length > 0 ? links : undefined,
+      name,
+      slug,
+      team_slug: teamSlug,
     }
-    createMutation.mutate({ typeSlug: projectTypeSlug, data: projectData })
+    createMutation.mutate({ data: projectData, typeSlug: projectTypeSlug })
   }
 
   const handleClose = () => {
@@ -159,24 +161,24 @@ export function NewProjectDialog({
       .join('') as keyof typeof icons
     const Icon = icons[pascalName] || ExternalLink
     const placeholder = ld.url_template || 'https://example.com/...'
-    return { key: ld.slug, label: ld.name, icon: Icon, placeholder }
+    return { icon: Icon, key: ld.slug, label: ld.name, placeholder }
   })
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      role="dialog"
-      aria-modal="true"
       aria-label="Create New Project"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center"
       onKeyDown={(e) => {
         if (e.key === 'Escape') handleClose()
       }}
+      role="dialog"
     >
       <button
-        type="button"
         aria-label="Close dialog"
         className="fixed inset-0 bg-black/50"
         onClick={handleClose}
+        type="button"
       />
       <div className="relative mx-4 flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-xl">
         {/* Header */}
@@ -193,22 +195,22 @@ export function NewProjectDialog({
         <div className="px-6 pt-4">
           <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
             <button
-              onClick={() => setStep('basic')}
               className={`rounded-md px-4 py-2 text-sm transition-colors ${
                 step === 'basic'
                   ? 'bg-white text-slate-900 shadow'
                   : 'text-slate-600'
               }`}
+              onClick={() => setStep('basic')}
             >
               Basic Information
             </button>
             <button
-              onClick={() => canProceed && setStep('urls')}
               className={`rounded-md px-4 py-2 text-sm transition-colors ${
                 step === 'urls'
                   ? 'bg-white text-slate-900 shadow'
                   : 'text-slate-600'
               } ${!canProceed ? 'cursor-not-allowed opacity-50' : ''}`}
+              onClick={() => canProceed && setStep('urls')}
             >
               URLs & Links
             </button>
@@ -222,16 +224,16 @@ export function NewProjectDialog({
               {/* Team */}
               <div className="space-y-2">
                 <label
-                  htmlFor="new-project-team"
                   className="text-sm font-medium text-slate-900"
+                  htmlFor="new-project-team"
                 >
                   Team <span className="text-red-500">*</span>
                 </label>
                 <select
-                  id="new-project-team"
-                  value={teamSlug}
-                  onChange={(e) => setTeamSlug(e.target.value)}
                   className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                  id="new-project-team"
+                  onChange={(e) => setTeamSlug(e.target.value)}
+                  value={teamSlug}
                 >
                   <option value="">Select team...</option>
                   {teams.map((t) => (
@@ -248,16 +250,16 @@ export function NewProjectDialog({
               {/* Project Type */}
               <div className="space-y-2">
                 <label
-                  htmlFor="new-project-type"
                   className="text-sm font-medium text-slate-900"
+                  htmlFor="new-project-type"
                 >
                   Project Type <span className="text-red-500">*</span>
                 </label>
                 <select
-                  id="new-project-type"
-                  value={projectTypeSlug}
-                  onChange={(e) => setProjectTypeSlug(e.target.value)}
                   className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                  id="new-project-type"
+                  onChange={(e) => setProjectTypeSlug(e.target.value)}
+                  value={projectTypeSlug}
                 >
                   <option value="">Select project type...</option>
                   {projectTypes.map((pt) => (
@@ -274,16 +276,16 @@ export function NewProjectDialog({
               {/* Name */}
               <div className="space-y-2">
                 <label
-                  htmlFor="new-project-name"
                   className="text-sm font-medium text-slate-900"
+                  htmlFor="new-project-name"
                 >
                   Name <span className="text-red-500">*</span>
                 </label>
                 <Input
                   id="new-project-name"
-                  value={name}
                   onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="e.g., My Service"
+                  value={name}
                 />
                 <p className="text-sm text-slate-500">
                   Human-readable name for this project
@@ -293,16 +295,16 @@ export function NewProjectDialog({
               {/* Slug */}
               <div className="space-y-2">
                 <label
-                  htmlFor="new-project-slug"
                   className="text-sm font-medium text-slate-900"
+                  htmlFor="new-project-slug"
                 >
                   Slug <span className="text-red-500">*</span>
                 </label>
                 <Input
                   id="new-project-slug"
-                  value={slug}
                   onChange={(e) => setSlug(e.target.value)}
                   placeholder="e.g., my-service"
+                  value={slug}
                 />
                 <p className="text-sm text-slate-500">
                   URL-friendly identifier for this project
@@ -312,17 +314,17 @@ export function NewProjectDialog({
               {/* Description */}
               <div className="space-y-2">
                 <label
-                  htmlFor="new-project-description"
                   className="text-sm font-medium text-slate-900"
+                  htmlFor="new-project-description"
                 >
                   Description
                 </label>
                 <textarea
+                  className="min-h-[120px] w-full resize-none rounded-md border border-slate-200 px-3 py-2 text-sm"
                   id="new-project-description"
-                  value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Provide a high-level purpose and context for the project"
-                  className="min-h-[120px] w-full resize-none rounded-md border border-slate-200 px-3 py-2 text-sm"
+                  value={description}
                 />
               </div>
 
@@ -335,13 +337,13 @@ export function NewProjectDialog({
                   <div className="flex flex-wrap gap-2">
                     {environments.map((env) => (
                       <button
-                        key={env.slug}
-                        onClick={() => toggleEnv(env.slug)}
                         className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
                           selectedEnvSlugs.includes(env.slug)
                             ? 'border-blue-300 bg-blue-50 text-blue-700'
                             : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
                         }`}
+                        key={env.slug}
+                        onClick={() => toggleEnv(env.slug)}
                       >
                         {env.name}
                       </button>
@@ -356,25 +358,25 @@ export function NewProjectDialog({
                   Automations
                 </label>
                 <AutomationToggle
-                  icon={Github}
-                  title="Create GitHub Repository"
-                  description="Automatically create a GitHub repository for this project"
                   checked={createGithubRepo}
+                  description="Automatically create a GitHub repository for this project"
+                  icon={Github}
                   onChange={setCreateGithubRepo}
+                  title="Create GitHub Repository"
                 />
                 <AutomationToggle
-                  icon={Bug}
-                  title="Create Sentry Project"
-                  description="Automatically create a Sentry project for this project"
                   checked={createSentryProject}
+                  description="Automatically create a Sentry project for this project"
+                  icon={Bug}
                   onChange={setCreateSentryProject}
+                  title="Create Sentry Project"
                 />
                 <AutomationToggle
-                  icon={Bell}
-                  title="Create PagerDuty Service"
-                  description="Automatically create a PagerDuty service for this project"
                   checked={createPagerdutyService}
+                  description="Automatically create a PagerDuty service for this project"
+                  icon={Bell}
                   onChange={setCreatePagerdutyService}
+                  title="Create PagerDuty Service"
                 />
               </div>
             </div>
@@ -384,17 +386,17 @@ export function NewProjectDialog({
                 Configure external links and integrations for this project. All
                 fields are optional.
               </p>
-              {linkFields.map(({ key, label, icon: Icon, placeholder }) => (
-                <div key={key} className="space-y-2">
+              {linkFields.map(({ icon: Icon, key, label, placeholder }) => (
+                <div className="space-y-2" key={key}>
                   <label className="flex items-center gap-2 text-sm font-medium text-slate-900">
                     <Icon className="h-4 w-4 text-slate-500" />
                     {label}
                   </label>
                   <Input
-                    type="url"
-                    value={links[key] || ''}
                     onChange={(e) => handleLinkChange(key, e.target.value)}
                     placeholder={placeholder}
+                    type="url"
+                    value={links[key] || ''}
                   />
                 </div>
               ))}
@@ -417,21 +419,21 @@ export function NewProjectDialog({
         <div className="flex items-center justify-between border-t p-6">
           <div>
             {step === 'urls' && (
-              <Button variant="ghost" onClick={() => setStep('basic')}>
+              <Button onClick={() => setStep('basic')} variant="ghost">
                 Back
               </Button>
             )}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handleClose}>
+            <Button onClick={handleClose} variant="outline">
               Cancel
             </Button>
             {step === 'basic' ? (
-              <Button onClick={() => setStep('urls')} disabled={!canProceed}>
+              <Button disabled={!canProceed} onClick={() => setStep('urls')}>
                 Next
               </Button>
             ) : (
-              <Button onClick={handleSave} disabled={createMutation.isPending}>
+              <Button disabled={createMutation.isPending} onClick={handleSave}>
                 {createMutation.isPending ? 'Creating...' : 'Save'}
               </Button>
             )}
@@ -443,17 +445,17 @@ export function NewProjectDialog({
 }
 
 function AutomationToggle({
-  icon: Icon,
-  title,
-  description,
   checked,
+  description,
+  icon: Icon,
   onChange,
+  title,
 }: {
-  icon: LucideIcon
-  title: string
-  description: string
   checked: boolean
+  description: string
+  icon: LucideIcon
   onChange: (val: boolean) => void
+  title: string
 }) {
   return (
     <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -465,13 +467,13 @@ function AutomationToggle({
         </div>
       </div>
       <button
-        role="switch"
         aria-checked={checked}
         aria-label={title}
-        onClick={() => onChange(!checked)}
         className={`relative h-5 w-9 rounded-full transition-colors ${
           checked ? 'bg-blue-600' : 'bg-slate-300'
         }`}
+        onClick={() => onChange(!checked)}
+        role="switch"
       >
         <span
           className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${

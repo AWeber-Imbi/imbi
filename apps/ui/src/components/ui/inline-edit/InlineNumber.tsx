@@ -1,33 +1,35 @@
 import { useCallback, useEffect, useRef } from 'react'
+
 import { Input } from '@/components/ui/input'
 import { useInlineEdit } from '@/hooks/useInlineEdit'
+
 import { InlineDisplay } from './InlineDisplay'
 
 export interface InlineNumberProps {
-  value: number | null
-  onCommit: (next: number | null) => Promise<void> | void
-  readOnly?: boolean
-  pending?: boolean
-  min?: number
-  max?: number
-  step?: number
-  placeholder?: string
   integer?: boolean
+  max?: number
+  min?: number
+  onCommit: (next: null | number) => Promise<void> | void
+  pending?: boolean
+  placeholder?: string
+  readOnly?: boolean
   /** Override the display-mode rendering. */
   renderDisplay?: React.ReactNode
+  step?: number
+  value: null | number
 }
 
 export function InlineNumber({
-  value,
-  onCommit,
-  readOnly = false,
-  pending = false,
-  min,
-  max,
-  step,
-  placeholder,
   integer = false,
+  max,
+  min,
+  onCommit,
+  pending = false,
+  placeholder,
+  readOnly = false,
   renderDisplay,
+  step,
+  value,
 }: InlineNumberProps) {
   const ref = useRef<HTMLInputElement>(null)
   const handleCommit = useCallback(
@@ -57,10 +59,10 @@ export function InlineNumber({
     return (
       <InlineDisplay
         hasValue={value !== null && value !== undefined}
-        readOnly={readOnly}
-        pending={pending}
         onClick={edit.enter}
+        pending={pending}
         placeholder={placeholder}
+        readOnly={readOnly}
       >
         {renderDisplay ??
           (value !== null && value !== undefined ? String(value) : null)}
@@ -71,17 +73,17 @@ export function InlineNumber({
   return (
     <span className="block">
       <Input
-        ref={ref}
-        type="number"
+        className="h-7 w-32 py-1"
         inputMode={integer ? 'numeric' : 'decimal'}
-        min={min}
         max={max}
-        step={step}
-        value={edit.draft}
+        min={min}
+        onBlur={edit.handleBlur}
         onChange={(e) => edit.setDraft(e.target.value)}
         onKeyDown={edit.handleKeyDown}
-        onBlur={edit.handleBlur}
-        className="h-7 w-32 py-1"
+        ref={ref}
+        step={step}
+        type="number"
+        value={edit.draft}
       />
       {edit.error && (
         <span className="mt-1 block text-xs text-red-600">{edit.error}</span>

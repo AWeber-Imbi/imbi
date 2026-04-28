@@ -2,88 +2,64 @@ import { create } from 'zustand'
 
 interface ActiveToolUse {
   id: string
-  name: string
   input: string
+  name: string
 }
 
 interface AssistantMessage {
-  id: string
-  role: 'user' | 'assistant'
   content: string
+  id: string
+  isStreaming?: boolean
+  role: 'assistant' | 'user'
   timestamp: Date
   toolUse?: ActiveToolUse[]
-  isStreaming?: boolean
 }
 
 interface AssistantStore {
-  isExpanded: boolean
-  currentConversationId: string | null
-  messages: AssistantMessage[]
-  isStreaming: boolean
-  streamingContent: string
   activeToolUse: ActiveToolUse | null
-  pendingToolUses: ActiveToolUse[]
-
-  setExpanded: (expanded: boolean) => void
-  setCurrentConversation: (id: string | null) => void
   addMessage: (message: AssistantMessage) => void
+  addPendingToolUse: (tool: ActiveToolUse) => void
+  appendStreamingContent: (text: string) => void
+  clearConversation: () => void
+  currentConversationId: null | string
+  finishStreaming: (messageId: string) => void
+
+  isExpanded: boolean
+  isStreaming: boolean
+  messages: AssistantMessage[]
+  pendingToolUses: ActiveToolUse[]
+  setActiveToolUse: (tool: ActiveToolUse | null) => void
+  setCurrentConversation: (id: null | string) => void
+  setExpanded: (expanded: boolean) => void
   setMessages: (messages: AssistantMessage[]) => void
   startStreaming: () => void
-  appendStreamingContent: (text: string) => void
-  setActiveToolUse: (tool: ActiveToolUse | null) => void
-  addPendingToolUse: (tool: ActiveToolUse) => void
-  finishStreaming: (messageId: string) => void
-  clearConversation: () => void
+  streamingContent: string
 }
 
 export const useAssistantStore = create<AssistantStore>()((set, get) => ({
-  isExpanded: false,
-  currentConversationId: null,
-  messages: [],
-  isStreaming: false,
-  streamingContent: '',
   activeToolUse: null,
-  pendingToolUses: [],
-
-  setExpanded: (expanded) => set({ isExpanded: expanded }),
-
-  setCurrentConversation: (id) =>
-    set({
-      currentConversationId: id,
-      messages: [],
-      isStreaming: false,
-      streamingContent: '',
-      activeToolUse: null,
-      pendingToolUses: [],
-    }),
-
   addMessage: (message) =>
     set((state) => ({
       messages: [...state.messages, message],
     })),
-
-  setMessages: (messages) => set({ messages }),
-
-  startStreaming: () =>
-    set({
-      isStreaming: true,
-      streamingContent: '',
-      activeToolUse: null,
-      pendingToolUses: [],
-    }),
-
-  appendStreamingContent: (text) =>
-    set((state) => ({
-      streamingContent: state.streamingContent + text,
-    })),
-
-  setActiveToolUse: (tool) => set({ activeToolUse: tool }),
-
   addPendingToolUse: (tool) =>
     set((state) => ({
       pendingToolUses: [...state.pendingToolUses, tool],
     })),
-
+  appendStreamingContent: (text) =>
+    set((state) => ({
+      streamingContent: state.streamingContent + text,
+    })),
+  clearConversation: () =>
+    set({
+      activeToolUse: null,
+      currentConversationId: null,
+      isStreaming: false,
+      messages: [],
+      pendingToolUses: [],
+      streamingContent: '',
+    }),
+  currentConversationId: null,
   finishStreaming: (messageId) => {
     const state = get()
     const hasOutput =
@@ -92,38 +68,62 @@ export const useAssistantStore = create<AssistantStore>()((set, get) => ({
 
     if (!hasOutput) {
       set({
-        isStreaming: false,
-        streamingContent: '',
         activeToolUse: null,
+        isStreaming: false,
         pendingToolUses: [],
+        streamingContent: '',
       })
       return
     }
 
     const assistantMessage: AssistantMessage = {
+      content: state.streamingContent,
       id: messageId,
       role: 'assistant',
-      content: state.streamingContent,
       timestamp: new Date(),
       toolUse:
         state.pendingToolUses.length > 0 ? state.pendingToolUses : undefined,
     }
     set({
-      isStreaming: false,
-      streamingContent: '',
       activeToolUse: null,
-      pendingToolUses: [],
+      isStreaming: false,
       messages: [...state.messages, assistantMessage],
+      pendingToolUses: [],
+      streamingContent: '',
     })
   },
 
-  clearConversation: () =>
+  isExpanded: false,
+
+  isStreaming: false,
+
+  messages: [],
+
+  pendingToolUses: [],
+
+  setActiveToolUse: (tool) => set({ activeToolUse: tool }),
+
+  setCurrentConversation: (id) =>
     set({
-      currentConversationId: null,
-      messages: [],
-      streamingContent: '',
-      isStreaming: false,
       activeToolUse: null,
+      currentConversationId: id,
+      isStreaming: false,
+      messages: [],
       pendingToolUses: [],
+      streamingContent: '',
     }),
+
+  setExpanded: (expanded) => set({ isExpanded: expanded }),
+
+  setMessages: (messages) => set({ messages }),
+
+  startStreaming: () =>
+    set({
+      activeToolUse: null,
+      isStreaming: true,
+      pendingToolUses: [],
+      streamingContent: '',
+    }),
+
+  streamingContent: '',
 }))

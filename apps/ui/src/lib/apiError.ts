@@ -10,7 +10,7 @@ export function extractApiErrorDetail(
   fallback = 'Unknown error',
 ): string {
   if (error instanceof ApiError) {
-    const data = error.data as { detail?: string; message?: string } | undefined
+    const data = error.data as undefined | { detail?: string; message?: string }
     return data?.detail || data?.message || error.message
   }
   if (error instanceof Error) return error.message

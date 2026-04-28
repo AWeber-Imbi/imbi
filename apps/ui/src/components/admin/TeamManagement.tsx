@@ -1,54 +1,57 @@
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
+
 import { Users } from 'lucide-react'
-import { formatRelativeDate } from '@/lib/formatDate'
-import { EntityIcon } from '@/components/ui/entity-icon'
-import { Card, CardContent, CardDescription } from '@/components/ui/card'
+
+import { createTeam, deleteTeam, listTeams, updateTeam } from '@/api/endpoints'
 import { AdminTable } from '@/components/ui/admin-table'
 import type { CanDeleteResult } from '@/components/ui/admin-table'
-import { AdminSection } from './AdminSection'
-import { TeamForm } from './teams/TeamForm'
-import { TeamDetail } from './teams/TeamDetail'
+import { Card, CardContent, CardDescription } from '@/components/ui/card'
+import { EntityIcon } from '@/components/ui/entity-icon'
 import { useOrganization } from '@/contexts/OrganizationContext'
-import { useAdminNav } from '@/hooks/useAdminNav'
 import { useAdminCrud } from '@/hooks/useAdminCrud'
-import { listTeams, deleteTeam, createTeam, updateTeam } from '@/api/endpoints'
+import { useAdminNav } from '@/hooks/useAdminNav'
+import { formatRelativeDate } from '@/lib/formatDate'
 import { buildDiffPatch } from '@/lib/json-patch'
-import type { Team, TeamCreate, PatchOperation } from '@/types'
+import type { PatchOperation, Team, TeamCreate } from '@/types'
+
+import { AdminSection } from './AdminSection'
+import { TeamDetail } from './teams/TeamDetail'
+import { TeamForm } from './teams/TeamForm'
 
 export function TeamManagement() {
   const { selectedOrganization } = useOrganization()
   const {
-    viewMode,
-    slug: selectedTeamSlug,
-    goToList,
     goToCreate,
     goToEdit,
+    goToList,
+    slug: selectedTeamSlug,
+    viewMode,
   } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
 
   const orgSlug = selectedOrganization?.slug
 
   const {
-    items: teams,
-    isLoading,
-    error,
     createMutation,
-    updateMutation,
     deleteMutation,
+    error,
+    isLoading,
+    items: teams,
+    updateMutation,
   } = useAdminCrud<
     Team,
     { orgSlug: string; team: TeamCreate },
-    { orgSlug: string; slug: string; operations: PatchOperation[] },
+    { operations: PatchOperation[]; orgSlug: string; slug: string },
     { orgSlug: string; slug: string }
   >({
-    queryKey: ['teams', orgSlug],
-    listFn: orgSlug ? (signal) => listTeams(orgSlug, signal) : null,
     createFn: ({ orgSlug, team }) => createTeam(orgSlug, team),
-    updateFn: ({ orgSlug, slug, operations }) =>
-      updateTeam(orgSlug, slug, operations),
-    deleteFn: ({ orgSlug, slug }) => deleteTeam(orgSlug, slug),
-    onMutationSuccess: goToList,
     deleteErrorLabel: 'team',
+    deleteFn: ({ orgSlug, slug }) => deleteTeam(orgSlug, slug),
+    listFn: orgSlug ? (signal) => listTeams(orgSlug, signal) : null,
+    onMutationSuccess: goToList,
+    queryKey: ['teams', orgSlug],
+    updateFn: ({ operations, orgSlug, slug }) =>
+      updateTeam(orgSlug, slug, operations),
   })
 
   const filteredTeams = teams.filter((team) => {
@@ -78,7 +81,7 @@ export function TeamManagement() {
     if (projects === 0 && members === 0) return { allowed: true }
     const blockedBy = [
       ...(projects > 0
-        ? [{ count: projects, label: 'project', href: '/projects' }]
+        ? [{ count: projects, href: '/projects', label: 'project' }]
         : []),
       ...(members > 0 ? [{ count: members, label: 'member' }] : []),
     ]
@@ -99,9 +102,9 @@ export function TeamManagement() {
         return
       }
       updateMutation.mutate({
+        operations,
         orgSlug: selectedTeam.organization.slug || formOrgSlug,
         slug: selectedTeamSlug,
-        operations,
       })
     }
   }
@@ -121,11 +124,11 @@ export function TeamManagement() {
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <TeamForm
-        team={selectedTeam}
-        onSave={handleSave}
-        onCancel={handleCancel}
-        isLoading={createMutation.isPending || updateMutation.isPending}
         error={createMutation.error || updateMutation.error}
+        isLoading={createMutation.isPending || updateMutation.isPending}
+        onCancel={handleCancel}
+        onSave={handleSave}
+        team={selectedTeam}
       />
     )
   }
@@ -133,24 +136,24 @@ export function TeamManagement() {
   if (viewMode === 'detail' && selectedTeam) {
     return (
       <TeamDetail
-        team={selectedTeam}
-        onEdit={() => goToEdit(selectedTeam.slug)}
         onBack={handleCancel}
+        onEdit={() => goToEdit(selectedTeam.slug)}
+        team={selectedTeam}
       />
     )
   }
 
   return (
     <AdminSection
-      searchPlaceholder="Search teams..."
-      search={searchQuery}
-      onSearchChange={setSearchQuery}
       createLabel="New Team"
-      onCreate={goToCreate}
-      isLoading={isLoading}
-      loadingLabel="Loading teams..."
       error={error}
       errorTitle="Failed to load teams"
+      isLoading={isLoading}
+      loadingLabel="Loading teams..."
+      onCreate={goToCreate}
+      onSearchChange={setSearchQuery}
+      search={searchQuery}
+      searchPlaceholder="Search teams..."
     >
       {/* Stats */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -193,19 +196,20 @@ export function TeamManagement() {
       </div>
 
       <AdminTable
+        canDelete={canDeleteTeam}
         columns={[
           {
-            key: 'name',
+            cellAlign: 'left',
             header: 'Team',
             headerAlign: 'left',
-            cellAlign: 'left',
+            key: 'name',
             render: (team) => (
               <div className="flex items-center gap-3">
                 <div className="flex size-8 flex-shrink-0 items-center justify-center rounded-lg bg-info">
                   {team.icon ? (
                     <EntityIcon
-                      icon={team.icon}
                       className="size-5 rounded object-cover"
+                      icon={team.icon}
                     />
                   ) : (
                     <Users className="h-4 w-4 text-info" />
@@ -223,10 +227,10 @@ export function TeamManagement() {
             ),
           },
           {
-            key: 'slug',
+            cellAlign: 'center',
             header: 'Slug',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'slug',
             render: (team) => (
               <code className="rounded bg-secondary px-2 py-1 text-primary">
                 {team.slug}
@@ -234,10 +238,10 @@ export function TeamManagement() {
             ),
           },
           {
-            key: 'projects',
+            cellAlign: 'right',
             header: 'Projects',
             headerAlign: 'right',
-            cellAlign: 'right',
+            key: 'projects',
             render: (team) => (
               <span
                 className={
@@ -251,10 +255,10 @@ export function TeamManagement() {
             ),
           },
           {
-            key: 'members',
+            cellAlign: 'right',
             header: 'Members',
             headerAlign: 'right',
-            cellAlign: 'right',
+            key: 'members',
             render: (team) => (
               <span
                 className={
@@ -268,21 +272,14 @@ export function TeamManagement() {
             ),
           },
           {
-            key: 'updated',
+            cellAlign: 'center',
             header: 'Last Updated',
             headerAlign: 'center',
-            cellAlign: 'center',
+            key: 'updated',
             render: (team) =>
               formatRelativeDate(team.updated_at ?? team.created_at),
           },
         ]}
-        rows={filteredTeams}
-        getRowKey={(team) => team.slug}
-        getDeleteLabel={(team) => team.name}
-        onRowClick={(team) => goToEdit(team.slug)}
-        onDelete={handleDelete}
-        canDelete={canDeleteTeam}
-        isDeleting={deleteMutation.isPending}
         emptyMessage={
           searchQuery
             ? 'No teams found matching your search.'
@@ -290,6 +287,12 @@ export function TeamManagement() {
               ? `No teams in ${selectedOrganization.name} yet.`
               : 'No teams created yet.'
         }
+        getDeleteLabel={(team) => team.name}
+        getRowKey={(team) => team.slug}
+        isDeleting={deleteMutation.isPending}
+        onDelete={handleDelete}
+        onRowClick={(team) => goToEdit(team.slug)}
+        rows={filteredTeams}
       />
     </AdminSection>
   )

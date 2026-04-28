@@ -1,12 +1,14 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor } from '@/test/utils'
 import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
+
+import { render, screen, waitFor } from '@/test/utils'
+
 import { InlineTextarea } from '../InlineTextarea'
 
 describe('InlineTextarea', () => {
   it('commits on Ctrl+Enter', async () => {
     const onCommit = vi.fn().mockResolvedValue(undefined)
-    render(<InlineTextarea value="hi" onCommit={onCommit} />)
+    render(<InlineTextarea onCommit={onCommit} value="hi" />)
     await userEvent.click(screen.getByText('hi'))
     const ta = screen.getByRole('textbox') as HTMLTextAreaElement
     await userEvent.clear(ta)
@@ -17,7 +19,7 @@ describe('InlineTextarea', () => {
 
   it('commits on Cmd+Enter (macOS Meta key)', async () => {
     const onCommit = vi.fn().mockResolvedValue(undefined)
-    render(<InlineTextarea value="hi" onCommit={onCommit} />)
+    render(<InlineTextarea onCommit={onCommit} value="hi" />)
     await userEvent.click(screen.getByText('hi'))
     const ta = screen.getByRole('textbox') as HTMLTextAreaElement
     await userEvent.clear(ta)
@@ -28,7 +30,7 @@ describe('InlineTextarea', () => {
 
   it('plain Enter inserts a newline and does not commit', async () => {
     const onCommit = vi.fn()
-    render(<InlineTextarea value="hi" onCommit={onCommit} />)
+    render(<InlineTextarea onCommit={onCommit} value="hi" />)
     await userEvent.click(screen.getByText('hi'))
     const ta = screen.getByRole('textbox') as HTMLTextAreaElement
     await userEvent.type(ta, '{Enter}x')
@@ -38,7 +40,7 @@ describe('InlineTextarea', () => {
 
   it('Escape cancels', async () => {
     const onCommit = vi.fn()
-    render(<InlineTextarea value="hi" onCommit={onCommit} />)
+    render(<InlineTextarea onCommit={onCommit} value="hi" />)
     await userEvent.click(screen.getByText('hi'))
     await userEvent.type(screen.getByRole('textbox'), ' edits')
     await userEvent.keyboard('{Escape}')

@@ -1,14 +1,16 @@
-import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
-import { useNavigate, useLocation } from 'react-router-dom'
-import { useAuthStore } from '@/stores/authStore'
+import { useLocation, useNavigate } from 'react-router-dom'
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
 import { ApiError } from '@/api/client'
 import {
+  getUserByUsername,
   loginWithPassword,
   logoutAuth,
   refreshToken as refreshTokenApi,
-  getUserByUsername,
 } from '@/api/endpoints'
-import type { UserResponse, LoginRequest, UseAuthReturn } from '@/types'
+import { useAuthStore } from '@/stores/authStore'
+import type { LoginRequest, UseAuthReturn, UserResponse } from '@/types'
 
 // Session bootstrap (refresh-if-expired / redirect-if-no-refresh-token) lives
 // in <BootstrapGate> at the app root, not in this hook. useAuth is purely
@@ -20,20 +22,20 @@ export function useAuth(): UseAuthReturn {
   const queryClient = useQueryClient()
   const {
     accessToken,
-    refreshToken,
-    setTokens,
     clearTokens,
     getUsername,
     isTokenExpired,
+    refreshToken,
+    setTokens,
   } = useAuthStore()
 
   const {
     data: user,
-    isLoading,
     error,
+    isLoading,
     refetch,
   } = useQuery<UserResponse>({
-    queryKey: ['currentUser', getUsername()],
+    enabled: !!accessToken && !isTokenExpired(),
     queryFn: async ({ signal }) => {
       const username = getUsername()
       if (!username) {
@@ -44,7 +46,7 @@ export function useAuth(): UseAuthReturn {
       } catch (error) {
         console.error('[Auth] Error fetching user:', error)
         if (error instanceof ApiError && error.status === 401) {
-          const data = error.data as { detail?: string } | undefined
+          const data = error.data as undefined | { detail?: string }
           if (data?.detail?.includes('not found or inactive')) {
             clearTokens()
             throw new Error(
@@ -55,13 +57,16 @@ export function useAuth(): UseAuthReturn {
         throw error
       }
     },
-    enabled: !!accessToken && !isTokenExpired(),
+    queryKey: ['currentUser', getUsername()],
     retry: false,
     staleTime: 5 * 60 * 1000,
   })
 
   const loginMutation = useMutation({
     mutationFn: loginWithPassword,
+    onError: (error) => {
+      console.error('[Auth] Login failed:', error)
+    },
     onSuccess: async (data) => {
       setTokens(data.access_token, data.refresh_token)
       queryClient.invalidateQueries({ queryKey: ['organizations'] })
@@ -76,26 +81,23 @@ export function useAuth(): UseAuthReturn {
         throw error
       }
     },
-    onError: (error) => {
-      console.error('[Auth] Login failed:', error)
-    },
   })
 
   const logoutMutation = useMutation({
     mutationFn: logoutAuth,
+    onError: (error) => {
+      console.error('[Auth] Logout failed:', error)
+      clearTokens()
+      queryClient.clear()
+
+      // Use window.location to ensure navigation happens even if React state is clearing
+      window.location.href = '/login'
+    },
     onSuccess: () => {
       clearTokens()
       queryClient.clear()
       // Note: We intentionally keep the remembered email in localStorage
       // so users don't have to re-type it on next login
-
-      // Use window.location to ensure navigation happens even if React state is clearing
-      window.location.href = '/login'
-    },
-    onError: (error) => {
-      console.error('[Auth] Logout failed:', error)
-      clearTokens()
-      queryClient.clear()
 
       // Use window.location to ensure navigation happens even if React state is clearing
       window.location.href = '/login'
@@ -109,10 +111,6 @@ export function useAuth(): UseAuthReturn {
       }
       return refreshTokenApi(refreshToken)
     },
-    onSuccess: async (data) => {
-      setTokens(data.access_token, data.refresh_token)
-      await refetch()
-    },
     onError: () => {
       clearTokens()
       if (location.pathname !== '/login') {
@@ -121,6 +119,10 @@ export function useAuth(): UseAuthReturn {
         sessionStorage.setItem('imbi_redirect_after_login', currentPath)
         navigate('/login', { replace: true })
       }
+    },
+    onSuccess: async (data) => {
+      setTokens(data.access_token, data.refresh_token)
+      await refetch()
     },
   })
 
@@ -133,10 +135,9 @@ export function useAuth(): UseAuthReturn {
   }
 
   return {
-    user: user ?? null,
+    error: loginMutation.error ?? error ?? null,
     isAuthenticated: !!user && !!accessToken,
     isLoading: isLoading || loginMutation.isPending,
-    error: loginMutation.error ?? error ?? null,
     login: async (credentials: LoginRequest) => {
       await loginMutation.mutateAsync(credentials)
     },
@@ -147,5 +148,6 @@ export function useAuth(): UseAuthReturn {
     refreshToken: async () => {
       await refreshTokenMutation.mutateAsync()
     },
+    user: user ?? null,
   }
 }

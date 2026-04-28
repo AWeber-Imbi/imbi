@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
+
 import type { UseMutationResult } from '@tanstack/react-query'
-import { Plus, Trash2, Building2 } from 'lucide-react'
+import { Building2, Plus, Trash2 } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -10,36 +12,36 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useOrganization } from '@/contexts/OrganizationContext'
-import type { ServiceAccount, OrgMembership, Role } from '@/types'
+import type { OrgMembership, Role, ServiceAccount } from '@/types'
 
 interface OrgMembershipsCardProps {
   account: ServiceAccount
-  availableRoles: Role[]
-  rolesLoading: boolean
-  rolesError: boolean
   addOrgMutation: UseMutationResult<
     unknown,
     unknown,
     { organization_slug: string; role_slug: string }
   >
+  availableRoles: Role[]
+  onConfirmRemove: (orgSlug: string, orgName: string) => void
+  removeOrgMutation: UseMutationResult<unknown, unknown, string>
+  rolesError: boolean
+  rolesLoading: boolean
   updateOrgRoleMutation: UseMutationResult<
     unknown,
     unknown,
     { orgSlug: string; roleSlug: string }
   >
-  removeOrgMutation: UseMutationResult<unknown, unknown, string>
-  onConfirmRemove: (orgSlug: string, orgName: string) => void
 }
 
 export function OrgMembershipsCard({
   account,
-  availableRoles,
-  rolesLoading,
-  rolesError,
   addOrgMutation,
-  updateOrgRoleMutation,
-  removeOrgMutation,
+  availableRoles,
   onConfirmRemove,
+  removeOrgMutation,
+  rolesError,
+  rolesLoading,
+  updateOrgRoleMutation,
 }: OrgMembershipsCardProps) {
   const { organizations: allOrgs } = useOrganization()
   const [showAddOrg, setShowAddOrg] = useState(false)
@@ -66,10 +68,10 @@ export function OrgMembershipsCard({
         </div>
         {availableOrgs.length > 0 && (
           <Button
-            onClick={() => setShowAddOrg(!showAddOrg)}
-            variant="outline"
-            size="sm"
             className=""
+            onClick={() => setShowAddOrg(!showAddOrg)}
+            size="sm"
+            variant="outline"
           >
             <Plus className="mr-2 h-4 w-4" />
             Add to Organization
@@ -86,9 +88,9 @@ export function OrgMembershipsCard({
                   Organization
                 </label>
                 <select
-                  value={newOrgSlug}
-                  onChange={(e) => setNewOrgSlug(e.target.value)}
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                  onChange={(e) => setNewOrgSlug(e.target.value)}
+                  value={newOrgSlug}
                 >
                   <option value="">Select...</option>
                   {availableOrgs.map((org) => (
@@ -108,9 +110,9 @@ export function OrgMembershipsCard({
                   <p className="text-sm text-danger">Failed to load roles</p>
                 ) : (
                   <select
-                    value={newRoleSlug}
-                    onChange={(e) => setNewRoleSlug(e.target.value)}
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                    onChange={(e) => setNewRoleSlug(e.target.value)}
+                    value={newRoleSlug}
                   >
                     <option value="">Select...</option>
                     {availableRoles.map((role) => (
@@ -124,6 +126,10 @@ export function OrgMembershipsCard({
             </div>
             <div className="mt-3 flex items-center gap-2">
               <Button
+                className="bg-action text-action-foreground hover:bg-action-hover"
+                disabled={
+                  !newOrgSlug || !newRoleSlug || addOrgMutation.isPending
+                }
                 onClick={() =>
                   addOrgMutation.mutate(
                     {
@@ -139,22 +145,18 @@ export function OrgMembershipsCard({
                     },
                   )
                 }
-                disabled={
-                  !newOrgSlug || !newRoleSlug || addOrgMutation.isPending
-                }
-                className="bg-action text-action-foreground hover:bg-action-hover"
                 size="sm"
               >
                 {addOrgMutation.isPending ? 'Adding...' : 'Add'}
               </Button>
               <Button
-                variant="outline"
-                size="sm"
                 onClick={() => {
                   setShowAddOrg(false)
                   setNewOrgSlug('')
                   setNewRoleSlug('')
                 }}
+                size="sm"
+                variant="outline"
               >
                 Cancel
               </Button>
@@ -167,8 +169,8 @@ export function OrgMembershipsCard({
           <div className="space-y-2">
             {(account.organizations ?? []).map((membership: OrgMembership) => (
               <div
-                key={membership.organization_slug}
                 className="flex items-center justify-between rounded-lg border border-input bg-secondary p-3"
+                key={membership.organization_slug}
               >
                 <div className="flex-1">
                   <div className="text-sm font-medium text-primary">
@@ -189,16 +191,16 @@ export function OrgMembershipsCard({
                     </span>
                   ) : (
                     <select
-                      value={membership.role}
+                      aria-label={`Role for ${membership.organization_name}`}
+                      className="rounded border border-input bg-background px-2 py-1 text-xs text-foreground"
+                      disabled={updateOrgRoleMutation.isPending}
                       onChange={(e) =>
                         updateOrgRoleMutation.mutate({
                           orgSlug: membership.organization_slug,
                           roleSlug: e.target.value,
                         })
                       }
-                      disabled={updateOrgRoleMutation.isPending}
-                      aria-label={`Role for ${membership.organization_name}`}
-                      className="rounded border border-input bg-background px-2 py-1 text-xs text-foreground"
+                      value={membership.role}
                     >
                       {availableRoles.map((role) => (
                         <option key={role.slug} value={role.slug}>
@@ -211,16 +213,16 @@ export function OrgMembershipsCard({
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button
-                          type="button"
                           aria-label={`Remove from ${membership.organization_name}`}
+                          className="rounded p-1.5 text-danger hover:bg-secondary"
+                          disabled={removeOrgMutation.isPending}
                           onClick={() =>
                             onConfirmRemove(
                               membership.organization_slug,
                               membership.organization_name,
                             )
                           }
-                          disabled={removeOrgMutation.isPending}
-                          className="rounded p-1.5 text-danger hover:bg-secondary"
+                          type="button"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>

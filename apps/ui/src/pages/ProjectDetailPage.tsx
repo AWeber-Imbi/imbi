@@ -1,18 +1,20 @@
 import { useParams } from 'react-router-dom'
+
 import { useQuery } from '@tanstack/react-query'
+
+import { getProject } from '@/api/endpoints'
+import { CommandBar } from '@/components/CommandBar'
 import { Navigation } from '@/components/Navigation'
 import { ProjectDetail } from '@/components/ProjectDetail'
-import { CommandBar } from '@/components/CommandBar'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { getProject } from '@/api/endpoints'
 
 export function ProjectDetailPage() {
-  const { projectId, tab, subId, subAction } = useParams<{
+  const { projectId, subAction, subId, tab } = useParams<{
     projectId: string
-    tab?: string
-    subId?: string
     subAction?: string
+    subId?: string
+    tab?: string
   }>()
   const { selectedOrganization } = useOrganization()
 
@@ -20,12 +22,12 @@ export function ProjectDetailPage() {
 
   const {
     data: project,
-    isLoading,
     error,
+    isLoading,
   } = useQuery({
-    queryKey: ['project', orgSlug, projectId],
-    queryFn: ({ signal }) => getProject(orgSlug, projectId!, signal),
     enabled: !!orgSlug && !!projectId,
+    queryFn: ({ signal }) => getProject(orgSlug, projectId!, signal),
+    queryKey: ['project', orgSlug, projectId],
   })
 
   usePageTitle(project?.name ?? 'Project')
@@ -62,10 +64,10 @@ export function ProjectDetailPage() {
         )}
         {project && (
           <ProjectDetail
-            project={project}
-            initialTab={tab}
-            initialSubId={subId}
             initialSubAction={subAction}
+            initialSubId={subId}
+            initialTab={tab}
+            project={project}
           />
         )}
       </main>

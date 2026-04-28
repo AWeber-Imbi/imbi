@@ -1,12 +1,14 @@
-import * as simpleIcons from '@icons-pack/react-simple-icons'
 import { createElement } from 'react'
+
+import * as simpleIcons from '@icons-pack/react-simple-icons'
 import { renderToStaticMarkup } from 'react-dom/server'
+
 import type {
   IconComponent,
   IconEntry,
   IconSetDefinition,
 } from '@/lib/icon-registry'
-import { toPascalCase, encodeSvgToDataUrl } from '@/lib/icon-sets/utils'
+import { encodeSvgToDataUrl, toPascalCase } from '@/lib/icon-sets/utils'
 
 const siLookup = simpleIcons as Record<string, unknown>
 
@@ -26,14 +28,14 @@ function resolve(value: string): IconComponent | null {
   return Component != null ? (Component as IconComponent) : null
 }
 
-function resolveUrl(value: string, color?: string): string | null {
+function resolveUrl(value: string, color?: string): null | string {
   const Component = resolve(value)
   if (!Component) return null
   try {
     const markup = renderToStaticMarkup(
       createElement(Component, {
-        width: 128,
         height: 128,
+        width: 128,
         ...(color ? { color } : {}),
       }),
     )
@@ -44,11 +46,11 @@ function resolveUrl(value: string, color?: string): string | null {
 }
 
 export const iconSet: IconSetDefinition = {
+  description: 'Brand icons for popular services, frameworks, and tools',
+  icons: SI_ICONS,
   id: 'simple-icons',
   label: 'Simple Icons',
-  description: 'Brand icons for popular services, frameworks, and tools',
-  valueFormat: 'si-{name}',
-  icons: SI_ICONS,
   resolve,
   resolveUrl,
+  valueFormat: 'si-{name}',
 }

@@ -1,33 +1,27 @@
-import { defineConfig, type Plugin, type ViteDevServer } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import { defineConfig, type Plugin, type ViteDevServer } from 'vite'
 
 function requestLogger(): Plugin {
   return {
-    name: 'request-logger',
     configureServer(server: ViteDevServer) {
       server.middlewares.use((req, res, next) => {
         console.log(`${req.method} ${req.url}`)
         next()
       })
     },
+    name: 'request-logger',
   }
 }
 
 export default defineConfig({
-  plugins: [react(), requestLogger()],
-  root: path.resolve(__dirname),
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
-    dedupe: ['react', 'react-dom', '@react-three/fiber', 'three'],
-  },
   build: {
     outDir: 'dist',
     rollupOptions: {
       output: {
         manualChunks: {
+          charts: ['recharts'],
+          markdown: ['react-markdown', 'remark-gfm'],
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           tanstack: ['@tanstack/react-query', '@tanstack/react-virtual'],
           three: [
@@ -37,8 +31,6 @@ export default defineConfig({
             '@react-spring/three',
             'three',
           ],
-          charts: ['recharts'],
-          markdown: ['react-markdown', 'remark-gfm'],
         },
       },
     },
@@ -46,20 +38,28 @@ export default defineConfig({
   esbuild: {
     drop: ['console'],
   },
+  plugins: [react(), requestLogger()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+    dedupe: ['react', 'react-dom', '@react-three/fiber', 'three'],
+  },
+  root: path.resolve(__dirname),
   server: {
+    allowedHosts: true,
+    cors: true,
     host: '0.0.0.0',
     port: 5173,
-    cors: true,
-    allowedHosts: true,
     proxy: {
       '/api': {
-        target: process.env.VITE_API_URL || 'http://localhost:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
+        target: process.env.VITE_API_URL || 'http://localhost:8000',
       },
       '/uploads': {
-        target: process.env.VITE_API_URL || 'http://localhost:8000',
         changeOrigin: true,
+        target: process.env.VITE_API_URL || 'http://localhost:8000',
       },
     },
   },
