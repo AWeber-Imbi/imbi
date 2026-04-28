@@ -460,43 +460,27 @@ async def create_project(
     edge_props_tpl = _edge_create_props(env_entries)
 
     query: str = (
-        """
-    MATCH (o:Organization {{slug: {org_slug}}})
-    MATCH (t:Team {{slug: {team_slug}}})
-          -[:BELONGS_TO]->(o)
-    CREATE (p:Project """
-        + create_tpl
-        + """)
-    CREATE (p)-[:OWNED_BY]->(t)
-    WITH p, t, o
-    UNWIND {pt_slugs} AS pt_slug
-    OPTIONAL MATCH (pt:ProjectType {{slug: pt_slug}})
-          -[:BELONGS_TO]->(o)
-    FOREACH (_ IN CASE WHEN pt IS NOT NULL
-                       THEN [1] ELSE [] END |
-        CREATE (p)-[:TYPE]->(pt)
+        '\nMATCH (o:Organization {{slug: {org_slug}}})'
+        '\nMATCH (t:Team {{slug: {team_slug}}})'
+        '\n      -[:BELONGS_TO]->(o)'
+        '\nCREATE (p:Project ' + create_tpl + ')'
+        '\nCREATE (p)-[:OWNED_BY]->(t)'
+        '\nWITH p, t, o'
+        '\nUNWIND {pt_slugs} AS pt_slug'
+        '\nMATCH (pt:ProjectType {{slug: pt_slug}})'
+        '\n      -[:BELONGS_TO]->(o)'
+        '\nCREATE (p)-[:TYPE]->(pt)'
+        '\nWITH DISTINCT p, t, o'
     )
-    WITH DISTINCT p, t, o
-    UNWIND
-        CASE WHEN size("""
-        + env_tpl
-        + """) = 0
-             THEN [null]
-             ELSE """
-        + env_tpl
-        + """ END AS entry
-    OPTIONAL MATCH (e:Environment {{slug: entry.slug}})
-             -[:BELONGS_TO]->(o)
-    FOREACH (_ IN CASE WHEN e IS NOT NULL
-                       THEN [1] ELSE [] END |
-        CREATE (p)-[:DEPLOYED_IN"""
-        + edge_props_tpl
-        + """]->(e)
-    )
-    WITH DISTINCT p, t, o
-    """
-        + _RETURN_FRAGMENT
-    )
+    if data.environments:
+        query += (
+            '\nUNWIND ' + env_tpl + ' AS entry'
+            '\nMATCH (e:Environment {{slug: entry.slug}})'
+            '\n      -[:BELONGS_TO]->(o)'
+            '\nCREATE (p)-[:DEPLOYED_IN' + edge_props_tpl + ']->(e)'
+            '\nWITH DISTINCT p, t, o'
+        )
+    query += _RETURN_FRAGMENT
     try:
         records = await db.execute(
             query,

@@ -349,8 +349,8 @@ async def _list_notes_impl(
         + tag_match
         + cursor_clause
         + """
-    WITH n, p
-    ORDER BY n.created_at DESC, n.id DESC
+    WITH DISTINCT n, p, n.created_at AS sort_ts, n.id AS sort_id
+    ORDER BY sort_ts DESC, sort_id DESC
     LIMIT {row_limit}
     """
         + _TAGS_TAIL

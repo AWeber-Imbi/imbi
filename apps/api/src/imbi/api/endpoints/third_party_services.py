@@ -150,24 +150,34 @@ async def create_third_party_service(
     graph_props = _serialize_json_fields(props, _SERVICE_JSON_FIELDS)
     create_tpl = props_template(graph_props)
 
-    query: str = (
-        'MATCH (o:Organization {{slug: {org_slug}}})'
-        ' OPTIONAL MATCH (t:Team {{slug: {team_slug}}})'
-        '-[:BELONGS_TO]->(o)'
-        ' WITH o, t'
-        ' WHERE {team_slug} IS NULL OR t IS NOT NULL'
-        f' CREATE (s:ThirdPartyService {create_tpl})'
-        ' CREATE (s)-[:BELONGS_TO]->(o)'
-        ' FOREACH (_ IN CASE WHEN t IS NULL THEN [] ELSE [1] END |'
-        ' CREATE (s)-[:MANAGED_BY]->(t))'
-        ' RETURN s{{.*, organization: o{{.*}},'
-        ' team: t{{.*}}}} AS service'
-    )
-    params: dict[str, typing.Any] = {
-        'org_slug': org_slug,
-        'team_slug': data.team_slug,
-        **graph_props,
-    }
+    if data.team_slug is not None:
+        query: str = (
+            'MATCH (o:Organization {{slug: {org_slug}}})'
+            ' MATCH (t:Team {{slug: {team_slug}}})'
+            ' -[:BELONGS_TO]->(o)'
+            f' CREATE (s:ThirdPartyService {create_tpl})'
+            ' CREATE (s)-[:BELONGS_TO]->(o)'
+            ' CREATE (s)-[:MANAGED_BY]->(t)'
+            ' RETURN s{{.*, organization: o{{.*}},'
+            ' team: t{{.*}}}} AS service'
+        )
+        params: dict[str, typing.Any] = {
+            'org_slug': org_slug,
+            'team_slug': data.team_slug,
+            **graph_props,
+        }
+    else:
+        query = (
+            'MATCH (o:Organization {{slug: {org_slug}}})'
+            f' CREATE (s:ThirdPartyService {create_tpl})'
+            ' CREATE (s)-[:BELONGS_TO]->(o)'
+            ' RETURN s{{.*, organization: o{{.*}},'
+            ' team: null}} AS service'
+        )
+        params = {
+            'org_slug': org_slug,
+            **graph_props,
+        }
 
     try:
         records = await db.execute(

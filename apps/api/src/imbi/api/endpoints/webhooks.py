@@ -149,27 +149,37 @@ async def create_webhook(
         )
     rule_clauses, rules_params = _rules_create_clauses(rule_dicts)
 
-    write_query: str = (
-        'MATCH (o:Organization {{slug: {org_slug}}})'
-        ' OPTIONAL MATCH (tps:ThirdPartyService'
-        ' {{slug: {tps_slug}}})-[:BELONGS_TO]->(o)'
-        ' WITH o, tps'
-        ' WHERE {tps_slug} IS NULL OR tps IS NOT NULL'
-        f' CREATE (w:Webhook {create_tpl})'
-        ' CREATE (w)-[:BELONGS_TO]->(o)'
-        ' FOREACH (_ IN CASE WHEN tps IS NULL THEN [] ELSE [1] END |'
-        ' CREATE (w)-[:IMPLEMENTED_BY'
-        ' {{identifier_selector: {identifier_selector}}}]->(tps))'
-        + rule_clauses
-        + ' RETURN w.slug AS slug'
-    )
-    write_params: dict[str, typing.Any] = {
+    base_params: dict[str, typing.Any] = {
         'org_slug': org_slug,
-        'tps_slug': data.third_party_service_slug,
         **props,
-        'identifier_selector': data.identifier_selector,
         **rules_params,
     }
+    if data.third_party_service_slug is not None:
+        write_query: str = (
+            'MATCH (o:Organization {{slug: {org_slug}}})'
+            ' MATCH (tps:ThirdPartyService {{slug: {tps_slug}}})'
+            ' -[:BELONGS_TO]->(o)'
+            f' CREATE (w:Webhook {create_tpl})'
+            ' CREATE (w)-[:BELONGS_TO]->(o)'
+            ' CREATE (w)-[:IMPLEMENTED_BY'
+            ' {{identifier_selector: {identifier_selector}}}]->(tps)'
+            + rule_clauses
+            + ' RETURN w.slug AS slug'
+        )
+        write_params: dict[str, typing.Any] = {
+            **base_params,
+            'tps_slug': data.third_party_service_slug,
+            'identifier_selector': data.identifier_selector,
+        }
+    else:
+        write_query = (
+            'MATCH (o:Organization {{slug: {org_slug}}})'
+            f' CREATE (w:Webhook {create_tpl})'
+            ' CREATE (w)-[:BELONGS_TO]->(o)'
+            + rule_clauses
+            + ' RETURN w.slug AS slug'
+        )
+        write_params = base_params
 
     try:
         write_records = await db.execute(
