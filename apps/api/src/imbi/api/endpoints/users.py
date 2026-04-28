@@ -75,6 +75,7 @@ async def create_user(
         is_active=user_create.is_active,
         is_admin=user_create.is_admin,
         is_service_account=user_create.is_service_account,
+        email_notifications=user_create.email_notifications,
     )
 
     # Check if user already exists before creating to avoid
@@ -150,6 +151,7 @@ async def create_user(
         created_at=user.created_at,
         last_login=user.last_login,
         avatar_url=user.avatar_url,
+        email_notifications=user.email_notifications,
         organizations=organizations,
     )
 
@@ -199,6 +201,7 @@ async def list_users(
                 created_at=user.created_at,
                 last_login=user.last_login,
                 avatar_url=user.avatar_url,
+                email_notifications=user.email_notifications,
             )
         )
     return users
@@ -272,6 +275,7 @@ async def get_user(
         created_at=user.created_at,
         last_login=user.last_login,
         avatar_url=user.avatar_url,
+        email_notifications=user.email_notifications,
         organizations=organizations,
     )
 
@@ -326,6 +330,7 @@ async def patch_user(
         'is_active': existing_user.is_active,
         'is_admin': existing_user.is_admin,
         'is_service_account': existing_user.is_service_account,
+        'email_notifications': existing_user.email_notifications,
     }
 
     patched = json_patch.apply_patch(
@@ -369,6 +374,9 @@ async def patch_user(
         is_service_account=patched.get(
             'is_service_account', existing_user.is_service_account
         ),
+        email_notifications=patched.get(
+            'email_notifications', existing_user.email_notifications
+        ),
         created_at=existing_user.created_at,
         last_login=existing_user.last_login,
         avatar_url=existing_user.avatar_url,
@@ -385,6 +393,7 @@ async def patch_user(
         created_at=updated_user.created_at,
         last_login=updated_user.last_login,
         avatar_url=updated_user.avatar_url,
+        email_notifications=updated_user.email_notifications,
     )
 
 

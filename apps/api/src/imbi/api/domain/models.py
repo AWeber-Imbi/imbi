@@ -68,6 +68,7 @@ class User(models.GraphModel):
     is_service_account: bool = False
     last_login: datetime.datetime | None = None
     avatar_url: pydantic.HttpUrl | None = None
+    email_notifications: bool = True
 
     organizations: typing.Annotated[
         list[OrganizationEdge],
@@ -373,6 +374,7 @@ class UserCreate(pydantic.BaseModel):
     is_active: bool = True
     is_admin: bool = False
     is_service_account: bool = False
+    email_notifications: bool = True
     organization_slug: str
     role_slug: str
 
@@ -390,6 +392,7 @@ class UserResponse(pydantic.BaseModel):
     created_at: datetime.datetime
     last_login: datetime.datetime | None = None
     avatar_url: pydantic.HttpUrl | None = None
+    email_notifications: bool = True
 
     organizations: list[OrgMembership] = []
 
