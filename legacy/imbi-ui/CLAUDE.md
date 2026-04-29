@@ -10,7 +10,8 @@ This is a complete rewrite of the Imbi UI using modern TypeScript and React.
 - Dev server: `npm run dev` (starts Vite dev server on port 5173)
 - Build: `npm run build` (TypeScript compilation + production build)
 - Preview: `npm run preview` (preview production build)
-- Lint: `npm run lint` (ESLint with TypeScript)
+- Lint: `npm run lint` (oxlint using `.oxlintrc.json`)
+- Format check: `npm run format:check` (oxfmt using `.oxfmtrc.json`)
 
 ## Tech Stack
 - **React 18** with **TypeScript**
