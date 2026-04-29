@@ -141,6 +141,21 @@ async def create_third_party_service(
         'icon': data.icon,
         'vendor': data.vendor,
         'service_url': (str(data.service_url) if data.service_url else None),
+        'api_endpoint': (
+            str(data.api_endpoint) if data.api_endpoint else None
+        ),
+        'authorization_endpoint': (
+            str(data.authorization_endpoint)
+            if data.authorization_endpoint
+            else None
+        ),
+        'token_endpoint': (
+            str(data.token_endpoint) if data.token_endpoint else None
+        ),
+        'revoke_endpoint': (
+            str(data.revoke_endpoint) if data.revoke_endpoint else None
+        ),
+        'use_pkce': data.use_pkce,
         'category': data.category,
         'status': data.status,
         'links': data.links,
@@ -353,6 +368,11 @@ async def patch_third_party_service(
         'description': service.get('description'),
         'icon': service.get('icon'),
         'service_url': service.get('service_url'),
+        'api_endpoint': service.get('api_endpoint'),
+        'authorization_endpoint': service.get('authorization_endpoint'),
+        'token_endpoint': service.get('token_endpoint'),
+        'revoke_endpoint': service.get('revoke_endpoint'),
+        'use_pkce': service.get('use_pkce'),
         'category': service.get('category'),
         'status': service.get('status', 'active'),
         'links': service.get('links', {}),
@@ -632,6 +652,25 @@ async def _execute_service_update(
         'service_url': (
             str(update_data.service_url) if update_data.service_url else None
         ),
+        'api_endpoint': (
+            str(update_data.api_endpoint) if update_data.api_endpoint else None
+        ),
+        'authorization_endpoint': (
+            str(update_data.authorization_endpoint)
+            if update_data.authorization_endpoint
+            else None
+        ),
+        'token_endpoint': (
+            str(update_data.token_endpoint)
+            if update_data.token_endpoint
+            else None
+        ),
+        'revoke_endpoint': (
+            str(update_data.revoke_endpoint)
+            if update_data.revoke_endpoint
+            else None
+        ),
+        'use_pkce': update_data.use_pkce,
         'category': update_data.category,
         'status': update_data.status,
         'links': update_data.links,
@@ -783,6 +822,7 @@ class _ServiceApplicationPatchFields(pydantic.BaseModel):
     description: str | None = None
     app_type: str = pydantic.Field(min_length=1, max_length=64)
     application_url: str | None = None
+    callback_url: str | None = None
     client_id: str = pydantic.Field(min_length=1)
     scopes: list[str] = pydantic.Field(default_factory=list)
     settings: dict[str, str | int | bool] = pydantic.Field(
@@ -838,6 +878,7 @@ async def patch_service_application(
     patchable = {
         k: v for k, v in existing.items() if k not in models.SECRET_FIELDS
     }
+    patchable.setdefault('callback_url', None)
 
     readonly = json_patch.READONLY_PATHS | _APP_SECRET_PATHS
     patched = json_patch.apply_patch(patchable, operations, readonly)

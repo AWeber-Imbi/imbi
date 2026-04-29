@@ -553,6 +553,11 @@ class ThirdPartyService(models.Node):  # type: ignore[misc]
     ] = None
     vendor: str
     service_url: pydantic.HttpUrl | None = None
+    api_endpoint: pydantic.HttpUrl | None = None
+    authorization_endpoint: pydantic.HttpUrl | None = None
+    token_endpoint: pydantic.HttpUrl | None = None
+    revoke_endpoint: pydantic.HttpUrl | None = None
+    use_pkce: bool | None = None
     category: str | None = None
     status: typing.Literal[
         'active',
@@ -586,6 +591,11 @@ class ThirdPartyServiceCreate(pydantic.BaseModel):
     description: str | None = None
     icon: str | None = None
     service_url: pydantic.HttpUrl | None = None
+    api_endpoint: pydantic.HttpUrl | None = None
+    authorization_endpoint: pydantic.HttpUrl | None = None
+    token_endpoint: pydantic.HttpUrl | None = None
+    revoke_endpoint: pydantic.HttpUrl | None = None
+    use_pkce: bool | None = None
     category: str | None = None
     status: _VALID_SERVICE_STATUSES = 'active'
     links: dict[str, str] = pydantic.Field(
@@ -615,6 +625,11 @@ class ThirdPartyServiceUpdate(pydantic.BaseModel):
     description: str | None = None
     icon: str | None = None
     service_url: pydantic.HttpUrl | None = None
+    api_endpoint: pydantic.HttpUrl | None = None
+    authorization_endpoint: pydantic.HttpUrl | None = None
+    token_endpoint: pydantic.HttpUrl | None = None
+    revoke_endpoint: pydantic.HttpUrl | None = None
+    use_pkce: bool | None = None
     category: str | None = None
     status: _VALID_SERVICE_STATUSES
     links: dict[str, str] = pydantic.Field(default_factory=dict)
@@ -634,6 +649,11 @@ class ThirdPartyServiceResponse(pydantic.BaseModel):
     description: str | None = None
     icon: str | None = None
     service_url: str | None = None
+    api_endpoint: str | None = None
+    authorization_endpoint: str | None = None
+    token_endpoint: str | None = None
+    revoke_endpoint: str | None = None
+    use_pkce: bool | None = None
     category: str | None = None
     status: str = 'active'
     links: dict[str, typing.Any] = {}
@@ -662,6 +682,7 @@ class ServiceApplicationCreate(pydantic.BaseModel):
     description: str | None = None
     app_type: str = pydantic.Field(min_length=1, max_length=64)
     application_url: str | None = None
+    callback_url: pydantic.HttpUrl | None = None
     client_id: str = pydantic.Field(min_length=1)
     client_secret: str = pydantic.Field(min_length=1)
     scopes: list[str] = pydantic.Field(default_factory=list)
@@ -682,6 +703,7 @@ class ServiceApplicationResponse(pydantic.BaseModel):
     description: str | None = None
     app_type: str
     application_url: str | None = None
+    callback_url: str | None = None
     client_id: str
     scopes: list[str] = []
     settings: dict[str, str | int | bool] = {}
