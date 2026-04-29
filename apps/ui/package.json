@@ -8,8 +8,8 @@
     "codegen": "openapi-typescript openapi.json -o src/types/api-generated.ts",
     "codegen:fetch": "curl -sf http://localhost:8000/openapi.json -o openapi.json && npm run codegen",
     "dev": "vite",
-    "format": "oxfmt 'src/**/*.{ts,tsx,css}' package.json",
-    "format:check": "oxfmt --check 'src/**/*.{ts,tsx,css}' package.json",
+    "format": "oxfmt 'src/**/*.{ts,tsx,css}' package.json '*.config.{js,ts}'",
+    "format:check": "oxfmt --check 'src/**/*.{ts,tsx,css}' package.json '*.config.{js,ts}'",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "prepare": "husky",
@@ -121,6 +121,9 @@
       "oxfmt --no-error-on-unmatched-pattern"
     ],
     "*.css": [
+      "oxfmt --no-error-on-unmatched-pattern"
+    ],
+    "*.config.{js,ts}": [
       "oxfmt --no-error-on-unmatched-pattern"
     ],
     "package.json": [
