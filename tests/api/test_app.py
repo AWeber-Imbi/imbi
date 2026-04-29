@@ -1,8 +1,10 @@
+import os
 import unittest
+import unittest.mock
 
 import fastapi
 
-from imbi_api import app, version
+from imbi_api import app, settings, version
 
 
 class CreateAppTestCase(unittest.TestCase):
@@ -35,3 +37,33 @@ class CreateAppTestCase(unittest.TestCase):
         """Test that the app has a lifespan context manager configured."""
         application = app.create_app()
         self.assertIsNotNone(application.router.lifespan_context)
+
+
+class ApiPrefixTestCase(unittest.TestCase):
+    """Test cases for the IMBI_API_API_PREFIX configuration."""
+
+    def test_prefix_applies_to_routes_but_not_uploads_or_docs(self) -> None:
+        with unittest.mock.patch.dict(
+            os.environ, {'IMBI_API_API_PREFIX': '/api'}
+        ):
+            application = app.create_app()
+            paths = {route.path for route in application.routes}
+        self.assertIn('/api/status', paths)
+        self.assertNotIn('/status', paths)
+        self.assertIn('/uploads/', paths)
+        self.assertNotIn('/api/uploads/', paths)
+        self.assertIn('/openapi.json', paths)
+        self.assertIn('/docs', paths)
+
+    def test_empty_prefix_serves_at_root(self) -> None:
+        with unittest.mock.patch.dict(os.environ, {'IMBI_API_API_PREFIX': ''}):
+            application = app.create_app()
+            paths = {route.path for route in application.routes}
+        self.assertIn('/status', paths)
+        self.assertIn('/uploads/', paths)
+
+    def test_prefix_is_normalized(self) -> None:
+        with unittest.mock.patch.dict(
+            os.environ, {'IMBI_API_API_PREFIX': 'api/'}
+        ):
+            self.assertEqual(settings.ServerConfig().api_prefix, '/api')

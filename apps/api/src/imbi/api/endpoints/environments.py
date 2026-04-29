@@ -12,17 +12,33 @@ from imbi_common import blueprints, graph, models
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.graph_sql import props_template, set_clause
-from imbi_api.relationships import build_relationships
+from imbi_api.relationships import relationship_link
 
 LOGGER = logging.getLogger(__name__)
 
 environments_router = fastapi.APIRouter(tags=['Environments'])
 
 
+def _environment_relationships(
+    request: fastapi.Request,
+    org_slug: str,
+    env_slug: str,
+    project_count: int,
+) -> dict[str, models.RelationshipLink]:
+    projects_url = request.app.url_path_for('list_projects', org_slug=org_slug)
+    return {
+        'projects': relationship_link(
+            f'{projects_url}?environment={env_slug}',
+            project_count,
+        ),
+    }
+
+
 @environments_router.post('/', status_code=201)
 async def create_environment(
     org_slug: str,
     data: dict[str, typing.Any],
+    request: fastapi.Request,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -110,14 +126,8 @@ async def create_environment(
     env_props: dict[str, typing.Any] = graph.parse_agtype(records[0]['e'])
     org_props = graph.parse_agtype(records[0]['o'])
     env_props['organization'] = org_props
-    env_props['relationships'] = build_relationships(
-        '',
-        {
-            'projects': (
-                f'/api/projects?environment={env_props["slug"]}',
-                0,
-            ),
-        },
+    env_props['relationships'] = _environment_relationships(
+        request, org_slug, env_props['slug'], 0
     )
     return env_props
 
@@ -125,6 +135,7 @@ async def create_environment(
 @environments_router.get('/')
 async def list_environments(
     org_slug: str,
+    request: fastapi.Request,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -163,14 +174,8 @@ async def list_environments(
         env['organization'] = org
         env.setdefault('sort_order', 0)
         pc = graph.parse_agtype(record['project_count'])
-        env['relationships'] = build_relationships(
-            '',
-            {
-                'projects': (
-                    f'/api/projects?environment={env["slug"]}',
-                    pc or 0,
-                ),
-            },
+        env['relationships'] = _environment_relationships(
+            request, org_slug, env['slug'], pc or 0
         )
         environments.append(env)
     return environments
@@ -180,6 +185,7 @@ async def list_environments(
 async def get_environment(
     org_slug: str,
     slug: str,
+    request: fastapi.Request,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -225,14 +231,8 @@ async def get_environment(
     env['organization'] = org
     env.setdefault('sort_order', 0)
     pc = graph.parse_agtype(records[0]['project_count'])
-    env['relationships'] = build_relationships(
-        '',
-        {
-            'projects': (
-                f'/api/projects?environment={env["slug"]}',
-                pc or 0,
-            ),
-        },
+    env['relationships'] = _environment_relationships(
+        request, org_slug, env['slug'], pc or 0
     )
     return env
 
@@ -244,6 +244,7 @@ async def _persist_environment(
     existing_org: dict[str, typing.Any],
     payload: dict[str, typing.Any],
     existing_created_at: str | None,
+    request: fastapi.Request,
     db: graph.Pool,
 ) -> dict[str, typing.Any]:
     """Validate, stamp timestamps, and persist an environment to the graph.
@@ -332,14 +333,8 @@ async def _persist_environment(
     env['organization'] = org
     env.setdefault('sort_order', 0)
     pc = graph.parse_agtype(updated[0]['project_count'])
-    env['relationships'] = build_relationships(
-        '',
-        {
-            'projects': (
-                f'/api/projects?environment={env["slug"]}',
-                pc or 0,
-            ),
-        },
+    env['relationships'] = _environment_relationships(
+        request, org_slug, env['slug'], pc or 0
     )
     return env
 
@@ -349,6 +344,7 @@ async def patch_environment(
     org_slug: str,
     slug: str,
     operations: list[json_patch.PatchOperation],
+    request: fastapi.Request,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -416,6 +412,7 @@ async def patch_environment(
         existing_org,
         patched,
         existing.get('created_at'),
+        request,
         db,
     )
 

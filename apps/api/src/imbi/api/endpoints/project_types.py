@@ -12,17 +12,33 @@ from imbi_common import blueprints, graph, models
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.graph_sql import props_template, set_clause
-from imbi_api.relationships import build_relationships
+from imbi_api.relationships import relationship_link
 
 LOGGER = logging.getLogger(__name__)
 
 project_types_router = fastapi.APIRouter(tags=['Project Types'])
 
 
+def _project_type_relationships(
+    request: fastapi.Request,
+    org_slug: str,
+    pt_slug: str,
+    project_count: int,
+) -> dict[str, models.RelationshipLink]:
+    projects_url = request.app.url_path_for('list_projects', org_slug=org_slug)
+    return {
+        'projects': relationship_link(
+            f'{projects_url}?project-type={pt_slug}',
+            project_count,
+        ),
+    }
+
+
 @project_types_router.post('/', status_code=201)
 async def create_project_type(
     org_slug: str,
     data: dict[str, typing.Any],
+    request: fastapi.Request,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -112,14 +128,8 @@ async def create_project_type(
     pt_props: dict[str, typing.Any] = graph.parse_agtype(records[0]['pt'])
     org_props = graph.parse_agtype(records[0]['o'])
     pt_props['organization'] = org_props
-    pt_props['relationships'] = build_relationships(
-        '',
-        {
-            'projects': (
-                f'/api/projects?project-type={pt_props["slug"]}',
-                0,
-            ),
-        },
+    pt_props['relationships'] = _project_type_relationships(
+        request, org_slug, pt_props['slug'], 0
     )
     return pt_props
 
@@ -127,6 +137,7 @@ async def create_project_type(
 @project_types_router.get('/')
 async def list_project_types(
     org_slug: str,
+    request: fastapi.Request,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -164,14 +175,8 @@ async def list_project_types(
         org = graph.parse_agtype(record['o'])
         pt['organization'] = org
         pc = graph.parse_agtype(record['project_count'])
-        pt['relationships'] = build_relationships(
-            '',
-            {
-                'projects': (
-                    f'/api/projects?project-type={pt["slug"]}',
-                    pc or 0,
-                ),
-            },
+        pt['relationships'] = _project_type_relationships(
+            request, org_slug, pt['slug'], pc or 0
         )
         project_types.append(pt)
     return project_types
@@ -181,6 +186,7 @@ async def list_project_types(
 async def get_project_type(
     org_slug: str,
     slug: str,
+    request: fastapi.Request,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -225,14 +231,8 @@ async def get_project_type(
     org = graph.parse_agtype(records[0]['o'])
     pt['organization'] = org
     pc = graph.parse_agtype(records[0]['project_count'])
-    pt['relationships'] = build_relationships(
-        '',
-        {
-            'projects': (
-                f'/api/projects?project-type={pt["slug"]}',
-                pc or 0,
-            ),
-        },
+    pt['relationships'] = _project_type_relationships(
+        request, org_slug, pt['slug'], pc or 0
     )
     return pt
 
@@ -244,6 +244,7 @@ async def _persist_project_type(
     existing_org: dict[str, typing.Any],
     payload: dict[str, typing.Any],
     existing_created_at: str | None,
+    request: fastapi.Request,
     db: graph.Pool,
 ) -> dict[str, typing.Any]:
     """Validate, stamp timestamps, and persist a project type to the graph.
@@ -331,14 +332,8 @@ async def _persist_project_type(
     org = graph.parse_agtype(updated[0]['o'])
     pt['organization'] = org
     pc = graph.parse_agtype(updated[0]['project_count'])
-    pt['relationships'] = build_relationships(
-        '',
-        {
-            'projects': (
-                f'/api/projects?project-type={pt["slug"]}',
-                pc or 0,
-            ),
-        },
+    pt['relationships'] = _project_type_relationships(
+        request, org_slug, pt['slug'], pc or 0
     )
     return pt
 
@@ -348,6 +343,7 @@ async def patch_project_type(
     org_slug: str,
     slug: str,
     operations: list[json_patch.PatchOperation],
+    request: fastapi.Request,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -415,6 +411,7 @@ async def patch_project_type(
         existing_org,
         patched,
         existing.get('created_at'),
+        request,
         db,
     )
 

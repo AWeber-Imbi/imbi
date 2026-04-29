@@ -46,7 +46,9 @@ def create_app() -> fastapi.FastAPI:
     # Phase 5: Setup rate limiting middleware
     rate_limit.setup_rate_limiting(app)
 
-    for router in endpoints.routers:
+    for router in endpoints.prefixed_routers:
+        app.include_router(router, prefix=server_config.api_prefix)
+    for router in endpoints.unprefixed_routers:
         app.include_router(router)
 
     # Set custom OpenAPI schema generator with blueprint-enhanced models

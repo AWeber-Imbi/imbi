@@ -93,6 +93,7 @@ organizations_router.include_router(
 @organizations_router.post('/', status_code=201)
 async def create_organization(
     org: models.Organization,
+    request: fastapi.Request,
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
@@ -126,7 +127,7 @@ async def create_organization(
     result = created.model_dump()
     slug = result['slug']
     result['relationships'] = build_relationships(
-        f'/api/organizations/{slug}',
+        request.app.url_path_for('get_organization', slug=slug),
         {
             'teams': ('/teams', 0),
             'members': ('/members', 0),
@@ -138,6 +139,7 @@ async def create_organization(
 
 @organizations_router.get('/')
 async def list_organizations(
+    request: fastapi.Request,
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
@@ -177,7 +179,7 @@ async def list_organizations(
         project_count = graph.parse_agtype(record['project_count'])
         slug = org_data['slug']
         org_data['relationships'] = build_relationships(
-            f'/api/organizations/{slug}',
+            request.app.url_path_for('get_organization', slug=slug),
             {
                 'teams': ('/teams', team_count),
                 'members': ('/members', member_count),
@@ -188,9 +190,10 @@ async def list_organizations(
     return organizations
 
 
-@organizations_router.get('/{slug}')
+@organizations_router.get('/{slug}', name='get_organization')
 async def get_organization(
     slug: str,
+    request: fastapi.Request,
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
@@ -237,7 +240,7 @@ async def get_organization(
     org_data: dict[str, typing.Any] = graph.parse_agtype(records[0]['o'])
     slug = org_data['slug']
     org_data['relationships'] = build_relationships(
-        f'/api/organizations/{slug}',
+        request.app.url_path_for('get_organization', slug=slug),
         {
             'teams': (
                 '/teams',
@@ -259,6 +262,7 @@ async def get_organization(
 async def _persist_organization(
     original_slug: str,
     org: models.Organization,
+    request: fastapi.Request,
     db: graph.Pool,
 ) -> dict[str, typing.Any]:
     """Execute the Cypher SET + count queries to update an organization.
@@ -326,7 +330,7 @@ async def _persist_organization(
     counts = count_records[0] if count_records else {}
     org_dict = org.model_dump()
     org_dict['relationships'] = build_relationships(
-        f'/api/organizations/{org.slug}',
+        request.app.url_path_for('get_organization', slug=org.slug),
         {
             'teams': (
                 '/teams',
@@ -349,6 +353,7 @@ async def _persist_organization(
 async def patch_organization(
     slug: str,
     operations: list[json_patch.PatchOperation],
+    request: fastapi.Request,
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
@@ -396,10 +401,10 @@ async def patch_organization(
 
     org.created_at = existing.created_at
     org.updated_at = datetime.datetime.now(datetime.UTC)
-    return await _persist_organization(slug, org, db)
+    return await _persist_organization(slug, org, request, db)
 
 
-@organizations_router.get('/{slug}/members')
+@organizations_router.get('/{slug}/members', name='list_organization_members')
 async def list_organization_members(
     slug: str,
     db: graph.Pool,

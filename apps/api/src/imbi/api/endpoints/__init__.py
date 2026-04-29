@@ -15,7 +15,7 @@ from .status import status_router
 from .uploads import uploads_router
 from .users import users_router
 
-routers: list[fastapi.APIRouter] = [
+prefixed_routers: list[fastapi.APIRouter] = [
     admin_router,
     api_keys_router,
     auth_router,
@@ -28,8 +28,13 @@ routers: list[fastapi.APIRouter] = [
     sa_api_keys_router,
     service_accounts_router,
     status_router,
-    uploads_router,
     users_router,
 ]
 
-__all__ = ['routers']
+unprefixed_routers: list[fastapi.APIRouter] = [
+    uploads_router,
+]
+
+routers: list[fastapi.APIRouter] = prefixed_routers + unprefixed_routers
+
+__all__ = ['prefixed_routers', 'routers', 'unprefixed_routers']

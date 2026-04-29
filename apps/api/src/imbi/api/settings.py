@@ -51,6 +51,20 @@ class ServerConfig(pydantic_settings.BaseSettings):
     # behind a reverse proxy so rate limiting keys on the real client
     # IP rather than the proxy address. Empty disables the middleware.
     forwarded_allow_ips: str = ''
+    # Path prefix prepended to every API route (e.g. '/api'). Empty
+    # serves routes at the root. Applied to routing and to hypermedia
+    # link emission. The /uploads, /docs, and /openapi.json endpoints
+    # are always served at the root regardless of this value.
+    api_prefix: str = ''
+
+    @pydantic.field_validator('api_prefix')
+    @classmethod
+    def _normalize_api_prefix(cls, value: str) -> str:
+        if not value:
+            return ''
+        if not value.startswith('/'):
+            value = '/' + value
+        return value.rstrip('/')
 
 
 class Auth(settings.Auth):  # type: ignore[misc]

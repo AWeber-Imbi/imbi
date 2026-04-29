@@ -20,6 +20,7 @@ roles_router = fastapi.APIRouter(prefix='/roles', tags=['Roles'])
 
 
 def _build_relationships(
+    request: fastapi.Request,
     slug: str,
     permission_count: int = 0,
     user_count: int = 0,
@@ -27,11 +28,11 @@ def _build_relationships(
     """Build relationships dict for a role."""
     return {
         'permissions': relationship_link(
-            f'/api/roles/{slug}/permissions',
+            request.app.url_path_for('role_permissions', slug=slug),
             permission_count,
         ),
         'users': relationship_link(
-            f'/api/roles/{slug}/users',
+            request.app.url_path_for('list_role_users', slug=slug),
             user_count,
         ),
     }
@@ -40,6 +41,7 @@ def _build_relationships(
 @roles_router.post('/', response_model=models.Role, status_code=201)
 async def create_role(
     role: models.Role,
+    request: fastapi.Request,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -69,12 +71,13 @@ async def create_role(
             detail=f'Role with slug {role.slug!r} already exists',
         ) from e
     result = created.model_dump()
-    result['relationships'] = _build_relationships(role.slug)
+    result['relationships'] = _build_relationships(request, role.slug)
     return result
 
 
 @roles_router.get('/')
 async def list_roles(
+    request: fastapi.Request,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -107,6 +110,7 @@ async def list_roles(
     for record in records:
         role = graph.parse_agtype(record['r'])
         role['relationships'] = _build_relationships(
+            request,
             role['slug'],
             graph.parse_agtype(record['permission_count']),
             graph.parse_agtype(record['user_count']),
@@ -118,6 +122,7 @@ async def list_roles(
 @roles_router.get('/{slug}')
 async def get_role(
     slug: str,
+    request: fastapi.Request,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -194,6 +199,7 @@ async def get_role(
 
     role_dict = role.model_dump()
     role_dict['relationships'] = _build_relationships(
+        request,
         slug,
         permission_count,
         user_count,
@@ -204,6 +210,7 @@ async def get_role(
 @roles_router.get(
     '/{slug}/users',
     response_model=list[models.UserResponse],
+    name='list_role_users',
 )
 async def list_role_users(
     slug: str,
@@ -305,6 +312,7 @@ async def list_role_service_accounts(
 async def patch_role(
     slug: str,
     operations: list[json_patch.PatchOperation],
+    request: fastapi.Request,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -382,6 +390,7 @@ async def patch_role(
 
     result = role.model_dump()
     result['relationships'] = _build_relationships(
+        request,
         role.slug,
         permission_count,
         user_count,
@@ -436,7 +445,9 @@ async def delete_role(
         )
 
 
-@roles_router.post('/{slug}/permissions', status_code=204)
+@roles_router.post(
+    '/{slug}/permissions', status_code=204, name='role_permissions'
+)
 async def grant_permission(
     slug: str,
     db: graph.Pool,

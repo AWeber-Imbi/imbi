@@ -12,17 +12,40 @@ from imbi_common import blueprints, graph, models
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.graph_sql import props_template, set_clause
-from imbi_api.relationships import build_relationships
+from imbi_api.relationships import relationship_link
 
 LOGGER = logging.getLogger(__name__)
 
 teams_router = fastapi.APIRouter(tags=['Teams'])
 
 
+def _team_relationships(
+    request: fastapi.Request,
+    org_slug: str,
+    slug: str,
+    project_count: int,
+    member_count: int,
+) -> dict[str, models.RelationshipLink]:
+    projects_url = request.app.url_path_for('list_projects', org_slug=org_slug)
+    return {
+        'projects': relationship_link(
+            f'{projects_url}?team={slug}',
+            project_count,
+        ),
+        'members': relationship_link(
+            request.app.url_path_for(
+                'list_team_members', org_slug=org_slug, slug=slug
+            ),
+            member_count,
+        ),
+    }
+
+
 @teams_router.post('/', status_code=201)
 async def create_team(
     org_slug: str,
     data: dict[str, typing.Any],
+    request: fastapi.Request,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -108,15 +131,8 @@ async def create_team(
     org_props = graph.parse_agtype(records[0]['o'])
     team_props['organization'] = org_props
     slug = team_props['slug']
-    team_props['relationships'] = build_relationships(
-        '',
-        {
-            'projects': (f'/api/projects?team={slug}', 0),
-            'members': (
-                f'/api/organizations/{org_slug}/teams/{slug}/members',
-                0,
-            ),
-        },
+    team_props['relationships'] = _team_relationships(
+        request, org_slug, slug, 0, 0
     )
     return team_props
 
@@ -124,6 +140,7 @@ async def create_team(
 @teams_router.get('/')
 async def list_teams(
     org_slug: str,
+    request: fastapi.Request,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -162,24 +179,18 @@ async def list_teams(
         pc = graph.parse_agtype(record['project_count'])
         mc = graph.parse_agtype(record['member_count'])
         slug = team['slug']
-        team['relationships'] = build_relationships(
-            '',
-            {
-                'projects': (f'/api/projects?team={slug}', pc or 0),
-                'members': (
-                    f'/api/organizations/{org_slug}/teams/{slug}/members',
-                    mc or 0,
-                ),
-            },
+        team['relationships'] = _team_relationships(
+            request, org_slug, slug, pc or 0, mc or 0
         )
         teams.append(team)
     return teams
 
 
-@teams_router.get('/{slug}')
+@teams_router.get('/{slug}', name='get_team')
 async def get_team(
     org_slug: str,
     slug: str,
+    request: fastapi.Request,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -225,15 +236,8 @@ async def get_team(
     team['organization'] = org
     pc = graph.parse_agtype(records[0]['project_count'])
     mc = graph.parse_agtype(records[0]['member_count'])
-    team['relationships'] = build_relationships(
-        '',
-        {
-            'projects': (f'/api/projects?team={slug}', pc or 0),
-            'members': (
-                f'/api/organizations/{org_slug}/teams/{slug}/members',
-                mc or 0,
-            ),
-        },
+    team['relationships'] = _team_relationships(
+        request, org_slug, slug, pc or 0, mc or 0
     )
     return team
 
@@ -245,6 +249,7 @@ async def _persist_team(
     existing_org: dict[str, typing.Any],
     payload: dict[str, typing.Any],
     existing_created_at: str | None,
+    request: fastapi.Request,
     db: graph.Pool,
 ) -> dict[str, typing.Any]:
     """Validate, stamp timestamps, and persist a team to the graph.
@@ -329,15 +334,8 @@ async def _persist_team(
     pc = graph.parse_agtype(updated[0]['project_count'])
     mc = graph.parse_agtype(updated[0]['member_count'])
     slug = team_data['slug']
-    team_data['relationships'] = build_relationships(
-        '',
-        {
-            'projects': (f'/api/projects?team={slug}', pc or 0),
-            'members': (
-                f'/api/organizations/{org_slug}/teams/{slug}/members',
-                mc or 0,
-            ),
-        },
+    team_data['relationships'] = _team_relationships(
+        request, org_slug, slug, pc or 0, mc or 0
     )
     return team_data
 
@@ -347,6 +345,7 @@ async def patch_team(
     org_slug: str,
     slug: str,
     operations: list[json_patch.PatchOperation],
+    request: fastapi.Request,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -408,6 +407,7 @@ async def patch_team(
         existing_org,
         patched,
         existing.get('created_at'),
+        request,
         db,
     )
 
@@ -450,7 +450,7 @@ async def delete_team(
         )
 
 
-@teams_router.get('/{slug}/members')
+@teams_router.get('/{slug}/members', name='list_team_members')
 async def list_team_members(
     org_slug: str,
     slug: str,

@@ -49,12 +49,15 @@ class TagResponse(pydantic.BaseModel):
 
 
 def _tag_relationships(
+    request: fastapi.Request,
     org_slug: str,
     tag_slug: str,
     note_count: int,
 ) -> dict[str, models.RelationshipLink]:
     return build_relationships(
-        f'/api/organizations/{org_slug}/tags/{tag_slug}',
+        request.app.url_path_for(
+            'get_tag', org_slug=org_slug, tag_slug=tag_slug
+        ),
         {'notes': ('/notes', note_count)},
     )
 
@@ -63,6 +66,7 @@ def _tag_relationships(
 async def create_tag(
     org_slug: str,
     data: TagCreate,
+    request: fastapi.Request,
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
@@ -109,13 +113,16 @@ async def create_tag(
     tag: dict[str, typing.Any] = graph.parse_agtype(records[0]['t'])
     org = graph.parse_agtype(records[0]['o'])
     tag['organization'] = org
-    tag['relationships'] = _tag_relationships(org_slug, tag['slug'], 0)
+    tag['relationships'] = _tag_relationships(
+        request, org_slug, tag['slug'], 0
+    )
     return tag
 
 
 @tags_router.get('/', response_model=list[TagResponse])
 async def list_tags(
     org_slug: str,
+    request: fastapi.Request,
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
@@ -140,6 +147,7 @@ async def list_tags(
         tag = graph.parse_agtype(record['t'])
         tag['organization'] = graph.parse_agtype(record['o'])
         tag['relationships'] = _tag_relationships(
+            request,
             org_slug,
             tag['slug'],
             graph.parse_agtype(record['note_count']) or 0,
@@ -148,10 +156,11 @@ async def list_tags(
     return results
 
 
-@tags_router.get('/{tag_slug}', response_model=TagResponse)
+@tags_router.get('/{tag_slug}', response_model=TagResponse, name='get_tag')
 async def get_tag(
     org_slug: str,
     tag_slug: str,
+    request: fastapi.Request,
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
@@ -179,6 +188,7 @@ async def get_tag(
     tag: dict[str, typing.Any] = graph.parse_agtype(records[0]['t'])
     tag['organization'] = graph.parse_agtype(records[0]['o'])
     tag['relationships'] = _tag_relationships(
+        request,
         org_slug,
         tag['slug'],
         graph.parse_agtype(records[0]['note_count']) or 0,
@@ -202,6 +212,7 @@ async def patch_tag(
     org_slug: str,
     tag_slug: str,
     operations: list[json_patch.PatchOperation],
+    request: fastapi.Request,
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
@@ -288,6 +299,7 @@ async def patch_tag(
     tag: dict[str, typing.Any] = graph.parse_agtype(updated[0]['t'])
     tag['organization'] = org
     tag['relationships'] = _tag_relationships(
+        request,
         org_slug,
         tag['slug'],
         graph.parse_agtype(updated[0]['note_count']) or 0,
