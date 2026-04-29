@@ -8,25 +8,16 @@
     "codegen": "openapi-typescript openapi.json -o src/types/api-generated.ts",
     "codegen:fetch": "curl -sf http://localhost:8000/openapi.json -o openapi.json && npm run codegen",
     "dev": "vite",
-    "format": "prettier --write 'src/**/*.{ts,tsx,css}'",
-    "format:check": "prettier --check 'src/**/*.{ts,tsx,css}'",
-    "lint": "oxlint -c oxlint.config.ts .",
-    "lint:fix": "oxlint -c oxlint.config.ts --fix .",
+    "format": "oxfmt 'src/**/*.{ts,tsx,css}'",
+    "format:check": "oxfmt --check 'src/**/*.{ts,tsx,css}'",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
     "prepare": "husky",
     "preview": "vite preview",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
     "test:watch": "vitest"
-  },
-  "lint-staged": {
-    "*.{ts,tsx}": [
-      "oxlint -c oxlint.config.ts --fix --no-error-on-unmatched-pattern",
-      "prettier --write"
-    ],
-    "*.css": [
-      "prettier --write"
-    ]
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -115,15 +106,25 @@
     "jsdom": "^27.4.0",
     "lint-staged": "^16.4.0",
     "openapi-typescript": "^7.13.0",
+    "oxfmt": "^0.47.0",
     "oxlint": "^1.62.0",
     "postcss": "^8.4.49",
-    "prettier": "^3.8.3",
-    "prettier-plugin-packagejson": "^3.0.2",
-    "prettier-plugin-tailwindcss": "^0.8.0",
     "tailwindcss": "^3.4.17",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
     "vitest": "^4.0.16"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "oxlint --fix --no-error-on-unmatched-pattern",
+      "oxfmt --no-error-on-unmatched-pattern"
+    ],
+    "*.css": [
+      "oxfmt --no-error-on-unmatched-pattern"
+    ],
+    "package.json": [
+      "oxfmt --no-error-on-unmatched-pattern"
+    ]
   }
 }
