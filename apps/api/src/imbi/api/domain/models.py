@@ -880,7 +880,9 @@ class WebhookResponse(pydantic.BaseModel):
             icon=webhook.get('icon'),
             notification_path=webhook['notification_path'],
             third_party_service=tps,
-            identifier_selector=record.get('identifier_selector'),
+            identifier_selector=graph.parse_agtype(
+                record.get('identifier_selector')
+            ),
             rules=rules,
         )
 
