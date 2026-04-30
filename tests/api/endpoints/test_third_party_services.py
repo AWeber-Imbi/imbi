@@ -1349,6 +1349,41 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 404)
 
+    def test_patch_promotion_to_login_requires_auth_providers_write(
+        self,
+    ) -> None:
+        """A PATCH that flips usage from integration->login must be gated.
+
+        Without this guard, a caller with only
+        ``third_party_service:update`` could promote an integration row
+        to a login provider and rotate ``client_id``/``oauth_app_type``
+        in the same request, escaping the new ``auth_providers:write``
+        permission boundary.
+        """
+        existing = dict(self.app_data)
+        existing['usage'] = 'integration'
+        existing['oauth_app_type'] = 'google'
+        self.mock_db.execute.return_value = [{'app': existing}]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.patch(
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app',
+                json=[
+                    {'op': 'replace', 'path': '/usage', 'value': 'login'},
+                    {
+                        'op': 'replace',
+                        'path': '/client_id',
+                        'value': 'evil-cid',
+                    },
+                ],
+            )
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('auth_providers:write', response.json()['detail'])
+
     def test_patch_application_slug_conflict(self) -> None:
         """Slug rename that collides returns 409."""
         self.mock_db.execute.side_effect = [

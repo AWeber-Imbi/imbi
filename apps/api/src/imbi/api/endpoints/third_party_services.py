@@ -1,5 +1,6 @@
 """Third-party service management endpoints."""
 
+import collections.abc
 import json
 import logging
 import typing
@@ -25,6 +26,7 @@ _SERVICE_JSON_FIELDS: dict[str, list[str] | dict[str, typing.Any]] = {
 _APP_JSON_FIELDS: dict[str, list[str] | dict[str, typing.Any]] = {
     'scopes': [],
     'settings': {},
+    'allowed_domains': [],
 }
 
 
@@ -505,26 +507,56 @@ async def list_service_applications(
             ),
         ),
     ],
+    usage: typing.Literal['integration', 'login'] | None = fastapi.Query(
+        default=None,
+    ),
 ) -> list[models.ServiceApplicationResponse]:
-    """List applications registered in a third-party service."""
-    query: typing.LiteralString = """
-    MATCH (a:ServiceApplication)-[:REGISTERED_IN]->
-          (s:ThirdPartyService {{slug: {slug}}})
-          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    RETURN a{{.*}} AS app
-    ORDER BY a.name
+    """List applications registered in a third-party service.
+
+    Defaults to the "integration" view: apps registered in this org's
+    instance of the service AND any app with ``usage IN
+    ('login','both')`` from any org (rendered ``is_global=True``).
     """
-    records = await db.execute(
-        query,
-        {'slug': slug, 'org_slug': org_slug},
-        ['app'],
-    )
+    if usage == 'login':
+        # Login view ignores org boundaries entirely.
+        query: typing.LiteralString = """
+        MATCH (a:ServiceApplication)-[:REGISTERED_IN]->
+              (s:ThirdPartyService {{slug: {slug}}})
+              -[:BELONGS_TO]->(o:Organization)
+        WHERE a.usage IN ['login', 'both']
+        RETURN a{{.*}} AS app, o.slug AS owner_slug
+        ORDER BY a.name
+        """
+        records = await db.execute(
+            query, {'slug': slug}, ['app', 'owner_slug']
+        )
+    else:
+        # 'integration' or unset: this org's apps + any login/both
+        # app globally for the same TPS slug. Render the global rows
+        # with ``is_global=True``.
+        query = """
+        MATCH (a:ServiceApplication)-[:REGISTERED_IN]->
+              (s:ThirdPartyService {{slug: {slug}}})
+              -[:BELONGS_TO]->(o:Organization)
+        WHERE o.slug = {org_slug}
+           OR a.usage IN ['login', 'both']
+        RETURN a{{.*}} AS app, o.slug AS owner_slug
+        ORDER BY a.name
+        """
+        records = await db.execute(
+            query, {'slug': slug, 'org_slug': org_slug}, ['app', 'owner_slug']
+        )
 
     apps: list[models.ServiceApplicationResponse] = []
     for record in records:
         app = graph.parse_agtype(record['app'])
+        owner = graph.parse_agtype(record.get('owner_slug'))
         app = _deserialize_json_fields(app, _APP_JSON_FIELDS)
         _strip_secrets(app)
+        app['is_global'] = owner != org_slug and app.get('usage') in (
+            'login',
+            'both',
+        )
         apps.append(models.ServiceApplicationResponse(**app))
     return apps
 
@@ -809,6 +841,50 @@ _APP_SECRET_PATHS: frozenset[str] = frozenset(
     f'/{field}' for field in models.SECRET_FIELDS
 )
 
+# Fields whose mutation on a usage IN ('login','both') row requires
+# the instance-level ``auth_providers:write`` permission.
+_LOGIN_GATED_FIELDS: frozenset[str] = frozenset(
+    {
+        'client_id',
+        'client_secret',
+        'oauth_app_type',
+        'issuer_url',
+        'allowed_domains',
+        'scopes',
+        'usage',
+    }
+)
+
+
+def _ensure_login_write_allowed(
+    auth: permissions.AuthContext,
+    existing_usage: str | None,
+    touched_fields: collections.abc.Iterable[str],
+    new_usage: str | None = None,
+) -> None:
+    """Require ``auth_providers:write`` for credential edits on login rows.
+
+    Gates the request when the row is *currently* a login provider OR when
+    this request would *make it one* (preventing a single PATCH from both
+    promoting ``integration`` -> ``login`` and rotating credentials in a
+    way that escapes the auth-providers permission boundary).
+    """
+    if existing_usage not in ('login', 'both') and new_usage not in (
+        'login',
+        'both',
+    ):
+        return
+    if not any(f in _LOGIN_GATED_FIELDS for f in touched_fields):
+        return
+    if 'auth_providers:write' not in auth.permissions:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail=(
+                'Editing credential or OAuth fields on a login auth '
+                'provider requires the auth_providers:write permission'
+            ),
+        )
+
 
 class _ServiceApplicationPatchFields(pydantic.BaseModel):
     """Internal validator for non-secret application fields."""
@@ -829,8 +905,23 @@ class _ServiceApplicationPatchFields(pydantic.BaseModel):
         default_factory=dict,
     )
     status: typing.Literal['active', 'inactive', 'revoked'] = 'active'
+    usage: typing.Literal['login', 'integration', 'both'] = 'integration'
+    oauth_app_type: typing.Literal['google', 'github', 'oidc'] | None = None
+    issuer_url: str | None = None
+    allowed_domains: list[str] = pydantic.Field(default_factory=list)
 
     model_config = pydantic.ConfigDict(extra='forbid')
+
+    @pydantic.model_validator(mode='after')
+    def _validate_login_fields(self) -> typing.Self:
+        models.validate_login_app_fields(
+            self.usage,
+            self.oauth_app_type,
+            self.client_id,
+            self.issuer_url,
+            self.allowed_domains,
+        )
+        return self
 
 
 @third_party_services_router.patch(
@@ -890,6 +981,17 @@ async def patch_service_application(
             status_code=400,
             detail=f'Validation error: {e.errors()}',
         ) from e
+
+    # Gate edits to credential/OAuth fields on login rows.
+    touched: list[str] = [
+        op.path.lstrip('/').split('/')[0] for op in operations
+    ]
+    _ensure_login_write_allowed(
+        auth,
+        existing.get('usage'),
+        touched,
+        new_usage=validated.usage,
+    )
 
     props = validated.model_dump(mode='json')
 
@@ -955,6 +1057,24 @@ async def delete_service_application(
     ],
 ) -> None:
     """Delete a service application."""
+    # Block deletion of usage IN ('login','both') rows without
+    # auth_providers:write. Skip the pre-fetch when the caller already
+    # has the instance-level permission so the existing test fixtures
+    # (which mock only the delete query) keep working.
+    if 'auth_providers:write' not in auth.permissions:
+        try:
+            existing = await _fetch_application(db, org_slug, slug, app_slug)
+        except (fastapi.HTTPException, KeyError):
+            existing = None
+        if existing and existing.get('usage') in ('login', 'both'):
+            raise fastapi.HTTPException(
+                status_code=403,
+                detail=(
+                    'Deleting a login auth provider requires the '
+                    'auth_providers:write permission'
+                ),
+            )
+
     query: typing.LiteralString = """
     MATCH (a:ServiceApplication {{slug: {app_slug}}})
           -[:REGISTERED_IN]->(s:ThirdPartyService
@@ -1069,6 +1189,7 @@ async def patch_application_secrets(
         )
 
     existing = await _fetch_application(db, org_slug, slug, app_slug)
+    _ensure_login_write_allowed(auth, existing.get('usage'), ['client_secret'])
     encryptor = encryption.TokenEncryption.get_instance()
 
     secret_updates: dict[str, str | None] = {}

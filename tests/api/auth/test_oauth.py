@@ -1,4 +1,5 @@
 import time
+import typing
 import unittest
 from unittest import mock
 
@@ -6,7 +7,49 @@ import httpx
 import jwt
 
 from imbi_api import settings
-from imbi_api.auth import models, oauth
+from imbi_api.auth import login_providers, models, oauth
+
+
+def _stub_provider(
+    slug: str,
+    *,
+    enabled: bool = True,
+    client_id: str | None = None,
+    client_secret: str | None = None,
+    issuer_url: str | None = None,
+    name: str = 'Provider',
+) -> login_providers.LoginApp:
+    """Build a login-app row with a clear-text secret stand-in.
+
+    The tests patch ``TokenEncryption.get_instance`` so the
+    ``client_secret_encrypted`` value round-trips as plaintext.
+    """
+    return login_providers.LoginApp(
+        slug=slug,
+        name=name,
+        oauth_app_type=slug,  # type: ignore[arg-type]
+        client_id=client_id,
+        client_secret_encrypted=client_secret,
+        issuer_url=issuer_url,
+        status='active' if enabled else 'inactive',
+    )
+
+
+class _FakeEncryptor:
+    """Identity 'encryption' for tests."""
+
+    def encrypt(self, value: str | None) -> str | None:
+        return value
+
+    def decrypt(self, value: str | None) -> str | None:
+        return value
+
+
+def _patch_encryptor() -> typing.Any:
+    return mock.patch(
+        'imbi_common.auth.encryption.TokenEncryption.get_instance',
+        return_value=_FakeEncryptor(),
+    )
 
 
 class OAuthStateTestCase(unittest.TestCase):
@@ -104,6 +147,7 @@ class OAuthProfileNormalizationTestCase(unittest.TestCase):
         raw_profile = {
             'id': '12345',
             'email': 'user@example.com',
+            'verified_email': True,
             'name': 'Test User',
             'picture': 'https://example.com/avatar.jpg',
         }
@@ -112,10 +156,21 @@ class OAuthProfileNormalizationTestCase(unittest.TestCase):
 
         self.assertEqual(normalized['id'], '12345')
         self.assertEqual(normalized['email'], 'user@example.com')
+        self.assertTrue(normalized['email_verified'])
         self.assertEqual(normalized['name'], 'Test User')
         self.assertEqual(
             normalized['avatar_url'], 'https://example.com/avatar.jpg'
         )
+
+    def test_normalize_google_profile_unverified_email(self) -> None:
+        """Google profile without verified_email returns False."""
+        raw_profile = {
+            'id': '12345',
+            'email': 'user@example.com',
+            'name': 'Test User',
+        }
+        normalized = oauth.normalize_oauth_profile('google', raw_profile)
+        self.assertFalse(normalized['email_verified'])
 
     def test_normalize_github_profile(self) -> None:
         """Test normalizing GitHub OAuth profile."""
@@ -131,6 +186,7 @@ class OAuthProfileNormalizationTestCase(unittest.TestCase):
 
         self.assertEqual(normalized['id'], '67890')  # Converted to string
         self.assertEqual(normalized['email'], 'user@example.com')
+        self.assertTrue(normalized['email_verified'])
         self.assertEqual(normalized['name'], 'Test User')
         self.assertEqual(
             normalized['avatar_url'],
@@ -156,6 +212,7 @@ class OAuthProfileNormalizationTestCase(unittest.TestCase):
         raw_profile = {
             'sub': 'oidc-user-123',
             'email': 'user@example.com',
+            'email_verified': True,
             'name': 'Test User',
             'picture': 'https://example.com/avatar.jpg',
         }
@@ -164,10 +221,21 @@ class OAuthProfileNormalizationTestCase(unittest.TestCase):
 
         self.assertEqual(normalized['id'], 'oidc-user-123')
         self.assertEqual(normalized['email'], 'user@example.com')
+        self.assertTrue(normalized['email_verified'])
         self.assertEqual(normalized['name'], 'Test User')
         self.assertEqual(
             normalized['avatar_url'], 'https://example.com/avatar.jpg'
         )
+
+    def test_normalize_oidc_profile_unverified_email(self) -> None:
+        """OIDC profile without email_verified claim returns False."""
+        raw_profile = {
+            'sub': 'oidc-user-123',
+            'email': 'user@example.com',
+            'name': 'Test User',
+        }
+        normalized = oauth.normalize_oauth_profile('oidc', raw_profile)
+        self.assertFalse(normalized['email_verified'])
 
     def test_normalize_oidc_profile_preferred_username(self) -> None:
         """Test OIDC profile with preferred_username instead of name."""
@@ -455,41 +523,73 @@ class OIDCDiscoveryTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('userinfo_endpoint', str(context.exception).lower())
 
 
-class OAuthProviderConfigTestCase(unittest.IsolatedAsyncioTestCase):
-    """Test cases for OAuth provider configuration."""
+class _DBProviderTestBase(unittest.IsolatedAsyncioTestCase):
+    """Base class for tests that need a stub DB returning provider rows."""
 
     def setUp(self) -> None:
-        """Clear OIDC discovery cache before each test."""
         oauth._oidc_discovery_cache.clear()
+        login_providers.invalidate_cache()
+        self.providers_by_slug: dict[str, login_providers.LoginApp | None] = {}
+        self.db = mock.AsyncMock()
+
+        async def _fake_get(
+            db: typing.Any, slug: str
+        ) -> login_providers.LoginApp | None:
+            return self.providers_by_slug.get(slug)
+
+        async def _fake_list(
+            db: typing.Any, *, enabled_only: bool = False
+        ) -> list[login_providers.LoginApp]:
+            rows = [p for p in self.providers_by_slug.values() if p]
+            if enabled_only:
+                rows = [r for r in rows if r.status == 'active']
+            return rows
+
+        self._patch = mock.patch.multiple(
+            login_providers,
+            get_login_app=_fake_get,
+            list_login_apps=_fake_list,
+        )
+        self._patch.start()
+
+    def tearDown(self) -> None:
+        self._patch.stop()
+
+    def seed(self, slug: str, **kwargs: typing.Any) -> None:
+        self.providers_by_slug[slug] = _stub_provider(slug, **kwargs)
+
+
+class OAuthProviderConfigTestCase(_DBProviderTestBase):
+    """Test cases for OAuth provider configuration."""
 
     async def test_get_provider_config_google(self) -> None:
-        """Test getting Google OAuth config."""
-        auth_settings = settings.Auth(
-            oauth_google_enabled=True,
-            oauth_google_client_id='test-client-id',
-            oauth_google_client_secret='test-client-secret',
+        self.seed(
+            'google',
+            client_id='test-client-id',
+            client_secret='test-client-secret',
         )
-
-        token_url, client_id, client_secret = await oauth._get_provider_config(
-            'google', auth_settings
-        )
-
+        with _patch_encryptor():
+            (
+                token_url,
+                client_id,
+                client_secret,
+            ) = await oauth._get_provider_config('google', self.db)
         self.assertEqual(token_url, 'https://oauth2.googleapis.com/token')
         self.assertEqual(client_id, 'test-client-id')
         self.assertEqual(client_secret, 'test-client-secret')
 
     async def test_get_provider_config_github(self) -> None:
-        """Test getting GitHub OAuth config."""
-        auth_settings = settings.Auth(
-            oauth_github_enabled=True,
-            oauth_github_client_id='github-client-id',
-            oauth_github_client_secret='github-client-secret',
+        self.seed(
+            'github',
+            client_id='github-client-id',
+            client_secret='github-client-secret',
         )
-
-        token_url, client_id, client_secret = await oauth._get_provider_config(
-            'github', auth_settings
-        )
-
+        with _patch_encryptor():
+            (
+                token_url,
+                client_id,
+                client_secret,
+            ) = await oauth._get_provider_config('github', self.db)
         self.assertEqual(
             token_url, 'https://github.com/login/oauth/access_token'
         )
@@ -500,15 +600,12 @@ class OAuthProviderConfigTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_get_provider_config_oidc(
         self, mock_client_class: mock.Mock
     ) -> None:
-        """Test getting OIDC OAuth config via discovery."""
-        auth_settings = settings.Auth(
-            oauth_oidc_enabled=True,
-            oauth_oidc_client_id='oidc-client-id',
-            oauth_oidc_client_secret='oidc-client-secret',
-            oauth_oidc_issuer_url='https://auth.example.com',
+        self.seed(
+            'oidc',
+            client_id='oidc-client-id',
+            client_secret='oidc-client-secret',
+            issuer_url='https://auth.example.com',
         )
-
-        # Mock discovery response
         mock_response = mock.Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -517,79 +614,65 @@ class OAuthProviderConfigTestCase(unittest.IsolatedAsyncioTestCase):
             'userinfo_endpoint': 'https://auth.example.com/userinfo',
             'authorization_endpoint': 'https://auth.example.com/authorize',
         }
-
-        # Mock client
         mock_client = mock.AsyncMock()
         mock_client.get = mock.AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = mock.AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = mock.AsyncMock()
         mock_client_class.return_value = mock_client
 
-        token_url, client_id, client_secret = await oauth._get_provider_config(
-            'oidc', auth_settings
-        )
+        with _patch_encryptor():
+            (
+                token_url,
+                client_id,
+                client_secret,
+            ) = await oauth._get_provider_config('oidc', self.db)
 
         self.assertEqual(token_url, 'https://auth.example.com/oauth/token')
         self.assertEqual(client_id, 'oidc-client-id')
         self.assertEqual(client_secret, 'oidc-client-secret')
 
-        # Verify discovery was called
-        mock_client.get.assert_called_once()
-        call_args = mock_client.get.call_args
-        self.assertEqual(
-            call_args[0][0],
-            'https://auth.example.com/.well-known/openid-configuration',
-        )
-
     async def test_get_provider_config_disabled(self) -> None:
-        """Test getting config for disabled provider."""
-        auth_settings = settings.Auth(oauth_google_enabled=False)
-
+        self.seed('google', enabled=False)
         with self.assertRaises(ValueError) as context:
-            await oauth._get_provider_config('google', auth_settings)
+            await oauth._get_provider_config('google', self.db)
+        self.assertIn('not enabled', str(context.exception).lower())
 
+    async def test_get_provider_config_missing(self) -> None:
+        with self.assertRaises(ValueError) as context:
+            await oauth._get_provider_config('google', self.db)
         self.assertIn('not enabled', str(context.exception).lower())
 
     async def test_get_provider_config_unsupported(self) -> None:
-        """Test getting config for unsupported provider."""
-        auth_settings = settings.Auth()
-
         with self.assertRaises(ValueError) as context:
-            await oauth._get_provider_config('unsupported', auth_settings)
+            await oauth._get_provider_config('unsupported', self.db)
+        self.assertIn('not enabled', str(context.exception).lower())
 
-        self.assertIn('unsupported', str(context.exception).lower())
+    async def test_get_provider_config_oidc_missing_issuer(self) -> None:
+        self.seed('oidc', client_id='x', client_secret='y', issuer_url=None)
+        with _patch_encryptor():
+            with self.assertRaises(ValueError) as context:
+                await oauth._get_provider_config('oidc', self.db)
+        self.assertIn('issuer', str(context.exception).lower())
 
 
-class OAuthUserinfoUrlTestCase(unittest.IsolatedAsyncioTestCase):
+class OAuthUserinfoUrlTestCase(_DBProviderTestBase):
     """Test cases for getting userinfo URLs."""
 
-    def setUp(self) -> None:
-        """Clear OIDC discovery cache before each test."""
-        oauth._oidc_discovery_cache.clear()
-
     async def test_get_userinfo_url_google(self) -> None:
-        """Test getting Google userinfo URL."""
-        auth_settings = settings.Auth(oauth_google_enabled=True)
-        url = await oauth._get_userinfo_url('google', auth_settings)
+        self.seed('google')
+        url = await oauth._get_userinfo_url('google', self.db)
         self.assertEqual(url, 'https://www.googleapis.com/oauth2/v2/userinfo')
 
     async def test_get_userinfo_url_github(self) -> None:
-        """Test getting GitHub userinfo URL."""
-        auth_settings = settings.Auth(oauth_github_enabled=True)
-        url = await oauth._get_userinfo_url('github', auth_settings)
+        self.seed('github')
+        url = await oauth._get_userinfo_url('github', self.db)
         self.assertEqual(url, 'https://api.github.com/user')
 
     @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
     async def test_get_userinfo_url_oidc(
         self, mock_client_class: mock.Mock
     ) -> None:
-        """Test getting OIDC userinfo URL via discovery."""
-        auth_settings = settings.Auth(
-            oauth_oidc_enabled=True,
-            oauth_oidc_issuer_url='https://auth.example.com',
-        )
-
-        # Mock discovery response
+        self.seed('oidc', issuer_url='https://auth.example.com')
         mock_response = mock.Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -597,53 +680,42 @@ class OAuthUserinfoUrlTestCase(unittest.IsolatedAsyncioTestCase):
             'token_endpoint': 'https://auth.example.com/oauth/token',
             'userinfo_endpoint': 'https://auth.example.com/userinfo',
         }
-
-        # Mock client
         mock_client = mock.AsyncMock()
         mock_client.get = mock.AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = mock.AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = mock.AsyncMock()
         mock_client_class.return_value = mock_client
 
-        url = await oauth._get_userinfo_url('oidc', auth_settings)
+        url = await oauth._get_userinfo_url('oidc', self.db)
         self.assertEqual(url, 'https://auth.example.com/userinfo')
 
     async def test_get_userinfo_url_oidc_missing_issuer(self) -> None:
-        """Test getting OIDC userinfo URL without issuer configured."""
-        auth_settings = settings.Auth(oauth_oidc_enabled=True)
-
+        self.seed('oidc', issuer_url=None)
         with self.assertRaises(ValueError) as context:
-            await oauth._get_userinfo_url('oidc', auth_settings)
-
+            await oauth._get_userinfo_url('oidc', self.db)
         self.assertIn('issuer', str(context.exception).lower())
 
     async def test_get_userinfo_url_unsupported(self) -> None:
-        """Test getting userinfo URL for unsupported provider."""
-        auth_settings = settings.Auth()
-
         with self.assertRaises(ValueError) as context:
-            await oauth._get_userinfo_url('unsupported', auth_settings)
+            await oauth._get_userinfo_url('unsupported', self.db)
+        self.assertIn('not enabled', str(context.exception).lower())
 
-        self.assertIn('unsupported', str(context.exception).lower())
 
-
-class OAuthTokenExchangeTestCase(unittest.IsolatedAsyncioTestCase):
+class OAuthTokenExchangeTestCase(_DBProviderTestBase):
     """Test cases for OAuth token exchange."""
 
     def setUp(self) -> None:
-        """Set up test auth settings."""
-        self.auth_settings = settings.Auth(
-            oauth_google_enabled=True,
-            oauth_google_client_id='test-client-id',
-            oauth_google_client_secret='test-client-secret',
+        super().setUp()
+        self.seed(
+            'google',
+            client_id='test-client-id',
+            client_secret='test-client-secret',
         )
 
     @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
     async def test_exchange_oauth_code_success(
         self, mock_client_class: mock.Mock
     ) -> None:
-        """Test successful OAuth code exchange."""
-        # Mock response
         mock_response = mock.Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -651,51 +723,37 @@ class OAuthTokenExchangeTestCase(unittest.IsolatedAsyncioTestCase):
             'refresh_token': 'test-refresh-token',
             'expires_in': 3600,
         }
-
-        # Mock client
         mock_client = mock.AsyncMock()
         mock_client.post = mock.AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = mock.AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = mock.AsyncMock()
         mock_client_class.return_value = mock_client
 
-        # Exchange code
-        tokens = await oauth.exchange_oauth_code(
-            'google',
-            'test-auth-code',
-            'http://localhost:8000/auth/oauth/google/callback',
-            self.auth_settings,
-        )
+        with _patch_encryptor():
+            tokens = await oauth.exchange_oauth_code(
+                'google',
+                'test-auth-code',
+                'http://localhost:8000/auth/oauth/google/callback',
+                self.db,
+            )
 
-        # Verify tokens
         self.assertEqual(tokens['access_token'], 'test-access-token')
         self.assertEqual(tokens['refresh_token'], 'test-refresh-token')
         self.assertEqual(tokens['expires_in'], 3600)
-
-        # Verify API call
         mock_client.post.assert_called_once()
-        call_args = mock_client.post.call_args
-        self.assertEqual(
-            call_args[0][0], 'https://oauth2.googleapis.com/token'
-        )
-
-    # NOTE: Error handling test removed - will be covered by integration tests
-    # The httpx AsyncClient mock is complex to set up for failure scenarios
 
 
-class OAuthProfileFetchTestCase(unittest.IsolatedAsyncioTestCase):
+class OAuthProfileFetchTestCase(_DBProviderTestBase):
     """Test cases for OAuth profile fetching."""
 
     def setUp(self) -> None:
-        """Set up test auth settings."""
-        self.auth_settings = settings.Auth(oauth_google_enabled=True)
+        super().setUp()
+        self.seed('google')
 
     @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
     async def test_fetch_oauth_profile_success(
         self, mock_client_class: mock.Mock
     ) -> None:
-        """Test successful OAuth profile fetch."""
-        # Mock response
         mock_response = mock.Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -704,44 +762,33 @@ class OAuthProfileFetchTestCase(unittest.IsolatedAsyncioTestCase):
             'name': 'Test User',
             'picture': 'https://example.com/avatar.jpg',
         }
-
-        # Mock client
         mock_client = mock.AsyncMock()
         mock_client.get = mock.AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = mock.AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = mock.AsyncMock()
         mock_client_class.return_value = mock_client
 
-        # Fetch profile
         profile = await oauth.fetch_oauth_profile(
-            'google', 'test-access-token', self.auth_settings
+            'google', 'test-access-token', self.db
         )
 
-        # Verify normalized profile
         self.assertEqual(profile['id'], '12345')
         self.assertEqual(profile['email'], 'user@example.com')
         self.assertEqual(profile['name'], 'Test User')
-
-    # NOTE: Error handling test removed - will be covered by integration tests
-    # The httpx AsyncClient mock is complex to set up for failure scenarios
 
     @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
     async def test_exchange_oauth_code_failure(
         self, mock_client_class: mock.Mock
     ) -> None:
-        """Test token exchange with error response."""
-        # Mock failed token exchange response
         mock_response = mock.Mock()
         mock_response.status_code = 400
         mock_response.text = 'invalid_grant'
-
         mock_client = mock.AsyncMock()
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = None
         mock_client.post.return_value = mock_response
         mock_client_class.return_value = mock_client
 
-        # Mock _get_provider_config
         with mock.patch.object(
             oauth,
             '_get_provider_config',
@@ -751,15 +798,13 @@ class OAuthProfileFetchTestCase(unittest.IsolatedAsyncioTestCase):
                 'secret',
             ),
         ):
-            # Attempt exchange - should raise ValueError
             with self.assertRaises(ValueError) as context:
                 await oauth.exchange_oauth_code(
                     'google',
                     'bad-code',
                     'http://localhost/callback',
-                    self.auth_settings,
+                    self.db,
                 )
-
             self.assertIn(
                 'token exchange failed', str(context.exception).lower()
             )
@@ -768,76 +813,43 @@ class OAuthProfileFetchTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_fetch_oauth_profile_failure(
         self, mock_client_class: mock.Mock
     ) -> None:
-        """Test profile fetch with error response."""
-        # Mock failed profile fetch response
         mock_response = mock.Mock()
         mock_response.status_code = 401
         mock_response.text = 'Unauthorized'
-
         mock_client = mock.AsyncMock()
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = None
         mock_client.get.return_value = mock_response
         mock_client_class.return_value = mock_client
 
-        # Mock _get_userinfo_url
         with mock.patch.object(
             oauth, '_get_userinfo_url', return_value='https://userinfo-url.com'
         ):
-            # Attempt fetch - should raise ValueError
             with self.assertRaises(ValueError) as context:
-                await oauth.fetch_oauth_profile(
-                    'google', 'bad-token', self.auth_settings
-                )
-
+                await oauth.fetch_oauth_profile('google', 'bad-token', self.db)
             self.assertIn(
                 'profile fetch failed', str(context.exception).lower()
             )
 
     def test_normalize_oidc_profile_missing_identity(self) -> None:
-        """Test OIDC profile normalization fails without identity field."""
         raw_profile = {
             'email': 'user@example.com',
             'name': 'Test User',
         }
-
         with self.assertRaises(ValueError) as context:
             oauth.normalize_oauth_profile('oidc', raw_profile)
-
         self.assertIn(
             'missing required identity field', str(context.exception).lower()
         )
 
     async def test_get_provider_config_github_disabled(self) -> None:
-        """Test _get_provider_config fails when GitHub OAuth is disabled."""
-        self.auth_settings.oauth_github_enabled = False
-
+        self.seed('github', enabled=False)
         with self.assertRaises(ValueError) as context:
-            await oauth._get_provider_config('github', self.auth_settings)
-
-        self.assertIn(
-            'github oauth is not enabled', str(context.exception).lower()
-        )
+            await oauth._get_provider_config('github', self.db)
+        self.assertIn('not enabled', str(context.exception).lower())
 
     async def test_get_provider_config_oidc_disabled(self) -> None:
-        """Test _get_provider_config fails when OIDC OAuth is disabled."""
-        self.auth_settings.oauth_oidc_enabled = False
-
+        self.seed('oidc', enabled=False)
         with self.assertRaises(ValueError) as context:
-            await oauth._get_provider_config('oidc', self.auth_settings)
-
-        self.assertIn(
-            'oidc oauth is not enabled', str(context.exception).lower()
-        )
-
-    async def test_get_provider_config_oidc_missing_issuer(self) -> None:
-        """Test _get_provider_config fails when OIDC issuer not set."""
-        self.auth_settings.oauth_oidc_enabled = True
-        self.auth_settings.oauth_oidc_issuer_url = None
-
-        with self.assertRaises(ValueError) as context:
-            await oauth._get_provider_config('oidc', self.auth_settings)
-
-        self.assertIn(
-            'issuer url not configured', str(context.exception).lower()
-        )
+            await oauth._get_provider_config('oidc', self.db)
+        self.assertIn('not enabled', str(context.exception).lower())

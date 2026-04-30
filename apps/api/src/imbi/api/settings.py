@@ -51,20 +51,37 @@ class ServerConfig(pydantic_settings.BaseSettings):
     # behind a reverse proxy so rate limiting keys on the real client
     # IP rather than the proxy address. Empty disables the middleware.
     forwarded_allow_ips: str = ''
-    # Path prefix prepended to every API route (e.g. '/api'). Empty
-    # serves routes at the root. Applied to routing and to hypermedia
-    # link emission. The /docs and /openapi.json endpoints are always
-    # served at the root regardless of this value.
-    api_prefix: str = ''
+    # Public URL where the API is reachable from a browser, including
+    # the path prefix it's mounted under (e.g.
+    # ``https://imbi.example.com/api``). The path component drives
+    # FastAPI route mounting and hypermedia link emission; the full
+    # URL is used to build OAuth redirect URIs and any other absolute
+    # URL handed to a third party. Falls back to
+    # ``http://{host}:{port}`` (no prefix) when unset so dev-loopback
+    # runs work out of the box. The /docs and /openapi.json endpoints
+    # are always served at the root regardless of the prefix.
+    url: str = pydantic.Field(default='', validation_alias='IMBI_API_URL')
 
-    @pydantic.field_validator('api_prefix')
+    @pydantic.field_validator('url')
     @classmethod
-    def _normalize_api_prefix(cls, value: str) -> str:
-        if not value:
-            return ''
-        if not value.startswith('/'):
-            value = '/' + value
+    def _normalize_url(cls, value: str) -> str:
         return value.rstrip('/')
+
+    @property
+    def api_prefix(self) -> str:
+        """Path prefix derived from the public URL's path component."""
+        if not self.url:
+            return ''
+        return urllib.parse.urlparse(self.url).path.rstrip('/')
+
+    @property
+    def public_base_url(self) -> str:
+        """Public base URL including the API prefix.
+
+        Returns ``self.url`` directly when configured (already includes
+        the prefix), otherwise the local host:port for dev-loopback.
+        """
+        return self.url or f'http://{self.host}:{self.port}'
 
 
 class Auth(settings.Auth):  # type: ignore[misc]
@@ -100,33 +117,13 @@ class Auth(settings.Auth):  # type: ignore[misc]
     rate_limit_oauth_init: str = '3/minute'
     rate_limit_api_key: str = '100/minute'
 
-    # OAuth Provider Configurations
-    oauth_google_enabled: bool = False
-    oauth_google_client_id: str | None = None
-    oauth_google_client_secret: str | None = None
-    oauth_google_allowed_domains: list[str] = []  # noqa: RUF012
-
-    oauth_github_enabled: bool = False
-    oauth_github_client_id: str | None = None
-    oauth_github_client_secret: str | None = None
-
-    oauth_oidc_enabled: bool = False
-    oauth_oidc_client_id: str | None = None
-    oauth_oidc_client_secret: str | None = None
-    oauth_oidc_issuer_url: str | None = None
-    oauth_oidc_name: str = 'OIDC'  # Display name for generic OIDC
-
     # OAuth Behavior
-    oauth_auto_link_by_email: bool = (
-        False  # Auto-link OAuth to existing user by email
-    )
+    # Auto-link an incoming OAuth identity to an existing user when the
+    # email matches. Safe for verified-email IdPs (Google, GitHub, most
+    # OIDC). Disable for deployments that require an admin to manually
+    # link OAuth identities to local accounts.
+    oauth_auto_link_by_email: bool = True
     oauth_auto_create_users: bool = True
-    oauth_callback_base_url: str = (
-        'http://localhost:8000'  # Base URL for callbacks
-    )
-
-    # Local password authentication
-    local_auth_enabled: bool = True
 
 
 class Email(pydantic_settings.BaseSettings):
@@ -200,8 +197,9 @@ class Storage(pydantic_settings.BaseSettings):
     thumbnail_quality: int = 85
 
 
-# Module-level singleton for extended Auth settings
+# Module-level singletons for extended settings
 _auth_settings: Auth | None = None
+_server_config: ServerConfig | None = None
 
 
 def get_auth_settings() -> Auth:
@@ -218,6 +216,36 @@ def get_auth_settings() -> Auth:
     if _auth_settings is None:
         _auth_settings = Auth()
     return _auth_settings
+
+
+def get_server_config() -> ServerConfig:
+    """Get the singleton ServerConfig instance.
+
+    Prefers values from a config file (when discoverable) over a fresh
+    ``ServerConfig()`` so TOML overrides for ``[server]`` (notably the
+    public URL) win over env-only defaults. Falls back to a plain
+    ``ServerConfig()`` when no config file is found or it fails to
+    parse, preserving dev-loopback behavior.
+    """
+    global _server_config
+    if _server_config is None:
+        try:
+            _server_config = load_config().server
+        except (FileNotFoundError, OSError, ValueError, TypeError):
+            _server_config = ServerConfig()
+    return _server_config
+
+
+def oauth_callback_url(provider_slug: str) -> str:
+    """Build the public OAuth callback URL for a provider slug.
+
+    Appends the canonical ``/auth/oauth/{slug}/callback`` route to
+    ``IMBI_API_URL`` (or the local host:port fallback).
+    """
+    return (
+        f'{get_server_config().public_base_url}'
+        f'/auth/oauth/{provider_slug}/callback'
+    )
 
 
 class APIConfiguration(settings.Configuration):  # type: ignore[misc]
