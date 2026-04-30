@@ -53,8 +53,8 @@ class ServerConfig(pydantic_settings.BaseSettings):
     forwarded_allow_ips: str = ''
     # Path prefix prepended to every API route (e.g. '/api'). Empty
     # serves routes at the root. Applied to routing and to hypermedia
-    # link emission. The /uploads, /docs, and /openapi.json endpoints
-    # are always served at the root regardless of this value.
+    # link emission. The /docs and /openapi.json endpoints are always
+    # served at the root regardless of this value.
     api_prefix: str = ''
 
     @pydantic.field_validator('api_prefix')

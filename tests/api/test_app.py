@@ -42,7 +42,7 @@ class CreateAppTestCase(unittest.TestCase):
 class ApiPrefixTestCase(unittest.TestCase):
     """Test cases for the IMBI_API_API_PREFIX configuration."""
 
-    def test_prefix_applies_to_routes_but_not_uploads_or_docs(self) -> None:
+    def test_prefix_applies_to_routes_but_not_docs(self) -> None:
         with unittest.mock.patch.dict(
             os.environ, {'IMBI_API_API_PREFIX': '/api'}
         ):
@@ -50,8 +50,8 @@ class ApiPrefixTestCase(unittest.TestCase):
             paths = {route.path for route in application.routes}
         self.assertIn('/api/status', paths)
         self.assertNotIn('/status', paths)
-        self.assertIn('/uploads/', paths)
-        self.assertNotIn('/api/uploads/', paths)
+        self.assertIn('/api/uploads/', paths)
+        self.assertNotIn('/uploads/', paths)
         self.assertIn('/openapi.json', paths)
         self.assertIn('/docs', paths)
 

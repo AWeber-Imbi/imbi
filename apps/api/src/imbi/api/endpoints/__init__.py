@@ -28,12 +28,11 @@ prefixed_routers: list[fastapi.APIRouter] = [
     sa_api_keys_router,
     service_accounts_router,
     status_router,
+    uploads_router,
     users_router,
 ]
 
-unprefixed_routers: list[fastapi.APIRouter] = [
-    uploads_router,
-]
+unprefixed_routers: list[fastapi.APIRouter] = []
 
 routers: list[fastapi.APIRouter] = prefixed_routers + unprefixed_routers
 
