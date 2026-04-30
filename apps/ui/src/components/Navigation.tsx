@@ -23,6 +23,8 @@ import logoLight from '@/assets/logo-light.svg'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/hooks/useAuth'
+import { useIcon } from '@/lib/icons'
+import type { Organization } from '@/types'
 import { UserResponse } from '@/types'
 
 import { Button } from './ui/button'
@@ -158,15 +160,10 @@ export function Navigation({
                 size="sm"
                 variant="outline"
               >
-                {selectedOrganization.icon ? (
-                  <img
-                    alt=""
-                    className="h-4 w-4 flex-shrink-0 rounded object-cover"
-                    src={selectedOrganization.icon}
-                  />
-                ) : (
-                  <Building2 className="h-4 w-4 flex-shrink-0" />
-                )}
+                <OrgIcon
+                  className="h-4 w-4 flex-shrink-0 rounded object-cover"
+                  org={selectedOrganization}
+                />
                 <span className="truncate">{selectedOrganization.name}</span>
               </Button>
             ) : (
@@ -177,15 +174,10 @@ export function Navigation({
                     size="sm"
                     variant="outline"
                   >
-                    {selectedOrganization.icon ? (
-                      <img
-                        alt=""
-                        className="h-4 w-4 flex-shrink-0 rounded object-cover"
-                        src={selectedOrganization.icon}
-                      />
-                    ) : (
-                      <Building2 className="h-4 w-4 flex-shrink-0" />
-                    )}
+                    <OrgIcon
+                      className="h-4 w-4 flex-shrink-0 rounded object-cover"
+                      org={selectedOrganization}
+                    />
                     <span className="truncate">
                       {selectedOrganization.name}
                     </span>
@@ -204,15 +196,10 @@ export function Navigation({
                       onClick={() => setSelectedOrganization(org)}
                     >
                       <div className="flex items-center gap-2">
-                        {org.icon ? (
-                          <img
-                            alt=""
-                            className="h-4 w-4 flex-shrink-0 rounded object-cover"
-                            src={org.icon}
-                          />
-                        ) : (
-                          <Building2 className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                        )}
+                        <OrgIcon
+                          className="h-4 w-4 flex-shrink-0 rounded object-cover"
+                          org={org}
+                        />
                         <div className="flex flex-col">
                           <span>{org.name}</span>
                           <span className="text-xs text-muted-foreground">
@@ -314,4 +301,9 @@ export function Navigation({
       </div>
     </nav>
   )
+}
+
+function OrgIcon({ className, org }: { className: string; org: Organization }) {
+  const Icon = useIcon(org.icon ?? null, Building2)
+  return <Icon className={className} />
 }

@@ -44,16 +44,9 @@ export function ProjectTypeDetail({
         <CardHeader className="flex flex-row items-start justify-between space-y-0 border-b px-6 py-5">
           <div>
             <div className="flex items-center gap-3">
-              {projectType.icon &&
-                (projectType.icon.startsWith('/uploads/') ? (
-                  <img
-                    alt=""
-                    className="h-8 w-8 rounded object-cover"
-                    src={projectType.icon}
-                  />
-                ) : HeaderIcon ? (
-                  <HeaderIcon className="h-8 w-8" />
-                ) : null)}
+              {projectType.icon && HeaderIcon ? (
+                <HeaderIcon className="h-8 w-8" />
+              ) : null}
               <CardTitle>{projectType.name}</CardTitle>
             </div>
             {projectType.description && (

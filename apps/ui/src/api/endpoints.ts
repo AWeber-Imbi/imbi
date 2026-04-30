@@ -64,7 +64,7 @@ import type {
   WebhookCreate,
 } from '@/types'
 
-import { apiClient } from './client'
+import { apiClient, apiUrl } from './client'
 
 // Re-export for backward compatibility with modules that import from here.
 export type { PatchOperation }
@@ -1010,15 +1010,11 @@ export const uploadFile = (file: File): Promise<Upload> => {
   return apiClient.postFormData<Upload>('/uploads/', formData)
 }
 
-export const getUploadUrl = (id: string): string => {
-  const baseUrl = import.meta.env.VITE_API_URL || '/api'
-  return `${baseUrl}/uploads/${encodeURIComponent(id)}`
-}
+export const getUploadUrl = (id: string): string =>
+  apiUrl(`/uploads/${encodeURIComponent(id)}`)
 
-export const getUploadThumbnailUrl = (id: string): string => {
-  const baseUrl = import.meta.env.VITE_API_URL || '/api'
-  return `${baseUrl}/uploads/${encodeURIComponent(id)}/thumbnail`
-}
+export const getUploadThumbnailUrl = (id: string): string =>
+  apiUrl(`/uploads/${encodeURIComponent(id)}/thumbnail`)
 
 export const deleteUpload = (id: string) =>
   apiClient.delete<void>(`/uploads/${encodeURIComponent(id)}`)

@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react'
 
 import { ExternalLink } from 'lucide-react'
 
+import { apiUrl } from '@/api/client'
 import { iconRegistry } from '@/lib/icon-registry'
 import type { IconComponent } from '@/lib/icon-registry'
 import { createImgComponent } from '@/lib/icon-sets/utils'
@@ -132,11 +133,10 @@ export function getIcon(
   if (!iconName) return fb
 
   // Uploaded files or absolute URLs → render as <img>
-  if (
-    iconName.startsWith('/uploads/') ||
-    iconName.startsWith('http://') ||
-    iconName.startsWith('https://')
-  ) {
+  if (iconName.startsWith('/uploads/')) {
+    return createImgComponent(apiUrl(iconName))
+  }
+  if (iconName.startsWith('http://') || iconName.startsWith('https://')) {
     return createImgComponent(iconName)
   }
 
@@ -222,8 +222,7 @@ export function useIconUrl(
 
 function computeIconUrl(iconName: string, color?: string): null | string {
   if (iconName.startsWith('/uploads/')) {
-    const baseUrl = import.meta.env.VITE_API_URL || '/api'
-    return `${baseUrl}${iconName}`
+    return apiUrl(iconName)
   }
   if (iconName.startsWith('http://') || iconName.startsWith('https://')) {
     return iconName

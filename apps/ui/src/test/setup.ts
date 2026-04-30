@@ -2,6 +2,10 @@ import '@testing-library/jest-dom'
 import { cleanup } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
 
+// VITE_API_URL is required by src/api/client.ts at module load. Stub a value
+// for tests so the fail-fast guard does not abort suite initialization.
+vi.stubEnv('VITE_API_URL', 'http://localhost:8000')
+
 afterEach(() => {
   cleanup()
 })
