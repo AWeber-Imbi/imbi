@@ -23,6 +23,7 @@ import { Settings } from 'lucide-react'
 import { getProjects } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useRecentDeployments } from '@/hooks/useRecentDeployments'
 
 import { MyPullRequestsWidget } from './dashboard/widgets/MyPullRequestsWidget'
 import { OutdatedComponentsWidget } from './dashboard/widgets/OutdatedComponentsWidget'
@@ -198,6 +199,20 @@ export function Dashboard({
     ? new Set(projects.map((p) => p.team.slug)).size
     : 0
 
+  const {
+    data: recentDeployments,
+    isError: isDeploymentsError,
+    isLoading: isDeploymentsLoading,
+  } = useRecentDeployments(orgSlug, 50)
+  // TODO(active-count): This counts active deployments within the latest
+  // 50 operations-log entries — it undercounts when more than 50 active
+  // deployments exist. Replace with a dedicated server-side count endpoint
+  // (e.g. GET /operations-log/count?action=deployed&completed_at=null) once
+  // imbi-api exposes one. Adding that endpoint is out of scope for this PR.
+  const activeDeploymentCount = (recentDeployments ?? []).filter(
+    (d) => d.completed_at == null,
+  ).length
+
   // Persist selections
   useEffect(() => {
     localStorage.setItem(WIDGET_STORAGE_KEY, JSON.stringify(selectedWidgets))
@@ -245,7 +260,13 @@ export function Dashboard({
       <RecentDeploymentsWidget onProjectSelect={onProjectSelect} />
     ),
     'stat-active-deployments': () => (
-      <StatWidget icon="🚀" title="Active Deployments" value="1,429" />
+      <StatWidget
+        icon="🚀"
+        isError={isDeploymentsError}
+        isLoading={isDeploymentsLoading}
+        title="Active Deployments"
+        value={activeDeploymentCount.toLocaleString()}
+      />
     ),
     'stat-teams': () => (
       <StatWidget icon="👥" title="Teams" value={teamCount.toLocaleString()} />
