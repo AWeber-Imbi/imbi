@@ -361,7 +361,9 @@ async def patch_webhook(
         'third_party_service_slug': (
             existing_tps.get('slug') if existing_tps else None
         ),
-        'identifier_selector': existing[0].get('identifier_selector'),
+        'identifier_selector': graph.parse_agtype(
+            existing[0].get('identifier_selector')
+        ),
         'rules': [
             {
                 'filter_expression': r['filter_expression'],
