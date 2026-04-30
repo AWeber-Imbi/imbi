@@ -18,7 +18,16 @@ export const queryClient = new QueryClient({
   },
 })
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+// Cache the root on the container so Vite HMR re-evaluating this module
+// doesn't call createRoot() twice on the same node, which produces a
+// React warning and a cascade of removeChild errors during dev reloads.
+const container = document.getElementById('root')!
+type ContainerWithRoot = HTMLElement & { __reactRoot?: ReactDOM.Root }
+const node = container as ContainerWithRoot
+const root = node.__reactRoot ?? ReactDOM.createRoot(node)
+node.__reactRoot = root
+
+root.render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>

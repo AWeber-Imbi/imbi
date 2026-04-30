@@ -1,6 +1,8 @@
+import { useEffect } from 'react'
+
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { ArrowLeft, Bell, Book, Key, Link2, Shield, User } from 'lucide-react'
+import { ArrowLeft, Bell, Key, Link2, Shield, User } from 'lucide-react'
 
 import { SettingsAccount } from './settings/SettingsAccount'
 import { SettingsApiKeys } from './settings/SettingsApiKeys'
@@ -15,7 +17,6 @@ type SettingsTab =
   | 'api-keys'
   | 'integrations'
   | 'notifications'
-  | 'project-types'
   | 'security'
 
 const tabs: { icon: typeof User; id: SettingsTab; label: string }[] = [
@@ -24,13 +25,21 @@ const tabs: { icon: typeof User; id: SettingsTab; label: string }[] = [
   { icon: Bell, id: 'notifications', label: 'Notifications' },
   { icon: Key, id: 'api-keys', label: 'API Keys' },
   { icon: Shield, id: 'security', label: 'Security' },
-  { icon: Book, id: 'project-types', label: 'Project Types' },
 ]
+
+const isSettingsTab = (value: string): value is SettingsTab =>
+  tabs.some((t) => t.id === value)
 
 export function Settings() {
   const navigate = useNavigate()
   const { tab } = useParams<{ tab?: string }>()
-  const activeTab: SettingsTab = (tab as SettingsTab) || 'account'
+  const activeTab: SettingsTab = tab && isSettingsTab(tab) ? tab : 'account'
+
+  useEffect(() => {
+    if (tab && !isSettingsTab(tab)) {
+      navigate('/settings/account', { replace: true })
+    }
+  }, [tab, navigate])
 
   const handleTabChange = (tabId: SettingsTab) => {
     navigate(`/settings/${tabId}`, { replace: true })
@@ -89,13 +98,6 @@ export function Settings() {
           {activeTab === 'notifications' && <SettingsNotifications />}
           {activeTab === 'api-keys' && <SettingsApiKeys />}
           {activeTab === 'security' && <SettingsSecurity />}
-          {activeTab === 'project-types' && (
-            <Card className="p-8" style={{ borderWidth: '0.5px' }}>
-              <p className="text-[13.5px] text-tertiary">
-                Project type definitions will be available here.
-              </p>
-            </Card>
-          )}
         </div>
       </div>
     </div>
