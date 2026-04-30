@@ -4405,6 +4405,8 @@ export interface components {
             app_type: string;
             /** Application Url */
             application_url?: string | null;
+            /** Callback Url */
+            callback_url?: string | null;
             /** Client Id */
             client_id: string;
             /** Client Secret */
@@ -4443,6 +4445,8 @@ export interface components {
             app_type: string;
             /** Application Url */
             application_url?: string | null;
+            /** Callback Url */
+            callback_url?: string | null;
             /** Client Id */
             client_id: string;
             /**
@@ -4506,6 +4510,8 @@ export interface components {
             app_type: string;
             /** Application Url */
             application_url?: string | null;
+            /** Callback Url */
+            callback_url?: string | null;
             /** Client Id */
             client_id: string;
             /** Scopes */
@@ -4582,6 +4588,16 @@ export interface components {
             icon?: string | null;
             /** Service Url */
             service_url?: string | null;
+            /** Api Endpoint */
+            api_endpoint?: string | null;
+            /** Authorization Endpoint */
+            authorization_endpoint?: string | null;
+            /** Token Endpoint */
+            token_endpoint?: string | null;
+            /** Revoke Endpoint */
+            revoke_endpoint?: string | null;
+            /** Use Pkce */
+            use_pkce?: boolean | null;
             /** Category */
             category?: string | null;
             /**
@@ -4616,6 +4632,16 @@ export interface components {
             icon?: string | null;
             /** Service Url */
             service_url?: string | null;
+            /** Api Endpoint */
+            api_endpoint?: string | null;
+            /** Authorization Endpoint */
+            authorization_endpoint?: string | null;
+            /** Token Endpoint */
+            token_endpoint?: string | null;
+            /** Revoke Endpoint */
+            revoke_endpoint?: string | null;
+            /** Use Pkce */
+            use_pkce?: boolean | null;
             /** Category */
             category?: string | null;
             /**
@@ -4671,6 +4697,16 @@ export interface components {
             icon?: string | null;
             /** Service Url */
             service_url?: string | null;
+            /** Api Endpoint */
+            api_endpoint?: string | null;
+            /** Authorization Endpoint */
+            authorization_endpoint?: string | null;
+            /** Token Endpoint */
+            token_endpoint?: string | null;
+            /** Revoke Endpoint */
+            revoke_endpoint?: string | null;
+            /** Use Pkce */
+            use_pkce?: boolean | null;
             /** Category */
             category?: string | null;
             /**
