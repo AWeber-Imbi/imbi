@@ -406,8 +406,6 @@ class WebhookCreateModelTestCase(unittest.TestCase):
     ) -> dict[str, object]:
         defaults: dict[str, object] = {
             'name': 'GitHub Events',
-            'slug': 'github-events',
-            'notification_path': '/webhooks/github',
         }
         defaults.update(overrides)
         return defaults
@@ -416,32 +414,9 @@ class WebhookCreateModelTestCase(unittest.TestCase):
         obj = domain_models.WebhookCreate.model_validate(
             self._valid_payload(),
         )
-        self.assertEqual(obj.slug, 'github-events')
         self.assertIsNone(obj.secret)
         self.assertEqual(obj.rules, [])
         self.assertIsNone(obj.third_party_service_slug)
-
-    def test_slug_pattern_rejects_uppercase(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            domain_models.WebhookCreate.model_validate(
-                self._valid_payload(slug='Bad-Slug'),
-            )
-
-    def test_slug_too_short(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            domain_models.WebhookCreate.model_validate(
-                self._valid_payload(slug='x'),
-            )
-
-    def test_notification_path_must_start_with_slash(
-        self,
-    ) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            domain_models.WebhookCreate.model_validate(
-                self._valid_payload(
-                    notification_path='no-slash',
-                ),
-            )
 
     def test_identifier_selector_requires_tps(self) -> None:
         with self.assertRaises(pydantic.ValidationError):
@@ -607,6 +582,7 @@ class WebhookResponseFromGraphRecordTestCase(unittest.TestCase):
     ) -> dict[str, object]:
         record: dict[str, object] = {
             'webhook': {
+                'id': 'wh_test0001',
                 'name': 'Test Webhook',
                 'slug': 'test-webhook',
                 'notification_path': '/webhooks/test',

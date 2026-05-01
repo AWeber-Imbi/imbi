@@ -813,21 +813,14 @@ class WebhookRuleCreate(pydantic.BaseModel):
 
 
 class WebhookCreate(pydantic.BaseModel):
-    """Request model for creating a webhook."""
+    """Request model for creating a webhook.
+
+    The slug, id, and notification_path are system-generated.
+    """
 
     name: str = pydantic.Field(min_length=1, max_length=128)
-    slug: str = pydantic.Field(
-        pattern=r'^[a-z][a-z0-9-]*$',
-        min_length=2,
-        max_length=64,
-    )
     description: str | None = None
     icon: str | None = None
-    notification_path: str = pydantic.Field(
-        min_length=1,
-        pattern=r'^/',
-        description='URL path for receiving webhooks (must start with /)',
-    )
     secret: str | None = None
     third_party_service_slug: str | None = None
     identifier_selector: str | None = pydantic.Field(
@@ -849,7 +842,12 @@ class WebhookCreate(pydantic.BaseModel):
 
 
 class WebhookUpdate(pydantic.BaseModel):
-    """Request model for updating a webhook (GET-modify-PUT)."""
+    """Patchable fields for a webhook (JSON Patch target document).
+
+    The slug is editable. The id and notification_path are
+    system-managed and rejected at the endpoint level if a patch
+    operation targets them.
+    """
 
     name: str = pydantic.Field(min_length=1, max_length=128)
     slug: str = pydantic.Field(
@@ -859,10 +857,6 @@ class WebhookUpdate(pydantic.BaseModel):
     )
     description: str | None = None
     icon: str | None = None
-    notification_path: str = pydantic.Field(
-        min_length=1,
-        pattern=r'^/',
-    )
     secret: str | None = None
     third_party_service_slug: str | None = None
     identifier_selector: str | None = pydantic.Field(
@@ -898,6 +892,7 @@ class WebhookResponse(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(extra='allow')
 
+    id: str
     name: str
     slug: str
     description: str | None = None
@@ -940,6 +935,7 @@ class WebhookResponse(pydantic.BaseModel):
             tps = graph.parse_agtype(tps)
 
         return cls(
+            id=webhook['id'],
             name=webhook['name'],
             slug=webhook['slug'],
             description=webhook.get('description'),

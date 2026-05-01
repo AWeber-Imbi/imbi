@@ -521,6 +521,7 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
     def test_list_service_webhooks(self) -> None:
         record = {
             'webhook': {
+                'id': 'wh_test001',
                 'name': 'GitHub PR Events',
                 'slug': 'gh-pr-events',
                 'description': 'PR webhooks',
@@ -579,6 +580,7 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
         records = [
             {
                 'webhook': {
+                    'id': 'wh_first001',
                     'name': 'First',
                     'slug': 'first',
                     'notification_path': '/webhooks/first',
@@ -592,6 +594,7 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
             },
             {
                 'webhook': {
+                    'id': 'wh_second01',
                     'name': 'Second',
                     'slug': 'second',
                     'notification_path': '/webhooks/second',
@@ -621,6 +624,7 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
     def test_list_service_webhooks_with_rules(self) -> None:
         record = {
             'webhook': {
+                'id': 'wh_rules001',
                 'name': 'GitHub Events',
                 'slug': 'gh-events',
                 'notification_path': '/webhooks/gh',
@@ -670,6 +674,7 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
     ) -> None:
         record = {
             'webhook': {
+                'id': 'wh_null001',
                 'name': 'GitHub Events',
                 'slug': 'gh-events',
                 'notification_path': '/webhooks/gh',
@@ -697,6 +702,7 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
     ) -> None:
         record = {
             'webhook': {
+                'id': 'wh_malform1',
                 'name': 'GitHub Events',
                 'slug': 'gh-events',
                 'notification_path': '/webhooks/gh',
@@ -731,6 +737,7 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
     def test_list_service_webhooks_without_tps(self) -> None:
         record = {
             'webhook': {
+                'id': 'wh_notps001',
                 'name': 'GitHub Events',
                 'slug': 'gh-events',
                 'notification_path': '/webhooks/gh',

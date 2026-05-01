@@ -2,9 +2,11 @@
 
 import json
 import logging
+import re
 import typing
 
 import fastapi
+import nanoid
 import psycopg
 import pydantic
 from imbi_common import graph
@@ -16,6 +18,83 @@ from imbi_api.domain import models
 from imbi_api.graph_sql import props_template, set_clause
 
 LOGGER = logging.getLogger(__name__)
+
+_READ_ONLY_PATHS = frozenset({'/notification_path', '/id'})
+
+
+def _slugify(value: str) -> str:
+    """Convert a string to a valid webhook slug fragment."""
+    value = value.lower()
+    value = re.sub(r'[^a-z0-9]+', '-', value)
+    value = value.strip('-')
+    if not value:
+        return 'hook'
+    if len(value) < 2:
+        return value + '0'
+    return value
+
+
+def _generate_id() -> str:
+    """Generate a nanoid surrogate key for a webhook."""
+    return str(nanoid.generate())
+
+
+def _compute_webhook_slug(
+    service_slug: str | None,
+    name: str,
+) -> str:
+    """Compute the system-generated slug from service slug and name."""
+    name_part = _slugify(name)
+    if service_slug:
+        combined = f'{service_slug}-{name_part}'
+        return combined[:64]
+    return name_part[:64]
+
+
+async def _check_identifier_collision(
+    db: graph.Graph,
+    org_slug: str,
+    *,
+    slug: str,
+    webhook_id: str | None = None,
+    exclude_id: str | None = None,
+) -> None:
+    """Raise 409 if slug or id would collide with the other identifier type.
+
+    Checks that no webhook in the org has ``id = slug`` (a slug that
+    matches an existing surrogate key) or ``slug = webhook_id`` (an id
+    that matches an existing human-readable slug).  ``exclude_id`` skips
+    the webhook with that id so a PATCH on the current webhook doesn't
+    flag itself.
+    """
+    conditions: list[str] = ['w.id = {chk_slug}']
+    params: dict[str, str] = {'org_slug': org_slug, 'chk_slug': slug}
+    if webhook_id is not None:
+        conditions.append('w.slug = {chk_id}')
+        params['chk_id'] = webhook_id
+    condition_expr = ' OR '.join(conditions)
+
+    exclude_clause = ''
+    if exclude_id is not None:
+        exclude_clause = ' AND w.id <> {exclude_id}'
+        params['exclude_id'] = exclude_id
+
+    query = (
+        'MATCH (w:Webhook)-[:BELONGS_TO]->'
+        '(o:Organization {{slug: {org_slug}}})'
+        f' WHERE ({condition_expr}){exclude_clause}'
+        ' RETURN count(w) AS n'
+    )
+    rows = await db.execute(query, params, ['n'])
+    count = graph.parse_agtype(rows[0].get('n', 0)) if rows else 0
+    if count:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                'The webhook slug and id must not collide with any existing '
+                "webhook's id or slug in this organization."
+            ),
+        )
 
 
 def _rules_create_clauses(
@@ -50,8 +129,8 @@ def _rules_create_clauses(
 
 
 _FETCH_WEBHOOK_QUERY: typing.LiteralString = """
-MATCH (w:Webhook {{slug: {slug}}})
-      -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+MATCH (w:Webhook)-[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+WHERE w.slug = {identifier} OR w.id = {identifier}
 OPTIONAL MATCH (w)-[impl:IMPLEMENTED_BY]->(tps:ThirdPartyService)
 OPTIONAL MATCH (r:WebhookRule)-[:ACTIONS]->(w)
 WITH w, tps, impl, r
@@ -104,6 +183,16 @@ _UPDATE_RETURN_TAIL_NO_TPS: typing.LiteralString = (
 )
 
 
+def _parse_json_rules(raw: typing.Any) -> list[typing.Any]:
+    """Parse rules from a graph record; handles str (JSON) or list."""
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)  # type: ignore[no-any-return]
+        except (json.JSONDecodeError, TypeError):
+            return []
+    return list(raw) if raw else []
+
+
 webhooks_router = fastapi.APIRouter(tags=['Webhooks'])
 
 
@@ -119,22 +208,35 @@ async def create_webhook(
         ),
     ],
 ) -> models.WebhookResponse:
-    """Create a new webhook linked to an organization."""
+    """Create a new webhook linked to an organization.
+
+    The slug, id, and notification_path are system-generated:
+    - slug: ``{service_slug}-{slugified_name}`` or just the slugified name
+    - id: nanoid (21-char URL-safe string, stable surrogate key)
+    - notification_path: ``/{id}``
+    """
     encryptor = encryption.TokenEncryption.get_instance()
 
+    webhook_id = _generate_id()
+    slug = _compute_webhook_slug(data.third_party_service_slug, data.name)
+    await _check_identifier_collision(
+        db, org_slug, slug=slug, webhook_id=webhook_id
+    )
+    notification_path = f'/{webhook_id}'
+
     props: dict[str, typing.Any] = {
+        'id': webhook_id,
         'name': data.name,
-        'slug': data.slug,
+        'slug': slug,
         'description': data.description,
         'icon': data.icon,
-        'notification_path': data.notification_path,
+        'notification_path': notification_path,
         'secret': (
             encryptor.encrypt(data.secret) if data.secret is not None else None
         ),
     }
     create_tpl = props_template(props)
 
-    # Build rule creation params as scalars
     rule_dicts: list[dict[str, str | int]] = []
     for idx, rule in enumerate(data.rules):
         rule_dicts.append(
@@ -164,7 +266,7 @@ async def create_webhook(
             ' CREATE (w)-[:IMPLEMENTED_BY'
             ' {{identifier_selector: {identifier_selector}}}]->(tps)'
             + rule_clauses
-            + ' RETURN w.slug AS slug'
+            + ' RETURN w.id AS id'
         )
         write_params: dict[str, typing.Any] = {
             **base_params,
@@ -177,7 +279,7 @@ async def create_webhook(
             f' CREATE (w:Webhook {create_tpl})'
             ' CREATE (w)-[:BELONGS_TO]->(o)'
             + rule_clauses
-            + ' RETURN w.slug AS slug'
+            + ' RETURN w.id AS id'
         )
         write_params = base_params
 
@@ -185,15 +287,14 @@ async def create_webhook(
         write_records = await db.execute(
             write_query,
             write_params,
-            ['slug'],
+            ['id'],
         )
     except psycopg.errors.UniqueViolation as e:
         raise fastapi.HTTPException(
             status_code=409,
             detail=(
-                f'Webhook with slug {data.slug!r} '
-                f'or notification_path '
-                f'{data.notification_path!r} already exists'
+                f'A webhook with slug {slug!r} already exists. '
+                f'Choose a different name or rename the existing webhook.'
             ),
         ) from e
 
@@ -213,7 +314,7 @@ async def create_webhook(
 
     records = await db.execute(
         _FETCH_WEBHOOK_QUERY,
-        {'slug': data.slug, 'org_slug': org_slug},
+        {'identifier': webhook_id, 'org_slug': org_slug},
         ['webhook', 'tps', 'identifier_selector', 'rules'],
     )
     return models.WebhookResponse.from_graph_record(records[0])
@@ -262,10 +363,10 @@ async def list_webhooks(
     return [models.WebhookResponse.from_graph_record(r) for r in records]
 
 
-@webhooks_router.get('/{slug}')
+@webhooks_router.get('/{webhook}')
 async def get_webhook(
     org_slug: str,
-    slug: str,
+    webhook: str,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -274,47 +375,25 @@ async def get_webhook(
         ),
     ],
 ) -> models.WebhookResponse:
-    """Get a webhook by slug."""
-    query: typing.LiteralString = """
-    MATCH (w:Webhook {{slug: {slug}}})
-          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    OPTIONAL MATCH (w)-[impl:IMPLEMENTED_BY]->
-                   (tps:ThirdPartyService)
-    OPTIONAL MATCH (r:WebhookRule)-[:ACTIONS]->(w)
-    WITH w, tps, impl, r
-    ORDER BY r.ordinal
-    WITH w, tps, impl,
-         collect(CASE WHEN r IS NOT NULL
-                 THEN r{{.filter_expression, .handler,
-                        .handler_config, .ordinal}}
-                 END)
-            AS all_rules
-    RETURN w{{.*}} AS webhook,
-           tps{{.*}} AS tps,
-           impl.identifier_selector AS identifier_selector,
-           [x IN all_rules
-            | x {{.filter_expression, .handler,
-                  .handler_config}}]
-               AS rules
-    """
+    """Get a webhook by slug or id."""
     records = await db.execute(
-        query,
-        {'slug': slug, 'org_slug': org_slug},
+        _FETCH_WEBHOOK_QUERY,
+        {'identifier': webhook, 'org_slug': org_slug},
         ['webhook', 'tps', 'identifier_selector', 'rules'],
     )
 
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
-            detail=f'Webhook with slug {slug!r} not found',
+            detail=f'Webhook {webhook!r} not found',
         )
     return models.WebhookResponse.from_graph_record(records[0])
 
 
-@webhooks_router.patch('/{slug}')
+@webhooks_router.patch('/{webhook}')
 async def patch_webhook(
     org_slug: str,
-    slug: str,
+    webhook: str,
     operations: list[json_patch.PatchOperation],
     db: graph.Pool,
     auth: typing.Annotated[
@@ -324,28 +403,37 @@ async def patch_webhook(
         ),
     ],
 ) -> models.WebhookResponse:
-    """Partially update a webhook using JSON Patch (RFC 6902)."""
+    """Partially update a webhook using JSON Patch (RFC 6902).
+
+    The ``id`` and ``notification_path`` fields are read-only;
+    patch operations targeting them are rejected with 400.
+
+    When ``third_party_service_slug`` is changed and ``slug`` is not
+    explicitly set in the same patch, the slug is auto-regenerated
+    from the new service slug and webhook name.
+    """
+    for op in operations:
+        if op.path in _READ_ONLY_PATHS:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=f'{op.path!r} is read-only and cannot be modified',
+            )
+
     existing = await db.execute(
         _FETCH_WEBHOOK_QUERY,
-        {'slug': slug, 'org_slug': org_slug},
+        {'identifier': webhook, 'org_slug': org_slug},
         ['webhook', 'tps', 'identifier_selector', 'rules'],
     )
 
     if not existing:
         raise fastapi.HTTPException(
             status_code=404,
-            detail=f'Webhook with slug {slug!r} not found',
+            detail=f'Webhook {webhook!r} not found',
         )
 
     existing_webhook = graph.parse_agtype(existing[0]['webhook'])
 
-    # Build the patchable document (never expose encrypted secret)
-    raw_rules: list[typing.Any] = existing[0].get('rules') or []
-    if isinstance(raw_rules, str):
-        try:
-            raw_rules = json.loads(raw_rules)
-        except (json.JSONDecodeError, TypeError):
-            raw_rules = []
+    raw_rules = _parse_json_rules(existing[0].get('rules'))
 
     existing_tps = existing[0].get('tps')
     if existing_tps:
@@ -356,7 +444,6 @@ async def patch_webhook(
         'slug': existing_webhook.get('slug'),
         'description': existing_webhook.get('description'),
         'icon': existing_webhook.get('icon'),
-        'notification_path': existing_webhook.get('notification_path'),
         'secret': None,
         'third_party_service_slug': (
             existing_tps.get('slug') if existing_tps else None
@@ -379,19 +466,35 @@ async def patch_webhook(
         ],
     }
 
+    op_paths = {op.path for op in operations}
+    service_changed = '/third_party_service_slug' in op_paths
+    slug_explicitly_set = '/slug' in op_paths
+
     patched = json_patch.apply_patch(patchable, operations)
 
-    # Secret handling: preserve encrypted secret if not in patch
+    if service_changed and not slug_explicitly_set:
+        patched['slug'] = _compute_webhook_slug(
+            patched.get('third_party_service_slug'),
+            patched['name'],
+        )
+
+    new_slug: str = patched['slug']
+    if new_slug != existing_webhook.get('slug'):
+        await _check_identifier_collision(
+            db,
+            org_slug,
+            slug=new_slug,
+            exclude_id=existing_webhook.get('id', ''),
+        )
+
     encryptor = encryption.TokenEncryption.get_instance()
-    secret_paths = {op.path for op in operations}
-    if '/secret' not in secret_paths:
+    if '/secret' not in op_paths:
         encrypted_secret: str | None = existing_webhook.get('secret')
     elif patched.get('secret') is None:
         encrypted_secret = None
     else:
         encrypted_secret = encryptor.encrypt(patched['secret'])
 
-    # Validate patched data against WebhookUpdate model
     try:
         data = models.WebhookUpdate.model_validate(patched)
     except pydantic.ValidationError as exc:
@@ -405,7 +508,6 @@ async def patch_webhook(
         'slug': data.slug,
         'description': data.description,
         'icon': data.icon,
-        'notification_path': data.notification_path,
         'secret': encrypted_secret,
     }
     set_stmt = set_clause('w', props)
@@ -424,9 +526,12 @@ async def patch_webhook(
         )
     rule_clauses, rules_params = _rules_create_clauses(rule_dicts)
 
+    # Use id as the stable lookup key for the write query
+    existing_webhook_id: str = existing_webhook.get('id', '')
+
     if data.third_party_service_slug:
         write_query: str = (
-            'MATCH (w:Webhook {{slug: {old_slug}}})'
+            'MATCH (w:Webhook {{id: {webhook_id}}})'
             ' -[:BELONGS_TO]->(o:Organization'
             ' {{slug: {org_slug}}})'
             ' MATCH (tps:ThirdPartyService'
@@ -442,12 +547,10 @@ async def patch_webhook(
             f' {set_stmt}'
             ' CREATE (w)-[impl:IMPLEMENTED_BY]->(tps)'
             ' SET impl.identifier_selector'
-            ' = {identifier_selector}'
-            + rule_clauses
-            + ' RETURN w.slug AS slug'
+            ' = {identifier_selector}' + rule_clauses + ' RETURN w.id AS id'
         )
         params: dict[str, typing.Any] = {
-            'old_slug': slug,
+            'webhook_id': existing_webhook_id,
             'org_slug': org_slug,
             'tps_slug': data.third_party_service_slug,
             **props,
@@ -456,7 +559,7 @@ async def patch_webhook(
         }
     else:
         write_query = (
-            'MATCH (w:Webhook {{slug: {old_slug}}})'
+            'MATCH (w:Webhook {{id: {webhook_id}}})'
             ' -[:BELONGS_TO]->(o:Organization'
             ' {{slug: {org_slug}}})'
             ' OPTIONAL MATCH'
@@ -467,10 +570,10 @@ async def patch_webhook(
             ' (w)-[old_impl:IMPLEMENTED_BY]->()'
             ' DELETE old_impl'
             ' WITH DISTINCT w'
-            f' {set_stmt}' + rule_clauses + ' RETURN w.slug AS slug'
+            f' {set_stmt}' + rule_clauses + ' RETURN w.id AS id'
         )
         params = {
-            'old_slug': slug,
+            'webhook_id': existing_webhook_id,
             'org_slug': org_slug,
             **props,
             **rules_params,
@@ -480,36 +583,32 @@ async def patch_webhook(
         write_records = await db.execute(
             write_query,
             params,
-            ['slug'],
+            ['id'],
         )
     except psycopg.errors.UniqueViolation as e:
         raise fastapi.HTTPException(
             status_code=409,
-            detail=(
-                f'Webhook with slug {data.slug!r} '
-                f'or notification_path '
-                f'{data.notification_path!r} already exists'
-            ),
+            detail=(f'A webhook with slug {data.slug!r} already exists.'),
         ) from e
 
     if not write_records:
         raise fastapi.HTTPException(
             status_code=404,
-            detail=f'Webhook with slug {slug!r} not found',
+            detail=f'Webhook {webhook!r} not found',
         )
 
     records = await db.execute(
         _FETCH_WEBHOOK_QUERY,
-        {'slug': data.slug, 'org_slug': org_slug},
+        {'identifier': existing_webhook_id, 'org_slug': org_slug},
         ['webhook', 'tps', 'identifier_selector', 'rules'],
     )
     return models.WebhookResponse.from_graph_record(records[0])
 
 
-@webhooks_router.delete('/{slug}', status_code=204)
+@webhooks_router.delete('/{webhook}', status_code=204)
 async def delete_webhook(
     org_slug: str,
-    slug: str,
+    webhook: str,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -520,15 +619,15 @@ async def delete_webhook(
 ) -> None:
     """Delete a webhook and its rules."""
     query: typing.LiteralString = """
-    MATCH (w:Webhook {{slug: {slug}}})
-          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    MATCH (w:Webhook)-[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    WHERE w.slug = {identifier} OR w.id = {identifier}
     OPTIONAL MATCH (r:WebhookRule)-[:ACTIONS]->(w)
     DETACH DELETE r, w
     RETURN count(w) AS deleted
     """
     records = await db.execute(
         query,
-        {'slug': slug, 'org_slug': org_slug},
+        {'identifier': webhook, 'org_slug': org_slug},
         ['deleted'],
     )
 
@@ -536,7 +635,7 @@ async def delete_webhook(
     if not records or deleted == 0:
         raise fastapi.HTTPException(
             status_code=404,
-            detail=f'Webhook with slug {slug!r} not found',
+            detail=f'Webhook {webhook!r} not found',
         )
 
 

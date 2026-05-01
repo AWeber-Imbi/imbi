@@ -15,6 +15,7 @@ from imbi_api import app, models
 
 
 class _WebhookDetails(typing.TypedDict):
+    id: str
     name: str
     slug: str
     description: typing.NotRequired[str]
@@ -82,11 +83,12 @@ class WebhookEndpointsTestCase(unittest.TestCase):
 
         self.webhook_record: _WebhookRecord = {
             'webhook': {
+                'id': 'abc123def4',
                 'name': 'GitHub Events',
                 'slug': 'github-events',
                 'description': 'Receives GitHub webhooks',
                 'icon': None,
-                'notification_path': '/webhooks/github',
+                'notification_path': '/abc123def4',
                 'secret': 'enc:my-secret',
             },
             'tps': None,
@@ -94,11 +96,9 @@ class WebhookEndpointsTestCase(unittest.TestCase):
             'rules': [],
         }
 
-        self.webhook_create_json: _WebhookDetails = {
+        # Create payload no longer includes slug or notification_path
+        self.webhook_create_json: dict[str, object] = {
             'name': 'GitHub Events',
-            'slug': 'github-events',
-            'notification_path': '/webhooks/github',
-            'secret': 'my-secret',
         }
 
         self.mock_encryptor = mock.MagicMock()
@@ -133,10 +133,69 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         data = response.json()
         self.assertEqual(data['slug'], 'github-events')
         self.assertEqual(data['name'], 'GitHub Events')
-        self.assertEqual(
-            data['notification_path'],
-            '/webhooks/github',
-        )
+        self.assertEqual(data['id'], 'abc123def4')
+        self.assertEqual(data['notification_path'], '/abc123def4')
+
+    def test_create_slug_auto_generated_from_name(self) -> None:
+        """Slug is derived from the webhook name, not provided by caller."""
+        record = copy.deepcopy(self.webhook_record)
+        record['webhook']['slug'] = 'github-push-events'
+        record['webhook']['name'] = 'GitHub Push Events'
+
+        self.mock_db.execute.return_value = [record]
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.webhooks._generate_id',
+                return_value='abc123def4',
+            ),
+            mock.patch(
+                'imbi_api.endpoints.webhooks._compute_webhook_slug',
+                return_value='github-push-events',
+            ),
+        ):
+            response = self.client.post(
+                '/organizations/engineering/webhooks/',
+                json={'name': 'GitHub Push Events'},
+            )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data['slug'], 'github-push-events')
+
+    def test_create_with_service_slug_is_prefixed(self) -> None:
+        """Slug is prefixed with the service slug when a service is linked."""
+        record = copy.deepcopy(self.webhook_record)
+        record['webhook']['slug'] = 'github-events'
+        record['tps'] = {'name': 'GitHub', 'slug': 'github'}
+        record['identifier_selector'] = '$.repository.full_name'
+
+        self.mock_db.execute.return_value = [record]
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            payload = {
+                'name': 'Events',
+                'third_party_service_slug': 'github',
+                'identifier_selector': '$.repository.full_name',
+            }
+            response = self.client.post(
+                '/organizations/engineering/webhooks/',
+                json=payload,
+            )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertIsNotNone(data['third_party_service'])
+        self.assertEqual(data['third_party_service']['slug'], 'github')
 
     def test_create_with_rules(self) -> None:
         record = copy.deepcopy(self.webhook_record)
@@ -172,46 +231,17 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(len(data['rules']), 1)
-        self.assertEqual(
-            data['rules'][0]['handler'],
-            'my.handler',
-        )
+        self.assertEqual(data['rules'][0]['handler'], 'my.handler')
 
-    def test_create_with_third_party_service(self) -> None:
-        record = copy.deepcopy(self.webhook_record)
-        record['tps'] = {
-            'name': 'GitHub',
-            'slug': 'github',
-        }
-        record['identifier_selector'] = '$.repository.full_name'
-
-        self.mock_db.execute.return_value = [record]
+    def test_create_slug_collision_returns_409(self) -> None:
+        self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation()
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
+                'imbi_api.endpoints.webhooks._check_identifier_collision',
+                new=mock.AsyncMock(),
             ),
         ):
-            payload = dict(self.webhook_create_json)
-            payload['third_party_service_slug'] = 'github'
-            payload['identifier_selector'] = '$.repository.full_name'
-            response = self.client.post(
-                '/organizations/engineering/webhooks/',
-                json=payload,
-            )
-
-        self.assertEqual(response.status_code, 201)
-        data = response.json()
-        self.assertIsNotNone(data['third_party_service'])
-        self.assertEqual(
-            data['third_party_service']['slug'],
-            'github',
-        )
-
-    def test_create_duplicate_slug(self) -> None:
-        self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation()
-        with self._patch_encryption():
             response = self.client.post(
                 '/organizations/engineering/webhooks/',
                 json=self.webhook_create_json,
@@ -262,41 +292,16 @@ class WebhookEndpointsTestCase(unittest.TestCase):
     def test_create_missing_name(self) -> None:
         response = self.client.post(
             '/organizations/engineering/webhooks/',
-            json={
-                'slug': 'test',
-                'notification_path': '/test',
-            },
+            json={},
         )
         self.assertEqual(response.status_code, 422)
 
-    def test_create_missing_slug(self) -> None:
+    def test_create_identifier_selector_without_service(self) -> None:
         response = self.client.post(
             '/organizations/engineering/webhooks/',
             json={
                 'name': 'Test',
-                'notification_path': '/test',
-            },
-        )
-        self.assertEqual(response.status_code, 422)
-
-    def test_create_invalid_notification_path(self) -> None:
-        response = self.client.post(
-            '/organizations/engineering/webhooks/',
-            json={
-                'name': 'Test',
-                'slug': 'test',
-                'notification_path': 'no-leading-slash',
-            },
-        )
-        self.assertEqual(response.status_code, 422)
-
-    def test_create_invalid_slug_pattern(self) -> None:
-        response = self.client.post(
-            '/organizations/engineering/webhooks/',
-            json={
-                'name': 'Test',
-                'slug': 'Bad-Slug',
-                'notification_path': '/test',
+                'identifier_selector': '$.foo',
             },
         )
         self.assertEqual(response.status_code, 422)
@@ -318,6 +323,7 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.assertIsInstance(data, list)
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['slug'], 'github-events')
+        self.assertEqual(data[0]['id'], 'abc123def4')
 
     def test_list_webhooks_empty(self) -> None:
         self.mock_db.execute.return_value = []
@@ -334,7 +340,7 @@ class WebhookEndpointsTestCase(unittest.TestCase):
 
     # -- Get --
 
-    def test_get_webhook(self) -> None:
+    def test_get_webhook_by_slug(self) -> None:
         self.mock_db.execute.return_value = [self.webhook_record]
         with mock.patch(
             'imbi_common.graph.parse_agtype',
@@ -347,10 +353,22 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data['slug'], 'github-events')
-        self.assertEqual(
-            data['notification_path'],
-            '/webhooks/github',
-        )
+        self.assertEqual(data['id'], 'abc123def4')
+        self.assertEqual(data['notification_path'], '/abc123def4')
+
+    def test_get_webhook_by_id(self) -> None:
+        self.mock_db.execute.return_value = [self.webhook_record]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                '/organizations/engineering/webhooks/abc123def4',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['slug'], 'github-events')
 
     def test_get_webhook_not_found(self) -> None:
         self.mock_db.execute.return_value = []
@@ -368,13 +386,13 @@ class WebhookEndpointsTestCase(unittest.TestCase):
     # -- Patch --
 
     def test_patch_webhook_description(self) -> None:
-        """Test patching only the webhook description."""
         existing_record = {
             'webhook': {
+                'id': 'abc123def4',
                 'name': 'Deploy Hook',
                 'slug': 'deploy',
                 'description': 'Old',
-                'notification_path': '/deploy',
+                'notification_path': '/abc123def4',
                 'secret': None,
             },
             'tps': None,
@@ -383,10 +401,11 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         }
         updated_record = {
             'webhook': {
+                'id': 'abc123def4',
                 'name': 'Deploy Hook',
                 'slug': 'deploy',
                 'description': 'New desc',
-                'notification_path': '/deploy',
+                'notification_path': '/abc123def4',
                 'secret': None,
             },
             'tps': None,
@@ -419,8 +438,163 @@ class WebhookEndpointsTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_patch_notification_path_rejected(self) -> None:
+        """Patching notification_path returns 400."""
+        response = self.client.patch(
+            '/organizations/engineering/webhooks/deploy',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/notification_path',
+                    'value': '/new-path',
+                }
+            ],
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('read-only', response.json()['detail'])
+
+    def test_patch_id_rejected(self) -> None:
+        """Patching id returns 400."""
+        response = self.client.patch(
+            '/organizations/engineering/webhooks/deploy',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/id',
+                    'value': 'new-id',
+                }
+            ],
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('read-only', response.json()['detail'])
+
+    def test_patch_service_change_regenerates_slug(self) -> None:
+        """Changing third_party_service_slug auto-regenerates the slug."""
+        existing_record = {
+            'webhook': {
+                'id': 'abc123def4',
+                'name': 'Events',
+                'slug': 'github-events',
+                'description': None,
+                'notification_path': '/abc123def4',
+                'secret': None,
+            },
+            'tps': {'slug': 'github', 'name': 'GitHub'},
+            'identifier_selector': None,
+            'rules': [],
+        }
+        updated_record = {
+            'webhook': {
+                'id': 'abc123def4',
+                'name': 'Events',
+                'slug': 'gitlab-events',
+                'description': None,
+                'notification_path': '/abc123def4',
+                'secret': None,
+            },
+            'tps': {'slug': 'gitlab', 'name': 'GitLab'},
+            'identifier_selector': None,
+            'rules': [],
+        }
+
+        self.mock_db.execute.side_effect = [
+            [existing_record],
+            [{'n': 0}],  # collision check
+            [updated_record],
+            [updated_record],
+        ]
+
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/webhooks/github-events',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/third_party_service_slug',
+                        'value': 'gitlab',
+                    }
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        # Verify the write query used the regenerated slug
+        write_call_args = self.mock_db.execute.call_args_list[2]
+        write_params = write_call_args[0][1]
+        self.assertEqual(write_params['slug'], 'gitlab-events')
+
+    def test_patch_explicit_slug_with_service_change(self) -> None:
+        """Explicit /slug in same patch takes precedence over auto-regen."""
+        existing_record = {
+            'webhook': {
+                'id': 'abc123def4',
+                'name': 'Events',
+                'slug': 'github-events',
+                'description': None,
+                'notification_path': '/abc123def4',
+                'secret': None,
+            },
+            'tps': {'slug': 'github', 'name': 'GitHub'},
+            'identifier_selector': None,
+            'rules': [],
+        }
+        updated_record = {
+            'webhook': {
+                'id': 'abc123def4',
+                'name': 'Events',
+                'slug': 'my-custom-slug',
+                'description': None,
+                'notification_path': '/abc123def4',
+                'secret': None,
+            },
+            'tps': {'slug': 'gitlab', 'name': 'GitLab'},
+            'identifier_selector': None,
+            'rules': [],
+        }
+
+        self.mock_db.execute.side_effect = [
+            [existing_record],
+            [{'n': 0}],  # collision check
+            [updated_record],
+            [updated_record],
+        ]
+
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/webhooks/github-events',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/third_party_service_slug',
+                        'value': 'gitlab',
+                    },
+                    {
+                        'op': 'replace',
+                        'path': '/slug',
+                        'value': 'my-custom-slug',
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        write_call_args = self.mock_db.execute.call_args_list[2]
+        write_params = write_call_args[0][1]
+        self.assertEqual(write_params['slug'], 'my-custom-slug')
+
     def test_patch_webhook_not_found(self) -> None:
-        """Test patching non-existent webhook returns 404."""
         self.mock_db.execute.return_value = []
 
         response = self.client.patch(
@@ -431,13 +605,13 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_patch_webhook_with_tps(self) -> None:
-        """Test patching a webhook that has a third-party service link."""
         existing_record = {
             'webhook': {
+                'id': 'abc123def4',
                 'name': 'GitHub Hook',
                 'slug': 'github-hook',
                 'description': 'Old desc',
-                'notification_path': '/github',
+                'notification_path': '/abc123def4',
                 'secret': None,
             },
             'tps': {'slug': 'github', 'name': 'GitHub'},
@@ -446,10 +620,11 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         }
         updated_record = {
             'webhook': {
+                'id': 'abc123def4',
                 'name': 'GitHub Hook',
                 'slug': 'github-hook',
                 'description': 'New desc',
-                'notification_path': '/github',
+                'notification_path': '/abc123def4',
                 'secret': None,
             },
             'tps': {'slug': 'github', 'name': 'GitHub'},
@@ -483,14 +658,56 @@ class WebhookEndpointsTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
 
-    def test_patch_webhook_encrypt_new_secret(self) -> None:
-        """Test patching a webhook's secret encrypts the new value."""
+    def test_patch_webhook_slug_collision_returns_409(self) -> None:
         existing_record = {
             'webhook': {
+                'id': 'abc123def4',
+                'name': 'Deploy Hook',
+                'slug': 'deploy',
+                'description': None,
+                'notification_path': '/abc123def4',
+                'secret': None,
+            },
+            'tps': None,
+            'identifier_selector': None,
+            'rules': [],
+        }
+
+        self.mock_db.execute.side_effect = [
+            [existing_record],
+            [{'n': 0}],  # collision check (no cross-id collision)
+            psycopg.errors.UniqueViolation(),
+        ]
+
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/webhooks/deploy',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/slug',
+                        'value': 'other-existing-slug',
+                    }
+                ],
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('already exists', response.json()['detail'])
+
+    def test_patch_webhook_encrypt_new_secret(self) -> None:
+        existing_record = {
+            'webhook': {
+                'id': 'abc123def4',
                 'name': 'Deploy Hook',
                 'slug': 'deploy',
                 'description': 'A hook',
-                'notification_path': '/deploy',
+                'notification_path': '/abc123def4',
                 'secret': None,
             },
             'tps': None,
@@ -523,13 +740,13 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.mock_encryptor.encrypt.assert_called_once_with('my-secret')
 
     def test_patch_webhook_clear_secret(self) -> None:
-        """Test patching secret to null clears the encrypted secret."""
         existing_record = {
             'webhook': {
+                'id': 'abc123def4',
                 'name': 'Deploy Hook',
                 'slug': 'deploy',
                 'description': 'A hook',
-                'notification_path': '/deploy',
+                'notification_path': '/abc123def4',
                 'secret': 'enc:old-secret',
             },
             'tps': None,
@@ -538,10 +755,11 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         }
         updated_record = {
             'webhook': {
+                'id': 'abc123def4',
                 'name': 'Deploy Hook',
                 'slug': 'deploy',
                 'description': 'A hook',
-                'notification_path': '/deploy',
+                'notification_path': '/abc123def4',
                 'secret': None,
             },
             'tps': None,
@@ -571,13 +789,13 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.mock_encryptor.encrypt.assert_not_called()
 
     def test_patch_webhook_with_rules(self) -> None:
-        """Test patching a webhook that has rules stored as a JSON string."""
         existing_record = {
             'webhook': {
+                'id': 'abc123def4',
                 'name': 'Deploy Hook',
                 'slug': 'deploy',
                 'description': 'Old',
-                'notification_path': '/deploy',
+                'notification_path': '/abc123def4',
                 'secret': None,
             },
             'tps': None,
@@ -594,10 +812,11 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         }
         updated_record = {
             'webhook': {
+                'id': 'abc123def4',
                 'name': 'Deploy Hook',
                 'slug': 'deploy',
                 'description': 'New',
-                'notification_path': '/deploy',
+                'notification_path': '/abc123def4',
                 'secret': None,
             },
             'tps': None,
@@ -629,10 +848,18 @@ class WebhookEndpointsTestCase(unittest.TestCase):
 
     # -- Delete --
 
-    def test_delete_webhook(self) -> None:
+    def test_delete_webhook_by_slug(self) -> None:
         self.mock_db.execute.return_value = [{'deleted': 1}]
         response = self.client.delete(
             '/organizations/engineering/webhooks/github-events',
+        )
+
+        self.assertEqual(response.status_code, 204)
+
+    def test_delete_webhook_by_id(self) -> None:
+        self.mock_db.execute.return_value = [{'deleted': 1}]
+        response = self.client.delete(
+            '/organizations/engineering/webhooks/abc123def4',
         )
 
         self.assertEqual(response.status_code, 204)
@@ -670,10 +897,7 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(len(data['rules']), 1)
-        self.assertEqual(
-            data['rules'][0]['handler_config'],
-            {},
-        )
+        self.assertEqual(data['rules'][0]['handler_config'], {})
 
     def test_rules_with_null_entries_filtered(self) -> None:
         record = copy.deepcopy(self.webhook_record)
@@ -715,6 +939,99 @@ class WebhookEndpointsTestCase(unittest.TestCase):
             response.json()['rules'][0]['handler_config'],
             ['step1', 'step2'],
         )
+
+    # -- Identifier collision --
+
+    def test_create_identifier_collision_returns_409(self) -> None:
+        """Slug matching an existing webhook id returns 409."""
+        self.mock_db.execute.return_value = [{'n': 1}]
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.post(
+                '/organizations/engineering/webhooks/',
+                json=self.webhook_create_json,
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('collide', response.json()['detail'])
+
+    def test_patch_identifier_collision_returns_409(self) -> None:
+        """Changing slug to one matching an existing webhook id returns 409."""
+        existing_record = {
+            'webhook': {
+                'id': 'abc123def4',
+                'name': 'Deploy Hook',
+                'slug': 'deploy',
+                'description': None,
+                'notification_path': '/abc123def4',
+                'secret': None,
+            },
+            'tps': None,
+            'identifier_selector': None,
+            'rules': [],
+        }
+        self.mock_db.execute.side_effect = [
+            [existing_record],
+            [{'n': 1}],  # collision check finds a conflicting id
+        ]
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/webhooks/deploy',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/slug',
+                        'value': 'some-nanoid-value',
+                    }
+                ],
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('collide', response.json()['detail'])
+
+    # -- Slug / id generation helpers --
+
+    def test_slugify_basic(self) -> None:
+        from imbi_api.endpoints.webhooks import _slugify
+
+        self.assertEqual(_slugify('GitHub Push Events'), 'github-push-events')
+        self.assertEqual(_slugify('hello world'), 'hello-world')
+        self.assertEqual(_slugify('  spaces  '), 'spaces')
+        self.assertEqual(_slugify(''), 'hook')
+        self.assertEqual(_slugify('x'), 'x0')
+
+    def test_compute_webhook_slug_with_service(self) -> None:
+        from imbi_api.endpoints.webhooks import _compute_webhook_slug
+
+        result = _compute_webhook_slug('github', 'Push Events')
+        self.assertEqual(result, 'github-push-events')
+
+    def test_compute_webhook_slug_without_service(self) -> None:
+        from imbi_api.endpoints.webhooks import _compute_webhook_slug
+
+        result = _compute_webhook_slug(None, 'Deploy Hook')
+        self.assertEqual(result, 'deploy-hook')
+
+    def test_generate_id_is_nanoid(self) -> None:
+        from imbi_api.endpoints.webhooks import _generate_id
+
+        generated = _generate_id()
+        self.assertEqual(len(generated), 21)
+        valid_chars = set(
+            '_-0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+        )
+        self.assertTrue(all(c in valid_chars for c in generated))
 
 
 class ProjectServicesEndpointsTestCase(unittest.TestCase):
