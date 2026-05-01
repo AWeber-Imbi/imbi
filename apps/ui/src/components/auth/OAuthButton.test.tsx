@@ -22,7 +22,7 @@ describe('OAuthButton', () => {
     render(<OAuthButton onClick={mockOnClick} provider={defaultProvider} />)
 
     expect(
-      screen.getByRole('button', { name: /continue with google/i }),
+      screen.getByRole('button', { name: /login with google/i }),
     ).toBeInTheDocument()
   })
 
@@ -39,7 +39,7 @@ describe('OAuthButton', () => {
     render(<OAuthButton onClick={mockOnClick} provider={githubProvider} />)
 
     expect(
-      screen.getByRole('button', { name: /continue with github/i }),
+      screen.getByRole('button', { name: /login with github/i }),
     ).toBeInTheDocument()
   })
 
@@ -48,7 +48,7 @@ describe('OAuthButton', () => {
     render(<OAuthButton onClick={mockOnClick} provider={oidcProvider} />)
 
     expect(
-      screen.getByRole('button', { name: /continue with oidc/i }),
+      screen.getByRole('button', { name: /login with oidc/i }),
     ).toBeInTheDocument()
   })
 

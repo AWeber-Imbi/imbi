@@ -8,10 +8,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Cloud,
-  ExternalLink,
   FileJson,
   FolderTree,
   Globe,
+  KeyRound,
   Layers,
   Link2,
   Shield,
@@ -24,11 +24,11 @@ import {
 import { Button } from '@/components/ui/button'
 import { useOrganization } from '@/contexts/OrganizationContext'
 
+import { AuthProvidersManagement } from './admin/AuthProvidersManagement'
 import { BlueprintManagement } from './admin/BlueprintManagement'
 import { EnvironmentManagement } from './admin/EnvironmentManagement'
 import { LinkDefinitionManagement } from './admin/LinkDefinitionManagement'
 import { NoteTemplateManagement } from './admin/NoteTemplateManagement'
-import { OAuthManagement } from './admin/OAuthManagement'
 import { OrganizationManagement } from './admin/OrganizationManagement'
 import { ProjectTypeManagement } from './admin/ProjectTypeManagement'
 import { RoleManagement } from './admin/RoleManagement'
@@ -155,17 +155,17 @@ export function Admin() {
 
   const systemAdminSections: SectionDef[] = [
     {
-      description: 'Configure SSO authentication providers',
-      icon: ExternalLink,
-      id: 'oauth',
-      label: 'OAuth Providers',
-      scope: 'system',
-    },
-    {
       description: 'Manage organizational units and access',
       icon: Building2,
       id: 'organizations',
       label: 'Organizations',
+      scope: 'system',
+    },
+    {
+      description: 'Configure SSO authentication providers',
+      icon: KeyRound,
+      id: 'oauth',
+      label: 'Auth Providers',
       scope: 'system',
     },
     {
@@ -323,7 +323,7 @@ export function Admin() {
               <ServiceAccountManagement />
             )}
             {currentSection === 'roles' && <RoleManagement />}
-            {currentSection === 'oauth' && <OAuthManagement />}
+            {currentSection === 'oauth' && <AuthProvidersManagement />}
           </div>
         </main>
       </div>

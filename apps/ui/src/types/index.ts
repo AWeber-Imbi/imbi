@@ -296,6 +296,67 @@ export type DeploymentStatus =
   | 'rolled_back'
   | 'success'
 
+// Admin local-auth (password login) toggle.
+// Hand-written: the admin endpoints aren't in the committed openapi.json
+// snapshot yet. Mirrors `LocalAuthRead` in
+// imbi_api/endpoints/local_auth.py.
+export interface LocalAuthConfig {
+  enabled: boolean
+  updated_at: string
+}
+
+export interface LoginProviderCreate {
+  allowed_domains?: string[]
+  client_id: string
+  client_secret: string
+  description?: null | string
+  issuer_url?: null | string
+  // name/slug/org_slug/third_party_service_slug are derived server-side
+  // from oauth_app_type when omitted; the auth-providers admin UI
+  // doesn't expose them.
+  name?: string
+  oauth_app_type: OAuthAppType
+  org_slug?: string
+  scopes?: string[]
+  slug?: string
+  third_party_service_slug?: string
+  usage: 'both' | 'login'
+}
+
+export interface LoginProviderRead {
+  allowed_domains: string[]
+  authorization_endpoint: null | string
+  callback_url: string
+  client_id: null | string
+  description: null | string
+  has_secret: boolean
+  issuer_url: null | string
+  name: string
+  oauth_app_type: null | OAuthAppType
+  organization_name: null | string
+  organization_slug: null | string
+  revoke_endpoint: null | string
+  scopes: string[]
+  slug: string
+  status: string
+  third_party_service_name: null | string
+  third_party_service_slug: null | string
+  token_endpoint: null | string
+  usage: 'both' | 'login'
+}
+
+export interface LoginProviderUpdate {
+  allowed_domains?: string[]
+  // Empty string preserves existing secret on the server.
+  client_id: string
+  client_secret?: null | string
+  description?: null | string
+  issuer_url?: null | string
+  name: string
+  oauth_app_type: OAuthAppType
+  scopes?: string[]
+  usage: 'both' | 'login'
+}
 export interface LoginRequest {
   email: string
   password: string
@@ -319,6 +380,7 @@ export interface NoteCreate {
   tags?: string[]
   title: string
 }
+
 export type NoteListResponse = CollectionResponse<Note>
 
 // Note Templates. Inlined for the same reason as Note/Tag — the committed
@@ -352,6 +414,10 @@ export interface NoteTemplateCreate {
   title?: null | string
 }
 
+// Auth provider types — mirror the consolidated `ServiceApplication`-backed
+// shape in imbi_api/endpoints/auth_providers.py.
+export type OAuthAppType = 'github' | 'google' | 'oidc'
+
 export type OperationsLogEntryType = (typeof OPERATIONS_LOG_ENTRY_TYPES)[number]
 
 export interface OperationsLogFilters {
@@ -380,23 +446,23 @@ export interface OrganizationCreate {
   name: string
   slug: string
 }
+
 export type OrgMembership = Schemas['OrgMembership']
 // JSON Patch operation (RFC 6902)
 export type PatchOperation = Schemas['PatchOperation']
-
 // Admin User Management Types (matching API schema)
 export type Permission = Schemas['Permission']
 
 export type ProjectRelationship = Schemas['ProjectRelationship']
+
 export type ProjectRelationshipsResponse =
   Schemas['ProjectRelationshipsResponse']
 // Project Relationships (DEPENDS_ON edges)
 export type ProjectRelationshipSummary = Schemas['ProjectRelationshipSummary']
-
 // Project EXISTS_IN types
 export type ProjectService = Schemas['ExistsInResponse']
-export type ProjectServiceCreate = Schemas['ExistsInCreate']
 
+export type ProjectServiceCreate = Schemas['ExistsInCreate']
 export interface Release {
   created_at: string
   created_by: string
@@ -431,13 +497,13 @@ export interface RoleCreate {
   priority?: number
   slug: string
 }
+
 export interface RoleDetail extends Role {
   is_system: boolean
   parent_role?: null | Role
   permissions: Permission[]
   priority: number
 }
-
 // `RoleUser` stays hand-written: no generated counterpart (the
 // /roles/{slug}/users endpoint returns a flattened user projection).
 export interface RoleUser {
@@ -450,6 +516,7 @@ export interface RoleUser {
   is_service_account: boolean
   last_login?: null | string
 }
+
 // `SchemaProperty` is UI-only — a form-builder projection derived from a
 // JSON Schema property descriptor.
 export interface SchemaProperty {
@@ -477,15 +544,36 @@ export interface SchemaProperty {
 export type ServiceAccount = Schemas['ServiceAccountResponse']
 export type ServiceAccountCreate = Schemas['ServiceAccountCreate']
 export type ServiceAccountUpdate = Schemas['ServiceAccountUpdate']
-
 // Service Application types
-export type ServiceApplication = Schemas['ServiceApplicationResponse']
-export type ServiceApplicationCreate = Schemas['ServiceApplicationCreate']
-export type ServiceApplicationSecrets = Schemas['ServiceApplicationSecrets']
+// The committed openapi.json snapshot predates the OAuth-consolidation
+// fields (`usage`, `oauth_app_type`, `issuer_url`, `allowed_domains`,
+// `is_global`). Augment the generated types until the snapshot is
+// refreshed via `npm run codegen:fetch`.
+export type ServiceApplication = Schemas['ServiceApplicationResponse'] & {
+  allowed_domains?: string[]
+  is_global?: boolean
+  issuer_url?: null | string
+  oauth_app_type?: null | OAuthAppType
+  usage?: ServiceApplicationUsage
+}
 
+export type ServiceApplicationCreate = Schemas['ServiceApplicationCreate'] & {
+  allowed_domains?: string[]
+  issuer_url?: null | string
+  oauth_app_type?: null | OAuthAppType
+  usage?: ServiceApplicationUsage
+}
+export type ServiceApplicationSecrets = Schemas['ServiceApplicationSecrets']
 export type ServiceApplicationSecretsUpdate =
   Schemas['ServiceApplicationSecretsUpdate']
-export type ServiceApplicationUpdate = Schemas['ServiceApplicationUpdate']
+
+export type ServiceApplicationUpdate = Schemas['ServiceApplicationUpdate'] & {
+  allowed_domains?: string[]
+  issuer_url?: null | string
+  oauth_app_type?: null | OAuthAppType
+  usage?: ServiceApplicationUsage
+}
+export type ServiceApplicationUsage = 'both' | 'integration' | 'login'
 
 export interface Tag {
   created_at?: null | string

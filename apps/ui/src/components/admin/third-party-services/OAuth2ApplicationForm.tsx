@@ -4,6 +4,7 @@ import { AlertCircle } from 'lucide-react'
 
 import { FormHeader } from '@/components/admin/form-header'
 import { Input } from '@/components/ui/input'
+import { useAuth } from '@/hooks/useAuth'
 import { slugify } from '@/lib/utils'
 import type {
   ServiceApplication,
@@ -47,6 +48,13 @@ export function OAuth2ApplicationForm({
   onSave,
 }: OAuth2ApplicationFormProps) {
   const isEdit = !!application
+  const { user } = useAuth()
+  const canManageAuthProviders =
+    !!user?.is_admin ||
+    (user?.permissions ?? []).includes('auth_providers:write')
+
+  const initialUsage: 'both' | 'integration' =
+    application?.usage === 'both' ? 'both' : 'integration'
 
   const [slug, setSlug] = useState(application?.slug || '')
   const [name, setName] = useState(application?.name || '')
@@ -63,6 +71,7 @@ export function OAuth2ApplicationForm({
   const [status, setStatus] = useState<AppStatus>(
     isAppStatus(application?.status) ? application.status : 'active',
   )
+  const [usage, setUsage] = useState<'both' | 'integration'>(initialUsage)
   const [validationError, setValidationError] = useState<null | string>(null)
 
   // Secret fields (create mode only)
@@ -115,6 +124,12 @@ export function OAuth2ApplicationForm({
           : [],
         slug,
         status,
+      }
+      // Only persist a usage transition when the user has permission and
+      // the value actually changed; otherwise leave the field off the
+      // payload so the diff stays minimal.
+      if (canManageAuthProviders && usage !== initialUsage) {
+        data.usage = usage
       }
       onSave(data)
     } else {
@@ -264,6 +279,43 @@ export function OAuth2ApplicationForm({
             </select>
           </div>
         </div>
+
+        {isEdit && canManageAuthProviders && initialUsage === 'integration' && (
+          <div>
+            <label className={labelClass}>Usage</label>
+            <div className="inline-flex rounded-md border border-input">
+              <button
+                className={`px-3 py-1.5 text-sm ${usage === 'integration' ? 'bg-amber-bg text-amber-text' : 'text-secondary'}`}
+                onClick={() => setUsage('integration')}
+                type="button"
+              >
+                Integration
+              </button>
+              <button
+                className={`px-3 py-1.5 text-sm ${usage === 'both' ? 'bg-amber-bg text-amber-text' : 'text-secondary'}`}
+                onClick={() => setUsage('both')}
+                type="button"
+              >
+                Both
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-tertiary">
+              Promote to "Both" to also expose this application as a login
+              provider. Demoting "Both" → "Login" must be done from the Auth
+              Providers screen.
+            </p>
+          </div>
+        )}
+
+        {isEdit && initialUsage === 'both' && (
+          <div>
+            <label className={labelClass}>Usage</label>
+            <p className="text-sm text-secondary">
+              Integration + Login. Demote from the Auth Providers screen to drop
+              the login face.
+            </p>
+          </div>
+        )}
 
         <div>
           <label className={labelClass}>Client ID *</label>

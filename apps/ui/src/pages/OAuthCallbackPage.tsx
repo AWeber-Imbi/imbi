@@ -10,31 +10,41 @@ import { useAuthStore } from '@/stores/authStore'
 export function OAuthCallbackPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { accessToken, setAccessToken } = useAuthStore()
+  const { accessToken, setTokens } = useAuthStore()
   const { error, user } = useAuth()
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const token = params.get('token')
-    const error = params.get('error')
-
-    if (error) {
-      console.error('[OAuth] Authentication failed:', error)
-      navigate('/login?error=' + encodeURIComponent(error), { replace: true })
+    // The API callback redirects with tokens in the URL fragment:
+    //   /auth/callback#access_token=...&refresh_token=...&token_type=bearer
+    // Errors come through as ?error=... on the search params instead.
+    const search = new URLSearchParams(window.location.search)
+    const errorParam = search.get('error')
+    if (errorParam) {
+      console.error('[OAuth] Authentication failed:', errorParam)
+      navigate('/login?error=' + encodeURIComponent(errorParam), {
+        replace: true,
+      })
       return
     }
 
-    if (!token) {
-      console.error('[OAuth] No token in callback URL')
+    const fragment = window.location.hash.startsWith('#')
+      ? window.location.hash.slice(1)
+      : ''
+    const params = new URLSearchParams(fragment)
+    const accessToken = params.get('access_token')
+    const refreshToken = params.get('refresh_token')
+
+    if (!accessToken || !refreshToken) {
+      console.error('[OAuth] Missing tokens in callback URL')
       navigate('/login?error=no_token', { replace: true })
       return
     }
 
-    setAccessToken(token)
+    setTokens(accessToken, refreshToken)
     queryClient.invalidateQueries({ queryKey: ['organizations'] })
 
     window.history.replaceState({}, '', '/auth/callback')
-  }, [navigate, setAccessToken, queryClient])
+  }, [navigate, setTokens, queryClient])
 
   useEffect(() => {
     if (user) {

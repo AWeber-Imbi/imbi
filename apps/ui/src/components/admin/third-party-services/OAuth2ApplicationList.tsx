@@ -1,7 +1,14 @@
 import { useState } from 'react'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, ExternalLink, Key, Plus, Trash2 } from 'lucide-react'
+import {
+  AlertCircle,
+  ExternalLink,
+  Globe,
+  Key,
+  Plus,
+  Trash2,
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
@@ -73,7 +80,7 @@ export function OAuth2ApplicationList({
     isLoading,
   } = useQuery({
     queryFn: ({ signal }) =>
-      listServiceApplications(orgSlug, serviceSlug, signal),
+      listServiceApplications(orgSlug, serviceSlug, 'integration', signal),
     queryKey: ['service-applications', orgSlug, serviceSlug],
   })
 
@@ -260,17 +267,39 @@ export function OAuth2ApplicationList({
             <TableBody className="divide-y divide-tertiary">
               {applications.map((app) => {
                 const statusVariant = statusBadgeVariant(app.status)
+                const isGlobal = app.is_global === true
                 return (
                   <TableRow
-                    className="hover:bg-secondary/50 cursor-pointer"
+                    className={`${isGlobal ? '' : 'cursor-pointer'} hover:bg-secondary/50`}
                     key={app.slug}
                     onClick={() => {
+                      if (isGlobal) return
                       setEditingApp(app)
                       setViewMode('edit')
                     }}
                   >
                     <TableCell className="px-6 py-4">
-                      <div className="font-medium text-primary">{app.name}</div>
+                      <div className="flex items-center gap-2 font-medium text-primary">
+                        {app.name}
+                        {isGlobal && (
+                          <TooltipProvider delayDuration={200}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge
+                                  className="inline-flex items-center gap-1"
+                                  variant="info"
+                                >
+                                  <Globe className="h-3 w-3" />
+                                  global
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Managed in Auth Providers</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
                       <div className="text-sm text-tertiary">{app.slug}</div>
                     </TableCell>
                     <TableCell className="px-6 py-4">
@@ -310,16 +339,39 @@ export function OAuth2ApplicationList({
                             </Tooltip>
                           </TooltipProvider>
                         )}
-                        <Button
-                          aria-label={`Delete application ${app.name}`}
-                          className="text-danger hover:bg-danger"
-                          disabled={deleteMutation.isPending}
-                          onClick={() => handleDelete(app)}
-                          size="sm"
-                          variant="ghost"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {isGlobal ? (
+                          <TooltipProvider delayDuration={200}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span>
+                                  <Button
+                                    aria-label="Managed in Auth Providers"
+                                    className="text-tertiary"
+                                    disabled
+                                    size="sm"
+                                    variant="ghost"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Managed in Auth Providers</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : (
+                          <Button
+                            aria-label={`Delete application ${app.name}`}
+                            className="text-danger hover:bg-danger"
+                            disabled={deleteMutation.isPending}
+                            onClick={() => handleDelete(app)}
+                            size="sm"
+                            variant="ghost"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
