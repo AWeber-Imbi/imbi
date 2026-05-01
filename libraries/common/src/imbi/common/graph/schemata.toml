@@ -159,6 +159,16 @@ attributes = ["slug"]
 unique = true
 
 [[vlabel_indexes]]
+vlabel = "Webhook"
+attributes = ["slug"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Webhook"
+attributes = ["id"]
+unique = true
+
+[[vlabel_indexes]]
 vlabel = "ThirdPartyService"
 attributes = ["status"]
 
