@@ -43,37 +43,58 @@ ORDER BY (project_id, id);
 """
 enabled = true
 
+# Drop scoring views/tables before recreation to handle schema migrations.
+# Order matters: dependents must be dropped before their dependencies.
+[drop_score_latest]
+query = "DROP VIEW IF EXISTS score_latest"
+enabled = true
+
+[drop_score_latest_data]
+query = "DROP VIEW IF EXISTS score_latest_data"
+enabled = true
+
+[drop_score_history]
+query = "DROP TABLE IF EXISTS score_history"
+enabled = true
+
 [score_history]
 query = """
 CREATE TABLE IF NOT EXISTS score_history (
-  organization     LowCardinality(String),
-  team             LowCardinality(String),
-  project_type     LowCardinality(String),
-  project          String,
-  project_slug     LowCardinality(String),
-  timestamp        DateTime64(3, 'UTC'),
-  score            Float32,
-  previous_score   Float32,
-  change_reason    LowCardinality(String)
+  project_id     LowCardinality(String),
+  timestamp      DateTime64(3, 'UTC'),
+  score          Float32,
+  previous_score Float32,
+  change_reason  LowCardinality(String)
 ) ENGINE = MergeTree()
-ORDER BY (organization, team, project_type, project_slug, timestamp);
+PARTITION BY toYear(timestamp)
+ORDER BY (project_id, timestamp);
+"""
+enabled = true
+
+[score_latest_data]
+query = """
+CREATE MATERIALIZED VIEW IF NOT EXISTS score_latest_data
+ENGINE = AggregatingMergeTree()
+ORDER BY project_id
+AS SELECT
+    project_id,
+    argMaxState(score, timestamp)     AS latest_score,
+    avgState(score)                   AS avg_score,
+    maxState(timestamp)               AS last_updated
+FROM score_history
+GROUP BY project_id;
 """
 enabled = true
 
 [score_latest]
 query = """
-CREATE MATERIALIZED VIEW IF NOT EXISTS score_latest
-ENGINE = AggregatingMergeTree()
-ORDER BY (organization, team, project_type, project_slug)
-AS SELECT
-    organization,
-    team,
-    project_type,
-    project_slug,
-    argMaxState(score, timestamp)     AS latest_score,
-    avgState(score)                   AS avg_score,
-    maxState(timestamp)               AS last_updated
-FROM score_history
-GROUP BY organization, team, project_type, project_slug;
+CREATE VIEW IF NOT EXISTS score_latest AS
+SELECT
+    project_id,
+    argMaxMerge(latest_score) AS latest_score,
+    avgMerge(avg_score)       AS avg_score,
+    maxMerge(last_updated)    AS last_updated
+FROM score_latest_data
+GROUP BY project_id;
 """
 enabled = true

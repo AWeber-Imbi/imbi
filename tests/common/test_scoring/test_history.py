@@ -6,16 +6,9 @@ from imbi_common.scoring import history
 
 
 def _project(score: float | None = None) -> models.Project:
-    org = models.Organization(name='Org', slug='org')
-    team = models.Team(name='Team', slug='team', organization=org)
-    pt = models.ProjectType(name='API', slug='api', organization=org)
-    return models.Project(
-        id='proj-id',
-        name='P',
-        slug='p',
-        team=team,
-        project_types=[pt],
-        score=score,
+    team = models.Team.model_construct(name='T', slug='t')
+    return models.Project.model_construct(
+        id='proj-id', name='P', slug='p', team=team, score=score
     )
 
 
@@ -43,14 +36,10 @@ class RecordScoreChangeTests(unittest.IsolatedAsyncioTestCase):
         args, _ = clickhouse.insert.call_args
         self.assertEqual('score_history', args[0])
         row = args[1][0]
-        self.assertEqual('org', row[0])
-        self.assertEqual('team', row[1])
-        self.assertEqual('api', row[2])
-        self.assertEqual('proj-id', row[3])
-        self.assertEqual('p', row[4])
-        self.assertEqual(80.0, row[6])
-        self.assertEqual(70.0, row[7])
-        self.assertEqual('attribute_change', row[8])
+        self.assertEqual('proj-id', row[0])
+        self.assertEqual(80.0, row[2])
+        self.assertEqual(70.0, row[3])
+        self.assertEqual('attribute_change', row[4])
 
     async def test_age_failure_leaves_history_durable(self) -> None:
         clickhouse = mock.AsyncMock()

@@ -9,11 +9,7 @@ from imbi_common import graph, models
 from imbi_common.clickhouse import client as ch_client
 
 _HISTORY_COLUMNS = [
-    'organization',
-    'team',
-    'project_type',
-    'project',
-    'project_slug',
+    'project_id',
     'timestamp',
     'score',
     'previous_score',
@@ -36,13 +32,8 @@ async def record_score_change(
     """
     if new_score == previous_score:
         return
-    organization, team, project_type = _dimensions(project)
     row: list[typing.Any] = [
-        organization,
-        team,
-        project_type,
         project.id,
-        project.slug,
         datetime.datetime.now(datetime.UTC),
         new_score,
         previous_score,
@@ -53,13 +44,3 @@ async def record_score_change(
         'MATCH (p:Project {id: {id}}) SET p.score = {score}',
         {'id': project.id, 'score': new_score},
     )
-
-
-def _dimensions(project: models.Project) -> tuple[str, str, str]:
-    team = project.team
-    organization = getattr(team.organization, 'slug', '') if team else ''
-    team_slug = team.slug if team else ''
-    project_type = (
-        project.project_types[0].slug if project.project_types else ''
-    )
-    return organization, team_slug, project_type
