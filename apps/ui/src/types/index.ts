@@ -211,12 +211,7 @@ export interface AdminUser {
   created_at: string
   display_name: string
   email: string
-  groups: {
-    description?: null | string
-    name: string
-    roles: Role[]
-    slug: string
-  }[]
+  email_notifications: boolean
   is_active: boolean
   is_admin: boolean
   is_service_account: boolean
@@ -225,7 +220,10 @@ export interface AdminUser {
   roles: Role[]
 }
 
-export type AdminUserCreate = Schemas['UserCreate']
+export type AdminUserCreate = Schemas['UserCreate'] & {
+  email_notifications?: boolean
+  organizations?: { organization_slug: string; role: string }[]
+}
 
 export type AdminUserUpdate = Schemas['UserUpdate']
 

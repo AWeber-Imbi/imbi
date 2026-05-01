@@ -475,7 +475,6 @@ function buildUserContext(
   user: null | {
     display_name: string
     email: string
-    groups?: string[]
     is_admin?: boolean
     roles?: string[]
   },
@@ -485,7 +484,6 @@ function buildUserContext(
   const parts: string[] = []
   parts.push(`User: ${user.display_name} (${user.email})`)
   if (user.is_admin) parts.push('Role: Administrator')
-  if (user.groups?.length) parts.push(`Groups: ${user.groups.join(', ')}`)
   if (user.roles?.length) parts.push(`Roles: ${user.roles.join(', ')}`)
   if (org) parts.push(`Organization: ${org.name} (${org.slug})`)
   return `<context>\n${parts.join('\n')}\n</context>\n\n`

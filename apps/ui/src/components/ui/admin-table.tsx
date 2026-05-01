@@ -66,12 +66,12 @@ interface AdminTableProps<T> {
   canDelete?: (row: T) => CanDeleteResult
   columns: AdminTableColumn<T>[]
   emptyMessage?: string
-  getDeleteLabel: (row: T) => string
+  getDeleteLabel?: (row: T) => string
   getRowKey: (row: T) => string
   getRowLabel?: (row: T) => string
   isDeleting?: boolean
   isRowClickable?: (row: T) => boolean
-  onDelete: (row: T) => void
+  onDelete?: (row: T) => void
   onRowClick?: (row: T) => void
   rows: T[]
 }
@@ -133,11 +133,13 @@ export function AdminTable<T>({
   }
 
   const handleDeleteConfirm = () => {
-    if (deleteTarget) {
+    if (deleteTarget && onDelete) {
       onDelete(deleteTarget)
       // Don't close here — caller signals success by completing the mutation
     }
   }
+
+  const showActions = !!onDelete || !!actions
 
   return (
     <>
@@ -156,7 +158,9 @@ export function AdminTable<T>({
           </DialogHeader>
           {blockedTarget &&
             (() => {
-              const name = getDeleteLabel(blockedTarget.row)
+              const name = getDeleteLabel
+                ? getDeleteLabel(blockedTarget.row)
+                : ''
               const { blockedBy, reason } = blockedTarget.result
               if (blockedBy && blockedBy.length > 0) {
                 const parts = blockedBy.map((b, i) => (
@@ -225,7 +229,10 @@ export function AdminTable<T>({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Delete &quot;{deleteTarget ? getDeleteLabel(deleteTarget) : ''}
+              Delete &quot;
+              {deleteTarget && getDeleteLabel
+                ? getDeleteLabel(deleteTarget)
+                : ''}
               &quot;?
             </AlertDialogTitle>
             <AlertDialogDescription>
@@ -257,7 +264,9 @@ export function AdminTable<T>({
                     {col.header}
                   </TableHead>
                 ))}
-                <TableHead className="text-right">Actions</TableHead>
+                {showActions && (
+                  <TableHead className="text-right">Actions</TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -265,7 +274,7 @@ export function AdminTable<T>({
                 <TableRow>
                   <TableCell
                     className="py-12 text-center text-muted-foreground"
-                    colSpan={columns.length + 1}
+                    colSpan={columns.length + (showActions ? 1 : 0)}
                   >
                     {emptyMessage}
                   </TableCell>
@@ -275,7 +284,9 @@ export function AdminTable<T>({
                   const key = getRowKey(row)
                   const label = getRowLabel
                     ? getRowLabel(row)
-                    : getDeleteLabel(row)
+                    : getDeleteLabel
+                      ? getDeleteLabel(row)
+                      : ''
                   const deleteCheck = canDelete
                     ? canDelete(row)
                     : { allowed: true }
@@ -311,45 +322,49 @@ export function AdminTable<T>({
                           {col.render(row)}
                         </TableCell>
                       ))}
-                      <TableCell
-                        className="text-right"
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => e.stopPropagation()}
-                      >
-                        <div className="flex items-center justify-end gap-2">
-                          {actions && actions(row)}
-                          <TooltipProvider delayDuration={200}>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="inline-flex">
-                                  <Button
-                                    aria-label={`Delete ${label}`}
-                                    className={cn(
-                                      'text-destructive hover:bg-destructive/10 hover:text-destructive',
-                                      isDeleting &&
-                                        'pointer-events-none opacity-30',
-                                      !canDeleteRow && 'opacity-30',
-                                    )}
-                                    disabled={isDeleting}
-                                    onClick={(e) =>
-                                      handleDeleteClick(row, e, deleteCheck)
-                                    }
-                                    size="sm"
-                                    variant="ghost"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </span>
-                              </TooltipTrigger>
-                              {deleteReason && (
-                                <TooltipContent>
-                                  <p>{deleteReason}</p>
-                                </TooltipContent>
-                              )}
-                            </Tooltip>
-                          </TooltipProvider>
-                        </div>
-                      </TableCell>
+                      {showActions && (
+                        <TableCell
+                          className="text-right"
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-end gap-2">
+                            {actions && actions(row)}
+                            {onDelete && (
+                              <TooltipProvider delayDuration={200}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-flex">
+                                      <Button
+                                        aria-label={`Delete ${label}`}
+                                        className={cn(
+                                          'text-destructive hover:bg-destructive/10 hover:text-destructive',
+                                          isDeleting &&
+                                            'pointer-events-none opacity-30',
+                                          !canDeleteRow && 'opacity-30',
+                                        )}
+                                        disabled={isDeleting}
+                                        onClick={(e) =>
+                                          handleDeleteClick(row, e, deleteCheck)
+                                        }
+                                        size="sm"
+                                        variant="ghost"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </span>
+                                  </TooltipTrigger>
+                                  {deleteReason && (
+                                    <TooltipContent>
+                                      <p>{deleteReason}</p>
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   )
                 })

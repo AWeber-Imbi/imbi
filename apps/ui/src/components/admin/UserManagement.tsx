@@ -125,11 +125,6 @@ export function UserManagement() {
     })
   }
 
-  const getGroupNames = (user: AdminUser): string => {
-    if (!user.groups || user.groups.length === 0) return '-'
-    return user.groups.map((g) => g.name).join(', ')
-  }
-
   // Fetch full user detail (with orgs) when viewing/editing a specific user
   const {
     data: selectedUser = null,
@@ -154,10 +149,19 @@ export function UserManagement() {
     if (viewMode === 'create') {
       createMutation.mutate(userData)
     } else if (selectedUser) {
-      // Strip org/role fields for update — they're only for creation
+      // Strip create-only single-org fields; memberships flow via `organizations`
       const { organization_slug: _, role_slug: __, ...updateData } = userData
+      // Normalize selectedUser.organizations to {organization_slug, role}
+      // so the diff doesn't see organization_name as a phantom change.
+      const before = {
+        ...selectedUser,
+        organizations: (selectedUser.organizations ?? []).map((m) => ({
+          organization_slug: m.organization_slug,
+          role: m.role,
+        })),
+      }
       const operations = buildDiffPatch(
-        selectedUser as unknown as Record<string, unknown>,
+        before as unknown as Record<string, unknown>,
         updateData as unknown as Record<string, unknown>,
         { fields: Object.keys(updateData) },
       )
@@ -197,8 +201,10 @@ export function UserManagement() {
     return (
       <UserForm
         error={createMutation.error || updateMutation.error}
+        isDeleting={deleteMutation.isPending}
         isLoading={createMutation.isPending || updateMutation.isPending}
         onCancel={handleCancel}
+        onDelete={handleDelete}
         onSave={handleSave}
         user={selectedUser}
       />
@@ -266,13 +272,8 @@ export function UserManagement() {
                   email={user.email}
                   size={32}
                 />
-                <div>
-                  <div className="text-sm font-medium text-primary">
-                    {user.display_name}
-                  </div>
-                  <div className="text-xs text-secondary">
-                    {getGroupNames(user)}
-                  </div>
+                <div className="text-sm font-medium text-primary">
+                  {user.display_name}
                 </div>
               </div>
             ),
@@ -341,10 +342,7 @@ export function UserManagement() {
             ? 'No users match your filters'
             : 'No users created yet'
         }
-        getDeleteLabel={(user) => user.display_name}
         getRowKey={(user) => user.email}
-        isDeleting={deleteMutation.isPending}
-        onDelete={handleDelete}
         onRowClick={(user) => handleViewClick(user)}
         rows={filteredUsers}
       />

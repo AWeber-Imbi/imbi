@@ -54,6 +54,7 @@ export function InlineDate({
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-2">
         <DayPicker
+          defaultMonth={hasValid ? current : undefined}
           mode="single"
           onSelect={async (d) => {
             setOpen(false)
