@@ -1,5 +1,6 @@
 """Blueprint CRUD endpoints"""
 
+import asyncio
 import logging
 import typing
 
@@ -11,6 +12,8 @@ from imbi_common import graph, models
 from imbi_api import openapi
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
+from imbi_api.scoring import OptionalValkeyClient
+from imbi_api.scoring import queue as score_queue
 
 LOGGER = logging.getLogger(__name__)
 
@@ -28,6 +31,37 @@ BlueprintType = typing.Literal[
     'ThirdPartyService',
     'relationship',
 ]
+
+
+async def _enqueue_for_blueprint(
+    db: graph.Graph,
+    client: OptionalValkeyClient,
+    blueprint: models.Blueprint,
+) -> None:
+    try:
+        if blueprint.type != 'Project':
+            return
+        type_slugs: list[str] = []
+        if blueprint.filter and blueprint.filter.project_type:
+            type_slugs = list(blueprint.filter.project_type)
+        if type_slugs:
+            id_lists = await asyncio.gather(
+                *[score_queue.all_project_ids(db, ts) for ts in type_slugs]
+            )
+            ids = [pid for sublist in id_lists for pid in sublist]
+        else:
+            ids = await score_queue.all_project_ids(db)
+        await asyncio.gather(
+            *[
+                score_queue.enqueue_recompute(client, pid, 'blueprint_change')
+                for pid in ids
+            ]
+        )
+    except Exception:
+        LOGGER.exception(
+            'Failed to enqueue blueprint recomputes for %s',
+            blueprint.slug,
+        )
 
 
 def _match_params(
@@ -52,6 +86,7 @@ def _match_params(
 async def create_blueprint(
     blueprint: models.Blueprint,
     db: graph.Pool,
+    valkey_client: OptionalValkeyClient,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -71,6 +106,7 @@ async def create_blueprint(
         await openapi.refresh_blueprint_models(db)
     except Exception:
         LOGGER.exception('Failed to refresh blueprint models')
+    await _enqueue_for_blueprint(db, valkey_client, blueprint)
     return blueprint
 
 
@@ -177,6 +213,7 @@ async def patch_blueprint(
     slug: str,
     operations: list[json_patch.PatchOperation],
     db: graph.Pool,
+    valkey_client: OptionalValkeyClient,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -253,6 +290,7 @@ async def patch_blueprint(
         await openapi.refresh_blueprint_models(db)
     except Exception:
         LOGGER.exception('Failed to refresh blueprint models')
+    await _enqueue_for_blueprint(db, valkey_client, blueprint)
     return blueprint
 
 
@@ -264,6 +302,7 @@ async def delete_blueprint(
     ],
     slug: str,
     db: graph.Pool,
+    valkey_client: OptionalValkeyClient,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -272,6 +311,10 @@ async def delete_blueprint(
     ],
 ) -> None:
     """Delete a blueprint by type (or 'relationship') and slug."""
+    existing = await db.match(
+        models.Blueprint,
+        _match_params(blueprint_type, slug),
+    )
     if blueprint_type == _RELATIONSHIP:
         match_clause = (
             "MATCH (n:Blueprint {{slug: {slug}, kind: 'relationship'}})"
@@ -300,3 +343,5 @@ async def delete_blueprint(
         await openapi.refresh_blueprint_models(db)
     except Exception:
         LOGGER.exception('Failed to refresh blueprint models')
+    if existing:
+        await _enqueue_for_blueprint(db, valkey_client, existing[0])

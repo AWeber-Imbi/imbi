@@ -250,6 +250,31 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'write',
         'Create, update, and delete login auth provider configuration',
     ),
+    # Scoring policy management
+    (
+        'scoring_policy:read',
+        'scoring_policy',
+        'read',
+        'View scoring policies',
+    ),
+    (
+        'scoring_policy:write',
+        'scoring_policy',
+        'write',
+        'Create/update scoring policies',
+    ),
+    (
+        'scoring_policy:delete',
+        'scoring_policy',
+        'delete',
+        'Delete scoring policies',
+    ),
+    (
+        'scoring_policy:rescore_all',
+        'scoring_policy',
+        'rescore_all',
+        'Trigger bulk project rescore',
+    ),
     # Note template management
     (
         'note_template:create',

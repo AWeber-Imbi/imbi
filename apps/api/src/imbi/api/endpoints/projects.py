@@ -14,11 +14,15 @@ import nanoid
 import psycopg
 import pydantic
 from imbi_common import blueprints, graph, models
+from imbi_common.scoring import compute_score
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
+from imbi_api.domain import scoring as scoring_models
 from imbi_api.graph_sql import escape_prop, props_template, set_clause
 from imbi_api.relationships import build_relationships
+from imbi_api.scoring import OptionalValkeyClient
+from imbi_api.scoring import queue as score_queue
 
 LOGGER = logging.getLogger(__name__)
 
@@ -135,6 +139,8 @@ class ProjectResponse(pydantic.BaseModel):
     environments: list[EnvironmentRef] = []
     links: dict[str, pydantic.AnyUrl] = {}
     identifiers: dict[str, int | str] = {}
+    score: float | None = None
+    breakdown: scoring_models.ScoreBreakdown | None = None
     relationships: ProjectRelationships | None = None
 
     @pydantic.field_validator(
@@ -347,6 +353,7 @@ async def create_project(
     data: ProjectCreate,
     request: fastapi.Request,
     db: graph.Pool,
+    valkey_client: OptionalValkeyClient,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -518,6 +525,9 @@ async def create_project(
         request,
         graph.parse_agtype(records[0]['outbound_count']),
         graph.parse_agtype(records[0]['inbound_count']),
+    )
+    await score_queue.enqueue_recompute(
+        valkey_client, project_id, 'attribute_change'
     )
     return ProjectResponse.model_validate(project_data)
 
@@ -778,6 +788,7 @@ async def get_project(
             permissions.require_permission('project:read'),
         ),
     ],
+    breakdown: bool = False,
 ) -> ProjectResponse:
     """Get a project by ID."""
     query: typing.LiteralString = (
@@ -812,7 +823,15 @@ async def get_project(
         graph.parse_agtype(records[0]['outbound_count']),
         graph.parse_agtype(records[0]['inbound_count']),
     )
-    return ProjectResponse.model_validate(project_data)
+    response = ProjectResponse.model_validate(project_data)
+    if breakdown:
+        try:
+            score, bd = await compute_score(db, project_id)
+            response.score = score
+            response.breakdown = bd
+        except ValueError:
+            pass
+    return response
 
 
 class ProjectRelationshipSummary(pydantic.BaseModel):
@@ -1373,6 +1392,7 @@ async def patch_project(
     operations: list[json_patch.PatchOperation],
     request: fastapi.Request,
     db: graph.Pool,
+    valkey_client: OptionalValkeyClient,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -1485,7 +1505,7 @@ async def patch_project(
             detail=f'Validation error: {e.errors()}',
         ) from e
 
-    return await _execute_project_update(
+    response = await _execute_project_update(
         project_id,
         org_slug,
         update_data,
@@ -1495,6 +1515,10 @@ async def patch_project(
         request,
         db,
     )
+    await score_queue.enqueue_recompute(
+        valkey_client, project_id, 'attribute_change'
+    )
+    return response
 
 
 @projects_router.delete('/{project_id}', status_code=204)

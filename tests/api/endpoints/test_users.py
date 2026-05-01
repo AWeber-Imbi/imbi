@@ -472,6 +472,45 @@ class UserEndpointsTestCase(unittest.TestCase):
         self.auth_context.user.email = 'admin@example.com'
         self.auth_context.user.is_admin = True
 
+    def test_change_password_user_not_found(self) -> None:
+        """Test password change when user does not exist."""
+        self.mock_db.match.return_value = []
+
+        response = self.client.post(
+            '/users/nobody@example.com/password',
+            json={'new_password': 'NewSecure123!@#'},
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])
+
+    def test_change_password_no_current_password_provided(self) -> None:
+        """Changing own password without current_password returns 400."""
+        self.auth_context.user.email = 'test@example.com'
+        self.auth_context.user.is_admin = False
+
+        mock_user = models.User(
+            email='test@example.com',
+            display_name='Test',
+            password_hash='$argon2id$hashed',
+            is_active=True,
+            is_admin=False,
+            is_service_account=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.mock_db.match.return_value = [mock_user]
+
+        response = self.client.post(
+            '/users/test@example.com/password',
+            json={'new_password': 'NewSecure123!@#'},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('required', response.json()['detail'])
+
+        self.auth_context.user.email = 'admin@example.com'
+        self.auth_context.user.is_admin = True
+
     def test_change_password_not_self_or_admin(self) -> None:
         """Test non-admin cannot change another password."""
         self.auth_context.user.is_admin = False
@@ -491,6 +530,45 @@ class UserEndpointsTestCase(unittest.TestCase):
             'user:update',
             'user:delete',
         }
+
+    def test_create_user_non_admin_cannot_create_admin(self) -> None:
+        """Non-admin users cannot create admin accounts."""
+        self.auth_context.user.is_admin = False
+
+        response = self.client.post(
+            '/users/',
+            json={
+                'email': 'new@example.com',
+                'display_name': 'New Admin',
+                'is_admin': True,
+                'organization_slug': 'default',
+                'role_slug': 'developer',
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('admins', response.json()['detail'])
+        self.auth_context.user.is_admin = True
+
+    def test_create_user_unique_violation(self) -> None:
+        """Test creating user that hits UniqueViolation at DB level."""
+        import psycopg.errors
+
+        self.mock_db.match.return_value = []
+        self.mock_db.create.side_effect = psycopg.errors.UniqueViolation()
+
+        response = self.client.post(
+            '/users/',
+            json={
+                'email': 'dup@example.com',
+                'display_name': 'Dup User',
+                'organization_slug': 'default',
+                'role_slug': 'developer',
+            },
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('already exists', response.json()['detail'])
 
     def test_patch_user_display_name(self) -> None:
         """Test patching only the user's display name."""
@@ -652,6 +730,74 @@ class UserEndpointsTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('admins', response.json()['detail'])
+
+    def test_patch_user_organizations_reconciled(self) -> None:
+        """Patching organizations field reconciles memberships."""
+        existing_user = models.User(
+            email='dev@example.com',
+            display_name='Dev',
+            is_active=True,
+            is_admin=False,
+            is_service_account=False,
+            created_at=datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC),
+        )
+        self.mock_db.match.return_value = [existing_user]
+        self.mock_db.merge.return_value = None
+
+        # execute calls: load existing orgs (empty), org validation,
+        # role validation, CREATE edge, load final orgs (empty)
+        self.mock_db.execute.side_effect = [
+            [],  # _load_user_memberships (existing)
+            [{'found': ['org1']}],  # org validation in _reconcile
+            [{'found': ['dev']}],  # role validation in _reconcile
+            [],  # CREATE edge
+            [],  # _load_user_memberships (final)
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/users/dev%40example.com',
+                json=[
+                    {
+                        'op': 'add',
+                        'path': '/organizations/0',
+                        'value': {
+                            'organization_slug': 'org1',
+                            'role': 'dev',
+                        },
+                    }
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_patch_user_invalid_organizations_returns_400(self) -> None:
+        """Patching organizations with a non-list value returns 400."""
+        existing_user = models.User(
+            email='dev@example.com',
+            display_name='Dev',
+            is_active=True,
+            is_admin=False,
+            is_service_account=False,
+            created_at=datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC),
+        )
+        self.mock_db.match.return_value = [existing_user]
+        self.mock_db.execute.return_value = []
+
+        response = self.client.patch(
+            '/users/dev%40example.com',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/organizations',
+                    'value': 'not-a-list',
+                }
+            ],
+        )
+
+        self.assertEqual(response.status_code, 400)
 
     def test_patch_user_service_account_clears_password(self) -> None:
         """Becoming a service account clears the password hash."""
@@ -867,6 +1013,272 @@ class OrgMembershipEndpointsTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.mock_db.execute.assert_not_awaited()
+
+
+class NormalizeMembershipInputTestCase(unittest.TestCase):
+    """Unit tests for _normalize_membership_input."""
+
+    def test_not_a_list_raises(self) -> None:
+        import fastapi
+
+        from imbi_api.endpoints.users import _normalize_membership_input
+
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            _normalize_membership_input('not-a-list')
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn('array', ctx.exception.detail)
+
+    def test_entry_not_dict_raises(self) -> None:
+        import fastapi
+
+        from imbi_api.endpoints.users import _normalize_membership_input
+
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            _normalize_membership_input(['not-a-dict'])
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn('objects', ctx.exception.detail)
+
+    def test_missing_org_slug_raises(self) -> None:
+        import fastapi
+
+        from imbi_api.endpoints.users import _normalize_membership_input
+
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            _normalize_membership_input([{'role': 'developer'}])
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn('organization_slug', ctx.exception.detail)
+
+    def test_empty_org_slug_raises(self) -> None:
+        import fastapi
+
+        from imbi_api.endpoints.users import _normalize_membership_input
+
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            _normalize_membership_input(
+                [{'organization_slug': '', 'role': 'developer'}]
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
+
+    def test_missing_role_raises(self) -> None:
+        import fastapi
+
+        from imbi_api.endpoints.users import _normalize_membership_input
+
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            _normalize_membership_input([{'organization_slug': 'org1'}])
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn('role', ctx.exception.detail)
+
+    def test_empty_role_raises(self) -> None:
+        import fastapi
+
+        from imbi_api.endpoints.users import _normalize_membership_input
+
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            _normalize_membership_input(
+                [{'organization_slug': 'org1', 'role': ''}]
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
+
+    def test_duplicate_slug_raises(self) -> None:
+        import fastapi
+
+        from imbi_api.endpoints.users import _normalize_membership_input
+
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            _normalize_membership_input(
+                [
+                    {'organization_slug': 'org1', 'role': 'developer'},
+                    {'organization_slug': 'org1', 'role': 'admin'},
+                ]
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn('Duplicate', ctx.exception.detail)
+
+    def test_valid_input_returns_normalized(self) -> None:
+        from imbi_api.endpoints.users import _normalize_membership_input
+
+        result = _normalize_membership_input(
+            [{'organization_slug': 'org1', 'role': 'developer'}]
+        )
+        self.assertEqual(
+            result, [{'organization_slug': 'org1', 'role': 'developer'}]
+        )
+
+    def test_empty_list_returns_empty(self) -> None:
+        from imbi_api.endpoints.users import _normalize_membership_input
+
+        result = _normalize_membership_input([])
+        self.assertEqual(result, [])
+
+
+class ReconcileMembershipsTestCase(unittest.IsolatedAsyncioTestCase):
+    """Unit tests for _reconcile_user_memberships."""
+
+    async def test_adds_new_membership(self) -> None:
+        from unittest import mock
+
+        from imbi_common import graph
+
+        from imbi_api.endpoints.users import _reconcile_user_memberships
+
+        db = mock.AsyncMock(spec=graph.Graph)
+        # Org validation returns both found
+        # Role validation returns found
+        db.execute = mock.AsyncMock(
+            side_effect=[
+                [{'found': ['org1']}],  # org validation
+                [{'found': ['dev']}],  # role validation
+                [],  # CREATE membership
+            ]
+        )
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            await _reconcile_user_memberships(
+                db,
+                'u@example.com',
+                [],
+                [{'organization_slug': 'org1', 'role': 'dev'}],
+            )
+        self.assertEqual(db.execute.call_count, 3)
+
+    async def test_removes_old_membership(self) -> None:
+        from unittest import mock
+
+        from imbi_common import graph
+
+        from imbi_api.endpoints.users import _reconcile_user_memberships
+
+        db = mock.AsyncMock(spec=graph.Graph)
+        db.execute = mock.AsyncMock(return_value=[])
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            await _reconcile_user_memberships(
+                db,
+                'u@example.com',
+                [{'organization_slug': 'org1', 'role': 'dev'}],
+                [],
+            )
+        # No org/role validation needed; only the DELETE query
+        self.assertEqual(db.execute.call_count, 1)
+
+    async def test_updates_role_when_changed(self) -> None:
+        from unittest import mock
+
+        from imbi_common import graph
+
+        from imbi_api.endpoints.users import _reconcile_user_memberships
+
+        db = mock.AsyncMock(spec=graph.Graph)
+        db.execute = mock.AsyncMock(
+            side_effect=[
+                [{'found': ['org1']}],
+                [{'found': ['admin']}],
+                [],
+            ]
+        )
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            await _reconcile_user_memberships(
+                db,
+                'u@example.com',
+                [{'organization_slug': 'org1', 'role': 'dev'}],
+                [{'organization_slug': 'org1', 'role': 'admin'}],
+            )
+        # org validation + role validation + SET update
+        self.assertEqual(db.execute.call_count, 3)
+
+    async def test_no_change_when_role_same(self) -> None:
+        from unittest import mock
+
+        from imbi_common import graph
+
+        from imbi_api.endpoints.users import _reconcile_user_memberships
+
+        db = mock.AsyncMock(spec=graph.Graph)
+        db.execute = mock.AsyncMock(
+            side_effect=[
+                [{'found': ['org1']}],
+                [{'found': ['dev']}],
+            ]
+        )
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            await _reconcile_user_memberships(
+                db,
+                'u@example.com',
+                [{'organization_slug': 'org1', 'role': 'dev'}],
+                [{'organization_slug': 'org1', 'role': 'dev'}],
+            )
+        # org validation + role validation only (no edge mutation needed)
+        self.assertEqual(db.execute.call_count, 2)
+
+    async def test_unknown_org_raises(self) -> None:
+        from unittest import mock
+
+        import fastapi
+        from imbi_common import graph
+
+        from imbi_api.endpoints.users import _reconcile_user_memberships
+
+        db = mock.AsyncMock(spec=graph.Graph)
+        db.execute = mock.AsyncMock(return_value=[{'found': []}])
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            with self.assertRaises(fastapi.HTTPException) as ctx:
+                await _reconcile_user_memberships(
+                    db,
+                    'u@example.com',
+                    [],
+                    [{'organization_slug': 'ghost', 'role': 'dev'}],
+                )
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn('Unknown organization', ctx.exception.detail)
+
+    async def test_unknown_role_raises(self) -> None:
+        from unittest import mock
+
+        import fastapi
+        from imbi_common import graph
+
+        from imbi_api.endpoints.users import _reconcile_user_memberships
+
+        db = mock.AsyncMock(spec=graph.Graph)
+        db.execute = mock.AsyncMock(
+            side_effect=[
+                [{'found': ['org1']}],
+                [{'found': []}],
+            ]
+        )
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            with self.assertRaises(fastapi.HTTPException) as ctx:
+                await _reconcile_user_memberships(
+                    db,
+                    'u@example.com',
+                    [],
+                    [{'organization_slug': 'org1', 'role': 'ghost'}],
+                )
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn('Unknown role', ctx.exception.detail)
+
+    async def test_empty_desired_no_queries(self) -> None:
+        from unittest import mock
+
+        from imbi_common import graph
+
+        from imbi_api.endpoints.users import _reconcile_user_memberships
+
+        db = mock.AsyncMock(spec=graph.Graph)
+        db.execute = mock.AsyncMock(return_value=[])
+        await _reconcile_user_memberships(db, 'u@example.com', [], [])
+        db.execute.assert_not_called()
 
 
 class ServiceAccountGuardRailsTestCase(unittest.TestCase):

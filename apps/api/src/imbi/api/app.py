@@ -1,6 +1,6 @@
 import fastapi
 from fastapi.middleware import cors
-from imbi_common import graph, lifespan
+from imbi_common import graph, lifespan, valkey
 from uvicorn.middleware import proxy_headers
 
 from imbi_api import endpoints, lifespans, openapi, settings, version
@@ -15,6 +15,8 @@ def create_app() -> fastapi.FastAPI:
             graph.graph_lifespan,
             lifespans.email_hook,
             lifespans.storage_hook,
+            valkey.valkey_lifespan,
+            lifespans.score_worker_hook,
         ),
         version=version,
         redoc_url='/docs',

@@ -1,3 +1,5 @@
+import asyncio
+import unittest
 import unittest.mock
 
 from fastapi import testclient
@@ -29,6 +31,54 @@ class ApplicationLifespanTestCase(unittest.TestCase):
             str(error.exception),
             'ClickHouse initialization failed',
         )
+
+    def test_score_worker_skipped_when_valkey_raises(self) -> None:
+        """score_worker_hook exits early when valkey.get_client() raises."""
+        loop = asyncio.new_event_loop()
+        try:
+            with (
+                unittest.mock.patch(
+                    'imbi_api.lifespans.valkey.get_client',
+                    side_effect=RuntimeError('no valkey'),
+                ),
+                self.assertLogs(lifespans.LOGGER, level='WARNING') as cm,
+            ):
+
+                async def _run() -> None:
+                    async with lifespans.score_worker_hook():
+                        pass
+
+                loop.run_until_complete(_run())
+        finally:
+            loop.close()
+
+        self.assertTrue(
+            any('Valkey unavailable' in line for line in cm.output)
+        )
+
+    def test_score_worker_skipped_when_graph_not_ready(self) -> None:
+        """score_worker_hook exits early when _graph is None."""
+        mock_client = unittest.mock.AsyncMock()
+        loop = asyncio.new_event_loop()
+        try:
+            with (
+                unittest.mock.patch(
+                    'imbi_api.lifespans.valkey.get_client',
+                    return_value=mock_client,
+                ),
+                unittest.mock.patch.object(lifespans, '_graph', None),
+                self.assertLogs(lifespans.LOGGER, level='WARNING') as cm,
+            ):
+
+                async def _run() -> None:
+                    async with lifespans.score_worker_hook():
+                        pass
+
+                loop.run_until_complete(_run())
+        finally:
+            loop.close()
+
+        self.assertTrue(any('Graph not ready' in line for line in cm.output))
 
     def test_openapi_refresh_blueprint_failure(self) -> None:
         failure = RuntimeError()

@@ -18,6 +18,161 @@ LOGGER = logging.getLogger(__name__)
 users_router = fastapi.APIRouter(prefix='/users', tags=['Users'])
 
 
+async def _load_user_memberships(
+    db: graph.Graph, email: str
+) -> list[dict[str, str]]:
+    """Return the user's MEMBER_OF organizations as plain dicts."""
+    query = """
+    MATCH (u:User {{email: {email}}})-[m:MEMBER_OF]->(o:Organization)
+    RETURN o.name, o.slug, COALESCE(m.role, 'readonly') AS role
+    ORDER BY o.slug
+    """
+    records = await db.execute(
+        query, {'email': email}, columns=['org_name', 'org_slug', 'role']
+    )
+    return [
+        {
+            'organization_name': graph.parse_agtype(r['org_name']),
+            'organization_slug': graph.parse_agtype(r['org_slug']),
+            'role': graph.parse_agtype(r['role']),
+        }
+        for r in records
+    ]
+
+
+def _normalize_membership_input(
+    value: typing.Any,
+) -> list[dict[str, str]]:
+    """Validate and normalize a patched ``organizations`` array.
+
+    Each entry must be an object with ``organization_slug`` and ``role``
+    string fields. Duplicates (same slug) are rejected.
+    """
+    if not isinstance(value, list):
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="'organizations' must be an array",
+        )
+    normalized: list[dict[str, str]] = []
+    seen: set[str] = set()
+    items: list[typing.Any] = value  # type: ignore[assignment]
+    for entry in items:
+        if not isinstance(entry, dict):
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail='Membership entries must be objects',
+            )
+        entry_dict: dict[str, typing.Any] = entry  # type: ignore[assignment]
+        slug = entry_dict.get('organization_slug')
+        role = entry_dict.get('role')
+        if not isinstance(slug, str) or not slug:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail="Membership 'organization_slug' is required",
+            )
+        if not isinstance(role, str) or not role:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail="Membership 'role' is required",
+            )
+        if slug in seen:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=f'Duplicate membership for organization {slug!r}',
+            )
+        seen.add(slug)
+        normalized.append({'organization_slug': slug, 'role': role})
+    return normalized
+
+
+async def _reconcile_user_memberships(
+    db: graph.Graph,
+    email: str,
+    existing: list[dict[str, str]],
+    desired: list[dict[str, str]],
+) -> None:
+    """Apply MEMBER_OF edge add/remove/update to match ``desired``.
+
+    Validates that every desired org_slug and role_slug exists before
+    making any edge mutations.
+    """
+    desired_by_slug = {m['organization_slug']: m['role'] for m in desired}
+    existing_by_slug = {m['organization_slug']: m['role'] for m in existing}
+
+    org_slugs = sorted(set(desired_by_slug) | set(existing_by_slug))
+    role_slugs = sorted({m['role'] for m in desired})
+
+    if desired_by_slug:
+        validation = await db.execute(
+            'MATCH (o:Organization) WHERE o.slug IN {slugs}'
+            ' RETURN collect(o.slug) AS found',
+            {'slugs': list(desired_by_slug)},
+            columns=['found'],
+        )
+        found_orgs: list[str] = (
+            graph.parse_agtype(validation[0]['found']) if validation else []
+        )
+        missing = set(desired_by_slug) - set(found_orgs or [])
+        if missing:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=f'Unknown organization(s): {sorted(missing)}',
+            )
+
+    if role_slugs:
+        validation = await db.execute(
+            'MATCH (r:Role) WHERE r.slug IN {slugs}'
+            ' RETURN collect(r.slug) AS found',
+            {'slugs': role_slugs},
+            columns=['found'],
+        )
+        found_roles: list[str] = (
+            graph.parse_agtype(validation[0]['found']) if validation else []
+        )
+        missing_roles = set(role_slugs) - set(found_roles or [])
+        if missing_roles:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=f'Unknown role(s): {sorted(missing_roles)}',
+            )
+
+    for slug in org_slugs:
+        if slug in desired_by_slug and slug not in existing_by_slug:
+            await db.execute(
+                'MATCH (u:User {{email: {email}}}),'
+                ' (o:Organization {{slug: {org_slug}}})'
+                ' CREATE (u)-[:MEMBER_OF {{role: {role}}}]->(o)',
+                {
+                    'email': email,
+                    'org_slug': slug,
+                    'role': desired_by_slug[slug],
+                },
+            )
+        elif slug in desired_by_slug and slug in existing_by_slug:
+            if desired_by_slug[slug] != existing_by_slug[slug]:
+                await db.execute(
+                    'MATCH (:User {{email: {email}}})'
+                    '-[m:MEMBER_OF]->'
+                    '(:Organization {{slug: {org_slug}}})'
+                    ' SET m.role = {role}'
+                    ' RETURN m',
+                    {
+                        'email': email,
+                        'org_slug': slug,
+                        'role': desired_by_slug[slug],
+                    },
+                    columns=['m'],
+                )
+        else:
+            await db.execute(
+                'MATCH (:User {{email: {email}}})'
+                '-[m:MEMBER_OF]->'
+                '(:Organization {{slug: {org_slug}}})'
+                ' DELETE m',
+                {'email': email, 'org_slug': slug},
+            )
+
+
 @users_router.post('/', response_model=models.UserResponse, status_code=201)
 async def create_user(
     user_create: models.UserCreate,
@@ -243,7 +398,7 @@ async def get_user(
     # Load organization memberships via Cypher
     org_query = """
     MATCH (u:User {{email: {email}}})-[m:MEMBER_OF]->(o:Organization)
-    RETURN o.name, o.slug, m.role
+    RETURN o.name, o.slug, COALESCE(m.role, 'readonly') AS role
     ORDER BY o.name
     """
     org_records = await db.execute(
@@ -323,6 +478,9 @@ async def patch_user(
             detail='Only admins can modify admin users',
         )
 
+    # Load current memberships for inclusion in the patchable document
+    existing_orgs = await _load_user_memberships(db, email)
+
     # Build patchable document (exclude password_hash and timestamps)
     current: dict[str, typing.Any] = {
         'email': existing_user.email,
@@ -331,6 +489,13 @@ async def patch_user(
         'is_admin': existing_user.is_admin,
         'is_service_account': existing_user.is_service_account,
         'email_notifications': existing_user.email_notifications,
+        'organizations': [
+            {
+                'organization_slug': m['organization_slug'],
+                'role': m['role'],
+            }
+            for m in existing_orgs
+        ],
     }
 
     patched = json_patch.apply_patch(
@@ -382,8 +547,21 @@ async def patch_user(
         avatar_url=existing_user.avatar_url,
     )
 
+    # Normalize and validate memberships before persisting user changes
+    new_orgs_raw = patched.get('organizations', [])
+    new_orgs = _normalize_membership_input(new_orgs_raw)
+    memberships_changed = {
+        (o['organization_slug'], o['role']) for o in new_orgs
+    } != {(o['organization_slug'], o['role']) for o in existing_orgs}
+
     await db.merge(updated_user, match_on=['email'])
 
+    # Reconcile organization memberships if the patch changed them
+    if memberships_changed:
+        await _reconcile_user_memberships(db, email, existing_orgs, new_orgs)
+
+    # Return the user with the post-reconciliation memberships
+    final_orgs = await _load_user_memberships(db, email)
     return models.UserResponse(
         email=updated_user.email,
         display_name=updated_user.display_name,
@@ -394,6 +572,14 @@ async def patch_user(
         last_login=updated_user.last_login,
         avatar_url=updated_user.avatar_url,
         email_notifications=updated_user.email_notifications,
+        organizations=[
+            models.OrgMembership(
+                organization_name=m['organization_name'],
+                organization_slug=m['organization_slug'],
+                role=m['role'],
+            )
+            for m in final_orgs
+        ],
     )
 
 
@@ -549,9 +735,8 @@ async def add_to_organization(
     MATCH (u:User {{email: {email}}}),
           (o:Organization {{slug: {org_slug}}}),
           (r:Role {{slug: {role_slug}}})
-    MERGE (u)-[m:MEMBER_OF]->(o)
-    SET m.role = {role_slug}
-    RETURN u, o, r
+    OPTIONAL MATCH (u)-[existing_m:MEMBER_OF]->(o)
+    RETURN u, o, r, existing_m
     """
     records = await db.execute(
         query,
@@ -560,13 +745,29 @@ async def add_to_organization(
             'org_slug': org_slug,
             'role_slug': role_slug,
         },
-        columns=['u', 'o', 'r'],
+        columns=['u', 'o', 'r', 'existing_m'],
     )
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'User {email!r}, organization {org_slug!r},'
             f' or role {role_slug!r} not found',
+        )
+    existing_m = records[0].get('existing_m')
+    if existing_m is None:
+        await db.execute(
+            'MATCH (u:User {{email: {email}}}),'
+            ' (o:Organization {{slug: {org_slug}}})'
+            ' CREATE (u)-[:MEMBER_OF {{role: {role_slug}}}]->(o)',
+            {'email': email, 'org_slug': org_slug, 'role_slug': role_slug},
+        )
+    else:
+        await db.execute(
+            'MATCH (:User {{email: {email}}})'
+            '-[m:MEMBER_OF]->'
+            '(:Organization {{slug: {org_slug}}})'
+            ' SET m.role = {role_slug}',
+            {'email': email, 'org_slug': org_slug, 'role_slug': role_slug},
         )
 
 

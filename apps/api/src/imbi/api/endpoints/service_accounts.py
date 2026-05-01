@@ -178,7 +178,7 @@ async def get_service_account(
           -[m:MEMBER_OF]->(o:Organization)
     RETURN o.name AS org_name,
            o.slug AS org_slug,
-           m.role AS role
+           COALESCE(m.role, 'readonly') AS role
     ORDER BY o.name
     """
     records = await db.execute(
