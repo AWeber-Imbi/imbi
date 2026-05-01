@@ -304,10 +304,13 @@ class AuthProvidersEndpointTestCase(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 409)
 
-    def test_create_missing_org_or_service_returns_404(self) -> None:
+    def test_create_minimal_payload_uses_first_org(self) -> None:
+        """POST with only OAuth fields attaches to the first existing org."""
+        new = _row('google', usage='login')
         self.db.execute.side_effect = [
-            [],  # initial fetch — no existing
-            [],  # CREATE returned nothing — org/service missing
+            [],  # _FETCH_BY_SLUG initial check
+            [{'slug': 'aweber'}],  # org lookup
+            [new],  # MERGE service + CREATE app
         ]
         with (
             _patch_encryptor(),
@@ -318,16 +321,40 @@ class AuthProvidersEndpointTestCase(unittest.TestCase):
             response = self.client.post(
                 '/admin/auth-providers',
                 json={
-                    'org_slug': 'missing',
-                    'third_party_service_slug': 'missing',
-                    'slug': 'google',
-                    'name': 'Google',
                     'oauth_app_type': 'google',
                     'client_id': 'cid',
                     'client_secret': 'shh',
                 },
             )
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 201)
+        # The third execute call (MERGE+CREATE) uses the resolved org.
+        merge_args = self.db.execute.call_args_list[2].args[1]
+        self.assertEqual(merge_args['org_slug'], 'aweber')
+        self.assertEqual(merge_args['svc_slug'], 'auth-google')
+        self.assertEqual(merge_args['slug'], 'google')
+        self.assertEqual(merge_args['name'], 'Google')
+
+    def test_create_no_org_returns_409(self) -> None:
+        """If no organization exists, creating an auth provider fails."""
+        self.db.execute.side_effect = [
+            [],  # _FETCH_BY_SLUG initial check
+            [],  # org lookup — empty
+        ]
+        with (
+            _patch_encryptor(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            response = self.client.post(
+                '/admin/auth-providers',
+                json={
+                    'oauth_app_type': 'google',
+                    'client_id': 'cid',
+                    'client_secret': 'shh',
+                },
+            )
+        self.assertEqual(response.status_code, 409)
 
     def test_create_oidc_requires_issuer_url(self) -> None:
         # validate_login_app_fields rejects OIDC without issuer_url.

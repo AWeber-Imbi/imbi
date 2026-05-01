@@ -104,18 +104,29 @@ class AuthProviderResponse(pydantic.BaseModel):
     organization_name: str | None = None
 
 
-class AuthProviderCreate(pydantic.BaseModel):
-    """Request body for ``POST /admin/auth-providers``."""
+_OAUTH_APP_TYPE_LABELS: dict[_OAuthAppType, str] = {
+    'google': 'Google',
+    'github': 'GitHub',
+    'oidc': 'OIDC',
+}
 
-    org_slug: str = pydantic.Field(min_length=1)
-    third_party_service_slug: str = pydantic.Field(min_length=1)
-    slug: str = pydantic.Field(
-        pattern=r'^[a-z][a-z0-9-]*$',
-        min_length=2,
-        max_length=64,
-    )
-    name: str = pydantic.Field(min_length=1, max_length=128)
-    description: str | None = None
+_DEFAULT_AUTH_ORG_SLUG = 'default'
+
+
+def _default_service_slug(oauth_app_type: _OAuthAppType) -> str:
+    return f'auth-{oauth_app_type}'
+
+
+class AuthProviderCreate(pydantic.BaseModel):
+    """Request body for ``POST /admin/auth-providers``.
+
+    The UI surfaces only the OAuth-shaped fields; the parent
+    ``Organization`` / ``ThirdPartyService`` and the row's ``slug``
+    /``name`` are derived from ``oauth_app_type`` when omitted. The
+    parent nodes are MERGEd so first-time configuration auto-creates
+    the synthetic plumbing.
+    """
+
     oauth_app_type: _OAuthAppType
     client_id: str = pydantic.Field(min_length=1)
     client_secret: str = pydantic.Field(min_length=1)
@@ -123,6 +134,21 @@ class AuthProviderCreate(pydantic.BaseModel):
     allowed_domains: list[str] = pydantic.Field(default_factory=list)
     scopes: list[str] = pydantic.Field(default_factory=list)
     usage: _LoginUsage = 'login'
+    description: str | None = None
+    # Optional overrides — if omitted, derived from ``oauth_app_type``.
+    slug: str | None = pydantic.Field(
+        default=None,
+        pattern=r'^[a-z][a-z0-9-]*$',
+        min_length=2,
+        max_length=64,
+    )
+    name: str | None = pydantic.Field(
+        default=None, min_length=1, max_length=128
+    )
+    org_slug: str | None = pydantic.Field(default=None, min_length=1)
+    third_party_service_slug: str | None = pydantic.Field(
+        default=None, min_length=1
+    )
 
     @pydantic.model_validator(mode='after')
     def _validate(self) -> typing.Self:
@@ -134,6 +160,24 @@ class AuthProviderCreate(pydantic.BaseModel):
             self.allowed_domains,
         )
         return self
+
+    @property
+    def resolved_slug(self) -> str:
+        return self.slug or self.oauth_app_type
+
+    @property
+    def resolved_name(self) -> str:
+        return self.name or _OAUTH_APP_TYPE_LABELS[self.oauth_app_type]
+
+    @property
+    def resolved_org_slug(self) -> str:
+        return self.org_slug or _DEFAULT_AUTH_ORG_SLUG
+
+    @property
+    def resolved_service_slug(self) -> str:
+        return self.third_party_service_slug or _default_service_slug(
+            self.oauth_app_type
+        )
 
 
 class AuthProviderUpdate(pydantic.BaseModel):
@@ -260,15 +304,25 @@ async def create_auth_provider(
     encryptor = encryption.TokenEncryption.get_instance()
     encrypted_secret = encryptor.encrypt(data.client_secret)
 
+    resolved_slug = data.resolved_slug
+    resolved_name = data.resolved_name
+    resolved_org_slug = data.resolved_org_slug
+    resolved_service_slug = data.resolved_service_slug
+
     # Look up existing row first (across the targeted service).
     existing_records = await db.execute(
-        _FETCH_BY_SLUG, {'slug': data.slug}, ['app', 'service', 'organization']
+        _FETCH_BY_SLUG,
+        {'slug': resolved_slug},
+        ['app', 'service', 'organization'],
     )
     if existing_records:
         # Reject collisions whose parent service/org doesn't match the
         # request: silently rewriting another service's provider would
         # both mis-attribute the response and let one tenant clobber
-        # another's OAuth credentials.
+        # another's OAuth credentials. Only enforce when the caller
+        # explicitly pinned a parent — otherwise treat the existing
+        # row as the implicit target and route through the update
+        # branch.
         existing_svc: dict[str, typing.Any] = (
             graph.parse_agtype(existing_records[0].get('service')) or {}
         )
@@ -278,18 +332,20 @@ async def create_auth_provider(
         existing_svc_slug = existing_svc.get('slug')
         existing_org_slug = existing_org.get('slug')
         if (
-            existing_svc_slug != data.third_party_service_slug
-            or existing_org_slug != data.org_slug
+            data.third_party_service_slug is not None
+            and existing_svc_slug != data.third_party_service_slug
+        ) or (
+            data.org_slug is not None and existing_org_slug != data.org_slug
         ):
             raise fastapi.HTTPException(
                 status_code=409,
                 detail=(
-                    f'Auth provider {data.slug!r} already exists under '
+                    f'Auth provider {resolved_slug!r} already exists under '
                     f'{existing_org_slug!r}/{existing_svc_slug!r}'
                 ),
             )
         update_props = {
-            'name': data.name,
+            'name': resolved_name,
             'description': data.description,
             'usage': data.usage,
             'oauth_app_type': data.oauth_app_type,
@@ -305,27 +361,32 @@ async def create_auth_provider(
             f' {set_stmt}'
             ' RETURN a{{.*}} AS app'
         )
-        params = {'slug': data.slug, **update_props}
+        params = {'slug': resolved_slug, **update_props}
         await db.execute(update_query, params, ['app'])
-        login_providers.invalidate_cache(data.slug)
-        # Re-fetch with parent service + org for response shape.
+        login_providers.invalidate_cache(resolved_slug)
         records = await db.execute(
             _FETCH_BY_SLUG,
-            {'slug': data.slug},
+            {'slug': resolved_slug},
             ['app', 'service', 'organization'],
         )
         app = graph.parse_agtype(records[0]['app'])
         svc = graph.parse_agtype(records[0].get('service'))
         org = graph.parse_agtype(records[0].get('organization'))
         LOGGER.info(
-            'Auth provider %s updated by %s', data.slug, auth.principal_name
+            'Auth provider %s updated by %s',
+            resolved_slug,
+            auth.principal_name,
         )
         return AuthProviderResponse(**_row_to_response(app, svc, org))
 
-    # Create a brand-new ServiceApplication under the named org/service.
+    # New row. MERGE the synthetic parent org + service so first-time
+    # configuration auto-creates the plumbing, then CREATE the
+    # ServiceApplication under it. The synthetic service vendor matches
+    # the OAuth app type so admins viewing the third-party-services
+    # screen can recognize it.
     create_props: dict[str, typing.Any] = {
-        'slug': data.slug,
-        'name': data.name,
+        'slug': resolved_slug,
+        'name': resolved_name,
         'description': data.description,
         'app_type': 'oauth',
         'application_url': None,
@@ -345,19 +406,58 @@ async def create_auth_provider(
     }
     app_tpl = props_template(create_props)
 
+    service_label = (
+        f'{_OAUTH_APP_TYPE_LABELS[data.oauth_app_type]} Auth Provider'
+    )
+    # When the caller didn't pin a specific org, attach the synthetic
+    # parent service to whatever organization already exists in the
+    # graph rather than minting a new "default" one. The actual choice
+    # only matters for the row's data home — visibility on the
+    # third-party-services screens is controlled by usage, not the
+    # parent org. Pre-flight to fail loudly if no org is present yet.
+    if data.org_slug is None:
+        org_lookup_query: typing.LiteralString = (
+            'MATCH (o:Organization) RETURN o.slug AS slug ORDER BY o.slug'
+            ' LIMIT 1'
+        )
+        org_records = await db.execute(org_lookup_query, {}, ['slug'])
+        if not org_records:
+            raise fastapi.HTTPException(
+                status_code=409,
+                detail=(
+                    'No organization exists yet; create one before adding'
+                    ' auth providers'
+                ),
+            )
+        resolved_org_slug = str(graph.parse_agtype(org_records[0]['slug']))
+
+    # AGE doesn't support ON CREATE SET, so use COALESCE to leave
+    # existing service attributes untouched when they're already
+    # populated. The org is REQUIRED to exist (we don't auto-create);
+    # only the synthetic ThirdPartyService is MERGEd.
     create_query: str = (
-        'MATCH (s:ThirdPartyService {{slug: {svc_slug}}})'
-        ' -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})'
+        'MATCH (o:Organization {{slug: {org_slug}}})'
+        ' MERGE (s:ThirdPartyService {{slug: {svc_slug}}})'
+        ' -[:BELONGS_TO]->(o)'
+        ' SET s.name = COALESCE(s.name, {svc_name}),'
+        ' s.vendor = COALESCE(s.vendor, {svc_vendor}),'
+        " s.status = COALESCE(s.status, 'active'),"
+        " s.identifiers = COALESCE(s.identifiers, '{{}}'),"
+        " s.links = COALESCE(s.links, '{{}}')"
+        ' WITH s, o'
         f' CREATE (a:ServiceApplication {app_tpl})'
         ' CREATE (a)-[:REGISTERED_IN]->(s)'
-        ' RETURN a{{.*}} AS app, s{{.*}} AS service, o{{.*}} AS organization'
+        ' RETURN a{{.*}} AS app, s{{.*}} AS service,'
+        ' o{{.*}} AS organization'
     )
     try:
         records = await db.execute(
             create_query,
             {
-                'svc_slug': data.third_party_service_slug,
-                'org_slug': data.org_slug,
+                'svc_slug': resolved_service_slug,
+                'svc_name': service_label,
+                'svc_vendor': _OAUTH_APP_TYPE_LABELS[data.oauth_app_type],
+                'org_slug': resolved_org_slug,
                 **create_props,
             },
             ['app', 'service', 'organization'],
@@ -365,24 +465,21 @@ async def create_auth_provider(
     except psycopg.errors.UniqueViolation as e:
         raise fastapi.HTTPException(
             status_code=409,
-            detail=f'Auth provider {data.slug!r} already exists',
+            detail=f'Auth provider {resolved_slug!r} already exists',
         ) from e
 
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
-            detail=(
-                f'Service {data.third_party_service_slug!r} in org '
-                f'{data.org_slug!r} not found'
-            ),
+            detail=f'Organization {resolved_org_slug!r} not found',
         )
 
-    login_providers.invalidate_cache(data.slug)
+    login_providers.invalidate_cache(resolved_slug)
     app = graph.parse_agtype(records[0]['app'])
     svc = graph.parse_agtype(records[0].get('service'))
     org = graph.parse_agtype(records[0].get('organization'))
     LOGGER.info(
-        'Auth provider %s created by %s', data.slug, auth.principal_name
+        'Auth provider %s created by %s', resolved_slug, auth.principal_name
     )
     return AuthProviderResponse(**_row_to_response(app, svc, org))
 

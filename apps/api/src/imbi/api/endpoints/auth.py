@@ -886,11 +886,22 @@ async def oauth_callback(
         user.last_login = now
         await db.merge(user, match_on=['email'])
 
-        # Update OAuth identity last_used
+        # Update OAuth identity last_used. Direct SET (not db.merge) so
+        # we don't walk the User edge target — when oauth_identity was
+        # loaded via db.match the edge isn't populated.
         oauth_identity.last_used = now
-        await db.merge(
-            oauth_identity,
-            match_on=['provider', 'provider_user_id'],
+        update_last_used: typing.LiteralString = (
+            'MATCH (oi:OAuthIdentity {{provider: {provider},'
+            ' provider_user_id: {provider_user_id}}})'
+            ' SET oi.last_used = {last_used}'
+        )
+        await db.execute(
+            update_last_used,
+            {
+                'provider': oauth_identity.provider,
+                'provider_user_id': oauth_identity.provider_user_id,
+                'last_used': now.isoformat(),
+            },
         )
 
         LOGGER.info(
@@ -985,7 +996,10 @@ async def find_or_create_oauth_identity(
     identity = identity_results[0] if identity_results else None
 
     if identity:
-        # Phase 5: Encrypt and update tokens
+        # Refresh the row's encrypted tokens + expiry. ``db.merge`` walks
+        # the ``user`` edge target which ``db.match`` doesn't populate,
+        # so go through a direct SET. The model is updated in-memory so
+        # the return value reflects the new tokens.
         encryptor = encryption.TokenEncryption.get_instance()
         identity.set_encrypted_tokens(
             token_response['access_token'],
@@ -995,11 +1009,23 @@ async def find_or_create_oauth_identity(
         identity.token_expires_at = datetime.datetime.now(
             datetime.UTC
         ) + datetime.timedelta(seconds=token_response.get('expires_in', 3600))
-        await db.merge(
-            identity,
-            match_on=['provider', 'provider_user_id'],
+        update_tokens_query: typing.LiteralString = (
+            'MATCH (oi:OAuthIdentity {{provider: {provider},'
+            ' provider_user_id: {provider_user_id}}})'
+            ' SET oi.access_token = {access_token},'
+            ' oi.refresh_token = {refresh_token},'
+            ' oi.token_expires_at = {token_expires_at}'
         )
-
+        await db.execute(
+            update_tokens_query,
+            {
+                'provider': oauth_app_type,
+                'provider_user_id': profile['id'],
+                'access_token': identity.access_token,
+                'refresh_token': identity.refresh_token,
+                'token_expires_at': identity.token_expires_at.isoformat(),
+            },
+        )
         return identity  # type: ignore[no-any-return]
 
     # OAuth identity doesn't exist - need to create it
