@@ -18,7 +18,7 @@ import type { PatchOperation, Webhook, WebhookCreate } from '@/types'
 
 import { AdminSection } from './AdminSection'
 import { WebhookDetail } from './webhooks/WebhookDetail'
-import { WebhookForm } from './webhooks/WebhookForm'
+import { WebhookForm, type WebhookSaveData } from './webhooks/WebhookForm'
 
 export function WebhookManagement() {
   const { selectedOrganization } = useOrganization()
@@ -51,16 +51,16 @@ export function WebhookManagement() {
       return createWebhook(orgSlug, data)
     },
     deleteErrorLabel: 'webhook',
-    deleteFn: (slug) => {
+    deleteFn: (webhookSlug) => {
       if (!orgSlug) throw new Error('No organization selected')
-      return deleteWebhook(orgSlug, slug)
+      return deleteWebhook(orgSlug, webhookSlug)
     },
     listFn: orgSlug ? (signal) => listWebhooks(orgSlug, signal) : null,
     onMutationSuccess: goToList,
     queryKey: ['webhooks', orgSlug],
-    updateFn: ({ operations, slug }) => {
+    updateFn: ({ operations, slug: webhookSlug }) => {
       if (!orgSlug) throw new Error('No organization selected')
-      return updateWebhook(orgSlug, slug, operations)
+      return updateWebhook(orgSlug, webhookSlug, operations)
     },
   })
 
@@ -86,14 +86,20 @@ export function WebhookManagement() {
     deleteMutation.mutate(wh.slug)
   }
 
-  const handleSave = (data: WebhookCreate) => {
+  const handleSave = (data: WebhookSaveData) => {
     if (viewMode === 'create') {
-      createMutation.mutate(data)
+      // slug is not included in create payload — it's system-generated.
+      const { slug: _slug, ...createData } = data
+      createMutation.mutate(createData)
     } else if (selectedSlug && selectedWebhook) {
+      // diff against all editable fields, including slug.
+      const fields = Object.keys(data).filter(
+        (k) => k !== 'id' && k !== 'notification_path',
+      )
       const operations = buildDiffPatch(
         selectedWebhook as unknown as Record<string, unknown>,
         data as unknown as Record<string, unknown>,
-        { fields: Object.keys(data) },
+        { fields },
       )
       if (operations.length === 0) {
         goToList()

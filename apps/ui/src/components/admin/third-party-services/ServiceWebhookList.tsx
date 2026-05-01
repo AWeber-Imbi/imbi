@@ -27,7 +27,7 @@ import { buildDiffPatch } from '@/lib/json-patch'
 import type { PatchOperation, WebhookCreate } from '@/types'
 
 import { WebhookDetail } from '../webhooks/WebhookDetail'
-import { WebhookForm } from '../webhooks/WebhookForm'
+import { WebhookForm, type WebhookSaveData } from '../webhooks/WebhookForm'
 
 interface ServiceWebhookListProps {
   onViewModeChange?: (mode: ViewMode) => void
@@ -141,17 +141,22 @@ export function ServiceWebhookList({
     }
   }
 
-  const handleSave = (data: WebhookCreate) => {
+  const handleSave = (data: WebhookSaveData) => {
     if (viewMode === 'create') {
+      // slug is system-generated on create; third_party_service_slug is forced.
+      const { slug: _slug, ...createData } = data
       createMutation.mutate({
-        ...data,
+        ...createData,
         third_party_service_slug: serviceSlug,
       })
     } else if (selectedSlug && selectedWebhook) {
+      const fields = Object.keys(data).filter(
+        (k) => k !== 'id' && k !== 'notification_path',
+      )
       const operations = buildDiffPatch(
         selectedWebhook as unknown as Record<string, unknown>,
         data as unknown as Record<string, unknown>,
-        { fields: Object.keys(data) },
+        { fields },
       )
       if (operations.length === 0) {
         setViewMode('list')

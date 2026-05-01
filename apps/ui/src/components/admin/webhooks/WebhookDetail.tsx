@@ -67,10 +67,10 @@ export function WebhookDetail({ onBack, onEdit, webhook }: WebhookDetailProps) {
         <CardContent>
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <div className="text-sm text-secondary">Slug</div>
+              <div className="text-sm text-secondary">ID</div>
               <div className="mt-1">
                 <code className="rounded bg-secondary px-2 py-1 text-sm text-primary">
-                  {webhook.slug}
+                  {webhook.id}
                 </code>
               </div>
             </div>
@@ -79,6 +79,14 @@ export function WebhookDetail({ onBack, onEdit, webhook }: WebhookDetailProps) {
               <div className="mt-1">
                 <code className="rounded bg-secondary px-2 py-1 text-sm text-primary">
                   {webhook.notification_path}
+                </code>
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-secondary">Slug</div>
+              <div className="mt-1">
+                <code className="rounded bg-secondary px-2 py-1 text-sm text-primary">
+                  {webhook.slug}
                 </code>
               </div>
             </div>

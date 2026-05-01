@@ -4880,22 +4880,15 @@ export interface components {
         };
         /**
          * WebhookCreate
-         * @description Request model for creating a webhook.
+         * @description Request model for creating a webhook. slug, id, and notification_path are system-generated.
          */
         WebhookCreate: {
             /** Name */
             name: string;
-            /** Slug */
-            slug: string;
             /** Description */
             description?: string | null;
             /** Icon */
             icon?: string | null;
-            /**
-             * Notification Path
-             * @description URL path for receiving webhooks (must start with /)
-             */
-            notification_path: string;
             /** Secret */
             secret?: string | null;
             /** Third Party Service Slug */
@@ -4913,15 +4906,17 @@ export interface components {
          * @description Response model for a webhook.
          */
         WebhookResponse: {
+            /** Id — stable surrogate key, never changes */
+            id: string;
             /** Name */
             name: string;
-            /** Slug */
+            /** Slug — editable unique key */
             slug: string;
             /** Description */
             description?: string | null;
             /** Icon */
             icon?: string | null;
-            /** Notification Path */
+            /** Notification Path — system-generated, read-only */
             notification_path: string;
             /** Third Party Service */
             third_party_service?: {

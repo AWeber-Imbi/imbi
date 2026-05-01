@@ -17,6 +17,9 @@ import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { slugify } from '@/lib/utils'
 import type { Webhook, WebhookCreate, WebhookRule } from '@/types'
 
+/** WebhookCreate plus an optional slug included only when editing. */
+export type WebhookSaveData = WebhookCreate & { slug?: string }
+
 type RuleDraft = WebhookRule & { _clientId: string }
 
 interface WebhookFormProps {
@@ -24,7 +27,7 @@ interface WebhookFormProps {
   error?: ApiError<{ detail?: string }> | Error | null
   isLoading?: boolean
   onCancel: () => void
-  onSave: (data: WebhookCreate) => void
+  onSave: (data: WebhookSaveData) => void
   webhook: null | Webhook
 }
 
@@ -45,9 +48,6 @@ export function WebhookForm({
   const [description, setDescription] = useState(webhook?.description || '')
   const [icon, setIcon] = useState(webhook?.icon || '')
   const handleIconChange = useIconWithCleanup(icon, setIcon)
-  const [notificationPath, setNotificationPath] = useState(
-    webhook?.notification_path || '/',
-  )
   const [secret, setSecret] = useState('')
   const [tpsSlug, setTpsSlug] = useState(
     (webhook?.third_party_service?.slug as string | undefined) ||
@@ -68,18 +68,23 @@ export function WebhookForm({
     queryKey: ['third-party-services', orgSlug],
   })
 
+  // Compute what the auto-generated slug would look like for a given
+  // service+name pair (mirrors _compute_webhook_slug in the API).
+  const computePreviewSlug = (svc: string, n: string) => {
+    const namePart = slugify(n)
+    if (svc) return `${svc}-${namePart}`.slice(0, 64).replace(/-+$/, '')
+    return namePart.slice(0, 64).replace(/-+$/, '')
+  }
+
   const validate = () => {
     const newErrors: Record<string, string> = {}
     if (!name.trim()) newErrors.name = 'Name is required'
-    if (!slug.trim()) newErrors.slug = 'Slug is required'
-    if (slug && !/^[a-z]([a-z0-9-]*[a-z0-9])?$/.test(slug)) {
-      newErrors.slug =
-        'Slug must start with a letter and contain only lowercase letters, numbers, and hyphens'
-    }
-    if (!notificationPath.trim())
-      newErrors.notification_path = 'Notification path is required'
-    if (notificationPath && !notificationPath.startsWith('/')) {
-      newErrors.notification_path = 'Path must start with /'
+    if (isEditing) {
+      if (!slug.trim()) newErrors.slug = 'Slug is required'
+      if (slug && !/^[a-z]([a-z0-9-]*[a-z0-9])?$/.test(slug)) {
+        newErrors.slug =
+          'Slug must start with a letter and contain only lowercase letters, numbers, and hyphens'
+      }
     }
     if (identifierSelector && !tpsSlug) {
       newErrors.identifier_selector =
@@ -100,21 +105,22 @@ export function WebhookForm({
   const handleSave = () => {
     if (!validate()) return
 
-    onSave({
+    const payload: WebhookSaveData = {
       description: description.trim() || null,
       icon: icon.trim() || null,
       identifier_selector: identifierSelector.trim() || null,
       name: name.trim(),
-      notification_path: notificationPath.trim(),
       rules: rules.map((r) => ({
         filter_expression: r.filter_expression.trim(),
         handler: r.handler.trim(),
         handler_config: r.handler_config,
       })),
       secret: secret.trim() || null,
-      slug: slug.trim(),
       third_party_service_slug: tpsSlug || null,
-    })
+      // Include slug only when editing so the PATCH can update it.
+      ...(isEditing ? { slug: slug.trim() } : {}),
+    }
+    onSave(payload)
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -125,7 +131,18 @@ export function WebhookForm({
   const handleNameChange = (value: string) => {
     setName(value)
     if (!isEditing) {
-      setSlug(slugify(value))
+      // Preview only — actual slug is computed by the API on save.
+      // When editing, the slug field is directly managed by the user.
+    }
+  }
+
+  const handleServiceChange = (newTps: string) => {
+    setTpsSlug(newTps)
+    if (!newTps) setIdentifierSelector('')
+    // In edit mode, auto-update the displayed slug to the computed value
+    // so the user can see what will be saved if they don't override it.
+    if (isEditing) {
+      setSlug(computePreviewSlug(newTps, name))
     }
   }
 
@@ -212,104 +229,109 @@ export function WebhookForm({
         {/* Basic Information */}
         <Card>
           <CardContent className="space-y-4 pt-6">
-            <div
-              className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
-            >
-              <div>
-                <label className="mb-1.5 block text-sm text-secondary">
-                  Name <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  className={` ${errors.name ? 'border-red-500' : ''}`}
-                  disabled={isLoading}
-                  onChange={(e) => handleNameChange(e.target.value)}
-                  placeholder="e.g., GitHub Push Events"
-                  value={name}
-                />
-                {errors.name && (
-                  <div
-                    className={
-                      'mt-1 flex items-center gap-1 text-xs text-danger'
-                    }
-                  >
-                    <AlertCircle className="h-3 w-3" />
-                    {errors.name}
-                  </div>
-                )}
-              </div>
-
-              {!isEditing && (
-                <div>
-                  <label className="mb-1.5 block text-sm text-secondary">
-                    Slug <span className="text-red-500">*</span>
-                  </label>
-                  <Input
-                    className={` ${errors.slug ? 'border-red-500' : ''}`}
-                    disabled={isLoading}
-                    onChange={(e) => setSlug(e.target.value)}
-                    placeholder="e.g., github-push-events"
-                    value={slug}
-                  />
-                  {errors.slug && (
-                    <div
-                      className={
-                        'mt-1 flex items-center gap-1 text-xs text-danger'
-                      }
-                    >
-                      <AlertCircle className="h-3 w-3" />
-                      {errors.slug}
-                    </div>
-                  )}
+            <div>
+              <label className="mb-1.5 block text-sm text-secondary">
+                Name <span className="text-red-500">*</span>
+              </label>
+              <Input
+                className={` ${errors.name ? 'border-red-500' : ''}`}
+                disabled={isLoading}
+                onChange={(e) => handleNameChange(e.target.value)}
+                placeholder="e.g., GitHub Push Events"
+                value={name}
+              />
+              {errors.name && (
+                <div
+                  className={'mt-1 flex items-center gap-1 text-xs text-danger'}
+                >
+                  <AlertCircle className="h-3 w-3" />
+                  {errors.name}
                 </div>
+              )}
+              {!isEditing && name && (
+                <p className="mt-1 text-xs text-tertiary">
+                  Slug will be auto-generated:{' '}
+                  <code>{computePreviewSlug(tpsSlug, name)}</code>
+                </p>
               )}
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {/* Slug — only shown and editable when editing an existing webhook */}
+            {isEditing && (
               <div>
                 <label className="mb-1.5 block text-sm text-secondary">
-                  Notification Path <span className="text-red-500">*</span>
+                  Slug{' '}
+                  <span className="text-xs text-tertiary">
+                    (auto-regenerated when service changes; editable)
+                  </span>
                 </label>
                 <Input
-                  className={` ${
-                    errors.notification_path ? 'border-red-500' : ''
-                  }`}
+                  className={` ${errors.slug ? 'border-red-500' : ''}`}
                   disabled={isLoading}
-                  onChange={(e) => setNotificationPath(e.target.value)}
-                  placeholder="/webhooks/github"
-                  value={notificationPath}
+                  onChange={(e) => setSlug(e.target.value)}
+                  placeholder="e.g., github-push-events"
+                  value={slug}
                 />
-                {errors.notification_path && (
+                {errors.slug && (
                   <div
                     className={
                       'mt-1 flex items-center gap-1 text-xs text-danger'
                     }
                   >
                     <AlertCircle className="h-3 w-3" />
-                    {errors.notification_path}
+                    {errors.slug}
                   </div>
                 )}
               </div>
+            )}
 
-              <div>
-                <label className="mb-1.5 block text-sm text-secondary">
-                  Secret{' '}
-                  {isEditing && (
-                    <span className="text-xs text-tertiary">
-                      (leave blank to keep current)
-                    </span>
-                  )}
-                </label>
-                <Input
-                  className=""
-                  disabled={isLoading}
-                  onChange={(e) => setSecret(e.target.value)}
-                  placeholder={
-                    isEditing ? '(unchanged)' : 'HMAC verification secret'
-                  }
-                  type="password"
-                  value={secret}
-                />
+            {/* Read-only system fields when editing */}
+            {isEditing && webhook && (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-sm text-secondary">
+                    ID{' '}
+                    <span className="text-xs text-tertiary">(read-only)</span>
+                  </label>
+                  <div className="rounded-lg border border-input bg-muted px-3 py-2">
+                    <code className="text-sm text-muted-foreground">
+                      {webhook.id}
+                    </code>
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm text-secondary">
+                    Notification Path{' '}
+                    <span className="text-xs text-tertiary">(read-only)</span>
+                  </label>
+                  <div className="rounded-lg border border-input bg-muted px-3 py-2">
+                    <code className="text-sm text-muted-foreground">
+                      {webhook.notification_path}
+                    </code>
+                  </div>
+                </div>
               </div>
+            )}
+
+            <div>
+              <label className="mb-1.5 block text-sm text-secondary">
+                Secret{' '}
+                {isEditing && (
+                  <span className="text-xs text-tertiary">
+                    (leave blank to keep current)
+                  </span>
+                )}
+              </label>
+              <Input
+                className=""
+                disabled={isLoading}
+                onChange={(e) => setSecret(e.target.value)}
+                placeholder={
+                  isEditing ? '(unchanged)' : 'HMAC verification secret'
+                }
+                type="password"
+                value={secret}
+              />
             </div>
 
             <div>
@@ -365,7 +387,12 @@ export function WebhookForm({
           <CardContent className="space-y-4 pt-6">
             <p className="mb-4 text-sm text-secondary">
               Optionally link this webhook to a third-party service for
-              automatic project resolution.
+              automatic project resolution.{' '}
+              {isEditing && (
+                <span className="text-xs text-tertiary">
+                  Changing the service will auto-regenerate the slug.
+                </span>
+              )}
             </p>
 
             <div className="space-y-4">
@@ -376,10 +403,7 @@ export function WebhookForm({
                 <select
                   className={selectClass}
                   disabled={isLoading}
-                  onChange={(e) => {
-                    setTpsSlug(e.target.value)
-                    if (!e.target.value) setIdentifierSelector('')
-                  }}
+                  onChange={(e) => handleServiceChange(e.target.value)}
                   value={tpsSlug}
                 >
                   <option value="">None</option>
@@ -624,7 +648,6 @@ export function WebhookForm({
 }
 
 // Per-row client id so React preserves correct instances after reorder/remove.
-// crypto.randomUUID is available in modern browsers; fall back for older envs.
 function makeClientId(): string {
   if (
     typeof crypto !== 'undefined' &&
