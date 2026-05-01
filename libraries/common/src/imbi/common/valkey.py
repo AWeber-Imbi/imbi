@@ -9,15 +9,27 @@ from valkey import asyncio as valkey
 
 from imbi_common import lifespan, settings
 
+_client: valkey.Valkey | None = None
+
+
+def get_client() -> valkey.Valkey:
+    """Return the module-level Valkey client set by valkey_lifespan."""
+    if _client is None:
+        raise RuntimeError('Valkey client is not initialized')
+    return _client
+
 
 @contextlib.asynccontextmanager
 async def valkey_lifespan() -> abc.AsyncIterator[valkey.Valkey]:
     """Open a Valkey client and ensure it is closed on shutdown."""
-    client = valkey.Valkey.from_url(str(settings.Valkey().url))
+    global _client
+    _client = valkey.Valkey.from_url(str(settings.Valkey().url))
     try:
-        yield client
+        yield _client
     finally:
-        await client.aclose()
+        client, _client = _client, None
+        if client is not None:
+            await client.aclose()
 
 
 async def _inject_client(

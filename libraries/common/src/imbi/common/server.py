@@ -1,5 +1,6 @@
 import functools
 import inspect
+import os
 import pathlib
 import re
 import tomllib
@@ -29,6 +30,7 @@ class _UvicornRunParams(typing.TypedDict):
     log_level: typing.NotRequired[str | int]
     port: int
     reload: typing.NotRequired[bool]
+    reload_dirs: typing.NotRequired[list[str]]
 
 
 def _verify_import(entrypoint: str) -> str:
@@ -124,6 +126,10 @@ def serve(
     }
     if dev:
         args['reload'] = True
+        extra_dirs = os.environ.get('IMBI_RELOAD_DIRS', '')
+        reload_dirs = [p for p in extra_dirs.split(os.pathsep) if p]
+        if reload_dirs:
+            args['reload_dirs'] = reload_dirs
     uvicorn.run(entrypoint, **args)
 
 

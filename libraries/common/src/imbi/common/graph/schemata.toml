@@ -24,6 +24,7 @@ name = [
   "ProjectType",
   "Release",
   "Role",
+  "ScoringPolicy",
   "ServiceAccount",
   "ServiceApplication",
   "Session",
@@ -125,6 +126,22 @@ unique = true
 [[vlabel_indexes]]
 vlabel = "Role"
 attributes = ["priority"]
+
+# ScoringPolicy edges (e.g. (:ScoringPolicy)-[:TARGETS]->(:ProjectType))
+# are created on demand by the scoring engine — AGE elabels have no
+# schemata-driven creation path, matching every other edge in this graph.
+[[vlabel_indexes]]
+vlabel = "ScoringPolicy"
+attributes = ["slug"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "ScoringPolicy"
+attributes = ["category", "enabled"]
+
+[[vlabel_indexes]]
+vlabel = "ScoringPolicy"
+attributes = ["attribute_name"]
 
 [[vlabel_indexes]]
 vlabel = "ServiceAccount"

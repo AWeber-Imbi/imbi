@@ -332,6 +332,7 @@ class Project(Node):
     ] = []
     links: dict[str, pydantic.AnyUrl] = {}
     identifiers: dict[str, int | str | pydantic.AnyUrl] = {}
+    score: float | None = None
 
 
 class Tag(Node):
