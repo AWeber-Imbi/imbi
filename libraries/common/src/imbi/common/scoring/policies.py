@@ -7,7 +7,7 @@ from imbi_common.scoring.models import AttributePolicy
 
 _POLICY_QUERY = (
     'MATCH (p:ScoringPolicy '
-    "{category: 'attribute', enabled: true})"
+    "{{category: 'attribute', enabled: true}})"
     ' OPTIONAL MATCH (p)-[:TARGETS]->(pt:ProjectType)'
     ' WITH p, collect(pt.slug) AS targets'
     ' WHERE p.attribute_name IN {attrs}'
