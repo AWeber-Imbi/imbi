@@ -55,3 +55,16 @@ class RecordScoreChangeTests(unittest.IsolatedAsyncioTestCase):
                 'attribute_change',
             )
         clickhouse.insert.assert_awaited_once()
+
+
+class ClearScoreTests(unittest.IsolatedAsyncioTestCase):
+    async def test_executes_set_null(self) -> None:
+        graph = mock.AsyncMock()
+        await history.clear_score(graph, _project(75.0))
+        graph.execute.assert_awaited_once()
+        query = graph.execute.call_args.args[0]
+        self.assertIn('p.score = null', query)
+        self.assertIn('p.previous_score = {previous_score}', query)
+        params = graph.execute.call_args.args[1]
+        self.assertEqual('proj-id', params['id'])
+        self.assertEqual(75.0, params['previous_score'])

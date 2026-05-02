@@ -60,15 +60,17 @@ class EvaluationTests(unittest.TestCase):
     def test_value_map_missing(self) -> None:
         self.assertIsNone(_policy().evaluate(None))
 
-    def test_range_half_open(self) -> None:
+    def test_range_closed(self) -> None:
         policy = _policy(
             value_score_map=None,
-            range_score_map={'90..100': 100, '0..90': 0},
+            range_score_map={'90..100': 100, '0..89': 0},
         )
-        # Lower bound inclusive, upper exclusive.
+        # Both bounds are inclusive — exact upper bound must match.
         self.assertEqual(100.0, policy.evaluate(90))
-        self.assertEqual(0.0, policy.evaluate(89.999))
-        self.assertIsNone(policy.evaluate(100))
+        self.assertEqual(100.0, policy.evaluate(100))
+        self.assertEqual(0.0, policy.evaluate(0))
+        self.assertEqual(0.0, policy.evaluate(89))
+        self.assertIsNone(policy.evaluate(89.5))  # gap between 89 and 90
 
     def test_range_non_numeric(self) -> None:
         policy = _policy(
@@ -85,3 +87,32 @@ class EvaluationTests(unittest.TestCase):
                 attribute_name='x',
                 weight=10,
             )
+
+    def test_value_score_map_accepts_json_string(self) -> None:
+        # AGE serializes nested objects as JSON strings; validator parses them.
+        policy = models.AttributePolicy.model_validate(
+            {
+                'name': 'Lang',
+                'slug': 'lang',
+                'attribute_name': 'programming_language',
+                'weight': 50,
+                'value_score_map': '{"Python 3.12": 100, "Python 2.7": 0}',
+            }
+        )
+        self.assertEqual(
+            {'Python 3.12': 100, 'Python 2.7': 0}, policy.value_score_map
+        )
+        self.assertEqual(100.0, policy.evaluate('Python 3.12'))
+
+    def test_range_score_map_accepts_json_string(self) -> None:
+        policy = models.AttributePolicy.model_validate(
+            {
+                'name': 'Cov',
+                'slug': 'cov',
+                'attribute_name': 'test_coverage',
+                'weight': 50,
+                'range_score_map': '{"90.01..100": 100, "0..90": 0}',
+            }
+        )
+        self.assertEqual(100.0, policy.evaluate(95))
+        self.assertEqual(100.0, policy.evaluate(100))

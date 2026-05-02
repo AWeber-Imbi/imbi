@@ -5,34 +5,55 @@ from __future__ import annotations
 from imbi_common import blueprints, graph, models
 from imbi_common.scoring.models import AttributePolicy
 
+_TYPE_QUERY = (
+    'MATCH (p:Project {{id: {id}}})-[:TYPE]->(pt:ProjectType)'
+    ' RETURN pt.slug AS slug'
+)
+
 _POLICY_QUERY = (
-    'MATCH (p:ScoringPolicy '
-    "{{category: 'attribute', enabled: true}})"
+    "MATCH (p:ScoringPolicy {{category: 'attribute', enabled: true}})"
     ' OPTIONAL MATCH (p)-[:TARGETS]->(pt:ProjectType)'
-    ' WITH p, collect(pt.slug) AS targets'
-    ' WHERE p.attribute_name IN {attrs}'
-    '   AND (size(targets) = 0'
-    '        OR any(t IN targets WHERE t IN {project_types}))'
-    ' RETURN p'
+    ' RETURN p, collect(pt.slug) AS targets'
 )
 
 
 async def applicable_policies(
     database: graph.Graph,
     project: models.Project,
-) -> list[AttributePolicy]:
-    """Return attribute policies that target *project*."""
-    extended = await blueprints.get_model(database, models.Project)
-    attrs = sorted(extended.model_fields.keys())
-    project_type_slugs = [pt.slug for pt in project.project_types]
-    rows = await database.execute(
-        _POLICY_QUERY,
-        {'attrs': attrs, 'project_types': project_type_slugs},
+) -> tuple[list[AttributePolicy], type[models.Project]]:
+    """Return (policies, extended_model_class) for *project*.
+
+    The extended model class includes all blueprint fields relevant to the
+    project's type(s) and must be used to reload the project so that
+    attribute values are available for scoring.
+
+    ``db.match()`` only fetches scalar properties and strips edge fields, so
+    ``project.project_types`` is always empty — type slugs are queried from
+    the graph directly.
+    """
+    type_rows = await database.execute(
+        _TYPE_QUERY, {'id': project.id}, columns=['slug']
     )
-    policies: list[AttributePolicy] = []
+    type_slugs = [s for r in type_rows if (s := graph.parse_agtype(r['slug']))]
+    context: dict[str, str | list[str]] | None = (
+        {'project_type': type_slugs} if type_slugs else None
+    )
+    extended = await blueprints.get_model(
+        database, models.Project, context=context
+    )
+    attrs = set(extended.model_fields.keys())
+    project_type_slugs = set(type_slugs)
+    rows = await database.execute(_POLICY_QUERY, columns=['p', 'targets'])
+    result: list[AttributePolicy] = []
     for row in rows:
-        for value in row.values():
-            props = graph.parse_agtype(value)
-            if isinstance(props, dict):
-                policies.append(AttributePolicy.model_validate(props))
-    return policies
+        props = graph.parse_agtype(row['p'])
+        if not isinstance(props, dict):
+            continue
+        if props.get('attribute_name') not in attrs:
+            continue
+        targets: list[str] = graph.parse_agtype(row['targets']) or []
+        if targets and not project_type_slugs.intersection(targets):
+            continue
+        props['targets'] = targets
+        result.append(AttributePolicy.model_validate(props))
+    return result, extended

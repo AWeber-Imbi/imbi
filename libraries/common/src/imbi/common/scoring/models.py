@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import typing
 
 import nanoid
@@ -24,6 +25,17 @@ class AttributePolicy(pydantic.BaseModel):
     priority: int = 0
     value_score_map: dict[str, int] | None = None
     range_score_map: dict[str, int] | None = None
+    targets: list[str] = pydantic.Field(default_factory=list)
+
+    # AGE serializes nested objects as JSON strings; parse them back.
+    @pydantic.field_validator(
+        'value_score_map', 'range_score_map', mode='before'
+    )
+    @classmethod
+    def _parse_json_map(cls, v: object) -> object:
+        if isinstance(v, str):
+            return json.loads(v)
+        return v
 
     @pydantic.model_validator(mode='after')
     def _exactly_one_map(self) -> typing.Self:
@@ -51,7 +63,7 @@ class AttributePolicy(pydantic.BaseModel):
                 return None
             for key, score in self.range_score_map.items():
                 lo, hi = _parse_range(key)
-                if lo <= numeric < hi:
+                if lo <= numeric <= hi:
                     return float(score)
             return None
         return None
@@ -79,9 +91,9 @@ def _validate_ranges(ranges: dict[str, int]) -> None:
     for i in range(1, len(parsed)):
         prev_lo, prev_hi = parsed[i - 1]
         cur_lo, _ = parsed[i]
-        if cur_lo < prev_hi:
+        if cur_lo <= prev_hi:
             raise ValueError(
-                f'overlapping ranges: [{prev_lo}, {prev_hi}) and [{cur_lo}, _)'
+                f'overlapping ranges: [{prev_lo}, {prev_hi}] and [{cur_lo}, _]'
             )
 
 

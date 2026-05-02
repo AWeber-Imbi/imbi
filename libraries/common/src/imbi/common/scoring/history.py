@@ -7,6 +7,7 @@ import typing
 
 from imbi_common import graph, models
 from imbi_common.clickhouse import client as ch_client
+from imbi_common.scoring.models import ScoreBreakdown
 
 _HISTORY_COLUMNS = [
     'project_id',
@@ -14,7 +15,24 @@ _HISTORY_COLUMNS = [
     'score',
     'previous_score',
     'change_reason',
+    'breakdown',
 ]
+
+
+async def clear_score(
+    database: graph.Graph,
+    project: models.Project,
+) -> None:
+    """Remove the score property from the project node.
+
+    The current ``project.score`` is moved to ``previous_score`` so the
+    transition is observable, mirroring ``record_score_change``.
+    """
+    await database.execute(
+        'MATCH (p:Project {{id: {id}}})'
+        ' SET p.previous_score = {previous_score}, p.score = null',
+        {'id': project.id, 'previous_score': project.score},
+    )
 
 
 # Hard invariant: write CH history first, then update AGE Project.score.
@@ -25,6 +43,7 @@ async def record_score_change(
     new_score: float,
     previous_score: float,
     change_reason: str,
+    breakdown: ScoreBreakdown | None = None,
 ) -> None:
     """Append a history row, then update the project's materialized score.
 
@@ -32,15 +51,24 @@ async def record_score_change(
     """
     if new_score == previous_score:
         return
+    breakdown_data = (
+        breakdown.model_dump(mode='json') if breakdown is not None else {}
+    )
     row: list[typing.Any] = [
         project.id,
         datetime.datetime.now(datetime.UTC),
         new_score,
         previous_score,
         change_reason,
+        breakdown_data,
     ]
     await clickhouse.insert('score_history', [row], _HISTORY_COLUMNS)
     await database.execute(
-        'MATCH (p:Project {id: {id}}) SET p.score = {score}',
-        {'id': project.id, 'score': new_score},
+        'MATCH (p:Project {{id: {id}}})'
+        ' SET p.score = {score}, p.previous_score = {previous_score}',
+        {
+            'id': project.id,
+            'score': new_score,
+            'previous_score': previous_score,
+        },
     )

@@ -4,10 +4,12 @@
 [events]
 query = """
 CREATE TABLE IF NOT EXISTS events (
+  id                   String           DEFAULT '',
   project_id           LowCardinality(String),
   recorded_at          DateTime64(3, 'UTC'),
-  third_party_service  LowCardinality(String),
-  attributed_to        LowCardinality(String)  DEFAULT '',
+  type                 LowCardinality(String) DEFAULT '',
+  third_party_service  LowCardinality(String) DEFAULT '',
+  attributed_to        LowCardinality(String) DEFAULT '',
   metadata             JSON,
   payload              JSON
 ) ENGINE = MergeTree()
@@ -43,20 +45,6 @@ ORDER BY (project_id, id);
 """
 enabled = true
 
-# Drop scoring views/tables before recreation to handle schema migrations.
-# Order matters: dependents must be dropped before their dependencies.
-[drop_score_latest]
-query = "DROP VIEW IF EXISTS score_latest"
-enabled = true
-
-[drop_score_latest_data]
-query = "DROP VIEW IF EXISTS score_latest_data"
-enabled = true
-
-[drop_score_history]
-query = "DROP TABLE IF EXISTS score_history"
-enabled = true
-
 [score_history]
 query = """
 CREATE TABLE IF NOT EXISTS score_history (
@@ -64,7 +52,8 @@ CREATE TABLE IF NOT EXISTS score_history (
   timestamp      DateTime64(3, 'UTC'),
   score          Float32,
   previous_score Float32,
-  change_reason  LowCardinality(String)
+  change_reason  LowCardinality(String),
+  breakdown      JSON
 ) ENGINE = MergeTree()
 PARTITION BY toYear(timestamp)
 ORDER BY (project_id, timestamp);
