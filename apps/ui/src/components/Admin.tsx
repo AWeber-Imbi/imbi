@@ -16,6 +16,7 @@ import {
   Link2,
   Shield,
   StickyNote,
+  Target,
   Users,
   UsersRound,
   Webhook,
@@ -32,6 +33,7 @@ import { NoteTemplateManagement } from './admin/NoteTemplateManagement'
 import { OrganizationManagement } from './admin/OrganizationManagement'
 import { ProjectTypeManagement } from './admin/ProjectTypeManagement'
 import { RoleManagement } from './admin/RoleManagement'
+import { ScoringPolicyManagement } from './admin/ScoringPolicyManagement'
 import { ServiceAccountManagement } from './admin/ServiceAccountManagement'
 import { TeamManagement } from './admin/TeamManagement'
 import { ThirdPartyServiceManagement } from './admin/ThirdPartyServiceManagement'
@@ -47,6 +49,7 @@ type AdminSection =
   | 'organizations'
   | 'project-types'
   | 'roles'
+  | 'scoring-policies'
   | 'service-accounts'
   | 'teams'
   | 'third-party-services'
@@ -62,6 +65,7 @@ const VALID_SECTIONS: AdminSection[] = [
   'organizations',
   'project-types',
   'roles',
+  'scoring-policies',
   'service-accounts',
   'teams',
   'third-party-services',
@@ -136,6 +140,13 @@ export function Admin() {
       icon: UsersRound,
       id: 'teams',
       label: 'Teams',
+      scope: 'org',
+    },
+    {
+      description: 'Define attribute-based project scoring policies',
+      icon: Target,
+      id: 'scoring-policies',
+      label: 'Scoring Policies',
       scope: 'org',
     },
     {
@@ -334,6 +345,9 @@ export function Admin() {
               <ServiceAccountManagement />
             )}
             {currentSection === 'roles' && <RoleManagement />}
+            {currentSection === 'scoring-policies' && (
+              <ScoringPolicyManagement />
+            )}
             {currentSection === 'oauth' && <AuthProvidersManagement />}
           </div>
         </main>

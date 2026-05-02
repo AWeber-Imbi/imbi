@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -8,9 +8,14 @@ import { extractApiErrorDetail } from '@/lib/apiError'
 import { applyJsonPatch } from '@/lib/json-patch'
 import type { PatchOperation, Project } from '@/types'
 
+const SCORE_REFRESH_INITIAL_DELAY = 3_000
+const SCORE_REFRESH_MAX_ATTEMPTS = 5
+const SCORE_REFRESH_BACKOFF_FACTOR = 2
+
 export interface UseProjectPatchResult {
   patch: (path: string, value: unknown) => Promise<void>
   pendingPath: null | string
+  scheduleScoreRefresh: () => void
 }
 
 export function useProjectPatch(
@@ -19,6 +24,50 @@ export function useProjectPatch(
 ): UseProjectPatchResult {
   const qc = useQueryClient()
   const [pendingPath, setPendingPath] = useState<null | string>(null)
+  const scoreRefreshTimer = useRef<null | ReturnType<typeof setTimeout>>(null)
+  const scoreRefreshAttempt = useRef(0)
+
+  useEffect(() => {
+    return () => {
+      if (scoreRefreshTimer.current !== null) {
+        clearTimeout(scoreRefreshTimer.current)
+      }
+    }
+  }, [])
+
+  const invalidateScoreQueries = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ['project', orgSlug, projectId] })
+    qc.invalidateQueries({ queryKey: ['scoreTrend', orgSlug, projectId] })
+    qc.invalidateQueries({ queryKey: ['scoreTrend90', orgSlug, projectId] })
+    qc.invalidateQueries({
+      queryKey: ['projectBreakdown', orgSlug, projectId],
+    })
+    qc.invalidateQueries({ queryKey: ['scoreHistory', orgSlug, projectId] })
+    qc.invalidateQueries({
+      queryKey: ['scoreHistoryRaw', orgSlug, projectId],
+    })
+  }, [qc, orgSlug, projectId])
+
+  const scheduleScoreRefresh = useCallback(() => {
+    if (scoreRefreshTimer.current !== null) {
+      clearTimeout(scoreRefreshTimer.current)
+    }
+    scoreRefreshAttempt.current = 0
+
+    const attempt = () => {
+      scoreRefreshTimer.current = null
+      invalidateScoreQueries()
+      scoreRefreshAttempt.current += 1
+      if (scoreRefreshAttempt.current < SCORE_REFRESH_MAX_ATTEMPTS) {
+        const delay =
+          SCORE_REFRESH_INITIAL_DELAY *
+          SCORE_REFRESH_BACKOFF_FACTOR ** scoreRefreshAttempt.current
+        scoreRefreshTimer.current = setTimeout(attempt, delay)
+      }
+    }
+
+    scoreRefreshTimer.current = setTimeout(attempt, SCORE_REFRESH_INITIAL_DELAY)
+  }, [invalidateScoreQueries])
 
   const patch = useCallback(
     async (path: string, value: unknown) => {
@@ -51,6 +100,11 @@ export function useProjectPatch(
         // GET returns (e.g. environments as a map vs. an array). Invalidate
         // so the next read comes from the canonical GET.
         qc.invalidateQueries({ queryKey: key })
+        // Activity events are written synchronously — refresh immediately.
+        qc.invalidateQueries({
+          queryKey: ['events', orgSlug, projectId],
+        })
+        scheduleScoreRefresh()
       } catch (error) {
         // Rollback optimistic update
         if (optimisticApplied && snapshot !== undefined) {
@@ -62,10 +116,10 @@ export function useProjectPatch(
         setPendingPath(null)
       }
     },
-    [qc, orgSlug, projectId],
+    [qc, orgSlug, projectId, scheduleScoreRefresh],
   )
 
-  return { patch, pendingPath }
+  return { patch, pendingPath, scheduleScoreRefresh }
 }
 
 function buildOp(path: string, value: unknown): PatchOperation {

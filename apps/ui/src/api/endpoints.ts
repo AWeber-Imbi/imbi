@@ -49,6 +49,8 @@ import type {
   RoleCreate,
   RoleDetail,
   RoleUser,
+  ScoringPolicy,
+  ScoringPolicyCreate,
   ServiceAccount,
   ServiceAccountCreate,
   ServiceApplication,
@@ -124,6 +126,32 @@ export const getProject = (
   apiClient.get<Project>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}`,
     undefined,
+    signal,
+  )
+
+export interface AttributeContribution {
+  attribute_name: string
+  mapped_score: number
+  policy_slug: string
+  value: unknown
+  weight: number
+  weighted_contribution: number
+}
+
+export interface ScoreBreakdown {
+  attribute_contributions: AttributeContribution[]
+  base_score: number
+  unfloored_total: number
+}
+
+export const getProjectBreakdown = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<Project & { breakdown?: ScoreBreakdown }>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}`,
+    { breakdown: true },
     signal,
   )
 
@@ -395,6 +423,51 @@ export const getOperationsLogEntry = (entryId: string, signal?: AbortSignal) =>
     signal,
   )
 
+// Events
+export interface EventRecord {
+  attributed_to: string
+  id: string
+  metadata: Record<string, unknown>
+  payload: Record<string, unknown>
+  project_id: string
+  recorded_at: string
+  third_party_service: string
+  type: string
+}
+
+export interface EventsPage {
+  entries: EventRecord[]
+  nextCursor?: string
+}
+
+interface EventsEnvelope {
+  data: EventRecord[]
+}
+
+export const listProjectEvents = async (
+  params: {
+    cursor?: string
+    limit?: number
+    orgSlug: string
+    projectId: string
+    type?: string
+  },
+  signal?: AbortSignal,
+): Promise<EventsPage> => {
+  const query: Record<string, unknown> = { limit: params.limit ?? 50 }
+  if (params.cursor) query.cursor = params.cursor
+  if (params.type) query.type = params.type
+  const { data, headers } = await apiClient.getWithHeaders<EventsEnvelope>(
+    `/organizations/${encodeURIComponent(params.orgSlug)}/projects/${encodeURIComponent(params.projectId)}/events/`,
+    query,
+    signal,
+  )
+  return {
+    entries: Array.isArray(data?.data) ? data.data : [],
+    nextCursor: parseNextCursor(headers),
+  }
+}
+
 // Metadata
 export const getEnvironments = async (
   signal?: AbortSignal,
@@ -631,6 +704,103 @@ export const getRoleGroups = async (
   )
   return Array.isArray(response) ? response : []
 }
+
+// Admin - Scoring Policies
+export const listScoringPolicies = async (
+  signal?: AbortSignal,
+): Promise<ScoringPolicy[]> => {
+  const response = await apiClient.get<ScoringPolicy[]>(
+    '/scoring/policies/',
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getScoringPolicy = (slug: string, signal?: AbortSignal) =>
+  apiClient.get<ScoringPolicy>(
+    `/scoring/policies/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
+  )
+
+export const createScoringPolicy = (data: ScoringPolicyCreate) =>
+  apiClient.post<ScoringPolicy>('/scoring/policies/', data)
+
+export const updateScoringPolicy = (
+  slug: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<ScoringPolicy>(
+    `/scoring/policies/${encodeURIComponent(slug)}`,
+    operations,
+  )
+
+export const deleteScoringPolicy = (slug: string) =>
+  apiClient.delete<void>(`/scoring/policies/${encodeURIComponent(slug)}`)
+
+export const rescoreAll = () =>
+  apiClient.post<{ enqueued: number }>('/scoring/rescore')
+
+export const rescoreProject = (projectId: string) =>
+  apiClient.post<{ enqueued: number }>('/scoring/rescore', {
+    project_id: projectId,
+  })
+
+export interface ScoreTrend {
+  current: null | number
+  delta: null | number
+  period_days: number
+  previous: null | number
+}
+
+export const getScoreTrend = (
+  orgSlug: string,
+  projectId: string,
+  days = 30,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<ScoreTrend>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/score/trend`,
+    { days },
+    signal,
+  )
+
+export type ScoreChangeReason =
+  | 'attribute_change'
+  | 'blueprint_change'
+  | 'bulk_rescore'
+  | 'policy_change'
+  | 'system'
+
+export interface ScoreHistory {
+  granularity: 'day' | 'hour' | 'raw'
+  points: ScoreHistoryPoint[]
+  project_id: string
+}
+
+export interface ScoreHistoryPoint {
+  change_reason: null | ScoreChangeReason
+  previous_score: null | number
+  score: number
+  timestamp: string
+}
+
+export const getScoreHistory = (
+  orgSlug: string,
+  projectId: string,
+  params?: {
+    from?: string
+    granularity?: 'day' | 'hour' | 'raw'
+    to?: string
+  },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<ScoreHistory>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/score/history`,
+    params,
+    signal,
+  )
 
 // Admin - Settings (reference data)
 export const getAdminSettings = (signal?: AbortSignal) =>

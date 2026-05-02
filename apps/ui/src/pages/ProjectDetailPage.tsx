@@ -28,6 +28,7 @@ export function ProjectDetailPage() {
     enabled: !!orgSlug && !!projectId,
     queryFn: ({ signal }) => getProject(orgSlug, projectId!, signal),
     queryKey: ['project', orgSlug, projectId],
+    staleTime: 120_000,
   })
 
   usePageTitle(project?.name ?? 'Project')

@@ -118,6 +118,7 @@ export interface Project {
     outbound_count?: number
     team?: RelationshipLink
   }
+  score?: null | number
   slug: string
   team: {
     name: string
@@ -174,6 +175,34 @@ export interface ProjectTypeCreate {
 }
 
 export type RelationshipLink = Schemas['RelationshipLink']
+
+export interface ScoringPolicy {
+  attribute_name: string
+  category: 'attribute'
+  description?: null | string
+  enabled: boolean
+  id: string
+  name: string
+  priority: number
+  range_score_map?: null | Record<string, number>
+  slug: string
+  targets?: string[]
+  value_score_map?: null | Record<string, number>
+  weight: number
+}
+
+export interface ScoringPolicyCreate {
+  attribute_name: string
+  description?: null | string
+  enabled: boolean
+  name: string
+  priority: number
+  range_score_map?: null | Record<string, number>
+  slug: string
+  targets: string[]
+  value_score_map?: null | Record<string, number>
+  weight: number
+}
 
 // `User` is the UI-side profile shape used by auth/session consumers.
 // It does not map cleanly to the backend `UserResponse` (different key set:

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useNavigate } from 'react-router-dom'
 
@@ -6,31 +6,38 @@ import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import {
   ArrowRight,
+  ChevronDown,
+  Filter,
   Rocket,
   Settings2 as SettingsIcon,
-  TrendingDown,
-  TrendingUp,
 } from 'lucide-react'
 
 import {
+  type AttributeContribution,
+  getProjectBreakdown,
   getProjectSchema,
+  getScoreTrend,
   listCurrentReleases,
   listLinkDefinitions,
   listProjectNotes,
   listProjectTypes,
   listTeams,
+  type ScoreTrend,
 } from '@/api/endpoints'
 import { ProjectNotesTab } from '@/components/notes/ProjectNotesTab'
 import { OperationsLog } from '@/components/OperationsLog'
+import { ProjectActivityLog } from '@/components/ProjectActivityLog'
 import { ProjectAttributesSection } from '@/components/ProjectAttributesSection'
 import { ProjectEnvironmentsCard } from '@/components/ProjectEnvironmentsCard'
 import { ProjectRelationshipsTab } from '@/components/ProjectRelationshipsTab'
 import { ProjectSettingsTab } from '@/components/ProjectSettingsTab'
+import { ScoreHistoryTab } from '@/components/ScoreHistoryTab'
 import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
@@ -39,6 +46,7 @@ import { InlineSelect } from '@/components/ui/inline-edit/InlineSelect'
 import { InlineText } from '@/components/ui/inline-edit/InlineText'
 import { InlineTextarea } from '@/components/ui/inline-edit/InlineTextarea'
 import { LabelChip } from '@/components/ui/label-chip'
+import { ScoreBadge } from '@/components/ui/score-badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Tooltip,
@@ -49,6 +57,7 @@ import {
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { getIcon, useIconRegistryVersion } from '@/lib/icons'
+import { formatFieldKey } from '@/lib/project-field-formatting'
 import { sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
 import type { Project } from '@/types'
 
@@ -67,6 +76,7 @@ const VALID_TABS = [
   'logs',
   'notes',
   'operations-log',
+  'score-history',
   'settings',
 ] as const
 
@@ -105,12 +115,6 @@ export function ProjectDetail({
     }
   }, [initialTab, navigate, project.id])
 
-  // Mock data for aspects not yet available from the API. Dev-only so
-  // production builds don't leak hardcoded placeholder content.
-  const isDev = import.meta.env.DEV
-  const healthScore = isDev ? 66 : null
-  const healthTrend = isDev ? 'down' : null
-
   const { data: currentReleases = [] } = useQuery({
     enabled: !!orgSlug && !!project.id,
     queryFn: ({ signal }) => listCurrentReleases(orgSlug, project.id, signal),
@@ -138,52 +142,7 @@ export function ProjectDetail({
     return out
   }, [currentReleases])
 
-  const feed = isDev
-    ? [
-        {
-          action: 'deployed in',
-          environment: 'Testing',
-          time: 'Nov 22, 2025, 12:28 PM',
-          user: 'Scott Miller',
-          version: '(1962b02)',
-        },
-        {
-          action: 'deployed in',
-          environment: 'Production',
-          time: 'Nov 21, 2025, 4:09 PM',
-          user: 'Scott Miller',
-          version: '(1.0.11)',
-        },
-        {
-          action: 'deployed in',
-          environment: 'Staging',
-          time: 'Nov 21, 2025, 4:08 PM',
-          user: 'Scott Miller',
-          version: '(1.0.11)',
-        },
-        {
-          action: 'deployed in',
-          environment: 'Testing',
-          time: 'Nov 21, 2025, 4:08 PM',
-          user: 'Scott Miller',
-          version: '(d504611)',
-        },
-        {
-          action: 'deployed in',
-          environment: 'Production',
-          time: 'Nov 21, 2025, 3:50 PM',
-          user: 'Scott Miller',
-          version: '(1.0.10)',
-        },
-        {
-          action: 'deployed in',
-          environment: 'Testing',
-          time: 'Nov 21, 2025, 3:45 PM',
-          user: 'Scott Miller',
-          version: '(089f7fd)',
-        },
-      ]
-    : []
+  const isDev = import.meta.env.DEV
 
   const sortedEnvironments = useMemo(
     () => sortEnvironments(project.environments || []),
@@ -195,6 +154,25 @@ export function ProjectDetail({
     queryFn: ({ signal }) => listLinkDefinitions(orgSlug, signal),
     queryKey: ['linkDefinitions', orgSlug],
   })
+
+  const { data: scoreTrend } = useQuery({
+    enabled: !!orgSlug && !!project.id,
+    queryFn: ({ signal }) => getScoreTrend(orgSlug, project.id, 30, signal),
+    queryKey: ['scoreTrend', orgSlug, project.id],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const { data: projectWithBreakdown } = useQuery({
+    enabled: !!orgSlug && !!project.id && project.score != null,
+    queryFn: ({ signal }) => getProjectBreakdown(orgSlug, project.id, signal),
+    queryKey: ['projectBreakdown', orgSlug, project.id],
+    staleTime: 5 * 60 * 1000,
+  })
+  const scoreBreakdown = projectWithBreakdown?.breakdown
+  const [breakdownOpen, setBreakdownOpen] = useState(false)
+  // Capture the score present at page load so intra-session changes are visible
+  // even when the 30d baseline equals the current live score.
+  const sessionBaseScore = useRef<null | number>(project.score ?? null)
 
   const { data: projectSchema } = useQuery({
     enabled: !!orgSlug,
@@ -311,6 +289,7 @@ export function ProjectDetail({
         return `Relationships (${total})`
       })(),
     },
+    { id: 'score-history', label: 'Score History' },
     { id: 'settings', label: '' },
   ]
 
@@ -438,7 +417,7 @@ export function ProjectDetail({
         </TabsList>
 
         <TabsContent value="overview">
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[3fr_2fr]">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[3fr_2fr] lg:items-start">
             {/* Left column: Details */}
             <div className="space-y-6">
               <Card>
@@ -531,93 +510,68 @@ export function ProjectDetail({
               )}
             </div>
 
-            {/* Right column: Health & Compliance + Recent Activity (dev only) */}
-            {isDev && (
-              <div className="space-y-6">
-                {/* Health & Compliance (mocked, dev only) */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Health &amp; compliance</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="mb-4 flex items-center gap-3">
-                      <div
-                        className={`flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg text-2xl font-medium ${
-                          (healthScore ?? 0) >= 90
-                            ? 'bg-green-50 text-green-700'
-                            : (healthScore ?? 0) >= 80
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : (healthScore ?? 0) >= 70
-                                ? 'bg-amber-50 text-amber-700'
-                                : 'bg-red-50 text-red-700'
-                        }`}
+            {/* Right column: Health score + Activity */}
+            <div className="flex flex-col gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Health &amp; compliance</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-3">
+                    <ScoreBadge
+                      score={projectWithBreakdown?.score ?? project.score}
+                      size="lg"
+                      variant="square"
+                    />
+                    <div>
+                      <p className={`text-xs ${muted}`}>Health score</p>
+                      <ScoreTrendPill
+                        liveScore={projectWithBreakdown?.score ?? project.score}
+                        scoreTrend={scoreTrend}
+                        sessionBaseScore={sessionBaseScore}
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+                {scoreBreakdown &&
+                  scoreBreakdown.attribute_contributions.length > 0 && (
+                    <CardFooter className="flex-col items-start gap-0 border-t border-tertiary p-0">
+                      <button
+                        className="flex w-full items-center justify-between px-6 py-3 text-xs font-medium text-tertiary hover:text-primary"
+                        onClick={() => setBreakdownOpen((o) => !o)}
+                        type="button"
                       >
-                        {healthScore}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          {healthTrend === 'down' ? (
-                            <TrendingDown className="h-4 w-4 text-red-600" />
-                          ) : (
-                            <TrendingUp className="h-4 w-4 text-green-600" />
-                          )}
-                          <span
-                            className={`text-sm ${healthTrend === 'down' ? 'text-red-600' : 'text-green-600'}`}
-                          >
-                            {healthTrend === 'down' ? 'Declining' : 'Improving'}
-                          </span>
-                        </div>
-                        <p className={`text-xs ${muted}`}>Health score</p>
-                      </div>
-                    </div>
+                        Score breakdown
+                        <ChevronDown
+                          className={`h-3.5 w-3.5 transition-transform ${breakdownOpen ? 'rotate-180' : ''}`}
+                        />
+                      </button>
+                      {breakdownOpen && (
+                        <ScoreBreakdownDetail
+                          contributions={scoreBreakdown.attribute_contributions}
+                        />
+                      )}
+                    </CardFooter>
+                  )}
+              </Card>
 
-                    <p className={`text-sm ${muted}`}>
-                      Policy scoring and compliance checks will appear here.
-                    </p>
-                  </CardContent>
-                </Card>
-
-                {/* Recent Activity (mocked, dev only) */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Recent activity</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {feed.map((item, index) => (
-                        <div className="flex items-start gap-2.5" key={index}>
-                          <div className="min-w-0 flex-1">
-                            <p className={`text-sm leading-snug ${value}`}>
-                              <span className="font-medium">{item.user}</span>{' '}
-                              <span className={label}>{item.action}</span>{' '}
-                              <span
-                                style={{
-                                  color:
-                                    project.environments?.find(
-                                      (e) => e.name === item.environment,
-                                    )?.label_color || undefined,
-                                }}
-                              >
-                                {item.environment}
-                              </span>
-                            </p>
-                            <div className="mt-0.5 flex items-center gap-1.5">
-                              <span className={`text-xs ${muted}`}>
-                                {item.time}
-                              </span>
-                              <span className={`text-xs ${muted}`}>&bull;</span>
-                              <span className="font-mono text-xs text-tertiary">
-                                {item.version}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
+              <Card className="flex flex-col" style={{ maxHeight: '600px' }}>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Recent activity</CardTitle>
+                  <button className="inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs text-secondary transition-colors hover:bg-secondary hover:text-primary">
+                    <Filter className="h-3 w-3" />
+                    Filter
+                  </button>
+                </CardHeader>
+                <CardContent className="min-h-0 flex-1 overflow-y-auto p-0">
+                  <ProjectActivityLog
+                    orgSlug={project.team.organization.slug}
+                    projectId={project.id}
+                    projectSlug={project.slug}
+                  />
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </TabsContent>
 
@@ -660,12 +614,22 @@ export function ProjectDetail({
             showSummary={false}
           />
         </TabsContent>
+        <TabsContent value="score-history">
+          <ScoreHistoryTab orgSlug={orgSlug} projectId={project.id} />
+        </TabsContent>
         <TabsContent value="settings">
           <ProjectSettingsTab project={project} />
         </TabsContent>
       </Tabs>
     </div>
   )
+}
+
+function fmtAttributeValue(value: unknown): string {
+  const n = Number(value)
+  return isFinite(n) && String(value).trim() !== ''
+    ? String(Math.round(n))
+    : String(value)
 }
 
 function PlaceholderTab({ name }: { name: string }) {
@@ -678,5 +642,115 @@ function PlaceholderTab({ name }: { name: string }) {
         </CardDescription>
       </CardContent>
     </Card>
+  )
+}
+
+function ScoreBreakdownDetail({
+  contributions,
+}: {
+  contributions: AttributeContribution[]
+}) {
+  const totalWeight = contributions.reduce((s, c) => s + c.weight, 0)
+  const sorted = [...contributions].sort(
+    (a, b) => b.weighted_contribution - a.weighted_contribution,
+  )
+  return (
+    <div className="w-full px-6 pb-4">
+      <p className="mb-3 text-[11px] text-tertiary">
+        {contributions.length} policies
+      </p>
+      {sorted.map((c) => {
+        const maxPts = totalWeight > 0 ? (c.weight / totalWeight) * 100 : 0
+        const fillPct =
+          maxPts > 0 ? (c.weighted_contribution / maxPts) * 100 : 0
+        const isDrag = c.mapped_score === 0
+        const isPartial = !isDrag && c.mapped_score < 100
+        const policyName = formatFieldKey(c.policy_slug.replace(/-/g, '_'))
+        return (
+          <div className="mb-3 last:mb-0" key={c.policy_slug}>
+            <div className="flex items-baseline justify-between gap-2">
+              <div className="flex min-w-0 items-baseline gap-1.5">
+                <span className="text-[13px] font-semibold text-primary">
+                  {policyName}
+                </span>
+                <span className="font-mono text-[11px] text-tertiary">
+                  w{c.weight}
+                </span>
+              </div>
+              <div className="shrink-0 font-mono text-[13px] tabular-nums">
+                <span
+                  className={
+                    isDrag
+                      ? 'font-semibold text-danger'
+                      : 'font-semibold text-primary'
+                  }
+                >
+                  {Math.round(c.weighted_contribution)}
+                </span>
+                <span className="text-tertiary"> / {Math.round(maxPts)}</span>
+              </div>
+            </div>
+            <div className="mt-1 flex items-center gap-2">
+              <span
+                className={`w-1/3 shrink-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11.5px] ${
+                  isDrag
+                    ? 'text-danger'
+                    : isPartial
+                      ? 'text-amber-text'
+                      : 'text-tertiary'
+                }`}
+              >
+                {c.value != null ? fmtAttributeValue(c.value) : 'Not set'}
+              </span>
+              <div className="relative h-1.5 flex-1 rounded-full bg-secondary">
+                {fillPct > 0 && (
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-full bg-action"
+                    style={{ width: `${fillPct}%` }}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function ScoreTrendPill({
+  liveScore,
+  scoreTrend,
+  sessionBaseScore,
+}: {
+  liveScore: null | number | undefined
+  scoreTrend: ScoreTrend | undefined
+  sessionBaseScore: React.RefObject<null | number>
+}) {
+  if (liveScore == null) return null
+
+  const sessionDelta =
+    sessionBaseScore.current != null
+      ? Math.round((liveScore - sessionBaseScore.current) * 100) / 100
+      : null
+  const showSession = sessionDelta != null && sessionDelta !== 0
+
+  let delta: null | number
+  let trendLabel: string
+  if (showSession) {
+    delta = sessionDelta
+    trendLabel = 'session'
+  } else if (scoreTrend?.previous != null) {
+    delta = Math.round((liveScore - scoreTrend.previous) * 100) / 100
+    trendLabel = `${scoreTrend.period_days}d`
+  } else {
+    return null
+  }
+
+  return (
+    <p className="font-mono text-xs text-tertiary">
+      {delta > 0 ? '+' : ''}
+      {Math.round(delta)} pts / {trendLabel}
+    </p>
   )
 }

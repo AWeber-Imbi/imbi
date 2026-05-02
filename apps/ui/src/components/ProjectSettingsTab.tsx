@@ -10,6 +10,7 @@ import {
   listEnvironments,
   listLinkDefinitions,
   patchProject,
+  rescoreProject,
 } from '@/api/endpoints'
 import { EditEnvironmentsCard } from '@/components/EditEnvironmentsCard'
 import { EditIdentifiersCard } from '@/components/EditIdentifiersCard'
@@ -24,6 +25,7 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAuth } from '@/hooks/useAuth'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { sortEnvironments } from '@/lib/utils'
@@ -34,7 +36,9 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
   const orgSlug = selectedOrganization?.slug || ''
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const { patch } = useProjectPatch(orgSlug, project.id)
+  const { user } = useAuth()
+  const isAdmin = user?.is_admin === true
+  const { patch, scheduleScoreRefresh } = useProjectPatch(orgSlug, project.id)
   const [deleteConfirmSlug, setDeleteConfirmSlug] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
@@ -52,6 +56,15 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
     mutationFn: () => deleteProject(orgSlug, project.id),
     onError: mutationErrorHandler('delete project'),
     onSuccess: () => navigate('/'),
+  })
+
+  const rescoreMutation = useMutation({
+    mutationFn: () => rescoreProject(project.id),
+    onError: mutationErrorHandler('recompute score'),
+    onSuccess: () => {
+      toast.success('Score recompute enqueued')
+      scheduleScoreRefresh()
+    },
   })
 
   const {
@@ -121,6 +134,29 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
         identifiers={project.identifiers || {}}
         onPatch={(entries) => patch('/identifiers', entries)}
       />
+
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Recompute score</CardTitle>
+            <CardDescription className="text-secondary">
+              Enqueue an immediate score recompute for this project. Use this
+              after manually correcting project data or when the displayed score
+              appears stale.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              disabled={rescoreMutation.isPending}
+              onClick={() => rescoreMutation.mutate()}
+              size="sm"
+              variant="outline"
+            >
+              {rescoreMutation.isPending ? 'Enqueuing...' : 'Recompute Score'}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="border-amber-300">
         <CardHeader>

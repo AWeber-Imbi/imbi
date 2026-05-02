@@ -142,7 +142,7 @@ export function ProjectRelationshipsTab({
   if (isLoading) {
     return (
       <Card>
-        <CardContent>
+        <CardContent className="p-4">
           <p className={sub}>Loading relationships…</p>
         </CardContent>
       </Card>
@@ -151,7 +151,7 @@ export function ProjectRelationshipsTab({
   if (isError && !data) {
     return (
       <Card>
-        <CardContent>
+        <CardContent className="p-4">
           <p className={sub}>Failed to load relationships.</p>
         </CardContent>
       </Card>
@@ -217,12 +217,12 @@ export function ProjectRelationshipsTab({
     <>
       {rels.length === 0 ? (
         <Card>
-          <CardContent className="flex items-center justify-between">
+          <CardContent className="flex items-center justify-between p-4">
             <p className={sub}>This project has no relationships.</p>
             <Button
-              className="gap-1 bg-action text-action-foreground hover:bg-action-hover"
               onClick={() => setEditDialogOpen(true)}
               size="sm"
+              variant="outline"
             >
               Edit
             </Button>

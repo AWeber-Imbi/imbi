@@ -45,7 +45,7 @@ export function ProjectEnvironmentsCard({
                     slug={env.slug}
                   />
                 </div>
-                <div className="flex-1 text-center">
+                <div className="w-28 flex-shrink-0 text-right">
                   <span className="font-mono text-sm text-tertiary">
                     {deployment?.version ?? ''}
                   </span>
@@ -54,7 +54,7 @@ export function ProjectEnvironmentsCard({
                   {url ? (
                     <a
                       className={
-                        'inline-flex items-center gap-1.5 text-sm text-warning hover:underline'
+                        'inline-flex items-center gap-1.5 whitespace-nowrap text-sm text-warning hover:underline'
                       }
                       href={url}
                       rel="noopener noreferrer"

@@ -15,6 +15,7 @@ import { Button } from './ui/button'
 import { Card } from './ui/card'
 import { EnvironmentBadge } from './ui/environment-badge'
 import { Input } from './ui/input'
+import { ScoreBadge } from './ui/score-badge'
 import {
   Table,
   TableBody,
@@ -65,28 +66,6 @@ export function ProjectsView() {
     queryFn: ({ signal }) => getProjects(orgSlug, signal),
     queryKey: ['projects', orgSlug],
   })
-
-  const getHealthColor = (health: number) => {
-    if (health >= 80) return 'text-success bg-success'
-    if (health >= 70) return 'text-warning bg-warning'
-    return 'text-danger bg-danger'
-  }
-
-  const getHealthRingColor = (health: number) => {
-    if (health >= 80) return 'ring-success'
-    if (health >= 70) return 'ring-warning'
-    return 'ring-danger'
-  }
-
-  // Mock health score - deterministic from slug so it's stable across renders.
-  // Will come from the API in the future.
-  const getMockHealth = (slug: string) => {
-    let hash = 0
-    for (let i = 0; i < slug.length; i++) {
-      hash = ((hash << 5) - hash + slug.charCodeAt(i)) | 0
-    }
-    return 70 + Math.abs(hash % 30)
-  }
 
   const handleProjectSelect = (projectId: string) => {
     navigate(`/projects/${projectId}`)
@@ -186,7 +165,6 @@ export function ProjectsView() {
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filteredProjects.map((project) => {
-            const health = getMockHealth(project.slug)
             return (
               <Card
                 className={`cursor-pointer p-5 transition-shadow hover:shadow-md ${''}`}
@@ -204,12 +182,12 @@ export function ProjectsView() {
                         .join(', ')}
                     </p>
                   </div>
-                  <div
-                    className={`flex h-12 w-12 items-center justify-center rounded-full ring-4 ${getHealthRingColor(
-                      health,
-                    )} ${getHealthColor(health)} ml-3 flex-shrink-0`}
-                  >
-                    <span className="text-sm font-semibold">{health}</span>
+                  <div className="ml-3">
+                    <ScoreBadge
+                      score={project.score}
+                      size="md"
+                      variant="circle"
+                    />
                   </div>
                 </div>
 
@@ -284,7 +262,6 @@ export function ProjectsView() {
               </TableHeader>
               <TableBody className="divide-y divide-tertiary">
                 {filteredProjects.map((project) => {
-                  const health = getMockHealth(project.slug)
                   return (
                     <TableRow
                       className="cursor-pointer transition-colors hover:bg-secondary"
@@ -320,13 +297,7 @@ export function ProjectsView() {
                           )}
                       </TableCell>
                       <TableCell className="px-6 py-4">
-                        <div
-                          className={`inline-flex h-10 w-10 items-center justify-center rounded-full ${getHealthColor(health)}`}
-                        >
-                          <span className="text-sm font-semibold">
-                            {health}
-                          </span>
-                        </div>
+                        <ScoreBadge score={project.score} variant="circle" />
                       </TableCell>
                     </TableRow>
                   )

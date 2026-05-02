@@ -18,8 +18,9 @@ export function InlineSwitch({
   return (
     <Switch
       checked={!!value}
-      disabled={readOnly || pending}
+      disabled={pending || readOnly}
       onCheckedChange={async (next) => {
+        if (readOnly) return
         try {
           await onCommit(next)
         } catch (e) {
