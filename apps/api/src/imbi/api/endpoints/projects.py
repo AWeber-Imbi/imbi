@@ -14,6 +14,7 @@ import nanoid
 import psycopg
 import pydantic
 from imbi_common import blueprints, graph, models
+from imbi_common.clickhouse import client as ch_client
 from imbi_common.scoring import compute_score
 
 from imbi_api import patch as json_patch
@@ -244,6 +245,73 @@ async def _validate_env_slugs(
         raise fastapi.HTTPException(
             status_code=422,
             detail=(f'Environment slug(s) not found: {sorted(missing)!r}'),
+        )
+
+
+_EVENT_SKIP_FIELDS: frozenset[str] = frozenset(
+    {
+        'id',
+        'created_at',
+        'updated_at',
+        'score',
+        'breakdown',
+        'relationships',
+    }
+)
+
+
+async def _emit_change_events(
+    project_id: str,
+    principal: str,
+    before: dict[str, typing.Any],
+    after: dict[str, typing.Any],
+) -> None:
+    """Emit one events row per changed field into ClickHouse.
+
+    Errors are logged but do not bubble up — the graph write already
+    succeeded and we do not want a ClickHouse hiccup to fail the request.
+    """
+    now = datetime.datetime.now(datetime.UTC)
+    rows: list[list[typing.Any]] = []
+    for key in set(before) | set(after):
+        if key in _EVENT_SKIP_FIELDS:
+            continue
+        old_val = before.get(key)
+        new_val = after.get(key)
+        if old_val == new_val:
+            continue
+        rows.append(
+            [
+                nanoid.generate(),
+                project_id,
+                now,
+                'project-change',
+                'internal',
+                principal,
+                {},
+                {'field': key, 'old': old_val, 'new': new_val},
+            ]
+        )
+    if not rows:
+        return
+    try:
+        await ch_client.Clickhouse.get_instance().insert(
+            'events',
+            rows,
+            [
+                'id',
+                'project_id',
+                'recorded_at',
+                'type',
+                'third_party_service',
+                'attributed_to',
+                'metadata',
+                'payload',
+            ],
+        )
+    except Exception:
+        LOGGER.exception(
+            'Failed to emit change events for project %s', project_id
         )
 
 
@@ -827,8 +895,9 @@ async def get_project(
     if breakdown:
         try:
             score, bd = await compute_score(db, project_id)
-            response.score = score
-            response.breakdown = bd
+            if score is not None:
+                response.score = score
+                response.breakdown = bd
         except ValueError:
             pass
     return response
@@ -1494,6 +1563,7 @@ async def patch_project(
         **extras,
     }
 
+    before_snapshot = dict(patchable)
     patched = json_patch.apply_patch(patchable, operations)
 
     try:
@@ -1517,6 +1587,12 @@ async def patch_project(
     )
     await score_queue.enqueue_recompute(
         valkey_client, project_id, 'attribute_change'
+    )
+    await _emit_change_events(
+        project_id,
+        auth.principal_name,
+        before_snapshot,
+        patched,
     )
     return response
 

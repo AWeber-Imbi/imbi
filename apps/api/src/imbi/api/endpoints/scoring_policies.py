@@ -11,6 +11,7 @@ import fastapi
 import psycopg.errors
 from imbi_common import graph
 
+from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.domain import scoring as scoring_models
 from imbi_api.scoring import OptionalValkeyClient
@@ -222,10 +223,15 @@ async def create_policy(
     return refreshed
 
 
+_POLICY_READONLY_PATHS: frozenset[str] = json_patch.READONLY_PATHS | frozenset(
+    ['/slug', '/category']
+)
+
+
 @scoring_policies_router.patch('/{slug}')
 async def update_policy(
     slug: str,
-    data: scoring_models.PolicyUpdate,
+    operations: list[json_patch.PatchOperation],
     db: graph.Pool,
     valkey_client: OptionalValkeyClient,
     auth: typing.Annotated[
@@ -235,35 +241,48 @@ async def update_policy(
         ),
     ],
 ) -> scoring_models.ScoringPolicy:
+    """Partially update a scoring policy using JSON Patch (RFC 6902).
+
+    The fields ``slug`` and ``category`` are immutable and cannot be patched.
+    ``targets`` (a list of project-type slugs) may be replaced via a JSON
+    Pointer ``/targets`` replace operation.
+    """
     existing = await load_policy(db, slug)
     if existing is None:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Scoring policy {slug!r} not found',
         )
-    updates = data.model_dump(exclude_unset=True, exclude={'targets'})
-    if updates:
-        merged = existing.model_dump(exclude={'targets'})
-        merged.update(updates)
-        validated = scoring_models.ScoringPolicy.model_validate(merged)
-        props = _serialize_maps(
-            validated.model_dump(exclude={'targets', 'slug', 'category'})
-        )
-        set_pairs = ', '.join(f'sp.{k} = {{{k}}}' for k in props)
-        params: dict[str, typing.Any] = dict(props)
-        params['slug'] = slug
-        update_q = (
-            'MATCH (sp:ScoringPolicy {{slug: {slug}}}) SET '
-            + set_pairs
-            + ' RETURN sp'
-        )
-        await db.execute(update_q, params, ['sp'])  # type: ignore[arg-type]
-    if data.targets is not None:
-        if data.targets:
+    document: dict[str, typing.Any] = existing.model_dump()
+    patched = json_patch.apply_patch(
+        document, operations, readonly_paths=_POLICY_READONLY_PATHS
+    )
+    new_targets: list[str] = patched.get('targets', existing.targets)
+    try:
+        validated = scoring_models.ScoringPolicy.model_validate(patched)
+    except Exception as exc:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'Invalid patch result: {exc}',
+        ) from exc
+    props = _serialize_maps(
+        validated.model_dump(exclude={'targets', 'slug', 'category'})
+    )
+    set_pairs = ', '.join(f'sp.{k} = {{{k}}}' for k in props)
+    params: dict[str, typing.Any] = dict(props)
+    params['slug'] = slug
+    update_q = (
+        'MATCH (sp:ScoringPolicy {{slug: {slug}}}) SET '
+        + set_pairs
+        + ' RETURN sp'
+    )
+    await db.execute(update_q, params, ['sp'])  # type: ignore[arg-type]
+    if set(new_targets) != set(existing.targets):
+        if new_targets:
             found_rows = await db.execute(
                 'MATCH (pt:ProjectType) WHERE pt.slug IN {slugs}'
                 ' RETURN collect(pt.slug) AS found',
-                {'slugs': data.targets},
+                {'slugs': new_targets},
                 ['found'],
             )
             found: list[str] = (
@@ -271,7 +290,7 @@ async def update_policy(
                 if found_rows
                 else []
             ) or []
-            missing = set(data.targets) - set(found)
+            missing = set(new_targets) - set(found)
             if missing:
                 raise fastapi.HTTPException(
                     status_code=400,
@@ -282,14 +301,14 @@ async def update_policy(
             ' DELETE r'
         )
         await db.execute(clear_q, {'slug': slug})
-        if data.targets:
+        if new_targets:
             link_q: typing.LiteralString = (
                 'MATCH (sp:ScoringPolicy {{slug: {slug}}})'
                 ' UNWIND {targets} AS ts'
                 ' MATCH (pt:ProjectType {{slug: ts}})'
                 ' MERGE (sp)-[:TARGETS]->(pt)'
             )
-            await db.execute(link_q, {'slug': slug, 'targets': data.targets})
+            await db.execute(link_q, {'slug': slug, 'targets': new_targets})
     refreshed = await load_policy(db, slug)
     if refreshed is None:
         raise fastapi.HTTPException(

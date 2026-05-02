@@ -14,6 +14,7 @@ from imbi_api.auth import permissions
 from imbi_api.relationships import build_relationships
 
 from .environments import environments_router
+from .events import events_project_router
 from .link_definitions import link_definitions_router
 from .note_templates import note_templates_router
 from .notes import notes_project_router, notes_router
@@ -59,6 +60,10 @@ organizations_router.include_router(
 organizations_router.include_router(
     webhooks_router,
     prefix='/{org_slug}/webhooks',
+)
+organizations_router.include_router(
+    events_project_router,
+    prefix='/{org_slug}/projects/{project_id}/events',
 )
 organizations_router.include_router(
     operations_log_project_router,

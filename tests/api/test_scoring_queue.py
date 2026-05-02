@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import typing
 import unittest
 from unittest import mock
 
 from imbi_api.scoring import queue as score_queue
+
+if typing.TYPE_CHECKING:
+    from imbi_common.scoring import models as sm
 
 
 class EnqueueTests(unittest.IsolatedAsyncioTestCase):
@@ -401,3 +405,92 @@ class ProjectsOfTypeTest(unittest.IsolatedAsyncioTestCase):
         db.execute = mock.AsyncMock(return_value=[{'id': 'p1'}, {'id': 'p2'}])
         result = await score_queue.projects_of_type(db, 'service')
         self.assertEqual(result, ['p1', 'p2'])
+
+
+class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
+    def _policy(
+        self,
+        attribute_name: str,
+        targets: list[str] | None = None,
+    ) -> sm.AttributePolicy:
+        from imbi_common.scoring import models as sm
+
+        return sm.AttributePolicy(
+            name='p',
+            slug='p',
+            attribute_name=attribute_name,
+            weight=10,
+            value_score_map={'py': 100},
+            targets=targets or [],
+        )
+
+    async def test_unknown_attribute_returns_empty(self) -> None:
+        from imbi_common import models
+
+        class _Extended(models.Project):
+            lang: str | None = None
+
+        db = mock.AsyncMock()
+        with mock.patch(
+            'imbi_api.scoring.queue.blueprints.get_model',
+            mock.AsyncMock(return_value=_Extended),
+        ):
+            result = await score_queue.affected_projects(
+                db, self._policy('unknown_attr')
+            )
+        self.assertEqual([], result)
+        db.execute.assert_not_called()
+
+    async def test_no_targets_returns_all_projects(self) -> None:
+        from imbi_common import models
+
+        class _Extended(models.Project):
+            lang: str | None = None
+
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[{'id': 'p1'}, {'id': 'p2'}])
+        with mock.patch(
+            'imbi_api.scoring.queue.blueprints.get_model',
+            mock.AsyncMock(return_value=_Extended),
+        ):
+            result = await score_queue.affected_projects(
+                db, self._policy('lang')
+            )
+        self.assertEqual(['p1', 'p2'], result)
+
+    async def test_targets_restricts_to_matching_types(self) -> None:
+        from imbi_common import models
+
+        class _Extended(models.Project):
+            lang: str | None = None
+
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[{'id': 'p3'}])
+        with mock.patch(
+            'imbi_api.scoring.queue.blueprints.get_model',
+            mock.AsyncMock(return_value=_Extended),
+        ):
+            result = await score_queue.affected_projects(
+                db, self._policy('lang', targets=['api'])
+            )
+        self.assertEqual(['p3'], result)
+        args = db.execute.call_args.args
+        self.assertIn('{slug}', args[0])
+
+    async def test_targets_deduplicates_across_types(self) -> None:
+        from imbi_common import models
+
+        class _Extended(models.Project):
+            lang: str | None = None
+
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[{'id': 'p1'}])
+        with mock.patch(
+            'imbi_api.scoring.queue.blueprints.get_model',
+            mock.AsyncMock(return_value=_Extended),
+        ):
+            result = await score_queue.affected_projects(
+                db, self._policy('lang', targets=['api', 'service'])
+            )
+        self.assertEqual(['p1'], result)
+        self.assertEqual(2, db.execute.await_count)

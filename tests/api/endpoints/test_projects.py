@@ -1035,3 +1035,78 @@ class DeleteProjectRelationshipTestCase(_RelationshipsTestBase):
 
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
+
+
+class EmitChangeEventsTestCase(unittest.IsolatedAsyncioTestCase):
+    """Tests for the project-change events emitter."""
+
+    async def test_no_changes_skips_clickhouse_insert(self) -> None:
+        from imbi_api.endpoints import projects
+
+        with mock.patch(
+            'imbi_api.endpoints.projects.ch_client.Clickhouse.get_instance'
+        ) as mock_get:
+            await projects._emit_change_events(
+                'p1', 'alice', {'name': 'A'}, {'name': 'A'}
+            )
+        mock_get.assert_not_called()
+
+    async def test_emits_one_row_per_changed_field(self) -> None:
+        from imbi_api.endpoints import projects
+
+        mock_instance = mock.AsyncMock()
+        mock_instance.insert = mock.AsyncMock()
+        with mock.patch(
+            'imbi_api.endpoints.projects.ch_client.Clickhouse.get_instance',
+            return_value=mock_instance,
+        ):
+            await projects._emit_change_events(
+                'p1',
+                'alice',
+                {'name': 'A', 'description': 'old', 'id': 'p1'},
+                {'name': 'B', 'description': 'new', 'id': 'p1'},
+            )
+        mock_instance.insert.assert_awaited_once()
+        args = mock_instance.insert.await_args.args
+        self.assertEqual(args[0], 'events')
+        rows = args[1]
+        self.assertEqual(len(rows), 2)
+        # `id` was in skip-list so it should not appear
+        fields = {row[7]['field'] for row in rows}
+        self.assertEqual(fields, {'name', 'description'})
+
+    async def test_skip_list_excludes_score_and_relationships(self) -> None:
+        from imbi_api.endpoints import projects
+
+        mock_instance = mock.AsyncMock()
+        mock_instance.insert = mock.AsyncMock()
+        with mock.patch(
+            'imbi_api.endpoints.projects.ch_client.Clickhouse.get_instance',
+            return_value=mock_instance,
+        ):
+            await projects._emit_change_events(
+                'p1',
+                'alice',
+                {'score': 10, 'relationships': []},
+                {'score': 20, 'relationships': [{'a': 1}]},
+            )
+        # All changes filtered out — no insert call
+        mock_instance.insert.assert_not_awaited()
+
+    async def test_clickhouse_failure_is_logged_not_raised(self) -> None:
+        from imbi_api.endpoints import projects
+
+        mock_instance = mock.AsyncMock()
+        mock_instance.insert = mock.AsyncMock(side_effect=RuntimeError('boom'))
+        with (
+            mock.patch(
+                'imbi_api.endpoints.projects.ch_client.Clickhouse.'
+                'get_instance',
+                return_value=mock_instance,
+            ),
+            self.assertLogs('imbi_api.endpoints.projects', level='ERROR'),
+        ):
+            # Must not raise even when ClickHouse insert fails
+            await projects._emit_change_events(
+                'p1', 'alice', {'name': 'A'}, {'name': 'B'}
+            )

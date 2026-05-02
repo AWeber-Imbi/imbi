@@ -15,6 +15,7 @@ from collections import abc
 from imbi_common import blueprints, clickhouse, graph, models
 from imbi_common.scoring import (
     AttributePolicy,
+    clear_score,
     compute_score,
     record_score_change,
 )
@@ -88,19 +89,19 @@ async def affected_projects(
     extended = await blueprints.get_model(db, models.Project)
     if policy.attribute_name not in extended.model_fields:
         return []
-    query: typing.LiteralString = (
-        'MATCH (sp:ScoringPolicy {{slug: {slug}}})'
-        ' OPTIONAL MATCH (sp)-[:TARGETS]->(pt:ProjectType)'
-        ' WITH collect(pt.slug) AS targets'
-        ' MATCH (p:Project)'
-        ' OPTIONAL MATCH (p)-[:TYPE]->(ppt:ProjectType)'
-        ' WITH p, targets, collect(ppt.slug) AS p_types'
-        ' WHERE size(targets) = 0 OR'
-        ' any(t IN p_types WHERE t IN targets)'
-        ' RETURN p.id AS id'
+    if not policy.targets:
+        return await all_project_ids(db)
+    id_lists = await asyncio.gather(
+        *[projects_of_type(db, slug) for slug in policy.targets]
     )
-    rows = await db.execute(query, {'slug': policy.slug}, ['id'])
-    return [v for r in rows if (v := graph.parse_agtype(r['id']))]
+    seen: set[str] = set()
+    result: list[str] = []
+    for pids in id_lists:
+        for pid in pids:
+            if pid not in seen:
+                seen.add(pid)
+                result.append(pid)
+    return result
 
 
 async def projects_of_type(
@@ -140,8 +141,22 @@ async def _process_message(
         return
     project = matches[0]
     previous = project.score if project.score is not None else 0.0
-    score, _ = await compute_score(db, project_id)
-    await record_score_change(ch, db, project, score, previous, reason)
+    LOGGER.info(
+        'Recomputing score for project %s (reason: %s)', project_id, reason
+    )
+    score, breakdown = await compute_score(db, project_id)
+    if score is None:
+        LOGGER.info(
+            'No applicable policies for %s; clearing score', project_id
+        )
+        await clear_score(db, project)
+    else:
+        LOGGER.info(
+            'Project %s score: %.1f -> %.1f', project_id, previous, score
+        )
+        await record_score_change(
+            ch, db, project, score, previous, reason, breakdown
+        )
 
 
 def _decode_fields(
@@ -241,6 +256,9 @@ async def consume_recompute(
 ) -> None:
     """Run the recompute consumer loop until *stop* is set."""
     await ensure_group(client)
+    LOGGER.info(
+        'Score recompute consumer loop running (consumer=%s)', consumer
+    )
     while stop is None or not stop.is_set():
         stale = await _claim_stale(client, consumer)
         if stale:

@@ -150,7 +150,7 @@ class ScoringPolicyEndpointsTestCase(unittest.TestCase):
         ):
             response = self.client.patch(
                 '/scoring/policies/python-version',
-                json={'weight': 80},
+                json=[{'op': 'replace', 'path': '/weight', 'value': 80}],
             )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertGreaterEqual(self.mock_valkey.xadd.await_count, 1)
@@ -262,6 +262,7 @@ class ScoringPolicyEndpointsTestCase(unittest.TestCase):
         self.mock_db.execute = mock.AsyncMock(
             side_effect=[
                 [{'sp': self._policy_props(), 'targets': []}],  # load existing
+                [],  # SET props
                 [{'found': ['service']}],  # target validation (new)
                 [],  # clear targets
                 [],  # link new targets
@@ -282,7 +283,13 @@ class ScoringPolicyEndpointsTestCase(unittest.TestCase):
         ):
             response = self.client.patch(
                 '/scoring/policies/python-version',
-                json={'targets': ['service']},
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/targets',
+                        'value': ['service'],
+                    }
+                ],
             )
         self.assertEqual(response.status_code, 200, response.text)
 
@@ -290,6 +297,7 @@ class ScoringPolicyEndpointsTestCase(unittest.TestCase):
         self.mock_db.execute = mock.AsyncMock(
             side_effect=[
                 [{'sp': self._policy_props(), 'targets': []}],  # load existing
+                [],  # SET props
                 [{'found': []}],  # target validation finds nothing
             ]
         )
@@ -298,7 +306,13 @@ class ScoringPolicyEndpointsTestCase(unittest.TestCase):
         ):
             response = self.client.patch(
                 '/scoring/policies/python-version',
-                json={'targets': ['ghost-type']},
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/targets',
+                        'value': ['ghost-type'],
+                    }
+                ],
             )
         self.assertEqual(response.status_code, 400)
         self.assertIn('Unknown project type', response.json()['detail'])
@@ -308,6 +322,7 @@ class ScoringPolicyEndpointsTestCase(unittest.TestCase):
         self.mock_db.execute = mock.AsyncMock(
             side_effect=[
                 [{'sp': self._policy_props(), 'targets': ['service']}],  # load
+                [],  # SET props
                 [],  # clear targets
                 [{'sp': self._policy_props(), 'targets': []}],  # reload
             ]
@@ -319,14 +334,15 @@ class ScoringPolicyEndpointsTestCase(unittest.TestCase):
         ):
             response = self.client.patch(
                 '/scoring/policies/python-version',
-                json={'targets': []},
+                json=[{'op': 'replace', 'path': '/targets', 'value': []}],
             )
         self.assertEqual(response.status_code, 200, response.text)
 
     def test_update_policy_not_found(self) -> None:
         self.mock_db.execute = mock.AsyncMock(return_value=[])
         response = self.client.patch(
-            '/scoring/policies/missing', json={'weight': 10}
+            '/scoring/policies/missing',
+            json=[{'op': 'replace', 'path': '/weight', 'value': 10}],
         )
         self.assertEqual(response.status_code, 404)
 

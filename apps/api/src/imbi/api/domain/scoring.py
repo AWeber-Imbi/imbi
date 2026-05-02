@@ -23,6 +23,7 @@ __all__ = [
     'ScoreHistoryPoint',
     'ScoreHistoryResponse',
     'ScoreRollupRow',
+    'ScoreTrend',
     'ScoringPolicy',
 ]
 
@@ -63,6 +64,7 @@ class PolicyUpdate(pydantic.BaseModel):
 class RescoreRequest(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra='forbid')
 
+    project_id: str | None = None
     project_type_slug: str | None = None
     blueprint_slug: str | None = None
     policy_slug: str | None = None
@@ -70,6 +72,13 @@ class RescoreRequest(pydantic.BaseModel):
 
 class RescoreResponse(pydantic.BaseModel):
     enqueued: int
+
+
+class ScoreTrend(pydantic.BaseModel):
+    current: float | None
+    previous: float | None
+    delta: float | None
+    period_days: int
 
 
 class ScoreHistoryPoint(pydantic.BaseModel):

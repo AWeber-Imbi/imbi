@@ -85,6 +85,7 @@ async def score_worker_hook() -> abc.AsyncIterator[None]:
         return
     ch = clickhouse.client.Clickhouse.get_instance()
     stop = asyncio.Event()
+    LOGGER.info('Score recompute worker starting')
     task = asyncio.create_task(
         score_queue.consume_recompute(client, _graph, ch, stop=stop)
     )
@@ -98,4 +99,4 @@ async def score_worker_hook() -> abc.AsyncIterator[None]:
         except asyncio.CancelledError:
             pass
         except Exception:  # noqa: BLE001
-            LOGGER.debug('score worker exited with error', exc_info=True)
+            LOGGER.warning('Score worker exited with error', exc_info=True)

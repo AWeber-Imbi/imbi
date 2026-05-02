@@ -897,7 +897,7 @@ requires-dist = [
     { name = "fastapi" },
     { name = "filetype" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "imbi-common", extras = ["databases", "server"], git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=feature%2Fscoring-foundation" },
+    { name = "imbi-common", extras = ["databases", "server"], git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=main" },
     { name = "jinja2" },
     { name = "jsonpatch", specifier = ">=1.33" },
     { name = "nanoid", specifier = ">=2.0.0" },
@@ -944,7 +944,7 @@ docs = [
 [[package]]
 name = "imbi-common"
 version = "0.1.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=feature%2Fscoring-foundation#2606c1349b5bc4ad6f4493f942b607c4e025724b" }
+source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=main#1998b91c01f7164219c6fdaf86032362a63dc7bd" }
 dependencies = [
     { name = "cryptography" },
     { name = "jsonschema-models" },

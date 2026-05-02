@@ -242,3 +242,64 @@ class ScoringEndpointsTestCase(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['enqueued'], 1)
+
+    def test_rescore_by_project_id(self) -> None:
+        response = self.client.post(
+            '/scoring/rescore', json={'project_id': 'proj-abc'}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['enqueued'], 1)
+        args = self.mock_valkey.xadd.call_args.args
+        self.assertEqual(args[1]['project_id'], 'proj-abc')
+
+    def test_score_trend_returns_delta(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=[{'score': 90.0}],
+        )
+        with (
+            mock.patch(
+                'imbi_api.endpoints.scoring.clickhouse.query',
+                mock.AsyncMock(return_value=[{'score': 80.0}]),
+            ),
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            response = self.client.get(
+                '/organizations/eng/projects/p1/score/trend',
+                params={'days': 30},
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body['current'], 90.0)
+        self.assertEqual(body['previous'], 80.0)
+        self.assertEqual(body['delta'], 10.0)
+        self.assertEqual(body['period_days'], 30)
+
+    def test_score_trend_handles_missing_history(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=[{'score': 90.0}],
+        )
+        with (
+            mock.patch(
+                'imbi_api.endpoints.scoring.clickhouse.query',
+                mock.AsyncMock(return_value=[]),
+            ),
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            response = self.client.get(
+                '/organizations/eng/projects/p1/score/trend',
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertIsNone(body['previous'])
+        self.assertIsNone(body['delta'])
+
+    def test_score_trend_404_when_project_missing(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        response = self.client.get(
+            '/organizations/eng/projects/missing/score/trend',
+        )
+        self.assertEqual(response.status_code, 404)

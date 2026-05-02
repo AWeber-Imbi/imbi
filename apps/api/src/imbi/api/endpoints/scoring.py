@@ -110,6 +110,55 @@ async def get_score_history(
     )
 
 
+@scoring_router.get(
+    '/organizations/{org_slug}/projects/{project_id}/score/trend'
+)
+async def get_score_trend(
+    org_slug: str,
+    project_id: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('project:read')),
+    ],
+    days: int = 30,
+) -> scoring_models.ScoreTrend:
+    """Return the current score and its change over the last *days* days."""
+    rows = await db.execute(
+        'MATCH (p:Project {{id: {id}}})'
+        '-[:OWNED_BY]->(:Team)'
+        '-[:BELONGS_TO]->(:Organization {{slug: {org}}})'
+        ' RETURN p.score AS score',
+        {'id': project_id, 'org': org_slug},
+        ['score'],
+    )
+    if not rows:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Project {project_id!r} not found'
+        )
+    raw_score = graph.parse_agtype(rows[0]['score'])
+    current = float(raw_score) if raw_score is not None else None
+    prev_rows = await clickhouse.query(
+        'SELECT score FROM score_history'
+        ' WHERE project_id = {project_id:String}'
+        ' AND timestamp <= now() - INTERVAL {days:UInt16} DAY'
+        ' ORDER BY timestamp DESC LIMIT 1',
+        {'project_id': project_id, 'days': days},
+    )
+    previous = float(prev_rows[0]['score']) if prev_rows else None
+    delta = (
+        round(current - previous, 2)
+        if current is not None and previous is not None
+        else None
+    )
+    return scoring_models.ScoreTrend(
+        current=current,
+        previous=previous,
+        delta=delta,
+        period_days=days,
+    )
+
+
 _DIMENSION_QUERY: dict[str, typing.LiteralString] = {
     'team': (
         'MATCH (p:Project)-[:OWNED_BY]->(t:Team)'
@@ -213,7 +262,9 @@ async def rescore(
 ) -> scoring_models.RescoreResponse:
     body = body or scoring_models.RescoreRequest()
     project_ids: list[str] = []
-    if body.policy_slug:
+    if body.project_id:
+        project_ids = [body.project_id]
+    elif body.policy_slug:
         policy = await load_policy(db, body.policy_slug)
         if policy is None:
             raise fastapi.HTTPException(
