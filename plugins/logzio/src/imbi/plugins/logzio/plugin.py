@@ -1,7 +1,6 @@
 """Logz.io LogsPlugin implementation."""
 
 import datetime
-import json
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from typing import cast
@@ -18,7 +17,7 @@ from imbi_common.plugins.base import (
 )
 from imbi_common.plugins.errors import PluginCredentialsMissing
 
-from imbi_plugin_logzio.client import get_log_types, post_scroll
+from imbi_plugin_logzio.client import get_log_types, post_search
 from imbi_plugin_logzio.query import (
     build_query_body,
     compute_fp,
@@ -136,13 +135,12 @@ class LogzioPlugin(LogsPlugin):
         )
         fp = compute_fp(query_body)
 
+        request_body: dict[str, object] = dict(query_body)
         if query.cursor:
-            scroll_id = decode_cursor(query.cursor, fp)
-            request_body: dict[str, object] = {'scroll_id': scroll_id}
-        else:
-            request_body = query_body
+            search_after = decode_cursor(query.cursor, fp)
+            request_body['search_after'] = search_after
 
-        data = await post_scroll(
+        data = await post_search(
             api_token=api_token,
             region=region,
             body=request_body,
@@ -150,19 +148,7 @@ class LogzioPlugin(LogsPlugin):
             version=_VERSION,
         )
 
-        # Logz.io double-encodes hits as a JSON string inside the response dict
-        hits_payload = data.get('hits')
-        if not isinstance(hits_payload, (str, bytes)):
-            return LogResult(entries=[], total=0)
-        try:
-            hits_raw: object = json.loads(hits_payload)
-        except json.JSONDecodeError:
-            return LogResult(entries=[], total=0)
-        if not isinstance(hits_raw, dict):
-            return LogResult(entries=[], total=0)
-        hits_raw_dict = cast('dict[str, object]', hits_raw)
-
-        hits_wrapper_raw = hits_raw_dict.get('hits', {})
+        hits_wrapper_raw = data.get('hits', {})
         if not isinstance(hits_wrapper_raw, dict):
             return LogResult(entries=[], total=0)
         hits_wrapper = cast('dict[str, object]', hits_wrapper_raw)
@@ -185,6 +171,7 @@ class LogzioPlugin(LogsPlugin):
             total = None
 
         entries: list[LogEntry] = []
+        last_sort: list[object] | None = None
         for hit_raw in raw_entries:
             if not isinstance(hit_raw, dict):
                 continue
@@ -207,14 +194,13 @@ class LogzioPlugin(LogsPlugin):
                     raw=source,
                 )
             )
+            sort_val = hit.get('sort')
+            if isinstance(sort_val, list):
+                last_sort = cast('list[object]', sort_val)
 
         next_cursor: str | None = None
-        if len(entries) == size:
-            new_scroll_id = str(
-                data.get('scrollId') or data.get('scroll_id', '')
-            )
-            if new_scroll_id:
-                next_cursor = encode_cursor(new_scroll_id, fp)
+        if len(entries) == size and last_sort is not None:
+            next_cursor = encode_cursor(last_sort, fp)
 
         return LogResult(entries=entries, next_cursor=next_cursor, total=total)
 

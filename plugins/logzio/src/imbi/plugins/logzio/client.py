@@ -1,14 +1,16 @@
 """Logz.io HTTP client: region resolution, auth, error mapping."""
 
+import logging
 from typing import cast
 
 import httpx
 from imbi_common.plugins.errors import (
-    CursorExpiredError,
     PluginCredentialsMissing,
     PluginTimeoutError,
     PluginUnavailableError,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 REGION_HOSTS: dict[str, str] = {
     'us': 'https://api.logz.io',
@@ -34,20 +36,40 @@ def _build_headers(api_token: str, version: str) -> dict[str, str]:
     }
 
 
+def _log_error(response: httpx.Response) -> None:
+    request = response.request
+    request_body = ''
+    if request.content:
+        try:
+            request_body = request.content.decode('utf-8', errors='replace')
+        except (AttributeError, UnicodeDecodeError):
+            request_body = repr(request.content)
+    LOGGER.error(
+        'Logz.io %s %s returned %d: request_body=%s response_body=%s',
+        request.method,
+        request.url,
+        response.status_code,
+        request_body,
+        response.text,
+    )
+
+
 def _check_response(response: httpx.Response) -> None:
     status = response.status_code
     if status in (401, 403):
+        _log_error(response)
         raise PluginCredentialsMissing('Invalid or missing Logz.io API token')
     if status == 429 or status >= 500:
+        _log_error(response)
         raise PluginUnavailableError(f'Logz.io returned status {status}')
     if 400 <= status < 500:
-        body = response.text.lower()
-        if 'scroll' in body and 'expired' in body:
-            raise CursorExpiredError('Logz.io scroll context has expired')
-        response.raise_for_status()
+        _log_error(response)
+        raise PluginUnavailableError(
+            f'Logz.io returned status {status}: {response.text}'
+        )
 
 
-async def post_scroll(
+async def post_search(
     *,
     api_token: str,
     region: str,
@@ -55,8 +77,9 @@ async def post_scroll(
     timeout: float,
     version: str,
 ) -> dict[str, object]:
-    url = f'{base_url(region)}/v1/scroll'
+    url = f'{base_url(region)}/v1/search'
     headers = _build_headers(api_token, version)
+    LOGGER.info('Logz.io POST %s body=%s', url, body)
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(

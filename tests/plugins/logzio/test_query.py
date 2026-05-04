@@ -245,19 +245,19 @@ def test_multiple_ne_filters_collected() -> None:
 
 
 def test_cursor_round_trip() -> None:
-    scroll_id = 'DXF1ZXJ5QW5kRmV0Y2gB'
+    search_after: list[object] = [1735732800000, 5]
     fp = 'deadbeef12345678'
-    token = encode_cursor(scroll_id, fp)
-    assert decode_cursor(token, fp) == scroll_id
+    token = encode_cursor(search_after, fp)
+    assert decode_cursor(token, fp) == search_after
 
 
 def test_cursor_no_padding_in_token() -> None:
-    token = encode_cursor('sid', 'fp12345678901234')
+    token = encode_cursor([1, 2], 'fp12345678901234')
     assert '=' not in token
 
 
 def test_cursor_fp_mismatch_raises() -> None:
-    token = encode_cursor('sid', 'fp1234567890abcd')
+    token = encode_cursor([1, 2], 'fp1234567890abcd')
     with pytest.raises(CursorExpiredError):
         decode_cursor(token, 'different_fp1234')
 
@@ -272,7 +272,7 @@ def test_cursor_wrong_version_raises() -> None:
     import json
 
     payload = json.dumps(
-        {'v': 99, 'sid': 'x', 'fp': 'fp'}, separators=(',', ':')
+        {'v': 99, 'sa': [1], 'fp': 'fp'}, separators=(',', ':')
     ).encode()
     token = base64.urlsafe_b64encode(payload).decode().rstrip('=')
     with pytest.raises(CursorExpiredError):
@@ -289,7 +289,7 @@ def test_cursor_non_dict_json_raises() -> None:
         decode_cursor(token, 'fp')
 
 
-def test_cursor_missing_sid_raises() -> None:
+def test_cursor_missing_search_after_raises() -> None:
     import base64
     import json
 

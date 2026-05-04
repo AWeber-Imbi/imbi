@@ -99,14 +99,14 @@ def compute_fp(body: Mapping[str, object]) -> str:
     return hashlib.sha256(canonical).hexdigest()[:16]
 
 
-def encode_cursor(scroll_id: str, fp: str) -> str:
+def encode_cursor(search_after: list[object], fp: str) -> str:
     payload = json.dumps(
-        {'v': 1, 'sid': scroll_id, 'fp': fp}, separators=(',', ':')
+        {'v': 1, 'sa': search_after, 'fp': fp}, separators=(',', ':')
     ).encode()
     return base64.urlsafe_b64encode(payload).decode().rstrip('=')
 
 
-def decode_cursor(token: str, expected_fp: str) -> str:
+def decode_cursor(token: str, expected_fp: str) -> list[object]:
     pad = '=' * (-len(token) % 4)
     try:
         parsed: object = json.loads(base64.urlsafe_b64decode(token + pad))
@@ -119,7 +119,7 @@ def decode_cursor(token: str, expected_fp: str) -> str:
         raise CursorExpiredError(
             'Cursor fingerprint mismatch or version unsupported'
         )
-    sid = data.get('sid')
-    if not isinstance(sid, str):
-        raise CursorExpiredError('Invalid cursor scroll ID')
-    return sid
+    sa = data.get('sa')
+    if not isinstance(sa, list):
+        raise CursorExpiredError('Invalid cursor search_after')
+    return cast('list[object]', sa)

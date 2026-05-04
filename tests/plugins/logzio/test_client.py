@@ -1,12 +1,9 @@
 """Tests for the Logz.io HTTP client wrapper."""
 
-import json
-
 import httpx
 import pytest
 import respx
 from imbi_common.plugins.errors import (
-    CursorExpiredError,
     PluginCredentialsMissing,
     PluginTimeoutError,
     PluginUnavailableError,
@@ -16,13 +13,12 @@ from imbi_plugin_logzio.client import (
     REGION_HOSTS,
     base_url,
     get_log_types,
-    post_scroll,
+    post_search,
 )
 
 
-def _empty_hits_payload(scroll_id: str = 'sid') -> dict[str, object]:
-    inner: dict[str, object] = {'hits': {'total': 0, 'hits': []}}
-    return {'scrollId': scroll_id, 'hits': json.dumps(inner)}
+def _empty_hits_payload() -> dict[str, object]:
+    return {'hits': {'total': {'value': 0, 'relation': 'eq'}, 'hits': []}}
 
 
 def test_region_us() -> None:
@@ -50,22 +46,22 @@ def test_unknown_region_defaults_to_us() -> None:
 
 
 @respx.mock
-async def test_post_scroll_success() -> None:
-    respx.post('https://api.logz.io/v1/scroll').mock(
-        return_value=httpx.Response(200, json=_empty_hits_payload('new-sid'))
+async def test_post_search_success() -> None:
+    respx.post('https://api.logz.io/v1/search').mock(
+        return_value=httpx.Response(200, json=_empty_hits_payload())
     )
-    result = await post_scroll(
+    result = await post_search(
         api_token='tok', region='us', body={}, timeout=5.0, version='test'
     )
-    assert result['scrollId'] == 'new-sid'
+    assert 'hits' in result
 
 
 @respx.mock
-async def test_post_scroll_sends_auth_header() -> None:
-    route = respx.post('https://api.logz.io/v1/scroll').mock(
+async def test_post_search_sends_auth_header() -> None:
+    route = respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_empty_hits_payload())
     )
-    await post_scroll(
+    await post_search(
         api_token='my-token',
         region='us',
         body={},
@@ -79,106 +75,89 @@ async def test_post_scroll_sends_auth_header() -> None:
 
 
 @respx.mock
-async def test_post_scroll_eu_region() -> None:
-    route = respx.post('https://api-eu.logz.io/v1/scroll').mock(
+async def test_post_search_eu_region() -> None:
+    route = respx.post('https://api-eu.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_empty_hits_payload())
     )
-    await post_scroll(
+    await post_search(
         api_token='tok', region='eu', body={}, timeout=5.0, version='test'
     )
     assert route.called
 
 
 @respx.mock
-async def test_post_scroll_401_raises_credentials_missing() -> None:
-    respx.post('https://api.logz.io/v1/scroll').mock(
+async def test_post_search_401_raises_credentials_missing() -> None:
+    respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(401)
     )
     with pytest.raises(PluginCredentialsMissing):
-        await post_scroll(
+        await post_search(
             api_token='bad', region='us', body={}, timeout=5.0, version='test'
         )
 
 
 @respx.mock
-async def test_post_scroll_403_raises_credentials_missing() -> None:
-    respx.post('https://api.logz.io/v1/scroll').mock(
+async def test_post_search_403_raises_credentials_missing() -> None:
+    respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(403)
     )
     with pytest.raises(PluginCredentialsMissing):
-        await post_scroll(
+        await post_search(
             api_token='bad', region='us', body={}, timeout=5.0, version='test'
         )
 
 
 @respx.mock
-async def test_post_scroll_429_raises_unavailable() -> None:
-    respx.post('https://api.logz.io/v1/scroll').mock(
+async def test_post_search_429_raises_unavailable() -> None:
+    respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(429)
     )
     with pytest.raises(PluginUnavailableError):
-        await post_scroll(
+        await post_search(
             api_token='tok', region='us', body={}, timeout=5.0, version='test'
         )
 
 
 @respx.mock
-async def test_post_scroll_500_raises_unavailable() -> None:
-    respx.post('https://api.logz.io/v1/scroll').mock(
+async def test_post_search_500_raises_unavailable() -> None:
+    respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(500)
     )
     with pytest.raises(PluginUnavailableError):
-        await post_scroll(
+        await post_search(
             api_token='tok', region='us', body={}, timeout=5.0, version='test'
         )
 
 
 @respx.mock
-async def test_post_scroll_scroll_expired_in_body_raises_cursor_expired() -> (
-    None
-):
-    respx.post('https://api.logz.io/v1/scroll').mock(
-        return_value=httpx.Response(404, text='scroll context has expired')
-    )
-    with pytest.raises(CursorExpiredError):
-        await post_scroll(
-            api_token='tok',
-            region='us',
-            body={'scroll_id': 'old'},
-            timeout=5.0,
-            version='test',
-        )
-
-
-@respx.mock
-async def test_post_scroll_timeout_raises_plugin_timeout() -> None:
-    respx.post('https://api.logz.io/v1/scroll').mock(
+async def test_post_search_timeout_raises_plugin_timeout() -> None:
+    respx.post('https://api.logz.io/v1/search').mock(
         side_effect=httpx.TimeoutException('timed out')
     )
     with pytest.raises(PluginTimeoutError):
-        await post_scroll(
+        await post_search(
             api_token='tok', region='us', body={}, timeout=1.0, version='test'
         )
 
 
 @respx.mock
-async def test_post_scroll_request_error_raises_unavailable() -> None:
-    respx.post('https://api.logz.io/v1/scroll').mock(
+async def test_post_search_request_error_raises_unavailable() -> None:
+    respx.post('https://api.logz.io/v1/search').mock(
         side_effect=httpx.ConnectError('connection refused')
     )
     with pytest.raises(PluginUnavailableError):
-        await post_scroll(
+        await post_search(
             api_token='tok', region='us', body={}, timeout=5.0, version='test'
         )
 
 
 @respx.mock
-async def test_post_scroll_invalid_json_raises_unavailable() -> None:
-    respx.post('https://api.logz.io/v1/scroll').mock(
+async def test_post_search_invalid_json_raises_unavailable() -> None:
+    respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, content=b'not-json')
     )
     with pytest.raises(PluginUnavailableError):
-        await post_scroll(
+        await post_search(
             api_token='tok', region='us', body={}, timeout=5.0, version='test'
         )
 
@@ -252,11 +231,12 @@ async def test_get_log_types_unexpected_json_type_returns_none() -> None:
 
 
 @respx.mock
-async def test_post_scroll_4xx_non_scroll_reraises() -> None:
-    respx.post('https://api.logz.io/v1/scroll').mock(
+async def test_post_search_4xx_raises_unavailable() -> None:
+    respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(400, json={'error': 'bad request'})
     )
-    with pytest.raises(httpx.HTTPStatusError):
-        await post_scroll(
+    with pytest.raises(PluginUnavailableError) as exc_info:
+        await post_search(
             api_token='tok', region='us', body={}, timeout=5.0, version='test'
         )
+    assert 'bad request' in str(exc_info.value)

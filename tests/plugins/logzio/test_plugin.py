@@ -53,24 +53,28 @@ def _make_query(**kwargs: object) -> LogQuery:
 
 def _hits_response(
     hits: list[object],
-    scroll_id: str = 'sid1',
     total: object = 100,
 ) -> dict[str, object]:
-    inner: dict[str, object] = {
+    return {
         'hits': {
             'total': {'value': total, 'relation': 'eq'},
             'hits': hits,
         }
     }
-    return {'scrollId': scroll_id, 'hits': json.dumps(inner)}
 
 
 def _source_hit(
     message: str = 'hello',
     level: str = 'info',
     ts: str = '2025-01-01T12:00:00Z',
+    sort: list[object] | None = None,
 ) -> dict[str, object]:
-    return {'_source': {'@timestamp': ts, 'message': message, 'level': level}}
+    hit: dict[str, object] = {
+        '_source': {'@timestamp': ts, 'message': message, 'level': level}
+    }
+    if sort is not None:
+        hit['sort'] = sort
+    return hit
 
 
 async def test_search_missing_token_raises() -> None:
@@ -87,7 +91,7 @@ async def test_search_empty_token_raises() -> None:
 
 @respx.mock
 async def test_search_initial_returns_entries() -> None:
-    respx.post('https://api.logz.io/v1/scroll').mock(
+    respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([_source_hit()]))
     )
     plugin = LogzioPlugin()
@@ -99,8 +103,11 @@ async def test_search_initial_returns_entries() -> None:
 
 @respx.mock
 async def test_search_full_page_sets_next_cursor() -> None:
-    respx.post('https://api.logz.io/v1/scroll').mock(
-        return_value=httpx.Response(200, json=_hits_response([_source_hit()]))
+    respx.post('https://api.logz.io/v1/search').mock(
+        return_value=httpx.Response(
+            200,
+            json=_hits_response([_source_hit(sort=[1735732800000, 0])]),
+        )
     )
     plugin = LogzioPlugin()
     result = await plugin.search(_make_ctx(), _CREDS, _make_query(limit=1))
@@ -109,7 +116,7 @@ async def test_search_full_page_sets_next_cursor() -> None:
 
 @respx.mock
 async def test_search_partial_page_no_next_cursor() -> None:
-    respx.post('https://api.logz.io/v1/scroll').mock(
+    respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([_source_hit()]))
     )
     plugin = LogzioPlugin()
@@ -119,7 +126,7 @@ async def test_search_partial_page_no_next_cursor() -> None:
 
 @respx.mock
 async def test_search_empty_page_no_next_cursor() -> None:
-    respx.post('https://api.logz.io/v1/scroll').mock(
+    respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([]))
     )
     plugin = LogzioPlugin()
@@ -129,8 +136,8 @@ async def test_search_empty_page_no_next_cursor() -> None:
 
 
 @respx.mock
-async def test_search_with_cursor_sends_scroll_id_only() -> None:
-    route = respx.post('https://api.logz.io/v1/scroll').mock(
+async def test_search_with_cursor_sends_search_after() -> None:
+    route = respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([_source_hit()]))
     )
     ctx = _make_ctx()
@@ -149,46 +156,14 @@ async def test_search_with_cursor_sends_scroll_id_only() -> None:
         },
     )
     fp = compute_fp(body)
-    cursor = encode_cursor('prev-scroll-id', fp)
+    cursor = encode_cursor([1735732800000, 5], fp)
 
     plugin = LogzioPlugin()
-    await plugin.search(
-        _make_ctx(), _CREDS, _make_query(limit=1, cursor=cursor)
-    )
+    await plugin.search(ctx, _CREDS, _make_query(limit=1, cursor=cursor))
 
     req_body = json.loads(route.calls[0].request.content)  # type: ignore[union-attr]
-    assert 'scroll_id' in req_body
-    assert 'query' not in req_body
-    assert req_body['scroll_id'] == 'prev-scroll-id'
-
-
-@respx.mock
-async def test_search_expired_cursor_from_api_raises() -> None:
-    respx.post('https://api.logz.io/v1/scroll').mock(
-        return_value=httpx.Response(404, text='scroll context expired')
-    )
-    ctx = _make_ctx()
-    query = _make_query(limit=1)
-    body = build_query_body(
-        query,
-        base_query=None,
-        timestamp_field='@timestamp',
-        message_field='message',
-        ctx_vars={
-            'project_slug': ctx.project_slug,
-            'org_slug': ctx.org_slug,
-            'environment': ctx.environment,
-            'project_id': ctx.project_id,
-        },
-    )
-    fp = compute_fp(body)
-    cursor = encode_cursor('old-scroll', fp)
-
-    plugin = LogzioPlugin()
-    with pytest.raises(CursorExpiredError):
-        await plugin.search(
-            _make_ctx(), _CREDS, _make_query(limit=1, cursor=cursor)
-        )
+    assert req_body['search_after'] == [1735732800000, 5]
+    assert 'query' in req_body
 
 
 async def test_search_bad_cursor_token_raises() -> None:
@@ -203,13 +178,11 @@ async def test_search_bad_cursor_token_raises() -> None:
 
 @respx.mock
 async def test_search_total_dict_format() -> None:
-    inner: dict[str, object] = {
+    payload: dict[str, object] = {
         'hits': {'total': {'value': 42, 'relation': 'eq'}, 'hits': []}
     }
-    respx.post('https://api.logz.io/v1/scroll').mock(
-        return_value=httpx.Response(
-            200, json={'scrollId': 'sid', 'hits': json.dumps(inner)}
-        )
+    respx.post('https://api.logz.io/v1/search').mock(
+        return_value=httpx.Response(200, json=payload)
     )
     plugin = LogzioPlugin()
     result = await plugin.search(_make_ctx(), _CREDS, _make_query())
@@ -218,11 +191,9 @@ async def test_search_total_dict_format() -> None:
 
 @respx.mock
 async def test_search_total_int_format() -> None:
-    inner: dict[str, object] = {'hits': {'total': 99, 'hits': []}}
-    respx.post('https://api.logz.io/v1/scroll').mock(
-        return_value=httpx.Response(
-            200, json={'scrollId': 'sid', 'hits': json.dumps(inner)}
-        )
+    payload: dict[str, object] = {'hits': {'total': 99, 'hits': []}}
+    respx.post('https://api.logz.io/v1/search').mock(
+        return_value=httpx.Response(200, json=payload)
     )
     plugin = LogzioPlugin()
     result = await plugin.search(_make_ctx(), _CREDS, _make_query())
@@ -237,7 +208,7 @@ async def test_search_timestamp_parsed() -> None:
             'message': 'ts test',
         }
     }
-    respx.post('https://api.logz.io/v1/scroll').mock(
+    respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([hit]))
     )
     plugin = LogzioPlugin()
@@ -250,7 +221,7 @@ async def test_search_timestamp_parsed() -> None:
 @respx.mock
 async def test_search_missing_timestamp_defaults_to_utc_now() -> None:
     hit: dict[str, object] = {'_source': {'message': 'no ts'}}
-    respx.post('https://api.logz.io/v1/scroll').mock(
+    respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([hit]))
     )
     plugin = LogzioPlugin()
@@ -267,7 +238,7 @@ async def test_search_custom_level_field() -> None:
             'severity': 'WARN',
         }
     }
-    respx.post('https://api.logz.io/v1/scroll').mock(
+    respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([hit]))
     )
     plugin = LogzioPlugin()
@@ -283,7 +254,7 @@ async def test_search_raw_contains_full_source() -> None:
         'message': 'hi',
         'custom': 'value',
     }
-    respx.post('https://api.logz.io/v1/scroll').mock(
+    respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(
             200, json=_hits_response([{'_source': source}])
         )
@@ -295,7 +266,7 @@ async def test_search_raw_contains_full_source() -> None:
 
 @respx.mock
 async def test_search_with_filter() -> None:
-    route = respx.post('https://api.logz.io/v1/scroll').mock(
+    route = respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([]))
     )
     plugin = LogzioPlugin()
@@ -347,7 +318,7 @@ async def test_schema_baseline_field_count() -> None:
 
 @respx.mock
 async def test_search_with_base_query_option() -> None:
-    route = respx.post('https://api.logz.io/v1/scroll').mock(
+    route = respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([]))
     )
     plugin = LogzioPlugin()
@@ -365,7 +336,7 @@ async def test_search_naive_timestamp_gets_utc() -> None:
     hit = {
         '_source': {'@timestamp': '2025-01-01T12:00:00', 'message': 'no tz'}
     }
-    respx.post('https://api.logz.io/v1/scroll').mock(
+    respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([hit]))
     )
     plugin = LogzioPlugin()
@@ -376,7 +347,7 @@ async def test_search_naive_timestamp_gets_utc() -> None:
 @respx.mock
 async def test_search_invalid_timestamp_defaults_to_now() -> None:
     hit = {'_source': {'@timestamp': 'not-a-date', 'message': 'bad ts'}}
-    respx.post('https://api.logz.io/v1/scroll').mock(
+    respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([hit]))
     )
     plugin = LogzioPlugin()
@@ -386,11 +357,9 @@ async def test_search_invalid_timestamp_defaults_to_now() -> None:
 
 @respx.mock
 async def test_search_total_missing_returns_none() -> None:
-    inner: dict[str, object] = {'hits': {'hits': []}}
-    respx.post('https://api.logz.io/v1/scroll').mock(
-        return_value=httpx.Response(
-            200, json={'scrollId': 'sid', 'hits': json.dumps(inner)}
-        )
+    payload: dict[str, object] = {'hits': {'hits': []}}
+    respx.post('https://api.logz.io/v1/search').mock(
+        return_value=httpx.Response(200, json=payload)
     )
     plugin = LogzioPlugin()
     result = await plugin.search(_make_ctx(), _CREDS, _make_query())
