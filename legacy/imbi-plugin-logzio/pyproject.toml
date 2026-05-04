@@ -34,6 +34,7 @@ dev = [
   "respx",
   "ruff~=0.14.6",
 ]
+dist = ["build", "twine", "wheel"]
 
 [build-system]
 requires = ["hatchling"]
