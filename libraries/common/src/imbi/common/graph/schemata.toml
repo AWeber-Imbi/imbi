@@ -20,6 +20,7 @@ name = [
   "OAuthIdentity",
   "Organization",
   "Permission",
+  "Plugin",
   "Project",
   "ProjectType",
   "Release",
@@ -142,6 +143,14 @@ attributes = ["category", "enabled"]
 [[vlabel_indexes]]
 vlabel = "ScoringPolicy"
 attributes = ["attribute_name"]
+
+[[vlabel_indexes]]
+vlabel = "Plugin"
+attributes = ["plugin_slug"]
+
+[[vlabel_indexes]]
+vlabel = "Plugin"
+attributes = ["api_version"]
 
 [[vlabel_indexes]]
 vlabel = "ServiceAccount"

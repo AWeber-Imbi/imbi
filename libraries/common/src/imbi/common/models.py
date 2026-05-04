@@ -25,6 +25,7 @@ __all__ = [
     'NoteTemplate',
     'OperationLog',
     'Organization',
+    'Plugin',
     'Project',
     'ProjectType',
     'RelationshipEdge',
@@ -33,6 +34,7 @@ __all__ = [
     'ReleaseDeploymentEdge',
     'ReleaseLink',
     'Schema',
+    'ServiceApplication',
     'Tag',
     'Team',
     'ThirdPartyService',
@@ -291,8 +293,40 @@ class ProjectType(Node):
     organization: BelongsToOrganization
 
 
+class ServiceApplication(GraphModel):
+    """A registered application for a ThirdPartyService.
+
+    ``encrypted_credentials`` stores per-credential Fernet-encrypted token
+    strings (see ``imbi_common.auth.encryption``). Plaintext credentials must
+    never be assigned to this field; callers are responsible for encrypting
+    values before persistence and decrypting on read.
+
+    """
+
+    slug: str
+    name: str
+    encrypted_credentials: dict[str, str] = {}
+
+
 class ThirdPartyService(Node):
     organization: BelongsToOrganization
+    service_application: typing.Annotated[
+        ServiceApplication | None,
+        Edge(rel_type='HAS_APPLICATION', direction='OUTGOING'),
+    ] = None
+
+
+class Plugin(GraphModel):
+    """A plugin instance linked to a ThirdPartyService."""
+
+    plugin_slug: str
+    label: str
+    options: dict[str, typing.Any] = {}
+    api_version: int = 1
+    service: typing.Annotated[
+        ThirdPartyService,
+        Edge(rel_type='HAS_PLUGIN', direction='INCOMING'),
+    ]
 
 
 class LinkDefinition(Node):

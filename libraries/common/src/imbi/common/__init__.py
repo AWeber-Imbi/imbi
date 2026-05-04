@@ -9,6 +9,7 @@ from imbi_common import (
     graph,
     logging,
     models,
+    plugins,
     settings,
 )
 
@@ -29,6 +30,7 @@ __all__ = [
     'graph',
     'logging',
     'models',
+    'plugins',
     'settings',
     'version',
 ]
