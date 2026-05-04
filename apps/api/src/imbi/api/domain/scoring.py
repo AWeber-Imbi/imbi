@@ -15,6 +15,7 @@ from imbi_common.scoring import (
 __all__ = [
     'AttributeContribution',
     'AttributePolicy',
+    'MonthlyImprovementRow',
     'PolicyCreate',
     'PolicyUpdate',
     'RescoreRequest',
@@ -100,3 +101,12 @@ class ScoreRollupRow(pydantic.BaseModel):
     latest_score: float
     avg_score: float
     last_updated: str | None = None
+
+
+class MonthlyImprovementRow(pydantic.BaseModel):
+    dimension: str
+    key: str
+    current_avg_score: float | None
+    previous_avg_score: float | None
+    improvement: float | None
+    project_count: int

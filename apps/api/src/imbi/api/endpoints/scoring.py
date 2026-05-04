@@ -248,6 +248,113 @@ async def score_rollup(
     return out
 
 
+@scoring_router.get('/scores/monthly-improvement')
+async def score_monthly_improvement(
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('project:read')),
+    ],
+    year: int = fastapi.Query(ge=2020, le=2100),
+    month: int = fastapi.Query(ge=1, le=12),
+    dimension: typing.Literal['team', 'project_type', 'organization'] = 'team',
+) -> list[scoring_models.MonthlyImprovementRow]:
+    """Return avg-score and improvement per dimension group for a month.
+
+    Improvement = avg(last project score in *selected* month)
+                - avg(last project score in *previous* month).
+    Only projects scored in the selected month are counted.
+    """
+    cur_start = datetime.datetime(year, month, 1, tzinfo=datetime.UTC)
+    if month == 12:
+        nxt_start = datetime.datetime(year + 1, 1, 1, tzinfo=datetime.UTC)
+    else:
+        nxt_start = datetime.datetime(year, month + 1, 1, tzinfo=datetime.UTC)
+    if month == 1:
+        prev_start = datetime.datetime(year - 1, 12, 1, tzinfo=datetime.UTC)
+    else:
+        prev_start = datetime.datetime(year, month - 1, 1, tzinfo=datetime.UTC)
+
+    dim_records = await db.execute(
+        _DIMENSION_QUERY[dimension], {}, ['project_id', 'dim_key']
+    )
+    project_dim: dict[str, str] = {}
+    for rec in dim_records:
+        pid = graph.parse_agtype(rec['project_id'])
+        key = graph.parse_agtype(rec['dim_key'])
+        if pid and key:
+            project_dim[str(pid)] = str(key)
+
+    if not project_dim:
+        return []
+
+    pid_list = list(project_dim)
+
+    cur_rows, prev_rows = await asyncio.gather(
+        clickhouse.query(
+            'SELECT project_id, argMax(score, timestamp) AS score'
+            ' FROM score_history'
+            ' WHERE project_id IN {pids:Array(String)}'
+            ' AND timestamp >= {t0:DateTime64(3)}'
+            ' AND timestamp < {t1:DateTime64(3)}'
+            ' GROUP BY project_id',
+            {'pids': pid_list, 't0': cur_start, 't1': nxt_start},
+        ),
+        clickhouse.query(
+            'SELECT project_id, argMax(score, timestamp) AS score'
+            ' FROM score_history'
+            ' WHERE project_id IN {pids:Array(String)}'
+            ' AND timestamp >= {t0:DateTime64(3)}'
+            ' AND timestamp < {t1:DateTime64(3)}'
+            ' GROUP BY project_id',
+            {'pids': pid_list, 't0': prev_start, 't1': cur_start},
+        ),
+    )
+
+    cur_scores: dict[str, float] = {
+        str(r['project_id']): float(r['score']) for r in cur_rows
+    }
+    prev_scores: dict[str, float] = {
+        str(r['project_id']): float(r['score']) for r in prev_rows
+    }
+
+    cur_by_key: dict[str, list[float]] = {}
+    prev_by_key: dict[str, list[float]] = {}
+    for pid, dim_key in project_dim.items():
+        if pid in cur_scores:
+            cur_by_key.setdefault(dim_key, []).append(cur_scores[pid])
+        if pid in prev_scores:
+            prev_by_key.setdefault(dim_key, []).append(prev_scores[pid])
+
+    all_keys = sorted(cur_by_key)
+    out: list[scoring_models.MonthlyImprovementRow] = []
+    for key in all_keys:
+        cur_list = cur_by_key.get(key, [])
+        prev_list = prev_by_key.get(key, [])
+        cur_avg = sum(cur_list) / len(cur_list) if cur_list else None
+        prev_avg = sum(prev_list) / len(prev_list) if prev_list else None
+        improvement = (
+            round(cur_avg - prev_avg, 4)
+            if cur_avg is not None and prev_avg is not None
+            else None
+        )
+        out.append(
+            scoring_models.MonthlyImprovementRow(
+                dimension=dimension,
+                key=key,
+                current_avg_score=round(cur_avg, 4)
+                if cur_avg is not None
+                else None,
+                previous_avg_score=round(prev_avg, 4)
+                if prev_avg is not None
+                else None,
+                improvement=improvement,
+                project_count=len(cur_list),
+            )
+        )
+    return out
+
+
 @scoring_router.post('/scoring/rescore')
 async def rescore(
     db: graph.Pool,

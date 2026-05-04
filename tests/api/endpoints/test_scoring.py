@@ -303,3 +303,73 @@ class ScoringEndpointsTestCase(unittest.TestCase):
             '/organizations/eng/projects/missing/score/trend',
         )
         self.assertEqual(response.status_code, 404)
+
+    def test_monthly_improvement_returns_current_month_rows(self) -> None:
+        # p1 and p2 are in "platform", p3 is in "data" (current month only)
+        # p4 is in "legacy" but only scored in the previous month
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=[
+                {'project_id': 'p1', 'dim_key': 'platform'},
+                {'project_id': 'p2', 'dim_key': 'platform'},
+                {'project_id': 'p3', 'dim_key': 'data'},
+                {'project_id': 'p4', 'dim_key': 'legacy'},
+            ]
+        )
+        # asyncio.gather calls clickhouse.query twice: cur then prev
+        with (
+            mock.patch(
+                'imbi_api.endpoints.scoring.clickhouse.query',
+                mock.AsyncMock(
+                    side_effect=[
+                        # current-month scores: p1, p2, p3 scored; p4 not
+                        [
+                            {'project_id': 'p1', 'score': 80.0},
+                            {'project_id': 'p2', 'score': 60.0},
+                            {'project_id': 'p3', 'score': 90.0},
+                        ],
+                        # previous-month scores: p1, p2, p4 scored; p3 not
+                        [
+                            {'project_id': 'p1', 'score': 70.0},
+                            {'project_id': 'p2', 'score': 50.0},
+                            {'project_id': 'p4', 'score': 85.0},
+                        ],
+                    ]
+                ),
+            ),
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            response = self.client.get(
+                '/scores/monthly-improvement',
+                params={'year': 2026, 'month': 4, 'dimension': 'team'},
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        keys = {row['key'] for row in body}
+        # Only keys present in current month
+        self.assertIn('platform', keys)
+        self.assertIn('data', keys)
+        # "legacy" only existed in prev month; must NOT appear
+        self.assertNotIn('legacy', keys)
+
+        platform_row = next(r for r in body if r['key'] == 'platform')
+        self.assertAlmostEqual(platform_row['current_avg_score'], 70.0)
+        self.assertAlmostEqual(platform_row['previous_avg_score'], 60.0)
+        self.assertAlmostEqual(platform_row['improvement'], 10.0)
+        self.assertEqual(platform_row['project_count'], 2)
+
+        data_row = next(r for r in body if r['key'] == 'data')
+        self.assertAlmostEqual(data_row['current_avg_score'], 90.0)
+        self.assertIsNone(data_row['previous_avg_score'])
+        self.assertIsNone(data_row['improvement'])
+        self.assertEqual(data_row['project_count'], 1)
+
+    def test_monthly_improvement_empty_when_no_projects(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        response = self.client.get(
+            '/scores/monthly-improvement',
+            params={'year': 2026, 'month': 4, 'dimension': 'team'},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json(), [])
