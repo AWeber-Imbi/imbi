@@ -65,9 +65,7 @@ async def post_scroll(
     except httpx.TimeoutException as exc:
         raise PluginTimeoutError('Logz.io request timed out') from exc
     except httpx.RequestError as exc:
-        raise PluginUnavailableError(
-            f'Logz.io request failed: {exc}'
-        ) from exc
+        raise PluginUnavailableError(f'Logz.io request failed: {exc}') from exc
     _check_response(response)
     try:
         result: dict[str, object] = response.json()
