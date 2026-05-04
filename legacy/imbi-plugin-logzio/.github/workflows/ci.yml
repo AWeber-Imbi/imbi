@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+        with:
+          path: imbi-plugin-logzio
+
+      - name: Checkout imbi-common
+        uses: actions/checkout@v4
+        with:
+          repository: AWeber-Imbi/imbi-common
+          path: imbi-common
+          ref: ed157619d8447b645178f2efc54708a68e9e5610
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        working-directory: imbi-plugin-logzio
+        env:
+          UV_CONFIG_FILE: /dev/null
+        run: uv sync
+
+      - name: Lint
+        working-directory: imbi-plugin-logzio
+        env:
+          UV_CONFIG_FILE: /dev/null
+        run: uv run ruff check src tests
+
+      - name: Format check
+        working-directory: imbi-plugin-logzio
+        env:
+          UV_CONFIG_FILE: /dev/null
+        run: uv run ruff format --check src tests
+
+      - name: Type check
+        working-directory: imbi-plugin-logzio
+        env:
+          UV_CONFIG_FILE: /dev/null
+        run: uv run basedpyright
+
+      - name: Tests with coverage
+        working-directory: imbi-plugin-logzio
+        env:
+          UV_CONFIG_FILE: /dev/null
+        run: uv run coverage run -m pytest tests/
+
+      - name: Coverage report
+        working-directory: imbi-plugin-logzio
+        env:
+          UV_CONFIG_FILE: /dev/null
+        run: uv run coverage report
