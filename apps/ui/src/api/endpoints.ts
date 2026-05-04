@@ -5,6 +5,7 @@ import {
 } from '@/lib/constants'
 import type {
   ActivityFeedEntry,
+  AdminPluginsResponse,
   AdminSettings,
   AdminUser,
   AdminUserCreate,
@@ -14,13 +15,17 @@ import type {
   AuthProvider,
   Blueprint,
   BlueprintCreate,
+  CatalogEntry,
   ClientCredential,
   ClientCredentialCreate,
   ClientCredentialCreated,
   CollectionResponse,
+  ConfigKeyResponse,
+  ConfigKeyValueResponse,
   CurrentReleaseEnvironment,
   Environment,
   EnvironmentCreate,
+  InstalledPlugin,
   LinkDefinition,
   LinkDefinitionCreate,
   LocalAuthConfig,
@@ -28,6 +33,7 @@ import type {
   LoginProviderRead,
   LoginProviderUpdate,
   LoginRequest,
+  LogResultResponse,
   Note,
   NoteCreate,
   NoteListResponse,
@@ -38,6 +44,11 @@ import type {
   Organization,
   OrganizationCreate,
   PatchOperation,
+  PluginAssignmentCreate,
+  PluginAssignmentResponse,
+  PluginCreate,
+  PluginResponse,
+  PluginUpdate,
   Project,
   ProjectCreate,
   ProjectRelationshipsResponse,
@@ -1558,3 +1569,207 @@ export const listCurrentReleases = async (
   )
   return Array.isArray(response) ? response : []
 }
+
+// Service Plugins
+export const listServicePlugins = (
+  orgSlug: string,
+  serviceSlug: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<PluginResponse[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/plugins/`,
+    undefined,
+    signal,
+  )
+
+export const createServicePlugin = (
+  orgSlug: string,
+  serviceSlug: string,
+  data: PluginCreate,
+) =>
+  apiClient.post<PluginResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/plugins/`,
+    data,
+  )
+
+export const updateServicePlugin = (
+  orgSlug: string,
+  serviceSlug: string,
+  pluginId: string,
+  data: PluginUpdate,
+) =>
+  apiClient.put<PluginResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/plugins/${encodeURIComponent(pluginId)}`,
+    data,
+  )
+
+export const deleteServicePlugin = (
+  orgSlug: string,
+  serviceSlug: string,
+  pluginId: string,
+  force = false,
+) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/plugins/${encodeURIComponent(pluginId)}${force ? '?force=true' : ''}`,
+  )
+
+// Project Type Plugins
+export const listProjectTypePlugins = (
+  orgSlug: string,
+  ptSlug: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<PluginAssignmentResponse[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/project-types/${encodeURIComponent(ptSlug)}/plugins/`,
+    undefined,
+    signal,
+  )
+
+export const replaceProjectTypePlugins = (
+  orgSlug: string,
+  ptSlug: string,
+  assignments: PluginAssignmentCreate[],
+) =>
+  apiClient.put<PluginAssignmentResponse[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/project-types/${encodeURIComponent(ptSlug)}/plugins/`,
+    assignments,
+  )
+
+// Project Plugins
+export const listProjectPlugins = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<PluginAssignmentResponse[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/plugins/`,
+    undefined,
+    signal,
+  )
+
+export const replaceProjectPlugins = (
+  orgSlug: string,
+  projectId: string,
+  assignments: PluginAssignmentCreate[],
+) =>
+  apiClient.put<PluginAssignmentResponse[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/plugins/`,
+    assignments,
+  )
+
+// Project Configuration
+export const listConfigurationKeys = (
+  orgSlug: string,
+  projectId: string,
+  params?: { environment?: string; source?: string },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<ConfigKeyResponse[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/configuration/`,
+    params,
+    signal,
+  )
+
+export const fetchConfigurationValues = (
+  orgSlug: string,
+  projectId: string,
+  keys: string[],
+  params?: { environment?: string; source?: string },
+) =>
+  apiClient.post<ConfigKeyValueResponse[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/configuration/values:fetch${params ? `?${new URLSearchParams(Object.entries(params).filter(([, v]) => v != null) as [string, string][]).toString()}` : ''}`,
+    { keys },
+  )
+
+export const setConfigurationValue = (
+  orgSlug: string,
+  projectId: string,
+  key: string,
+  data: { data_type: string; secret: boolean; value: unknown },
+  params?: { environment?: string; source?: string },
+) =>
+  apiClient.put<ConfigKeyResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/configuration/${encodeURIComponent(key)}${params ? `?${new URLSearchParams(Object.entries(params).filter(([, v]) => v != null) as [string, string][]).toString()}` : ''}`,
+    data,
+  )
+
+export const deleteConfigurationKey = (
+  orgSlug: string,
+  projectId: string,
+  key: string,
+  params?: { environment?: string; source?: string },
+) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/configuration/${encodeURIComponent(key)}${params ? `?${new URLSearchParams(Object.entries(params).filter(([, v]) => v != null) as [string, string][]).toString()}` : ''}`,
+  )
+
+// Project Logs
+export interface LogSearchParams {
+  cursor?: string
+  end_time?: string
+  environment?: string
+  filter?: string[]
+  limit?: number
+  source?: string
+  start_time?: string
+}
+
+export const searchProjectLogs = (
+  orgSlug: string,
+  projectId: string,
+  params?: LogSearchParams,
+  signal?: AbortSignal,
+) => {
+  const query: Record<string, string | string[]> = {}
+  if (params) {
+    if (params.source) query.source = params.source
+    if (params.environment) query.environment = params.environment
+    if (params.start_time) query.start_time = params.start_time
+    if (params.end_time) query.end_time = params.end_time
+    if (params.cursor) query.cursor = params.cursor
+    if (params.limit != null) query.limit = String(params.limit)
+    if (params.filter?.length) query.filter = params.filter
+  }
+  return apiClient.get<LogResultResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/logs/`,
+    query as Record<string, string>,
+    signal,
+  )
+}
+
+export const getLogSchema = (
+  orgSlug: string,
+  projectId: string,
+  params?: { environment?: string; source?: string },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<Array<{ description?: string; name: string; type: string }>>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/logs/schema`,
+    params,
+    signal,
+  )
+
+// Admin Plugins
+export const getAdminPlugins = (signal?: AbortSignal) =>
+  apiClient.get<AdminPluginsResponse>('/admin/plugins', undefined, signal)
+
+export const getAdminPluginCatalog = (signal?: AbortSignal) =>
+  apiClient.get<CatalogEntry[]>('/admin/plugins/catalog', undefined, signal)
+
+export const getAdminPlugin = (slug: string, signal?: AbortSignal) =>
+  apiClient.get<InstalledPlugin>(
+    `/admin/plugins/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
+  )
+
+export const installPlugin = (data: { package: string; version?: string }) =>
+  apiClient.post<{ errors: string[]; loaded: number; skipped: number }>(
+    '/admin/plugins/install',
+    data,
+  )
+
+export const uninstallPlugin = (packageName: string) =>
+  apiClient.delete<void>(
+    `/admin/plugins/installed/${encodeURIComponent(packageName)}`,
+  )

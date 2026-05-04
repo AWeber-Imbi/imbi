@@ -26,6 +26,8 @@ import {
 } from '@/api/endpoints'
 import { ProjectNotesTab } from '@/components/notes/ProjectNotesTab'
 import { OperationsLog } from '@/components/OperationsLog'
+import { ConfigurationTab } from '@/components/project/ConfigurationTab'
+import { LogsTab } from '@/components/project/LogsTab'
 import { ProjectActivityLog } from '@/components/ProjectActivityLog'
 import { ProjectAttributesSection } from '@/components/ProjectAttributesSection'
 import { ProjectEnvironmentsCard } from '@/components/ProjectEnvironmentsCard'
@@ -576,7 +578,7 @@ export function ProjectDetail({
         </TabsContent>
 
         <TabsContent value="configuration">
-          <PlaceholderTab name="Configuration" />
+          <ConfigurationTab orgSlug={orgSlug} projectId={project.id} />
         </TabsContent>
         <TabsContent value="relationships">
           <ProjectRelationshipsTab
@@ -589,7 +591,7 @@ export function ProjectDetail({
           <PlaceholderTab name="Dependencies" />
         </TabsContent>
         <TabsContent value="logs">
-          <PlaceholderTab name="Logs" />
+          <LogsTab orgSlug={orgSlug} projectId={project.id} />
         </TabsContent>
         <TabsContent value="notes">
           <ProjectNotesTab

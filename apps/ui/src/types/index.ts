@@ -231,6 +231,11 @@ export const OPERATIONS_LOG_ENTRY_TYPES = [
   'Upgraded',
 ] as const
 
+export interface AdminPluginsResponse {
+  installed: InstalledPlugin[]
+  unavailable: string[]
+}
+
 export type AdminSettings = Schemas['AdminSettings']
 
 // `AdminUser` stays hand-written: no generated counterpart — the UI
@@ -295,11 +300,32 @@ export interface BlueprintCreate {
 // Blueprint types
 export type BlueprintFilter = Schemas['BlueprintFilter']
 
+export interface CatalogEntry {
+  author: null | string
+  description: null | string
+  docs_url: null | string
+  package: string
+  slugs: string[]
+  status: 'installed' | 'not_installed' | 'update_available'
+  version: string
+}
+
 export type ClientCredential = Schemas['ClientCredentialResponse']
 
 export type ClientCredentialCreate = Schemas['ClientCredentialCreate']
 
 export type ClientCredentialCreated = Schemas['ClientCredentialCreateResponse']
+
+export interface ConfigKeyResponse {
+  data_type: string
+  key: string
+  last_modified: null | string
+  secret: boolean
+}
+
+export interface ConfigKeyValueResponse extends ConfigKeyResponse {
+  value: unknown
+}
 
 export interface CurrentReleaseEnvironment {
   current_status: DeploymentStatus | null
@@ -322,6 +348,19 @@ export type DeploymentStatus =
   | 'pending'
   | 'rolled_back'
   | 'success'
+export interface InstalledPlugin {
+  api_version: number
+  cacheable: boolean
+  credentials: PluginCredentialField[]
+  description: string
+  docs_url: null | string
+  name: string
+  options: PluginOptionDef[]
+  package_name: string
+  package_version: string
+  slug: string
+  supported_tabs: PluginTab[]
+}
 
 // Admin local-auth (password login) toggle.
 // Hand-written: the admin endpoints aren't in the committed openapi.json
@@ -330,6 +369,13 @@ export type DeploymentStatus =
 export interface LocalAuthConfig {
   enabled: boolean
   updated_at: string
+}
+
+export interface LogEntryResponse {
+  level: null | string
+  message: string
+  raw: Record<string, unknown>
+  timestamp: string
 }
 
 export interface LoginProviderCreate {
@@ -384,9 +430,16 @@ export interface LoginProviderUpdate {
   scopes?: string[]
   usage: 'both' | 'login'
 }
+
 export interface LoginRequest {
   email: string
   password: string
+}
+
+export interface LogResultResponse {
+  entries: LogEntryResponse[]
+  next_cursor: null | string
+  total: null | number
 }
 
 export interface Note {
@@ -440,11 +493,9 @@ export interface NoteTemplateCreate {
   tags?: string[]
   title?: null | string
 }
-
 // Auth provider types — mirror the consolidated `ServiceApplication`-backed
 // shape in imbi_api/endpoints/auth_providers.py.
 export type OAuthAppType = 'github' | 'google' | 'oidc'
-
 export type OperationsLogEntryType = (typeof OPERATIONS_LOG_ENTRY_TYPES)[number]
 
 export interface OperationsLogFilters {
@@ -460,10 +511,8 @@ export interface OperationsLogFilters {
 // Raw record returned by the /operations-log/ API (distinct from the
 // activity-feed projection defined above in `OperationsLogEntry`).
 export type OperationsLogRecord = Schemas['OperationLogResponse']
-
 // Organization types
 export type Organization = Schemas['OrganizationResponse']
-
 // `OrganizationCreate` stays hand-written: the generated
 // `OrganizationRequest` requires `updated_at`/`description`/`icon` be
 // present (nullable), which the UI create form doesn't send.
@@ -477,9 +526,60 @@ export interface OrganizationCreate {
 export type OrgMembership = Schemas['OrgMembership']
 // JSON Patch operation (RFC 6902)
 export type PatchOperation = Schemas['PatchOperation']
+
 // Admin User Management Types (matching API schema)
 export type Permission = Schemas['Permission']
 
+export interface PluginAssignmentCreate {
+  default: boolean
+  options?: Record<string, unknown>
+  plugin_id: string
+  tab: PluginTab
+}
+
+export interface PluginAssignmentResponse {
+  default: boolean
+  label: string
+  options: Record<string, unknown>
+  plugin_id: string
+  plugin_slug: string
+  source: 'merged' | 'project' | 'project_type'
+  tab: PluginTab
+}
+
+export interface PluginCreate {
+  label: string
+  options?: Record<string, unknown>
+  plugin_slug: string
+}
+export interface PluginCredentialField {
+  description: null | string
+  name: string
+  required: boolean
+  secret: boolean
+}
+
+export interface PluginOptionDef {
+  description: null | string
+  name: string
+  required: boolean
+  type: string
+}
+// Plugin types (hand-written until api-generated.ts snapshot is refreshed)
+export interface PluginResponse {
+  api_version: number
+  id: string
+  label: string
+  options: Record<string, unknown>
+  plugin_slug: string
+  service_slug: null | string
+  status: 'active' | 'unavailable'
+}
+export type PluginTab = 'configuration' | 'logs'
+export interface PluginUpdate {
+  label: string
+  options?: Record<string, unknown>
+}
 export type ProjectRelationship = Schemas['ProjectRelationship']
 
 export type ProjectRelationshipsResponse =
@@ -517,20 +617,19 @@ export interface Role {
   slug: string
   updated_at?: null | string
 }
-
 export interface RoleCreate {
   description?: null | string
   name: string
   priority?: number
   slug: string
 }
-
 export interface RoleDetail extends Role {
   is_system: boolean
   parent_role?: null | Role
   permissions: Permission[]
   priority: number
 }
+
 // `RoleUser` stays hand-written: no generated counterpart (the
 // /roles/{slug}/users endpoint returns a flattened user projection).
 export interface RoleUser {
@@ -567,10 +666,14 @@ export interface SchemaProperty {
   required: boolean
   type: 'array' | 'boolean' | 'integer' | 'number' | 'object' | 'string'
 }
+
 // Service Account types
 export type ServiceAccount = Schemas['ServiceAccountResponse']
+
 export type ServiceAccountCreate = Schemas['ServiceAccountCreate']
+
 export type ServiceAccountUpdate = Schemas['ServiceAccountUpdate']
+
 // Service Application types
 // The committed openapi.json snapshot predates the OAuth-consolidation
 // fields (`usage`, `oauth_app_type`, `issuer_url`, `allowed_domains`,
@@ -590,7 +693,9 @@ export type ServiceApplicationCreate = Schemas['ServiceApplicationCreate'] & {
   oauth_app_type?: null | OAuthAppType
   usage?: ServiceApplicationUsage
 }
+
 export type ServiceApplicationSecrets = Schemas['ServiceApplicationSecrets']
+
 export type ServiceApplicationSecretsUpdate =
   Schemas['ServiceApplicationSecretsUpdate']
 
@@ -600,6 +705,7 @@ export type ServiceApplicationUpdate = Schemas['ServiceApplicationUpdate'] & {
   oauth_app_type?: null | OAuthAppType
   usage?: ServiceApplicationUsage
 }
+
 export type ServiceApplicationUsage = 'both' | 'integration' | 'login'
 
 export interface Tag {
@@ -620,8 +726,10 @@ export interface TagRef {
   name: string
   slug: string
 }
+
 // Team types
 export type Team = Schemas['TeamResponse']
+
 // `TeamCreate` stays hand-written (same reason as `OrganizationCreate`).
 export interface TeamCreate {
   [key: string]: unknown

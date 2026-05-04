@@ -14,6 +14,7 @@ import {
   KeyRound,
   Layers,
   Link2,
+  Puzzle,
   Shield,
   StickyNote,
   Target,
@@ -31,6 +32,7 @@ import { EnvironmentManagement } from './admin/EnvironmentManagement'
 import { LinkDefinitionManagement } from './admin/LinkDefinitionManagement'
 import { NoteTemplateManagement } from './admin/NoteTemplateManagement'
 import { OrganizationManagement } from './admin/OrganizationManagement'
+import { PluginsManagement } from './admin/PluginsManagement'
 import { ProjectTypeManagement } from './admin/ProjectTypeManagement'
 import { RoleManagement } from './admin/RoleManagement'
 import { ScoringPolicyManagement } from './admin/ScoringPolicyManagement'
@@ -47,6 +49,7 @@ type AdminSection =
   | 'note-templates'
   | 'oauth'
   | 'organizations'
+  | 'plugins'
   | 'project-types'
   | 'roles'
   | 'scoring-policies'
@@ -63,6 +66,7 @@ const VALID_SECTIONS: AdminSection[] = [
   'note-templates',
   'oauth',
   'organizations',
+  'plugins',
   'project-types',
   'roles',
   'scoring-policies',
@@ -161,6 +165,13 @@ export function Admin() {
       icon: Webhook,
       id: 'webhooks',
       label: 'Webhooks',
+      scope: 'org',
+    },
+    {
+      description: 'Manage installed plugins',
+      icon: Puzzle,
+      id: 'plugins',
+      label: 'Plugins',
       scope: 'org',
     },
   ]
@@ -349,6 +360,7 @@ export function Admin() {
               <ScoringPolicyManagement />
             )}
             {currentSection === 'oauth' && <AuthProvidersManagement />}
+            {currentSection === 'plugins' && <PluginsManagement />}
           </div>
         </main>
       </div>

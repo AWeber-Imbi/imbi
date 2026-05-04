@@ -15,6 +15,7 @@ import {
 import { EditEnvironmentsCard } from '@/components/EditEnvironmentsCard'
 import { EditIdentifiersCard } from '@/components/EditIdentifiersCard'
 import { EditLinksCard } from '@/components/EditLinksCard'
+import { ProjectPluginsSection } from '@/components/project/ProjectPluginsSection'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -134,6 +135,8 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
         identifiers={project.identifiers || {}}
         onPatch={(entries) => patch('/identifiers', entries)}
       />
+
+      <ProjectPluginsSection orgSlug={orgSlug} projectId={project.id} />
 
       {isAdmin && (
         <Card>

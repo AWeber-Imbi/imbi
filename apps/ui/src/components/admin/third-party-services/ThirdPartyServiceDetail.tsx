@@ -6,6 +6,8 @@ import {
   ExternalLink,
   Info,
   Key,
+  type LucideIcon,
+  Puzzle,
   Webhook,
 } from 'lucide-react'
 
@@ -18,9 +20,10 @@ import { statusBadgeVariant } from '@/lib/status-colors'
 import type { ThirdPartyService } from '@/types'
 
 import { OAuth2ApplicationList } from './OAuth2ApplicationList'
+import { ServicePluginList } from './ServicePluginList'
 import { ServiceWebhookList } from './ServiceWebhookList'
 
-type DetailTab = 'applications' | 'details' | 'webhooks'
+type DetailTab = 'applications' | 'details' | 'plugins' | 'webhooks'
 
 interface ThirdPartyServiceDetailProps {
   onBack: () => void
@@ -47,9 +50,10 @@ export function ThirdPartyServiceDetail({
     service.revoke_endpoint ||
     service.use_pkce != null
 
-  const tabs: { icon: typeof Info; id: DetailTab; label: string }[] = [
+  const tabs: { icon: LucideIcon; id: DetailTab; label: string }[] = [
     { icon: Info, id: 'details', label: 'Details' },
     { icon: Key, id: 'applications', label: 'Applications' },
+    { icon: Puzzle, id: 'plugins', label: 'Plugins' },
     { icon: Webhook, id: 'webhooks', label: 'Webhooks' },
   ]
 
@@ -369,6 +373,14 @@ export function ThirdPartyServiceDetail({
           onViewModeChange={(mode) =>
             setAppDetailActive(mode === 'create' || mode === 'edit')
           }
+          orgSlug={selectedOrganization?.slug || ''}
+          serviceSlug={service.slug}
+        />
+      )}
+
+      {/* Plugins Tab */}
+      {activeTab === 'plugins' && (
+        <ServicePluginList
           orgSlug={selectedOrganization?.slug || ''}
           serviceSlug={service.slug}
         />
