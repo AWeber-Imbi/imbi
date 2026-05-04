@@ -1749,6 +1749,47 @@ export const getLogSchema = (
     signal,
   )
 
+// Scoring Rollup
+export interface ScoreRollupRow {
+  avg_score: number
+  dimension: 'organization' | 'project_type' | 'team'
+  key: string
+  last_updated: null | string
+  latest_score: number
+}
+
+export const getScoreRollup = (
+  dimension: 'organization' | 'project_type' | 'team' = 'team',
+  signal?: AbortSignal,
+) => apiClient.get<ScoreRollupRow[]>('/scores/rollup', { dimension }, signal)
+
+export interface MonthlyImprovementRow {
+  current_avg_score: null | number
+  dimension: string
+  improvement: null | number
+  key: string
+  previous_avg_score: null | number
+  project_count: number
+}
+
+export const getMonthlyImprovement = (
+  params: {
+    dimension?: 'organization' | 'project_type' | 'team'
+    month: number
+    year: number
+  },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<MonthlyImprovementRow[]>(
+    '/scores/monthly-improvement',
+    {
+      dimension: params.dimension ?? 'team',
+      month: params.month,
+      year: params.year,
+    },
+    signal,
+  )
+
 // Admin Plugins
 export const getAdminPlugins = (signal?: AbortSignal) =>
   apiClient.get<AdminPluginsResponse>('/admin/plugins', undefined, signal)

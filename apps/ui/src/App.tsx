@@ -29,6 +29,9 @@ const OperationsLogPage = lazy(() =>
 const AdminPage = lazy(() =>
   import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })),
 )
+const ReportsPage = lazy(() =>
+  import('./pages/ReportsPage').then((m) => ({ default: m.ReportsPage })),
+)
 const SettingsPage = lazy(() =>
   import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 )
@@ -107,6 +110,14 @@ function App() {
                     </ProtectedRoute>
                   }
                   path="/operations-log"
+                />
+                <Route
+                  element={
+                    <ProtectedRoute>
+                      <ReportsPage />
+                    </ProtectedRoute>
+                  }
+                  path="/reports"
                 />
                 <Route
                   element={

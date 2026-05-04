@@ -360,7 +360,7 @@ export function BlueprintManagement() {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>{isCopied ? 'Copied!' : 'Copy as JSON'}</p>
+                  <p>{isCopied ? 'Copied!' : 'Copy Definition'}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

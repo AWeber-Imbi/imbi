@@ -354,11 +354,9 @@ export function AdminTable<T>({
                                       </Button>
                                     </span>
                                   </TooltipTrigger>
-                                  {deleteReason && (
-                                    <TooltipContent>
-                                      <p>{deleteReason}</p>
-                                    </TooltipContent>
-                                  )}
+                                  <TooltipContent>
+                                    <p>{deleteReason ?? 'Delete'}</p>
+                                  </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
                             )}
