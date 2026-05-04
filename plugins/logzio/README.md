@@ -43,7 +43,7 @@ Assign the plugin to a service application in Imbi. The following options and cr
 
 Use `${variable}` placeholders to scope log searches to a project automatically:
 
-```
+```text
 kubernetes.namespace_name:${project_slug} AND env:${environment}
 ```
 

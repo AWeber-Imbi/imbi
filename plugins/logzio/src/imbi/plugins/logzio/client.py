@@ -1,5 +1,7 @@
 """Logz.io HTTP client: region resolution, auth, error mapping."""
 
+from typing import cast
+
 import httpx
 from imbi_common.plugins.errors import (
     CursorExpiredError,
@@ -62,8 +64,17 @@ async def post_scroll(
             )
     except httpx.TimeoutException as exc:
         raise PluginTimeoutError('Logz.io request timed out') from exc
+    except httpx.RequestError as exc:
+        raise PluginUnavailableError(
+            f'Logz.io request failed: {exc}'
+        ) from exc
     _check_response(response)
-    result: dict[str, object] = response.json()
+    try:
+        result: dict[str, object] = response.json()
+    except ValueError as exc:
+        raise PluginUnavailableError(
+            'Logz.io returned non-JSON response'
+        ) from exc
     return result
 
 
@@ -83,11 +94,14 @@ async def get_log_types(
             return None
         data: object = response.json()
         if isinstance(data, list):
-            return [str(t) for t in data if t]
+            return [str(t) for t in cast('list[object]', data) if t]
         if isinstance(data, dict):
-            items: object = data.get('logTypes') or data.get('log_types') or []
+            data_dict = cast('dict[str, object]', data)
+            items: object = (
+                data_dict.get('logTypes') or data_dict.get('log_types') or []
+            )
             if isinstance(items, list):
-                return [str(t) for t in items if t]
+                return [str(t) for t in cast('list[object]', items) if t]
         return None
     except (httpx.HTTPError, ValueError, KeyError, OSError):
         return None

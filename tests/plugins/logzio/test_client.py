@@ -21,7 +21,7 @@ from imbi_plugin_logzio.client import (
 
 
 def _empty_hits_payload(scroll_id: str = 'sid') -> dict[str, object]:
-    inner = {'hits': {'total': 0, 'hits': []}}
+    inner: dict[str, object] = {'hits': {'total': 0, 'hits': []}}
     return {'scrollId': scroll_id, 'hits': json.dumps(inner)}
 
 
@@ -72,10 +72,10 @@ async def test_post_scroll_sends_auth_header() -> None:
         timeout=5.0,
         version='1.2.3',
     )
-    req = route.calls[0].request
-    assert req.headers['X-API-TOKEN'] == 'my-token'
-    assert req.headers['User-Agent'] == 'imbi-plugin-logzio/1.2.3'
-    assert 'gzip' in req.headers['Accept-Encoding']
+    req = route.calls[0].request  # type: ignore[union-attr]
+    assert req.headers['X-API-TOKEN'] == 'my-token'  # type: ignore[index]
+    assert req.headers['User-Agent'] == 'imbi-plugin-logzio/1.2.3'  # type: ignore[index]
+    assert 'gzip' in req.headers['Accept-Encoding']  # type: ignore[operator]
 
 
 @respx.mock
@@ -158,6 +158,28 @@ async def test_post_scroll_timeout_raises_plugin_timeout() -> None:
     with pytest.raises(PluginTimeoutError):
         await post_scroll(
             api_token='tok', region='us', body={}, timeout=1.0, version='test'
+        )
+
+
+@respx.mock
+async def test_post_scroll_request_error_raises_unavailable() -> None:
+    respx.post('https://api.logz.io/v1/scroll').mock(
+        side_effect=httpx.ConnectError('connection refused')
+    )
+    with pytest.raises(PluginUnavailableError):
+        await post_scroll(
+            api_token='tok', region='us', body={}, timeout=5.0, version='test'
+        )
+
+
+@respx.mock
+async def test_post_scroll_invalid_json_raises_unavailable() -> None:
+    respx.post('https://api.logz.io/v1/scroll').mock(
+        return_value=httpx.Response(200, content=b'not-json')
+    )
+    with pytest.raises(PluginUnavailableError):
+        await post_scroll(
+            api_token='tok', region='us', body={}, timeout=5.0, version='test'
         )
 
 

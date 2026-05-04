@@ -52,11 +52,11 @@ def _make_query(**kwargs: object) -> LogQuery:
 
 
 def _hits_response(
-    hits: list[dict[str, object]],
+    hits: list[object],
     scroll_id: str = 'sid1',
     total: object = 100,
 ) -> dict[str, object]:
-    inner = {
+    inner: dict[str, object] = {
         'hits': {
             'total': {'value': total, 'relation': 'eq'},
             'hits': hits,
@@ -156,7 +156,7 @@ async def test_search_with_cursor_sends_scroll_id_only() -> None:
         _make_ctx(), _CREDS, _make_query(limit=1, cursor=cursor)
     )
 
-    req_body = json.loads(route.calls[0].request.content)
+    req_body = json.loads(route.calls[0].request.content)  # type: ignore[union-attr]
     assert 'scroll_id' in req_body
     assert 'query' not in req_body
     assert req_body['scroll_id'] == 'prev-scroll-id'
@@ -203,7 +203,9 @@ async def test_search_bad_cursor_token_raises() -> None:
 
 @respx.mock
 async def test_search_total_dict_format() -> None:
-    inner = {'hits': {'total': {'value': 42, 'relation': 'eq'}, 'hits': []}}
+    inner: dict[str, object] = {
+        'hits': {'total': {'value': 42, 'relation': 'eq'}, 'hits': []}
+    }
     respx.post('https://api.logz.io/v1/scroll').mock(
         return_value=httpx.Response(
             200, json={'scrollId': 'sid', 'hits': json.dumps(inner)}
@@ -216,7 +218,7 @@ async def test_search_total_dict_format() -> None:
 
 @respx.mock
 async def test_search_total_int_format() -> None:
-    inner = {'hits': {'total': 99, 'hits': []}}
+    inner: dict[str, object] = {'hits': {'total': 99, 'hits': []}}
     respx.post('https://api.logz.io/v1/scroll').mock(
         return_value=httpx.Response(
             200, json={'scrollId': 'sid', 'hits': json.dumps(inner)}
@@ -302,7 +304,7 @@ async def test_search_with_filter() -> None:
     )
     await plugin.search(_make_ctx(), _CREDS, query)
 
-    req_body = json.loads(route.calls[0].request.content)
+    req_body = json.loads(route.calls[0].request.content)  # type: ignore[union-attr]
     must = req_body['query']['bool']['must']
     assert any(c.get('term', {}).get('env') == 'prod' for c in must)
 
@@ -352,7 +354,7 @@ async def test_search_with_base_query_option() -> None:
     ctx = _make_ctx(base_query='${project_slug}-*')
     await plugin.search(ctx, _CREDS, _make_query())
 
-    req_body = json.loads(route.calls[0].request.content)
+    req_body = json.loads(route.calls[0].request.content)  # type: ignore[union-attr]
     must = req_body['query']['bool']['must']
     qs = [c for c in must if 'query_string' in c]
     assert any('my-project-*' in c['query_string']['query'] for c in qs)
@@ -384,7 +386,7 @@ async def test_search_invalid_timestamp_defaults_to_now() -> None:
 
 @respx.mock
 async def test_search_total_missing_returns_none() -> None:
-    inner = {'hits': {'hits': []}}
+    inner: dict[str, object] = {'hits': {'hits': []}}
     respx.post('https://api.logz.io/v1/scroll').mock(
         return_value=httpx.Response(
             200, json={'scrollId': 'sid', 'hits': json.dumps(inner)}

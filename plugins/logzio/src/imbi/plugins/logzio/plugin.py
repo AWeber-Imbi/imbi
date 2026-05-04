@@ -4,6 +4,7 @@ import datetime
 import json
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
+from typing import cast
 
 from imbi_common.plugins.base import (
     CredentialField,
@@ -26,10 +27,15 @@ from imbi_plugin_logzio.query import (
 )
 from imbi_plugin_logzio.schema import build_schema
 
-try:
-    _VERSION = _pkg_version('imbi-plugin-logzio')
-except PackageNotFoundError:
-    _VERSION = 'dev'
+
+def _get_version() -> str:
+    try:
+        return _pkg_version('imbi-plugin-logzio')
+    except PackageNotFoundError:
+        return 'dev'
+
+
+_VERSION = _get_version()
 
 
 class LogzioPlugin(LogsPlugin):
@@ -145,41 +151,60 @@ class LogzioPlugin(LogsPlugin):
         )
 
         # Logz.io double-encodes hits as a JSON string inside the response dict
-        hits_raw: object = json.loads(data['hits'])  # type: ignore[arg-type]
+        hits_payload = data.get('hits')
+        if not isinstance(hits_payload, (str, bytes)):
+            return LogResult(entries=[], total=0)
+        try:
+            hits_raw: object = json.loads(hits_payload)
+        except json.JSONDecodeError:
+            return LogResult(entries=[], total=0)
         if not isinstance(hits_raw, dict):
             return LogResult(entries=[], total=0)
+        hits_raw_dict = cast('dict[str, object]', hits_raw)
 
-        hits_wrapper = hits_raw.get('hits', {})
-        if not isinstance(hits_wrapper, dict):
+        hits_wrapper_raw = hits_raw_dict.get('hits', {})
+        if not isinstance(hits_wrapper_raw, dict):
             return LogResult(entries=[], total=0)
+        hits_wrapper = cast('dict[str, object]', hits_wrapper_raw)
 
-        raw_entries: object = hits_wrapper.get('hits', [])
-        if not isinstance(raw_entries, list):
-            raw_entries = []
+        raw_entries_val = hits_wrapper.get('hits', [])
+        raw_entries: list[object] = (
+            cast('list[object]', raw_entries_val)
+            if isinstance(raw_entries_val, list)
+            else []
+        )
 
-        total_raw: object = hits_wrapper.get('total')
+        total_raw = hits_wrapper.get('total')
         total: int | None
         if isinstance(total_raw, dict):
-            total = int(total_raw.get('value', 0))
+            total_raw_dict = cast('dict[str, object]', total_raw)
+            total = int(cast('int', total_raw_dict.get('value', 0)))
         elif isinstance(total_raw, int):
             total = total_raw
         else:
             total = None
 
         entries: list[LogEntry] = []
-        for hit in raw_entries:
-            if not isinstance(hit, dict):
+        for hit_raw in raw_entries:
+            if not isinstance(hit_raw, dict):
                 continue
-            source = hit.get('_source', {})
-            if not isinstance(source, dict):
-                source = {}
+            hit = cast('dict[str, object]', hit_raw)
+            source_raw = hit.get('_source', {})
+            source: dict[str, object] = (
+                cast('dict[str, object]', source_raw)
+                if isinstance(source_raw, dict)
+                else {}
+            )
             ts = _parse_timestamp(source.get(timestamp_field))
             message = str(source.get(message_field, ''))
-            level_val: object = source.get(level_field)
+            level_val = source.get(level_field)
             level = str(level_val) if level_val is not None else None
             entries.append(
                 LogEntry(
-                    timestamp=ts, message=message, level=level, raw=source
+                    timestamp=ts,
+                    message=message,
+                    level=level,
+                    raw=source,
                 )
             )
 
@@ -188,7 +213,8 @@ class LogzioPlugin(LogsPlugin):
             new_scroll_id = str(
                 data.get('scrollId') or data.get('scroll_id', '')
             )
-            next_cursor = encode_cursor(new_scroll_id, fp)
+            if new_scroll_id:
+                next_cursor = encode_cursor(new_scroll_id, fp)
 
         return LogResult(entries=entries, next_cursor=next_cursor, total=total)
 

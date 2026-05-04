@@ -3,6 +3,8 @@
 import base64
 import hashlib
 import json
+from collections.abc import Mapping
+from typing import cast
 
 from imbi_common.plugins.base import LogFilter, LogQuery
 from imbi_common.plugins.errors import CursorExpiredError
@@ -84,9 +86,13 @@ def _translate_filter(
                 f'wildcard pattern, which is not supported by Logz.io'
             )
         must.append({'regexp': {f.field: f.value}})
+    else:
+        raise ValueError(
+            f'unsupported filter operator {f.op!r} on field {f.field!r}'
+        )
 
 
-def compute_fp(body: dict[str, object]) -> str:
+def compute_fp(body: Mapping[str, object]) -> str:
     canonical = json.dumps(
         body, sort_keys=True, separators=(',', ':')
     ).encode()
@@ -103,11 +109,12 @@ def encode_cursor(scroll_id: str, fp: str) -> str:
 def decode_cursor(token: str, expected_fp: str) -> str:
     pad = '=' * (-len(token) % 4)
     try:
-        data: object = json.loads(base64.urlsafe_b64decode(token + pad))
+        parsed: object = json.loads(base64.urlsafe_b64decode(token + pad))
     except (ValueError, UnicodeDecodeError) as exc:
         raise CursorExpiredError('Invalid cursor token') from exc
-    if not isinstance(data, dict):
+    if not isinstance(parsed, dict):
         raise CursorExpiredError('Invalid cursor token structure')
+    data = cast('dict[str, object]', parsed)
     if data.get('v') != 1 or data.get('fp') != expected_fp:
         raise CursorExpiredError(
             'Cursor fingerprint mismatch or version unsupported'

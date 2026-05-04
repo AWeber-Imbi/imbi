@@ -39,7 +39,7 @@ def test_timestamp_range_present() -> None:
     body = _base_body()
     must = body['query']['bool']['must']  # type: ignore[index]
     range_clause = next(c for c in must if 'range' in c)  # type: ignore[union-attr]
-    ts_range = range_clause['range']['@timestamp']
+    ts_range = range_clause['range']['@timestamp']  # type: ignore[index]
     assert 'gte' in ts_range
     assert 'lte' in ts_range
 
@@ -96,7 +96,8 @@ def test_contains_on_message_uses_match_phrase() -> None:
     )
     must = body['query']['bool']['must']  # type: ignore[index]
     assert any(  # type: ignore[union-attr]
-        c.get('match_phrase', {}).get('message') == 'error' for c in must
+        c.get('match_phrase', {}).get('message') == 'error'  # type: ignore[union-attr]
+        for c in must  # type: ignore[union-attr]
     )
 
 
@@ -209,8 +210,9 @@ def test_base_query_expands_template() -> None:
     )
     must = body['query']['bool']['must']  # type: ignore[index]
     qs_clauses = [c for c in must if 'query_string' in c]  # type: ignore[union-attr]
-    assert any(
-        c['query_string']['query'] == 'my-project-logs' for c in qs_clauses
+    assert any(  # type: ignore[union-attr]
+        c['query_string']['query'] == 'my-project-logs'  # type: ignore[index]
+        for c in qs_clauses  # type: ignore[union-attr]
     )
 
 
@@ -305,7 +307,7 @@ def test_compute_fp_is_16_chars() -> None:
 
 
 def test_compute_fp_is_deterministic() -> None:
-    body = {
+    body: dict[str, object] = {
         'query': {'bool': {}},
         'size': 100,
         'sort': [{'@timestamp': 'desc'}],
