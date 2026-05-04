@@ -47,12 +47,14 @@ nav:
       - Authentication: api/auth.md
       - Logging: api/logging.md
       - Lifespan: api/lifespan.md
+      - Plugins: api/plugins.md
   - Guides:
       - Database Setup: guides/database-setup.md
       - Deployment: guides/deployment.md
       - Authentication: guides/authentication.md
       - Lifespan and Dependency Injection: guides/lifespan-di.md
       - Testing: guides/testing.md
+      - Authoring Plugins: guides/plugins.md
   - Architecture:
       - ADR 0001: adr/0001-imbi-common-library-extraction.md
       - ADR 0002: adr/0002-lifespan-composition.md
