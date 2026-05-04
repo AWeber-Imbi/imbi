@@ -300,6 +300,44 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'delete',
         'Delete note templates',
     ),
+    # Plugin management
+    (
+        'admin:plugins:read',
+        'admin',
+        'plugins:read',
+        'View installed plugins',
+    ),
+    (
+        'admin:plugins:manage',
+        'admin',
+        'plugins:manage',
+        'Install and uninstall plugins',
+    ),
+    # Project plugin access
+    (
+        'project:configuration:read',
+        'project',
+        'configuration:read',
+        'Read project configuration via plugins',
+    ),
+    (
+        'project:configuration:read_secrets',
+        'project',
+        'configuration:read_secrets',
+        'Read secret configuration values via plugins',
+    ),
+    (
+        'project:configuration:write',
+        'project',
+        'configuration:write',
+        'Write project configuration via plugins',
+    ),
+    (
+        'project:logs:read',
+        'project',
+        'logs:read',
+        'Read project logs via plugins',
+    ),
 ]
 
 # Default role definitions

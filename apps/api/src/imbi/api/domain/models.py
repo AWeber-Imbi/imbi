@@ -20,10 +20,14 @@ __all__ = [
     'ClientCredentialCreate',
     'ClientCredentialCreateResponse',
     'ClientCredentialResponse',
+    'ConfigKeyResponse',
+    'ConfigKeyValueResponse',
     'EmptyRelationship',
     'ExistsInCreate',
     'ExistsInResponse',
     'LocalAuthConfig',
+    'LogEntryResponse',
+    'LogResultResponse',
     'MembershipProperties',
     'OAuth2TokenResponse',
     'OAuthIdentity',
@@ -31,6 +35,11 @@ __all__ = [
     'OrganizationEdge',
     'PasswordChangeRequest',
     'Permission',
+    'PluginAssignmentCreate',
+    'PluginAssignmentResponse',
+    'PluginCreate',
+    'PluginResponse',
+    'PluginUpdate',
     'ResourcePermission',
     'Role',
     'ServiceAccount',
@@ -682,6 +691,7 @@ SECRET_FIELDS = (
     'webhook_secret',
     'private_key',
     'signing_secret',
+    'plugin_credentials',
 )
 
 
@@ -783,6 +793,97 @@ class ServiceApplicationSecrets(pydantic.BaseModel):
     webhook_secret: str | None = None
     private_key: str | None = None
     signing_secret: str | None = None
+
+
+# -- Plugin models --------------------------------------------------------
+
+
+class PluginCreate(pydantic.BaseModel):
+    """Request model for creating a Plugin node."""
+
+    plugin_slug: str = pydantic.Field(min_length=1, max_length=64)
+    label: str = pydantic.Field(min_length=1, max_length=128)
+    options: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
+    service_application_slug: str | None = None
+
+
+class PluginUpdate(pydantic.BaseModel):
+    """Request model for updating a Plugin node."""
+
+    label: str = pydantic.Field(min_length=1, max_length=128)
+    options: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
+
+
+class PluginResponse(pydantic.BaseModel):
+    """Response model for a Plugin node."""
+
+    id: str
+    plugin_slug: str
+    label: str
+    options: dict[str, typing.Any] = {}
+    api_version: int
+    status: typing.Literal['active', 'unavailable'] = 'active'
+    service_slug: str | None = None
+
+
+class PluginAssignmentCreate(pydantic.BaseModel):
+    """Request model for assigning a plugin to a project-type or project."""
+
+    plugin_id: str
+    tab: typing.Literal['configuration', 'logs']
+    default: bool = False
+    options: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
+
+
+class PluginAssignmentResponse(pydantic.BaseModel):
+    """Response model for a plugin assignment."""
+
+    plugin_id: str
+    plugin_slug: str
+    label: str
+    tab: typing.Literal['configuration', 'logs']
+    default: bool
+    options: dict[str, typing.Any] = {}
+    source: typing.Literal['project', 'project_type', 'merged'] = (
+        'project_type'
+    )
+
+
+# -- Configuration / Logs response models ---------------------------------
+
+
+class ConfigKeyResponse(pydantic.BaseModel):
+    """Response model for a configuration key (no value)."""
+
+    key: str
+    data_type: str
+    last_modified: datetime.datetime | None = None
+    secret: bool = False
+
+
+class ConfigKeyValueResponse(ConfigKeyResponse):
+    """Response model for a configuration key with its value."""
+
+    value: str
+
+
+class LogEntryResponse(pydantic.BaseModel):
+    """Response model for a single log entry."""
+
+    model_config = pydantic.ConfigDict(extra='allow')
+
+    timestamp: datetime.datetime
+    message: str
+    level: str | None = None
+    raw: dict[str, typing.Any] = {}
+
+
+class LogResultResponse(pydantic.BaseModel):
+    """Paginated log search result."""
+
+    entries: list[LogEntryResponse]
+    next_cursor: str | None = None
+    total: int | None = None
 
 
 class OAuth2TokenResponse(pydantic.BaseModel):

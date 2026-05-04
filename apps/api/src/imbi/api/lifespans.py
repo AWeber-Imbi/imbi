@@ -15,6 +15,7 @@ from imbi_common import clickhouse, graph, valkey
 from imbi_api import openapi
 from imbi_api.email.client import EmailClient
 from imbi_api.email.templates import TemplateManager
+from imbi_api.plugins import lifecycle as plugin_lifecycle
 from imbi_api.scoring import queue as score_queue
 from imbi_api.storage.client import StorageClient
 
@@ -24,16 +25,17 @@ _graph: graph.Graph | None = None
 
 
 async def _on_graph_startup(db: graph.Graph) -> None:
-    """Refresh blueprint models after the graph pool opens."""
+    """Refresh blueprint models and load plugins after the graph pool opens."""
     global _graph
     _graph = db
     try:
         await openapi.refresh_blueprint_models(db)
     except Exception as err:  # noqa: BLE001
-        LOGGER.warning(
-            'Failed to refresh blueprint models: %s',
-            err,
-        )
+        LOGGER.warning('Failed to refresh blueprint models: %s', err)
+    try:
+        await plugin_lifecycle.startup_load_plugins(db)
+    except Exception as err:  # noqa: BLE001
+        LOGGER.warning('Failed to load plugins: %s', err)
 
 
 graph.set_on_startup(_on_graph_startup)

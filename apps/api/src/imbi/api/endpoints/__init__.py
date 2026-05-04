@@ -1,6 +1,7 @@
 import fastapi
 
 from .admin import admin_router
+from .admin_plugins import admin_plugins_router
 from .api_keys import api_keys_router
 from .auth import auth_router
 from .auth_providers import auth_providers_router
@@ -21,6 +22,7 @@ from .uploads import uploads_router
 from .users import users_router
 
 prefixed_routers: list[fastapi.APIRouter] = [
+    admin_plugins_router,
     admin_router,
     api_keys_router,
     auth_providers_router,

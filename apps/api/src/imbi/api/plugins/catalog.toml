@@ -1,0 +1,15 @@
+[[plugins]]
+package = "imbi-plugin-ssm"
+version = ">=1.0,<2"
+slugs = ["ssm"]
+author = "AWeber / Imbi"
+description = "AWS SSM Parameter Store configuration."
+docs_url = "https://docs.imbi.app/plugins/ssm"
+
+[[plugins]]
+package = "imbi-plugin-logzio"
+version = ">=1.0,<2"
+slugs = ["logzio"]
+author = "AWeber / Imbi"
+description = "Logz.io log search."
+docs_url = "https://docs.imbi.app/plugins/logzio"
