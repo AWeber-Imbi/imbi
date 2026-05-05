@@ -40,6 +40,7 @@ import type {
 type ActiveTab = 'catalog' | 'installed'
 
 interface CatalogListProps {
+  allInstalled: InstalledPlugin[]
   disabled: InstalledPlugin[]
   parentLoading: boolean
 }
@@ -107,13 +108,21 @@ export function PluginsManagement() {
         />
       )}
       {activeTab === 'catalog' && (
-        <CatalogList disabled={disabled} parentLoading={isLoading} />
+        <CatalogList
+          allInstalled={data?.installed ?? []}
+          disabled={disabled}
+          parentLoading={isLoading}
+        />
       )}
     </div>
   )
 }
 
-function CatalogList({ disabled, parentLoading }: CatalogListProps) {
+function CatalogList({
+  allInstalled,
+  disabled,
+  parentLoading,
+}: CatalogListProps) {
   const queryClient = useQueryClient()
   const [confirmPkg, setConfirmPkg] = useState<null | string>(null)
 
@@ -173,7 +182,7 @@ function CatalogList({ disabled, parentLoading }: CatalogListProps) {
   }
 
   // Catalog rows that aren't yet installed in the Python env.
-  const installedPackages = new Set(disabled.map((p) => p.package_name))
+  const installedPackages = new Set(allInstalled.map((p) => p.package_name))
   const catalogOnly: CatalogEntry[] = (catalog ?? []).filter(
     (e) => !installedPackages.has(e.package),
   )
