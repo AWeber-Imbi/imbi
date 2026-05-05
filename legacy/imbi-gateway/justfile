@@ -35,8 +35,14 @@ docker:
 
 [doc("Run tests")]
 [group("Testing")]
-test: setup docker
-    uv run pytest
+test *ARGS: setup docker
+    #!/usr/bin/env sh
+    set -eu
+    uv run --env-file=.env coverage run -m pytest {{ARGS}}
+    if [ '{{ARGS}}' = '' ]; then
+        uv run coverage report
+        uv run coverage xml
+    fi
 
 [doc("Run linters")]
 [group("Testing")]
