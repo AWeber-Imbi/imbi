@@ -14,6 +14,7 @@ name = [
   "ClientCredential",
   "Conversation",
   "Environment",
+  "IdentityConnection",
   "LinkDefinition",
   "Message",
   "NoteTemplate",
@@ -73,6 +74,19 @@ attributes = ["updated_at"]
 [[vlabel_indexes]]
 vlabel = "Conversation"
 attributes = ["user_email"]
+
+[[vlabel_indexes]]
+vlabel = "IdentityConnection"
+attributes = ["plugin_id", "user_id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "IdentityConnection"
+attributes = ["status"]
+
+[[vlabel_indexes]]
+vlabel = "IdentityConnection"
+attributes = ["expires_at"]
 
 [[vlabel_indexes]]
 vlabel = "LinkDefinition"

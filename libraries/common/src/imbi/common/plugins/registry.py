@@ -8,6 +8,7 @@ import typing
 
 from imbi_common.plugins.base import (
     ConfigurationPlugin,
+    IdentityPlugin,
     LogsPlugin,
     PluginManifest,
 )
@@ -18,12 +19,14 @@ LOGGER = logging.getLogger(__name__)
 _ENTRY_POINT_GROUP = 'imbi.plugins'
 _SUPPORTED_API_VERSIONS: frozenset[int] = frozenset({1})
 
-PluginHandler = ConfigurationPlugin | LogsPlugin
+PluginHandler = ConfigurationPlugin | LogsPlugin | IdentityPlugin
 
 
 @dataclasses.dataclass(frozen=True)
 class RegistryEntry:
-    handler_cls: type[ConfigurationPlugin] | type[LogsPlugin]
+    handler_cls: (
+        type[ConfigurationPlugin] | type[LogsPlugin] | type[IdentityPlugin]
+    )
     manifest: PluginManifest
     package_name: str
     package_version: str
@@ -67,23 +70,28 @@ def load_plugins() -> LoadResult:
         manifest: PluginManifest = cls.manifest
 
         if not isinstance(cls, type) or not issubclass(
-            cls, (ConfigurationPlugin, LogsPlugin)
+            cls, (ConfigurationPlugin, LogsPlugin, IdentityPlugin)
         ):
             LOGGER.error(
-                'Plugin %r does not implement ConfigurationPlugin or '
-                'LogsPlugin; skipping',
+                'Plugin %r does not implement ConfigurationPlugin, '
+                'LogsPlugin, or IdentityPlugin; skipping',
                 ep.name,
             )
             errors[ep.name] = (
-                'Plugin must subclass ConfigurationPlugin or LogsPlugin'
+                'Plugin must subclass ConfigurationPlugin, LogsPlugin, '
+                'or IdentityPlugin'
             )
             continue
 
-        expected_base = (
-            ConfigurationPlugin
-            if manifest.plugin_type == 'configuration'
-            else LogsPlugin
+        expected_base: (
+            type[ConfigurationPlugin] | type[LogsPlugin] | type[IdentityPlugin]
         )
+        if manifest.plugin_type == 'configuration':
+            expected_base = ConfigurationPlugin
+        elif manifest.plugin_type == 'logs':
+            expected_base = LogsPlugin
+        else:
+            expected_base = IdentityPlugin
         if not issubclass(cls, expected_base):  # pyright: ignore[reportUnnecessaryIsInstance]
             LOGGER.error(
                 'Plugin %r manifest plugin_type=%r does not match class '
@@ -135,6 +143,12 @@ def load_plugins() -> LoadResult:
             manifest.api_version,
         )
         loaded.append(manifest.slug)
+
+    # Refuse vlabel/edge collisions across loaded plugins or with core
+    # schemata.  Imported lazily to avoid a circular import.
+    from imbi_common.plugins.schemas import validate_no_collisions
+
+    validate_no_collisions([entry.manifest for entry in new_registry.values()])
 
     with _lock:
         _registry.clear()

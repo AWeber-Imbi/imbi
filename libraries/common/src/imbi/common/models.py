@@ -19,6 +19,7 @@ __all__ = [
     'Environment',
     'Event',
     'GraphModel',
+    'IdentityConnection',
     'LinkDefinition',
     'Node',
     'Note',
@@ -323,10 +324,35 @@ class Plugin(GraphModel):
     label: str
     options: dict[str, typing.Any] = {}
     api_version: int = 1
+    login_capable: bool = False
+    used_as_login: bool = False
+    connects_users_to: str | None = None
     service: typing.Annotated[
         ThirdPartyService,
         Edge(rel_type='HAS_PLUGIN', direction='INCOMING'),
     ]
+
+
+class IdentityConnection(GraphModel):
+    """Per-user, per-Plugin identity connection.
+
+    Encrypted-token fields store the *ciphertext* (Fernet via
+    :class:`imbi_common.auth.encryption.TokenEncryption`); decryption
+    happens in the API repository layer, never on the model.  ``status``
+    is one of ``'active' | 'revoked' | 'expired'``.
+    """
+
+    plugin_id: str
+    user_id: str
+    subject: str
+    access_token_encrypted: str
+    refresh_token_encrypted: str | None = None
+    id_token_claims_encrypted: str | None = None
+    expires_at: datetime.datetime | None = None
+    scopes: list[str] = []
+    status: typing.Literal['active', 'revoked', 'expired'] = 'active'
+    last_used_at: datetime.datetime | None = None
+    metadata: dict[str, typing.Any] = {}
 
 
 class LinkDefinition(Node):

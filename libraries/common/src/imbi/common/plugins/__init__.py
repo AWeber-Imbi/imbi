@@ -1,25 +1,34 @@
 """Plugin system — base classes, registry, and template expansion."""
 
 from imbi_common.plugins.base import (
+    AuthorizationRequest,
     ConfigKey,
     ConfigKeyWithValue,
     ConfigurationPlugin,
     ConfigValue,
     CredentialField,
     DataType,
+    IdentityCredentials,
+    IdentityPlugin,
+    IdentityProfile,
     LogEntry,
     LogFilter,
     LogQuery,
     LogResult,
     LogsPlugin,
     PluginContext,
+    PluginEdgeLabel,
+    PluginIndex,
     PluginManifest,
     PluginOption,
+    PluginVertexLabel,
+    PollingDescriptor,
 )
 from imbi_common.plugins.errors import (
     CursorExpiredError,
     PluginCredentialsMissing,
     PluginNotFoundError,
+    PluginSchemaCollisionError,
     PluginTimeoutError,
     PluginUnavailableError,
 )
@@ -31,9 +40,14 @@ from imbi_common.plugins.registry import (
     load_plugins,
     reload_plugins,
 )
+from imbi_common.plugins.schemas import (
+    apply_plugin_schemas,
+    validate_no_collisions,
+)
 from imbi_common.plugins.templates import expand_template, validate_template
 
 __all__ = [
+    'AuthorizationRequest',
     'ConfigKey',
     'ConfigKeyWithValue',
     'ConfigValue',
@@ -41,6 +55,9 @@ __all__ = [
     'CredentialField',
     'CursorExpiredError',
     'DataType',
+    'IdentityCredentials',
+    'IdentityPlugin',
+    'IdentityProfile',
     'LoadResult',
     'LogEntry',
     'LogFilter',
@@ -49,16 +66,23 @@ __all__ = [
     'LogsPlugin',
     'PluginContext',
     'PluginCredentialsMissing',
+    'PluginEdgeLabel',
+    'PluginIndex',
     'PluginManifest',
     'PluginNotFoundError',
     'PluginOption',
+    'PluginSchemaCollisionError',
     'PluginTimeoutError',
     'PluginUnavailableError',
+    'PluginVertexLabel',
+    'PollingDescriptor',
     'RegistryEntry',
+    'apply_plugin_schemas',
     'expand_template',
     'get_plugin',
     'list_plugins',
     'load_plugins',
     'reload_plugins',
+    'validate_no_collisions',
     'validate_template',
 ]

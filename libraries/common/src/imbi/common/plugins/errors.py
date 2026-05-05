@@ -19,3 +19,9 @@ class PluginTimeoutError(Exception):
 
 class PluginCredentialsMissing(Exception):
     """Raised when required credentials are absent for a plugin."""
+
+
+class PluginSchemaCollisionError(Exception):
+    """Raised when a plugin declares a vlabel that collides with another
+    plugin or with core's static schemata.
+    """

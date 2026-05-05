@@ -183,6 +183,90 @@ class LoadPluginsBadInterfaceTestCase(unittest.TestCase):
         _reset_registry()
 
 
+class LoadPluginsIdentityTestCase(unittest.TestCase):
+    def setUp(self) -> None:
+        _reset_registry()
+
+    def test_load_identity_plugin_round_trip(self) -> None:
+        manifest = base.PluginManifest(
+            slug='ident',
+            name='Identity Plugin',
+            plugin_type='identity',
+            auth_type='oidc',
+            login_capable=True,
+        )
+
+        class _FakeIdentity(base.IdentityPlugin):
+            async def authorization_request(  # type: ignore[override]
+                self, ctx, credentials, redirect_uri, scopes=None
+            ):
+                raise NotImplementedError
+
+            async def exchange_code(  # type: ignore[override]
+                self,
+                ctx,
+                credentials,
+                code,
+                redirect_uri,
+                code_verifier=None,
+            ):
+                raise NotImplementedError
+
+            async def refresh(  # type: ignore[override]
+                self, ctx, credentials, refresh_token
+            ):
+                raise NotImplementedError
+
+        _FakeIdentity.manifest = manifest  # type: ignore[attr-defined]
+
+        ep = unittest.mock.MagicMock()
+        ep.name = 'ident'
+        ep.load.return_value = _FakeIdentity
+        ep.dist.name = 'imbi-plugin-ident'
+        ep.dist.version = '1.0'
+
+        with unittest.mock.patch(
+            'importlib.metadata.entry_points', return_value=[ep]
+        ):
+            result = registry.load_plugins()
+
+        self.assertIn('ident', result.loaded)
+        entry = registry.get_plugin('ident')
+        self.assertIs(entry.handler_cls, _FakeIdentity)
+        self.assertEqual(entry.manifest.plugin_type, 'identity')
+        self.assertEqual(entry.manifest.auth_type, 'oidc')
+        self.assertTrue(entry.manifest.login_capable)
+
+    def test_load_identity_plugin_type_mismatch(self) -> None:
+        manifest = base.PluginManifest(
+            slug='mis',
+            name='Mismatch',
+            plugin_type='identity',
+        )
+
+        class _ConfigImpl(base.ConfigurationPlugin):
+            pass
+
+        _ConfigImpl.manifest = manifest  # type: ignore[attr-defined]
+
+        ep = unittest.mock.MagicMock()
+        ep.name = 'mis'
+        ep.load.return_value = _ConfigImpl
+        ep.dist.name = 'pkg'
+        ep.dist.version = '1.0'
+
+        with unittest.mock.patch(
+            'importlib.metadata.entry_points', return_value=[ep]
+        ):
+            result = registry.load_plugins()
+
+        self.assertIn('mis', result.errors)
+        self.assertEqual(result.loaded, [])
+
+    def tearDown(self) -> None:
+        _reset_registry()
+
+
 class LoadPluginsDuplicateSlugTestCase(unittest.TestCase):
     def setUp(self) -> None:
         _reset_registry()
