@@ -108,14 +108,20 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
             len(seed.STANDARD_PERMISSIONS),
         )
 
-        # Verify readonly has only read permissions
+        # Verify readonly has only read permissions plus self-service
+        # identity management (so readonly users can connect/disconnect
+        # their own identity providers).
         readonly_role = next(
             r for r in seed.DEFAULT_ROLES if r[0] == 'readonly'
         )
         readonly_permissions = readonly_role[4]
+        self_service = {'me:identities:manage'}
         self.assertTrue(
-            all(':read' in perm for perm in readonly_permissions),
-            'Readonly role should only have read permissions',
+            all(
+                ':read' in perm or perm in self_service
+                for perm in readonly_permissions
+            ),
+            'Readonly role should only have read or self-service permissions',
         )
 
     def test_no_group_permissions(self) -> None:

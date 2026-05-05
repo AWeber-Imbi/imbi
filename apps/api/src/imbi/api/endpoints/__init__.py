@@ -1,5 +1,7 @@
 import fastapi
 
+from imbi_api.identity.endpoints import me_identities_router
+
 from .admin import admin_router
 from .admin_plugins import admin_plugins_router
 from .api_keys import api_keys_router
@@ -31,6 +33,7 @@ prefixed_routers: list[fastapi.APIRouter] = [
     client_credentials_router,
     events_router,
     local_auth_router,
+    me_identities_router,
     mfa_router,
     operations_log_router,
     organizations_router,

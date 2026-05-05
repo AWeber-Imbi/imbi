@@ -338,6 +338,25 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'logs:read',
         'Read project logs via plugins',
     ),
+    # Identity plugin connections
+    (
+        'me:identities:manage',
+        'me',
+        'identities:manage',
+        'Connect, refresh, and disconnect own third-party identities',
+    ),
+    (
+        'admin:identities:read',
+        'admin',
+        'identities:read',
+        'List identity connections across users (audit / support)',
+    ),
+    (
+        'admin:identities:revoke',
+        'admin',
+        'identities:revoke',
+        "Force-revoke another user's identity connection",
+    ),
 ]
 
 # Default role definitions
@@ -383,6 +402,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
             'note:write',
             'note:delete',
             'note_template:read',
+            'me:identities:manage',
         ],
     ),
     (
@@ -407,6 +427,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
             'tag:read',
             'note:read',
             'note_template:read',
+            'me:identities:manage',
         ],
     ),
 ]

@@ -8,6 +8,9 @@ from imbi_common.plugins.registry import (
     list_plugins,
     load_plugins,
 )
+from imbi_common.plugins.schemas import apply_plugin_schemas
+
+from imbi_api.plugins.schemas import audit_plugin_schemas
 
 LOGGER = logging.getLogger(__name__)
 
@@ -24,8 +27,18 @@ async def startup_load_plugins(db: graph.Graph) -> None:
     for slug, err in result.errors.items():
         LOGGER.error('Plugin load error for %r: %s', slug, err)
 
+    # Apply plugin-declared vlabels + indexes to AGE before any audit.
+    # Fail fast: missing labels/indexes corrupt every later request that
+    # touches the plugin, so abort startup rather than mask the breakage.
+    try:
+        await apply_plugin_schemas([e.manifest for e in list_plugins()])
+    except Exception:
+        LOGGER.exception('Failed to apply plugin-declared schemas')
+        raise
+
     await _seed_registrations(db)
     await _audit_unavailable(db)
+    await audit_plugin_schemas()
 
 
 async def _audit_unavailable(db: graph.Graph) -> None:

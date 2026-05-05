@@ -17,6 +17,7 @@ def create_app() -> fastapi.FastAPI:
             lifespans.storage_hook,
             valkey.valkey_lifespan,
             lifespans.score_worker_hook,
+            lifespans.identity_refresh_hook,
         ),
         version=version,
         redoc_url='/docs',

@@ -1,0 +1,61 @@
+"""Per-user identity request/response models for the API surface."""
+
+import datetime
+import typing
+
+import pydantic
+from imbi_common.plugins.base import PollingDescriptor
+
+
+class IdentityConnectionResponse(pydantic.BaseModel):
+    """Public read model for a user's identity connection.
+
+    Tokens — encrypted or plaintext — never appear here.
+    """
+
+    id: str
+    plugin_id: str
+    plugin_slug: str
+    plugin_label: str | None = None
+    subject: str
+    status: typing.Literal['active', 'revoked', 'expired']
+    expires_at: datetime.datetime | None = None
+    scopes: list[str] = []
+    last_used_at: datetime.datetime | None = None
+    connects_users_to: str | None = None
+    metadata: dict[str, typing.Any] = {}
+
+
+class IdentityConnectionStartRequest(pydantic.BaseModel):
+    """Body for ``POST /me/identities/{plugin_id}/start``."""
+
+    return_to: str | None = None
+    scopes: list[str] | None = None
+
+
+class IdentityConnectionStartResponse(pydantic.BaseModel):
+    """Reply to ``POST /me/identities/{plugin_id}/start``."""
+
+    authorization_url: str
+    state: str
+    polling: PollingDescriptor | None = None
+
+
+class IdentityCredentialsInternal(pydantic.BaseModel):
+    """Server-side decrypted credentials.
+
+    Built by the repository on read; *never* serialized to a response
+    (the response model omits it).  Tokens are plaintext for in-process
+    use only.
+    """
+
+    connection_id: str
+    plugin_id: str
+    user_id: str
+    subject: str
+    access_token: str
+    refresh_token: str | None = None
+    expires_at: datetime.datetime | None = None
+    scopes: list[str] = []
+    status: typing.Literal['active', 'revoked', 'expired']
+    metadata: dict[str, typing.Any] = {}

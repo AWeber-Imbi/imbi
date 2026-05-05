@@ -15,6 +15,7 @@ from imbi_common import clickhouse, graph, valkey
 from imbi_api import openapi
 from imbi_api.email.client import EmailClient
 from imbi_api.email.templates import TemplateManager
+from imbi_api.identity import sweeper as identity_sweeper
 from imbi_api.plugins import lifecycle as plugin_lifecycle
 from imbi_api.scoring import queue as score_queue
 from imbi_api.storage.client import StorageClient
@@ -70,6 +71,42 @@ async def storage_hook() -> abc.AsyncIterator[StorageClient]:
     await storage_client.initialize()
     async with contextlib.aclosing(storage_client):
         yield storage_client
+
+
+@contextlib.asynccontextmanager
+async def identity_refresh_hook() -> abc.AsyncIterator[None]:
+    """Run the identity-token refresh sweeper for the API process.
+
+    Polls :func:`identity.repository.stale_connections` every 60s and
+    refreshes connections whose ``expires_at`` is within 5 minutes.
+    Failed refreshes flip ``status='expired'``.
+    """
+    try:
+        client = valkey.get_client()
+    except RuntimeError:
+        LOGGER.warning('Valkey unavailable; identity sweeper not started')
+        yield None
+        return
+    if _graph is None:
+        LOGGER.warning('Graph not ready; identity sweeper not started')
+        yield None
+        return
+    stop = asyncio.Event()
+    LOGGER.info('Identity refresh sweeper starting')
+    task = asyncio.create_task(
+        identity_sweeper.run_sweeper(_graph, client, stop=stop)
+    )
+    try:
+        yield None
+    finally:
+        stop.set()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # noqa: BLE001
+            LOGGER.warning('Identity sweeper exited with error', exc_info=True)
 
 
 @contextlib.asynccontextmanager

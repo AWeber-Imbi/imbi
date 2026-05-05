@@ -1,0 +1,215 @@
+"""User-facing identity flow endpoints (``/me/identities/*``)."""
+
+import logging
+import typing
+import urllib.parse
+
+import fastapi
+import fastapi.responses
+from imbi_common import graph
+from imbi_common.plugins.errors import PluginNotFoundError
+
+from imbi_api import settings
+from imbi_api.auth import permissions
+from imbi_api.identity import (
+    errors,
+    flows,
+    models,
+    repository,
+)
+
+LOGGER = logging.getLogger(__name__)
+
+
+me_identities_router = fastapi.APIRouter(
+    prefix='/me/identities', tags=['Identities']
+)
+
+
+def _is_safe_return_to(url: str | None) -> bool:
+    """Return True if ``url`` is a safe in-app redirect target.
+
+    ``return_to`` is user-supplied via :class:`IdentityConnectionStartRequest`
+    and signed inside the state JWT, but the signature only proves the
+    requester chose the value — not that it points back at the UI.  Reject
+    anything with a scheme or netloc to avoid an open redirect that could
+    chain a successful identity callback into a phishing page.  The value
+    must also start with ``/`` (and not ``//`` which browsers treat as
+    protocol-relative).
+    """
+    if not url:
+        return False
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme or parsed.netloc:
+        return False
+    return url.startswith('/') and not url.startswith('//')
+
+
+def _build_redirect_uri(request: fastapi.Request, plugin_id: str) -> str:
+    """Compute the absolute callback URL for a connect flow."""
+    try:
+        base = settings.get_server_config().public_base_url
+    except Exception:  # noqa: BLE001
+        base = ''
+    if base:
+        return f'{base.rstrip("/")}/me/identities/{plugin_id}/callback'
+    # Fallback: build from the inbound request — works in dev where
+    # public_base_url isn't configured yet.
+    scheme = request.url.scheme
+    host = request.url.netloc
+    return f'{scheme}://{host}/me/identities/{plugin_id}/callback'
+
+
+@me_identities_router.get('')
+async def list_my_identities(
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('me:identities:manage'),
+        ),
+    ],
+) -> list[models.IdentityConnectionResponse]:
+    """List the caller's identity connections."""
+    user = auth.require_user
+    rows = await repository.list_for_user(db, user.id)
+    return [
+        models.IdentityConnectionResponse(
+            id=row['id'],
+            plugin_id=row['plugin_id'],
+            plugin_slug=row.get('plugin_slug') or '',
+            plugin_label=row.get('plugin_label'),
+            subject=row.get('subject') or '',
+            status=row.get('status') or 'active',
+            expires_at=row.get('expires_at'),
+            scopes=list(row.get('scopes') or []),
+            last_used_at=row.get('last_used_at'),
+            connects_users_to=row.get('connects_users_to'),
+            metadata=row.get('metadata') or {},
+        )
+        for row in rows
+    ]
+
+
+@me_identities_router.post('/{plugin_id}/start')
+async def start_connect(
+    plugin_id: str,
+    body: models.IdentityConnectionStartRequest,
+    request: fastapi.Request,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('me:identities:manage'),
+        ),
+    ],
+) -> models.IdentityConnectionStartResponse:
+    """Begin a connect flow.
+
+    Returns the authorization URL (and a polling descriptor for
+    device-flow plugins).  The browser then either redirects to the
+    URL (redirect flows) or polls ``/poll`` (device flows).
+    """
+    user = auth.require_user
+    redirect_uri = _build_redirect_uri(request, plugin_id)
+    try:
+        url, state_token, polling = await flows.start_flow(
+            db,
+            plugin_id=plugin_id,
+            redirect_uri=redirect_uri,
+            actor_user_id=user.id,
+            return_to=body.return_to,
+            scopes=body.scopes,
+            intent='identity',
+        )
+    except PluginNotFoundError as exc:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Plugin {plugin_id!r} not available'
+        ) from exc
+    return models.IdentityConnectionStartResponse(
+        authorization_url=url, state=state_token, polling=polling
+    )
+
+
+@me_identities_router.get('/{plugin_id}/callback')
+async def callback(
+    plugin_id: str,
+    code: str,
+    state: str,
+    db: graph.Pool,
+) -> fastapi.responses.Response:
+    """Browser callback handler — exchanges ``code`` and persists the
+    connection.  Trusts the state JWT for actor identity (the user may
+    not have a session yet during a login flow)."""
+    try:
+        (
+            _profile,
+            _credentials,
+            _returned_plugin_id,
+            return_to,
+        ) = await flows.complete_flow(db, code=code, state_token=state)
+    except ValueError as exc:
+        raise fastapi.HTTPException(
+            status_code=400, detail=f'Invalid state: {exc}'
+        ) from exc
+    except PluginNotFoundError as exc:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Plugin {plugin_id!r} not available'
+        ) from exc
+
+    target: str = (
+        return_to
+        if return_to is not None and _is_safe_return_to(return_to)
+        else '/settings/connections'
+    )
+    return fastapi.responses.RedirectResponse(target, status_code=302)
+
+
+@me_identities_router.post('/{plugin_id}/refresh')
+async def refresh(
+    plugin_id: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('me:identities:manage'),
+        ),
+    ],
+) -> dict[str, str]:
+    """Force-refresh the actor's connection."""
+    user = auth.require_user
+    try:
+        await flows.refresh_connection(
+            db, plugin_id=plugin_id, actor_user_id=user.id
+        )
+    except errors.IdentityRequiredError as exc:
+        raise fastapi.HTTPException(
+            status_code=401,
+            detail={
+                'error': 'identity_required',
+                'plugin_id': exc.plugin_id,
+                'start_url': exc.start_url,
+            },
+        ) from exc
+    except errors.IdentityRefreshFailed as exc:
+        raise fastapi.HTTPException(status_code=502, detail=str(exc)) from exc
+    return {'status': 'refreshed'}
+
+
+@me_identities_router.delete('/{plugin_id}')
+async def disconnect(
+    plugin_id: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('me:identities:manage'),
+        ),
+    ],
+) -> fastapi.Response:
+    """Revoke + delete the actor's connection for ``plugin_id``."""
+    user = auth.require_user
+    await flows.revoke_connection(
+        db, plugin_id=plugin_id, actor_user_id=user.id
+    )
+    return fastapi.Response(status_code=204)
