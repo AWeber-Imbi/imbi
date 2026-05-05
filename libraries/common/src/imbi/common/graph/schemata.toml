@@ -21,6 +21,7 @@ name = [
   "Organization",
   "Permission",
   "Plugin",
+  "PluginRegistration",
   "Project",
   "ProjectType",
   "Release",
@@ -151,6 +152,11 @@ attributes = ["plugin_slug"]
 [[vlabel_indexes]]
 vlabel = "Plugin"
 attributes = ["api_version"]
+
+[[vlabel_indexes]]
+vlabel = "PluginRegistration"
+attributes = ["slug"]
+unique = true
 
 [[vlabel_indexes]]
 vlabel = "ServiceAccount"

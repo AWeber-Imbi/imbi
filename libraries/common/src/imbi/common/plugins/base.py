@@ -35,8 +35,10 @@ class PluginManifest(pydantic.BaseModel):
     name: str
     description: str | None = None
     plugin_type: typing.Literal['configuration', 'logs']
+    auth_type: typing.Literal['api_token', 'oauth2'] = 'api_token'
     api_version: int = 1
     cacheable: bool = True
+    supports_histogram: bool = False
     options: list[PluginOption] = []
     credentials: list[CredentialField] = []
     data_types: list[DataType] = []
@@ -88,6 +90,14 @@ class LogEntry(pydantic.BaseModel):
     message: str
     level: str | None = None
     raw: dict[str, typing.Any] = {}
+
+
+class LogHistogramBucket(pydantic.BaseModel):
+    """A single time bucket in a log histogram response."""
+
+    timestamp: datetime.datetime
+    count: int
+    levels: dict[str, int] = {}
 
 
 class LogResult(pydantic.BaseModel):
@@ -154,3 +164,19 @@ class LogsPlugin(abc.ABC):
         ctx: PluginContext,
         credentials: dict[str, str],
     ) -> list[dict[str, typing.Any]]: ...
+
+    async def histogram(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        query: LogQuery,
+        bucket_count: int = 60,
+    ) -> list[LogHistogramBucket]:
+        """Return time-bucketed event counts for the histogram view.
+
+        Plugins that support histograms should override this method and
+        set ``manifest.supports_histogram = True``.  The default
+        implementation returns an empty list, which causes the API to
+        signal that histograms are unavailable for this source.
+        """
+        return []

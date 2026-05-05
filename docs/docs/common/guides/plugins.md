@@ -100,6 +100,12 @@ manifest = PluginManifest(
 
 Notes:
 
+- **`auth_type`** declares the credential flow expected by the plugin:
+  `'api_token'` (default) or `'oauth2'`. The host uses this to determine
+  how to present and validate the credentials form.
+- **`supports_histogram`** defaults to `False`. Set it to `True` only
+  when the plugin implements `LogsPlugin.histogram`. The host uses this
+  flag to decide whether to show the histogram panel for a source.
 - **`api_version`** must be an integer the host advertises as supported.
   Today only `1` is accepted; plugins declaring other versions are
   skipped and reported as such, *not* errored.
@@ -192,12 +198,13 @@ gate read access and to redact values in UI and logs.
 
 ## Variation 2: Logs Plugins
 
-`LogsPlugin` is the abstract base for log-search integrations. It has
-two methods: a query-time `search` and a one-shot `schema` describing
-the queryable fields.
+`LogsPlugin` is the abstract base for log-search integrations. Required
+methods are `search` and `schema`. Histogram support is optional via
+`histogram()` plus `manifest.supports_histogram = True`.
 
 ```python
 from imbi_common.plugins import (
+    LogHistogramBucket,
     LogQuery,
     LogResult,
     LogsPlugin,
@@ -222,6 +229,15 @@ class LokiPlugin(LogsPlugin):
         credentials: dict[str, str],
     ) -> list[dict]:
         ...
+
+    async def histogram(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        query: LogQuery,
+        bucket_count: int = 60,
+    ) -> list[LogHistogramBucket]:
+        ...
 ```
 
 Method contracts:
@@ -237,6 +253,11 @@ Method contracts:
   intentionally loose (`list[dict]`) so plugins can surface vendor-
   specific metadata; at minimum include a `name` and a human-readable
   `label` for each field exposed to filters.
+- **`histogram`** — optional. Implement this method and set
+  `manifest.supports_histogram = True` to enable the histogram panel in
+  the host UI. Return one `LogHistogramBucket` per time bucket spanning
+  the query's time range. The base class raises `NotImplementedError` by
+  default; the host checks `supports_histogram` before calling it.
 
 `LogQuery.filters` are `(field, op, value)` triples with five operators
 (`eq`, `ne`, `contains`, `starts_with`, `regex`). Translate them into

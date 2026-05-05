@@ -48,6 +48,8 @@ store. Implementations subclass `LogsPlugin` and declare
 
 ::: imbi_common.plugins.LogResult
 
+::: imbi_common.plugins.LogHistogramBucket
+
 ## Registry
 
 Plugin discovery is driven by `importlib.metadata` entry points under
