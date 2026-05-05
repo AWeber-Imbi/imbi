@@ -12,7 +12,7 @@ ci: lint test
 [doc("Set up your development environment")]
 [group("Environment")]
 setup:
-    uv sync --all-groups --all-extras --frozen
+    uv sync --group dev --group docs --all-extras --frozen
     uv run pre-commit install --install-hooks --overwrite
 
 docker:

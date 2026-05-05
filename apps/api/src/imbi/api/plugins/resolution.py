@@ -56,11 +56,15 @@ async def resolve_plugin(
     WHERE pte.tab = {tab}
     WITH
       collect(DISTINCT {{id: p.id, slug: p.plugin_slug,
-                         options: pe.options, default: pe.default,
+                         edge_options: pe.options,
+                         plugin_options: p.options,
+                         default: pe.default,
                          src: 'project'}})
        AS proj_plugins,
       collect(DISTINCT {{id: p2.id, slug: p2.plugin_slug,
-                         options: pte.options, default: pte.default,
+                         edge_options: pte.options,
+                         plugin_options: p2.options,
+                         default: pte.default,
                          src: 'project_type'}})
        AS pt_plugins
     RETURN proj_plugins, pt_plugins
@@ -83,14 +87,29 @@ async def resolve_plugin(
         graph.parse_agtype(records[0]['pt_plugins']) or []
     )
 
-    # Project overrides project-type; merge by plugin id
+    # Project overrides project-type; merge by plugin id.
+    # Preserve the project-type entry so its edge options can be used as
+    # the baseline when a project-level entry exists for the same plugin.
+    pt_by_id: dict[str, dict[str, typing.Any]] = {
+        p['id']: p for p in pt_plugins if p.get('id')
+    }
     merged: dict[str, dict[str, typing.Any]] = {}
     for p in pt_plugins:
         if p.get('id'):
             merged[p['id']] = p
     for p in proj_plugins:
-        if p.get('id'):
-            merged[p['id']] = p
+        pid = p.get('id')
+        if not pid:
+            continue
+        if pid in pt_by_id:
+            # Carry the project-type edge options as a middle tier so that
+            # a partial project override does not drop project-type settings.
+            merged[pid] = {
+                **p,
+                'pt_edge_options': pt_by_id[pid].get('edge_options'),
+            }
+        else:
+            merged[pid] = p
 
     candidates = [p for p in merged.values() if p.get('id')]
     if not candidates:
@@ -136,7 +155,21 @@ async def resolve_plugin(
 
     plugin_id: str = chosen['id']
     plugin_slug: str = chosen['slug']
-    options = parse_options(chosen.get('options'))
+    # Three-tier option merge (lowest → highest precedence):
+    #   1. Plugin node defaults (plugin_options on the Plugin node)
+    #   2. Project-type edge options (pt_edge_options, preserved above)
+    #   3. Project-level edge options (edge_options on the project edge)
+    # Admins only need to specify fields that diverge from the tier below.
+    plugin_defaults: dict[str, typing.Any] = parse_options(
+        chosen.get('plugin_options')
+    )
+    pt_edge: dict[str, typing.Any] = parse_options(
+        chosen.get('pt_edge_options')
+    )
+    overrides: dict[str, typing.Any] = parse_options(
+        chosen.get('edge_options')
+    )
+    options = {**plugin_defaults, **pt_edge, **overrides}
 
     try:
         entry = get_plugin(plugin_slug)

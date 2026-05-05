@@ -164,6 +164,33 @@ class LifecycleTestCase(unittest.TestCase):
         ):
             asyncio.run(lifecycle.startup_load_plugins(mock_db))
 
+    def test_is_plugin_enabled_true(self) -> None:
+        from imbi_api.plugins.lifecycle import is_plugin_enabled
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [{'enabled': True}]
+        result = asyncio.run(is_plugin_enabled(mock_db, 'ssm'))
+        self.assertTrue(result)
+
+    def test_is_plugin_enabled_no_record(self) -> None:
+        from imbi_api.plugins.lifecycle import is_plugin_enabled
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = []
+        result = asyncio.run(is_plugin_enabled(mock_db, 'ssm'))
+        self.assertFalse(result)
+
+    def test_get_enabled_map(self) -> None:
+        from imbi_api.plugins.lifecycle import get_enabled_map
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {'slug': 'ssm', 'enabled': True},
+            {'slug': 'logzio', 'enabled': False},
+        ]
+        result = asyncio.run(get_enabled_map(mock_db))
+        self.assertEqual(result, {'ssm': True, 'logzio': False})
+
     def test_audit_unavailable_handles_error(self) -> None:
         from imbi_api.plugins import lifecycle
 
@@ -492,7 +519,8 @@ class ResolutionTestCase(unittest.TestCase):
                         {
                             'id': 'p1',
                             'slug': 'ssm',
-                            'options': '{}',
+                            'edge_options': '{}',
+                            'plugin_options': '{}',
                             'default': True,
                             'src': 'project_type',
                         }
@@ -503,7 +531,8 @@ class ResolutionTestCase(unittest.TestCase):
                         {
                             'id': 'p1',
                             'slug': 'ssm',
-                            'options': '{"region": "us-east-1"}',
+                            'edge_options': '{"region": "us-east-1"}',
+                            'plugin_options': '{}',
                             'default': True,
                             'src': 'project',
                         }

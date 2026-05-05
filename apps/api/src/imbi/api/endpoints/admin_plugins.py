@@ -3,23 +3,49 @@
 import typing
 
 import fastapi
+import pydantic
+from imbi_common import graph
 from imbi_common.plugins.errors import (
     PluginNotFoundError,
 )
 from imbi_common.plugins.registry import (
+    RegistryEntry,
     get_plugin,
     list_plugins,
 )
 
 from imbi_api.auth import permissions
 from imbi_api.plugins import catalog, installer
-from imbi_api.plugins.lifecycle import get_unavailable_slugs
+from imbi_api.plugins.lifecycle import (
+    get_enabled_map,
+    get_unavailable_slugs,
+    set_plugin_enabled,
+)
 
 admin_plugins_router = fastapi.APIRouter(tags=['Admin: Plugins'])
 
 
+def _serialize(entry: RegistryEntry, enabled: bool) -> dict[str, typing.Any]:
+    return {
+        'slug': entry.manifest.slug,
+        'name': entry.manifest.name,
+        'description': entry.manifest.description,
+        'api_version': entry.manifest.api_version,
+        'auth_type': entry.manifest.auth_type,
+        'cacheable': entry.manifest.cacheable,
+        'enabled': enabled,
+        'package_name': entry.package_name,
+        'package_version': entry.package_version,
+        'docs_url': getattr(entry.manifest, 'docs_url', None),
+        'supported_tabs': [entry.manifest.plugin_type],
+        'options': [o.model_dump() for o in entry.manifest.options],
+        'credentials': [c.model_dump() for c in entry.manifest.credentials],
+    }
+
+
 @admin_plugins_router.get('/plugins')
 async def list_installed_plugins(
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -27,21 +53,18 @@ async def list_installed_plugins(
         ),
     ],
 ) -> dict[str, typing.Any]:
-    """List installed plugins and unavailable slugs."""
-    entries = list_plugins()
-    installed = [
-        {
-            'slug': e.manifest.slug,
-            'name': e.manifest.name,
-            'plugin_type': e.manifest.plugin_type,
-            'api_version': e.manifest.api_version,
-            'package': e.package_name,
-            'version': e.package_version,
-        }
-        for e in entries
-    ]
+    """List installed plugins with enabled state.
+
+    The UI splits this list by ``enabled`` — disabled rows render as
+    "Catalog" entries that admins can promote, enabled rows render as
+    "Installed" entries available for assignment.
+    """
+    enabled_map = await get_enabled_map(db)
     return {
-        'installed': installed,
+        'installed': [
+            _serialize(e, enabled_map.get(e.manifest.slug, False))
+            for e in list_plugins()
+        ],
         'unavailable': get_unavailable_slugs(),
     }
 
@@ -62,6 +85,7 @@ async def list_plugin_catalog(
 @admin_plugins_router.get('/plugins/{slug}')
 async def get_installed_plugin(
     slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -77,19 +101,40 @@ async def get_installed_plugin(
             status_code=404,
             detail=f'Plugin {slug!r} is not installed',
         ) from exc
-    return {
-        'slug': entry.manifest.slug,
-        'name': entry.manifest.name,
-        'description': entry.manifest.description,
-        'plugin_type': entry.manifest.plugin_type,
-        'api_version': entry.manifest.api_version,
-        'cacheable': entry.manifest.cacheable,
-        'package': entry.package_name,
-        'version': entry.package_version,
-        'options': [o.model_dump() for o in entry.manifest.options],
-        'credentials': [c.model_dump() for c in entry.manifest.credentials],
-        'data_types': [d.model_dump() for d in entry.manifest.data_types],
-    }
+    enabled_map = await get_enabled_map(db)
+    payload = _serialize(entry, enabled_map.get(entry.manifest.slug, False))
+    payload['data_types'] = [d.model_dump() for d in entry.manifest.data_types]
+    return payload
+
+
+class _EnablePayload(pydantic.BaseModel):
+    enabled: bool
+
+
+@admin_plugins_router.patch('/plugins/{slug}')
+async def update_installed_plugin(
+    slug: str,
+    body: _EnablePayload,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('admin:plugins:manage'),
+        ),
+    ],
+) -> dict[str, typing.Any]:
+    """Toggle a plugin between enabled and disabled."""
+    try:
+        entry = get_plugin(slug)
+    except PluginNotFoundError as exc:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Plugin {slug!r} is not installed',
+        ) from exc
+    await set_plugin_enabled(db, slug, body.enabled)
+    payload = _serialize(entry, body.enabled)
+    payload['data_types'] = [d.model_dump() for d in entry.manifest.data_types]
+    return payload
 
 
 @admin_plugins_router.post('/plugins/install')

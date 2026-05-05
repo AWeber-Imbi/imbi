@@ -111,3 +111,123 @@ class AdminPluginsEndpointTestCase(unittest.TestCase):
                     json={'package': 'unknown-pkg'},
                 )
         self.assertEqual(response.status_code, 400)
+
+    def test_install_plugin_success(self) -> None:
+        from imbi_common.plugins.registry import LoadResult
+
+        result = LoadResult(loaded=['ssm'], errors={}, skipped=[])
+        with mock.patch(
+            'imbi_api.endpoints.admin_plugins.installer.install_package',
+            new_callable=mock.AsyncMock,
+            return_value=result,
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.post(
+                    '/plugins/install',
+                    json={'package': 'imbi-plugin-ssm'},
+                )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['loaded'], ['ssm'])
+
+    def test_uninstall_plugin_success(self) -> None:
+        with mock.patch(
+            'imbi_api.endpoints.admin_plugins.installer.uninstall_package',
+            new_callable=mock.AsyncMock,
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.delete('/plugins/installed/imbi-plugin-ssm')
+        self.assertEqual(response.status_code, 204)
+
+    def test_uninstall_plugin_error(self) -> None:
+        from imbi_api.plugins.installer import InstallError
+
+        with mock.patch(
+            'imbi_api.endpoints.admin_plugins.installer.uninstall_package',
+            side_effect=InstallError('removal failed'),
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.delete('/plugins/installed/imbi-plugin-ssm')
+        self.assertEqual(response.status_code, 400)
+
+    def _make_entry(self) -> object:
+        from imbi_common.plugins.base import (
+            ConfigurationPlugin,
+            PluginManifest,
+        )
+        from imbi_common.plugins.registry import RegistryEntry
+
+        class _Fake(ConfigurationPlugin):
+            manifest = PluginManifest(
+                slug='ssm', name='SSM', plugin_type='configuration'
+            )
+
+            async def list_keys(self, ctx, credentials):  # type: ignore[override]
+                return []
+
+            async def get_values(self, ctx, credentials, keys=None):  # type: ignore[override]
+                return []
+
+            async def set_value(self, ctx, credentials, key, value):  # type: ignore[override]
+                raise NotImplementedError
+
+            async def delete_key(self, ctx, credentials, key):  # type: ignore[override]
+                return None
+
+        return RegistryEntry(
+            handler_cls=_Fake,
+            manifest=_Fake.manifest,
+            package_name='imbi-plugin-ssm',
+            package_version='1.0.0',
+        )
+
+    def test_get_plugin_found(self) -> None:
+        entry = self._make_entry()
+        with (
+            mock.patch(
+                'imbi_api.endpoints.admin_plugins.get_plugin',
+                return_value=entry,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.admin_plugins.get_enabled_map',
+                new_callable=mock.AsyncMock,
+                return_value={'ssm': True},
+            ),
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.get('/plugins/ssm')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['slug'], 'ssm')
+        self.assertTrue(data['enabled'])
+
+    def test_update_plugin_enable(self) -> None:
+        entry = self._make_entry()
+        with (
+            mock.patch(
+                'imbi_api.endpoints.admin_plugins.get_plugin',
+                return_value=entry,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.admin_plugins.set_plugin_enabled',
+                new_callable=mock.AsyncMock,
+            ),
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.patch('/plugins/ssm', json={'enabled': True})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['enabled'])
+
+    def test_update_plugin_not_found(self) -> None:
+        from imbi_common.plugins.errors import PluginNotFoundError
+
+        with mock.patch(
+            'imbi_api.endpoints.admin_plugins.get_plugin',
+            side_effect=PluginNotFoundError('no-such-plugin'),
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.patch(
+                    '/plugins/no-such', json={'enabled': True}
+                )
+        self.assertEqual(response.status_code, 404)

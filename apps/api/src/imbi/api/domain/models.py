@@ -27,6 +27,7 @@ __all__ = [
     'ExistsInResponse',
     'LocalAuthConfig',
     'LogEntryResponse',
+    'LogHistogramBucketResponse',
     'LogResultResponse',
     'MembershipProperties',
     'OAuth2TokenResponse',
@@ -876,6 +877,14 @@ class LogEntryResponse(pydantic.BaseModel):
     message: str
     level: str | None = None
     raw: dict[str, typing.Any] = {}
+
+
+class LogHistogramBucketResponse(pydantic.BaseModel):
+    """A single time bucket in a log histogram response."""
+
+    timestamp: datetime.datetime
+    count: int
+    levels: dict[str, int] = {}
 
 
 class LogResultResponse(pydantic.BaseModel):
