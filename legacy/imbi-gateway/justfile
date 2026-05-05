@@ -29,7 +29,7 @@ docker:
     valkey_port=$(get_port valkey 6379)
     test_host="${TEST_HOST:-127.0.0.1}"
     cat>".env"<<-EOF
-    POSTGRES_URL="postgresql://postgres:secret@$test_host:$pg_port"
+    POSTGRES_URL="postgresql://postgres:secret@$test_host:$pg_port/imbi"
     VALKEY_URL="valkey://$test_host:$valkey_port"
     EOF
 
