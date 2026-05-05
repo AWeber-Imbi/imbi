@@ -1,13 +1,17 @@
 import typing
+import unittest.mock
 
+import celpy
 import httpx
 import nanoid
+import pydantic
 from imbi_common import graph
 from imbi_common.graph import (
     _inject_graph,  # pyright: ignore[reportPrivateUsage]
 )
 
 import imbi_gateway.app
+from imbi_gateway import notifications
 from tests import helpers
 
 if typing.TYPE_CHECKING:
@@ -20,6 +24,52 @@ async def stub_handler(
     org_slug: str, project_id: str, body: object, config: str
 ) -> None:
     HANDLER_CALLS.append((org_slug, project_id, body, config))
+
+
+def sync_stub_handler(
+    org_slug: str, project_id: str, body: object, config: str
+) -> None:
+    pass
+
+
+async def raising_stub_handler(
+    _org_slug: str, _project_id: str, _body: object, _config: str
+) -> None:
+    raise RuntimeError('test error')
+
+
+class WebhookRuleUnitTests(helpers.TestCase):
+    _VALID_RULE: typing.ClassVar[dict[str, object]] = {
+        'handler': 'tests.test_notifications.stub_handler',
+        'ordinal': 1,
+        'handler_config': '{}',
+        'filter_expression': 'true',
+    }
+
+    def test_sync_handler_rejected_by_validator(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            notifications.WebhookRule.model_validate(
+                {
+                    **self._VALID_RULE,
+                    'handler': 'tests.test_notifications.sync_stub_handler',
+                }
+            )
+
+    def test_evaluate_condition_cel_error_returns_none(self) -> None:
+        rule = notifications.WebhookRule.model_validate(self._VALID_RULE)
+        with unittest.mock.patch.object(
+            celpy, 'json_to_cel', side_effect=celpy.CELEvalError('test')
+        ):
+            self.assertIsNone(rule.evaluate_condition({}))
+
+    def test_evaluate_condition_unexpected_exception_returns_none(
+        self,
+    ) -> None:
+        rule = notifications.WebhookRule.model_validate(self._VALID_RULE)
+        with unittest.mock.patch.object(
+            celpy, 'json_to_cel', side_effect=TypeError('unexpected')
+        ):
+            self.assertIsNone(rule.evaluate_condition({}))
 
 
 class ProcessNotificationTests(helpers.TestCase):
@@ -280,3 +330,82 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertTrue(
             any('failed to deserialize rules' in line for line in cm.output)
         )
+
+    async def test_identifier_pointer_not_in_body(self) -> None:
+        # Body is missing /repo/id so JsonPointerException is raised
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='ERROR'
+        ) as cm:
+            response = await self._post(self.webhook_id, {})
+        self.assertEqual(200, response.status_code)
+        self.assertTrue(
+            any(
+                'failed to select project identifier' in line
+                for line in cm.output
+            )
+        )
+
+    async def test_multiple_records_logs_warning(self) -> None:
+        # A second BELONGS_TO edge makes the query return 2 rows (line 75)
+        extra_org_id = nanoid.generate()
+        ts = '2024-01-01T00:00:00+00:00'
+        await self.g.execute(
+            'CREATE (n:Organization {{id: {id}, slug: {slug},'
+            ' name: {name}, created_at: {ts}}}) RETURN n',
+            {
+                'id': extra_org_id,
+                'slug': f'extra-{extra_org_id[:8]}',
+                'name': 'Extra Org',
+                'ts': ts,
+            },
+            ['n'],
+        )
+        await self.g.execute(
+            'MATCH (w:Webhook {{id: {wid}}}),'
+            ' (o:Organization {{id: {oid}}})'
+            ' CREATE (w)-[:BELONGS_TO]->(o) RETURN w',
+            {'wid': self.webhook_id, 'oid': extra_org_id},
+            ['w'],
+        )
+        try:
+            body = {'repo': {'id': self.ext_id}}
+            with self.assertLogs(
+                'imbi_gateway.notifications', level='WARNING'
+            ) as cm:
+                response = await self._post(self.webhook_id, body)
+            self.assertEqual(200, response.status_code)
+            self.assertTrue(
+                any('Found multiple records' in line for line in cm.output)
+            )
+        finally:
+            await self.g.execute(
+                'MATCH (n:Organization {{id: {id}}})'
+                ' DETACH DELETE n RETURN 1 AS r',
+                {'id': extra_org_id},
+                ['r'],
+            )
+
+    async def test_project_vertex_missing_returns_500(self) -> None:
+        # EXISTS_IN lookup succeeds but db.match returns [] (line 137)
+        body = {'repo': {'id': self.ext_id}}
+        with unittest.mock.patch.object(
+            self.g,
+            'match',
+            new_callable=unittest.mock.AsyncMock,
+            return_value=[],
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(500, response.status_code)
+
+    async def test_handler_exception_is_caught(self) -> None:
+        # Handler raises at dispatch time; exception logged, 200 returned
+        await self._add_rule(
+            handler='tests.test_notifications.raising_stub_handler'
+        )
+        body = {'repo': {'id': self.ext_id}}
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='ERROR'
+        ) as cm:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(200, response.status_code)
+        self.assertTrue(any('Failure in' in line for line in cm.output))
