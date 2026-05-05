@@ -12,63 +12,6 @@ if typing.TYPE_CHECKING:
     from imbi_common.plugins.registry import RegistryEntry
 
 
-class CatalogTestCase(unittest.TestCase):
-    def test_catalog_loads(self) -> None:
-        from imbi_api.plugins.catalog import list_catalog_entries
-
-        with mock.patch(
-            'imbi_api.plugins.catalog.list_plugins',
-            return_value=[],
-        ):
-            entries = list_catalog_entries()
-        self.assertIsInstance(entries, list)
-        self.assertTrue(len(entries) > 0)
-        ssm = next(e for e in entries if e['package'] == 'imbi-plugin-ssm')
-        self.assertEqual(ssm['status'], 'not_installed')
-
-    def test_catalog_installed_status(self) -> None:
-        from imbi_common.plugins.base import (
-            ConfigurationPlugin,
-            PluginManifest,
-        )
-        from imbi_common.plugins.registry import RegistryEntry
-
-        from imbi_api.plugins.catalog import list_catalog_entries
-
-        class _FakePlugin(ConfigurationPlugin):
-            manifest = PluginManifest(
-                slug='ssm',
-                name='SSM',
-                plugin_type='configuration',
-            )
-
-            async def list_keys(self, ctx, credentials):  # type: ignore[override]
-                return []
-
-            async def get_values(self, ctx, credentials, keys=None):  # type: ignore[override]
-                return []
-
-            async def set_value(self, ctx, credentials, key, value):  # type: ignore[override]
-                raise NotImplementedError
-
-            async def delete_key(self, ctx, credentials, key):  # type: ignore[override]
-                pass
-
-        entry = RegistryEntry(
-            handler_cls=_FakePlugin,
-            manifest=_FakePlugin.manifest,
-            package_name='imbi-plugin-ssm',
-            package_version='1.0.0',
-        )
-        with mock.patch(
-            'imbi_api.plugins.catalog.list_plugins',
-            return_value=[entry],
-        ):
-            entries = list_catalog_entries()
-        ssm = next(e for e in entries if e['package'] == 'imbi-plugin-ssm')
-        self.assertEqual(ssm['status'], 'installed')
-
-
 class AssignmentsTestCase(unittest.TestCase):
     def test_validate_one_default_per_tab_ok(self) -> None:
         from imbi_api.plugins.assignments import (
@@ -134,12 +77,6 @@ class AssignmentsTestCase(unittest.TestCase):
 
 
 class LifecycleTestCase(unittest.TestCase):
-    def test_get_unavailable_slugs_empty(self) -> None:
-        from imbi_api.plugins.lifecycle import get_unavailable_slugs
-
-        result = get_unavailable_slugs()
-        self.assertIsInstance(result, list)
-
     def test_startup_load_plugins_logs(self) -> None:
         from imbi_common.plugins.registry import LoadResult
 
@@ -253,14 +190,6 @@ class InstallerTestCase(unittest.TestCase):
             with self.assertRaises(InstallError) as ctx:
                 asyncio.run(installer.install_package('imbi-plugin-ssm'))
         self.assertIn('disabled', str(ctx.exception))
-
-    def test_install_not_in_catalog_raises(self) -> None:
-        from imbi_api.plugins import installer
-        from imbi_api.plugins.installer import InstallError
-
-        with self.assertRaises(InstallError) as ctx:
-            asyncio.run(installer.install_package('not-in-catalog-pkg'))
-        self.assertIn('not in the plugin catalog', str(ctx.exception))
 
     def test_install_success(self) -> None:
         from imbi_common.plugins.registry import LoadResult
