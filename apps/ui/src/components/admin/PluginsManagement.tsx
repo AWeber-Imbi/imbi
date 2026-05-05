@@ -1,16 +1,10 @@
 import { useMemo, useState } from 'react'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, CirclePlay, Download, Package, Trash2 } from 'lucide-react'
+import { CirclePlay, Package } from 'lucide-react'
 import { toast } from 'sonner'
 
-import {
-  getAdminPluginCatalog,
-  getAdminPlugins,
-  installPlugin,
-  setAdminPluginEnabled,
-  uninstallPlugin,
-} from '@/api/endpoints'
+import { getAdminPlugins, setAdminPluginEnabled } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -20,7 +14,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { LoadingState } from '@/components/ui/loading-state'
 import {
   Table,
@@ -31,21 +24,16 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { extractApiErrorDetail } from '@/lib/apiError'
-import type {
-  AdminPluginsResponse,
-  CatalogEntry,
-  InstalledPlugin,
-} from '@/types'
+import type { AdminPluginsResponse, InstalledPlugin } from '@/types'
 
-type ActiveTab = 'catalog' | 'installed'
+type ActiveTab = 'disabled' | 'enabled'
 
-interface CatalogListProps {
-  allInstalled: InstalledPlugin[]
-  disabled: InstalledPlugin[]
+interface DisabledListProps {
   parentLoading: boolean
+  plugins: InstalledPlugin[]
 }
 
-interface InstalledListProps {
+interface EnabledListProps {
   error: unknown
   isError: boolean
   isLoading: boolean
@@ -53,11 +41,11 @@ interface InstalledListProps {
 }
 
 export function PluginsManagement() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('installed')
+  const [activeTab, setActiveTab] = useState<ActiveTab>('enabled')
 
   const tabs: { id: ActiveTab; label: string }[] = [
-    { id: 'installed', label: 'Installed' },
-    { id: 'catalog', label: 'Catalog' },
+    { id: 'enabled', label: 'Enabled' },
+    { id: 'disabled', label: 'Disabled' },
   ]
 
   const { data, error, isError, isLoading } = useQuery<AdminPluginsResponse>({
@@ -99,38 +87,23 @@ export function PluginsManagement() {
         </div>
       </div>
 
-      {activeTab === 'installed' && (
-        <InstalledList
+      {activeTab === 'enabled' && (
+        <EnabledList
           error={error}
           isError={isError}
           isLoading={isLoading}
           plugins={enabled}
         />
       )}
-      {activeTab === 'catalog' && (
-        <CatalogList
-          allInstalled={data?.installed ?? []}
-          disabled={disabled}
-          parentLoading={isLoading}
-        />
+      {activeTab === 'disabled' && (
+        <DisabledList parentLoading={isLoading} plugins={disabled} />
       )}
     </div>
   )
 }
 
-function CatalogList({
-  allInstalled,
-  disabled,
-  parentLoading,
-}: CatalogListProps) {
+function DisabledList({ parentLoading, plugins }: DisabledListProps) {
   const queryClient = useQueryClient()
-  const [confirmPkg, setConfirmPkg] = useState<null | string>(null)
-
-  const { data: catalog, isLoading: catalogLoading } = useQuery({
-    queryFn: ({ signal }) => getAdminPluginCatalog(signal),
-    queryKey: ['admin-plugin-catalog'],
-    staleTime: 5 * 60 * 1000,
-  })
 
   const enableMutation = useMutation({
     mutationFn: (slug: string) => setAdminPluginEnabled(slug, true),
@@ -143,58 +116,18 @@ function CatalogList({
     },
   })
 
-  const installMutation = useMutation({
-    mutationFn: (packageName: string) =>
-      installPlugin({ package: packageName }),
-    onError: (err) => {
-      toast.error(extractApiErrorDetail(err) ?? 'Failed to install plugin')
-    },
-    onSuccess: (result, packageName) => {
-      if (result.errors?.length) {
-        toast.warning(
-          `${packageName} installed with warnings: ${result.errors.join(', ')}`,
-        )
-      } else {
-        toast.success(
-          `${packageName} installed (${result.loaded} plugin(s) loaded)`,
-        )
-      }
-      void queryClient.invalidateQueries({ queryKey: ['admin-plugins'] })
-      void queryClient.invalidateQueries({ queryKey: ['admin-plugin-catalog'] })
-    },
-  })
-
-  const uninstallMutation = useMutation({
-    mutationFn: (packageName: string) => uninstallPlugin(packageName),
-    onError: (err) => {
-      toast.error(extractApiErrorDetail(err) ?? 'Failed to uninstall plugin')
-    },
-    onSuccess: (_, packageName) => {
-      toast.success(`${packageName} uninstalled`)
-      setConfirmPkg(null)
-      void queryClient.invalidateQueries({ queryKey: ['admin-plugins'] })
-      void queryClient.invalidateQueries({ queryKey: ['admin-plugin-catalog'] })
-    },
-  })
-
-  if (parentLoading || catalogLoading) {
+  if (parentLoading) {
     return <LoadingState label="Loading..." />
   }
 
-  // Catalog rows that aren't yet installed in the Python env.
-  const installedPackages = new Set(allInstalled.map((p) => p.package_name))
-  const catalogOnly: CatalogEntry[] = (catalog ?? []).filter(
-    (e) => !installedPackages.has(e.package),
-  )
-
-  if (disabled.length === 0 && catalogOnly.length === 0) {
+  if (plugins.length === 0) {
     return (
       <Card>
         <CardContent className="py-12 text-center">
           <Package className="mx-auto mb-3 h-8 w-8 text-secondary" />
-          <CardTitle className="mb-1">Catalog Empty</CardTitle>
+          <CardTitle className="mb-1">All Plugins Enabled</CardTitle>
           <CardDescription>
-            Every known plugin is already installed and enabled.
+            Every installed plugin is currently enabled.
           </CardDescription>
         </CardContent>
       </Card>
@@ -202,178 +135,69 @@ function CatalogList({
   }
 
   return (
-    <>
-      <Card>
-        <CardHeader className="px-6 py-4">
-          <CardTitle>Plugin Catalog</CardTitle>
-          <CardDescription>
-            Installed plugins start disabled — enable them here to make them
-            assignable. Uninstalled catalog entries can be installed at runtime.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Plugin</TableHead>
-                <TableHead>Package</TableHead>
-                <TableHead>Version</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-32" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {disabled.map((plugin) => (
-                <TableRow key={`installed-${plugin.slug}`}>
-                  <TableCell>
-                    <div className="font-medium">{plugin.name}</div>
+    <Card>
+      <CardHeader className="px-6 py-4">
+        <CardTitle>Disabled Plugins</CardTitle>
+        <CardDescription>
+          Installed plugins that are not yet enabled. Enable a plugin to make
+          it available for project type and service assignments.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Plugin</TableHead>
+              <TableHead>Package</TableHead>
+              <TableHead>Version</TableHead>
+              <TableHead className="w-28" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {plugins.map((plugin) => (
+              <TableRow key={plugin.slug}>
+                <TableCell>
+                  <div className="font-medium">{plugin.name}</div>
+                  {plugin.description && (
                     <div className="text-xs text-secondary">
                       {plugin.description}
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <code className="rounded bg-secondary px-1.5 py-0.5 text-xs">
-                      {plugin.package_name}
-                    </code>
-                  </TableCell>
-                  <TableCell className="text-sm text-secondary">
-                    {plugin.package_version}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">Installed · Disabled</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      disabled={enableMutation.isPending}
-                      onClick={() => enableMutation.mutate(plugin.slug)}
-                      size="sm"
-                      variant="outline"
-                    >
-                      <CirclePlay className="mr-1 h-3 w-3" />
-                      Enable
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {catalogOnly.map((entry) => (
-                <TableRow key={`catalog-${entry.package}`}>
-                  <TableCell>
-                    <div className="font-medium">{entry.package}</div>
-                    {entry.author && (
-                      <div className="text-xs text-secondary">
-                        by {entry.author}
-                      </div>
-                    )}
-                    {entry.description && (
-                      <div className="text-xs text-secondary">
-                        {entry.description}
-                      </div>
-                    )}
-                    {entry.docs_url && (
-                      <a
-                        className="hover:text-info/80 mt-0.5 inline-flex items-center gap-0.5 text-xs text-info"
-                        href={entry.docs_url}
-                        rel="noopener noreferrer"
-                        target="_blank"
-                      >
-                        <BookOpen className="h-3 w-3" />
-                        Docs
-                      </a>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <code className="rounded bg-secondary px-1.5 py-0.5 text-xs">
-                      {entry.package}
-                    </code>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {entry.version}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">Not Installed</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button
-                        disabled={installMutation.isPending}
-                        onClick={() => installMutation.mutate(entry.package)}
-                        size="sm"
-                        variant="outline"
-                      >
-                        <Download className="mr-1 h-3 w-3" />
-                        Install
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      {disabled.length > 0 && (
-        <Card>
-          <CardHeader className="px-6 py-4">
-            <CardTitle className="text-base">Uninstall</CardTitle>
-            <CardDescription>
-              Remove a Python package from the running environment. Disable
-              first if assignments still depend on it.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Package</TableHead>
-                  <TableHead className="w-20" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {disabled.map((plugin) => (
-                  <TableRow key={`uninstall-${plugin.package_name}`}>
-                    <TableCell>
-                      <code className="rounded bg-secondary px-1.5 py-0.5 text-xs">
-                        {plugin.package_name}
-                      </code>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        aria-label={`Uninstall ${plugin.package_name}`}
-                        onClick={() => setConfirmPkg(plugin.package_name)}
-                        size="icon"
-                        variant="ghost"
-                      >
-                        <Trash2 className="h-3 w-3 text-destructive" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
-
-      <ConfirmDialog
-        description={`Uninstall ${confirmPkg ?? ''}? Plugin assignments will become unavailable.`}
-        onCancel={() => setConfirmPkg(null)}
-        onConfirm={() => {
-          if (confirmPkg) uninstallMutation.mutate(confirmPkg)
-        }}
-        open={confirmPkg !== null}
-        title="Uninstall Plugin"
-      />
-    </>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <code className="rounded bg-secondary px-1.5 py-0.5 text-xs">
+                    {plugin.package_name}
+                  </code>
+                </TableCell>
+                <TableCell className="text-sm text-secondary">
+                  {plugin.package_version}
+                </TableCell>
+                <TableCell>
+                  <Button
+                    disabled={enableMutation.isPending}
+                    onClick={() => enableMutation.mutate(plugin.slug)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <CirclePlay className="mr-1 h-3 w-3" />
+                    Enable
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   )
 }
 
-function InstalledList({
+function EnabledList({
   error,
   isError,
   isLoading,
   plugins,
-}: InstalledListProps) {
+}: EnabledListProps) {
   if (isLoading) {
     return <LoadingState label="Loading..." />
   }
@@ -395,7 +219,7 @@ function InstalledList({
           <Package className="mx-auto mb-3 h-8 w-8 text-secondary" />
           <CardTitle className="mb-1">No Enabled Plugins</CardTitle>
           <CardDescription>
-            Enable a plugin from the Catalog tab to make it available for
+            Enable a plugin from the Disabled tab to make it available for
             project type and service assignments.
           </CardDescription>
         </CardContent>

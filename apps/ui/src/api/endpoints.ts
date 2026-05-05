@@ -15,7 +15,6 @@ import type {
   AuthProvider,
   Blueprint,
   BlueprintCreate,
-  CatalogEntry,
   ClientCredential,
   ClientCredentialCreate,
   ClientCredentialCreated,
@@ -1876,25 +1875,11 @@ export const getMonthlyImprovement = (
 export const getAdminPlugins = (signal?: AbortSignal) =>
   apiClient.get<AdminPluginsResponse>('/admin/plugins', undefined, signal)
 
-export const getAdminPluginCatalog = (signal?: AbortSignal) =>
-  apiClient.get<CatalogEntry[]>('/admin/plugins/catalog', undefined, signal)
-
 export const getAdminPlugin = (slug: string, signal?: AbortSignal) =>
   apiClient.get<InstalledPlugin>(
     `/admin/plugins/${encodeURIComponent(slug)}`,
     undefined,
     signal,
-  )
-
-export const installPlugin = (data: { package: string; version?: string }) =>
-  apiClient.post<{ errors: string[]; loaded: number; skipped: number }>(
-    '/admin/plugins/install',
-    data,
-  )
-
-export const uninstallPlugin = (packageName: string) =>
-  apiClient.delete<void>(
-    `/admin/plugins/installed/${encodeURIComponent(packageName)}`,
   )
 
 export const setAdminPluginEnabled = (slug: string, enabled: boolean) =>

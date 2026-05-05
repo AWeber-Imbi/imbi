@@ -299,16 +299,6 @@ export interface BlueprintCreate {
 // Blueprint types
 export type BlueprintFilter = Schemas['BlueprintFilter']
 
-export interface CatalogEntry {
-  author: null | string
-  description: null | string
-  docs_url: null | string
-  package: string
-  slugs: string[]
-  status: 'installed' | 'not_installed' | 'update_available'
-  version: string
-}
-
 export type ClientCredential = Schemas['ClientCredentialResponse']
 
 export type ClientCredentialCreate = Schemas['ClientCredentialCreate']
