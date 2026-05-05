@@ -453,6 +453,7 @@ class ServiceAccount(models.GraphModel):
     description: str | None = None
     is_active: bool = True
     last_authenticated: datetime.datetime | None = None
+    avatar_url: str | None = None
 
     organizations: typing.Annotated[
         list[OrganizationEdge],
@@ -487,6 +488,7 @@ class ServiceAccountResponse(pydantic.BaseModel):
     is_active: bool
     created_at: datetime.datetime
     last_authenticated: datetime.datetime | None = None
+    avatar_url: str | None = None
     organizations: list[OrgMembership] = []
 
 

@@ -373,3 +373,196 @@ class ScoringEndpointsTestCase(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json(), [])
+
+    def test_history_by_team_empty_when_no_projects(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        response = self.client.get('/scores/history-by-team')
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body['granularity'], 'day')
+        self.assertEqual(body['teams'], [])
+
+    def test_history_by_team_returns_aggregated_series(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=[
+                {'project_id': 'p1', 'dim_key': 'platform'},
+                {'project_id': 'p2', 'dim_key': 'platform'},
+                {'project_id': 'p3', 'dim_key': 'data'},
+            ]
+        )
+        with (
+            mock.patch(
+                'imbi_api.endpoints.scoring.clickhouse.query',
+                mock.AsyncMock(
+                    return_value=[
+                        {
+                            'ts': '2026-04-01',
+                            'project_id': 'p1',
+                            'score': 80.0,
+                        },
+                        {
+                            'ts': '2026-04-01',
+                            'project_id': 'p2',
+                            'score': 60.0,
+                        },
+                        {
+                            'ts': '2026-04-01',
+                            'project_id': 'p3',
+                            'score': 90.0,
+                        },
+                    ]
+                ),
+            ),
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            response = self.client.get('/scores/history-by-team')
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body['granularity'], 'day')
+        teams = {t['key']: t['points'] for t in body['teams']}
+        self.assertIn('platform', teams)
+        self.assertIn('data', teams)
+        platform_score = teams['platform'][0]['score']
+        self.assertAlmostEqual(platform_score, 70.0)
+        self.assertAlmostEqual(teams['data'][0]['score'], 90.0)
+
+    def test_history_by_team_hourly_with_date_filters(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=[{'project_id': 'p1', 'dim_key': 'eng'}]
+        )
+        with (
+            mock.patch(
+                'imbi_api.endpoints.scoring.clickhouse.query',
+                mock.AsyncMock(return_value=[]),
+            ),
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            response = self.client.get(
+                '/scores/history-by-team',
+                params={
+                    'granularity': 'hour',
+                    'from': '2026-01-01T00:00:00',
+                    'to': '2026-04-01T00:00:00',
+                },
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body['granularity'], 'hour')
+        self.assertEqual(body['teams'], [])
+
+    def test_history_feed_empty_when_no_projects(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        response = self.client.get('/scores/history-feed')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json(), [])
+
+    def test_history_feed_returns_events(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=[
+                {
+                    'project_id': 'p1',
+                    'project_name': 'My Project',
+                    'team_slug': 'platform',
+                },
+            ]
+        )
+        with (
+            mock.patch(
+                'imbi_api.endpoints.scoring.clickhouse.query',
+                mock.AsyncMock(
+                    return_value=[
+                        {
+                            'timestamp': '2026-04-01T12:00:00',
+                            'project_id': 'p1',
+                            'score': 85.0,
+                            'previous_score': 75.0,
+                            'change_reason': 'attribute_change',
+                        }
+                    ]
+                ),
+            ),
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            response = self.client.get('/scores/history-feed')
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(len(body), 1)
+        event = body[0]
+        self.assertEqual(event['project_id'], 'p1')
+        self.assertEqual(event['project_name'], 'My Project')
+        self.assertEqual(event['team_key'], 'platform')
+        self.assertAlmostEqual(event['score'], 85.0)
+        self.assertAlmostEqual(event['previous_score'], 75.0)
+        self.assertEqual(event['change_reason'], 'attribute_change')
+
+    def test_history_feed_with_date_filters_and_limit(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=[
+                {
+                    'project_id': 'p1',
+                    'project_name': 'Proj',
+                    'team_slug': 'eng',
+                },
+            ]
+        )
+        with (
+            mock.patch(
+                'imbi_api.endpoints.scoring.clickhouse.query',
+                mock.AsyncMock(return_value=[]),
+            ),
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            response = self.client.get(
+                '/scores/history-feed',
+                params={
+                    'from': '2026-01-01T00:00:00',
+                    'to': '2026-04-01T00:00:00',
+                    'limit': 50,
+                },
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json(), [])
+
+    def test_history_feed_handles_null_previous_score(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=[
+                {
+                    'project_id': 'p1',
+                    'project_name': 'Proj',
+                    'team_slug': 'eng',
+                },
+            ]
+        )
+        with (
+            mock.patch(
+                'imbi_api.endpoints.scoring.clickhouse.query',
+                mock.AsyncMock(
+                    return_value=[
+                        {
+                            'timestamp': '2026-04-01T12:00:00',
+                            'project_id': 'p1',
+                            'score': 70.0,
+                            'previous_score': None,
+                            'change_reason': 'initial',
+                        }
+                    ]
+                ),
+            ),
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            response = self.client.get('/scores/history-feed')
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(len(body), 1)
+        self.assertIsNone(body[0]['previous_score'])
+        self.assertEqual(body[0]['change_reason'], 'initial')

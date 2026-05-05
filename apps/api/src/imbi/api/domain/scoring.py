@@ -15,17 +15,21 @@ from imbi_common.scoring import (
 __all__ = [
     'AttributeContribution',
     'AttributePolicy',
+    'GlobalScoreEvent',
     'MonthlyImprovementRow',
     'PolicyCreate',
     'PolicyUpdate',
     'RescoreRequest',
     'RescoreResponse',
     'ScoreBreakdown',
+    'ScoreHistoryByTeamResponse',
     'ScoreHistoryPoint',
     'ScoreHistoryResponse',
     'ScoreRollupRow',
     'ScoreTrend',
     'ScoringPolicy',
+    'TeamScoreHistoryPoint',
+    'TeamScoreSeries',
 ]
 
 
@@ -101,6 +105,31 @@ class ScoreRollupRow(pydantic.BaseModel):
     latest_score: float
     avg_score: float
     last_updated: str | None = None
+
+
+class GlobalScoreEvent(pydantic.BaseModel):
+    timestamp: str
+    project_id: str
+    project_name: str
+    team_key: str
+    score: float
+    previous_score: float | None = None
+    change_reason: str | None = None
+
+
+class TeamScoreHistoryPoint(pydantic.BaseModel):
+    timestamp: str
+    score: float
+
+
+class TeamScoreSeries(pydantic.BaseModel):
+    key: str
+    points: list[TeamScoreHistoryPoint]
+
+
+class ScoreHistoryByTeamResponse(pydantic.BaseModel):
+    granularity: typing.Literal['hour', 'day']
+    teams: list[TeamScoreSeries]
 
 
 class MonthlyImprovementRow(pydantic.BaseModel):

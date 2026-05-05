@@ -107,6 +107,7 @@ async def create_service_account(
         description=sa.description,
         is_active=sa.is_active,
         created_at=sa.created_at,
+        avatar_url=sa.avatar_url,
         organizations=organizations,
     )
 
@@ -145,6 +146,7 @@ async def list_service_accounts(
                 is_active=sa.is_active,
                 created_at=sa.created_at,
                 last_authenticated=sa.last_authenticated,
+                avatar_url=sa.avatar_url,
             )
         )
     return accounts
@@ -203,6 +205,7 @@ async def get_service_account(
         is_active=sa.is_active,
         created_at=sa.created_at,
         last_authenticated=sa.last_authenticated,
+        avatar_url=sa.avatar_url,
         organizations=organizations,
     )
 
@@ -249,6 +252,7 @@ async def patch_service_account(
         'display_name': existing.display_name,
         'description': existing.description,
         'is_active': existing.is_active,
+        'avatar_url': existing.avatar_url,
     }
 
     patched = json_patch.apply_patch(current, operations)
@@ -265,6 +269,11 @@ async def patch_service_account(
             display_name=patched.get('display_name', existing.display_name),
             description=patched.get('description', existing.description),
             is_active=patched.get('is_active', existing.is_active),
+            avatar_url=(
+                patched['avatar_url']
+                if 'avatar_url' in patched
+                else existing.avatar_url
+            ),
             created_at=existing.created_at,
             last_authenticated=existing.last_authenticated,
         )
@@ -281,6 +290,7 @@ async def patch_service_account(
         display_name=updated.display_name,
         description=updated.description,
         is_active=updated.is_active,
+        avatar_url=updated.avatar_url,
         created_at=updated.created_at,
         last_authenticated=updated.last_authenticated,
     )

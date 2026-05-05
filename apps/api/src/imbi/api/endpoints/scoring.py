@@ -355,6 +355,153 @@ async def score_monthly_improvement(
     return out
 
 
+@scoring_router.get('/scores/history-by-team')
+async def score_history_by_team(
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('project:read')),
+    ],
+    granularity: typing.Literal['hour', 'day'] = 'day',
+    from_: typing.Annotated[
+        datetime.datetime | None, fastapi.Query(alias='from')
+    ] = None,
+    to: datetime.datetime | None = None,
+) -> scoring_models.ScoreHistoryByTeamResponse:
+    """Return avg score history per team, bucketed by granularity."""
+    dim_records = await db.execute(
+        _DIMENSION_QUERY['team'], {}, ['project_id', 'dim_key']
+    )
+    project_team: dict[str, str] = {}
+    for rec in dim_records:
+        pid = graph.parse_agtype(rec['project_id'])
+        key = graph.parse_agtype(rec['dim_key'])
+        if pid and key:
+            project_team[str(pid)] = str(key)
+    if not project_team:
+        return scoring_models.ScoreHistoryByTeamResponse(
+            granularity=granularity, teams=[]
+        )
+    bucket = _GRANULARITY_EXPR[granularity]
+    where: list[str] = ['project_id IN {project_ids:Array(String)}']
+    params: dict[str, typing.Any] = {'project_ids': list(project_team)}
+    if from_ is not None:
+        where.append('timestamp >= {from_ts:DateTime64(3)}')
+        params['from_ts'] = from_
+    if to is not None:
+        where.append('timestamp <= {to_ts:DateTime64(3)}')
+        params['to_ts'] = to
+    where_sql = ' AND '.join(where)
+    sql = (
+        f'SELECT {bucket} AS ts, project_id,'  # noqa: S608
+        ' argMax(score, timestamp) AS score'
+        ' FROM score_history WHERE '
+        + where_sql
+        + ' GROUP BY ts, project_id ORDER BY ts'
+    )
+    rows = await clickhouse.query(sql, params)
+    team_ts_scores: dict[str, dict[str, list[float]]] = {}
+    for row in rows:
+        pid = str(row['project_id'])
+        team = project_team.get(pid)
+        if not team:
+            continue
+        ts = str(row['ts'])
+        score = float(row['score'])
+        team_ts_scores.setdefault(team, {}).setdefault(ts, []).append(score)
+    teams: list[scoring_models.TeamScoreSeries] = []
+    for team_key in sorted(team_ts_scores):
+        ts_scores = team_ts_scores[team_key]
+        points = [
+            scoring_models.TeamScoreHistoryPoint(
+                timestamp=ts,
+                score=round(sum(scores) / len(scores), 4),
+            )
+            for ts, scores in sorted(ts_scores.items())
+        ]
+        teams.append(
+            scoring_models.TeamScoreSeries(key=team_key, points=points)
+        )
+    return scoring_models.ScoreHistoryByTeamResponse(
+        granularity=granularity, teams=teams
+    )
+
+
+@scoring_router.get('/scores/history-feed')
+async def score_history_feed(
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('project:read')),
+    ],
+    from_: typing.Annotated[
+        datetime.datetime | None, fastapi.Query(alias='from')
+    ] = None,
+    to: datetime.datetime | None = None,
+    limit: typing.Annotated[int, fastapi.Query(ge=1, le=500)] = 200,
+) -> list[scoring_models.GlobalScoreEvent]:
+    """Return recent raw score change events across all projects."""
+    project_records = await db.execute(
+        'MATCH (p:Project)-[:OWNED_BY]->(t:Team)'
+        ' RETURN p.id AS project_id, p.name AS project_name,'
+        ' t.slug AS team_slug',
+        {},
+        ['project_id', 'project_name', 'team_slug'],
+    )
+    project_info: dict[str, tuple[str, str]] = {}
+    for rec in project_records:
+        pid = graph.parse_agtype(rec['project_id'])
+        name = graph.parse_agtype(rec['project_name'])
+        team = graph.parse_agtype(rec['team_slug'])
+        if pid and name and team:
+            project_info[str(pid)] = (str(name), str(team))
+    if not project_info:
+        return []
+    where: list[str] = [
+        'project_id IN {project_ids:Array(String)}',
+        "change_reason != ''",
+    ]
+    params: dict[str, typing.Any] = {'project_ids': list(project_info)}
+    if from_ is not None:
+        where.append('timestamp >= {from_ts:DateTime64(3)}')
+        params['from_ts'] = from_
+    if to is not None:
+        where.append('timestamp <= {to_ts:DateTime64(3)}')
+        params['to_ts'] = to
+    params['limit'] = limit
+    where_sql = ' AND '.join(where)
+    sql = (
+        'SELECT timestamp, project_id, score, previous_score, change_reason'  # noqa: S608
+        ' FROM score_history WHERE '
+        + where_sql
+        + ' ORDER BY timestamp DESC LIMIT {limit:UInt32}'
+    )
+    rows = await clickhouse.query(sql, params)
+    out: list[scoring_models.GlobalScoreEvent] = []
+    for row in rows:
+        pid = str(row['project_id'])
+        info = project_info.get(pid)
+        if not info:
+            continue
+        project_name, team_key = info
+        out.append(
+            scoring_models.GlobalScoreEvent(
+                timestamp=str(row['timestamp']),
+                project_id=pid,
+                project_name=project_name,
+                team_key=team_key,
+                score=float(row['score']),
+                previous_score=(
+                    float(row['previous_score'])
+                    if row.get('previous_score') is not None
+                    else None
+                ),
+                change_reason=str(row.get('change_reason') or '') or None,
+            )
+        )
+    return out
+
+
 @scoring_router.post('/scoring/rescore')
 async def rescore(
     db: graph.Pool,

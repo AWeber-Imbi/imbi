@@ -32,5 +32,6 @@ repos:
         entry: uv
         args:
           - run
+          - --no-sync
           - mypy
           - src
