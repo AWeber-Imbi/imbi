@@ -76,10 +76,13 @@ async def post_search(
     body: dict[str, object],
     timeout: float,
     version: str,
+    day_offset: int = 0,
 ) -> dict[str, object]:
     url = f'{base_url(region)}/v1/search'
+    if day_offset > 0:
+        url = f'{url}?dayOffset={day_offset}'
     headers = _build_headers(api_token, version)
-    LOGGER.info('Logz.io POST %s body=%s', url, body)
+    LOGGER.debug('Logz.io POST %s body=%s', url, body)
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(

@@ -7,6 +7,8 @@ from imbi_common.plugins.base import LogFilter, LogQuery
 from imbi_common.plugins.errors import CursorExpiredError
 
 from imbi_plugin_logzio.query import (
+    _seconds_to_fixed_interval,
+    build_histogram_body,
     build_query_body,
     compute_fp,
     decode_cursor,
@@ -317,3 +319,167 @@ def test_compute_fp_is_deterministic() -> None:
 
 def test_compute_fp_differs_for_different_bodies() -> None:
     assert compute_fp({'size': 10}) != compute_fp({'size': 20})
+
+
+# ---------------------------------------------------------------------------
+# _seconds_to_fixed_interval tests
+# ---------------------------------------------------------------------------
+
+
+def test_seconds_to_fixed_interval_seconds() -> None:
+    assert _seconds_to_fixed_interval(30) == '30s'
+
+
+def test_seconds_to_fixed_interval_one_second_minimum() -> None:
+    assert _seconds_to_fixed_interval(0) == '1s'
+
+
+def test_seconds_to_fixed_interval_minutes() -> None:
+    # 90 s → ceil(90/60) = 2 m
+    assert _seconds_to_fixed_interval(90) == '2m'
+
+
+def test_seconds_to_fixed_interval_exact_minute() -> None:
+    assert _seconds_to_fixed_interval(60) == '1m'
+
+
+def test_seconds_to_fixed_interval_hours() -> None:
+    # 3601 s → ceil(3601/60)=61 m → ceil(61/60)=2 h
+    assert _seconds_to_fixed_interval(3601) == '2h'
+
+
+def test_seconds_to_fixed_interval_exact_hour() -> None:
+    assert _seconds_to_fixed_interval(3600) == '1h'
+
+
+def test_seconds_to_fixed_interval_days() -> None:
+    # 25*3600 s → ceil(90000/60)=1500 m → ceil(1500/60)=25 h → ceil(25/24)=2 d
+    assert _seconds_to_fixed_interval(25 * 3600) == '2d'
+
+
+def test_seconds_to_fixed_interval_exact_day() -> None:
+    assert _seconds_to_fixed_interval(24 * 3600) == '1d'
+
+
+# ---------------------------------------------------------------------------
+# build_histogram_body tests
+# ---------------------------------------------------------------------------
+
+
+def _make_hist_query(**kwargs: object) -> LogQuery:
+    defaults: dict[str, object] = {
+        'start_time': datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC),
+        'end_time': datetime.datetime(2025, 1, 2, tzinfo=datetime.UTC),
+        'filters': [],
+        'limit': 10,
+    }
+    defaults.update(kwargs)
+    return LogQuery(**defaults)  # type: ignore[arg-type]
+
+
+def test_histogram_body_has_size_zero() -> None:
+    body = build_histogram_body(
+        _make_hist_query(),
+        base_query=None,
+        timestamp_field='@timestamp',
+        message_field='message',
+        ctx_vars={},
+    )
+    assert body['size'] == 0
+
+
+def test_histogram_body_has_date_histogram_agg() -> None:
+    body = build_histogram_body(
+        _make_hist_query(),
+        base_query=None,
+        timestamp_field='@timestamp',
+        message_field='message',
+        ctx_vars={},
+        bucket_count=60,
+    )
+    aggs = body['aggs']  # type: ignore[index]
+    assert 'over_time' in aggs  # type: ignore[operator]
+    assert 'date_histogram' in aggs['over_time']  # type: ignore[index]
+
+
+def test_histogram_body_field_matches_timestamp_field() -> None:
+    body = build_histogram_body(
+        _make_hist_query(),
+        base_query=None,
+        timestamp_field='my_ts',
+        message_field='message',
+        ctx_vars={},
+    )
+    dh = body['aggs']['over_time']['date_histogram']  # type: ignore[index]
+    assert dh['field'] == 'my_ts'  # type: ignore[index]
+
+
+def test_histogram_body_ceiling_interval_never_exceeds_bucket_count() -> None:
+    # 24h range, 60 buckets → ceil(86400/60)=1440s → ceil(1440/60)=24m.
+    query = _make_hist_query(
+        start_time=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC),
+        end_time=datetime.datetime(2025, 1, 2, tzinfo=datetime.UTC),
+    )
+    body = build_histogram_body(
+        query,
+        base_query=None,
+        timestamp_field='@timestamp',
+        message_field='message',
+        ctx_vars={},
+        bucket_count=60,
+    )
+    dh = body['aggs']['over_time']['date_histogram']  # type: ignore[index]
+    assert dh['fixed_interval'] == '24m'  # type: ignore[index]
+
+
+def test_histogram_body_with_level_filter() -> None:
+    body = build_histogram_body(
+        _make_hist_query(),
+        base_query=None,
+        timestamp_field='@timestamp',
+        message_field='message',
+        ctx_vars={},
+        level_filter='ERROR',
+        level_field='level',
+    )
+    must = body['query']['bool']['must']  # type: ignore[index]
+    assert any(c.get('term', {}).get('level') == 'ERROR' for c in must)  # type: ignore[union-attr]
+
+
+def test_histogram_body_without_level_filter_no_level_term() -> None:
+    body = build_histogram_body(
+        _make_hist_query(),
+        base_query=None,
+        timestamp_field='@timestamp',
+        message_field='message',
+        ctx_vars={},
+    )
+    must = body['query']['bool']['must']  # type: ignore[index]
+    assert not any('level' in c.get('term', {}) for c in must)  # type: ignore[union-attr]
+
+
+def test_histogram_body_with_environment_field() -> None:
+    body = build_histogram_body(
+        _make_hist_query(),
+        base_query=None,
+        timestamp_field='@timestamp',
+        message_field='message',
+        ctx_vars={},
+        environment_field='env',
+        environment_value='production',
+    )
+    must = body['query']['bool']['must']  # type: ignore[index]
+    assert any(c.get('term', {}).get('env') == 'production' for c in must)  # type: ignore[union-attr]
+
+
+def test_histogram_body_regex_leading_wildcard_raises() -> None:
+    with pytest.raises(ValueError, match='leading wildcard'):
+        build_histogram_body(
+            _make_hist_query(
+                filters=[LogFilter(field='host', op='regex', value='.*bad')]
+            ),
+            base_query=None,
+            timestamp_field='@timestamp',
+            message_field='message',
+            ctx_vars={},
+        )

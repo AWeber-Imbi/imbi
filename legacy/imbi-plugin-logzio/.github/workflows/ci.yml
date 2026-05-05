@@ -20,7 +20,7 @@ jobs:
         with:
           repository: AWeber-Imbi/imbi-common
           path: imbi-common
-          ref: ed157619d8447b645178f2efc54708a68e9e5610
+          ref: 309c347807761143f013d19398be67c4e305ca37
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up uv

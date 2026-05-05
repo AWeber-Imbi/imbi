@@ -11,13 +11,15 @@ from imbi_common.plugins.errors import CursorExpiredError
 from imbi_common.plugins.templates import expand_template
 
 
-def build_query_body(
+def _build_bool_clause(
     query: LogQuery,
     *,
     base_query: str | None,
     timestamp_field: str,
     message_field: str,
     ctx_vars: dict[str, str | None],
+    environment_field: str | None = None,
+    environment_value: str | None = None,
 ) -> dict[str, object]:
     must: list[dict[str, object]] = [
         {
@@ -30,6 +32,9 @@ def build_query_body(
         }
     ]
     must_not: list[dict[str, object]] = []
+
+    if environment_field and environment_value:
+        must.append({'term': {environment_field: environment_value}})
 
     if base_query:
         expanded = expand_template(base_query, ctx_vars)
@@ -45,16 +50,112 @@ def build_query_body(
     for f in query.filters:
         _translate_filter(f, must, must_not, message_field)
 
-    bool_clause: dict[str, object] = {'must': must}
+    clause: dict[str, object] = {'must': must}
     if must_not:
-        bool_clause['must_not'] = must_not
+        clause['must_not'] = must_not
+    return clause
 
+
+def build_query_body(
+    query: LogQuery,
+    *,
+    base_query: str | None,
+    timestamp_field: str,
+    message_field: str,
+    ctx_vars: dict[str, str | None],
+    environment_field: str | None = None,
+    environment_value: str | None = None,
+) -> dict[str, object]:
+    bool_clause = _build_bool_clause(
+        query,
+        base_query=base_query,
+        timestamp_field=timestamp_field,
+        message_field=message_field,
+        ctx_vars=ctx_vars,
+        environment_field=environment_field,
+        environment_value=environment_value,
+    )
     return {
         'query': {'bool': bool_clause},
         'sort': [{timestamp_field: 'desc'}, '_doc'],
         'size': min(query.limit, 1000),
         '_source': True,
     }
+
+
+def build_histogram_body(
+    query: LogQuery,
+    *,
+    base_query: str | None,
+    timestamp_field: str,
+    message_field: str,
+    ctx_vars: dict[str, str | None],
+    bucket_count: int = 60,
+    level_filter: str | None = None,
+    level_field: str = 'level',
+    environment_field: str | None = None,
+    environment_value: str | None = None,
+) -> dict[str, object]:
+    """Build an ES body that returns a date_histogram aggregation.
+
+    ``size: 0`` suppresses hit results so only aggregation data is
+    returned, keeping the response small regardless of event volume.
+
+    When ``level_filter`` is provided a term filter is added so only
+    events matching that level are counted, enabling per-level breakdown
+    without nested bucket aggregations (which Logz.io forbids).
+    """
+    bool_clause = _build_bool_clause(
+        query,
+        base_query=base_query,
+        timestamp_field=timestamp_field,
+        message_field=message_field,
+        ctx_vars=ctx_vars,
+        environment_field=environment_field,
+        environment_value=environment_value,
+    )
+    if level_filter is not None:
+        must = list(cast('list[dict[str, object]]', bool_clause['must']))
+        must.append({'term': {level_field: level_filter}})
+        bool_clause = dict(bool_clause)
+        bool_clause['must'] = must
+    total_seconds = max(
+        1,
+        int((query.end_time - query.start_time).total_seconds()),
+    )
+    interval_seconds = max(1, -(-total_seconds // bucket_count))
+    interval_str = _seconds_to_fixed_interval(interval_seconds)
+    return {
+        'size': 0,
+        'query': {'bool': bool_clause},
+        'aggs': {
+            'over_time': {
+                'date_histogram': {
+                    'field': timestamp_field,
+                    'fixed_interval': interval_str,
+                },
+            }
+        },
+    }
+
+
+def _seconds_to_fixed_interval(seconds: int) -> str:
+    """Convert a duration to an ES fixed_interval string.
+
+    Uses ceiling division so the returned interval is always *at least* as
+    long as requested, ensuring the actual bucket count never exceeds the
+    caller's target (floor division undershoots and produces extra buckets).
+    """
+    if seconds < 60:
+        return f'{max(1, seconds)}s'
+    minutes = -(-seconds // 60)  # ceiling division
+    if minutes < 60:
+        return f'{minutes}m'
+    hours = -(-minutes // 60)  # ceiling division
+    if hours < 24:
+        return f'{hours}h'
+    days = -(-hours // 24)  # ceiling division
+    return f'{days}d'
 
 
 def _translate_filter(
