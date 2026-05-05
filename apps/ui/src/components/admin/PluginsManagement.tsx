@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, Download, Package, Power, Trash2 } from 'lucide-react'
+import { BookOpen, CirclePlay, Download, Package, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
@@ -45,10 +45,10 @@ interface CatalogListProps {
 }
 
 interface InstalledListProps {
-  enabled: InstalledPlugin[]
   error: unknown
   isError: boolean
   isLoading: boolean
+  plugins: InstalledPlugin[]
 }
 
 export function PluginsManagement() {
@@ -100,10 +100,10 @@ export function PluginsManagement() {
 
       {activeTab === 'installed' && (
         <InstalledList
-          enabled={enabled}
           error={error}
           isError={isError}
           isLoading={isLoading}
+          plugins={enabled}
         />
       )}
       {activeTab === 'catalog' && (
@@ -240,7 +240,7 @@ function CatalogList({ disabled, parentLoading }: CatalogListProps) {
                       size="sm"
                       variant="outline"
                     >
-                      <Power className="mr-1 h-3 w-3" />
+                      <CirclePlay className="mr-1 h-3 w-3" />
                       Enable
                     </Button>
                   </TableCell>
@@ -258,18 +258,18 @@ function CatalogList({ disabled, parentLoading }: CatalogListProps) {
                     {entry.description && (
                       <div className="text-xs text-secondary">
                         {entry.description}
-                        {entry.docs_url && (
-                          <a
-                            className="hover:text-info/80 ml-1 inline-flex items-center gap-0.5 text-info"
-                            href={entry.docs_url}
-                            rel="noopener noreferrer"
-                            target="_blank"
-                          >
-                            <BookOpen className="h-3 w-3" />
-                            Docs
-                          </a>
-                        )}
                       </div>
+                    )}
+                    {entry.docs_url && (
+                      <a
+                        className="hover:text-info/80 mt-0.5 inline-flex items-center gap-0.5 text-xs text-info"
+                        href={entry.docs_url}
+                        rel="noopener noreferrer"
+                        target="_blank"
+                      >
+                        <BookOpen className="h-3 w-3" />
+                        Docs
+                      </a>
                     )}
                   </TableCell>
                   <TableCell>
@@ -360,24 +360,11 @@ function CatalogList({ disabled, parentLoading }: CatalogListProps) {
 }
 
 function InstalledList({
-  enabled,
   error,
   isError,
   isLoading,
+  plugins,
 }: InstalledListProps) {
-  const queryClient = useQueryClient()
-
-  const disableMutation = useMutation({
-    mutationFn: (slug: string) => setAdminPluginEnabled(slug, false),
-    onError: (err) => {
-      toast.error(extractApiErrorDetail(err) ?? 'Failed to disable plugin')
-    },
-    onSuccess: (_, slug) => {
-      toast.success(`${slug} disabled`)
-      void queryClient.invalidateQueries({ queryKey: ['admin-plugins'] })
-    },
-  })
-
   if (isLoading) {
     return <LoadingState label="Loading..." />
   }
@@ -392,7 +379,7 @@ function InstalledList({
     )
   }
 
-  if (enabled.length === 0) {
+  if (plugins.length === 0) {
     return (
       <Card>
         <CardContent className="py-12 text-center">
@@ -418,11 +405,10 @@ function InstalledList({
               <TableHead>Version</TableHead>
               <TableHead>Auth</TableHead>
               <TableHead>Tabs</TableHead>
-              <TableHead className="w-20" />
             </TableRow>
           </TableHeader>
           <TableBody>
-            {enabled.map((plugin) => (
+            {plugins.map((plugin) => (
               <TableRow key={plugin.slug}>
                 <TableCell>
                   <div className="font-medium">{plugin.name}</div>
@@ -449,17 +435,6 @@ function InstalledList({
                       </Badge>
                     ))}
                   </div>
-                </TableCell>
-                <TableCell>
-                  <Button
-                    aria-label={`Disable ${plugin.name}`}
-                    disabled={disableMutation.isPending}
-                    onClick={() => disableMutation.mutate(plugin.slug)}
-                    size="icon"
-                    variant="ghost"
-                  >
-                    <Power className="h-3 w-3 text-destructive" />
-                  </Button>
                 </TableCell>
               </TableRow>
             ))}
