@@ -6,3 +6,4 @@
 !/.python-version
 /build
 /dist
+/coverage.xml
