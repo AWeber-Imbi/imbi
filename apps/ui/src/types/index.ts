@@ -233,7 +233,6 @@ export const OPERATIONS_LOG_ENTRY_TYPES = [
 
 export interface AdminPluginsResponse {
   installed: InstalledPlugin[]
-  unavailable: string[]
 }
 
 export type AdminSettings = Schemas['AdminSettings']
@@ -350,10 +349,12 @@ export type DeploymentStatus =
   | 'success'
 export interface InstalledPlugin {
   api_version: number
+  auth_type: 'api_token' | 'oauth2'
   cacheable: boolean
   credentials: PluginCredentialField[]
   description: string
   docs_url: null | string
+  enabled: boolean
   name: string
   options: PluginOptionDef[]
   package_name: string
@@ -375,6 +376,12 @@ export interface LogEntryResponse {
   level: null | string
   message: string
   raw: Record<string, unknown>
+  timestamp: string
+}
+
+export interface LogHistogramBucket {
+  count: number
+  levels: Record<string, number>
   timestamp: string
 }
 
@@ -493,9 +500,11 @@ export interface NoteTemplateCreate {
   tags?: string[]
   title?: null | string
 }
+
 // Auth provider types — mirror the consolidated `ServiceApplication`-backed
 // shape in imbi_api/endpoints/auth_providers.py.
 export type OAuthAppType = 'github' | 'google' | 'oidc'
+
 export type OperationsLogEntryType = (typeof OPERATIONS_LOG_ENTRY_TYPES)[number]
 
 export interface OperationsLogFilters {
@@ -507,12 +516,12 @@ export interface OperationsLogFilters {
   ticket_slug?: string
   until?: string
 }
-
 // Raw record returned by the /operations-log/ API (distinct from the
 // activity-feed projection defined above in `OperationsLogEntry`).
 export type OperationsLogRecord = Schemas['OperationLogResponse']
 // Organization types
 export type Organization = Schemas['OrganizationResponse']
+
 // `OrganizationCreate` stays hand-written: the generated
 // `OrganizationRequest` requires `updated_at`/`description`/`icon` be
 // present (nullable), which the UI create form doesn't send.
@@ -526,7 +535,6 @@ export interface OrganizationCreate {
 export type OrgMembership = Schemas['OrgMembership']
 // JSON Patch operation (RFC 6902)
 export type PatchOperation = Schemas['PatchOperation']
-
 // Admin User Management Types (matching API schema)
 export type Permission = Schemas['Permission']
 
@@ -534,6 +542,12 @@ export interface PluginAssignmentCreate {
   default: boolean
   options?: Record<string, unknown>
   plugin_id: string
+  tab: PluginTab
+}
+export interface PluginAssignmentInput {
+  default: boolean
+  options: Record<string, unknown>
+  project_type_slug: string
   tab: PluginTab
 }
 
@@ -547,6 +561,21 @@ export interface PluginAssignmentResponse {
   tab: PluginTab
 }
 
+export interface PluginAssignmentRow {
+  default: boolean
+  options: Record<string, unknown>
+  project_type_name: string
+  project_type_slug: string
+  tab: PluginTab
+}
+
+export interface PluginConfigurationResponse {
+  auth_type: 'api_token' | 'oauth2'
+  fields: PluginCredentialField[]
+  plugin_slug: string
+  populated: string[]
+}
+
 export interface PluginCreate {
   label: string
   options?: Record<string, unknown>
@@ -554,16 +583,19 @@ export interface PluginCreate {
 }
 export interface PluginCredentialField {
   description: null | string
+  label: string
   name: string
   required: boolean
-  secret: boolean
 }
 
 export interface PluginOptionDef {
+  choices?: null | string[]
+  default?: boolean | null | number | string
   description: null | string
+  label: string
   name: string
   required: boolean
-  type: string
+  type: 'boolean' | 'integer' | 'secret' | 'string'
 }
 // Plugin types (hand-written until api-generated.ts snapshot is refreshed)
 export interface PluginResponse {

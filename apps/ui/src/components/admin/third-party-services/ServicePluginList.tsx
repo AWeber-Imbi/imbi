@@ -9,7 +9,6 @@ import {
   deleteServicePlugin,
   getAdminPlugins,
   listServicePlugins,
-  updateServicePlugin,
 } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -39,13 +38,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Textarea } from '@/components/ui/textarea'
 import { extractApiErrorDetail } from '@/lib/apiError'
-import type { PluginResponse } from '@/types'
+
+import { ServicePluginConfiguration } from './ServicePluginConfiguration'
 
 interface PluginForm {
   label: string
-  options: string
   plugin_slug: string
 }
 
@@ -61,15 +59,10 @@ export function ServicePluginList({
   const queryClient = useQueryClient()
   const [showDialog, setShowDialog] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<null | string>(null)
-  const [editingPlugin, setEditingPlugin] = useState<null | PluginResponse>(
-    null,
-  )
   const [form, setForm] = useState<PluginForm>({
     label: '',
-    options: '{}',
     plugin_slug: '',
   })
-  const [optionsError, setOptionsError] = useState('')
 
   const {
     data: plugins,
@@ -92,7 +85,15 @@ export function ServicePluginList({
     staleTime: 5 * 60 * 1000,
   })
 
-  const installedPlugins = adminPlugins?.installed ?? []
+  // Only enabled plugins should be assignable to a service.
+  const installedPlugins = (adminPlugins?.installed ?? []).filter(
+    (p) => p.enabled,
+  )
+  const [configurePluginId, setConfigurePluginId] = useState<null | string>(
+    null,
+  )
+  const configurePlugin =
+    (plugins ?? []).find((p) => p.id === configurePluginId) ?? null
 
   const createMutation = useMutation({
     mutationFn: (input: {
@@ -105,31 +106,6 @@ export function ServicePluginList({
     },
     onSuccess: () => {
       toast.success('Plugin created')
-      setShowDialog(false)
-      void queryClient.invalidateQueries({
-        queryKey: ['service-plugins', orgSlug, serviceSlug],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: ['project-plugins', orgSlug],
-      })
-    },
-  })
-
-  const updateMutation = useMutation({
-    mutationFn: (input: {
-      id: string
-      label: string
-      options: Record<string, unknown>
-    }) =>
-      updateServicePlugin(orgSlug, serviceSlug, input.id, {
-        label: input.label,
-        options: input.options,
-      }),
-    onError: (err) => {
-      toast.error(extractApiErrorDetail(err) ?? 'Failed to update plugin')
-    },
-    onSuccess: () => {
-      toast.success('Plugin updated')
       setShowDialog(false)
       void queryClient.invalidateQueries({
         queryKey: ['service-plugins', orgSlug, serviceSlug],
@@ -159,57 +135,30 @@ export function ServicePluginList({
   })
 
   const openAdd = () => {
-    setEditingPlugin(null)
-    setForm({ label: '', options: '{}', plugin_slug: '' })
-    setOptionsError('')
-    setShowDialog(true)
-  }
-
-  const openEdit = (plugin: PluginResponse) => {
-    setEditingPlugin(plugin)
-    setForm({
-      label: plugin.label,
-      options: JSON.stringify(plugin.options, null, 2),
-      plugin_slug: plugin.plugin_slug,
-    })
-    setOptionsError('')
+    setForm({ label: '', plugin_slug: '' })
     setShowDialog(true)
   }
 
   const handleSubmit = () => {
-    let options: Record<string, unknown>
-    try {
-      const parsed: unknown = JSON.parse(form.options)
-      if (
-        parsed === null ||
-        typeof parsed !== 'object' ||
-        Array.isArray(parsed)
-      ) {
-        setOptionsError('Options must be a JSON object')
-        return
-      }
-      options = parsed as Record<string, unknown>
-      setOptionsError('')
-    } catch {
-      setOptionsError('Invalid JSON')
-      return
-    }
-    if (editingPlugin) {
-      updateMutation.mutate({
-        id: editingPlugin.id,
-        label: form.label,
-        options,
-      })
-    } else {
-      createMutation.mutate({
-        label: form.label,
-        options,
-        plugin_slug: form.plugin_slug,
-      })
-    }
+    createMutation.mutate({
+      label: form.label,
+      options: {},
+      plugin_slug: form.plugin_slug,
+    })
   }
 
-  const isPending = createMutation.isPending || updateMutation.isPending
+  const isPending = createMutation.isPending
+
+  if (configurePlugin) {
+    return (
+      <ServicePluginConfiguration
+        onBack={() => setConfigurePluginId(null)}
+        orgSlug={orgSlug}
+        plugin={configurePlugin}
+        serviceSlug={serviceSlug}
+      />
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -278,11 +227,11 @@ export function ServicePluginList({
                     <TableCell>
                       <div className="flex justify-end gap-1">
                         <Button
-                          onClick={() => openEdit(plugin)}
+                          onClick={() => setConfigurePluginId(plugin.id)}
                           size="sm"
                           variant="ghost"
                         >
-                          Edit
+                          Configure
                         </Button>
                         <Button
                           aria-label={`Remove ${plugin.label}`}
@@ -305,41 +254,35 @@ export function ServicePluginList({
       <Dialog onOpenChange={setShowDialog} open={showDialog}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>
-              {editingPlugin
-                ? `Edit Plugin: ${editingPlugin.label}`
-                : 'Add Plugin'}
-            </DialogTitle>
+            <DialogTitle>Add Plugin</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            {!editingPlugin && isAdminPluginsError && (
+            {isAdminPluginsError && (
               <div className="text-sm text-destructive">
                 {extractApiErrorDetail(adminPluginsError) ??
                   'Failed to load installed plugins'}
               </div>
             )}
-            {!editingPlugin && (
-              <div className="space-y-2">
-                <Label htmlFor="plugin-slug">Plugin</Label>
-                <Select
-                  onValueChange={(v) =>
-                    setForm((f) => ({ ...f, plugin_slug: v }))
-                  }
-                  value={form.plugin_slug}
-                >
-                  <SelectTrigger id="plugin-slug">
-                    <SelectValue placeholder="Select installed plugin…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {installedPlugins.map((p) => (
-                      <SelectItem key={p.slug} value={p.slug}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="plugin-slug">Plugin</Label>
+              <Select
+                onValueChange={(v) =>
+                  setForm((f) => ({ ...f, plugin_slug: v }))
+                }
+                value={form.plugin_slug}
+              >
+                <SelectTrigger id="plugin-slug">
+                  <SelectValue placeholder="Select installed plugin…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {installedPlugins.map((p) => (
+                    <SelectItem key={p.slug} value={p.slug}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="plugin-label">Label</Label>
               <Input
@@ -351,31 +294,12 @@ export function ServicePluginList({
                 value={form.label}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="plugin-options">Options (JSON)</Label>
-              <Textarea
-                className="font-mono"
-                id="plugin-options"
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, options: e.target.value }))
-                }
-                rows={4}
-                value={form.options}
-              />
-              {optionsError && (
-                <p className="text-xs text-destructive">{optionsError}</p>
-              )}
-            </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button onClick={() => setShowDialog(false)} variant="outline">
                 Cancel
               </Button>
               <Button
-                disabled={
-                  isPending ||
-                  !form.label ||
-                  (!editingPlugin && !form.plugin_slug)
-                }
+                disabled={isPending || !form.label || !form.plugin_slug}
                 onClick={handleSubmit}
               >
                 {isPending ? 'Saving...' : 'Save'}

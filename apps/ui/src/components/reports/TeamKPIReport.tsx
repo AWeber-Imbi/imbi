@@ -28,7 +28,7 @@ export function TeamKPIReport() {
   } = useQuery({
     enabled: !!orgSlug,
     queryFn: ({ signal }) => getScoreRollup('team', signal),
-    queryKey: ['scoreRollup', 'team', orgSlug],
+    queryKey: ['scoreRollup', 'team'],
     staleTime: 60_000,
   })
 

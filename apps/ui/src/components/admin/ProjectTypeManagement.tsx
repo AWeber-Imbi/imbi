@@ -19,7 +19,6 @@ import { buildDiffPatch } from '@/lib/json-patch'
 import type { PatchOperation, ProjectType, ProjectTypeCreate } from '@/types'
 
 import { AdminSection } from './AdminSection'
-import { ProjectTypeDetail } from './project-types/ProjectTypeDetail'
 import { ProjectTypeForm } from './project-types/ProjectTypeForm'
 
 export function ProjectTypeManagement() {
@@ -127,16 +126,6 @@ export function ProjectTypeManagement() {
         isLoading={createMutation.isPending || updateMutation.isPending}
         onCancel={handleCancel}
         onSave={handleSave}
-        projectType={selectedProjectType}
-      />
-    )
-  }
-
-  if (viewMode === 'detail' && selectedProjectType) {
-    return (
-      <ProjectTypeDetail
-        onBack={handleCancel}
-        onEdit={() => goToEdit(selectedProjectType.slug)}
         projectType={selectedProjectType}
       />
     )

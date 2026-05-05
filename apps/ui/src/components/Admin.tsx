@@ -192,6 +192,13 @@ export function Admin() {
       scope: 'system',
     },
     {
+      description: 'Manage installed plugins',
+      icon: Puzzle,
+      id: 'plugins',
+      label: 'Plugins',
+      scope: 'system',
+    },
+    {
       description: 'Define roles and permission collections',
       icon: Shield,
       id: 'roles',

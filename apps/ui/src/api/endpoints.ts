@@ -29,6 +29,7 @@ import type {
   LinkDefinition,
   LinkDefinitionCreate,
   LocalAuthConfig,
+  LogHistogramBucket,
   LoginProviderCreate,
   LoginProviderRead,
   LoginProviderUpdate,
@@ -45,7 +46,10 @@ import type {
   OrganizationCreate,
   PatchOperation,
   PluginAssignmentCreate,
+  PluginAssignmentInput,
   PluginAssignmentResponse,
+  PluginAssignmentRow,
+  PluginConfigurationResponse,
   PluginCreate,
   PluginResponse,
   PluginUpdate,
@@ -1714,6 +1718,36 @@ export interface LogSearchParams {
   start_time?: string
 }
 
+export const getProjectLogsHistogram = (
+  orgSlug: string,
+  projectId: string,
+  params?: {
+    bucket_count?: number
+    end_time?: string
+    environment?: string
+    filter?: string[]
+    source?: string
+    start_time?: string
+  },
+  signal?: AbortSignal,
+) => {
+  const query: Record<string, string | string[]> = {}
+  if (params) {
+    if (params.source) query.source = params.source
+    if (params.environment) query.environment = params.environment
+    if (params.start_time) query.start_time = params.start_time
+    if (params.end_time) query.end_time = params.end_time
+    if (params.bucket_count != null)
+      query.bucket_count = String(params.bucket_count)
+    if (params.filter?.length) query.filter = params.filter
+  }
+  return apiClient.get<LogHistogramBucket[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/logs/histogram`,
+    query as Record<string, string>,
+    signal,
+  )
+}
+
 export const searchProjectLogs = (
   orgSlug: string,
   projectId: string,
@@ -1813,4 +1847,56 @@ export const installPlugin = (data: { package: string; version?: string }) =>
 export const uninstallPlugin = (packageName: string) =>
   apiClient.delete<void>(
     `/admin/plugins/installed/${encodeURIComponent(packageName)}`,
+  )
+
+export const setAdminPluginEnabled = (slug: string, enabled: boolean) =>
+  apiClient.patch<InstalledPlugin>(
+    `/admin/plugins/${encodeURIComponent(slug)}`,
+    { enabled },
+  )
+
+export const getServicePluginConfiguration = (
+  orgSlug: string,
+  serviceSlug: string,
+  pluginId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<PluginConfigurationResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/plugins/${encodeURIComponent(pluginId)}/configuration`,
+    undefined,
+    signal,
+  )
+
+export const patchServicePluginConfiguration = (
+  orgSlug: string,
+  serviceSlug: string,
+  pluginId: string,
+  values: Record<string, null | string>,
+) =>
+  apiClient.patch<PluginConfigurationResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/plugins/${encodeURIComponent(pluginId)}/configuration`,
+    values,
+  )
+
+export const listServicePluginAssignments = (
+  orgSlug: string,
+  serviceSlug: string,
+  pluginId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<PluginAssignmentRow[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/plugins/${encodeURIComponent(pluginId)}/assignments`,
+    undefined,
+    signal,
+  )
+
+export const replaceServicePluginAssignments = (
+  orgSlug: string,
+  serviceSlug: string,
+  pluginId: string,
+  body: PluginAssignmentInput[],
+) =>
+  apiClient.put<PluginAssignmentRow[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/plugins/${encodeURIComponent(pluginId)}/assignments`,
+    body,
   )
