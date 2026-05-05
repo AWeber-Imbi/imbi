@@ -5,13 +5,14 @@ import unittest
 from unittest import mock
 
 from fastapi import testclient
+from imbi_common import graph
 
 from imbi_api import app, models
 from imbi_api.auth import password, permissions
 
 
 class AdminPluginsEndpointTestCase(unittest.TestCase):
-    """Test cases for /plugins admin endpoints."""
+    """Test cases for /admin/plugins admin endpoints."""
 
     def setUp(self) -> None:
         self.test_app = app.create_app()
@@ -36,6 +37,11 @@ class AdminPluginsEndpointTestCase(unittest.TestCase):
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             mock_get_current_user
         )
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.mock_db.execute.return_value = []
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
 
     def test_list_installed_plugins_empty(self) -> None:
         with (
@@ -44,18 +50,17 @@ class AdminPluginsEndpointTestCase(unittest.TestCase):
                 return_value=[],
             ),
             mock.patch(
-                'imbi_api.endpoints.admin_plugins.get_unavailable_slugs',
+                'imbi_api.endpoints.admin_plugins.importlib.metadata.distributions',
                 return_value=[],
             ),
         ):
             with testclient.TestClient(self.test_app) as client:
-                response = client.get('/plugins')
+                response = client.get('/admin/plugins')
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertIn('installed', data)
-        self.assertIn('unavailable', data)
+        self.assertNotIn('unavailable', data)
         self.assertEqual(data['installed'], [])
-        self.assertEqual(data['unavailable'], [])
 
     def test_get_plugin_not_found(self) -> None:
         from imbi_common.plugins.errors import PluginNotFoundError
@@ -65,90 +70,8 @@ class AdminPluginsEndpointTestCase(unittest.TestCase):
             side_effect=PluginNotFoundError('no-such-plugin'),
         ):
             with testclient.TestClient(self.test_app) as client:
-                response = client.get('/plugins/no-such-plugin')
+                response = client.get('/admin/plugins/no-such-plugin')
         self.assertEqual(response.status_code, 404)
-
-    def test_list_catalog(self) -> None:
-        from imbi_api.plugins.catalog import CatalogEntry
-
-        entries: list[CatalogEntry] = [
-            CatalogEntry(
-                package='imbi-plugin-ssm',
-                version='>=1.0,<2',
-                slugs=['ssm'],
-                author='AWeber / Imbi',
-                description='AWS SSM Parameter Store.',
-                docs_url='https://docs.imbi.app/plugins/ssm',
-                status='not_installed',
-            )
-        ]
-        with mock.patch(
-            'imbi_api.endpoints.admin_plugins.catalog.list_catalog_entries',
-            return_value=entries,
-        ):
-            with testclient.TestClient(self.test_app) as client:
-                response = client.get('/plugins/catalog')
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertIsInstance(data, list)
-        self.assertEqual(data[0]['package'], 'imbi-plugin-ssm')
-
-    def test_install_plugin_missing_package(self) -> None:
-        with testclient.TestClient(self.test_app) as client:
-            response = client.post('/plugins/install', json={})
-        self.assertEqual(response.status_code, 400)
-
-    def test_install_plugin_not_in_catalog(self) -> None:
-        from imbi_api.plugins.installer import InstallError
-
-        with mock.patch(
-            'imbi_api.endpoints.admin_plugins.installer.install_package',
-            side_effect=InstallError('not in catalog'),
-        ):
-            with testclient.TestClient(self.test_app) as client:
-                response = client.post(
-                    '/plugins/install',
-                    json={'package': 'unknown-pkg'},
-                )
-        self.assertEqual(response.status_code, 400)
-
-    def test_install_plugin_success(self) -> None:
-        from imbi_common.plugins.registry import LoadResult
-
-        result = LoadResult(loaded=['ssm'], errors={}, skipped=[])
-        with mock.patch(
-            'imbi_api.endpoints.admin_plugins.installer.install_package',
-            new_callable=mock.AsyncMock,
-            return_value=result,
-        ):
-            with testclient.TestClient(self.test_app) as client:
-                response = client.post(
-                    '/plugins/install',
-                    json={'package': 'imbi-plugin-ssm'},
-                )
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(data['loaded'], ['ssm'])
-
-    def test_uninstall_plugin_success(self) -> None:
-        with mock.patch(
-            'imbi_api.endpoints.admin_plugins.installer.uninstall_package',
-            new_callable=mock.AsyncMock,
-        ):
-            with testclient.TestClient(self.test_app) as client:
-                response = client.delete('/plugins/installed/imbi-plugin-ssm')
-        self.assertEqual(response.status_code, 204)
-
-    def test_uninstall_plugin_error(self) -> None:
-        from imbi_api.plugins.installer import InstallError
-
-        with mock.patch(
-            'imbi_api.endpoints.admin_plugins.installer.uninstall_package',
-            side_effect=InstallError('removal failed'),
-        ):
-            with testclient.TestClient(self.test_app) as client:
-                response = client.delete('/plugins/installed/imbi-plugin-ssm')
-        self.assertEqual(response.status_code, 400)
 
     def _make_entry(self) -> object:
         from imbi_common.plugins.base import (
@@ -195,7 +118,7 @@ class AdminPluginsEndpointTestCase(unittest.TestCase):
             ),
         ):
             with testclient.TestClient(self.test_app) as client:
-                response = client.get('/plugins/ssm')
+                response = client.get('/admin/plugins/ssm')
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data['slug'], 'ssm')
@@ -214,7 +137,9 @@ class AdminPluginsEndpointTestCase(unittest.TestCase):
             ),
         ):
             with testclient.TestClient(self.test_app) as client:
-                response = client.patch('/plugins/ssm', json={'enabled': True})
+                response = client.patch(
+                    '/admin/plugins/ssm', json={'enabled': True}
+                )
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertTrue(data['enabled'])
@@ -228,6 +153,6 @@ class AdminPluginsEndpointTestCase(unittest.TestCase):
         ):
             with testclient.TestClient(self.test_app) as client:
                 response = client.patch(
-                    '/plugins/no-such', json={'enabled': True}
+                    '/admin/plugins/no-such', json={'enabled': True}
                 )
         self.assertEqual(response.status_code, 404)

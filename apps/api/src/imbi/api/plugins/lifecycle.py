@@ -126,15 +126,3 @@ async def set_plugin_enabled(
     SET r.enabled = {enabled}
     """
     await db.execute(query, {'slug': slug, 'enabled': enabled}, [])
-
-
-def get_unavailable_slugs() -> list[str]:
-    """Return catalog slugs not present in the installed plugin registry."""
-    from imbi_api.plugins.catalog import list_catalog_entries
-
-    return [
-        slug
-        for entry in list_catalog_entries()
-        if entry['status'] == 'not_installed'
-        for slug in entry['slugs']
-    ]

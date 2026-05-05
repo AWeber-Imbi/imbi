@@ -1,5 +1,6 @@
 """Admin plugin management endpoints."""
 
+import importlib.metadata
 import typing
 
 import fastapi
@@ -15,14 +16,14 @@ from imbi_common.plugins.registry import (
 )
 
 from imbi_api.auth import permissions
-from imbi_api.plugins import catalog, installer
 from imbi_api.plugins.lifecycle import (
     get_enabled_map,
-    get_unavailable_slugs,
     set_plugin_enabled,
 )
 
-admin_plugins_router = fastapi.APIRouter(tags=['Admin: Plugins'])
+admin_plugins_router = fastapi.APIRouter(
+    prefix='/admin', tags=['Admin: Plugins']
+)
 
 
 def _serialize(entry: RegistryEntry, enabled: bool) -> dict[str, typing.Any]:
@@ -43,6 +44,24 @@ def _serialize(entry: RegistryEntry, enabled: bool) -> dict[str, typing.Any]:
     }
 
 
+def _placeholder(package_name: str) -> dict[str, typing.Any]:
+    return {
+        'slug': package_name,
+        'name': package_name,
+        'description': '',
+        'api_version': 0,
+        'auth_type': 'api_token',
+        'cacheable': False,
+        'enabled': False,
+        'package_name': package_name,
+        'package_version': None,
+        'docs_url': None,
+        'supported_tabs': [],
+        'options': [],
+        'credentials': [],
+    }
+
+
 @admin_plugins_router.get('/plugins')
 async def list_installed_plugins(
     db: graph.Pool,
@@ -60,26 +79,23 @@ async def list_installed_plugins(
     "Installed" entries available for assignment.
     """
     enabled_map = await get_enabled_map(db)
-    return {
-        'installed': [
-            _serialize(e, enabled_map.get(e.manifest.slug, False))
-            for e in list_plugins()
-        ],
-        'unavailable': get_unavailable_slugs(),
-    }
+    registered = list_plugins()
+    known_packages = {e.package_name for e in registered}
 
+    installed = [
+        _serialize(e, enabled_map.get(e.manifest.slug, False))
+        for e in registered
+    ]
 
-@admin_plugins_router.get('/plugins/catalog')
-async def list_plugin_catalog(
-    auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(
-            permissions.require_permission('admin:plugins:manage'),
-        ),
-    ],
-) -> list[catalog.CatalogEntry]:
-    """List the plugin catalog with install status."""
-    return catalog.list_catalog_entries()
+    for dist in importlib.metadata.distributions():
+        name = dist.metadata.get('Name', '') or ''
+        if (
+            name.lower().startswith('imbi-plugin-')
+            and name not in known_packages
+        ):
+            installed.append(_placeholder(name))
+
+    return {'installed': installed}
 
 
 @admin_plugins_router.get('/plugins/{slug}')
@@ -135,48 +151,3 @@ async def update_installed_plugin(
     payload = _serialize(entry, body.enabled)
     payload['data_types'] = [d.model_dump() for d in entry.manifest.data_types]
     return payload
-
-
-@admin_plugins_router.post('/plugins/install')
-async def install_plugin(
-    body: dict[str, str | None],
-    auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(
-            permissions.require_permission('admin:plugins:manage'),
-        ),
-    ],
-) -> dict[str, typing.Any]:
-    """Install a plugin package at runtime."""
-    package = body.get('package')
-    if not package:
-        raise fastapi.HTTPException(
-            status_code=400, detail='package is required'
-        )
-    version = body.get('version')
-    try:
-        result = await installer.install_package(package, version)
-    except installer.InstallError as e:
-        raise fastapi.HTTPException(status_code=400, detail=str(e)) from e
-    return {
-        'loaded': result.loaded,
-        'errors': result.errors,
-        'skipped': result.skipped,
-    }
-
-
-@admin_plugins_router.delete('/plugins/installed/{package}', status_code=204)
-async def uninstall_plugin(
-    package: str,
-    auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(
-            permissions.require_permission('admin:plugins:manage'),
-        ),
-    ],
-) -> None:
-    """Uninstall a plugin package at runtime."""
-    try:
-        await installer.uninstall_package(package)
-    except installer.InstallError as e:
-        raise fastapi.HTTPException(status_code=400, detail=str(e)) from e
