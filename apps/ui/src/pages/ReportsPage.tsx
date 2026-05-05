@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 
-import { BarChart3, TrendingUp } from 'lucide-react'
+import { BarChart3, GitCommitHorizontal, TrendingUp } from 'lucide-react'
 
 import { CommandBar } from '@/components/CommandBar'
 import { Navigation } from '@/components/Navigation'
 import { MonthlyImprovementReport } from '@/components/reports/MonthlyImprovementReport'
+import { ScoreHistoryReport } from '@/components/reports/ScoreHistoryReport'
 import { TeamKPIReport } from '@/components/reports/TeamKPIReport'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
@@ -23,6 +24,12 @@ const REPORTS: Report[] = [
     subtitle: 'Score improvement by team for a selected month',
   },
   {
+    description: 'Score trends over time per team',
+    id: 'score-history',
+    label: 'Score history',
+    subtitle: 'Avg score trend per team over time',
+  },
+  {
     description: 'Avg quality score per team',
     id: 'team-kpi',
     label: 'Team KPI',
@@ -30,10 +37,21 @@ const REPORTS: Report[] = [
   },
 ]
 
+const DEFAULT_REPORT = REPORTS[0].id
+const VALID_IDS = new Set(REPORTS.map((r) => r.id))
+
 export function ReportsPage() {
   usePageTitle('Reports')
-  const [activeId, setActiveId] = useState<string>(REPORTS[0].id)
+  const { reportId } = useParams<{ reportId?: string }>()
+  const navigate = useNavigate()
+
+  const activeId =
+    reportId && VALID_IDS.has(reportId) ? reportId : DEFAULT_REPORT
   const active = REPORTS.find((r) => r.id === activeId) ?? REPORTS[0]
+
+  function selectReport(id: string) {
+    navigate(`/reports/${id}`, { replace: true })
+  }
 
   return (
     <div className="min-h-screen bg-tertiary text-primary">
@@ -62,10 +80,12 @@ export function ReportsPage() {
                           : 'text-secondary hover:bg-secondary hover:text-primary'
                       }`}
                       key={r.id}
-                      onClick={() => setActiveId(r.id)}
+                      onClick={() => selectReport(r.id)}
                     >
                       {r.id === 'team-kpi' ? (
                         <BarChart3 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                      ) : r.id === 'score-history' ? (
+                        <GitCommitHorizontal className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
                       ) : (
                         <TrendingUp className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
                       )}
@@ -92,6 +112,7 @@ export function ReportsPage() {
             </div>
             {activeId === 'team-kpi' && <TeamKPIReport />}
             {activeId === 'monthly-improvement' && <MonthlyImprovementReport />}
+            {activeId === 'score-history' && <ScoreHistoryReport />}
           </div>
         </div>
       </main>

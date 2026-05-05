@@ -1797,6 +1797,16 @@ export const getScoreRollup = (
   signal?: AbortSignal,
 ) => apiClient.get<ScoreRollupRow[]>('/scores/rollup', { dimension }, signal)
 
+export interface GlobalScoreEvent {
+  change_reason: null | string
+  previous_score: null | number
+  project_id: string
+  project_name: string
+  score: number
+  team_key: string
+  timestamp: string
+}
+
 export interface MonthlyImprovementRow {
   current_avg_score: null | number
   dimension: string
@@ -1805,6 +1815,44 @@ export interface MonthlyImprovementRow {
   previous_avg_score: null | number
   project_count: number
 }
+
+export interface ScoreHistoryByTeamResponse {
+  granularity: 'day' | 'hour'
+  teams: TeamScoreSeries[]
+}
+
+export interface TeamScoreHistoryPoint {
+  score: number
+  timestamp: string
+}
+
+export interface TeamScoreSeries {
+  key: string
+  points: TeamScoreHistoryPoint[]
+}
+
+export const getScoreHistoryFeed = (
+  params?: {
+    from?: string
+    limit?: number
+    to?: string
+  },
+  signal?: AbortSignal,
+) => apiClient.get<GlobalScoreEvent[]>('/scores/history-feed', params, signal)
+
+export const getScoreHistoryByTeam = (
+  params?: {
+    from?: string
+    granularity?: 'day' | 'hour'
+    to?: string
+  },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<ScoreHistoryByTeamResponse>(
+    '/scores/history-by-team',
+    params,
+    signal,
+  )
 
 export const getMonthlyImprovement = (
   params: {

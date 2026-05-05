@@ -117,7 +117,7 @@ function App() {
                       <ReportsPage />
                     </ProtectedRoute>
                   }
-                  path="/reports"
+                  path="/reports/:reportId?"
                 />
                 <Route
                   element={

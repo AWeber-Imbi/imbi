@@ -204,12 +204,16 @@ export function MonthlyImprovementReport() {
                   {row.name}
                 </div>
                 <div className="px-5 py-3.5 text-right">
-                  <ImprovementValue value={row.improvement} />
+                  <ImprovementPill value={row.improvement} />
                 </div>
-                <div className="px-5 py-3.5 text-right font-mono text-[13px] tabular-nums text-primary">
-                  {row.current_avg_score != null
-                    ? `${row.current_avg_score.toFixed(2)}%`
-                    : '—'}
+                <div className="px-5 py-3.5 text-right">
+                  {row.current_avg_score != null ? (
+                    <ScorePill score={row.current_avg_score} />
+                  ) : (
+                    <span className="inline-flex h-6 items-center rounded px-2 font-mono text-xs font-medium tabular-nums text-tertiary">
+                      —
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
@@ -223,12 +227,16 @@ export function MonthlyImprovementReport() {
                 {orgName} wide
               </div>
               <div className="px-5 py-4 text-right">
-                <ImprovementValue bold value={orgWide.improvement} />
+                <ImprovementPill value={orgWide.improvement} />
               </div>
-              <div className="px-5 py-4 text-right font-mono text-[13px] font-medium tabular-nums text-primary">
-                {orgWide.avg_score != null
-                  ? `${orgWide.avg_score.toFixed(2)}%`
-                  : '—'}
+              <div className="px-5 py-4 text-right">
+                {orgWide.avg_score != null ? (
+                  <ScorePill score={orgWide.avg_score} />
+                ) : (
+                  <span className="inline-flex h-6 items-center rounded px-2 font-mono text-xs font-medium tabular-nums text-tertiary">
+                    —
+                  </span>
+                )}
               </div>
             </div>
           </>
@@ -242,16 +250,10 @@ const COL_GRID = {
   gridTemplateColumns: '1fr 220px 220px',
 }
 
-function ImprovementValue({
-  bold = false,
-  value,
-}: {
-  bold?: boolean
-  value: null | number
-}) {
+function ImprovementPill({ value }: { value: null | number }) {
   if (value == null) {
     return (
-      <span className="font-mono text-[13px] tabular-nums text-tertiary">
+      <span className="inline-flex h-6 items-center rounded px-2 font-mono text-xs font-medium tabular-nums text-tertiary">
         —
       </span>
     )
@@ -259,6 +261,11 @@ function ImprovementValue({
 
   const positive = value > 0
   const zero = value === 0
+  const bg = zero
+    ? 'var(--color-background-secondary)'
+    : positive
+      ? 'var(--color-background-success)'
+      : 'var(--color-background-danger)'
   const color = zero
     ? 'var(--color-text-secondary)'
     : positive
@@ -267,11 +274,37 @@ function ImprovementValue({
 
   return (
     <span
-      className={`font-mono text-[13px] tabular-nums ${bold ? 'font-medium' : ''}`}
-      style={{ color }}
+      className="inline-flex h-6 items-center rounded px-2 font-mono text-xs font-medium tabular-nums"
+      style={{ background: bg, color }}
     >
       {positive ? '+' : ''}
       {value.toFixed(2)}
+    </span>
+  )
+}
+
+function scoreBgColor(score: number): string {
+  if (score >= 85) return 'var(--color-background-success)'
+  if (score >= 70) return 'var(--color-background-warning)'
+  return 'var(--color-background-danger)'
+}
+
+function scoreColor(score: number): string {
+  if (score >= 85) return 'var(--color-text-success)'
+  if (score >= 70) return 'var(--color-text-warning)'
+  return 'var(--color-text-danger)'
+}
+
+function ScorePill({ score }: { score: number }) {
+  return (
+    <span
+      className="inline-flex h-6 items-center rounded px-2 font-mono text-xs font-medium tabular-nums"
+      style={{
+        background: scoreBgColor(score),
+        color: scoreColor(score),
+      }}
+    >
+      {score.toFixed(1)}
     </span>
   )
 }

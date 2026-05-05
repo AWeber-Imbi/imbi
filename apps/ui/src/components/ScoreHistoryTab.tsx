@@ -405,7 +405,6 @@ function EventTimeline({
         const reason = e.change_reason!
         const delta =
           e.previous_score != null ? e.score - e.previous_score : null
-        const positive = delta != null && delta >= 0
         const isHov = hoveredIdx === i
         const correlated = eventCorrelations.get(i)
         return (
@@ -416,7 +415,10 @@ function EventTimeline({
             key={i}
             onMouseEnter={() => setHoveredIdx(i)}
             onMouseLeave={() => setHoveredIdx(null)}
-            style={{ cursor: 'default', gridTemplateColumns: '80px 1fr auto' }}
+            style={{
+              cursor: 'default',
+              gridTemplateColumns: '80px 1fr auto 72px',
+            }}
           >
             <div>
               <div className="text-xs font-medium text-primary">
@@ -462,7 +464,7 @@ function EventTimeline({
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2 font-mono tabular-nums">
+            <div className="flex items-center justify-end gap-1.5 font-mono tabular-nums">
               {e.previous_score != null && (
                 <>
                   <span className="text-xs text-tertiary">
@@ -474,16 +476,9 @@ function EventTimeline({
               <span className="text-sm font-semibold text-primary">
                 {Math.round(e.score)}
               </span>
-              {delta != null && (
-                <span
-                  className={`min-w-[48px] text-right text-xs font-semibold ${
-                    positive ? 'text-success' : 'text-danger'
-                  }`}
-                >
-                  {positive ? '+' : ''}
-                  {Math.round(delta)}
-                </span>
-              )}
+            </div>
+            <div className="flex items-center justify-end">
+              {delta != null && <DeltaBadge delta={delta} />}
             </div>
           </div>
         )
@@ -597,6 +592,30 @@ const NON_ATTRIBUTE_REASONS = new Set([
 
 // ---------- Event timeline ----------
 
+function DeltaBadge({ delta }: { delta: number }) {
+  const positive = delta > 0
+  const zero = delta === 0
+  const bg = zero
+    ? 'var(--color-background-secondary)'
+    : positive
+      ? 'var(--color-background-success)'
+      : 'var(--color-background-danger)'
+  const color = zero
+    ? 'var(--color-text-secondary)'
+    : positive
+      ? 'var(--color-text-success)'
+      : 'var(--color-text-danger)'
+  return (
+    <span
+      className="inline-flex h-6 items-center rounded px-2 font-mono text-xs font-medium tabular-nums"
+      style={{ background: bg, color }}
+    >
+      {positive ? '+' : ''}
+      {Math.round(delta)}
+    </span>
+  )
+}
+
 function ReasonChip({ reason }: { reason: string }) {
   const meta = REASON_META[reason as ScoreChangeReason]
   if (meta) {
@@ -631,6 +650,8 @@ function ReasonChip({ reason }: { reason: string }) {
     </span>
   )
 }
+
+// ---------- Delta badge ----------
 
 function ScoreChart({
   annotations,

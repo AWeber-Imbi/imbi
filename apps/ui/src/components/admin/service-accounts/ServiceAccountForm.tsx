@@ -1,50 +1,94 @@
 import { useState } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, Trash2 } from 'lucide-react'
 
 import { getRoles } from '@/api/endpoints'
 import { FormHeader } from '@/components/admin/form-header'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useDirtyState } from '@/hooks/useDirtyState'
 import { useFormScaffold } from '@/hooks/useFormScaffold'
-import type { ServiceAccount, ServiceAccountCreate } from '@/types'
+import type {
+  ApiKeyCreated,
+  ClientCredentialCreated,
+  Role,
+  ServiceAccount,
+  ServiceAccountCreate,
+} from '@/types'
+
+import { ApiKeysSection } from './ApiKeysSection'
+import { AvatarUpload } from './AvatarUpload'
+import { ClientCredentialsSection } from './ClientCredentialsSection'
+import { OrgMembershipsCard } from './OrgMembershipsCard'
+import { useServiceAccountMutations } from './useServiceAccountMutations'
+
+// ── Interfaces (alphabetical) ─────────────────────────────────────────────
+
+interface ActiveToggleRowProps {
+  description: string
+  disabled?: boolean
+  label: string
+  onChange: (v: boolean) => void
+  value: boolean
+}
+
+interface EditSectionsLeftProps {
+  account: ServiceAccount
+  availableRoles: Role[]
+  rolesError: boolean
+  rolesLoading: boolean
+}
+
+interface IdentityCardEditProps {
+  account: ServiceAccount
+  description: string
+  displayName: string
+  isActive: boolean
+  isLoading: boolean
+  onActiveChange: (v: boolean) => void
+  onBlurDisplayName: () => void
+  onDescriptionChange: (v: string) => void
+  onDisplayNameChange: (v: string) => void
+  touched: Record<string, boolean>
+  validationErrors: Record<string, string>
+}
 
 interface ServiceAccountFormProps {
   account: null | ServiceAccount
   error?: null | { message?: string; response?: { data?: { detail?: string } } }
   isLoading?: boolean
   onCancel: () => void
+  onDelete?: () => void
   onSave: (data: ServiceAccountCreate) => void
 }
+
+// ── Components (alphabetical) ─────────────────────────────────────────────
 
 export function ServiceAccountForm({
   account,
   error,
   isLoading = false,
   onCancel,
+  onDelete,
   onSave,
 }: ServiceAccountFormProps) {
   const isEditing = !!account
 
-  // Basic info
   const [slug, setSlug] = useState(account?.slug || '')
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(isEditing)
   const [displayName, setDisplayName] = useState(account?.display_name || '')
   const [description, setDescription] = useState(account?.description || '')
-
-  // Account status
   const [isActive, setIsActive] = useState(account?.is_active ?? true)
 
-  // Organization membership (for creation only)
   const { organizations } = useOrganization()
   const [organizationSlug, setOrganizationSlug] = useState(
     organizations.length === 1 ? organizations[0].slug : '',
   )
   const [roleSlug, setRoleSlug] = useState('')
 
-  // Fetch available roles
   const {
     data: availableRoles = [],
     isError: rolesError,
@@ -54,7 +98,6 @@ export function ServiceAccountForm({
     queryKey: ['roles'],
   })
 
-  // Validation state
   const {
     handleFieldChange,
     setTouched,
@@ -63,9 +106,6 @@ export function ServiceAccountForm({
     validationErrors,
   } = useFormScaffold()
 
-  // Warn on unsaved navigation. Snapshot the initial values once at mount so
-  // the baseline doesn't drift when `organizations` loads asynchronously (which
-  // would otherwise flip an untouched form into "dirty").
   const [initialFormData] = useState(() => ({
     description: account?.description ?? '',
     display_name: account?.display_name ?? '',
@@ -84,7 +124,6 @@ export function ServiceAccountForm({
   }
   useDirtyState(initialFormData, currentFormData, { enabled: !isLoading })
 
-  // Validation functions
   const validateSlug = (value: string): string => {
     if (!value.trim()) return 'Slug is required'
     if (!/^[a-z][a-z0-9-]*$/.test(value)) {
@@ -98,7 +137,6 @@ export function ServiceAccountForm({
     return ''
   }
 
-  // Validate all fields
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {}
 
@@ -127,123 +165,148 @@ export function ServiceAccountForm({
 
   const handleSave = () => {
     if (!validateForm()) return
-
-    const data: ServiceAccountCreate = {
+    onSave({
       description: description.trim() || null,
       display_name: displayName.trim(),
       is_active: isActive,
       organization_slug: organizationSlug,
       role_slug: roleSlug,
       slug: slug.trim(),
-    }
+    })
+  }
 
-    onSave(data)
+  const handleDisplayNameChange = (value: string) => {
+    setDisplayName(value)
+    if (!slugManuallyEdited) {
+      setSlug(toSlug(value))
+    }
+    handleFieldChange('display_name')
   }
 
   const handleSlugChange = (value: string) => {
-    // Only allow valid slug characters
-    const sanitized = value.toLowerCase().replace(/[^a-z0-9-]/g, '')
-    setSlug(sanitized)
+    setSlug(toSlug(value))
+    setSlugManuallyEdited(true)
     handleFieldChange('slug')
+  }
+
+  const header = (
+    <FormHeader
+      createLabel="Create Service Account"
+      isEditing={isEditing}
+      isLoading={isLoading}
+      onCancel={onCancel}
+      onSave={handleSave}
+      subtitle={
+        isEditing
+          ? undefined
+          : 'Create an automated service account for API access'
+      }
+      title={isEditing ? 'Edit Service Account' : 'Create Service Account'}
+    />
+  )
+
+  const errorBanner = error && (
+    <div className="rounded-lg border border-danger bg-danger p-4">
+      <div className="flex items-start gap-3">
+        <AlertCircle className="h-5 w-5 flex-shrink-0 text-danger" />
+        <div>
+          <div className="font-medium text-danger">
+            Failed to save service account
+          </div>
+          <div className="mt-1 text-sm text-danger">
+            {error?.response?.data?.detail ||
+              error?.message ||
+              'An error occurred'}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
+  if (isEditing && account) {
+    return (
+      <div className="space-y-6">
+        {header}
+        {errorBanner}
+        <div className="grid grid-cols-2 items-start gap-6">
+          {/* Left column: identity + org memberships */}
+          <div className="space-y-6">
+            <IdentityCardEdit
+              account={account}
+              description={description}
+              displayName={displayName}
+              isActive={isActive}
+              isLoading={isLoading}
+              onActiveChange={setIsActive}
+              onBlurDisplayName={() => {
+                setTouched({ ...touched, display_name: true })
+                const err = validateDisplayName(displayName)
+                if (err)
+                  setValidationErrors({
+                    ...validationErrors,
+                    display_name: err,
+                  })
+              }}
+              onDescriptionChange={(v) => {
+                setDescription(v)
+                handleFieldChange('description')
+              }}
+              onDisplayNameChange={(v) => {
+                setDisplayName(v)
+                handleFieldChange('display_name')
+              }}
+              touched={touched}
+              validationErrors={validationErrors}
+            />
+            <EditSectionsLeft
+              account={account}
+              availableRoles={availableRoles}
+              rolesError={rolesError}
+              rolesLoading={rolesLoading}
+            />
+          </div>
+
+          {/* Right column: credentials + API keys */}
+          <EditSectionsRight account={account} />
+        </div>
+
+        {/* Danger zone (full width) */}
+        {onDelete && (
+          <DangerZoneCard
+            displayName={account.display_name}
+            onDelete={onDelete}
+          />
+        )}
+      </div>
+    )
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <FormHeader
-        createLabel="Create Service Account"
-        isEditing={isEditing}
-        isLoading={isLoading}
-        onCancel={onCancel}
-        onSave={handleSave}
-        subtitle={
-          isEditing
-            ? `Editing ${account?.display_name}`
-            : 'Create an automated service account for API access'
-        }
-        title={isEditing ? 'Edit Service Account' : 'Create Service Account'}
-      />
+      {header}
+      {errorBanner}
 
-      {/* API Error Display */}
-      {error && (
-        <div className="rounded-lg border border-danger bg-danger p-4">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 flex-shrink-0 text-danger" />
-            <div>
-              <div className="font-medium text-danger">
-                Failed to save service account
-              </div>
-              <div className="mt-1 text-sm text-danger">
-                {error?.response?.data?.detail ||
-                  error?.message ||
-                  'An error occurred'}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Section 1: Basic Information */}
+      {/* Identity card (create mode) */}
       <Card>
         <CardContent className="space-y-4 pt-6">
           <div className="grid grid-cols-2 gap-4">
-            {/* Slug */}
-            {!isEditing && (
-              <div className="col-span-2">
-                <label className="mb-1.5 block text-sm text-secondary">
-                  Slug <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  className=""
-                  disabled={isLoading}
-                  onBlur={() => {
-                    setTouched({ ...touched, slug: true })
-                    const error = validateSlug(slug)
-                    if (error) {
-                      setValidationErrors({
-                        ...validationErrors,
-                        slug: error,
-                      })
-                    }
-                  }}
-                  onChange={(e) => handleSlugChange(e.target.value)}
-                  placeholder="my-service-account"
-                  value={slug}
-                />
-                <p className="mt-1 text-xs text-tertiary">
-                  Lowercase letters, numbers, and hyphens only. Must start with
-                  a letter.
-                </p>
-                {touched.slug && validationErrors.slug && (
-                  <p className="mt-1 text-sm text-red-600">
-                    {validationErrors.slug}
-                  </p>
-                )}
-              </div>
-            )}
-
             {/* Display Name */}
-            <div className="col-span-2">
+            <div>
               <label className="mb-1.5 block text-sm text-secondary">
                 Display Name <span className="text-red-500">*</span>
               </label>
               <Input
-                className=""
                 disabled={isLoading}
                 onBlur={() => {
                   setTouched({ ...touched, display_name: true })
-                  const error = validateDisplayName(displayName)
-                  if (error) {
+                  const err = validateDisplayName(displayName)
+                  if (err)
                     setValidationErrors({
                       ...validationErrors,
-                      display_name: error,
+                      display_name: err,
                     })
-                  }
                 }}
-                onChange={(e) => {
-                  setDisplayName(e.target.value)
-                  handleFieldChange('display_name')
-                }}
+                onChange={(e) => handleDisplayNameChange(e.target.value)}
                 placeholder="CI/CD Pipeline"
                 value={displayName}
               />
@@ -254,123 +317,434 @@ export function ServiceAccountForm({
               )}
             </div>
 
-            {/* Description */}
-            <div className="col-span-2">
+            {/* Slug */}
+            <div>
               <label className="mb-1.5 block text-sm text-secondary">
-                Description
+                Slug <span className="text-red-500">*</span>
               </label>
-              <textarea
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+              <Input
                 disabled={isLoading}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="What does this service account do?"
-                rows={3}
-                value={description}
+                onBlur={() => {
+                  setTouched({ ...touched, slug: true })
+                  const err = validateSlug(slug)
+                  if (err)
+                    setValidationErrors({ ...validationErrors, slug: err })
+                }}
+                onChange={(e) => handleSlugChange(e.target.value)}
+                placeholder="my-service-account"
+                value={slug}
               />
+              <p className="mt-1 text-xs text-tertiary">
+                Lowercase letters, numbers, and hyphens only.
+              </p>
+              {touched.slug && validationErrors.slug && (
+                <p className="mt-1 text-sm text-red-600">
+                  {validationErrors.slug}
+                </p>
+              )}
             </div>
           </div>
+
+          {/* Description */}
+          <div>
+            <label className="mb-1.5 flex items-center justify-between text-sm text-secondary">
+              <span>Description</span>
+              <span className="text-xs text-tertiary">
+                {description.length}/500
+              </span>
+            </label>
+            <textarea
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={isLoading}
+              maxLength={500}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What does this service account do?"
+              rows={3}
+              value={description}
+            />
+          </div>
+
+          {/* Active toggle */}
+          <ActiveToggleRow
+            description="Inactive service accounts cannot authenticate via API or OAuth."
+            disabled={isLoading}
+            label="Account active"
+            onChange={setIsActive}
+            value={isActive}
+          />
         </CardContent>
       </Card>
 
-      {/* Section 2: Organization Membership (creation only) */}
-      {!isEditing && (
-        <Card>
-          <CardContent className="space-y-4 pt-6">
-            <p className="mb-4 text-sm text-secondary">
-              Service accounts must belong to at least one organization with a
-              role to have any permissions.
-            </p>
+      {/* Organization Membership (creation only) */}
+      <Card>
+        <CardContent className="space-y-4 pt-6">
+          <p className="mb-4 text-sm text-secondary">
+            Service accounts must belong to at least one organization with a
+            role to have any permissions.
+          </p>
 
-            <div className="grid grid-cols-2 gap-4">
-              {/* Organization */}
-              <div>
-                <label className="mb-1.5 block text-sm text-secondary">
-                  Organization <span className="text-red-500">*</span>
-                </label>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1.5 block text-sm text-secondary">
+                Organization <span className="text-red-500">*</span>
+              </label>
+              <select
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={isLoading || organizations.length === 1}
+                onChange={(e) => {
+                  setOrganizationSlug(e.target.value)
+                  handleFieldChange('organization_slug')
+                }}
+                value={organizationSlug}
+              >
+                {organizations.length !== 1 && (
+                  <option value="">Select an organization...</option>
+                )}
+                {organizations.map((org) => (
+                  <option key={org.slug} value={org.slug}>
+                    {org.name}
+                  </option>
+                ))}
+              </select>
+              {touched.organization_slug &&
+                validationErrors.organization_slug && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {validationErrors.organization_slug}
+                  </p>
+                )}
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm text-secondary">
+                Role <span className="text-red-500">*</span>
+              </label>
+              {rolesLoading ? (
+                <p className="text-sm text-secondary">Loading roles...</p>
+              ) : rolesError ? (
+                <p className="text-sm text-danger">
+                  Failed to load roles. Please refresh and try again.
+                </p>
+              ) : (
                 <select
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={isLoading}
                   onChange={(e) => {
-                    setOrganizationSlug(e.target.value)
-                    handleFieldChange('organization_slug')
+                    setRoleSlug(e.target.value)
+                    handleFieldChange('role_slug')
                   }}
-                  value={organizationSlug}
+                  value={roleSlug}
                 >
-                  <option value="">Select an organization...</option>
-                  {organizations.map((org) => (
-                    <option key={org.slug} value={org.slug}>
-                      {org.name}
+                  <option value="">Select a role...</option>
+                  {availableRoles.map((role) => (
+                    <option key={role.slug} value={role.slug}>
+                      {role.name}
                     </option>
                   ))}
                 </select>
-                {touched.organization_slug &&
-                  validationErrors.organization_slug && (
-                    <p className="mt-1 text-sm text-red-600">
-                      {validationErrors.organization_slug}
-                    </p>
-                  )}
-              </div>
-
-              {/* Role */}
-              <div>
-                <label className="mb-1.5 block text-sm text-secondary">
-                  Role <span className="text-red-500">*</span>
-                </label>
-                {rolesLoading ? (
-                  <p className="text-sm text-secondary">Loading roles...</p>
-                ) : rolesError ? (
-                  <p className="text-sm text-danger">
-                    Failed to load roles. Please refresh and try again.
-                  </p>
-                ) : (
-                  <select
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    disabled={isLoading}
-                    onChange={(e) => {
-                      setRoleSlug(e.target.value)
-                      handleFieldChange('role_slug')
-                    }}
-                    value={roleSlug}
-                  >
-                    <option value="">Select a role...</option>
-                    {availableRoles.map((role) => (
-                      <option key={role.slug} value={role.slug}>
-                        {role.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                {touched.role_slug && validationErrors.role_slug && (
-                  <p className="mt-1 text-sm text-red-600">
-                    {validationErrors.role_slug}
-                  </p>
-                )}
-              </div>
+              )}
+              {touched.role_slug && validationErrors.role_slug && (
+                <p className="mt-1 text-sm text-red-600">
+                  {validationErrors.role_slug}
+                </p>
+              )}
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Section 3: Account Status */}
-      <Card>
-        <CardContent className="space-y-4 pt-6">
-          <div>
-            <label className="flex cursor-pointer items-center gap-2">
-              <input
-                checked={isActive}
-                className="rounded"
-                disabled={isLoading}
-                onChange={(e) => setIsActive(e.target.checked)}
-                type="checkbox"
-              />
-              <span className="text-secondary">Account Active</span>
-            </label>
-            <p className="ml-6 mt-1 text-sm text-secondary">
-              Inactive service accounts cannot authenticate via API
-            </p>
           </div>
         </CardContent>
       </Card>
     </div>
   )
+}
+
+function ActiveToggleRow({
+  description,
+  disabled,
+  label,
+  onChange,
+  value,
+}: ActiveToggleRowProps) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-tertiary bg-secondary px-3 py-2.5">
+      <div className="flex-1">
+        <div className="text-sm font-medium text-primary">{label}</div>
+        <div className="text-xs text-tertiary">{description}</div>
+      </div>
+      <button
+        aria-checked={value}
+        className={`focus-visible:ring-action relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+          value
+            ? 'bg-[var(--color-border-success)]'
+            : 'bg-[var(--color-border-primary)]'
+        }`}
+        disabled={disabled}
+        onClick={() => onChange(!value)}
+        role="switch"
+        type="button"
+      >
+        <span
+          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-150 ease-in-out ${
+            value ? 'translate-x-4' : 'translate-x-0'
+          }`}
+        />
+      </button>
+    </div>
+  )
+}
+
+function DangerZoneCard({
+  displayName,
+  onDelete,
+}: {
+  displayName: string
+  onDelete: () => void
+}) {
+  return (
+    <Card className="from-danger/30 border-danger bg-gradient-to-b to-transparent">
+      <CardContent className="pt-6">
+        <div className="mb-4 flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 text-danger" />
+          <h3 className="text-sm font-semibold text-danger">Danger zone</h3>
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-medium text-primary">
+              Delete service account
+            </div>
+            <div className="text-xs text-tertiary">
+              Permanently remove this account and revoke all credentials. This
+              cannot be undone.
+            </div>
+          </div>
+          <Button
+            className="ml-6 flex-shrink-0"
+            onClick={() => {
+              if (
+                confirm(
+                  `Delete "${displayName}"? This will revoke all credentials and cannot be undone.`,
+                )
+              ) {
+                onDelete()
+              }
+            }}
+            size="sm"
+            variant="outline"
+          >
+            <Trash2 className="mr-2 h-3.5 w-3.5 text-danger" />
+            <span className="text-danger">Delete account</span>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function EditSectionsLeft({
+  account,
+  availableRoles,
+  rolesError,
+  rolesLoading,
+}: EditSectionsLeftProps) {
+  const { addOrgMutation, removeOrgMutation, updateOrgRoleMutation } =
+    useServiceAccountMutations(account)
+
+  return (
+    <OrgMembershipsCard
+      account={account}
+      addOrgMutation={addOrgMutation}
+      availableRoles={availableRoles}
+      onConfirmRemove={(orgSlug, orgName) => {
+        if (confirm(`Remove ${account.display_name} from ${orgName}?`)) {
+          removeOrgMutation.mutate(orgSlug)
+        }
+      }}
+      removeOrgMutation={removeOrgMutation}
+      rolesError={rolesError}
+      rolesLoading={rolesLoading}
+      updateOrgRoleMutation={updateOrgRoleMutation}
+    />
+  )
+}
+
+function EditSectionsRight({ account }: { account: ServiceAccount }) {
+  const [newlyCreatedKey, setNewlyCreatedKey] = useState<ApiKeyCreated | null>(
+    null,
+  )
+  const [newlyCreatedCredential, setNewlyCreatedCredential] =
+    useState<ClientCredentialCreated | null>(null)
+
+  const {
+    createApiKeyMutation,
+    createCredentialMutation,
+    revokeApiKeyMutation,
+    revokeCredentialMutation,
+    rotateApiKeyMutation,
+    rotateCredentialMutation,
+  } = useServiceAccountMutations(account)
+
+  return (
+    <div className="space-y-6">
+      <ClientCredentialsSection
+        account={account}
+        createCredentialMutation={createCredentialMutation}
+        newlyCreatedCredential={newlyCreatedCredential}
+        onConfirmRevoke={(clientId) => {
+          if (
+            confirm('Revoke this credential? This action cannot be undone.')
+          ) {
+            revokeCredentialMutation.mutate(clientId)
+          }
+        }}
+        onConfirmRotate={(clientId) => {
+          if (
+            confirm(
+              'Rotate this credential? The old secret will stop working immediately.',
+            )
+          ) {
+            rotateCredentialMutation.mutate(clientId, {
+              onSuccess: (data) => setNewlyCreatedCredential(data),
+            })
+          }
+        }}
+        onNewlyCreatedCredentialChange={setNewlyCreatedCredential}
+        revokeCredentialMutation={revokeCredentialMutation}
+        rotateCredentialMutation={rotateCredentialMutation}
+      />
+
+      <ApiKeysSection
+        account={account}
+        createApiKeyMutation={createApiKeyMutation}
+        newlyCreatedKey={newlyCreatedKey}
+        onConfirmRevoke={(keyId) => {
+          if (confirm('Revoke this API key? This action cannot be undone.')) {
+            revokeApiKeyMutation.mutate(keyId)
+          }
+        }}
+        onConfirmRotate={(keyId) => {
+          if (
+            confirm(
+              'Rotate this API key? The old key will stop working immediately.',
+            )
+          ) {
+            rotateApiKeyMutation.mutate(keyId, {
+              onSuccess: (data) => setNewlyCreatedKey(data),
+            })
+          }
+        }}
+        onNewlyCreatedKeyChange={setNewlyCreatedKey}
+        revokeApiKeyMutation={revokeApiKeyMutation}
+        rotateApiKeyMutation={rotateApiKeyMutation}
+      />
+    </div>
+  )
+}
+
+function IdentityCardEdit({
+  account,
+  description,
+  displayName,
+  isActive,
+  isLoading,
+  onActiveChange,
+  onBlurDisplayName,
+  onDescriptionChange,
+  onDisplayNameChange,
+  touched,
+  validationErrors,
+}: IdentityCardEditProps) {
+  const { removeAvatarMutation, uploadAvatarMutation } =
+    useServiceAccountMutations(account)
+
+  return (
+    <Card>
+      <CardContent className="space-y-4 pt-6">
+        {/* Display name + slug in one row */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1.5 block text-sm text-secondary">
+              Display name <span className="text-red-500">*</span>
+            </label>
+            <Input
+              disabled={isLoading}
+              onBlur={onBlurDisplayName}
+              onChange={(e) => onDisplayNameChange(e.target.value)}
+              placeholder="e.g. GitHub Integration"
+              value={displayName}
+            />
+            {touched.display_name && validationErrors.display_name && (
+              <p className="mt-1 text-sm text-red-600">
+                {validationErrors.display_name}
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="mb-1.5 flex items-center justify-between text-sm text-secondary">
+              <span>Slug</span>
+              <span className="text-xs text-tertiary">
+                URL identifier · read-only
+              </span>
+            </label>
+            <Input
+              className="font-mono text-tertiary"
+              disabled
+              value={account.slug}
+            />
+          </div>
+        </div>
+
+        {/* Description */}
+        <div>
+          <label className="mb-1.5 flex items-center justify-between text-sm text-secondary">
+            <span>Description</span>
+            <span className="text-xs text-tertiary">
+              {description.length}/500
+            </span>
+          </label>
+          <textarea
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={isLoading}
+            maxLength={500}
+            onChange={(e) => onDescriptionChange(e.target.value)}
+            placeholder="What does this service account do? Who owns it?"
+            rows={3}
+            value={description}
+          />
+        </div>
+
+        {/* Avatar */}
+        <div>
+          <label className="mb-1.5 block text-sm text-secondary">Avatar</label>
+          <div className="flex items-center gap-3">
+            <AvatarUpload
+              avatarUrl={account.avatar_url}
+              displayName={displayName}
+              isRemoving={removeAvatarMutation.isPending}
+              isUploading={uploadAvatarMutation.isPending}
+              onRemove={() => removeAvatarMutation.mutate()}
+              onUpload={(file) => uploadAvatarMutation.mutate(file)}
+            />
+            <span className="text-xs text-tertiary">
+              PNG or SVG · max 256 KB
+            </span>
+          </div>
+        </div>
+
+        {/* Active toggle */}
+        <ActiveToggleRow
+          description="Inactive service accounts cannot authenticate via API or OAuth."
+          disabled={isLoading}
+          label="Account active"
+          onChange={onActiveChange}
+          value={isActive}
+        />
+      </CardContent>
+    </Card>
+  )
+}
+
+function toSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
 }

@@ -4364,6 +4364,8 @@ export interface components {
             created_at: string;
             /** Last Authenticated */
             last_authenticated?: string | null;
+            /** Avatar Url */
+            avatar_url?: string | null;
             /**
              * Organizations
              * @default []

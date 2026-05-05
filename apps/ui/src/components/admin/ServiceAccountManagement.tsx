@@ -22,7 +22,6 @@ import type {
 
 import { Badge } from '../ui/badge'
 import { AdminSection } from './AdminSection'
-import { ServiceAccountDetail } from './service-accounts/ServiceAccountDetail'
 import { ServiceAccountForm } from './service-accounts/ServiceAccountForm'
 
 type StatusFilter = 'active' | 'all' | 'inactive'
@@ -78,8 +77,7 @@ export function ServiceAccountManagement() {
 
   // Fetch full SA detail (with orgs) when viewing/editing a specific account
   const { data: selectedAccount = null } = useQuery({
-    enabled:
-      !!selectedAccountSlug && (viewMode === 'detail' || viewMode === 'edit'),
+    enabled: !!selectedAccountSlug && viewMode === 'edit',
     queryFn: ({ signal }) => getServiceAccount(selectedAccountSlug!, signal),
     queryKey: ['serviceAccount', selectedAccountSlug],
   })
@@ -89,10 +87,6 @@ export function ServiceAccountManagement() {
   }
 
   const handleViewClick = (account: ServiceAccount) => {
-    goToEdit(account.slug)
-  }
-
-  const handleEditClick = (account: ServiceAccount) => {
     goToEdit(account.slug)
   }
 
@@ -136,18 +130,12 @@ export function ServiceAccountManagement() {
         account={selectedAccount}
         error={createMutation.error || updateMutation.error}
         isLoading={createMutation.isPending || updateMutation.isPending}
+        key={selectedAccount?.slug ?? 'new'}
         onCancel={handleCancel}
+        onDelete={
+          selectedAccount ? () => handleDelete(selectedAccount) : undefined
+        }
         onSave={handleSave}
-      />
-    )
-  }
-
-  if (viewMode === 'detail' && selectedAccount) {
-    return (
-      <ServiceAccountDetail
-        account={selectedAccount}
-        onBack={handleCancel}
-        onEdit={() => handleEditClick(selectedAccount)}
       />
     )
   }

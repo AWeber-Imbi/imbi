@@ -5,12 +5,15 @@ import {
   addServiceAccountToOrg,
   createClientCredential,
   createServiceAccountApiKey,
+  getUploadUrl,
   removeServiceAccountFromOrg,
   revokeClientCredential,
   revokeServiceAccountApiKey,
   rotateClientCredential,
   rotateServiceAccountApiKey,
+  updateServiceAccount,
   updateServiceAccountOrgRole,
+  uploadFile,
 } from '@/api/endpoints'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { buildReplacePatch } from '@/lib/json-patch'
@@ -159,15 +162,54 @@ export function useServiceAccountMutations(account: ServiceAccount) {
     },
   })
 
+  const uploadAvatarMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const upload = await uploadFile(file)
+      const avatarUrl = getUploadUrl(upload.id)
+      return updateServiceAccount(
+        account.slug,
+        buildReplacePatch({ avatar_url: avatarUrl }),
+      )
+    },
+    onError: (error: unknown) => {
+      toast.error(`Failed to upload avatar: ${extractApiErrorDetail(error)}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['serviceAccounts'] })
+      queryClient.invalidateQueries({
+        queryKey: ['serviceAccount', account.slug],
+      })
+    },
+  })
+
+  const removeAvatarMutation = useMutation({
+    mutationFn: () =>
+      updateServiceAccount(
+        account.slug,
+        buildReplacePatch({ avatar_url: null }),
+      ),
+    onError: (error: unknown) => {
+      toast.error(`Failed to remove avatar: ${extractApiErrorDetail(error)}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['serviceAccounts'] })
+      queryClient.invalidateQueries({
+        queryKey: ['serviceAccount', account.slug],
+      })
+    },
+  })
+
   return {
     addOrgMutation,
     createApiKeyMutation,
     createCredentialMutation,
+    removeAvatarMutation,
     removeOrgMutation,
     revokeApiKeyMutation,
     revokeCredentialMutation,
     rotateApiKeyMutation,
     rotateCredentialMutation,
     updateOrgRoleMutation,
+    uploadAvatarMutation,
   }
 }
