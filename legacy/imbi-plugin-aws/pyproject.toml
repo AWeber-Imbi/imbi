@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27,<1",
-  "imbi-common>=0.2.0",
+  "imbi-common>=0.3.0",
   "pydantic>=2",
 ]
 
@@ -118,3 +118,6 @@ default-groups = ["dev"]
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
+
+[tool.uv.sources]
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", rev = "feature/plugin-manifest-display-fields" }
