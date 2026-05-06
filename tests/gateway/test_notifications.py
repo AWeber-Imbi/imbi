@@ -385,6 +385,19 @@ class ProcessNotificationTests(helpers.TestCase):
                 ['r'],
             )
 
+    async def test_invalid_json_body_returns_unprocessable_content(
+        self,
+    ) -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=self.app), base_url='http://test'
+        ) as client:
+            response = await client.post(
+                f'/notifications/{self.webhook_id}',
+                content=b'not valid json',
+                headers={'content-type': 'application/json'},
+            )
+        self.assertEqual(422, response.status_code)
+
     async def test_handler_exception_is_caught(self) -> None:
         # Handler raises at dispatch time; exception logged, 200 returned
         await self._add_rule(

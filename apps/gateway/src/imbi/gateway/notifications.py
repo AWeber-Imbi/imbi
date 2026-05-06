@@ -1,3 +1,4 @@
+import http
 import inspect
 import logging
 import typing
@@ -106,7 +107,7 @@ async def process_notification(
         if sel is None or service is None:
             LOGGER.warning('Global webhooks are not yet implemented')
         else:
-            body = await request.json()
+            body = await _extract_json_body(request)
             try:
                 ptr = jsonpointer.JsonPointer(sel['identifier_selector'])
                 resolved = ptr.resolve(body)
@@ -156,3 +157,12 @@ async def process_notification(
                     LOGGER.exception(
                         'Failure in %s', rule.handler, extra={'rule': rule}
                     )
+
+
+async def _extract_json_body(request: fastapi.Request) -> object:
+    try:
+        return await request.json()
+    except ValueError:
+        raise fastapi.HTTPException(
+            http.HTTPStatus.UNPROCESSABLE_CONTENT
+        ) from None
