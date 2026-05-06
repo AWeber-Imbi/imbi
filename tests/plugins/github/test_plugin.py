@@ -68,9 +68,7 @@ class ManifestTestCase(unittest.TestCase):
             endpoints['token'],
             'https://github.com/login/oauth/access_token',
         )
-        self.assertEqual(
-            endpoints['user'], 'https://api.tenant.ghe.com/user'
-        )
+        self.assertEqual(endpoints['user'], 'https://api.tenant.ghe.com/user')
         self.assertEqual(
             endpoints['emails'], 'https://api.tenant.ghe.com/user/emails'
         )
@@ -89,9 +87,7 @@ class ManifestTestCase(unittest.TestCase):
 
     def test_host_with_scheme_is_normalized(self) -> None:
         plugin = GitHubEnterpriseServerPlugin()
-        endpoints = plugin._endpoints(
-            {'host': 'https://github.example.com/'}
-        )
+        endpoints = plugin._endpoints({'host': 'https://github.example.com/'})
         self.assertEqual(
             endpoints['user'],
             'https://github.example.com/api/v3/user',
