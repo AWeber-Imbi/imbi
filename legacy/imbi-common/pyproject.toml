@@ -50,7 +50,7 @@ dev = [
   "build",
   "click~=8.2.1",  # 8.3+ breaks mkdocs serve (https://github.com/mkdocs/mkdocs/issues/4032)
   "coverage[toml]",
-  "httpx",
+  "httpx>=0.28.1,<1",
   "mypy~=1.19.1",
   "pre-commit",
   "pytest",
