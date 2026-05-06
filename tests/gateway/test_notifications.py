@@ -385,18 +385,6 @@ class ProcessNotificationTests(helpers.TestCase):
                 ['r'],
             )
 
-    async def test_project_vertex_missing_returns_500(self) -> None:
-        # EXISTS_IN lookup succeeds but db.match returns [] (line 137)
-        body = {'repo': {'id': self.ext_id}}
-        with unittest.mock.patch.object(
-            self.g,
-            'match',
-            new_callable=unittest.mock.AsyncMock,
-            return_value=[],
-        ):
-            response = await self._post(self.webhook_id, body)
-        self.assertEqual(500, response.status_code)
-
     async def test_handler_exception_is_caught(self) -> None:
         # Handler raises at dispatch time; exception logged, 200 returned
         await self._add_rule(

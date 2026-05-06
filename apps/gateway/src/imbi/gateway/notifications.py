@@ -7,7 +7,7 @@ import celpy
 import fastapi
 import jsonpointer
 import pydantic
-from imbi_common import graph, models
+from imbi_common import graph
 
 LOGGER = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ class WebhookRule(pydantic.BaseModel):
 
 
 @router.post('/{webhook_id}', include_in_schema=False)
-async def process_notification(  # noqa: C901
+async def process_notification(
     webhook_id: str, *, db: graph.Pool, request: fastapi.Request
 ) -> None:
     records = await db.execute(
@@ -117,13 +117,14 @@ async def process_notification(  # noqa: C901
                 )
                 return
 
+            # TODO(daves) - this should probably be an imbi-api request
             records = await db.execute(
                 'MATCH (p:Project)'
                 '      -[:EXISTS_IN {{identifier: {external_id}}}]'
                 '      ->(tps:ThirdPartyService {{id: {tps_id}}}) '
-                'RETURN p.id',
+                'RETURN p.id AS project_id',
                 {'external_id': str(resolved), 'tps_id': str(service['id'])},
-                ['p'],
+                ['project_id'],
             )
             if not records:
                 LOGGER.warning(
@@ -131,13 +132,8 @@ async def process_notification(  # noqa: C901
                     str(resolved),
                 )
                 return
-            matches = await db.match(
-                models.Project, {'id': graph.parse_agtype(records[0]['p'])}
-            )
-            if not matches:
-                raise fastapi.HTTPException(500)
-            project = matches[0]
-            LOGGER.debug('project: %r', project)
+            project_id = graph.parse_agtype(records[0]['project_id'])
+            LOGGER.debug('project: %r', project_id)
 
             # 2. validate each filter
             filter_results = [rule.evaluate_condition(body) for rule in rules]
@@ -154,7 +150,7 @@ async def process_notification(  # noqa: C901
             for rule in handlers:
                 try:
                     await rule.handler(
-                        org['slug'], project.id, body, rule.handler_config
+                        org['slug'], project_id, body, rule.handler_config
                     )
                 except Exception:
                     LOGGER.exception(
