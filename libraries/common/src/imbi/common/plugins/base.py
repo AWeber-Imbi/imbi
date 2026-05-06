@@ -54,6 +54,18 @@ class PluginVertexLabel(pydantic.BaseModel):
     name: str
     indexes: list[PluginIndex] = []
     model_ref: str
+    # Operator-facing display fields.  ``name`` stays the canonical
+    # graph-label identifier; these provide friendlier UI text and can
+    # be overridden per-installation via ``PluginRegistration``.
+    #
+    # * ``display_name``  — page header / detail card title
+    #                       (e.g. "AWS Accounts")
+    # * ``description``   — sentence-or-two operator help text
+    # * ``nav_label``     — sidebar entry text (defaults to display_name
+    #                        when unset, then to ``name``)
+    display_name: str | None = None
+    description: str | None = None
+    nav_label: str | None = None
 
 
 class PluginEdgeLabel(pydantic.BaseModel):
@@ -82,6 +94,15 @@ class PluginManifest(pydantic.BaseModel):
     data_types: list[DataType] = []
     vertex_labels: list[PluginVertexLabel] = []
     edge_labels: list[PluginEdgeLabel] = []
+    # Body copy shown on the dashboard "unconnected integration"
+    # widget for identity plugins.  Plugin authors should write 1-3
+    # short sentences explaining why the user benefits from
+    # connecting their account (e.g. "Imbi can act as you on GitHub
+    # instead of a shared service principal -- once you link your
+    # account, pull requests, branch reads, and audit attribution all
+    # run as @you.").  When ``None`` the widget falls back to the
+    # plugin's ``description``.
+    widget_text: str | None = None
 
 
 class IdentityProfile(pydantic.BaseModel):
@@ -143,6 +164,13 @@ class AuthorizationRequest(pydantic.BaseModel):
     state: str
     code_verifier: str | None = None
     polling: PollingDescriptor | None = None
+    # Credentials the plugin minted on the fly during this call (e.g. an
+    # OIDC dynamic-client registration for AWS IAM IC).  The host
+    # persists them to the plugin's encrypted credential blob so that
+    # the matching ``exchange_code`` / ``refresh`` calls -- which receive
+    # ``credentials`` from storage, not from this object — see the same
+    # client identity.  ``None`` means "nothing new to persist".
+    registered_credentials: dict[str, str] | None = None
 
 
 class PluginContext(pydantic.BaseModel):
