@@ -111,6 +111,5 @@ async def update_project(
         }
         for update in updates
     ]
-    LOGGER.info('patch: %r', patch)
     async with ImbiClient() as client:
         await client.patch_project(org_slug, project_id, patch)
