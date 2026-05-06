@@ -307,6 +307,43 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual(self.proj_id, project_id)
         self.assertEqual(body, received_body)
 
+    async def test_handler_called_for_each_matching_project(self) -> None:
+        await self._add_rule(filter_expression='true')
+        ts = '2024-01-01T00:00:00+00:00'
+        second_proj_id = nanoid.generate()
+        await self.g.execute(
+            'CREATE (n:Project {{id: {id}, slug: {slug},'
+            ' name: {name}, created_at: {ts}}}) RETURN n',
+            {
+                'id': second_proj_id,
+                'slug': f'proj2-{second_proj_id[:8]}',
+                'name': 'Second Project',
+                'ts': ts,
+            },
+            ['n'],
+        )
+        await self.g.execute(
+            'MATCH (p:Project {{id: {pid}}}),'
+            ' (tps:ThirdPartyService {{id: {tid}}})'
+            ' CREATE (p)-[:EXISTS_IN {{identifier: {ext_id}}}]->(tps)'
+            ' RETURN p',
+            {'pid': second_proj_id, 'tid': self.tps_id, 'ext_id': self.ext_id},
+            ['p'],
+        )
+        try:
+            body = {'repo': {'id': self.ext_id}}
+            response = await self._post(self.webhook_id, body)
+            self.assertEqual(200, response.status_code)
+            self.assertEqual(2, len(HANDLER_CALLS))
+            project_ids = {call[1] for call in HANDLER_CALLS}
+            self.assertEqual({self.proj_id, second_proj_id}, project_ids)
+        finally:
+            await self.g.execute(
+                'MATCH (n:Project {{id: {id}}}) DETACH DELETE n RETURN 1 AS r',
+                {'id': second_proj_id},
+                ['r'],
+            )
+
     async def test_project_not_found_for_external_id(self) -> None:
         await self._add_rule(filter_expression='true')
         body = {'repo': {'id': 'no-such-external-id'}}

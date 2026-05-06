@@ -118,6 +118,13 @@ async def process_notification(
                 )
                 return
 
+            # 2. validate each filter
+            filter_results = [rule.evaluate_condition(body) for rule in rules]
+            if not any(filter_results):
+                LOGGER.info('Ignoring notification: no filter matches')
+                return
+
+            # 3. execute each enabled handler for each matching project
             # TODO(daves) - this should probably be an imbi-api request
             records = await db.execute(
                 'MATCH (p:Project)'
@@ -133,30 +140,35 @@ async def process_notification(
                     str(resolved),
                 )
                 return
-            project_id = graph.parse_agtype(records[0]['project_id'])
-            LOGGER.debug('project: %r', project_id)
 
-            # 2. validate each filter
-            filter_results = [rule.evaluate_condition(body) for rule in rules]
-            if not any(filter_results):
-                LOGGER.info('Ignoring notification: no filter matches')
-                return
-
-            # 3. execute each enabled handler
             handlers = [
                 rule
                 for rule, enabled in zip(rules, filter_results, strict=True)
                 if enabled
             ]
-            for rule in handlers:
-                try:
-                    await rule.handler(
-                        org['slug'], project_id, body, rule.handler_config
-                    )
-                except Exception:
-                    LOGGER.exception(
-                        'Failure in %s', rule.handler, extra={'rule': rule}
-                    )
+            for record in records:
+                await _run_handlers(
+                    org['slug'],
+                    graph.parse_agtype(record['project_id']),
+                    body,
+                    handlers,
+                )
+
+
+async def _run_handlers(
+    org_slug: str,
+    project_id: str,
+    body: object,
+    handlers: abc.Iterable[WebhookRule],
+) -> None:
+    LOGGER.debug('Running handlers for %s/%s', org_slug, project_id)
+    for rule in handlers:
+        try:
+            await rule.handler(org_slug, project_id, body, rule.handler_config)
+        except Exception:
+            LOGGER.exception(
+                'Failure in %s', rule.handler, extra={'rule': rule}
+            )
 
 
 async def _extract_json_body(request: fastapi.Request) -> object:
