@@ -120,6 +120,27 @@ class ImbiClientPatchProjectTests(helpers.TestCase):
         self.assertEqual(422, response.status_code)
         self.assertTrue(any('Failed to patch' in line for line in cm.output))
 
+    async def test_error_response_with_non_json_body_logs_content(
+        self,
+    ) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'patch',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(
+                    500, content=b'Internal Server Error'
+                ),
+            ),
+            self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
+        ):
+            async with actions.ImbiClient() as client:
+                response = await client.patch_project('org', 'proj', [])
+
+        self.assertEqual(500, response.status_code)
+        self.assertTrue(any('Failed to patch' in line for line in cm.output))
+
     async def test_success_response_does_not_log_warning(self) -> None:
         ops = [{'op': 'replace', 'path': '/name', 'value': 'x'}]
         with (

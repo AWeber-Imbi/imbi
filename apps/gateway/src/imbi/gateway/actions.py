@@ -91,9 +91,11 @@ class ImbiClient(httpx.AsyncClient):
         LOGGER.debug('Patching project %s', url)
         response = await self.patch(url, json=patch)
         if response.is_error:
-            LOGGER.warning(
-                'Failed to patch project %r: %r', url, response.json()
-            )
+            try:
+                detail = response.json()
+            except ValueError:
+                detail = response.content
+            LOGGER.warning('Failed to patch project %r: %r', url, detail)
         return response
 
 
