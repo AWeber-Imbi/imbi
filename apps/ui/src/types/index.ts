@@ -337,18 +337,60 @@ export type DeploymentStatus =
   | 'pending'
   | 'rolled_back'
   | 'success'
+export interface IdentityConnectionResponse {
+  connects_users_to: null | string
+  expires_at: null | string
+  id: string
+  last_used_at: null | string
+  metadata: Record<string, unknown>
+  plugin_id: string
+  plugin_label: null | string
+  plugin_slug: string
+  scopes: string[]
+  status: IdentityConnectionStatus
+  subject: string
+}
+
+export interface IdentityConnectionStartRequest {
+  return_to?: null | string
+  scopes?: null | string[]
+}
+
+export interface IdentityConnectionStartResponse {
+  authorization_url: string
+  polling: IdentityPollingDescriptor | null
+  state: string
+}
+
+export type IdentityConnectionStatus = 'active' | 'expired' | 'revoked'
+
+export interface IdentityPollingDescriptor {
+  expires_in: number
+  interval: number
+  user_code: string
+  verification_uri: string
+  verification_uri_complete: null | string
+}
+
 export interface InstalledPlugin {
   api_version: number
-  auth_type: 'api_token' | 'oauth2'
+  auth_type: 'api_token' | 'aws-iam-ic' | 'oauth2' | 'oidc'
   cacheable: boolean
   credentials: PluginCredentialField[]
   description: string
   docs_url: null | string
   enabled: boolean
+  // login_capable / requires_identity ride along on the manifest. The
+  // legacy Phase-1 catalog plugins (ssm, logzio) leave them at false;
+  // the Phase-2 identity plugins (oidc, github*, aws-iam-ic) set
+  // login_capable=true.
+  login_capable?: boolean
   name: string
   options: PluginOptionDef[]
   package_name: string
   package_version: string
+  plugin_type?: 'identity' | PluginTab
+  requires_identity?: boolean
   slug: string
   supported_tabs: PluginTab[]
 }

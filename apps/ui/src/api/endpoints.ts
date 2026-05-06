@@ -24,6 +24,9 @@ import type {
   CurrentReleaseEnvironment,
   Environment,
   EnvironmentCreate,
+  IdentityConnectionResponse,
+  IdentityConnectionStartRequest,
+  IdentityConnectionStartResponse,
   InstalledPlugin,
   LinkDefinition,
   LinkDefinitionCreate,
@@ -1870,6 +1873,32 @@ export const getMonthlyImprovement = (
     },
     signal,
   )
+
+// Identity connections (per-user)
+export const getMyIdentities = (signal?: AbortSignal) =>
+  apiClient.get<IdentityConnectionResponse[]>(
+    '/me/identities',
+    undefined,
+    signal,
+  )
+
+export const startMyIdentity = (
+  pluginId: string,
+  body: IdentityConnectionStartRequest = {},
+) =>
+  apiClient.post<IdentityConnectionStartResponse>(
+    `/me/identities/${encodeURIComponent(pluginId)}/start`,
+    body,
+  )
+
+export const refreshMyIdentity = (pluginId: string) =>
+  apiClient.post<{ status: string }>(
+    `/me/identities/${encodeURIComponent(pluginId)}/refresh`,
+    {},
+  )
+
+export const disconnectMyIdentity = (pluginId: string) =>
+  apiClient.delete<void>(`/me/identities/${encodeURIComponent(pluginId)}`)
 
 // Admin Plugins
 export const getAdminPlugins = (signal?: AbortSignal) =>

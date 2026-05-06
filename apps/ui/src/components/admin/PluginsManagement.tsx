@@ -139,8 +139,8 @@ function DisabledList({ parentLoading, plugins }: DisabledListProps) {
       <CardHeader className="px-6 py-4">
         <CardTitle>Disabled Plugins</CardTitle>
         <CardDescription>
-          Installed plugins that are not yet enabled. Enable a plugin to make
-          it available for project type and service assignments.
+          Installed plugins that are not yet enabled. Enable a plugin to make it
+          available for project type and service assignments.
         </CardDescription>
       </CardHeader>
       <CardContent className="p-0">
@@ -192,12 +192,7 @@ function DisabledList({ parentLoading, plugins }: DisabledListProps) {
   )
 }
 
-function EnabledList({
-  error,
-  isError,
-  isLoading,
-  plugins,
-}: EnabledListProps) {
+function EnabledList({ error, isError, isLoading, plugins }: EnabledListProps) {
   if (isLoading) {
     return <LoadingState label="Loading..." />
   }
@@ -234,6 +229,7 @@ function EnabledList({
           <TableHeader>
             <TableRow>
               <TableHead>Plugin</TableHead>
+              <TableHead>Type</TableHead>
               <TableHead>Package</TableHead>
               <TableHead>Version</TableHead>
               <TableHead>Auth</TableHead>
@@ -248,6 +244,16 @@ function EnabledList({
                   <div className="text-xs text-secondary">
                     {plugin.description}
                   </div>
+                  {plugin.login_capable && (
+                    <div className="mt-1">
+                      <Badge variant="outline">Login provider</Badge>
+                    </div>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <Badge variant="secondary">
+                    {plugin.plugin_type ?? plugin.supported_tabs[0] ?? '—'}
+                  </Badge>
                 </TableCell>
                 <TableCell>
                   <code className="rounded bg-secondary px-1.5 py-0.5 text-xs">

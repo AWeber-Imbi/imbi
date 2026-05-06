@@ -2,10 +2,11 @@ import { useEffect } from 'react'
 
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { ArrowLeft, Bell, Key, Link2, Shield, User } from 'lucide-react'
+import { ArrowLeft, Bell, Key, Link2, Plug, Shield, User } from 'lucide-react'
 
 import { SettingsAccount } from './settings/SettingsAccount'
 import { SettingsApiKeys } from './settings/SettingsApiKeys'
+import { SettingsConnections } from './settings/SettingsConnections'
 import { SettingsIntegrations } from './settings/SettingsIntegrations'
 import { SettingsNotifications } from './settings/SettingsNotifications'
 import { SettingsSecurity } from './settings/SettingsSecurity'
@@ -15,12 +16,14 @@ import { Card } from './ui/card'
 type SettingsTab =
   | 'account'
   | 'api-keys'
+  | 'connections'
   | 'integrations'
   | 'notifications'
   | 'security'
 
 const tabs: { icon: typeof User; id: SettingsTab; label: string }[] = [
   { icon: User, id: 'account', label: 'Account' },
+  { icon: Plug, id: 'connections', label: 'Connections' },
   { icon: Link2, id: 'integrations', label: 'Integrations' },
   { icon: Bell, id: 'notifications', label: 'Notifications' },
   { icon: Key, id: 'api-keys', label: 'API Keys' },
@@ -94,6 +97,7 @@ export function Settings() {
         {/* Content area */}
         <div className="lg:col-span-3">
           {activeTab === 'account' && <SettingsAccount />}
+          {activeTab === 'connections' && <SettingsConnections />}
           {activeTab === 'integrations' && <SettingsIntegrations />}
           {activeTab === 'notifications' && <SettingsNotifications />}
           {activeTab === 'api-keys' && <SettingsApiKeys />}
