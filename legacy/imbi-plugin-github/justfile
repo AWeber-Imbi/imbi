@@ -17,12 +17,16 @@ setup:
 test *FILES: setup
     #!/usr/bin/env sh
     set -e
+    env_args=""
+    if [ -f .env ]; then
+      env_args="--env-file .env"
+    fi
     if [ -z "{{ FILES }}" ]; then
-      uv run --env-file .env coverage run -m pytest tests
+      uv run $env_args coverage run -m pytest tests
       uv run coverage report
       uv run coverage xml -o build/coverage.xml
     else
-      uv run --env-file .env pytest {{ FILES }}
+      uv run $env_args pytest {{ FILES }}
     fi
 
 [doc("Run linters")]
