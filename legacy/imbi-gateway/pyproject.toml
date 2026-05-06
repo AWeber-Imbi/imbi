@@ -112,6 +112,7 @@ flake8-type-checking = { runtime-evaluated-base-classes = [
   "pydantic.BaseModel",
   "pydantic_settings.BaseSettings",
 ] }
+isort = { split-on-trailing-comma = false }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
