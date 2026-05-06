@@ -115,7 +115,7 @@ max-complexity = 15
 default-groups = ["dev"]
 
 [tool.uv.sources]
-imbi-common = { path = "../imbi-common", editable = true }
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", rev = "main" }
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
