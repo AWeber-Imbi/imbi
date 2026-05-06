@@ -188,8 +188,11 @@ class AwsIamIcPlugin(IdentityPlugin):
             # ``sso:account:access`` (or another long-lived scope).  Pass
             # the requested scopes through to RegisterClient so the
             # device-flow grant is allowed to refresh later.
+            requested_scopes = (
+                self.manifest.default_scopes if scopes is None else scopes
+            )
             client_id, client_secret = await self._register_client(
-                region, scopes or self.manifest.default_scopes or None
+                region, requested_scopes
             )
             # Surface the freshly-minted client back to the host so it
             # can persist them; otherwise the matching CreateToken call
@@ -386,7 +389,7 @@ class AwsIamIcPlugin(IdentityPlugin):
             'clientName': 'imbi',
             'clientType': 'public',
         }
-        if scopes:
+        if scopes is not None:
             body['scopes'] = list(scopes)
         async with httpx.AsyncClient(timeout=10.0) as http:
             response = await http.post(
