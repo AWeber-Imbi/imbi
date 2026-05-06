@@ -376,7 +376,17 @@ class GitHubEnterpriseCloudPlugin(_GitHubBase):
 
     @classmethod
     def _resolve_host(cls, options: dict[str, typing.Any]) -> str:
-        return cls._normalize_host(options.get('host'), 'GHEC plugin')
+        host = cls._normalize_host(options.get('host'), 'GHEC plugin')
+        if (
+            not host.endswith('.ghe.com')
+            or host == '.ghe.com'
+            or host.startswith('api.')
+        ):
+            raise ValueError(
+                'GHEC plugin requires a tenant host like "tenant.ghe.com"; '
+                f'got {host!r}'
+            )
+        return host
 
 
 class GitHubEnterpriseServerPlugin(_GitHubBase):

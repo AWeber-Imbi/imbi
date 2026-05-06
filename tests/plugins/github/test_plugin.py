@@ -106,6 +106,16 @@ class ManifestTestCase(unittest.TestCase):
         with self.assertRaises(ValueError):
             plugin._endpoints({'host': '   '})
 
+    def test_ghec_rejects_non_tenant_host(self) -> None:
+        plugin = GitHubEnterpriseCloudPlugin()
+        with self.assertRaises(ValueError):
+            plugin._endpoints({'host': 'github.example.com'})
+
+    def test_ghec_rejects_api_subdomain(self) -> None:
+        plugin = GitHubEnterpriseCloudPlugin()
+        with self.assertRaises(ValueError):
+            plugin._endpoints({'host': 'api.tenant.ghe.com'})
+
 
 class FlowTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
