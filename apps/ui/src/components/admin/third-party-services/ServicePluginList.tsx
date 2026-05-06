@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Plus, Trash2 } from 'lucide-react'
@@ -48,11 +48,13 @@ interface PluginForm {
 }
 
 interface ServicePluginListProps {
+  onViewModeChange?: (mode: 'configure' | 'list') => void
   orgSlug: string
   serviceSlug: string
 }
 
 export function ServicePluginList({
+  onViewModeChange,
   orgSlug,
   serviceSlug,
 }: ServicePluginListProps) {
@@ -94,6 +96,10 @@ export function ServicePluginList({
   )
   const configurePlugin =
     (plugins ?? []).find((p) => p.id === configurePluginId) ?? null
+
+  useEffect(() => {
+    onViewModeChange?.(configurePluginId ? 'configure' : 'list')
+  }, [configurePluginId, onViewModeChange])
 
   const createMutation = useMutation({
     mutationFn: (input: {

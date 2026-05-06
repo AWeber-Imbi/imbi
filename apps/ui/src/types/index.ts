@@ -337,6 +337,12 @@ export type DeploymentStatus =
   | 'pending'
   | 'rolled_back'
   | 'success'
+
+export interface IdentityConnectionPollResponse {
+  return_to?: null | string
+  status: 'complete' | 'pending'
+}
+
 export interface IdentityConnectionResponse {
   connects_users_to: null | string
   expires_at: null | string
@@ -379,7 +385,12 @@ export interface InstalledPlugin {
   credentials: PluginCredentialField[]
   description: string
   docs_url: null | string
+  edge_labels?: PluginEdgeLabel[]
   enabled: boolean
+  // Brand glyph inherited from the parent ThirdPartyService (an icon
+  // registry value or URL).  Null when the plugin isn't attached to
+  // any service yet.
+  icon?: null | string
   // login_capable / requires_identity ride along on the manifest. The
   // legacy Phase-1 catalog plugins (ssm, logzio) leave them at false;
   // the Phase-2 identity plugins (oidc, github*, aws-iam-ic) set
@@ -393,6 +404,14 @@ export interface InstalledPlugin {
   requires_identity?: boolean
   slug: string
   supported_tabs: PluginTab[]
+  vertex_labels?: PluginVertexLabel[]
+  // Body copy shown on the dashboard "unconnected integration" widget.
+  // Resolved server-side (override > manifest > null).  ``_default`` is
+  // the manifest value; ``_override`` is the operator-set value (null
+  // means "inherit").
+  widget_text?: null | string
+  widget_text_default?: null | string
+  widget_text_override?: null | string
 }
 
 // Admin local-auth (password login) toggle.
@@ -548,9 +567,11 @@ export interface OperationsLogFilters {
   ticket_slug?: string
   until?: string
 }
+
 // Raw record returned by the /operations-log/ API (distinct from the
 // activity-feed projection defined above in `OperationsLogEntry`).
 export type OperationsLogRecord = Schemas['OperationLogResponse']
+
 // Organization types
 export type Organization = Schemas['OrganizationResponse']
 
@@ -565,8 +586,10 @@ export interface OrganizationCreate {
 }
 
 export type OrgMembership = Schemas['OrgMembership']
+
 // JSON Patch operation (RFC 6902)
 export type PatchOperation = Schemas['PatchOperation']
+
 // Admin User Management Types (matching API schema)
 export type Permission = Schemas['Permission']
 
@@ -582,7 +605,6 @@ export interface PluginAssignmentInput {
   project_type_slug: string
   tab: PluginTab
 }
-
 export interface PluginAssignmentResponse {
   default: boolean
   label: string
@@ -607,7 +629,6 @@ export interface PluginConfigurationResponse {
   plugin_slug: string
   populated: string[]
 }
-
 export interface PluginCreate {
   label: string
   options?: Record<string, unknown>
@@ -620,6 +641,42 @@ export interface PluginCredentialField {
   required: boolean
 }
 
+// A materialized edge from /edges/{rel_type}.
+export interface PluginEdge {
+  properties: Record<string, unknown>
+  rel_type: string
+  target: PluginEntity
+  target_label: string
+}
+export interface PluginEdgeLabel {
+  from_labels: string[]
+  name: string
+  properties?: Record<string, string>
+  to_labels: string[]
+}
+
+export interface PluginEdgePut {
+  properties?: Record<string, unknown>
+  target_id: string
+  target_label: string
+}
+
+// Generic plugin entity (a graph node declared by a plugin's
+// vertex_labels manifest entry).  Shape varies per plugin model_ref;
+// the host returns whatever Pydantic.model_dump() produced.
+export type PluginEntity = Record<string, unknown> & { id: string }
+
+export interface PluginEntityCreate {
+  [key: string]: unknown
+}
+
+export interface PluginEntitySchema {
+  description?: string
+  properties: Record<string, Record<string, unknown>>
+  required?: string[]
+  title?: string
+  type: 'object'
+}
 export interface PluginOptionDef {
   choices?: null | string[]
   default?: boolean | null | number | string
@@ -629,6 +686,7 @@ export interface PluginOptionDef {
   required: boolean
   type: 'boolean' | 'integer' | 'secret' | 'string'
 }
+
 // Plugin types (hand-written until api-generated.ts snapshot is refreshed)
 export interface PluginResponse {
   api_version: number
@@ -643,6 +701,22 @@ export type PluginTab = 'configuration' | 'logs'
 export interface PluginUpdate {
   label: string
   options?: Record<string, unknown>
+}
+export interface PluginVertexLabel {
+  // Resolved (override-or-manifest) operator-facing display fields.
+  description?: null | string
+  display_name?: null | string
+  indexes?: { fields: string[]; unique: boolean }[]
+  model_ref: string
+  name: string
+  nav_label?: null | string
+  // Operator-set values for the override fields (null/missing = inherit
+  // from the manifest default).
+  overrides?: {
+    description?: null | string
+    display_name?: null | string
+    nav_label?: null | string
+  }
 }
 export type ProjectRelationship = Schemas['ProjectRelationship']
 

@@ -256,3 +256,28 @@
     transform: translateX(0);
   }
 }
+
+@keyframes imbi-pulse-ring {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.6);
+  }
+  80%,
+  100% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+
+@keyframes imbi-bridge-travel {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateX(0);
+  }
+  50% {
+    background: #ef9f27;
+    opacity: 1;
+    transform: translateX(2px);
+  }
+}

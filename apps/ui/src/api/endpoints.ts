@@ -24,6 +24,7 @@ import type {
   CurrentReleaseEnvironment,
   Environment,
   EnvironmentCreate,
+  IdentityConnectionPollResponse,
   IdentityConnectionResponse,
   IdentityConnectionStartRequest,
   IdentityConnectionStartResponse,
@@ -53,6 +54,11 @@ import type {
   PluginAssignmentRow,
   PluginConfigurationResponse,
   PluginCreate,
+  PluginEdge,
+  PluginEdgePut,
+  PluginEntity,
+  PluginEntityCreate,
+  PluginEntitySchema,
   PluginResponse,
   PluginUpdate,
   Project,
@@ -948,7 +954,7 @@ interface OpenApiResponse {
 
 // Flatten Pydantic/OpenAPI 3.1 anyOf nullable patterns.
 // e.g. { anyOf: [{type:"string",format:"email"},{type:"null"}] } → {type:"string",format:"email"}
-function flattenNullableAnyOf(
+export function flattenNullableAnyOf(
   prop: Record<string, unknown>,
 ): DynamicFieldSchema {
   const anyOf = prop.anyOf as Record<string, unknown>[] | undefined
@@ -1891,6 +1897,12 @@ export const startMyIdentity = (
     body,
   )
 
+export const pollMyIdentity = (pluginId: string, state: string) =>
+  apiClient.post<IdentityConnectionPollResponse>(
+    `/me/identities/${encodeURIComponent(pluginId)}/poll`,
+    { state },
+  )
+
 export const refreshMyIdentity = (pluginId: string) =>
   apiClient.post<{ status: string }>(
     `/me/identities/${encodeURIComponent(pluginId)}/refresh`,
@@ -1915,6 +1927,23 @@ export const setAdminPluginEnabled = (slug: string, enabled: boolean) =>
   apiClient.patch<InstalledPlugin>(
     `/admin/plugins/${encodeURIComponent(slug)}`,
     { enabled },
+  )
+
+// Operator-overrides patch.  ``widget_text``: ``null`` clears the
+// override (UI inherits the manifest); a string sets it.
+// ``vertex_label_overrides``: ``{label_name: {field: value-or-null}}`` —
+// null on a field clears that field, an empty inner dict clears every
+// override for that label, ``null`` for the whole field clears every
+// override entirely.
+export interface AdminPluginPatch {
+  vertex_label_overrides?: null | Record<string, Record<string, null | string>>
+  widget_text?: null | string
+}
+
+export const updateAdminPlugin = (slug: string, body: AdminPluginPatch) =>
+  apiClient.patch<InstalledPlugin>(
+    `/admin/plugins/${encodeURIComponent(slug)}`,
+    body,
   )
 
 export const getServicePluginConfiguration = (
@@ -1962,3 +1991,91 @@ export const replaceServicePluginAssignments = (
     `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/plugins/${encodeURIComponent(pluginId)}/assignments`,
     body,
   )
+
+// ---------------------------------------------------------------------------
+// Generic plugin entities + edges (declared by the plugin manifest's
+// vertex_labels / edge_labels; the host serves CRUD without per-plugin code).
+// ---------------------------------------------------------------------------
+
+const pluginEntitiesPath = (slug: string, label: string) =>
+  `/admin/plugins/${encodeURIComponent(slug)}/entities/${encodeURIComponent(label)}`
+
+export const listPluginEntities = (
+  slug: string,
+  label: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<PluginEntity[]>(
+    pluginEntitiesPath(slug, label),
+    undefined,
+    signal,
+  )
+
+export const getPluginEntitySchema = (
+  slug: string,
+  label: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<PluginEntitySchema>(
+    `${pluginEntitiesPath(slug, label)}/_schema`,
+    undefined,
+    signal,
+  )
+
+export const createPluginEntity = (
+  slug: string,
+  label: string,
+  body: PluginEntityCreate,
+) => apiClient.post<PluginEntity>(pluginEntitiesPath(slug, label), body)
+
+export const updatePluginEntity = (
+  slug: string,
+  label: string,
+  id: string,
+  body: Record<string, unknown>,
+) =>
+  apiClient.patch<PluginEntity>(
+    `${pluginEntitiesPath(slug, label)}/${encodeURIComponent(id)}`,
+    body,
+  )
+
+export const deletePluginEntity = (slug: string, label: string, id: string) =>
+  apiClient.delete<void>(
+    `${pluginEntitiesPath(slug, label)}/${encodeURIComponent(id)}`,
+  )
+
+const environmentEdgesPath = (
+  orgSlug: string,
+  envSlug: string,
+  relType: string,
+) =>
+  `/organizations/${encodeURIComponent(orgSlug)}/environments/${encodeURIComponent(envSlug)}/edges/${encodeURIComponent(relType)}`
+
+export const listEnvironmentEdges = (
+  orgSlug: string,
+  envSlug: string,
+  relType: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<PluginEdge[]>(
+    environmentEdgesPath(orgSlug, envSlug, relType),
+    undefined,
+    signal,
+  )
+
+export const setEnvironmentEdge = (
+  orgSlug: string,
+  envSlug: string,
+  relType: string,
+  body: PluginEdgePut,
+) =>
+  apiClient.put<PluginEdge>(
+    environmentEdgesPath(orgSlug, envSlug, relType),
+    body,
+  )
+
+export const deleteEnvironmentEdge = (
+  orgSlug: string,
+  envSlug: string,
+  relType: string,
+) => apiClient.delete<void>(environmentEdgesPath(orgSlug, envSlug, relType))

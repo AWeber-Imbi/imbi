@@ -1,5 +1,7 @@
 import { type ReactElement, useEffect, useState } from 'react'
 
+import { useNavigate } from 'react-router-dom'
+
 import {
   closestCenter,
   DndContext,
@@ -20,10 +22,11 @@ import { CSS } from '@dnd-kit/utilities'
 import { useQuery } from '@tanstack/react-query'
 import { Settings } from 'lucide-react'
 
-import { getProjects } from '@/api/endpoints'
+import { getAdminPlugins, getMyIdentities, getProjects } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useRecentDeployments } from '@/hooks/useRecentDeployments'
+import type { AdminPluginsResponse, IdentityConnectionResponse } from '@/types'
 
 import { MyPullRequestsWidget } from './dashboard/widgets/MyPullRequestsWidget'
 import { OutdatedComponentsWidget } from './dashboard/widgets/OutdatedComponentsWidget'
@@ -31,6 +34,7 @@ import { RecentActivityWidget } from './dashboard/widgets/RecentActivityWidget'
 import { RecentDeploymentsWidget } from './dashboard/widgets/RecentDeploymentsWidget'
 import { StatWidget } from './dashboard/widgets/StatWidget'
 import { TeamActivityWidget } from './dashboard/widgets/TeamActivityWidget'
+import { UnconnectedIntegrationWidget } from './dashboard/widgets/UnconnectedIntegrationWidget'
 import { WidgetConfig, WidgetSelector } from './dashboard/WidgetSelector'
 
 interface DashboardProps {
@@ -156,9 +160,37 @@ export function Dashboard({
   onUserSelect,
   onViewChange,
 }: DashboardProps) {
+  const navigate = useNavigate()
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug || ''
   const [showWidgetSelector, setShowWidgetSelector] = useState(false)
+
+  // Identity plugins the actor hasn't connected yet drive the
+  // dashboard's "unconnected integration" widgets.  These can't be
+  // dismissed — they disappear automatically once the connection
+  // becomes active.
+  const pluginsQuery = useQuery<AdminPluginsResponse>({
+    queryFn: ({ signal }) => getAdminPlugins(signal),
+    queryKey: ['admin-plugins'],
+    staleTime: 60 * 1000,
+  })
+  const identitiesQuery = useQuery<IdentityConnectionResponse[]>({
+    queryFn: ({ signal }) => getMyIdentities(signal),
+    queryKey: ['me-identities'],
+    staleTime: 0,
+  })
+
+  const connectedSlugs = new Set(
+    (identitiesQuery.data ?? [])
+      .filter((c) => c.status === 'active')
+      .map((c) => c.plugin_slug),
+  )
+  const unconnectedIdentityPlugins = (
+    pluginsQuery.data?.installed ?? []
+  ).filter(
+    (p) =>
+      p.enabled && p.plugin_type === 'identity' && !connectedSlugs.has(p.slug),
+  )
 
   const [selectedWidgets, setSelectedWidgets] = useState<WidgetId[]>(() => {
     const stored = localStorage.getItem(WIDGET_STORAGE_KEY)
@@ -306,6 +338,26 @@ export function Dashboard({
           Customize
         </Button>
       </div>
+
+      {/* Unconnected-integration widgets — non-dismissable; disappear
+          automatically when the matching connection becomes active. */}
+      {unconnectedIdentityPlugins.length > 0 && (
+        <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+          {unconnectedIdentityPlugins.map((plugin) => (
+            <UnconnectedIntegrationWidget
+              key={plugin.slug}
+              onConnect={() =>
+                navigate(
+                  `/settings/connections?connect=${encodeURIComponent(plugin.slug)}`,
+                )
+              }
+              onManage={() => navigate('/settings/connections')}
+              pending={false}
+              plugin={plugin}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Widgets */}
       {selectedWidgets.length === 0 ? (

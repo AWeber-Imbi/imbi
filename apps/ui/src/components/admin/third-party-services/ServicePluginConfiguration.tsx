@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
@@ -49,6 +49,8 @@ import type {
   PluginResponse,
   PluginTab,
 } from '@/types'
+
+import { ServicePluginEdgesCard } from './ServicePluginEdgesCard'
 
 interface CredentialsCardProps {
   orgSlug: string
@@ -111,7 +113,7 @@ interface ServicePluginConfigurationProps {
 }
 
 export function ServicePluginConfiguration({
-  onBack,
+  onBack: _onBack,
   orgSlug,
   plugin,
   serviceSlug,
@@ -126,18 +128,6 @@ export function ServicePluginConfiguration({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Button onClick={onBack} variant="outline">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back
-        </Button>
-        <div className="flex items-center gap-2 text-sm text-secondary">
-          <code className="rounded bg-secondary px-1.5 py-0.5 text-xs">
-            {plugin.plugin_slug}
-          </code>
-        </div>
-      </div>
-
       {manifestLoading ? (
         <LoadingState label="Loading…" />
       ) : (
@@ -170,6 +160,9 @@ export function ServicePluginConfiguration({
             queryClient={queryClient}
             serviceSlug={serviceSlug}
           />
+          {manifest && (
+            <ServicePluginEdgesCard manifest={manifest} orgSlug={orgSlug} />
+          )}
         </>
       )}
     </div>

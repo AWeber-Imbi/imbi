@@ -40,6 +40,7 @@ export function ThirdPartyServiceDetail({
   const [activeTab, setActiveTab] = useState<DetailTab>('details')
   const [webhookDetailActive, setWebhookDetailActive] = useState(false)
   const [appDetailActive, setAppDetailActive] = useState(false)
+  const [pluginConfigActive, setPluginConfigActive] = useState(false)
   const statusVariant = statusBadgeVariant(service.status)
   const linkEntries = Object.entries(service.links || {})
   const identifierEntries = Object.entries(service.identifiers || {})
@@ -86,13 +87,15 @@ export function ThirdPartyServiceDetail({
                 )}
               </div>
             </div>
-            <Button
-              className="bg-action text-action-foreground hover:bg-action-hover"
-              onClick={onEdit}
-            >
-              <Edit2 className="mr-2 h-4 w-4" />
-              Edit Service
-            </Button>
+            {!pluginConfigActive && (
+              <Button
+                className="bg-action text-action-foreground hover:bg-action-hover"
+                onClick={onEdit}
+              >
+                <Edit2 className="mr-2 h-4 w-4" />
+                Edit Service
+              </Button>
+            )}
           </div>
 
           {/* Tabs */}
@@ -109,7 +112,10 @@ export function ThirdPartyServiceDetail({
                         : 'border-transparent text-secondary hover:text-primary'
                     }`}
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => {
+                      if (tab.id !== 'plugins') setPluginConfigActive(false)
+                      setActiveTab(tab.id)
+                    }}
                   >
                     <Icon className="h-4 w-4" />
                     {tab.label}
@@ -381,6 +387,9 @@ export function ThirdPartyServiceDetail({
       {/* Plugins Tab */}
       {activeTab === 'plugins' && (
         <ServicePluginList
+          onViewModeChange={(mode) =>
+            setPluginConfigActive(mode === 'configure')
+          }
           orgSlug={selectedOrganization?.slug || ''}
           serviceSlug={service.slug}
         />

@@ -1,7 +1,9 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+
+import { useSearchParams } from 'react-router-dom'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link2, Loader2, RefreshCw, Unplug } from 'lucide-react'
+import { Link2, Loader2, Plug, RefreshCw, Unplug } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
@@ -25,12 +27,17 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { getIcon, iconRegistry, useIconRegistryVersion } from '@/lib/icons'
+import type { IconComponent } from '@/lib/icons'
 import type {
   AdminPluginsResponse,
   IdentityConnectionResponse,
   IdentityConnectionStatus,
+  IdentityPollingDescriptor,
   InstalledPlugin,
 } from '@/types'
+
+import { DeviceCodePollingDialog } from './DeviceCodePollingDialog'
 
 interface ConnectionActionsProps {
   connection: IdentityConnectionResponse | null
@@ -44,6 +51,17 @@ interface ConnectionRow {
   connection: IdentityConnectionResponse | null
   plugin: InstalledPlugin
 }
+
+interface DevicePoll {
+  pluginLabel: string
+  pluginSlug: string
+  polling: IdentityPollingDescriptor
+  state: string
+}
+
+// postMessage discriminator sent by an OAuth-callback popup to its
+// opener so the parent can invalidate without timer-driven polling.
+const IDENTITY_CONNECTED_MESSAGE = 'imbi:identity-connected'
 
 const STATUS_LABEL: Record<'not_connected' | IdentityConnectionStatus, string> =
   {
@@ -72,6 +90,91 @@ export function SettingsConnections() {
   const [pendingDisconnectId, setPendingDisconnectId] = useState<null | string>(
     null,
   )
+  const [devicePoll, setDevicePoll] = useState<DevicePoll | null>(null)
+  // Tracks the prior value of ``devicePoll`` so the effect below can
+  // tell a transition from "modal open" → "modal closed" apart from
+  // the initial null → null on first mount.
+  const prevDevicePollRef = useRef<DevicePoll | null>(null)
+  // The verification popup the user authorizes in.  Tracked outside
+  // of React state because passing a cross-origin Window through
+  // props makes React Refresh / DevTools throw a SecurityError when
+  // they try to read ``$$typeof`` on it.
+  const verificationWindowRef = useRef<null | Window>(null)
+  // Incremented when the popup closes.  Drives the device-code
+  // modal's "tick now" effect via a primitive prop.
+  const [pokeNonce, setPokeNonce] = useState(0)
+
+  // When this component mounts inside an OAuth-callback popup
+  // (window.opener set, same origin), signal the opener that a connect
+  // flight just landed and self-close.  The opener invalidates its
+  // connections query in the message-listener below.
+  useEffect(() => {
+    const opener = window.opener as null | Window
+    if (!opener || opener === window || opener.closed) return
+    try {
+      opener.postMessage(
+        { type: IDENTITY_CONNECTED_MESSAGE },
+        window.location.origin,
+      )
+    } catch {
+      // Cross-origin opener (shouldn't happen for our callback path,
+      // but fail closed rather than throwing on mount).
+      return
+    }
+    window.close()
+  }, [])
+
+  // Watch the verification popup at 1 Hz; when it closes, bump
+  // ``pokeNonce`` so the device-code modal fires an immediate /poll
+  // tick, and clear the ref.  Keeping this in the parent avoids
+  // having to pass the Window through React props.
+  useEffect(() => {
+    if (!devicePoll) return
+    const id = setInterval(() => {
+      const popup = verificationWindowRef.current
+      if (popup && popup.closed) {
+        verificationWindowRef.current = null
+        setPokeNonce((n) => n + 1)
+        clearInterval(id)
+      }
+    }, 1000)
+    return () => clearInterval(id)
+  }, [devicePoll])
+
+  // Whenever the device-flow modal transitions from open to closed —
+  // for any reason: success, dismiss, or expiry — refetch the
+  // connections list.  Belt-and-suspenders next to the explicit
+  // refetch in onComplete/onDismiss; if either of those misfires
+  // (race with cancellation, stale closure, etc.) this still flips
+  // the row to its current state.
+  useEffect(() => {
+    const prev = prevDevicePollRef.current
+    prevDevicePollRef.current = devicePoll
+    if (prev !== null && devicePoll === null) {
+      void queryClient.refetchQueries({ queryKey: ['me-identities'] })
+    }
+  }, [devicePoll, queryClient])
+
+  // Listener side: parent invalidates ``me-identities`` whenever a
+  // popup self-closes via the postMessage above.  Combined with
+  // ``staleTime: 0`` and React Query's default ``refetchOnWindowFocus``,
+  // the table flips to "Connected" the instant the redirect-flow
+  // callback lands without any timer-driven polling on this side.
+  useEffect(() => {
+    function handler(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return
+      const data = event.data as unknown
+      if (
+        data !== null &&
+        typeof data === 'object' &&
+        (data as { type?: unknown }).type === IDENTITY_CONNECTED_MESSAGE
+      ) {
+        void queryClient.invalidateQueries({ queryKey: ['me-identities'] })
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [queryClient])
 
   const pluginsQuery = useQuery<AdminPluginsResponse>({
     queryFn: ({ signal }) => getAdminPlugins(signal),
@@ -82,14 +185,18 @@ export function SettingsConnections() {
   const connectionsQuery = useQuery<IdentityConnectionResponse[]>({
     queryFn: ({ signal }) => getMyIdentities(signal),
     queryKey: ['me-identities'],
-    staleTime: 30 * 1000,
+    // ``staleTime: 0`` means React Query's default
+    // ``refetchOnWindowFocus`` always fires when the user clicks back
+    // to this tab from an OAuth popup — covers redirect flows on top
+    // of the explicit postMessage above.
+    staleTime: 0,
   })
 
   const startMutation = useMutation({
-    mutationFn: (pluginId: string) =>
-      startMyIdentity(pluginId, {
+    mutationFn: (variables: { pluginLabel: string; pluginSlug: string }) =>
+      startMyIdentity(variables.pluginSlug, {
         return_to: '/settings/connections',
-      }),
+      }).then((data) => ({ data, ...variables })),
     onError: (err) => {
       pendingAuthWindowRef.current?.close()
       pendingAuthWindowRef.current = null
@@ -97,20 +204,30 @@ export function SettingsConnections() {
         extractApiErrorDetail(err) ?? 'Failed to start the connect flow',
       )
     },
-    onSuccess: (data) => {
-      // Device-flow plugins (AWS IAM IC) return a polling descriptor
-      // alongside the URL.  Phase 1 just opens the URL in a new tab and
-      // tells the user to complete the flow there; the polling
-      // descriptor will be wired into a modal in a follow-up.
-      if (data.polling) {
-        toast.info(`Enter code ${data.polling.user_code} on the AWS page`)
-      }
-      const authWindow = pendingAuthWindowRef.current
+    onSuccess: ({ data, pluginLabel, pluginSlug }) => {
+      const popup = pendingAuthWindowRef.current
       pendingAuthWindowRef.current = null
-      if (authWindow) {
-        authWindow.location.assign(data.authorization_url)
-      } else {
+      if (popup) {
+        popup.location.assign(data.authorization_url)
+      } else if (!data.polling) {
+        // Device flows can recover via the modal's "Open" button; only
+        // redirect flows are blocked outright when the popup fails.
         toast.error('Popup blocked. Please allow popups and try again.')
+      }
+      // Device-flow plugins (e.g. AWS IAM IC) return a polling descriptor
+      // — open the modal so the user sees the user code and we tick the
+      // poll endpoint until the IdP issues tokens.  Stash the popup in
+      // a ref so the close-watcher can see it without piping a
+      // cross-origin Window through React props.
+      if (data.polling) {
+        verificationWindowRef.current = popup
+        setPokeNonce(0)
+        setDevicePoll({
+          pluginLabel,
+          pluginSlug,
+          polling: data.polling,
+          state: data.state,
+        })
       }
     },
   })
@@ -141,6 +258,36 @@ export function SettingsConnections() {
       })
     },
   })
+
+  // Honor ``?connect=<slug>`` from the dashboard's
+  // UnconnectedIntegrationWidget — auto-kick off the connect flow on
+  // mount, then strip the param so a refresh doesn't re-trigger it.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const autoConnectSlug = searchParams.get('connect')
+  const autoConnectFiredRef = useRef(false)
+  useEffect(() => {
+    if (!autoConnectSlug || autoConnectFiredRef.current) return
+    if (pluginsQuery.isLoading) return
+    const plugin = (pluginsQuery.data?.installed ?? []).find(
+      (p) => p.slug === autoConnectSlug && p.enabled,
+    )
+    autoConnectFiredRef.current = true
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('connect')
+        return next
+      },
+      { replace: true },
+    )
+    if (!plugin) return
+    pendingAuthWindowRef.current = window.open('', '_blank')
+    startMutation.mutate({
+      pluginLabel: plugin.name,
+      pluginSlug: plugin.slug,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoConnectSlug, pluginsQuery.isLoading, pluginsQuery.data])
 
   if (pluginsQuery.isLoading || connectionsQuery.isLoading) {
     return <LoadingState label="Loading connections..." />
@@ -225,7 +372,6 @@ export function SettingsConnections() {
                 <TableHead>Provider</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Last used</TableHead>
-                <TableHead>Scopes</TableHead>
                 <TableHead className="w-48 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -236,12 +382,7 @@ export function SettingsConnections() {
                 return (
                   <TableRow key={plugin.slug}>
                     <TableCell>
-                      <div className="font-medium">{plugin.name}</div>
-                      {plugin.description && (
-                        <div className="text-xs text-secondary">
-                          {plugin.description}
-                        </div>
-                      )}
+                      <ProviderCell plugin={plugin} />
                     </TableCell>
                     <TableCell>
                       <Badge variant={STATUS_VARIANT[status]}>
@@ -251,11 +392,6 @@ export function SettingsConnections() {
                     <TableCell className="text-sm text-secondary">
                       {formatRelative(connection?.last_used_at ?? null)}
                     </TableCell>
-                    <TableCell className="max-w-[260px] truncate text-xs text-secondary">
-                      {connection?.scopes?.length
-                        ? connection.scopes.join(', ')
-                        : '—'}
-                    </TableCell>
                     <TableCell className="text-right">
                       <ConnectionActions
                         connection={connection}
@@ -263,13 +399,18 @@ export function SettingsConnections() {
                           // Open the auth tab synchronously inside the
                           // click handler so the browser treats it as a
                           // user-initiated popup; the URL is filled in
-                          // once startMutation.onSuccess fires.
+                          // once startMutation.onSuccess fires.  We can't
+                          // pass `noopener`/`noreferrer` here — both
+                          // cause window.open to return null, which loses
+                          // the reference we need to navigate the tab.
                           pendingAuthWindowRef.current = window.open(
                             '',
                             '_blank',
-                            'noopener,noreferrer',
                           )
-                          startMutation.mutate(plugin.slug)
+                          startMutation.mutate({
+                            pluginLabel: plugin.name,
+                            pluginSlug: plugin.slug,
+                          })
                         }}
                         onDisconnect={() => setPendingDisconnectId(plugin.slug)}
                         onRefresh={() => refreshMutation.mutate(plugin.slug)}
@@ -299,6 +440,37 @@ export function SettingsConnections() {
         }}
         open={pendingDisconnectId !== null}
         title="Disconnect provider?"
+      />
+
+      <DeviceCodePollingDialog
+        onComplete={() => {
+          toast.success('Connection established')
+          setDevicePoll(null)
+          // ``refetchQueries`` always issues the network round-trip
+          // and updates the cache regardless of observer state;
+          // ``invalidateQueries`` only refetches active observers and
+          // can no-op silently if the timing is unlucky.  Belt and
+          // suspenders: also call .refetch() on the active query.
+          void queryClient.refetchQueries({
+            queryKey: ['me-identities'],
+          })
+          void connectionsQuery.refetch()
+        }}
+        onDismiss={() => {
+          setDevicePoll(null)
+          // Refetch on dismiss in case the IdP completed between the
+          // last /poll tick and the user closing the modal.
+          void queryClient.refetchQueries({
+            queryKey: ['me-identities'],
+          })
+          void connectionsQuery.refetch()
+        }}
+        open={devicePoll !== null}
+        pluginLabel={devicePoll?.pluginLabel ?? ''}
+        pluginSlug={devicePoll?.pluginSlug ?? ''}
+        pokeNonce={pokeNonce}
+        polling={devicePoll?.polling ?? null}
+        state={devicePoll?.state ?? ''}
       />
     </div>
   )
@@ -379,4 +551,39 @@ function formatRelative(value: null | string): string {
   const ts = new Date(value)
   if (Number.isNaN(ts.getTime())) return '—'
   return ts.toLocaleString()
+}
+
+function ProviderCell({ plugin }: { plugin: InstalledPlugin }) {
+  const version = useIconRegistryVersion()
+  const iconValue = plugin.icon ?? null
+
+  // Lazy-load whichever icon set owns this value, so the brand glyph
+  // resolves on first render even if the set wasn't pre-loaded.
+  useEffect(() => {
+    if (iconValue) {
+      void iconRegistry.loadSetFor(iconValue)
+    }
+  }, [iconValue])
+
+  // ``getIcon`` returns null while the owning set is still in-flight;
+  // re-derive on every registry version bump so the icon swaps in
+  // once the chunk lands.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const ResolvedIcon: IconComponent | null = iconValue
+    ? getIcon(iconValue, null)
+    : null
+  // Reference ``version`` so React treats this cell as dependent on
+  // registry changes (cheap; no hook needed beyond useIconRegistryVersion).
+  void version
+
+  return (
+    <div className="flex items-center gap-3">
+      {ResolvedIcon ? (
+        <ResolvedIcon className="h-6 w-6 flex-shrink-0 text-secondary" />
+      ) : (
+        <Plug className="h-6 w-6 flex-shrink-0 text-tertiary" />
+      )}
+      <div className="font-medium">{plugin.name}</div>
+    </div>
+  )
 }

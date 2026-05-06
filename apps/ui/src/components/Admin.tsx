@@ -32,6 +32,7 @@ import { EnvironmentManagement } from './admin/EnvironmentManagement'
 import { LinkDefinitionManagement } from './admin/LinkDefinitionManagement'
 import { NoteTemplateManagement } from './admin/NoteTemplateManagement'
 import { OrganizationManagement } from './admin/OrganizationManagement'
+import { PluginPackageDetail } from './admin/PluginPackageDetail'
 import { PluginsManagement } from './admin/PluginsManagement'
 import { ProjectTypeManagement } from './admin/ProjectTypeManagement'
 import { RoleManagement } from './admin/RoleManagement'
@@ -130,13 +131,6 @@ export function Admin() {
       icon: StickyNote,
       id: 'note-templates',
       label: 'Note Templates',
-      scope: 'org',
-    },
-    {
-      description: 'Manage installed plugins',
-      icon: Puzzle,
-      id: 'plugins',
-      label: 'Plugins',
       scope: 'org',
     },
     {
@@ -367,7 +361,13 @@ export function Admin() {
               <ScoringPolicyManagement />
             )}
             {currentSection === 'oauth' && <AuthProvidersManagement />}
-            {currentSection === 'plugins' && <PluginsManagement />}
+            {currentSection === 'plugins' && !slug && <PluginsManagement />}
+            {currentSection === 'plugins' && slug && (
+              <PluginPackageDetail
+                onBack={() => navigate('/admin/plugins')}
+                slug={slug}
+              />
+            )}
           </div>
         </main>
       </div>

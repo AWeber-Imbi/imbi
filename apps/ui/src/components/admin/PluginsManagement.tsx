@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 
+import { useNavigate } from 'react-router-dom'
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CirclePlay, Package } from 'lucide-react'
+import { ChevronRight, CirclePlay, Package } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { getAdminPlugins, setAdminPluginEnabled } from '@/api/endpoints'
@@ -193,6 +195,7 @@ function DisabledList({ parentLoading, plugins }: DisabledListProps) {
 }
 
 function EnabledList({ error, isError, isLoading, plugins }: EnabledListProps) {
+  const navigate = useNavigate()
   if (isLoading) {
     return <LoadingState label="Loading..." />
   }
@@ -234,11 +237,16 @@ function EnabledList({ error, isError, isLoading, plugins }: EnabledListProps) {
               <TableHead>Version</TableHead>
               <TableHead>Auth</TableHead>
               <TableHead>Tabs</TableHead>
+              <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {plugins.map((plugin) => (
-              <TableRow key={plugin.slug}>
+              <TableRow
+                className="hover:bg-secondary/40 cursor-pointer"
+                key={plugin.slug}
+                onClick={() => navigate(`/admin/plugins/${plugin.slug}`)}
+              >
                 <TableCell>
                   <div className="font-medium">{plugin.name}</div>
                   <div className="text-xs text-secondary">
@@ -274,6 +282,9 @@ function EnabledList({ error, isError, isLoading, plugins }: EnabledListProps) {
                       </Badge>
                     ))}
                   </div>
+                </TableCell>
+                <TableCell>
+                  <ChevronRight className="h-4 w-4 text-tertiary" />
                 </TableCell>
               </TableRow>
             ))}

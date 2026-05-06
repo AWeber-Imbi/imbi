@@ -1,14 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Edit2 } from 'lucide-react'
 
-import { getEnvironmentSchema } from '@/api/endpoints'
+import { getAdminPlugins, getEnvironmentSchema } from '@/api/endpoints'
+import { AnchorEdgesCard } from '@/components/admin/AnchorEdgesCard'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DynamicDetailFields } from '@/components/ui/dynamic-fields'
 import { EntityIcon } from '@/components/ui/entity-icon'
 import { ENVIRONMENT_BASE_FIELDS_SET } from '@/lib/constants'
 import { extractDynamicFields } from '@/lib/utils'
-import type { Environment } from '@/types'
+import type { Environment, InstalledPlugin } from '@/types'
 
 interface EnvironmentDetailProps {
   environment: Environment
@@ -26,6 +27,20 @@ export function EnvironmentDetail({
     queryKey: ['environmentSchema'],
     staleTime: 5 * 60 * 1000,
   })
+  const { data: pluginsResponse } = useQuery({
+    queryFn: ({ signal }) => getAdminPlugins(signal),
+    queryKey: ['admin-plugins'],
+    staleTime: 60 * 1000,
+  })
+
+  const enabledPlugins: InstalledPlugin[] = (
+    pluginsResponse?.installed ?? []
+  ).filter((p) => p.enabled)
+  const environmentEdges = enabledPlugins.flatMap((plugin) =>
+    (plugin.edge_labels ?? [])
+      .filter((edge) => edge.from_labels.includes('Environment'))
+      .map((edge) => ({ edge, plugin })),
+  )
 
   return (
     <div className="space-y-6">
@@ -117,6 +132,20 @@ export function EnvironmentDetail({
           </div>
         </CardContent>
       </Card>
+
+      {environmentEdges.map(({ edge, plugin }) => (
+        <AnchorEdgesCard
+          anchor={{
+            orgSlug: environment.organization.slug,
+            slug: environment.slug,
+          }}
+          anchorKind="environment"
+          edge={edge}
+          entityPluginSlug={plugin.slug}
+          key={`${plugin.slug}:${edge.name}`}
+          title={`${plugin.name}: ${edge.name}`}
+        />
+      ))}
     </div>
   )
 }
