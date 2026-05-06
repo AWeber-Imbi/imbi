@@ -212,7 +212,10 @@ docs = [
   "mkdocstrings[python]"
 ]
 plugins = [
+  "imbi-plugin-aws",
+  "imbi-plugin-github",
   "imbi-plugin-logzio",
+  "imbi-plugin-oidc",
 ]
 
 [[tool.uv.index]]
@@ -221,4 +224,7 @@ default = true
 
 [tool.uv.sources]
 imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", rev = "main" }
-imbi-plugin-logzio = { path = "../imbi-plugin-logzio", editable = true }
+imbi-plugin-aws = { git = "https://github.com/AWeber-Imbi/imbi-plugin-aws.git", rev = "main" }
+imbi-plugin-github = { git = "https://github.com/AWeber-Imbi/imbi-plugin-github.git", rev = "main" }
+imbi-plugin-logzio = { git = "https://github.com/AWeber-Imbi/imbi-plugin-logzio.git", rev = "main" }
+imbi-plugin-oidc = { git = "https://github.com/AWeber-Imbi/imbi-plugin-oidc.git", rev = "main" }

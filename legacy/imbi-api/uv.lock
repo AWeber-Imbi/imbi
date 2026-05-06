@@ -888,7 +888,10 @@ docs = [
     { name = "mkdocstrings-python-xref" },
 ]
 plugins = [
+    { name = "imbi-plugin-aws" },
+    { name = "imbi-plugin-github" },
     { name = "imbi-plugin-logzio" },
+    { name = "imbi-plugin-oidc" },
 ]
 
 [package.metadata]
@@ -943,7 +946,12 @@ docs = [
     { name = "mkdocstrings", extras = ["python"] },
     { name = "mkdocstrings-python-xref", specifier = ">=1.6,<2" },
 ]
-plugins = [{ name = "imbi-plugin-logzio", editable = "../imbi-plugin-logzio" }]
+plugins = [
+    { name = "imbi-plugin-aws", git = "https://github.com/AWeber-Imbi/imbi-plugin-aws.git?rev=main" },
+    { name = "imbi-plugin-github", git = "https://github.com/AWeber-Imbi/imbi-plugin-github.git?rev=main" },
+    { name = "imbi-plugin-logzio", git = "https://github.com/AWeber-Imbi/imbi-plugin-logzio.git?rev=main" },
+    { name = "imbi-plugin-oidc", git = "https://github.com/AWeber-Imbi/imbi-plugin-oidc.git?rev=main" },
+]
 
 [[package]]
 name = "imbi-common"
@@ -976,37 +984,43 @@ server = [
 ]
 
 [[package]]
-name = "imbi-plugin-logzio"
+name = "imbi-plugin-aws"
 version = "0.1.0"
-source = { editable = "../imbi-plugin-logzio" }
+source = { git = "https://github.com/AWeber-Imbi/imbi-plugin-aws.git?rev=main#1aa3707b0692a8efadceb49e7fc546ca48389ef2" }
 dependencies = [
     { name = "httpx" },
     { name = "imbi-common" },
     { name = "pydantic" },
 ]
 
-[package.metadata]
-requires-dist = [
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "imbi-common", git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=main" },
-    { name = "pydantic", specifier = ">=2" },
+[[package]]
+name = "imbi-plugin-github"
+version = "0.1.0"
+source = { git = "https://github.com/AWeber-Imbi/imbi-plugin-github.git?rev=main#e7046d0dc8d7463aa7d58af97fa10831370b5d44" }
+dependencies = [
+    { name = "httpx" },
+    { name = "imbi-common" },
+    { name = "pydantic" },
 ]
 
-[package.metadata.requires-dev]
-dev = [
-    { name = "basedpyright" },
-    { name = "coverage", extras = ["toml"] },
-    { name = "imbi-common", extras = ["server", "databases"], git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=main" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "respx" },
-    { name = "ruff", specifier = "~=0.14.6" },
+[[package]]
+name = "imbi-plugin-logzio"
+version = "0.1.0"
+source = { git = "https://github.com/AWeber-Imbi/imbi-plugin-logzio.git?rev=main#e6e9911c5d666cf3e1196a5442aabfedd069305c" }
+dependencies = [
+    { name = "httpx" },
+    { name = "imbi-common" },
+    { name = "pydantic" },
 ]
-dist = [
-    { name = "build" },
-    { name = "twine" },
-    { name = "wheel" },
+
+[[package]]
+name = "imbi-plugin-oidc"
+version = "0.1.0"
+source = { git = "https://github.com/AWeber-Imbi/imbi-plugin-oidc.git?rev=main#35b4dd6198e4e1e3a819ec683b3490d4deabc16b" }
+dependencies = [
+    { name = "httpx" },
+    { name = "imbi-common" },
+    { name = "pydantic" },
 ]
 
 [[package]]

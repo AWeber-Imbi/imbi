@@ -19,6 +19,7 @@ from imbi_common.plugins.errors import (
 
 from imbi_api.auth import permissions
 from imbi_api.domain import models
+from imbi_api.identity.host_integration import attach_identity
 from imbi_api.plugins import call_with_timeout
 from imbi_api.plugins.credentials import get_plugin_credentials
 from imbi_api.plugins.resolution import resolve_plugin
@@ -142,6 +143,7 @@ async def search_logs(
         environment=environment,
         assignment_options=resolved.options,
     )
+    ctx = await attach_identity(db, ctx, resolved, auth)
     try:
         credentials = await get_plugin_credentials(
             db, resolved.plugin_id, resolved.entry
@@ -246,6 +248,7 @@ async def get_log_histogram(
         environment=environment,
         assignment_options=resolved.options,
     )
+    ctx = await attach_identity(db, ctx, resolved, auth)
     try:
         credentials = await get_plugin_credentials(
             db, resolved.plugin_id, resolved.entry
@@ -293,6 +296,7 @@ async def get_log_schema(
         environment=environment,
         assignment_options=resolved.options,
     )
+    ctx = await attach_identity(db, ctx, resolved, auth)
     try:
         credentials = await get_plugin_credentials(
             db, resolved.plugin_id, resolved.entry
