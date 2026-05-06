@@ -1,11 +1,15 @@
 [project]
 name = "imbi-common"
-version = "0.1.0a1"
+version = "0.1.0"
 description = "Shared library for the Imbi ecosystem providing core data access, authentication primitives, and domain models"
 readme = "README.md"
 requires-python = ">=3.14"
-license = { text = "BSD-3-Clause" }
-authors = [{ name = "Gavin M. Roy", email = "gavinr@aweber.com" }]
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+authors = [
+  { name = "Gavin M. Roy", email = "gavinr@aweber.com" },
+  { name = "Dave Shawley", email = "daves@aweber.com" }
+]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
@@ -26,7 +30,6 @@ dependencies = [
   "python-slugify",
   "typer>=0.21.1",
 ]
-license-file = "LICENSE"
 
 [project.optional-dependencies]
 databases = [
@@ -94,7 +97,6 @@ config-file = "mkdocs.yml"
 [tool.mypy]
 python_executable = ".venv/bin/python"
 strict = true
-show_error_codes = true
 
 [[tool.mypy.overrides]]
 module = ["clickhouse_connect.*", "nanoid", "pgvector.*"]
@@ -106,7 +108,7 @@ executionEnvironments = [
   { root = "tests", reportPrivateUsage = false },
 ]
 deprecateTypingAliases = true
-reportMissingSuperCall = "hint"
+reportMissingSuperCall = "information"
 reportMissingTypeStubs = false
 typeCheckingMode = "strict"
 
