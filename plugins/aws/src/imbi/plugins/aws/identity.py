@@ -87,6 +87,10 @@ class AwsIamIcPlugin(IdentityPlugin):
         login_capable=True,
         requires_identity=False,
         default_scopes=['sso:account:access'],
+        widget_text=(
+            'Connect to enable project level functionality '
+            'such as configuration and log access.'
+        ),
         options=[
             PluginOption(
                 name='start_url',
@@ -177,8 +181,27 @@ class AwsIamIcPlugin(IdentityPlugin):
 
         client_id = credentials.get('client_id')
         client_secret = credentials.get('client_secret')
+        registered: dict[str, str] | None = None
         if not client_id or not client_secret:
-            client_id, client_secret = await self._register_client(region)
+            # IAM IC only issues a refresh token on CreateToken when the
+            # registered client's declared scopes include
+            # ``sso:account:access`` (or another long-lived scope).  Pass
+            # the requested scopes through to RegisterClient so the
+            # device-flow grant is allowed to refresh later.
+            requested_scopes = (
+                self.manifest.default_scopes if scopes is None else scopes
+            )
+            client_id, client_secret = await self._register_client(
+                region, requested_scopes
+            )
+            # Surface the freshly-minted client back to the host so it
+            # can persist them; otherwise the matching CreateToken call
+            # (which only sees ``credentials`` from storage) would
+            # arrive with empty client_id and AWS would 401.
+            registered = {
+                'client_id': client_id,
+                'client_secret': client_secret,
+            }
 
         async with httpx.AsyncClient(timeout=10.0) as http:
             response = await http.post(
@@ -214,6 +237,7 @@ class AwsIamIcPlugin(IdentityPlugin):
             state=str(data['deviceCode']),
             code_verifier=None,
             polling=polling,
+            registered_credentials=registered,
         )
 
     async def exchange_code(
@@ -350,20 +374,27 @@ class AwsIamIcPlugin(IdentityPlugin):
             extra=sts_extra,
         )
 
-    async def _register_client(self, region: str) -> tuple[str, str]:
+    async def _register_client(
+        self, region: str, scopes: list[str] | None = None
+    ) -> tuple[str, str]:
         """One-time OIDC client registration.
 
         Returns ``(client_id, client_secret)``.  The host is expected
         to persist these on the parent ``ServiceApplication`` so the
-        next call sees them in ``credentials``.
+        next call sees them in ``credentials``.  ``scopes`` is the list
+        of OAuth scopes the client will be allowed to request — IAM IC
+        gates refresh-token issuance on the registered scope set.
         """
+        body: dict[str, typing.Any] = {
+            'clientName': 'imbi',
+            'clientType': 'public',
+        }
+        if scopes is not None:
+            body['scopes'] = list(scopes)
         async with httpx.AsyncClient(timeout=10.0) as http:
             response = await http.post(
                 _oidc_url(region, '/client/register'),
-                json={
-                    'clientName': 'imbi',
-                    'clientType': 'public',
-                },
+                json=body,
             )
         if response.status_code not in (200, 201):
             raise ValueError(
