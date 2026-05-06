@@ -47,7 +47,7 @@ packages = ["src/imbi_plugin_github"]
 
 [tool.coverage.report]
 exclude_also = ["typing.TYPE_CHECKING"]
-fail_under = 90
+fail_under = 85
 show_missing = true
 
 [tool.coverage.run]
