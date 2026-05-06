@@ -56,6 +56,56 @@ class ManifestTestCase(unittest.TestCase):
         with self.assertRaises(ValueError):
             plugin._endpoints({})
 
+    def test_ghec_endpoints_route_oauth_to_github_com(self) -> None:
+        plugin = GitHubEnterpriseCloudPlugin()
+        endpoints = plugin._endpoints({'host': 'tenant.ghe.com'})
+        self.assertEqual(
+            endpoints['authorize'],
+            'https://github.com/login/oauth/authorize',
+        )
+        self.assertEqual(
+            endpoints['token'],
+            'https://github.com/login/oauth/access_token',
+        )
+        self.assertEqual(
+            endpoints['user'], 'https://api.tenant.ghe.com/user'
+        )
+        self.assertEqual(
+            endpoints['emails'], 'https://api.tenant.ghe.com/user/emails'
+        )
+
+    def test_ghes_endpoints_route_through_appliance(self) -> None:
+        plugin = GitHubEnterpriseServerPlugin()
+        endpoints = plugin._endpoints({'host': 'github.example.com'})
+        self.assertEqual(
+            endpoints['authorize'],
+            'https://github.example.com/login/oauth/authorize',
+        )
+        self.assertEqual(
+            endpoints['user'],
+            'https://github.example.com/api/v3/user',
+        )
+
+    def test_host_with_scheme_is_normalized(self) -> None:
+        plugin = GitHubEnterpriseServerPlugin()
+        endpoints = plugin._endpoints(
+            {'host': 'https://github.example.com/'}
+        )
+        self.assertEqual(
+            endpoints['user'],
+            'https://github.example.com/api/v3/user',
+        )
+
+    def test_host_with_path_is_rejected(self) -> None:
+        plugin = GitHubEnterpriseServerPlugin()
+        with self.assertRaises(ValueError):
+            plugin._endpoints({'host': 'github.example.com/foo'})
+
+    def test_host_blank_is_rejected(self) -> None:
+        plugin = GitHubEnterpriseServerPlugin()
+        with self.assertRaises(ValueError):
+            plugin._endpoints({'host': '   '})
+
 
 class FlowTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock

@@ -68,17 +68,50 @@ class _GitHubBase(IdentityPlugin):
         """Return the hostname this plugin instance targets."""
         raise NotImplementedError
 
+    @staticmethod
+    def _normalize_host(raw: typing.Any, label: str) -> str:
+        """Validate and normalize a manifest ``host`` value.
+
+        Strips whitespace, accepts optional scheme, and rejects values
+        with paths/queries/fragments so callers can compose URLs from
+        the result without producing malformed endpoints.
+        """
+        host = str(raw or '').strip()
+        if not host:
+            raise ValueError(f'{label} requires the "host" option')
+        parsed = urllib.parse.urlsplit(
+            host if '://' in host else f'https://{host}'
+        )
+        if (
+            not parsed.hostname
+            or parsed.path not in ('', '/')
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError(f'{label} got invalid host value: {host!r}')
+        return parsed.hostname
+
     def _endpoints(self, options: dict[str, typing.Any]) -> dict[str, str]:
         host = self._resolve_host(options)
         # github.com routes login through github.com/login but API
-        # requests through api.github.com.  Enterprise hosts route both
-        # through ``<host>/api/v3``.
+        # requests through api.github.com.  GHEC tenants (``*.ghe.com``)
+        # also send OAuth to github.com but route REST traffic to
+        # ``api.<tenant>.ghe.com``.  GHES appliances route both OAuth
+        # and REST through ``<host>/api/v3``.
         if host == 'github.com':
             return {
                 'authorize': 'https://github.com/login/oauth/authorize',
                 'token': 'https://github.com/login/oauth/access_token',
                 'user': 'https://api.github.com/user',
                 'emails': 'https://api.github.com/user/emails',
+            }
+        if host.endswith('.ghe.com'):
+            api_host = f'api.{host}'
+            return {
+                'authorize': 'https://github.com/login/oauth/authorize',
+                'token': 'https://github.com/login/oauth/access_token',
+                'user': f'https://{api_host}/user',
+                'emails': f'https://{api_host}/user/emails',
             }
         return {
             'authorize': f'https://{host}/login/oauth/authorize',
@@ -343,10 +376,7 @@ class GitHubEnterpriseCloudPlugin(_GitHubBase):
 
     @classmethod
     def _resolve_host(cls, options: dict[str, typing.Any]) -> str:
-        host = options.get('host')
-        if not host:
-            raise ValueError('GHEC plugin requires the "host" option')
-        return str(host)
+        return cls._normalize_host(options.get('host'), 'GHEC plugin')
 
 
 class GitHubEnterpriseServerPlugin(_GitHubBase):
@@ -388,7 +418,4 @@ class GitHubEnterpriseServerPlugin(_GitHubBase):
 
     @classmethod
     def _resolve_host(cls, options: dict[str, typing.Any]) -> str:
-        host = options.get('host')
-        if not host:
-            raise ValueError('GHES plugin requires the "host" option')
-        return str(host)
+        return cls._normalize_host(options.get('host'), 'GHES plugin')

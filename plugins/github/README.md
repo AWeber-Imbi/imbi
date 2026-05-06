@@ -16,10 +16,10 @@ to GitHub APIs as a `Bearer` token, so `materialize()` is a no-op.
 
 ## Manifest options
 
-| Option           | Required | Description                                                        |
-| ---------------- | -------- | ------------------------------------------------------------------ |
-| `host`           | GHES only | Hostname of the GHES install (e.g. `github.example.com`).         |
-| `default_scopes` | no       | Space-separated default OAuth scopes (default: `read:user user:email`). |
+| Option           | Required  | Description                                                                |
+| ---------------- | --------- | -------------------------------------------------------------------------- |
+| `host`           | GHEC/GHES | Tenant or appliance host (e.g. `tenant.ghe.com`, `github.example.com`).    |
+| `default_scopes` | no        | Space-separated default OAuth scopes (default: `read:user user:email`).    |
 
 ## Credentials
 
