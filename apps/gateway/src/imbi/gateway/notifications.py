@@ -74,9 +74,12 @@ async def process_notification(
         LOGGER.warning('No records found for %r', webhook_id)
     else:
         if len(records) != 1:
-            LOGGER.warning(
-                'Found multiple records (%s) for %r', len(records), webhook_id
+            LOGGER.error(
+                'Webhook %r is connected to %s Organizations',
+                webhook_id,
+                len(records),
             )
+            raise fastapi.HTTPException(http.HTTPStatus.INTERNAL_SERVER_ERROR)
 
         record = records[0]
         webhook = graph.parse_agtype(record['webhook'])

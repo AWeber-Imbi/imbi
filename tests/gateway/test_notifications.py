@@ -382,8 +382,8 @@ class ProcessNotificationTests(helpers.TestCase):
             )
         )
 
-    async def test_multiple_records_logs_warning(self) -> None:
-        # A second BELONGS_TO edge makes the query return 2 rows (line 75)
+    async def test_webhook_in_multiple_orgs_fails(self) -> None:
+        # A second BELONGS_TO edge makes the query return 2 rows
         extra_org_id = nanoid.generate()
         ts = '2024-01-01T00:00:00+00:00'
         await self.g.execute(
@@ -406,14 +406,8 @@ class ProcessNotificationTests(helpers.TestCase):
         )
         try:
             body = {'repo': {'id': self.ext_id}}
-            with self.assertLogs(
-                'imbi_gateway.notifications', level='WARNING'
-            ) as cm:
-                response = await self._post(self.webhook_id, body)
-            self.assertEqual(200, response.status_code)
-            self.assertTrue(
-                any('Found multiple records' in line for line in cm.output)
-            )
+            response = await self._post(self.webhook_id, body)
+            self.assertEqual(500, response.status_code)
         finally:
             await self.g.execute(
                 'MATCH (n:Organization {{id: {id}}})'
