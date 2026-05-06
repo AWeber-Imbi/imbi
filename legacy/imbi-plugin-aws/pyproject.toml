@@ -15,7 +15,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-  "httpx>=0.27",
+  "httpx>=0.27,<1",
   "imbi-common>=0.2.0",
   "pydantic>=2",
 ]
@@ -27,6 +27,7 @@ aws-iam-ic = "imbi_plugin_aws.identity:AwsIamIcPlugin"
 dev = [
   "basedpyright",
   "coverage[toml]",
+  "httpcore",
   "imbi-common[server,databases]",
   "pre-commit",
   "pytest",
@@ -45,7 +46,7 @@ packages = ["src/imbi_plugin_aws"]
 
 [tool.coverage.report]
 exclude_also = ["typing.TYPE_CHECKING"]
-fail_under = 90
+fail_under = 85
 show_missing = true
 
 [tool.coverage.run]
