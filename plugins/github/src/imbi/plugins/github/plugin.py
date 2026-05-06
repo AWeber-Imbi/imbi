@@ -304,6 +304,10 @@ class GitHubPlugin(_GitHubBase):
         slug='github',
         name='GitHub',
         description='GitHub.com OAuth App identity provider.',
+        widget_text=(
+            'Connect to enable functionality such as pull-request visibility, '
+            'project creation, and deployments.'
+        ),
         plugin_type='identity',
         auth_type='oauth2',
         login_capable=True,
@@ -341,6 +345,10 @@ class GitHubEnterpriseCloudPlugin(_GitHubBase):
         description=(
             'GitHub Enterprise Cloud OAuth App identity provider '
             '(tenant.ghe.com).'
+        ),
+        widget_text=(
+            'Connect to enable functionality such as pull-request visibility, '
+            'project creation, and deployments.'
         ),
         plugin_type='identity',
         auth_type='oauth2',
@@ -394,6 +402,10 @@ class GitHubEnterpriseServerPlugin(_GitHubBase):
         slug='github-enterprise-server',
         name='GitHub Enterprise Server',
         description=('GitHub Enterprise Server OAuth App identity provider.'),
+        widget_text=(
+            'Connect to enable functionality such as pull-request visibility, '
+            'project creation, and deployments.'
+        ),
         plugin_type='identity',
         auth_type='oauth2',
         login_capable=True,
