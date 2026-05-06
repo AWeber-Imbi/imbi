@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27",
-  "imbi-common>=2.0",
+  "imbi-common>=0.1.0a1",
   "pydantic>=2",
 ]
 
@@ -27,7 +27,7 @@ logzio = "imbi_plugin_logzio.plugin:LogzioPlugin"
 dev = [
   "basedpyright",
   "coverage[toml]",
-  "imbi-common[server,databases]>=2.0",
+  "imbi-common[server,databases]",
   "pre-commit",
   "pytest",
   "pytest-asyncio",
@@ -113,9 +113,6 @@ max-complexity = 15
 
 [tool.uv]
 default-groups = ["dev"]
-
-[tool.uv.sources]
-imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", rev = "main" }
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
