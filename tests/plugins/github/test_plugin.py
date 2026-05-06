@@ -1,6 +1,7 @@
 """Smoke tests for the GitHub identity plugins."""
 
 import unittest
+import urllib.parse
 
 import httpx
 import respx
@@ -126,13 +127,14 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
             {'client_id': 'cid'},
             'https://imbi.test/cb',
         )
-        self.assertIn(
+        parsed = urllib.parse.urlsplit(request.authorization_url)
+        self.assertEqual(
+            f'{parsed.scheme}://{parsed.netloc}{parsed.path}',
             'https://github.com/login/oauth/authorize',
-            request.authorization_url,
         )
-        self.assertIn(
-            'scope=read%3Auser+user%3Aemail', request.authorization_url
-        )
+        params = urllib.parse.parse_qs(parsed.query)
+        self.assertEqual(params['scope'], ['read:user user:email'])
+        self.assertEqual(params['client_id'], ['cid'])
 
     @respx.mock
     async def test_authorization_request_ghes_uses_host(self) -> None:
@@ -142,9 +144,10 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
             {'client_id': 'cid'},
             'https://imbi.test/cb',
         )
-        self.assertIn(
+        parsed = urllib.parse.urlsplit(request.authorization_url)
+        self.assertEqual(
+            f'{parsed.scheme}://{parsed.netloc}{parsed.path}',
             'https://github.example.com/login/oauth/authorize',
-            request.authorization_url,
         )
 
     @respx.mock
