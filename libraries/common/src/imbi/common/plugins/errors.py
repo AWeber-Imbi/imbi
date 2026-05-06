@@ -25,3 +25,19 @@ class PluginSchemaCollisionError(Exception):
     """Raised when a plugin declares a vlabel that collides with another
     plugin or with core's static schemata.
     """
+
+
+class IdentityAuthorizationPending(Exception):
+    """Raised by an identity plugin's ``exchange_code`` while the user
+    has not yet completed an out-of-band authorization step (e.g. an
+    OAuth 2.0 device-code flow).  The host's poll loop is expected to
+    catch this and retry at the plugin's polling interval.
+    """
+
+
+class IdentityAuthorizationExpired(Exception):
+    """Raised by an identity plugin's ``exchange_code`` when an
+    out-of-band authorization (e.g. an IdP-issued device code) has
+    expired before the user completed it.  The host should surface
+    this to the UI so the user can restart the flow.
+    """
