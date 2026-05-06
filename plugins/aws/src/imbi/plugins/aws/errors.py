@@ -1,5 +1,10 @@
 """Errors raised by the AWS identity plugin and helpers."""
 
+from imbi_common.plugins.errors import (
+    IdentityAuthorizationExpired,
+    IdentityAuthorizationPending,
+)
+
 
 class AccountNotResolvedError(Exception):
     """Raised when ``account_resolution.resolve_account`` cannot find a
@@ -24,13 +29,13 @@ class AccountNotResolvedError(Exception):
         self.anchors_checked = anchors_checked or []
 
 
-class IamIcDeviceFlowExpired(Exception):
+class IamIcDeviceFlowExpired(IdentityAuthorizationExpired):
     """Raised when the IAM IC device-code expires before the user
     completes the login (CreateToken returns ExpiredTokenException).
     """
 
 
-class IamIcAuthorizationPending(Exception):
+class IamIcAuthorizationPending(IdentityAuthorizationPending):
     """Raised by ``poll`` while the user is still authenticating.
 
     Sentinel only — the host's poll loop catches this and continues.
