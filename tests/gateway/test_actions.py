@@ -137,7 +137,9 @@ class ImbiClientPatchProjectTests(helpers.TestCase):
         self.assertEqual(200, response.status_code)
 
 
-JsonPointerAdapter = pydantic.TypeAdapter(actions.JsonPointer)
+JsonPointerAdapter = pydantic.TypeAdapter[actions.JsonPointer](
+    actions.JsonPointer
+)
 
 
 class JsonPointerTests(helpers.TestCase):
