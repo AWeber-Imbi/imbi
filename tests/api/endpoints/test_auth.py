@@ -41,6 +41,26 @@ def _stub_provider(
     )
 
 
+def _stub_identity_plugin_provider(
+    slug: str,
+    *,
+    plugin_id: str | None = 'plug-1',
+    enabled: bool = True,
+    name: str | None = None,
+) -> login_providers.LoginApp:
+    """Build a LoginApp representing an identity-plugin login row."""
+    return login_providers.LoginApp(
+        slug=slug,
+        name=name or slug,
+        oauth_app_type='identity_plugin',
+        source='identity_plugin',
+        plugin_id=plugin_id,
+        plugin_slug=slug,
+        status='active' if enabled else 'inactive',
+        callback_url=f'http://localhost:8000/auth/oauth/{slug}/callback',
+    )
+
+
 def _patch_providers(
     rows: list[login_providers.LoginApp],
 ) -> typing.Any:
@@ -2074,3 +2094,517 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
                 data['scope'],
                 'project:read',
             )
+
+
+class IdentityPluginLoginFlowTestCase(unittest.TestCase):
+    """Cover the identity-plugin branch of /auth/oauth/{provider}.
+
+    Exercises both the start (``oauth_login``) and callback
+    (``_identity_plugin_login_callback``) paths so the new code in
+    ``endpoints/auth.py`` is reached without standing up a real plugin
+    registry.
+    """
+
+    def setUp(self) -> None:
+        from imbi_common.plugins import base as plugin_base
+
+        from imbi_api.identity import flows as identity_flows
+        from imbi_api.identity import repository as identity_repository
+
+        self._plugin_base = plugin_base
+        self._identity_flows = identity_flows
+        self._identity_repository = identity_repository
+
+        settings._auth_settings = None
+        self.test_app = app.create_app()
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
+        self.client = testclient.TestClient(self.test_app)
+
+    def tearDown(self) -> None:
+        settings._auth_settings = None
+
+    def test_oauth_login_redirects_through_identity_flow(self) -> None:
+        """Identity-plugin LoginApp triggers identity_flows.start_flow."""
+        provider = _stub_identity_plugin_provider('okta', plugin_id='p-1')
+        with (
+            _patch_providers([provider]),
+            mock.patch.object(
+                self._identity_flows,
+                'start_flow',
+                new=mock.AsyncMock(
+                    return_value=(
+                        'https://idp.example.com/authorize?x=1',
+                        'state-token',
+                        None,
+                    )
+                ),
+            ) as start_mock,
+        ):
+            response = self.client.get(
+                '/auth/oauth/okta',
+                follow_redirects=False,
+            )
+        self.assertEqual(response.status_code, 307)
+        self.assertEqual(
+            response.headers['location'],
+            'https://idp.example.com/authorize?x=1',
+        )
+        start_mock.assert_awaited_once()
+        kwargs = start_mock.await_args.kwargs
+        self.assertEqual(kwargs['plugin_id'], 'p-1')
+        self.assertEqual(kwargs['intent'], 'login')
+
+    def test_oauth_login_missing_plugin_id_returns_500(self) -> None:
+        """Identity-plugin row without plugin_id is a server error."""
+        provider = _stub_identity_plugin_provider('okta', plugin_id=None)
+        with _patch_providers([provider]):
+            response = self.client.get(
+                '/auth/oauth/okta',
+                follow_redirects=False,
+            )
+        self.assertEqual(response.status_code, 500)
+        self.assertIn('missing plugin_id', response.json()['detail'])
+
+    def test_oauth_login_plugin_not_loaded_returns_503(self) -> None:
+        """PluginNotFoundError from start_flow surfaces as 503."""
+        from imbi_common.plugins.errors import PluginNotFoundError
+
+        provider = _stub_identity_plugin_provider('okta', plugin_id='p-1')
+        with (
+            _patch_providers([provider]),
+            mock.patch.object(
+                self._identity_flows,
+                'start_flow',
+                new=mock.AsyncMock(side_effect=PluginNotFoundError('okta')),
+            ),
+        ):
+            response = self.client.get(
+                '/auth/oauth/okta',
+                follow_redirects=False,
+            )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn('not loaded', response.json()['detail'])
+
+    @mock.patch.dict(
+        'os.environ',
+        {
+            'IMBI_AUTH_ENCRYPTION_KEY': (
+                'nhia5yBgff552rNZAvT4GGu-IE0dMVsXQaM2auHNXRo='
+            ),
+            'IMBI_AUTH_OAUTH_AUTO_CREATE_USERS': 'true',
+        },
+    )
+    def test_oauth_callback_creates_new_user_via_identity_plugin(
+        self,
+    ) -> None:
+        """Identity-plugin callback provisions a new user + JWT pair."""
+        from imbi_common.auth import encryption
+
+        from imbi_api import models as api_models
+
+        encryption.TokenEncryption.reset_instance()
+        settings._auth_settings = None
+
+        provider = _stub_identity_plugin_provider('okta', plugin_id='p-1')
+
+        profile = self._plugin_base.IdentityProfile(
+            subject='okta-sub-1',
+            email='new@example.com',
+            email_verified=True,
+            name='New User',
+        )
+        credentials = self._plugin_base.IdentityCredentials(
+            access_token='at-1',
+            refresh_token='rt-1',
+        )
+
+        # No existing user
+        self.mock_db.match.return_value = []
+        self.mock_db.merge.return_value = None
+        # execute(): the principal_count query inside issue_token_pair
+        # then the SET last_login update — both for the new user.
+        self.mock_db.execute.side_effect = [
+            [{'principal_count': 1}],
+            [],
+        ]
+
+        with (
+            _patch_providers([provider]),
+            mock.patch.object(
+                self._identity_flows,
+                'complete_login_flow',
+                new=mock.AsyncMock(
+                    return_value=(profile, credentials, 'p-1', '/projects')
+                ),
+            ),
+            mock.patch.object(
+                self._identity_repository,
+                'upsert_connection',
+                new=mock.AsyncMock(return_value=None),
+            ) as upsert_mock,
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.get(
+                '/auth/oauth/okta/callback?code=c&state=s',
+                follow_redirects=False,
+            )
+
+        self.assertEqual(response.status_code, 307)
+        location = response.headers['location']
+        # Tokens land in the URL fragment, not the query string.
+        self.assertIn('/projects#', location)
+        self.assertIn('access_token=', location)
+        self.assertIn('refresh_token=', location)
+        upsert_mock.assert_awaited_once()
+        # Verify the new user was upserted into the graph.
+        merged = [c.args[0] for c in self.mock_db.merge.call_args_list]
+        self.assertTrue(any(isinstance(m, api_models.User) for m in merged))
+
+    @mock.patch.dict(
+        'os.environ',
+        {
+            'IMBI_AUTH_ENCRYPTION_KEY': (
+                'nhia5yBgff552rNZAvT4GGu-IE0dMVsXQaM2auHNXRo='
+            ),
+        },
+    )
+    def test_oauth_callback_links_existing_user_via_identity_plugin(
+        self,
+    ) -> None:
+        """Identity-plugin callback links to an existing user by email."""
+        from imbi_common.auth import encryption
+
+        from imbi_api import models as api_models
+
+        encryption.TokenEncryption.reset_instance()
+        settings._auth_settings = None
+
+        provider = _stub_identity_plugin_provider('okta', plugin_id='p-1')
+
+        existing = api_models.User(
+            email='existing@example.com',
+            display_name='Existing User',
+            is_active=True,
+            password_hash=None,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        profile = self._plugin_base.IdentityProfile(
+            subject='okta-sub-99',
+            email='existing@example.com',
+            email_verified=True,
+            name='Existing User',
+        )
+        credentials = self._plugin_base.IdentityCredentials(
+            access_token='at-1',
+        )
+
+        self.mock_db.match.return_value = [existing]
+        self.mock_db.merge.return_value = None
+        self.mock_db.execute.side_effect = [
+            [{'principal_count': 1}],
+            [],
+        ]
+
+        with (
+            _patch_providers([provider]),
+            mock.patch.object(
+                self._identity_flows,
+                'complete_login_flow',
+                new=mock.AsyncMock(
+                    return_value=(profile, credentials, 'p-1', None)
+                ),
+            ),
+            mock.patch.object(
+                self._identity_repository,
+                'upsert_connection',
+                new=mock.AsyncMock(return_value=None),
+            ),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.get(
+                '/auth/oauth/okta/callback?code=c&state=s',
+                follow_redirects=False,
+            )
+
+        self.assertEqual(response.status_code, 307)
+        # Default redirect when return_to is None is /dashboard, and
+        # tokens are appended in the URL fragment.
+        location = response.headers['location']
+        self.assertTrue(location.startswith('/dashboard#'))
+        self.assertIn('access_token=', location)
+        self.assertIn('token_type=bearer', location)
+
+    @mock.patch.dict(
+        'os.environ',
+        {
+            'IMBI_AUTH_ENCRYPTION_KEY': (
+                'nhia5yBgff552rNZAvT4GGu-IE0dMVsXQaM2auHNXRo='
+            ),
+            'IMBI_AUTH_OAUTH_AUTO_LINK_BY_EMAIL': 'false',
+        },
+    )
+    def test_oauth_callback_refuses_link_when_auto_link_disabled(
+        self,
+    ) -> None:
+        """Existing user + auto-link disabled => authentication_failed."""
+        from imbi_common.auth import encryption
+
+        from imbi_api import models as api_models
+
+        encryption.TokenEncryption.reset_instance()
+        settings._auth_settings = None
+
+        provider = _stub_identity_plugin_provider('okta', plugin_id='p-1')
+        existing = api_models.User(
+            email='existing@example.com',
+            display_name='Existing User',
+            is_active=True,
+            password_hash=None,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        profile = self._plugin_base.IdentityProfile(
+            subject='okta-sub-1',
+            email='existing@example.com',
+            email_verified=True,
+        )
+        credentials = self._plugin_base.IdentityCredentials(access_token='a')
+
+        self.mock_db.match.return_value = [existing]
+
+        with (
+            _patch_providers([provider]),
+            mock.patch.object(
+                self._identity_flows,
+                'complete_login_flow',
+                new=mock.AsyncMock(
+                    return_value=(profile, credentials, 'p-1', None)
+                ),
+            ),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.get(
+                '/auth/oauth/okta/callback?code=c&state=s',
+                follow_redirects=False,
+            )
+        self.assertEqual(response.status_code, 307)
+        self.assertIn(
+            'error=authentication_failed', response.headers['location']
+        )
+
+    @mock.patch.dict(
+        'os.environ',
+        {
+            'IMBI_AUTH_ENCRYPTION_KEY': (
+                'nhia5yBgff552rNZAvT4GGu-IE0dMVsXQaM2auHNXRo='
+            ),
+        },
+    )
+    def test_oauth_callback_refuses_unverified_email(self) -> None:
+        """Auto-link refuses when provider does not assert email_verified."""
+        from imbi_common.auth import encryption
+
+        from imbi_api import models as api_models
+
+        encryption.TokenEncryption.reset_instance()
+        settings._auth_settings = None
+
+        provider = _stub_identity_plugin_provider('okta', plugin_id='p-1')
+        existing = api_models.User(
+            email='existing@example.com',
+            display_name='Existing User',
+            is_active=True,
+            password_hash=None,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        profile = self._plugin_base.IdentityProfile(
+            subject='okta-sub-1',
+            email='existing@example.com',
+            email_verified=False,
+        )
+        credentials = self._plugin_base.IdentityCredentials(access_token='a')
+
+        self.mock_db.match.return_value = [existing]
+
+        with (
+            _patch_providers([provider]),
+            mock.patch.object(
+                self._identity_flows,
+                'complete_login_flow',
+                new=mock.AsyncMock(
+                    return_value=(profile, credentials, 'p-1', None)
+                ),
+            ),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.get(
+                '/auth/oauth/okta/callback?code=c&state=s',
+                follow_redirects=False,
+            )
+        self.assertEqual(response.status_code, 307)
+        self.assertIn(
+            'error=authentication_failed', response.headers['location']
+        )
+
+    @mock.patch.dict(
+        'os.environ',
+        {
+            'IMBI_AUTH_ENCRYPTION_KEY': (
+                'nhia5yBgff552rNZAvT4GGu-IE0dMVsXQaM2auHNXRo='
+            ),
+            'IMBI_AUTH_OAUTH_AUTO_CREATE_USERS': 'false',
+        },
+    )
+    def test_oauth_callback_refuses_create_when_disabled(self) -> None:
+        """Auto-create disabled + no user => authentication_failed."""
+        from imbi_common.auth import encryption
+
+        encryption.TokenEncryption.reset_instance()
+        settings._auth_settings = None
+
+        provider = _stub_identity_plugin_provider('okta', plugin_id='p-1')
+        profile = self._plugin_base.IdentityProfile(
+            subject='okta-sub-1',
+            email='nobody@example.com',
+            email_verified=True,
+        )
+        credentials = self._plugin_base.IdentityCredentials(access_token='a')
+
+        self.mock_db.match.return_value = []
+
+        with (
+            _patch_providers([provider]),
+            mock.patch.object(
+                self._identity_flows,
+                'complete_login_flow',
+                new=mock.AsyncMock(
+                    return_value=(profile, credentials, 'p-1', None)
+                ),
+            ),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.get(
+                '/auth/oauth/okta/callback?code=c&state=s',
+                follow_redirects=False,
+            )
+        self.assertEqual(response.status_code, 307)
+        self.assertIn(
+            'error=authentication_failed', response.headers['location']
+        )
+
+    @mock.patch.dict(
+        'os.environ',
+        {
+            'IMBI_AUTH_ENCRYPTION_KEY': (
+                'nhia5yBgff552rNZAvT4GGu-IE0dMVsXQaM2auHNXRo='
+            ),
+        },
+    )
+    def test_oauth_callback_rejects_service_account(self) -> None:
+        """Service-account users cannot complete identity-plugin login."""
+        from imbi_common.auth import encryption
+
+        from imbi_api import models as api_models
+
+        encryption.TokenEncryption.reset_instance()
+        settings._auth_settings = None
+
+        provider = _stub_identity_plugin_provider('okta', plugin_id='p-1')
+        sa_user = api_models.User(
+            email='svc@example.com',
+            display_name='Service',
+            is_active=True,
+            is_service_account=True,
+            password_hash=None,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        profile = self._plugin_base.IdentityProfile(
+            subject='okta-sub-1',
+            email='svc@example.com',
+            email_verified=True,
+        )
+        credentials = self._plugin_base.IdentityCredentials(access_token='a')
+
+        self.mock_db.match.return_value = [sa_user]
+
+        with (
+            _patch_providers([provider]),
+            mock.patch.object(
+                self._identity_flows,
+                'complete_login_flow',
+                new=mock.AsyncMock(
+                    return_value=(profile, credentials, 'p-1', None)
+                ),
+            ),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.get(
+                '/auth/oauth/okta/callback?code=c&state=s',
+                follow_redirects=False,
+            )
+        self.assertEqual(response.status_code, 307)
+        self.assertIn(
+            'error=authentication_failed', response.headers['location']
+        )
+
+    @mock.patch.dict(
+        'os.environ',
+        {
+            'IMBI_AUTH_ENCRYPTION_KEY': (
+                'nhia5yBgff552rNZAvT4GGu-IE0dMVsXQaM2auHNXRo='
+            ),
+        },
+    )
+    def test_oauth_callback_rejects_profile_without_email(self) -> None:
+        """Identity plugin must return an email or callback fails."""
+        from imbi_common.auth import encryption
+
+        encryption.TokenEncryption.reset_instance()
+        settings._auth_settings = None
+
+        provider = _stub_identity_plugin_provider('okta', plugin_id='p-1')
+        profile = self._plugin_base.IdentityProfile(
+            subject='okta-sub-1',
+            email=None,
+        )
+        credentials = self._plugin_base.IdentityCredentials(access_token='a')
+
+        with (
+            _patch_providers([provider]),
+            mock.patch.object(
+                self._identity_flows,
+                'complete_login_flow',
+                new=mock.AsyncMock(
+                    return_value=(profile, credentials, 'p-1', None)
+                ),
+            ),
+        ):
+            response = self.client.get(
+                '/auth/oauth/okta/callback?code=c&state=s',
+                follow_redirects=False,
+            )
+        self.assertEqual(response.status_code, 307)
+        self.assertIn(
+            'error=authentication_failed', response.headers['location']
+        )

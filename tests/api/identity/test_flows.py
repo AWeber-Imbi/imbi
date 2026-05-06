@@ -191,6 +191,61 @@ class CompleteFlowTestCase(unittest.IsolatedAsyncioTestCase):
                 await flows.complete_flow(db, code='c', state_token='s')
 
 
+class CompleteLoginFlowTestCase(unittest.IsolatedAsyncioTestCase):
+    """Verify complete_login_flow exchanges but does not persist."""
+
+    async def test_does_not_upsert_connection(self) -> None:
+        db = mock.AsyncMock()
+        state_data = mock.MagicMock()
+        state_data.plugin_id = 'plugin-1'
+        state_data.redirect_uri = 'https://imbi/cb'
+        state_data.code_verifier = 'verifier'
+        state_data.return_to = '/dashboard'
+
+        profile = IdentityProfile(subject='sub', email='u@x')
+        credentials = IdentityCredentials(access_token='at')
+        handler = mock.MagicMock(spec=flows.IdentityPlugin)
+        handler.exchange_code = mock.AsyncMock(
+            return_value=(profile, credentials)
+        )
+        with (
+            mock.patch.object(
+                flows.state,
+                'decode_login_state',
+                return_value=state_data,
+            ),
+            _patch_load_handler(handler),
+            mock.patch.object(
+                flows.repository,
+                'upsert_connection',
+                new=mock.AsyncMock(),
+            ) as upsert,
+        ):
+            (
+                returned_profile,
+                returned_creds,
+                plugin_id,
+                return_to,
+            ) = await flows.complete_login_flow(db, code='c', state_token='s')
+        upsert.assert_not_called()
+        self.assertEqual(returned_profile, profile)
+        self.assertEqual(returned_creds, credentials)
+        self.assertEqual(plugin_id, 'plugin-1')
+        self.assertEqual(return_to, '/dashboard')
+
+    async def test_raises_when_state_missing_plugin_id(self) -> None:
+        db = mock.AsyncMock()
+        state_data = mock.MagicMock()
+        state_data.plugin_id = None
+        with mock.patch.object(
+            flows.state,
+            'decode_login_state',
+            return_value=state_data,
+        ):
+            with self.assertRaises(ValueError):
+                await flows.complete_login_flow(db, code='c', state_token='s')
+
+
 class RefreshConnectionTestCase(unittest.IsolatedAsyncioTestCase):
     """Verify refresh_connection's success / no-token / IdP-error paths."""
 

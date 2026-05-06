@@ -111,3 +111,61 @@ class DecodeIdentityStateTestCase(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             state.decode_identity_state(token, auth_settings=self.auth)
+
+
+class DecodeLoginStateTestCase(unittest.TestCase):
+    """Verify the login-intent decoder enforces intent='login'."""
+
+    def setUp(self) -> None:
+        self.auth = settings.Auth(jwt_secret='login-state-test-secret')
+
+    def test_round_trip(self) -> None:
+        token = state.encode_identity_state(
+            plugin_id='p-1',
+            plugin_slug='oidc',
+            redirect_uri='https://imbi.test/callback',
+            intent='login',
+            return_to='/dashboard',
+            auth_settings=self.auth,
+        )
+        decoded = state.decode_login_state(token, auth_settings=self.auth)
+        self.assertEqual(decoded.plugin_id, 'p-1')
+        self.assertEqual(decoded.intent, 'login')
+        self.assertEqual(decoded.return_to, '/dashboard')
+
+    def test_identity_intent_rejected(self) -> None:
+        token = state.encode_identity_state(
+            plugin_id='p-1',
+            plugin_slug='oidc',
+            redirect_uri='https://imbi.test/cb',
+            intent='identity',
+            auth_settings=self.auth,
+        )
+        with self.assertRaises(ValueError):
+            state.decode_login_state(token, auth_settings=self.auth)
+
+    def test_expired_token_raises_value_error(self) -> None:
+        with mock.patch.object(state.time, 'time', return_value=2000):
+            token = state.encode_identity_state(
+                plugin_id='p-1',
+                plugin_slug='oidc',
+                redirect_uri='https://imbi.test/cb',
+                intent='login',
+                auth_settings=self.auth,
+            )
+        with mock.patch.object(state.time, 'time', return_value=2000 + 1800):
+            with self.assertRaises(ValueError) as ctx:
+                state.decode_login_state(token, auth_settings=self.auth)
+        self.assertIn('expired', str(ctx.exception))
+
+    def test_invalid_signature_raises_value_error(self) -> None:
+        token = state.encode_identity_state(
+            plugin_id='p-1',
+            plugin_slug='oidc',
+            redirect_uri='https://imbi.test/cb',
+            intent='login',
+            auth_settings=self.auth,
+        )
+        wrong = settings.Auth(jwt_secret='different-secret')
+        with self.assertRaises(ValueError):
+            state.decode_login_state(token, auth_settings=wrong)

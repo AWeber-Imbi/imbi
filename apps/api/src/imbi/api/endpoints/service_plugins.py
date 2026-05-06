@@ -15,7 +15,7 @@ from imbi_common.plugins.registry import (
     list_plugins,
 )
 
-from imbi_api.auth import permissions
+from imbi_api.auth import login_providers, permissions
 from imbi_api.domain import models
 from imbi_api.graph_sql import props_template, set_clause
 from imbi_api.plugins import parse_options as _parse_options
@@ -46,6 +46,9 @@ def _build_plugin_response(
         api_version=plugin.get('api_version', 1),
         status='active' if slug in registry_slugs else 'unavailable',
         service_slug=svc.get('slug') if svc else None,  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+        login_capable=bool(plugin.get('login_capable', False)),
+        used_as_login=bool(plugin.get('used_as_login', False)),
+        connects_users_to=plugin.get('connects_users_to'),
     )
 
 
@@ -198,6 +201,48 @@ async def update_service_plugin(
         'label': data.label,
         'options': options_str,
     }
+    if data.connects_users_to is not None:
+        props['connects_users_to'] = data.connects_users_to
+    if data.used_as_login is not None:
+        # Toggling on requires the manifest to declare login_capable=true.
+        # Consult the registry — the Plugin node's snapshot may be stale
+        # if the plugin was upgraded.
+        if data.used_as_login:
+            slug_query: typing.LiteralString = (
+                'MATCH (p:Plugin {{id: {plugin_id}}}) '
+                'RETURN p.plugin_slug AS slug LIMIT 1'
+            )
+            slug_records = await db.execute(
+                slug_query, {'plugin_id': plugin_id}, ['slug']
+            )
+            plugin_slug = (
+                graph.parse_agtype(slug_records[0]['slug'])
+                if slug_records
+                else None
+            )
+            entry = None
+            if plugin_slug:
+                try:
+                    entry = get_plugin(plugin_slug)
+                except PluginNotFoundError:
+                    entry = None
+            if entry is None:
+                raise fastapi.HTTPException(
+                    status_code=400,
+                    detail=(
+                        f'Plugin {plugin_slug!r} cannot be used as a login '
+                        'provider (not loaded in the registry)'
+                    ),
+                )
+            if not entry.manifest.login_capable:
+                raise fastapi.HTTPException(
+                    status_code=400,
+                    detail=(
+                        f'Plugin {plugin_slug!r} cannot be used as a login '
+                        'provider (manifest.login_capable=false)'
+                    ),
+                )
+        props['used_as_login'] = data.used_as_login
     set_stmt = set_clause('p', props)
 
     update_query: str = (
@@ -222,6 +267,10 @@ async def update_service_plugin(
             status_code=404,
             detail=f'Plugin {plugin_id!r} not found in service {slug!r}',
         )
+    # Bust the login-providers TTL cache when login flags changed so the
+    # next call to GET /auth/login-providers reflects the new state.
+    if data.used_as_login is not None or data.connects_users_to is not None:
+        login_providers.invalidate_cache()
     return _build_plugin_response(records[0], _registry_slugs())
 
 

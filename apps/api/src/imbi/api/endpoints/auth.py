@@ -13,6 +13,7 @@ import pydantic
 import pyotp
 from imbi_common import graph
 from imbi_common.auth import core, encryption
+from imbi_common.plugins import errors as plugin_errors
 
 from imbi_api import models, settings
 from imbi_api.auth import (
@@ -24,6 +25,8 @@ from imbi_api.auth import (
 )
 from imbi_api.auth import models as auth_models
 from imbi_api.auth import password as password_auth
+from imbi_api.identity import flows as identity_flows
+from imbi_api.identity import repository as identity_repository
 from imbi_api.middleware import rate_limit
 
 LOGGER = logging.getLogger(__name__)
@@ -723,6 +726,38 @@ async def oauth_login(
             detail=f'Invalid provider: {provider}',
         )
 
+    # Identity-plugin login providers route through the registry's
+    # plugin handler — same redirect, but the URL builder + token
+    # exchange are owned by the plugin instead of the hardcoded
+    # branches below.
+    if app.oauth_app_type == 'identity_plugin':
+        if not app.plugin_id:
+            raise fastapi.HTTPException(
+                status_code=500,
+                detail=f'Identity plugin row {provider!r} missing plugin_id',
+            )
+        callback_url = settings.oauth_callback_url(provider)
+        try:
+            url, _state, _polling = await identity_flows.start_flow(
+                db,
+                plugin_id=app.plugin_id,
+                redirect_uri=callback_url,
+                actor_user_id=None,
+                return_to=redirect_uri,
+                intent='login',
+            )
+        except plugin_errors.PluginNotFoundError as exc:
+            raise fastapi.HTTPException(
+                status_code=503,
+                detail=f'Identity plugin {provider!r} not loaded',
+            ) from exc
+        LOGGER.info(
+            'Identity-plugin login initiated for slug %s (plugin_id=%s)',
+            provider,
+            app.plugin_id,
+        )
+        return fastapi.responses.RedirectResponse(url=url)
+
     state_token, _ = oauth.generate_oauth_state(
         provider, redirect_uri, auth_settings
     )
@@ -821,6 +856,25 @@ async def oauth_callback(
         # Validate required parameters
         if not code or not state:
             raise ValueError('Missing required parameters: code and state')
+
+        # Identity-plugin login providers use the registry's
+        # exchange_code instead of the legacy oauth.py paths. We
+        # detect this by re-resolving the slug — the LoginApp's
+        # source discriminator says which path to take.
+        login_app_for_callback = await login_providers.get_login_app(
+            db, provider
+        )
+        if (
+            login_app_for_callback is not None
+            and login_app_for_callback.oauth_app_type == 'identity_plugin'
+        ):
+            return await _identity_plugin_login_callback(
+                db,
+                provider,
+                code,
+                state,
+                auth_settings,
+            )
 
         # Verify state parameter
         state_data = oauth.verify_oauth_state(state, auth_settings)
@@ -932,6 +986,117 @@ async def oauth_callback(
         return fastapi.responses.RedirectResponse(
             url='/auth/callback?error=authentication_failed'
         )
+
+
+async def _identity_plugin_login_callback(
+    db: graph.Graph,
+    provider: str,
+    code: str,
+    state: str,
+    auth_settings: settings.Auth,
+) -> fastapi.responses.RedirectResponse:
+    """Complete a login-intent flow handled by an identity plugin.
+
+    Mirrors the OAuth callback's user-provisioning + JWT-issue path
+    but uses :func:`identity_flows.complete_login_flow` instead of the
+    hardcoded OAuth branches and persists an
+    :class:`imbi_common.models.IdentityConnection` instead of an
+    :class:`imbi_api.domain.models.OAuthIdentity`.
+    """
+    (
+        profile,
+        credentials,
+        plugin_id,
+        return_to,
+    ) = await identity_flows.complete_login_flow(
+        db, code=code, state_token=state
+    )
+    if not profile.email:
+        raise ValueError(
+            'Identity plugin returned no email; cannot establish a session'
+        )
+
+    user_results = await db.match(models.User, {'email': profile.email})
+    existing = user_results[0] if user_results else None
+
+    if existing is not None:
+        if not auth_settings.oauth_auto_link_by_email:
+            raise ValueError(
+                f'A user with email {profile.email} already exists. '
+                'OAuth auto-link by email is disabled.'
+            )
+        if not profile.email_verified:
+            raise ValueError(
+                'Refusing to auto-link identity-plugin login to existing '
+                f'user {profile.email}: provider did not assert '
+                'email_verified=true.'
+            )
+        user = existing
+        LOGGER.info(
+            'Linked identity-plugin %s to existing user %s',
+            provider,
+            user.email,
+        )
+    else:
+        if not auth_settings.oauth_auto_create_users:
+            raise ValueError('User auto-creation disabled')
+        user = models.User(
+            email=profile.email,
+            display_name=profile.name or profile.email,
+            password_hash=None,
+            is_active=True,
+            is_admin=False,
+            is_service_account=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+            avatar_url=(
+                pydantic.HttpUrl(profile.avatar_url)
+                if profile.avatar_url
+                else None
+            ),
+        )
+        await db.merge(user, ['email'])
+        LOGGER.info(
+            'Created new user %s via identity-plugin %s',
+            user.email,
+            provider,
+        )
+
+    if user.is_service_account:
+        raise ValueError(
+            'Service accounts cannot use identity-plugin authentication'
+        )
+
+    # Persist the IdentityConnection now that we have a user_id.
+    await identity_repository.upsert_connection(
+        db,
+        plugin_id,
+        user.id,
+        profile,
+        credentials,
+    )
+
+    at, rt, meta = await tokens.issue_token_pair(
+        db,
+        principal_type='user',
+        principal_id=user.email,
+        auth_settings=auth_settings,
+    )
+    user.last_login = meta['issued_at']
+    await db.merge(user, match_on=['email'])
+
+    # Redirect to frontend with tokens in URL fragment so they are not
+    # forwarded to the server in subsequent requests, matching the
+    # legacy OAuth callback's behaviour.
+    target = return_to or '/dashboard'
+    redirect_url = (
+        f'{target}#'
+        f'access_token={at}&'
+        f'refresh_token={rt}&'
+        f'token_type=bearer&'
+        f'expires_in='
+        f'{auth_settings.access_token_expire_seconds}'
+    )
+    return fastapi.responses.RedirectResponse(url=redirect_url)
 
 
 async def find_or_create_oauth_identity(
@@ -1087,8 +1252,14 @@ async def find_or_create_oauth_identity(
 
     # Create OAuth identity (Phase 5: with encrypted tokens)
     now = datetime.datetime.now(datetime.UTC)
+    # ``oauth_app_type`` is one of the legacy literals here — the
+    # identity-plugin path branched out in ``oauth_callback`` before
+    # reaching ``find_or_create_oauth_identity``.
+    legacy_provider = typing.cast(
+        typing.Literal['google', 'github', 'oidc'], oauth_app_type
+    )
     identity = models.OAuthIdentity(
-        provider=oauth_app_type,
+        provider=legacy_provider,
         provider_user_id=profile['id'],
         email=profile['email'],
         display_name=profile['name'],

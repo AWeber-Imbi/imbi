@@ -402,6 +402,224 @@ class ServicePluginsEndpointTestCase(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 404)
 
+    def test_update_plugin_used_as_login_requires_capable_manifest(
+        self,
+    ) -> None:
+        """used_as_login=true is rejected when manifest.login_capable=false."""
+        from imbi_common.plugins.base import (
+            ConfigurationPlugin,
+            PluginManifest,
+        )
+        from imbi_common.plugins.registry import RegistryEntry
+
+        class _Fake(ConfigurationPlugin):
+            manifest = PluginManifest(
+                slug='ssm',
+                name='SSM',
+                plugin_type='configuration',
+                login_capable=False,
+            )
+
+            async def list_keys(self, ctx, credentials):  # type: ignore[override]
+                return []
+
+            async def get_values(self, ctx, credentials, keys=None):  # type: ignore[override]
+                return []
+
+            async def set_value(self, ctx, credentials, key, value):  # type: ignore[override]
+                raise NotImplementedError
+
+            async def delete_key(self, ctx, credentials, key):  # type: ignore[override]
+                return None
+
+        entry = RegistryEntry(
+            handler_cls=_Fake,
+            manifest=_Fake.manifest,
+            package_name='imbi-plugin-ssm',
+            package_version='1.0.0',
+        )
+        # dup-label check (string '0'), then slug lookup
+        self.mock_db.execute.side_effect = [
+            [{'cnt': '0'}],
+            [{'slug': '"ssm"'}],
+        ]
+        with mock.patch(
+            'imbi_api.endpoints.service_plugins.get_plugin',
+            return_value=entry,
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.put(
+                    '/organizations/myorg/'
+                    'third-party-services/github/plugins/abc123',
+                    json={
+                        'label': 'New Label',
+                        'options': {},
+                        'used_as_login': True,
+                    },
+                )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            'cannot be used as a login provider',
+            response.json()['detail'],
+        )
+
+    def test_update_plugin_used_as_login_succeeds_when_capable(self) -> None:
+        """used_as_login=true is accepted when manifest.login_capable=true."""
+        from imbi_common.plugins.base import (
+            IdentityCredentials,
+            IdentityPlugin,
+            IdentityProfile,
+            PluginManifest,
+        )
+        from imbi_common.plugins.registry import RegistryEntry
+
+        class _IdFake(IdentityPlugin):
+            manifest = PluginManifest(
+                slug='okta',
+                name='Okta',
+                plugin_type='identity',
+                login_capable=True,
+            )
+
+            async def authorization_request(  # type: ignore[override]
+                self, ctx, credentials, redirect_uri, scopes
+            ):
+                raise NotImplementedError
+
+            async def exchange_code(  # type: ignore[override]
+                self, ctx, credentials, code, redirect_uri, code_verifier
+            ) -> tuple[IdentityProfile, IdentityCredentials]:
+                raise NotImplementedError
+
+            async def refresh(  # type: ignore[override]
+                self, ctx, credentials, refresh_token
+            ) -> IdentityCredentials:
+                raise NotImplementedError
+
+            async def revoke(  # type: ignore[override]
+                self, ctx, credentials, access_token
+            ) -> None:
+                return None
+
+        entry = RegistryEntry(
+            handler_cls=_IdFake,
+            manifest=_IdFake.manifest,
+            package_name='imbi-plugin-okta',
+            package_version='1.0.0',
+        )
+        plugin_raw = json.dumps(
+            {
+                'id': 'abc123',
+                'plugin_slug': 'okta',
+                'label': 'Okta Login',
+                'options': '{}',
+                'api_version': 1,
+                'used_as_login': True,
+                'login_capable': True,
+            }
+        )
+        svc_raw = json.dumps({'slug': 'github'})
+        # dup-label check, slug lookup, update.
+        self.mock_db.execute.side_effect = [
+            [{'cnt': '0'}],
+            [{'slug': '"okta"'}],
+            [{'plugin': plugin_raw, 'svc': svc_raw}],
+        ]
+        with (
+            mock.patch(
+                'imbi_api.endpoints.service_plugins.get_plugin',
+                return_value=entry,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.service_plugins.list_plugins',
+                return_value=[entry],
+            ),
+            mock.patch(
+                'imbi_api.auth.login_providers.invalidate_cache'
+            ) as invalidate_mock,
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.put(
+                    '/organizations/myorg/'
+                    'third-party-services/github/plugins/abc123',
+                    json={
+                        'label': 'Okta Login',
+                        'options': {},
+                        'used_as_login': True,
+                    },
+                )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['used_as_login'])
+        invalidate_mock.assert_called_once()
+
+    def test_update_plugin_used_as_login_plugin_not_found(self) -> None:
+        """used_as_login=true rejects when registry has no entry."""
+        from imbi_common.plugins.errors import PluginNotFoundError
+
+        # dup-label check, slug lookup
+        self.mock_db.execute.side_effect = [
+            [{'cnt': '0'}],
+            [{'slug': '"missing"'}],
+        ]
+        with mock.patch(
+            'imbi_api.endpoints.service_plugins.get_plugin',
+            side_effect=PluginNotFoundError('missing'),
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.put(
+                    '/organizations/myorg/'
+                    'third-party-services/github/plugins/abc123',
+                    json={
+                        'label': 'L',
+                        'options': {},
+                        'used_as_login': True,
+                    },
+                )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            'not loaded in the registry',
+            response.json()['detail'],
+        )
+
+    def test_update_plugin_connects_users_to_invalidates_cache(self) -> None:
+        """Setting connects_users_to busts the login-providers cache."""
+        plugin_raw = json.dumps(
+            {
+                'id': 'abc123',
+                'plugin_slug': 'okta',
+                'label': 'Okta Login',
+                'options': '{}',
+                'api_version': 1,
+                'connects_users_to': 'aweber.com',
+            }
+        )
+        svc_raw = json.dumps({'slug': 'github'})
+        self.mock_db.execute.side_effect = [
+            [{'cnt': '0'}],
+            [{'plugin': plugin_raw, 'svc': svc_raw}],
+        ]
+        with (
+            mock.patch(
+                'imbi_api.endpoints.service_plugins.list_plugins',
+                return_value=[],
+            ),
+            mock.patch(
+                'imbi_api.auth.login_providers.invalidate_cache'
+            ) as invalidate_mock,
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.put(
+                    '/organizations/myorg/'
+                    'third-party-services/github/plugins/abc123',
+                    json={
+                        'label': 'Okta Login',
+                        'options': {},
+                        'connects_users_to': 'aweber.com',
+                    },
+                )
+        self.assertEqual(response.status_code, 200)
+        invalidate_mock.assert_called_once()
+
     def test_delete_plugin_force_skips_ref_check(self) -> None:
         # When force=true, only the delete query runs (no ref check).
         self.mock_db.execute.return_value = [{'deleted': '1'}]

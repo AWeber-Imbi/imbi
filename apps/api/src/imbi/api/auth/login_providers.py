@@ -28,18 +28,35 @@ _list_cache: dict[bool, tuple[list[LoginApp], float]] = {}
 
 
 class LoginApp(pydantic.BaseModel):
-    """Flat view of a login-eligible ``ServiceApplication`` row.
+    """Flat view of a login-eligible row.
 
-    Combines the application row with the OAuth endpoints from the
-    parent ``ThirdPartyService`` so callers don't need to traverse the
-    graph again.
+    Combines the application or identity-plugin row with the OAuth
+    endpoints from the parent ``ThirdPartyService`` so callers don't
+    need to traverse the graph again.
+
+    Two sources feed this list:
+
+    * ``source='service_app'`` — legacy ``ServiceApplication`` rows
+      whose ``usage`` is ``'login'`` or ``'both'``. ``oauth_app_type``
+      is one of the hardcoded literals (``google``, ``github``,
+      ``oidc``).
+    * ``source='identity_plugin'`` — ``Plugin`` nodes whose manifest is
+      ``login_capable=true`` *and* whose row has ``used_as_login=true``.
+      ``oauth_app_type='identity_plugin'`` and ``plugin_id`` carries the
+      Plugin nano-ID so the auth router can route start/callback
+      through ``imbi_api.identity.flows``.
     """
 
     model_config = pydantic.ConfigDict(extra='ignore')
 
     slug: str
     name: str
-    oauth_app_type: typing.Literal['google', 'github', 'oidc']
+    oauth_app_type: typing.Literal[
+        'google', 'github', 'oidc', 'identity_plugin'
+    ]
+    source: typing.Literal['service_app', 'identity_plugin'] = 'service_app'
+    plugin_id: str | None = None
+    plugin_slug: str | None = None
     client_id: str | None = None
     client_secret_encrypted: str | None = None
     issuer_url: str | None = None
@@ -69,6 +86,13 @@ MATCH (a:ServiceApplication)-[:REGISTERED_IN]->(s:ThirdPartyService)
 WHERE a.usage IN ['login', 'both']
 RETURN a{{.*}} AS app, s{{.*}} AS service
 ORDER BY a.slug
+"""
+
+_IDENTITY_LOGIN_QUERY: typing.LiteralString = """
+MATCH (p:Plugin)
+WHERE p.login_capable = true AND p.used_as_login = true
+RETURN p{{.*}} AS plugin
+ORDER BY p.plugin_slug
 """
 
 
@@ -116,14 +140,39 @@ def _row_to_login_app(
     )
 
 
+def _plugin_row_to_login_app(plugin: dict[str, typing.Any]) -> LoginApp:
+    """Materialize a ``LoginApp`` from a Plugin node row.
+
+    Identity-plugin rows have no client_id/client_secret on the Plugin
+    node — those live on the parent ``ServiceApplication`` and are
+    looked up by the identity flow at start/callback time. The
+    ``LoginApp`` returned here only carries enough metadata for the UI
+    to render the row and for the auth router to dispatch.
+    """
+    return LoginApp(
+        slug=plugin['plugin_slug'],
+        name=plugin.get('label') or plugin['plugin_slug'],
+        oauth_app_type='identity_plugin',
+        source='identity_plugin',
+        plugin_id=plugin['id'],
+        plugin_slug=plugin['plugin_slug'],
+        status='active',
+        callback_url=settings.oauth_callback_url(plugin['plugin_slug']),
+    )
+
+
 async def list_login_apps(
     db: graph.Graph,
     *,
     enabled_only: bool = False,
 ) -> list[LoginApp]:
-    """Return every ``ServiceApplication`` flagged for login use.
+    """Return every login-eligible row, merged across both sources.
 
-    Cached per ``enabled_only`` for ``_CACHE_TTL_SECONDS``.
+    Cached per ``enabled_only`` for ``_CACHE_TTL_SECONDS``. The merge
+    rule is "identity-plugin row wins on slug collision" — operators
+    are expected to disable the legacy ``ServiceApplication.usage``
+    flag once the identity-plugin equivalent is in use, but if both
+    are flagged, the identity row is the canonical source.
     """
     cached = _list_cache.get(enabled_only)
     now = time.time()
@@ -131,7 +180,7 @@ async def list_login_apps(
         return list(cached[0])
 
     records = await db.execute(_LIST_QUERY, {}, ['app', 'service'])
-    apps: list[LoginApp] = []
+    apps: dict[str, LoginApp] = {}
     for record in records:
         app = graph.parse_agtype(record['app'])
         svc = graph.parse_agtype(record.get('service'))
@@ -140,9 +189,22 @@ async def list_login_apps(
         login_app = _row_to_login_app(app, svc)
         if enabled_only and login_app.status != 'active':
             continue
-        apps.append(login_app)
-    _list_cache[enabled_only] = (list(apps), now)
-    return apps
+        apps[login_app.slug] = login_app
+
+    plugin_records = await db.execute(_IDENTITY_LOGIN_QUERY, {}, ['plugin'])
+    for record in plugin_records:
+        plugin = graph.parse_agtype(record['plugin'])
+        if not plugin.get('plugin_slug') or not plugin.get('id'):
+            continue
+        login_app = _plugin_row_to_login_app(plugin)
+        # Identity-plugin row wins on slug collision (operators are
+        # expected to disable the legacy service-app flag once they
+        # promote the identity plugin to a login provider).
+        apps[login_app.slug] = login_app
+
+    merged = list(apps.values())
+    _list_cache[enabled_only] = (list(merged), now)
+    return merged
 
 
 _GET_QUERY: typing.LiteralString = """
@@ -152,13 +214,34 @@ WHERE a.usage IN ['login', 'both']
 RETURN a{{.*}} AS app, s{{.*}} AS service
 """
 
+_IDENTITY_LOGIN_GET_QUERY: typing.LiteralString = """
+MATCH (p:Plugin {{plugin_slug: {slug}}})
+WHERE p.login_capable = true AND p.used_as_login = true
+RETURN p{{.*}} AS plugin
+LIMIT 1
+"""
+
 
 async def get_login_app(db: graph.Graph, slug: str) -> LoginApp | None:
-    """Look up a single login app by slug."""
+    """Look up a single login app by slug.
+
+    Checks the identity-plugin source first so it wins on collision
+    (matching :func:`list_login_apps`).
+    """
     cached = _provider_cache.get(slug)
     now = time.time()
     if cached is not None and (now - cached[1]) < _CACHE_TTL_SECONDS:
         return cached[0]
+
+    plugin_records = await db.execute(
+        _IDENTITY_LOGIN_GET_QUERY, {'slug': slug}, ['plugin']
+    )
+    if plugin_records:
+        plugin = graph.parse_agtype(plugin_records[0]['plugin'])
+        if plugin.get('plugin_slug') and plugin.get('id'):
+            login_app = _plugin_row_to_login_app(plugin)
+            _provider_cache[slug] = (login_app, now)
+            return login_app
 
     records = await db.execute(_GET_QUERY, {'slug': slug}, ['app', 'service'])
     if not records:

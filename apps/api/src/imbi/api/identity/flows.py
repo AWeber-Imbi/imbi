@@ -135,6 +135,41 @@ async def complete_flow(
     return profile, credentials, plugin_id, state_data.return_to
 
 
+async def complete_login_flow(
+    db: graph.Graph,
+    *,
+    code: str,
+    state_token: str,
+) -> tuple[IdentityProfile, IdentityCredentials, str, str | None]:
+    """Exchange a code from an ``intent='login'`` flow.
+
+    Mirrors :func:`complete_flow` but accepts a state token whose
+    ``intent`` is ``'login'``.  Does *not* upsert an
+    :class:`IdentityConnection` — the caller must provision the local
+    user first and then call :func:`repository.upsert_connection` with
+    that user's id.
+    """
+    state_data = state.decode_login_state(state_token)
+    plugin_id = state_data.plugin_id
+    if not plugin_id:
+        raise ValueError('state token missing plugin_id')
+
+    _entry, handler, creds = await _load_plugin_handler(db, plugin_id)
+    ctx = PluginContext(
+        project_id='',
+        project_slug='',
+        org_slug='',
+    )
+    profile, credentials = await handler.exchange_code(
+        ctx,
+        creds,
+        code,
+        state_data.redirect_uri,
+        state_data.code_verifier,
+    )
+    return profile, credentials, plugin_id, state_data.return_to
+
+
 async def refresh_connection(
     db: graph.Graph,
     *,

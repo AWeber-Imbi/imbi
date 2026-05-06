@@ -815,6 +815,8 @@ class PluginUpdate(pydantic.BaseModel):
 
     label: str = pydantic.Field(min_length=1, max_length=128)
     options: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
+    used_as_login: bool | None = None
+    connects_users_to: str | None = None
 
 
 class PluginResponse(pydantic.BaseModel):
@@ -827,6 +829,9 @@ class PluginResponse(pydantic.BaseModel):
     api_version: int
     status: typing.Literal['active', 'unavailable'] = 'active'
     service_slug: str | None = None
+    login_capable: bool = False
+    used_as_login: bool = False
+    connects_users_to: str | None = None
 
 
 class PluginAssignmentCreate(pydantic.BaseModel):
