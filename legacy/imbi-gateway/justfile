@@ -29,14 +29,20 @@ docker:
     valkey_port=$(get_port valkey 6379)
     test_host="${TEST_HOST:-127.0.0.1}"
     cat>".env"<<-EOF
-    POSTGRES_URL="postgresql://postgres:secret@$test_host:$pg_port"
+    POSTGRES_URL="postgresql://postgres:secret@$test_host:$pg_port/imbi"
     VALKEY_URL="valkey://$test_host:$valkey_port"
     EOF
 
 [doc("Run tests")]
 [group("Testing")]
-test: setup docker
-    uv run pytest
+test *ARGS: setup docker
+    #!/usr/bin/env sh
+    set -eu
+    uv run --env-file=.env coverage run -m pytest {{ARGS}}
+    if [ '{{ARGS}}' = '' ]; then
+        uv run coverage report
+        uv run coverage xml
+    fi
 
 [doc("Run linters")]
 [group("Testing")]

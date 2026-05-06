@@ -1,7 +1,3 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [project]
 name = "imbi-gateway"
 version = "0.0.0"
@@ -11,8 +7,11 @@ requires-python = ">=3.14"
 license = "BSD-3-Clause"
 authors = [{ name = "Dave Shawley", email = "daves@aweber.com" }]
 dependencies = [
+  "cel-python>=0.5.0",
   "fastapi>=0.135.1",
-  "imbi-common[databases,server]",
+  "httpx>=0.28.1",
+  "imbi-common[databases,server]~=0.1.0",
+  "jsonpointer>=3.1.1",
   "psycopg[binary,pool]~=3.3.2",
   "pydantic~=2.12",
   "yarl~=1.22.0",
@@ -31,7 +30,12 @@ dev = [
   "pytest>=9.0.2",
   "pytest-cov>=7.0.0",
   "ruff~=0.15.0",
+  "types-nanoid>=2.0.0.20260408",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.coverage.report]
 fail_under = 90
@@ -46,6 +50,7 @@ namespace_packages = true  # required for opentelemetry
 show_error_codes = true
 strict = true
 packages = ["imbi_gateway", "tests"]
+mypy_path = ["typings"]
 
 [tool.pyright]
 deprecateTypingAliases = true
@@ -64,9 +69,11 @@ extraPaths = ["src", "."]  # '.' allows imports from `tests` to work
 [tool.ruff]
 line-length = 79
 target-version = "py314"
+extend-exclude = ["typings"]
 
 [tool.ruff.format]
 quote-style = "single"
+skip-magic-trailing-comma = true
 
 [tool.ruff.lint]
 select = [
@@ -112,18 +119,8 @@ flake8-type-checking = { runtime-evaluated-base-classes = [
   "pydantic.BaseModel",
   "pydantic_settings.BaseSettings",
 ] }
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = [
-  "--cov=src/imbi_gateway",
-  "--cov-report=xml:build/coverage.xml",
-  "--cov-report=term",
-]
+isort = { split-on-trailing-comma = false }
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
-
-[tool.uv.sources]
-imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }

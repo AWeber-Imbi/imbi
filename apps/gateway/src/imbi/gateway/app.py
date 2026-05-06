@@ -2,18 +2,19 @@ import datetime
 
 import fastapi
 import typer
-from imbi_common import lifespan, server
+from imbi_common import graph, lifespan, server
 
 import imbi_gateway
-from imbi_gateway import app_status, postgres
+from imbi_gateway import app_status, notifications
 
 
 def create_app() -> fastapi.FastAPI:
     app = fastapi.FastAPI(
         version=imbi_gateway.version,
         started_at=datetime.datetime.now(datetime.UTC),
-        lifespan=lifespan.Lifespan(postgres.postgres_lifespan),
+        lifespan=lifespan.Lifespan(graph.graph_lifespan),
     )
+    app.include_router(notifications.router)
     app.include_router(app_status.router)
     return app
 

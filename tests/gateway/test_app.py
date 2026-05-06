@@ -1,9 +1,6 @@
 import datetime
-import os
 
 import fastapi.testclient
-import imbi_common.helpers
-import yarl
 
 import imbi_gateway.app
 from tests import helpers
@@ -43,57 +40,3 @@ class AppTests(helpers.TestCase):
 
         body = response.json()
         self.assertEqual('testing', body['environment'])
-
-    def test_status_endpoint_includes_postgres_stats(self) -> None:
-        """Status endpoint includes PostgreSQL pool statistics."""
-        # Uses real PostgreSQL connection from compose environment.
-        # POSTGRES_URL must be set in environment (e.g., from .env).
-        with fastapi.testclient.TestClient(
-            imbi_gateway.app.create_app()
-        ) as client:
-            response = client.get('/status')
-            self.assertEqual(200, response.status_code)
-            body = response.json()
-            self.assertIn('postgres', body)
-
-            postgres_status = body['postgres']
-            self.assertIsInstance(postgres_status, dict)
-
-            # Verify top-level keys
-            self.assertIn('url', postgres_status)
-            url = yarl.URL(postgres_status['url'])
-            self.assertEqual('***', url.password)
-
-            # Verify postgres stats structure
-            self.assertIn('pool_stats', postgres_status)
-            stats = postgres_status['pool_stats']
-            expected_stat_keys = {
-                'connections_num',
-                'connections_ms',
-                'pool_max',
-                'pool_min',
-                'pool_size',
-                'pool_available',
-                'requests_waiting',
-            }
-            self.assertIsInstance(stats, dict)
-            for key in expected_stat_keys:
-                self.assertIn(key, stats)
-                self.assertIsInstance(stats[key], int)
-
-    def test_status_endpoint_postgres_password_redaction(self) -> None:
-        url = yarl.URL(os.environ['POSTGRES_URL'])
-        password = imbi_common.helpers.unwrap_as(str, url.password)
-        url = url.update_query({'password': password}).with_password(None)
-        with (
-            self.override_environment(POSTGRES_URL=str(url)),
-            fastapi.testclient.TestClient(
-                imbi_gateway.app.create_app()
-            ) as client,
-        ):
-            response = client.get('/status')
-            self.assertEqual(200, response.status_code)
-            body = response.json()
-            parsed = yarl.URL(body['postgres']['url'])
-            self.assertIsNone(parsed.password)
-            self.assertEqual('***', parsed.query.get('password'))
