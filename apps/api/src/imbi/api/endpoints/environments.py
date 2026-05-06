@@ -11,6 +11,7 @@ from imbi_common import blueprints, graph, models
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
+from imbi_api.endpoints import plugin_edges as _plugin_edges
 from imbi_api.graph_sql import props_template, set_clause
 from imbi_api.relationships import relationship_link
 
@@ -455,3 +456,82 @@ async def delete_environment(
             status_code=404,
             detail=(f'Environment with slug {slug!r} not found'),
         )
+
+
+_ENV_ANCHOR_MATCH: typing.LiteralString = (
+    'MATCH (a:Environment {{slug: {anchor_slug}}})'
+    '-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})'
+)
+
+
+def _env_anchor_params(org_slug: str, slug: str) -> dict[str, typing.Any]:
+    return {'anchor_slug': slug, 'org_slug': org_slug}
+
+
+@environments_router.get('/{slug}/edges/{rel_type}')
+async def list_environment_edges(
+    org_slug: str,
+    slug: str,
+    rel_type: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('environment:read')),
+    ],
+) -> list[_plugin_edges.EdgeResponse]:
+    """List edges of ``rel_type`` from this environment."""
+    _ = auth
+    return await _plugin_edges.list_anchor_edges(
+        db=db,
+        anchor_label='Environment',
+        anchor_match=_ENV_ANCHOR_MATCH,
+        anchor_params=_env_anchor_params(org_slug, slug),
+        rel_type=rel_type,
+    )
+
+
+@environments_router.put('/{slug}/edges/{rel_type}')
+async def set_environment_edge(
+    org_slug: str,
+    slug: str,
+    rel_type: str,
+    body: _plugin_edges.EdgePutBody,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('environment:update')),
+    ],
+) -> _plugin_edges.EdgeResponse:
+    """Replace this environment's edge of ``rel_type``."""
+    _ = auth
+    return await _plugin_edges.put_anchor_edge(
+        db=db,
+        anchor_label='Environment',
+        anchor_match=_ENV_ANCHOR_MATCH,
+        anchor_params=_env_anchor_params(org_slug, slug),
+        rel_type=rel_type,
+        body=body,
+    )
+
+
+@environments_router.delete('/{slug}/edges/{rel_type}', status_code=204)
+async def delete_environment_edge(
+    org_slug: str,
+    slug: str,
+    rel_type: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('environment:update')),
+    ],
+) -> fastapi.Response:
+    """Remove every edge of ``rel_type`` from this environment."""
+    _ = auth
+    await _plugin_edges.delete_anchor_edge(
+        db=db,
+        anchor_label='Environment',
+        anchor_match=_ENV_ANCHOR_MATCH,
+        anchor_params=_env_anchor_params(org_slug, slug),
+        rel_type=rel_type,
+    )
+    return fastapi.Response(status_code=204)

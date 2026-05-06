@@ -60,6 +60,11 @@ class OAuthStateData(pydantic.BaseModel):
     * ``return_to`` is where the UI lands after a successful exchange.
     * ``actor_user_id`` lets a logged-in user begin an identity flow
       without re-authenticating.
+    * ``device_code`` is set for OAuth 2.0 device-code flows (e.g.
+      AWS IAM IC).  The IdP issues the code at ``StartDeviceAuthorization``
+      time and there is no redirect callback to echo it back, so the
+      host signs it into the state JWT and pulls it back out on the
+      poll endpoint to call ``CreateToken``.
     """
 
     provider: str
@@ -71,6 +76,7 @@ class OAuthStateData(pydantic.BaseModel):
     code_verifier: str | None = None
     return_to: str | None = None
     actor_user_id: str | None = None
+    device_code: str | None = None
 
 
 class OAuthCallbackError(pydantic.BaseModel):

@@ -23,6 +23,33 @@ from imbi_api.identity.models import IdentityCredentialsInternal
 LOGGER = logging.getLogger(__name__)
 
 
+def _parse_metadata(raw: typing.Any) -> dict[str, typing.Any]:
+    """Decode the ``metadata`` agtype value into a dict.
+
+    ``imbi_common.graph.client`` JSON-encodes dict parameters and stores
+    them as Cypher string literals, so round-tripping an empty dict
+    yields the literal string ``'{}'``.  Accept dicts (in case the
+    storage layer changes), and JSON-decode strings; fall back to an
+    empty dict on anything malformed rather than 500ing a list response.
+    """
+    if raw is None:
+        return {}
+    parsed = graph.parse_agtype(raw)
+    if isinstance(parsed, dict):
+        return typing.cast('dict[str, typing.Any]', parsed)
+    if isinstance(parsed, str):
+        if not parsed:
+            return {}
+        try:
+            decoded = json.loads(parsed)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+        if isinstance(decoded, dict):
+            return typing.cast('dict[str, typing.Any]', decoded)
+        return {}
+    return {}
+
+
 def _decrypt(value: typing.Any) -> str | None:
     if value is None:
         return None
@@ -192,7 +219,7 @@ async def load_connection(
         expires_at=expires_at,
         scopes=scopes,
         status=graph.parse_agtype(row['status']),
-        metadata=graph.parse_agtype(row.get('metadata') or {}) or {},
+        metadata=_parse_metadata(row.get('metadata')),
     )
 
 
@@ -211,6 +238,47 @@ async def mark_status(
         {'id': connection_id, 'status': status, 'now': _now_iso()},
         [],
     )
+
+
+async def connection_status(
+    db: graph.Graph,
+    plugin_id: str,
+    user_id: str,
+) -> str | None:
+    """Return the connection's current ``status`` field (or ``None``).
+
+    Distinct from :func:`load_connection`, which short-circuits to
+    ``None`` once the access token has been cleared — that conflates
+    "no connection" with "connection exists but was revoked", and the
+    revoke / forget UI needs to tell those apart.
+    """
+    query: typing.LiteralString = """
+    MATCH (c:IdentityConnection {{plugin_id: {plugin_id},
+                                  user_id: {user_id}}})
+    RETURN c.status AS status
+    LIMIT 1
+    """
+    rows = await db.execute(
+        query, {'plugin_id': plugin_id, 'user_id': user_id}, ['status']
+    )
+    if not rows:
+        return None
+    raw = rows[0].get('status')
+    return graph.parse_agtype(raw) if raw is not None else None
+
+
+async def delete_connection(
+    db: graph.Graph,
+    plugin_id: str,
+    user_id: str,
+) -> None:
+    """Hard-delete the user's connection node and its edges."""
+    query: typing.LiteralString = """
+    MATCH (c:IdentityConnection {{plugin_id: {plugin_id},
+                                  user_id: {user_id}}})
+    DETACH DELETE c
+    """
+    await db.execute(query, {'plugin_id': plugin_id, 'user_id': user_id}, [])
 
 
 async def revoke(
@@ -274,7 +342,10 @@ async def list_for_user(
     )
     out: list[dict[str, typing.Any]] = []
     for row in records:
-        out.append({k: graph.parse_agtype(v) for k, v in row.items()})
+        decoded = {k: graph.parse_agtype(v) for k, v in row.items()}
+        # ``metadata`` lands as a JSON-encoded string (see _parse_metadata).
+        decoded['metadata'] = _parse_metadata(row.get('metadata'))
+        out.append(decoded)
     return out
 
 

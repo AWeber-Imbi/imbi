@@ -41,6 +41,24 @@ class IdentityConnectionStartResponse(pydantic.BaseModel):
     polling: PollingDescriptor | None = None
 
 
+class IdentityConnectionPollRequest(pydantic.BaseModel):
+    """Body for ``POST /me/identities/{plugin_id}/poll``."""
+
+    state: str
+
+
+class IdentityConnectionPollResponse(pydantic.BaseModel):
+    """Reply to ``POST /me/identities/{plugin_id}/poll``.
+
+    ``status`` is ``'pending'`` while the user has not yet authorized
+    out-of-band, ``'complete'`` once the IdP has issued tokens and the
+    connection has been persisted.
+    """
+
+    status: typing.Literal['complete', 'pending']
+    return_to: str | None = None
+
+
 class IdentityCredentialsInternal(pydantic.BaseModel):
     """Server-side decrypted credentials.
 

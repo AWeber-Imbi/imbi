@@ -43,7 +43,7 @@ graph.set_on_startup(_on_graph_startup)
 
 
 @contextlib.asynccontextmanager
-async def clickhouse_hook() -> abc.AsyncIterator[None]:
+async def clickhouse_hook() -> abc.AsyncGenerator[None]:
     """Initialize and manage the ClickHouse connection."""
     result = await clickhouse.initialize()
     if result is False:
@@ -53,7 +53,7 @@ async def clickhouse_hook() -> abc.AsyncIterator[None]:
 
 
 @contextlib.asynccontextmanager
-async def email_hook() -> abc.AsyncIterator[
+async def email_hook() -> abc.AsyncGenerator[
     tuple[EmailClient, TemplateManager]
 ]:
     """Initialize and manage the email subsystem."""
@@ -65,7 +65,7 @@ async def email_hook() -> abc.AsyncIterator[
 
 
 @contextlib.asynccontextmanager
-async def storage_hook() -> abc.AsyncIterator[StorageClient]:
+async def storage_hook() -> abc.AsyncGenerator[StorageClient]:
     """Initialize and manage S3 storage."""
     storage_client = StorageClient()
     await storage_client.initialize()
@@ -74,7 +74,7 @@ async def storage_hook() -> abc.AsyncIterator[StorageClient]:
 
 
 @contextlib.asynccontextmanager
-async def identity_refresh_hook() -> abc.AsyncIterator[None]:
+async def identity_refresh_hook() -> abc.AsyncGenerator[None]:
     """Run the identity-token refresh sweeper for the API process.
 
     Polls :func:`identity.repository.stale_connections` every 60s and
@@ -110,7 +110,7 @@ async def identity_refresh_hook() -> abc.AsyncIterator[None]:
 
 
 @contextlib.asynccontextmanager
-async def score_worker_hook() -> abc.AsyncIterator[None]:
+async def score_worker_hook() -> abc.AsyncGenerator[None]:
     """Run the score-recompute consumer for the API process."""
     try:
         client = valkey.get_client()

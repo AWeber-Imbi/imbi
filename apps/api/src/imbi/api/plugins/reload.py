@@ -3,7 +3,7 @@
 import asyncio
 import contextlib
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 
 from imbi_common import graph, valkey
 from imbi_common.plugins.registry import (
@@ -50,7 +50,7 @@ async def _subscribe_reload(
 @contextlib.asynccontextmanager
 async def plugin_reload_hook(
     db: graph.Graph | None = None,
-) -> AsyncIterator[None]:
+) -> AsyncGenerator[None]:
     """Async context manager that runs the Valkey reload subscriber."""
     try:
         client = valkey.get_client()

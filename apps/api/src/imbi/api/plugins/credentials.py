@@ -35,7 +35,13 @@ async def get_plugin_credentials(
         PluginCredentialsMissing: If required credentials are absent.
     """
     auth_type = entry.manifest.auth_type
-    if auth_type == 'api_token':
+    # ``api_token`` and ``aws-iam-ic`` both store their credentials on
+    # the ``Plugin`` node itself: the former because the operator pastes
+    # a token directly, the latter because the plugin self-mints an OIDC
+    # client at start-time and the host persists those creds back via
+    # ``patch_plugin_configuration``.  ``oauth2`` / ``oidc`` plugins
+    # share OAuth client config across an org via a ``ServiceApplication``.
+    if auth_type in ('api_token', 'aws-iam-ic'):
         query: typing.LiteralString = """
         MATCH (p:Plugin {{id: {plugin_id}}})
         RETURN p.plugin_configuration AS creds

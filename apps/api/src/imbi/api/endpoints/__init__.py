@@ -14,6 +14,7 @@ from .local_auth import local_auth_router
 from .mfa import mfa_router
 from .operations_log import operations_log_router
 from .organizations import organizations_router
+from .plugin_entities import plugin_entities_router
 from .roles import roles_router
 from .sa_api_keys import sa_api_keys_router
 from .scoring import scoring_router
@@ -37,6 +38,7 @@ prefixed_routers: list[fastapi.APIRouter] = [
     mfa_router,
     operations_log_router,
     organizations_router,
+    plugin_entities_router,
     roles_router,
     sa_api_keys_router,
     scoring_policies_router,

@@ -7,7 +7,11 @@ import urllib.parse
 import fastapi
 import fastapi.responses
 from imbi_common import graph
-from imbi_common.plugins.errors import PluginNotFoundError
+from imbi_common.plugins.errors import (
+    IdentityAuthorizationExpired,
+    IdentityAuthorizationPending,
+    PluginNotFoundError,
+)
 
 from imbi_api import settings
 from imbi_api.auth import permissions
@@ -128,6 +132,59 @@ async def start_connect(
         ) from exc
     return models.IdentityConnectionStartResponse(
         authorization_url=url, state=state_token, polling=polling
+    )
+
+
+@me_identities_router.post('/{plugin_id}/poll')
+async def poll_connect(
+    plugin_id: str,
+    body: models.IdentityConnectionPollRequest,
+    response: fastapi.Response,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('me:identities:manage'),
+        ),
+    ],
+) -> models.IdentityConnectionPollResponse:
+    """Drive one tick of a device-code identity flow.
+
+    The UI calls this on a timer at the interval reported by the
+    ``polling`` descriptor returned from ``/start``.  Returns
+    ``status='pending'`` with HTTP 202 while the user is still
+    authorizing at the IdP; ``status='complete'`` (HTTP 200) once
+    tokens are persisted.  The ``return_to`` field, if set, mirrors
+    the value the caller provided to ``/start`` so the UI can land
+    the user back where they came from.
+    """
+    # Authentication is enforced by the dependency; the actor is also
+    # signed into the state, but we still gate the endpoint.
+    _ = auth
+    try:
+        (
+            _profile,
+            _credentials,
+            _resolved_id,
+            return_to,
+        ) = await flows.poll_flow(db, state_token=body.state)
+    except IdentityAuthorizationPending:
+        response.status_code = 202
+        return models.IdentityConnectionPollResponse(status='pending')
+    except IdentityAuthorizationExpired as exc:
+        raise fastapi.HTTPException(
+            status_code=410, detail=f'Authorization expired: {exc}'
+        ) from exc
+    except ValueError as exc:
+        raise fastapi.HTTPException(
+            status_code=400, detail=f'Invalid state: {exc}'
+        ) from exc
+    except PluginNotFoundError as exc:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Plugin {plugin_id!r} not available'
+        ) from exc
+    return models.IdentityConnectionPollResponse(
+        status='complete', return_to=return_to
     )
 
 

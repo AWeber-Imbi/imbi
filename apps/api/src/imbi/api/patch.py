@@ -9,12 +9,7 @@ import pydantic
 LOGGER = __import__('logging').getLogger(__name__)
 
 READONLY_PATHS: frozenset[str] = frozenset(
-    [
-        '/created_at',
-        '/updated_at',
-        '/relationships',
-        '/id',
-    ]
+    ['/created_at', '/updated_at', '/relationships', '/id']
 )
 
 

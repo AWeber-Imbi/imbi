@@ -12,9 +12,16 @@ from imbi_common.plugins.errors import PluginNotFoundError
 from imbi_api.identity import errors, flows
 
 
+def _parse_agtype_stub(v: typing.Any) -> typing.Any:
+    """Trim quoted-string agtype payloads in tests."""
+    return v.strip('"') if isinstance(v, str) else v
+
+
 def _patch_load_handler(
     handler: object,
     creds: dict[str, str] | None = None,
+    resolved_id: str = 'plugin-1',
+    options: dict[str, typing.Any] | None = None,
 ) -> contextlib.AbstractContextManager[typing.Any]:
     """Common patch helper for ``flows._load_plugin_handler``."""
     entry = mock.MagicMock()
@@ -22,7 +29,15 @@ def _patch_load_handler(
     return mock.patch.object(
         flows,
         '_load_plugin_handler',
-        new=mock.AsyncMock(return_value=(entry, handler, creds or {})),
+        new=mock.AsyncMock(
+            return_value=(
+                resolved_id,
+                entry,
+                handler,
+                creds or {},
+                options or {},
+            )
+        ),
     )
 
 
@@ -39,13 +54,17 @@ class LoadPluginHandlerTestCase(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         db = mock.AsyncMock()
-        db.execute.return_value = [{'slug': '"oidc"'}]
+        db.execute.return_value = [
+            {'id': '"plugin-1"', 'slug': '"oidc"', 'options': None}
+        ]
         non_identity = mock.MagicMock()
         entry = mock.MagicMock()
         entry.handler_cls = mock.MagicMock(return_value=non_identity)
         with (
             mock.patch.object(
-                flows.graph, 'parse_agtype', return_value='oidc'
+                flows.graph,
+                'parse_agtype',
+                side_effect=_parse_agtype_stub,
             ),
             mock.patch.object(flows, 'get_plugin', return_value=entry),
         ):
@@ -54,13 +73,17 @@ class LoadPluginHandlerTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_returns_entry_handler_creds(self) -> None:
         db = mock.AsyncMock()
-        db.execute.return_value = [{'slug': '"oidc"'}]
+        db.execute.return_value = [
+            {'id': '"plugin-1"', 'slug': '"oidc"', 'options': None}
+        ]
         handler = mock.MagicMock(spec=flows.IdentityPlugin)
         entry = mock.MagicMock()
         entry.handler_cls = mock.MagicMock(return_value=handler)
         with (
             mock.patch.object(
-                flows.graph, 'parse_agtype', return_value='oidc'
+                flows.graph,
+                'parse_agtype',
+                side_effect=_parse_agtype_stub,
             ),
             mock.patch.object(flows, 'get_plugin', return_value=entry),
             mock.patch.object(
@@ -70,9 +93,12 @@ class LoadPluginHandlerTestCase(unittest.IsolatedAsyncioTestCase):
             ),
         ):
             result = await flows._load_plugin_handler(db, 'plugin-1')
-        self.assertEqual(result[0], entry)
-        self.assertEqual(result[1], handler)
-        self.assertEqual(result[2], {'client_id': 'cid'})
+        # (resolved_id, entry, handler, creds, options)
+        self.assertEqual(result[0], 'plugin-1')
+        self.assertEqual(result[1], entry)
+        self.assertEqual(result[2], handler)
+        self.assertEqual(result[3], {'client_id': 'cid'})
+        self.assertEqual(result[4], {})
 
 
 class StartFlowTestCase(unittest.IsolatedAsyncioTestCase):
@@ -82,8 +108,10 @@ class StartFlowTestCase(unittest.IsolatedAsyncioTestCase):
         db = mock.AsyncMock()
         request = mock.MagicMock()
         request.authorization_url = 'https://idp/authorize?...'
+        request.state = 'idp-state'
         request.code_verifier = 'pkce-verifier'
         request.polling = None
+        request.registered_credentials = None
         handler = mock.MagicMock(spec=flows.IdentityPlugin)
         handler.authorization_request = mock.AsyncMock(return_value=request)
         with (
@@ -251,10 +279,14 @@ class RefreshConnectionTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_raises_identity_required_when_no_connection(self) -> None:
         db = mock.AsyncMock()
-        with mock.patch.object(
-            flows.repository,
-            'load_connection',
-            new=mock.AsyncMock(return_value=None),
+        handler = mock.MagicMock(spec=flows.IdentityPlugin)
+        with (
+            _patch_load_handler(handler, resolved_id='p'),
+            mock.patch.object(
+                flows.repository,
+                'load_connection',
+                new=mock.AsyncMock(return_value=None),
+            ),
         ):
             with self.assertRaises(errors.IdentityRequiredError):
                 await flows.refresh_connection(
@@ -265,10 +297,14 @@ class RefreshConnectionTestCase(unittest.IsolatedAsyncioTestCase):
         db = mock.AsyncMock()
         connection = mock.MagicMock()
         connection.refresh_token = None
-        with mock.patch.object(
-            flows.repository,
-            'load_connection',
-            new=mock.AsyncMock(return_value=connection),
+        handler = mock.MagicMock(spec=flows.IdentityPlugin)
+        with (
+            _patch_load_handler(handler, resolved_id='p'),
+            mock.patch.object(
+                flows.repository,
+                'load_connection',
+                new=mock.AsyncMock(return_value=connection),
+            ),
         ):
             with self.assertRaises(errors.IdentityRefreshFailed):
                 await flows.refresh_connection(
@@ -355,10 +391,15 @@ class RevokeConnectionTestCase(unittest.IsolatedAsyncioTestCase):
         with (
             mock.patch.object(
                 flows.repository,
+                'connection_status',
+                new=mock.AsyncMock(return_value='active'),
+            ),
+            mock.patch.object(
+                flows.repository,
                 'load_connection',
                 new=mock.AsyncMock(return_value=connection),
             ),
-            _patch_load_handler(handler),
+            _patch_load_handler(handler, resolved_id='p'),
             mock.patch.object(
                 flows.repository,
                 'revoke',
@@ -377,10 +418,15 @@ class RevokeConnectionTestCase(unittest.IsolatedAsyncioTestCase):
         with (
             mock.patch.object(
                 flows.repository,
+                'connection_status',
+                new=mock.AsyncMock(return_value='active'),
+            ),
+            mock.patch.object(
+                flows.repository,
                 'load_connection',
                 new=mock.AsyncMock(return_value=connection),
             ),
-            _patch_load_handler(handler),
+            _patch_load_handler(handler, resolved_id='p'),
             mock.patch.object(
                 flows.repository,
                 'revoke',

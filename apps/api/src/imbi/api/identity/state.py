@@ -24,6 +24,7 @@ def encode_identity_state(
     return_to: str | None = None,
     code_verifier: str | None = None,
     actor_user_id: str | None = None,
+    device_code: str | None = None,
     auth_settings: settings.Auth | None = None,
 ) -> str:
     """Encode the identity-flow state JWT and return the signed token."""
@@ -38,6 +39,7 @@ def encode_identity_state(
         code_verifier=code_verifier,
         return_to=return_to,
         actor_user_id=actor_user_id,
+        device_code=device_code,
     )
     return jwt.encode(
         state_data.model_dump(),

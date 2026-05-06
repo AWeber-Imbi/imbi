@@ -1,5 +1,6 @@
 """High-level identity-flow operations: start, complete, refresh."""
 
+import json
 import logging
 import typing
 
@@ -22,29 +23,85 @@ LOGGER = logging.getLogger(__name__)
 async def _load_plugin_handler(
     db: graph.Graph,
     plugin_id: str,
-) -> tuple[RegistryEntry, IdentityPlugin, dict[str, str]]:
-    """Look up the registered identity-plugin handler for ``plugin_id``.
+) -> tuple[
+    str, RegistryEntry, IdentityPlugin, dict[str, str], dict[str, typing.Any]
+]:
+    """Resolve ``plugin_id`` and load handler, credentials, and options.
 
-    Returns ``(registry_entry, handler_instance, oauth_client_creds)``.
-    Raises :class:`PluginNotFoundError` when the slug is not registered
-    (caller maps to 404 / 503).
+    ``plugin_id`` may be either a ``:Plugin`` node id (Phase-1
+    service-attached plugin instance) or a manifest slug (the
+    user-driven Connections page sends the slug because the catalog
+    surface doesn't expose node ids).
+
+    When a ``:Plugin`` node matches, its ``options`` JSON is parsed and
+    returned for the caller to thread through ``PluginContext``.
+    Without a node, options/credentials default to empty dicts and
+    plugins with required manifest options will surface their own
+    error from ``authorization_request``.
+
+    Returns ``(resolved_plugin_id, entry, handler, creds, options)``.
+    Raises :class:`PluginNotFoundError` when nothing resolves.
     """
-    query: typing.LiteralString = (
+    by_id: typing.LiteralString = (
         'MATCH (p:Plugin {{id: {plugin_id}}}) '
-        'RETURN p.plugin_slug AS slug LIMIT 1'
+        'RETURN p.id AS id, p.plugin_slug AS slug, p.options AS options '
+        'LIMIT 1'
     )
-    rows = await db.execute(query, {'plugin_id': plugin_id}, ['slug'])
+    rows = await db.execute(
+        by_id, {'plugin_id': plugin_id}, ['id', 'slug', 'options']
+    )
     if not rows:
-        raise PluginNotFoundError(plugin_id)
-    slug = graph.parse_agtype(rows[0]['slug'])
-    entry = get_plugin(slug)
+        by_slug: typing.LiteralString = (
+            'MATCH (p:Plugin {{plugin_slug: {plugin_id}}}) '
+            'RETURN p.id AS id, p.plugin_slug AS slug, p.options AS options '
+            'LIMIT 1'
+        )
+        rows = await db.execute(
+            by_slug, {'plugin_id': plugin_id}, ['id', 'slug', 'options']
+        )
+
+    if rows:
+        resolved_id = graph.parse_agtype(rows[0]['id'])
+        slug = graph.parse_agtype(rows[0]['slug'])
+        options = _parse_options(rows[0].get('options'))
+    else:
+        resolved_id = plugin_id
+        slug = plugin_id
+        options = {}
+
+    try:
+        entry = get_plugin(slug)
+    except PluginNotFoundError as exc:
+        raise PluginNotFoundError(plugin_id) from exc
     handler = entry.handler_cls()
     if not isinstance(handler, IdentityPlugin):
         raise PluginNotFoundError(slug)
     creds = await plugin_credentials.get_plugin_credentials(
-        db, plugin_id, entry
+        db, resolved_id, entry
     )
-    return entry, handler, creds
+    return resolved_id, entry, handler, creds, options
+
+
+def _parse_options(raw: typing.Any) -> dict[str, typing.Any]:
+    """Decode the ``Plugin.options`` agtype value into a dict.
+
+    Stored as a JSON-encoded string per ``service_plugins.create``;
+    accept dicts defensively for backward compatibility.
+    """
+    if raw is None:
+        return {}
+    parsed = graph.parse_agtype(raw)
+    if isinstance(parsed, dict):
+        return typing.cast('dict[str, typing.Any]', parsed)
+    if isinstance(parsed, str):
+        try:
+            decoded = json.loads(parsed)
+        except json.JSONDecodeError:
+            return {}
+        if isinstance(decoded, dict):
+            return typing.cast('dict[str, typing.Any]', decoded)
+        return {}
+    return {}
 
 
 async def start_flow(
@@ -64,13 +121,16 @@ async def start_flow(
     device-code plugins (AWS IAM IC) the UI uses it to render the user
     code and poll until the user completes the flow.
     """
-    entry, handler, creds = await _load_plugin_handler(db, plugin_id)
+    resolved_id, entry, handler, creds, options = await _load_plugin_handler(
+        db, plugin_id
+    )
 
     ctx = PluginContext(
         project_id='',
         project_slug='',
         org_slug='',
         actor_user_id=actor_user_id,
+        assignment_options=options,
     )
     request = await handler.authorization_request(
         ctx,
@@ -78,14 +138,31 @@ async def start_flow(
         redirect_uri,
         scopes or entry.manifest.default_scopes or None,
     )
+    # Plugins that self-mint client credentials during
+    # ``authorization_request`` (e.g. AWS IAM IC's dynamic OIDC
+    # registration) surface them on the request so we can persist
+    # them -- the matching ``exchange_code`` is invoked from
+    # ``poll_flow``, which only sees credentials read from storage,
+    # not the in-memory ones the plugin just created.
+    if request.registered_credentials is not None:
+        updates: dict[str, str | None] = dict(request.registered_credentials)
+        await plugin_credentials.patch_plugin_configuration(
+            db, resolved_id, updates
+        )
+    # Device-code flows have no redirect to echo a code back on, so
+    # carry the IdP-issued ``deviceCode`` (returned by the plugin via
+    # ``AuthorizationRequest.state``) inside the signed state token —
+    # the poll endpoint pulls it back out to call ``CreateToken``.
+    device_code = request.state if request.polling else None
     state_token = state.encode_identity_state(
-        plugin_id=plugin_id,
+        plugin_id=resolved_id,
         plugin_slug=entry.manifest.slug,
         redirect_uri=redirect_uri,
         intent=intent,
         return_to=return_to,
         code_verifier=request.code_verifier,
         actor_user_id=actor_user_id,
+        device_code=device_code,
     )
     return request.authorization_url, state_token, request.polling
 
@@ -107,13 +184,16 @@ async def complete_flow(
     if not plugin_id:
         raise ValueError('state token missing plugin_id')
 
-    _entry, handler, creds = await _load_plugin_handler(db, plugin_id)
+    resolved_id, _entry, handler, creds, options = await _load_plugin_handler(
+        db, plugin_id
+    )
 
     ctx = PluginContext(
         project_id='',
         project_slug='',
         org_slug='',
         actor_user_id=state_data.actor_user_id,
+        assignment_options=options,
     )
     profile, credentials = await handler.exchange_code(
         ctx,
@@ -126,13 +206,65 @@ async def complete_flow(
     if state_data.actor_user_id:
         await repository.upsert_connection(
             db,
-            plugin_id,
+            resolved_id,
             state_data.actor_user_id,
             profile,
             credentials,
         )
 
-    return profile, credentials, plugin_id, state_data.return_to
+    return profile, credentials, resolved_id, state_data.return_to
+
+
+async def poll_flow(
+    db: graph.Graph,
+    *,
+    state_token: str,
+) -> tuple[IdentityProfile, IdentityCredentials, str, str | None]:
+    """Drive one poll tick of an OAuth 2.0 device-code identity flow.
+
+    Decodes ``state_token`` to recover the IdP-issued ``device_code``
+    (signed in by :func:`start_flow`), then calls the plugin handler's
+    ``exchange_code``.  Re-raises :class:`IdentityAuthorizationPending`
+    when the user hasn't completed the flow yet — callers map that to
+    HTTP 202.  On success the connection is persisted exactly like
+    :func:`complete_flow` does for redirect flows.
+    """
+    state_data = state.decode_identity_state(state_token)
+    plugin_id = state_data.plugin_id
+    if not plugin_id:
+        raise ValueError('state token missing plugin_id')
+    if not state_data.device_code:
+        raise ValueError('state token missing device_code (not a device flow)')
+
+    resolved_id, _entry, handler, creds, options = await _load_plugin_handler(
+        db, plugin_id
+    )
+
+    ctx = PluginContext(
+        project_id='',
+        project_slug='',
+        org_slug='',
+        actor_user_id=state_data.actor_user_id,
+        assignment_options=options,
+    )
+    profile, credentials = await handler.exchange_code(
+        ctx,
+        creds,
+        state_data.device_code,
+        state_data.redirect_uri,
+        state_data.code_verifier,
+    )
+
+    if state_data.actor_user_id:
+        await repository.upsert_connection(
+            db,
+            resolved_id,
+            state_data.actor_user_id,
+            profile,
+            credentials,
+        )
+
+    return profile, credentials, resolved_id, state_data.return_to
 
 
 async def complete_login_flow(
@@ -154,11 +286,14 @@ async def complete_login_flow(
     if not plugin_id:
         raise ValueError('state token missing plugin_id')
 
-    _entry, handler, creds = await _load_plugin_handler(db, plugin_id)
+    resolved_id, _entry, handler, creds, options = await _load_plugin_handler(
+        db, plugin_id
+    )
     ctx = PluginContext(
         project_id='',
         project_slug='',
         org_slug='',
+        assignment_options=options,
     )
     profile, credentials = await handler.exchange_code(
         ctx,
@@ -167,7 +302,7 @@ async def complete_login_flow(
         state_data.redirect_uri,
         state_data.code_verifier,
     )
-    return profile, credentials, plugin_id, state_data.return_to
+    return profile, credentials, resolved_id, state_data.return_to
 
 
 async def refresh_connection(
@@ -177,7 +312,12 @@ async def refresh_connection(
     actor_user_id: str,
 ) -> IdentityCredentials:
     """Force-refresh the actor's connection for ``plugin_id``."""
-    connection = await repository.load_connection(db, plugin_id, actor_user_id)
+    resolved_id, _entry, handler, creds, options = await _load_plugin_handler(
+        db, plugin_id
+    )
+    connection = await repository.load_connection(
+        db, resolved_id, actor_user_id
+    )
     if connection is None:
         raise errors.IdentityRequiredError(
             plugin_id=plugin_id,
@@ -187,12 +327,12 @@ async def refresh_connection(
         raise errors.IdentityRefreshFailed(
             'No refresh token on this connection'
         )
-    _entry, handler, creds = await _load_plugin_handler(db, plugin_id)
     ctx = PluginContext(
         project_id='',
         project_slug='',
         org_slug='',
         actor_user_id=actor_user_id,
+        assignment_options=options,
     )
     try:
         new_credentials = await handler.refresh(
@@ -205,7 +345,7 @@ async def refresh_connection(
     profile = IdentityProfile(subject=connection.subject)
     await repository.upsert_connection(
         db,
-        plugin_id,
+        resolved_id,
         actor_user_id,
         profile,
         new_credentials,
@@ -219,25 +359,52 @@ async def revoke_connection(
     plugin_id: str,
     actor_user_id: str,
 ) -> None:
-    """Best-effort revoke at the IdP, then mark the connection revoked."""
-    connection = await repository.load_connection(db, plugin_id, actor_user_id)
-    if connection is None:
-        return
+    """First DELETE on an active connection: best-effort revoke at the
+    IdP, then mark the connection revoked.  Subsequent DELETE on an
+    already revoked / expired connection: hard-delete the node so the
+    "Forget" action removes the row from the UI.
+    """
     try:
-        _entry, handler, creds = await _load_plugin_handler(db, plugin_id)
-        ctx = PluginContext(
-            project_id='',
-            project_slug='',
-            org_slug='',
-            actor_user_id=actor_user_id,
-        )
-        await handler.revoke(ctx, creds, connection.access_token)
-    except Exception:  # noqa: BLE001
-        LOGGER.warning(
-            'IdP revoke failed for plugin_id=%s user_id=%s; '
-            'marking connection revoked anyway',
-            plugin_id,
-            actor_user_id,
-            exc_info=True,
-        )
-    await repository.revoke(db, plugin_id, actor_user_id)
+        (
+            resolved_id,
+            _entry,
+            handler,
+            creds,
+            options,
+        ) = await _load_plugin_handler(db, plugin_id)
+    except PluginNotFoundError:
+        # Plugin uninstalled out from under us.  Nothing to revoke at
+        # the IdP; just hard-delete whatever's left so the UI can clear.
+        await repository.delete_connection(db, plugin_id, actor_user_id)
+        return
+
+    status = await repository.connection_status(db, resolved_id, actor_user_id)
+    if status is None:
+        return
+    if status != 'active':
+        # Already revoked / expired — second DELETE means "forget."
+        await repository.delete_connection(db, resolved_id, actor_user_id)
+        return
+
+    connection = await repository.load_connection(
+        db, resolved_id, actor_user_id
+    )
+    if connection is not None:
+        try:
+            ctx = PluginContext(
+                project_id='',
+                project_slug='',
+                org_slug='',
+                actor_user_id=actor_user_id,
+                assignment_options=options,
+            )
+            await handler.revoke(ctx, creds, connection.access_token)
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'IdP revoke failed for plugin_id=%s user_id=%s; '
+                'marking connection revoked anyway',
+                plugin_id,
+                actor_user_id,
+                exc_info=True,
+            )
+    await repository.revoke(db, resolved_id, actor_user_id)

@@ -135,6 +135,11 @@ class AdminPluginsEndpointTestCase(unittest.TestCase):
                 'imbi_api.endpoints.admin_plugins.set_plugin_enabled',
                 new_callable=mock.AsyncMock,
             ),
+            mock.patch(
+                'imbi_api.endpoints.admin_plugins.get_enabled_map',
+                new_callable=mock.AsyncMock,
+                return_value={'ssm': True},
+            ),
         ):
             with testclient.TestClient(self.test_app) as client:
                 response = client.patch(
