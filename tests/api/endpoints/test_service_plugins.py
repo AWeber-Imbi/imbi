@@ -372,11 +372,12 @@ class ServicePluginsEndpointTestCase(unittest.TestCase):
             }
         )
         svc_raw = json.dumps({'slug': 'github'})
-        # PUT now runs a duplicate-label check before the update; supply
-        # a zero count for the check, then the updated row.
+        # PUT runs dup-label check, the update, then a final read that
+        # includes the OPTIONAL MATCH for the linked ServiceApplication.
         self.mock_db.execute.side_effect = [
             [{'cnt': '0'}],  # dup-label check
             [{'plugin': plugin_raw, 'svc': svc_raw}],  # update
+            [{'plugin': plugin_raw, 'svc': svc_raw, 'app': None}],  # re-read
         ]
         with mock.patch(
             'imbi_api.endpoints.service_plugins.list_plugins',
@@ -519,11 +520,12 @@ class ServicePluginsEndpointTestCase(unittest.TestCase):
             }
         )
         svc_raw = json.dumps({'slug': 'github'})
-        # dup-label check, slug lookup, update.
+        # dup-label check, slug lookup, update, final OPTIONAL-MATCH read.
         self.mock_db.execute.side_effect = [
             [{'cnt': '0'}],
             [{'slug': '"okta"'}],
             [{'plugin': plugin_raw, 'svc': svc_raw}],
+            [{'plugin': plugin_raw, 'svc': svc_raw, 'app': None}],
         ]
         with (
             mock.patch(
@@ -597,6 +599,7 @@ class ServicePluginsEndpointTestCase(unittest.TestCase):
         self.mock_db.execute.side_effect = [
             [{'cnt': '0'}],
             [{'plugin': plugin_raw, 'svc': svc_raw}],
+            [{'plugin': plugin_raw, 'svc': svc_raw, 'app': None}],
         ]
         with (
             mock.patch(
@@ -646,3 +649,310 @@ class ServicePluginsEndpointTestCase(unittest.TestCase):
                 'third-party-services/github/plugins/abc123'
             )
         self.assertEqual(response.status_code, 204)
+
+    def _make_oauth2_entry(self):  # type: ignore[no-untyped-def]
+        from imbi_common.plugins.base import (
+            IdentityCredentials,
+            IdentityPlugin,
+            IdentityProfile,
+            PluginManifest,
+        )
+        from imbi_common.plugins.registry import RegistryEntry
+
+        class _GHFake(IdentityPlugin):
+            manifest = PluginManifest(
+                slug='github-oauth2',
+                name='GitHub OAuth2',
+                plugin_type='identity',
+                auth_type='oauth2',
+            )
+
+            async def authorization_request(  # type: ignore[override]
+                self, ctx, credentials, redirect_uri, scopes
+            ):
+                raise NotImplementedError
+
+            async def exchange_code(  # type: ignore[override]
+                self, ctx, credentials, code, redirect_uri, code_verifier
+            ) -> tuple[IdentityProfile, IdentityCredentials]:
+                raise NotImplementedError
+
+            async def refresh(  # type: ignore[override]
+                self, ctx, credentials, refresh_token
+            ) -> IdentityCredentials:
+                raise NotImplementedError
+
+            async def revoke(  # type: ignore[override]
+                self, ctx, credentials, access_token
+            ) -> None:
+                return None
+
+        return RegistryEntry(
+            handler_cls=_GHFake,
+            manifest=_GHFake.manifest,
+            package_name='imbi-plugin-github',
+            package_version='1.0.0',
+        )
+
+    def _make_api_token_entry(self):  # type: ignore[no-untyped-def]
+        from imbi_common.plugins.base import (
+            ConfigurationPlugin,
+            PluginManifest,
+        )
+        from imbi_common.plugins.registry import RegistryEntry
+
+        class _Fake(ConfigurationPlugin):
+            manifest = PluginManifest(
+                slug='ssm', name='SSM', plugin_type='configuration'
+            )
+
+            async def list_keys(self, ctx, credentials):  # type: ignore[override]
+                return []
+
+            async def get_values(self, ctx, credentials, keys=None):  # type: ignore[override]
+                return []
+
+            async def set_value(self, ctx, credentials, key, value):  # type: ignore[override]
+                raise NotImplementedError
+
+            async def delete_key(self, ctx, credentials, key):  # type: ignore[override]
+                return None
+
+        return RegistryEntry(
+            handler_cls=_Fake,
+            manifest=_Fake.manifest,
+            package_name='imbi-plugin-ssm',
+            package_version='1.0.0',
+        )
+
+    def test_create_plugin_with_application_slug_success(self) -> None:
+        entry = self._make_oauth2_entry()
+        plugin_raw = json.dumps(
+            {
+                'id': 'newid',
+                'plugin_slug': 'github-oauth2',
+                'label': 'GitHub OAuth2',
+                'options': '{}',
+                'api_version': 1,
+            }
+        )
+        svc_raw = json.dumps({'slug': 'github'})
+        app_raw = json.dumps(
+            {'slug': 'gh-oauth-app', 'name': 'GitHub OAuth App'}
+        )
+        responses = [
+            [{'cnt': '0'}],  # dup-label
+            [{'plugin': plugin_raw, 'svc': svc_raw, 'app': app_raw}],
+        ]
+
+        def _exec(*_a: object, **_k: object) -> list[dict]:
+            return responses.pop(0)
+
+        self.mock_db.execute.side_effect = _exec
+        with (
+            mock.patch(
+                'imbi_api.endpoints.service_plugins.get_plugin',
+                return_value=entry,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.service_plugins.list_plugins',
+                return_value=[entry],
+            ),
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.post(
+                    '/organizations/myorg/'
+                    'third-party-services/github/plugins/',
+                    json={
+                        'plugin_slug': 'github-oauth2',
+                        'label': 'GitHub OAuth2',
+                        'options': {},
+                        'service_application_slug': 'gh-oauth-app',
+                    },
+                )
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        self.assertEqual(body['application_slug'], 'gh-oauth-app')
+        self.assertEqual(body['application_name'], 'GitHub OAuth App')
+
+    def test_create_plugin_application_slug_rejected_for_api_token(
+        self,
+    ) -> None:
+        entry = self._make_api_token_entry()
+        # The pre-flight dup-label check still runs before the auth_type
+        # rejection — supply the count even though the rejection comes
+        # next.
+        self.mock_db.execute.side_effect = [[{'cnt': '0'}]]
+        with (
+            mock.patch(
+                'imbi_api.endpoints.service_plugins.get_plugin',
+                return_value=entry,
+            ),
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.post(
+                    '/organizations/myorg/'
+                    'third-party-services/github/plugins/',
+                    json={
+                        'plugin_slug': 'ssm',
+                        'label': 'SSM',
+                        'options': {},
+                        'service_application_slug': 'something',
+                    },
+                )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            "auth_type='api_token'",
+            response.json()['detail'],
+        )
+
+    def test_create_plugin_app_not_in_service_returns_400(self) -> None:
+        entry = self._make_oauth2_entry()
+        # dup-label=0, create returns nothing (no app match), svc-check
+        # confirms the service exists.
+        responses = [
+            [{'cnt': '0'}],
+            [],
+            [{'cnt': '1'}],
+        ]
+
+        def _exec(*_a: object, **_k: object) -> list[dict]:
+            return responses.pop(0)
+
+        self.mock_db.execute.side_effect = _exec
+        with mock.patch(
+            'imbi_api.endpoints.service_plugins.get_plugin',
+            return_value=entry,
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.post(
+                    '/organizations/myorg/'
+                    'third-party-services/github/plugins/',
+                    json={
+                        'plugin_slug': 'github-oauth2',
+                        'label': 'GitHub OAuth2',
+                        'options': {},
+                        'service_application_slug': 'wrong-app',
+                    },
+                )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            'not registered to service',
+            response.json()['detail'],
+        )
+
+    def test_update_plugin_sets_application_link(self) -> None:
+        plugin_raw = json.dumps(
+            {
+                'id': 'abc123',
+                'plugin_slug': 'github-oauth2',
+                'label': 'L',
+                'options': '{}',
+                'api_version': 1,
+            }
+        )
+        svc_raw = json.dumps({'slug': 'github'})
+        app_raw = json.dumps(
+            {'slug': 'gh-oauth-app', 'name': 'GitHub OAuth App'}
+        )
+        # dup-label, SET update, link delete, link create, final read.
+        self.mock_db.execute.side_effect = [
+            [{'cnt': '0'}],
+            [{'plugin': plugin_raw, 'svc': svc_raw}],
+            [],
+            [{'slug': '"gh-oauth-app"'}],
+            [{'plugin': plugin_raw, 'svc': svc_raw, 'app': app_raw}],
+        ]
+        with mock.patch(
+            'imbi_api.endpoints.service_plugins.list_plugins',
+            return_value=[],
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.put(
+                    '/organizations/myorg/'
+                    'third-party-services/github/plugins/abc123',
+                    json={
+                        'label': 'L',
+                        'options': {},
+                        'service_application_slug': 'gh-oauth-app',
+                    },
+                )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body['application_slug'], 'gh-oauth-app')
+
+    def test_update_plugin_clears_application_link(self) -> None:
+        plugin_raw = json.dumps(
+            {
+                'id': 'abc123',
+                'plugin_slug': 'github-oauth2',
+                'label': 'L',
+                'options': '{}',
+                'api_version': 1,
+            }
+        )
+        svc_raw = json.dumps({'slug': 'github'})
+        # Update path with explicit ``null`` in the body: dup-label,
+        # SET update, link delete (no create), final read.
+        self.mock_db.execute.side_effect = [
+            [{'cnt': '0'}],
+            [{'plugin': plugin_raw, 'svc': svc_raw}],
+            [],
+            [{'plugin': plugin_raw, 'svc': svc_raw, 'app': None}],
+        ]
+        with mock.patch(
+            'imbi_api.endpoints.service_plugins.list_plugins',
+            return_value=[],
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.put(
+                    '/organizations/myorg/'
+                    'third-party-services/github/plugins/abc123',
+                    json={
+                        'label': 'L',
+                        'options': {},
+                        'service_application_slug': None,
+                    },
+                )
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()['application_slug'])
+
+    def test_update_plugin_application_slug_rejects_wrong_service(
+        self,
+    ) -> None:
+        plugin_raw = json.dumps(
+            {
+                'id': 'abc123',
+                'plugin_slug': 'github-oauth2',
+                'label': 'L',
+                'options': '{}',
+                'api_version': 1,
+            }
+        )
+        svc_raw = json.dumps({'slug': 'github'})
+        # dup-label, SET update, link delete, link create returns []
+        self.mock_db.execute.side_effect = [
+            [{'cnt': '0'}],
+            [{'plugin': plugin_raw, 'svc': svc_raw}],
+            [],
+            [],
+        ]
+        with mock.patch(
+            'imbi_api.endpoints.service_plugins.list_plugins',
+            return_value=[],
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.put(
+                    '/organizations/myorg/'
+                    'third-party-services/github/plugins/abc123',
+                    json={
+                        'label': 'L',
+                        'options': {},
+                        'service_application_slug': 'foreign-app',
+                    },
+                )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            'not registered to service',
+            response.json()['detail'],
+        )

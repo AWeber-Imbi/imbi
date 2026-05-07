@@ -1002,8 +1002,8 @@ plugins = [
 
 [[package]]
 name = "imbi-common"
-version = "0.4.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=main#cd2ef6b50dad61ae2925c70a1569d9b12275da38" }
+version = "0.5.0"
+source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=main#94c7e70dc5f9ba26278a76ff0e99c7cc541c704b" }
 dependencies = [
   { name = "cryptography" },
   { name = "jsonschema-models" },

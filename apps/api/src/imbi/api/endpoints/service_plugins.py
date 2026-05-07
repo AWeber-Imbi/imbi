@@ -41,6 +41,7 @@ def _build_plugin_response(
 ) -> models.PluginResponse:
     plugin = graph.parse_agtype(record['plugin'])
     svc = graph.parse_agtype(record.get('svc')) if record.get('svc') else {}  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType]
+    app = graph.parse_agtype(record.get('app')) if record.get('app') else {}  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType]
     slug = plugin['plugin_slug']
     return models.PluginResponse(
         id=plugin['id'],
@@ -56,6 +57,8 @@ def _build_plugin_response(
         identity_plugin_id=coerce_identity_plugin_id(
             plugin.get('identity_plugin_id')
         ),
+        application_slug=app.get('slug') if app else None,  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+        application_name=app.get('name') if app else None,  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
     )
 
 
@@ -75,13 +78,14 @@ async def list_service_plugins(
     query: typing.LiteralString = """
     MATCH (p:Plugin)<-[:HAS_PLUGIN]-(s:ThirdPartyService {{slug: {svc_slug}}})
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    RETURN p{{.*}} AS plugin, s{{.*}} AS svc
+    OPTIONAL MATCH (p)-[:USES_APPLICATION]->(a:ServiceApplication)
+    RETURN p{{.*}} AS plugin, s{{.*}} AS svc, a{{.*}} AS app
     ORDER BY p.label
     """
     records = await db.execute(
         query,
         {'svc_slug': slug, 'org_slug': org_slug},
-        ['plugin', 'svc'],
+        ['plugin', 'svc', 'app'],
     )
     registry = _registry_slugs()
     return [_build_plugin_response(r, registry) for r in records]
@@ -129,6 +133,19 @@ async def create_service_plugin(
             ),
         )
 
+    if (
+        data.service_application_slug is not None
+        and entry.manifest.auth_type == 'api_token'
+    ):
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                f'Plugin {data.plugin_slug!r} uses auth_type='
+                "'api_token'; service_application_slug is only valid for"
+                ' OAuth2/OIDC plugins'
+            ),
+        )
+
     plugin_id = nanoid.generate()
     options_str = json.dumps(data.options)
     props: dict[str, typing.Any] = {
@@ -140,19 +157,66 @@ async def create_service_plugin(
     }
     tpl = props_template(props)
 
-    create_query: str = (
-        'MATCH (s:ThirdPartyService {{slug: {svc_slug}}})'
-        ' -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})'
-        f' CREATE (p:Plugin {tpl})'
-        ' CREATE (s)-[:HAS_PLUGIN]->(p)'
-        ' RETURN p{{.*}} AS plugin, s{{.*}} AS svc'
-    )
-    records = await db.execute(
-        create_query,
-        {'svc_slug': slug, 'org_slug': org_slug, **props},
-        ['plugin', 'svc'],
-    )
+    if data.service_application_slug is not None:
+        # Same-service guard is enforced atomically: the
+        # ServiceApplication must REGISTERED_IN the same service.
+        create_query: str = (
+            'MATCH (s:ThirdPartyService {{slug: {svc_slug}}})'
+            ' -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})'
+            ' MATCH (a:ServiceApplication {{slug: {app_slug}}})'
+            ' -[:REGISTERED_IN]->(s)'
+            f' CREATE (p:Plugin {tpl})'
+            ' CREATE (s)-[:HAS_PLUGIN]->(p)'
+            ' CREATE (p)-[:USES_APPLICATION]->(a)'
+            ' RETURN p{{.*}} AS plugin, s{{.*}} AS svc, a{{.*}} AS app'
+        )
+        params: dict[str, typing.Any] = {
+            'svc_slug': slug,
+            'org_slug': org_slug,
+            'app_slug': data.service_application_slug,
+            **props,
+        }
+    else:
+        create_query = (
+            'MATCH (s:ThirdPartyService {{slug: {svc_slug}}})'
+            ' -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})'
+            f' CREATE (p:Plugin {tpl})'
+            ' CREATE (s)-[:HAS_PLUGIN]->(p)'
+            ' RETURN p{{.*}} AS plugin, s{{.*}} AS svc, NULL AS app'
+        )
+        params = {'svc_slug': slug, 'org_slug': org_slug, **props}
+
+    records = await db.execute(create_query, params, ['plugin', 'svc', 'app'])
     if not records:
+        if data.service_application_slug is not None:
+            # Distinguish the two failure modes: service missing vs
+            # app-not-on-service. Re-check the service to give the
+            # operator a precise error.
+            svc_check: typing.LiteralString = (
+                'MATCH (s:ThirdPartyService {{slug: {svc_slug}}})'
+                ' -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})'
+                ' RETURN count(s) AS cnt'
+            )
+            svc_records = await db.execute(
+                svc_check,
+                {'svc_slug': slug, 'org_slug': org_slug},
+                ['cnt'],
+            )
+            svc_count = (
+                graph.parse_agtype(svc_records[0]['cnt']) if svc_records else 0
+            )
+            if svc_count == 0:
+                raise fastapi.HTTPException(
+                    status_code=404,
+                    detail=f'Third-party service {slug!r} not found',
+                )
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=(
+                    f'ServiceApplication {data.service_application_slug!r}'
+                    f' is not registered to service {slug!r}'
+                ),
+            )
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Third-party service {slug!r} not found',
@@ -282,11 +346,55 @@ async def update_service_plugin(
             status_code=404,
             detail=f'Plugin {plugin_id!r} not found in service {slug!r}',
         )
-    # Bust the login-providers TTL cache when login flags changed so the
-    # next call to GET /auth/login-providers reflects the new state.
-    if data.used_as_login is not None or data.connects_users_to is not None:
+
+    # Apply the USES_APPLICATION link change only when the field was
+    # actually sent in the request body (tri-state via
+    # ``model_fields_set``: omitted = leave alone, null = clear,
+    # string = replace).
+    app_link_changed = 'service_application_slug' in data.model_fields_set
+    if app_link_changed:
+        await _set_plugin_application_link(
+            db,
+            org_slug=org_slug,
+            svc_slug=slug,
+            plugin_id=plugin_id,
+            app_slug=data.service_application_slug,
+        )
+
+    # Re-read with the (possibly updated) application link so the
+    # response reflects the new state.
+    final_query: typing.LiteralString = """
+    MATCH (p:Plugin {{id: {plugin_id}}})
+    <-[:HAS_PLUGIN]-(s:ThirdPartyService {{slug: {svc_slug}}})
+    -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    OPTIONAL MATCH (p)-[:USES_APPLICATION]->(a:ServiceApplication)
+    RETURN p{{.*}} AS plugin, s{{.*}} AS svc, a{{.*}} AS app
+    """
+    final_records = await db.execute(
+        final_query,
+        {
+            'plugin_id': plugin_id,
+            'svc_slug': slug,
+            'org_slug': org_slug,
+        },
+        ['plugin', 'svc', 'app'],
+    )
+    # Bust the login-providers TTL cache when login flags changed or
+    # the linked Application changed on a login-capable plugin.
+    if (
+        data.used_as_login is not None
+        or data.connects_users_to is not None
+        or (
+            app_link_changed
+            and bool(
+                graph.parse_agtype(final_records[0]['plugin']).get(
+                    'used_as_login', False
+                )
+            )
+        )
+    ):
         login_providers.invalidate_cache()
-    return _build_plugin_response(records[0], _registry_slugs())
+    return _build_plugin_response(final_records[0], _registry_slugs())
 
 
 @service_plugins_router.delete('/{plugin_id}', status_code=204)
@@ -358,6 +466,56 @@ async def delete_service_plugin(
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Plugin {plugin_id!r} not found in service {slug!r}',
+        )
+
+
+async def _set_plugin_application_link(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    svc_slug: str,
+    plugin_id: str,
+    app_slug: str | None,
+) -> None:
+    """Apply the USES_APPLICATION edge change for ``plugin_id``.
+
+    Drops any existing edge first; if ``app_slug`` is non-null, validates
+    that the named ServiceApplication is registered to the same service
+    and recreates the edge. Returns 400 when the same-service guard
+    fails so the operator can correct the slug.
+    """
+    delete_query: typing.LiteralString = """
+    MATCH (p:Plugin {{id: {plugin_id}}})-[r:USES_APPLICATION]->()
+    DELETE r
+    """
+    await db.execute(delete_query, {'plugin_id': plugin_id}, [])
+    if app_slug is None:
+        return
+    create_query: typing.LiteralString = """
+    MATCH (p:Plugin {{id: {plugin_id}}})
+    <-[:HAS_PLUGIN]-(s:ThirdPartyService {{slug: {svc_slug}}})
+    -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    MATCH (a:ServiceApplication {{slug: {app_slug}}})-[:REGISTERED_IN]->(s)
+    CREATE (p)-[:USES_APPLICATION]->(a)
+    RETURN a.slug AS slug
+    """
+    records = await db.execute(
+        create_query,
+        {
+            'plugin_id': plugin_id,
+            'svc_slug': svc_slug,
+            'org_slug': org_slug,
+            'app_slug': app_slug,
+        },
+        ['slug'],
+    )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                f'ServiceApplication {app_slug!r} is not registered to'
+                f' service {svc_slug!r}'
+            ),
         )
 
 

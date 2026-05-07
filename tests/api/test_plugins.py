@@ -336,6 +336,9 @@ class InstallerTestCase(unittest.TestCase):
 def _make_registry_entry(
     slug: str = 'ssm',
     required_creds: bool = False,
+    auth_type: typing.Literal[
+        'api_token', 'oauth2', 'oidc', 'aws-iam-ic'
+    ] = 'api_token',
 ) -> RegistryEntry:
     """Build a RegistryEntry with a fake handler for resolution tests."""
     from imbi_common.plugins.base import (
@@ -350,6 +353,7 @@ def _make_registry_entry(
             slug=slug,
             name=slug.upper(),
             plugin_type='configuration',
+            auth_type=auth_type,
             credentials=(
                 [CredentialField(name='token', label='Token', required=True)]
                 if required_creds
@@ -705,6 +709,78 @@ class CredentialsTestCase(unittest.TestCase):
         ):
             with self.assertRaises(PluginCredentialsMissing):
                 asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
+
+    def test_oauth2_unlinked_plugin_raises(self) -> None:
+        from imbi_common.plugins.errors import PluginCredentialsMissing
+
+        from imbi_api.plugins.credentials import get_plugin_credentials
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = []
+        entry = _make_registry_entry('github', auth_type='oauth2')
+        with self.assertRaises(PluginCredentialsMissing) as ctx:
+            asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
+        self.assertIn('not linked to a ServiceApplication', str(ctx.exception))
+
+    def test_oauth2_linked_plugin_returns_decrypted(self) -> None:
+        from imbi_api.plugins.credentials import get_plugin_credentials
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {
+                'client_id': '"my-client-id"',
+                'client_secret': '"ENCRYPTED-SECRET"',
+            }
+        ]
+        encryptor = mock.MagicMock()
+        encryptor.decrypt.return_value = 'plaintext-secret'
+        entry = _make_registry_entry('github', auth_type='oauth2')
+        with mock.patch(
+            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
+            return_value=encryptor,
+        ):
+            creds = asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
+        self.assertEqual(
+            creds,
+            {'client_id': 'my-client-id', 'client_secret': 'plaintext-secret'},
+        )
+
+    def test_oauth2_decrypt_failure_raises_missing(self) -> None:
+        from imbi_common.plugins.errors import PluginCredentialsMissing
+
+        from imbi_api.plugins.credentials import get_plugin_credentials
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {
+                'client_id': '"my-client-id"',
+                'client_secret': '"ENCRYPTED-SECRET"',
+            }
+        ]
+        encryptor = mock.MagicMock()
+        encryptor.decrypt.side_effect = RuntimeError('boom')
+        entry = _make_registry_entry('github', auth_type='oauth2')
+        with mock.patch(
+            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
+            return_value=encryptor,
+        ):
+            with self.assertRaises(PluginCredentialsMissing) as ctx:
+                asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
+        self.assertIn('could not be decrypted', str(ctx.exception))
+
+    def test_oauth2_missing_client_id_raises(self) -> None:
+        from imbi_common.plugins.errors import PluginCredentialsMissing
+
+        from imbi_api.plugins.credentials import get_plugin_credentials
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {'client_id': None, 'client_secret': '"ENCRYPTED"'}
+        ]
+        entry = _make_registry_entry('github', auth_type='oauth2')
+        with self.assertRaises(PluginCredentialsMissing) as ctx:
+            asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
+        self.assertIn('client_id or client_secret', str(ctx.exception))
 
 
 class ReloadSubscriberTestCase(unittest.TestCase):

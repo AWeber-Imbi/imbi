@@ -25,44 +25,39 @@ async def get_plugin_credentials(
 
     Routing depends on the plugin manifest's ``auth_type``:
 
-    * ``api_token``: read the encrypted ``plugin_configuration`` blob
-      stored directly on the ``Plugin`` node.
-    * ``oauth2``: traverse ``Plugin <-[:HAS_PLUGIN]- ThirdPartyService
-      -[:HAS_APPLICATION]-> ServiceApplication`` and read the legacy
-      ``plugin_credentials`` field on the application.
+    * ``api_token`` / ``aws-iam-ic``: read the encrypted
+      ``plugin_configuration`` blob stored directly on the ``Plugin``
+      node. (``api_token`` is operator-pasted; ``aws-iam-ic`` self-mints
+      its OIDC client and the host persists creds back via
+      ``patch_plugin_configuration``.)
+    * ``oauth2`` / ``oidc``: traverse the ``USES_APPLICATION`` edge to
+      the linked ``ServiceApplication`` and pull plaintext
+      ``client_id`` plus Fernet-decrypted ``client_secret``.
 
     Raises:
-        PluginCredentialsMissing: If required credentials are absent.
+        PluginCredentialsMissing: If required credentials are absent or
+            the plugin is not linked to a ServiceApplication.
     """
     auth_type = entry.manifest.auth_type
-    # ``api_token`` and ``aws-iam-ic`` both store their credentials on
-    # the ``Plugin`` node itself: the former because the operator pastes
-    # a token directly, the latter because the plugin self-mints an OIDC
-    # client at start-time and the host persists those creds back via
-    # ``patch_plugin_configuration``.  ``oauth2`` / ``oidc`` plugins
-    # share OAuth client config across an org via a ``ServiceApplication``.
     if auth_type in ('api_token', 'aws-iam-ic'):
-        query: typing.LiteralString = """
-        MATCH (p:Plugin {{id: {plugin_id}}})
-        RETURN p.plugin_configuration AS creds
-        LIMIT 1
-        """
-    else:
-        # ``ThirdPartyService.service_application`` is a single edge in
-        # the domain model, so this MATCH cannot legally fan out to
-        # multiple apps. ``LIMIT 1`` is defensive.
-        query = """
-        MATCH (p:Plugin {{id: {plugin_id}}})
-        <-[:HAS_PLUGIN]-(s:ThirdPartyService)
-        -[:HAS_APPLICATION]->(a:ServiceApplication)
-        RETURN a.plugin_credentials AS creds
-        LIMIT 1
-        """
-    records = await db.execute(
-        query,
-        {'plugin_id': plugin_id},
-        ['creds'],
-    )
+        return await _get_plugin_configuration_credentials(
+            db, plugin_id, entry
+        )
+    return await _get_application_credentials(db, plugin_id, entry)
+
+
+async def _get_plugin_configuration_credentials(
+    db: graph.Graph,
+    plugin_id: str,
+    entry: RegistryEntry,
+) -> dict[str, str]:
+    """Resolve credentials for ``api_token``/``aws-iam-ic`` plugins."""
+    query: typing.LiteralString = """
+    MATCH (p:Plugin {{id: {plugin_id}}})
+    RETURN p.plugin_configuration AS creds
+    LIMIT 1
+    """
+    records = await db.execute(query, {'plugin_id': plugin_id}, ['creds'])
     if not records or records[0].get('creds') is None:
         creds_raw: str | None = None
     else:
@@ -102,6 +97,58 @@ async def get_plugin_credentials(
             f'{entry.manifest.slug!r}: {missing}'
         )
     return {k: str(v) for k, v in credentials.items() if v is not None}
+
+
+async def _get_application_credentials(
+    db: graph.Graph,
+    plugin_id: str,
+    entry: RegistryEntry,
+) -> dict[str, str]:
+    """Resolve OAuth2/OIDC credentials from the linked ServiceApplication."""
+    query: typing.LiteralString = """
+    MATCH (p:Plugin {{id: {plugin_id}}})
+    -[:USES_APPLICATION]->(a:ServiceApplication)
+    RETURN a.client_id AS client_id, a.client_secret AS client_secret
+    LIMIT 1
+    """
+    records = await db.execute(
+        query, {'plugin_id': plugin_id}, ['client_id', 'client_secret']
+    )
+    if not records:
+        raise PluginCredentialsMissing(
+            f'Plugin {entry.manifest.slug!r} is not linked to a'
+            ' ServiceApplication; pick one on the Plugins tab'
+        )
+    record = records[0]
+    client_id_raw = record.get('client_id')
+    client_secret_raw = record.get('client_secret')
+    if client_id_raw is None or client_secret_raw is None:
+        raise PluginCredentialsMissing(
+            f'Linked ServiceApplication for plugin {entry.manifest.slug!r}'
+            ' is missing client_id or client_secret'
+        )
+    client_id = graph.parse_agtype(client_id_raw)
+    client_secret_enc = graph.parse_agtype(client_secret_raw)
+    try:
+        client_secret = TokenEncryption.get_instance().decrypt(
+            client_secret_enc
+        )
+    except Exception as exc:
+        LOGGER.warning(
+            'client_secret decrypt failed for plugin_id=%s: %s',
+            plugin_id,
+            exc,
+        )
+        raise PluginCredentialsMissing(
+            f'Linked ServiceApplication for plugin {entry.manifest.slug!r}'
+            ' has a client_secret that could not be decrypted'
+        ) from exc
+    if not client_secret:
+        raise PluginCredentialsMissing(
+            f'Linked ServiceApplication for plugin {entry.manifest.slug!r}'
+            ' has no client_secret'
+        )
+    return {'client_id': str(client_id), 'client_secret': client_secret}
 
 
 async def _read_plugin_configuration(

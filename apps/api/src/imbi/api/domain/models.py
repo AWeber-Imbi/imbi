@@ -821,6 +821,11 @@ class PluginUpdate(pydantic.BaseModel):
     # one of its own. Pass an explicit empty string to clear; ``None``
     # leaves the existing value untouched.
     identity_plugin_id: str | None = None
+    # Tri-state via ``model_fields_set``: omitted leaves the link
+    # alone, ``null`` clears it, a string sets/replaces it. Mirrors how
+    # an OAuth2 plugin instance picks the ServiceApplication that owns
+    # its client_id/secret.
+    service_application_slug: str | None = None
 
 
 class PluginResponse(pydantic.BaseModel):
@@ -837,6 +842,8 @@ class PluginResponse(pydantic.BaseModel):
     used_as_login: bool = False
     connects_users_to: str | None = None
     identity_plugin_id: str | None = None
+    application_slug: str | None = None
+    application_name: str | None = None
 
 
 class PluginAssignmentCreate(pydantic.BaseModel):
