@@ -132,6 +132,9 @@ async def search_logs(
         default_factory=list,
         alias='filter',
     ),
+    level: list[str] = fastapi.Query(  # noqa: B008
+        default_factory=list,
+    ),
 ) -> models.LogResultResponse:
     """Search project logs via the assigned logs plugin.
 
@@ -142,6 +145,11 @@ async def search_logs(
     entries.  Pagination via ``cursor`` is only supported for
     single-env searches; multi-env returns ``next_cursor=None`` and
     surfaces partial-failure / truncation notes via ``warnings``.
+
+    ``level`` is a repeated query param (``?level=ERROR&level=WARN``)
+    that pushes severity filtering down into the plugin's underlying
+    query so rare levels can still be located even when total volume
+    is high.
     """
     resolved = await resolve_plugin(db, project_id, 'logs', source)
 
@@ -182,6 +190,7 @@ async def search_logs(
         filters=filters,
         limit=limit,
         cursor=cursor,
+        levels=list(level),
     )
 
     project_slug, team_slug = await lookup_project_slugs(db, project_id)

@@ -107,7 +107,9 @@ class StartFlowTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_returns_authorization_url_and_state_token(self) -> None:
         db = mock.AsyncMock()
         request = mock.MagicMock()
-        request.authorization_url = 'https://idp/authorize?...'
+        request.authorization_url = (
+            'https://idp/authorize?client_id=cid&state=idp-state'
+        )
         request.state = 'idp-state'
         request.code_verifier = 'pkce-verifier'
         request.polling = None
@@ -128,9 +130,45 @@ class StartFlowTestCase(unittest.IsolatedAsyncioTestCase):
                 redirect_uri='https://imbi/cb',
                 actor_user_id='user-1',
             )
-        self.assertEqual(url, 'https://idp/authorize?...')
+        # The plugin's nonce must be replaced with the signed JWT so the
+        # IdP echoes the trusted token back on the callback.
+        self.assertEqual(
+            url, 'https://idp/authorize?client_id=cid&state=state-token'
+        )
         self.assertEqual(state_token, 'state-token')
         self.assertIsNone(polling)
+
+    async def test_preserves_authorization_url_for_polling_flows(
+        self,
+    ) -> None:
+        db = mock.AsyncMock()
+        request = mock.MagicMock()
+        request.authorization_url = 'https://idp/device?user_code=ABCD-1234'
+        request.state = 'device-code-xyz'
+        request.code_verifier = None
+        request.polling = mock.MagicMock()
+        request.registered_credentials = None
+        handler = mock.MagicMock(spec=flows.IdentityPlugin)
+        handler.authorization_request = mock.AsyncMock(return_value=request)
+        with (
+            _patch_load_handler(handler),
+            mock.patch.object(
+                flows.state,
+                'encode_identity_state',
+                return_value='state-token',
+            ),
+        ):
+            url, state_token, polling = await flows.start_flow(
+                db,
+                plugin_id='plugin-1',
+                redirect_uri='https://imbi/cb',
+                actor_user_id='user-1',
+            )
+        # Device-code flows never round-trip ``state`` through the IdP,
+        # so the authorization URL is preserved verbatim.
+        self.assertEqual(url, 'https://idp/device?user_code=ABCD-1234')
+        self.assertEqual(state_token, 'state-token')
+        self.assertIs(polling, request.polling)
 
 
 class CompleteFlowTestCase(unittest.IsolatedAsyncioTestCase):

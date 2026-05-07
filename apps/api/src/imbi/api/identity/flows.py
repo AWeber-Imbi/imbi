@@ -3,6 +3,7 @@
 import json
 import logging
 import typing
+import urllib.parse
 
 from imbi_common import graph
 from imbi_common.plugins.base import (
@@ -164,7 +165,30 @@ async def start_flow(
         actor_user_id=actor_user_id,
         device_code=device_code,
     )
-    return request.authorization_url, state_token, request.polling
+    # Plugins mint a random ``state`` nonce internally for CSRF, but the
+    # callback handler decodes the IdP-echoed ``state`` as the signed
+    # identity-flow JWT.  Replace the plugin's nonce with the JWT in the
+    # authorization URL so the round-trip carries the trusted token.
+    # Skipped for device-code flows, which never round-trip ``state``
+    # through the IdP and reuse ``request.state`` as the device code.
+    authorization_url = (
+        request.authorization_url
+        if request.polling
+        else _replace_state(request.authorization_url, state_token)
+    )
+    return authorization_url, state_token, request.polling
+
+
+def _replace_state(url: str, state_token: str) -> str:
+    """Return ``url`` with its ``state`` param set to ``state_token``."""
+    parts = urllib.parse.urlsplit(url)
+    query = urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
+    rewritten = [(k, state_token if k == 'state' else v) for k, v in query]
+    if not any(k == 'state' for k, _ in query):
+        rewritten.append(('state', state_token))
+    return urllib.parse.urlunsplit(
+        parts._replace(query=urllib.parse.urlencode(rewritten))
+    )
 
 
 async def complete_flow(
