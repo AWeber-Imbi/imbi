@@ -881,3 +881,64 @@ class ReleaseDeploymentEdgeTestCase(unittest.TestCase):
         self.assertIsInstance(dumped['deployments'], list)
         self.assertEqual(len(dumped['deployments']), 1)
         self.assertEqual(dumped['deployments'][0]['status'], 'pending')
+
+
+class PluginEdgeTestCase(unittest.TestCase):
+    """Tests for the Plugin <-> ServiceApplication edge."""
+
+    def _edges(
+        self, model_cls: type[pydantic.BaseModel]
+    ) -> dict[str, models.Edge]:
+        result: dict[str, models.Edge] = {}
+        for name, field in model_cls.model_fields.items():
+            for meta in field.metadata:
+                if isinstance(meta, models.Edge):
+                    result[name] = meta
+        return result
+
+    def test_plugin_uses_application_edge(self) -> None:
+        edges = self._edges(models.Plugin)
+        self.assertIn('service_application', edges)
+        edge = edges['service_application']
+        self.assertEqual(edge.rel_type, 'USES_APPLICATION')
+        self.assertEqual(edge.direction, 'OUTGOING')
+
+    def test_plugin_service_application_defaults_none(self) -> None:
+        org = models.Organization(name='Org', slug='org')
+        svc = models.ThirdPartyService(
+            name='GitHub',
+            slug='github',
+            organization=org,
+        )
+        plugin = models.Plugin(
+            plugin_slug='github-oauth2',
+            label='GitHub OAuth2',
+            service=svc,
+        )
+        self.assertIsNone(plugin.service_application)
+
+    def test_plugin_service_application_assignment(self) -> None:
+        org = models.Organization(name='Org', slug='org')
+        svc = models.ThirdPartyService(
+            name='GitHub',
+            slug='github',
+            organization=org,
+        )
+        app = models.ServiceApplication(
+            slug='github-oauth-app',
+            name='GitHub OAuth App',
+        )
+        plugin = models.Plugin(
+            plugin_slug='github-oauth2',
+            label='GitHub OAuth2',
+            service=svc,
+            service_application=app,
+        )
+        self.assertIs(plugin.service_application, app)
+
+    def test_third_party_service_has_no_service_application_field(
+        self,
+    ) -> None:
+        self.assertNotIn(
+            'service_application', models.ThirdPartyService.model_fields
+        )

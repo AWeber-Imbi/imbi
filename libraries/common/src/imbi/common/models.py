@@ -311,10 +311,6 @@ class ServiceApplication(GraphModel):
 
 class ThirdPartyService(Node):
     organization: BelongsToOrganization
-    service_application: typing.Annotated[
-        ServiceApplication | None,
-        Edge(rel_type='HAS_APPLICATION', direction='OUTGOING'),
-    ] = None
 
 
 class Plugin(GraphModel):
@@ -331,6 +327,10 @@ class Plugin(GraphModel):
         ThirdPartyService,
         Edge(rel_type='HAS_PLUGIN', direction='INCOMING'),
     ]
+    service_application: typing.Annotated[
+        ServiceApplication | None,
+        Edge(rel_type='USES_APPLICATION', direction='OUTGOING'),
+    ] = None
 
 
 class IdentityConnection(GraphModel):
