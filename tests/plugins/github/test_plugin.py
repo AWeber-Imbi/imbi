@@ -57,16 +57,16 @@ class ManifestTestCase(unittest.TestCase):
         with self.assertRaises(ValueError):
             plugin._endpoints({})
 
-    def test_ghec_endpoints_route_oauth_to_github_com(self) -> None:
+    def test_ghec_endpoints_route_oauth_to_tenant_host(self) -> None:
         plugin = GitHubEnterpriseCloudPlugin()
         endpoints = plugin._endpoints({'host': 'tenant.ghe.com'})
         self.assertEqual(
             endpoints['authorize'],
-            'https://github.com/login/oauth/authorize',
+            'https://tenant.ghe.com/login/oauth/authorize',
         )
         self.assertEqual(
             endpoints['token'],
-            'https://github.com/login/oauth/access_token',
+            'https://tenant.ghe.com/login/oauth/access_token',
         )
         self.assertEqual(endpoints['user'], 'https://api.tenant.ghe.com/user')
         self.assertEqual(

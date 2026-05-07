@@ -94,10 +94,11 @@ class _GitHubBase(IdentityPlugin):
     def _endpoints(self, options: dict[str, typing.Any]) -> dict[str, str]:
         host = self._resolve_host(options)
         # github.com routes login through github.com/login but API
-        # requests through api.github.com.  GHEC tenants (``*.ghe.com``)
-        # also send OAuth to github.com but route REST traffic to
-        # ``api.<tenant>.ghe.com``.  GHES appliances route both OAuth
-        # and REST through ``<host>/api/v3``.
+        # requests through api.github.com.  GHEC with Data Residency
+        # tenants (``*.ghe.com``) are isolated: OAuth authorize/token
+        # live on the tenant host and REST traffic on
+        # ``api.<tenant>.ghe.com``.  GHES appliances host OAuth at
+        # ``<host>/login/oauth/...`` and REST at ``<host>/api/v3/...``.
         if host == 'github.com':
             return {
                 'authorize': 'https://github.com/login/oauth/authorize',
@@ -108,8 +109,8 @@ class _GitHubBase(IdentityPlugin):
         if host.endswith('.ghe.com'):
             api_host = f'api.{host}'
             return {
-                'authorize': 'https://github.com/login/oauth/authorize',
-                'token': 'https://github.com/login/oauth/access_token',
+                'authorize': f'https://{host}/login/oauth/authorize',
+                'token': f'https://{host}/login/oauth/access_token',
                 'user': f'https://{api_host}/user',
                 'emails': f'https://{api_host}/user/emails',
             }
