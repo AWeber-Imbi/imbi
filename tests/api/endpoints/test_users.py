@@ -328,6 +328,71 @@ class UserEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
+    def test_get_user_by_identity_success(self) -> None:
+        """Test resolving a user from a plugin subject."""
+        mock_user = models.User(
+            id='user-nano-id',
+            email='gh@example.com',
+            display_name='GH User',
+            is_active=True,
+            is_admin=False,
+            is_service_account=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.mock_db.match.return_value = [mock_user]
+        # find_user_by_subject + _load_user_memberships both call execute
+        self.mock_db.execute.side_effect = [
+            [{'user_ids': ['user-nano-id']}],
+            [{'org_name': 'Default', 'org_slug': 'default', 'role': 'dev'}],
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.get(
+                '/users/by-identity',
+                params={'plugin_slug': 'github', 'subject': '12345'},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['email'], 'gh@example.com')
+        self.assertEqual(len(data['organizations']), 1)
+
+    def test_get_user_by_identity_not_found(self) -> None:
+        """Test 404 when no active IdentityConnection matches."""
+        self.mock_db.execute.return_value = []
+
+        response = self.client.get(
+            '/users/by-identity',
+            params={'plugin_slug': 'github', 'subject': '99999'},
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_get_user_by_identity_user_node_missing(self) -> None:
+        """find_user_by_subject hits but the User node was deleted."""
+        self.mock_db.execute.return_value = [{'user_ids': ['orphan-id']}]
+        self.mock_db.match.return_value = []
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.get(
+                '/users/by-identity',
+                params={'plugin_slug': 'github', 'subject': '12345'},
+            )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_get_user_by_identity_requires_query_params(self) -> None:
+        """Both plugin_slug and subject are required."""
+        response = self.client.get(
+            '/users/by-identity',
+            params={'plugin_slug': 'github'},
+        )
+        self.assertEqual(response.status_code, 422)
+
     def test_delete_user_success(self) -> None:
         """Test deleting a user."""
         self.mock_db.execute.return_value = [{'n': 'true'}]

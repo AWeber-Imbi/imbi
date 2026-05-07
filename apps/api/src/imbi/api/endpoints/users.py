@@ -12,6 +12,7 @@ from imbi_api import models
 from imbi_api import patch as json_patch
 from imbi_api.auth import password, permissions
 from imbi_api.endpoints import _helpers
+from imbi_api.identity import repository as identity_repository
 
 LOGGER = logging.getLogger(__name__)
 
@@ -360,6 +361,66 @@ async def list_users(
             )
         )
     return users
+
+
+@users_router.get('/by-identity', response_model=models.UserResponse)
+async def get_user_by_identity(
+    plugin_slug: str,
+    subject: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('user:read')),
+    ],
+) -> models.UserResponse:
+    """Look up a user by an external identity-plugin subject.
+
+    Used by inbound webhook gateways to attribute external events
+    (e.g. a GitHub deployment) to the corresponding Imbi user.
+    Returns 404 when no active ``IdentityConnection`` matches.
+    """
+    del auth
+    user_id = await identity_repository.find_user_by_subject(
+        db, plugin_slug=plugin_slug, subject=subject
+    )
+    if user_id is None:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=(
+                f'No user matches plugin {plugin_slug!r} subject {subject!r}'
+            ),
+        )
+
+    results = await db.match(models.User, {'id': user_id})
+    if not results:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'User with id {user_id!r} not found',
+        )
+    user = results[0]
+
+    org_records = await _load_user_memberships(db, user.email)
+    organizations = [
+        models.OrgMembership(
+            organization_name=record['organization_name'],
+            organization_slug=record['organization_slug'],
+            role=record['role'],
+        )
+        for record in org_records
+    ]
+
+    return models.UserResponse(
+        email=user.email,
+        display_name=user.display_name,
+        is_active=user.is_active,
+        is_admin=user.is_admin,
+        is_service_account=user.is_service_account,
+        created_at=user.created_at,
+        last_login=user.last_login,
+        avatar_url=user.avatar_url,
+        email_notifications=user.email_notifications,
+        organizations=organizations,
+    )
 
 
 @users_router.get('/{email}', response_model=models.UserResponse)

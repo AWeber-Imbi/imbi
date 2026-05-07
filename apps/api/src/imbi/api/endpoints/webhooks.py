@@ -144,6 +144,8 @@ WITH w, tps, impl,
 RETURN w{{.*}} AS webhook,
        tps{{.*}} AS tps,
        impl.identifier_selector AS identifier_selector,
+       impl.user_subject_selector AS user_subject_selector,
+       impl.identity_plugin_slug AS identity_plugin_slug,
        [x IN all_rules
         | x {{.filter_expression, .handler,
               .handler_config}}]
@@ -161,6 +163,8 @@ _UPDATE_RETURN_TAIL_WITH_TPS: typing.LiteralString = (
     ' .handler_config, .ordinal}} END) AS all_rules'
     ' RETURN w{{.*}} AS webhook, tps{{.*}} AS tps,'
     ' impl.identifier_selector AS identifier_selector,'
+    ' impl.user_subject_selector AS user_subject_selector,'
+    ' impl.identity_plugin_slug AS identity_plugin_slug,'
     ' [x IN all_rules'
     ' | x {{.filter_expression, .handler,'
     ' .handler_config}}] AS rules'
@@ -177,6 +181,8 @@ _UPDATE_RETURN_TAIL_NO_TPS: typing.LiteralString = (
     ' .handler_config, .ordinal}} END) AS all_rules'
     ' RETURN w{{.*}} AS webhook, null AS tps,'
     ' null AS identifier_selector,'
+    ' null AS user_subject_selector,'
+    ' null AS identity_plugin_slug,'
     ' [x IN all_rules'
     ' | x {{.filter_expression, .handler,'
     ' .handler_config}}] AS rules'
@@ -263,15 +269,18 @@ async def create_webhook(
             ' -[:BELONGS_TO]->(o)'
             f' CREATE (w:Webhook {create_tpl})'
             ' CREATE (w)-[:BELONGS_TO]->(o)'
-            ' CREATE (w)-[:IMPLEMENTED_BY'
-            ' {{identifier_selector: {identifier_selector}}}]->(tps)'
-            + rule_clauses
-            + ' RETURN w.id AS id'
+            ' CREATE (w)-[:IMPLEMENTED_BY {{'
+            'identifier_selector: {identifier_selector},'
+            ' user_subject_selector: {user_subject_selector},'
+            ' identity_plugin_slug: {identity_plugin_slug}'
+            '}}]->(tps)' + rule_clauses + ' RETURN w.id AS id'
         )
         write_params: dict[str, typing.Any] = {
             **base_params,
             'tps_slug': data.third_party_service_slug,
             'identifier_selector': data.identifier_selector,
+            'user_subject_selector': data.user_subject_selector,
+            'identity_plugin_slug': data.identity_plugin_slug,
         }
     else:
         write_query = (
@@ -315,7 +324,14 @@ async def create_webhook(
     records = await db.execute(
         _FETCH_WEBHOOK_QUERY,
         {'identifier': webhook_id, 'org_slug': org_slug},
-        ['webhook', 'tps', 'identifier_selector', 'rules'],
+        [
+            'webhook',
+            'tps',
+            'identifier_selector',
+            'user_subject_selector',
+            'identity_plugin_slug',
+            'rules',
+        ],
     )
     return models.WebhookResponse.from_graph_record(records[0])
 
@@ -349,6 +365,8 @@ async def list_webhooks(
     RETURN w{{.*}} AS webhook,
            tps{{.*}} AS tps,
            impl.identifier_selector AS identifier_selector,
+           impl.user_subject_selector AS user_subject_selector,
+           impl.identity_plugin_slug AS identity_plugin_slug,
            [x IN all_rules
             | x {{.filter_expression, .handler,
                   .handler_config}}]
@@ -358,7 +376,14 @@ async def list_webhooks(
     records = await db.execute(
         query,
         {'org_slug': org_slug},
-        ['webhook', 'tps', 'identifier_selector', 'rules'],
+        [
+            'webhook',
+            'tps',
+            'identifier_selector',
+            'user_subject_selector',
+            'identity_plugin_slug',
+            'rules',
+        ],
     )
     return [models.WebhookResponse.from_graph_record(r) for r in records]
 
@@ -379,7 +404,14 @@ async def get_webhook(
     records = await db.execute(
         _FETCH_WEBHOOK_QUERY,
         {'identifier': webhook, 'org_slug': org_slug},
-        ['webhook', 'tps', 'identifier_selector', 'rules'],
+        [
+            'webhook',
+            'tps',
+            'identifier_selector',
+            'user_subject_selector',
+            'identity_plugin_slug',
+            'rules',
+        ],
     )
 
     if not records:
@@ -422,7 +454,14 @@ async def patch_webhook(
     existing = await db.execute(
         _FETCH_WEBHOOK_QUERY,
         {'identifier': webhook, 'org_slug': org_slug},
-        ['webhook', 'tps', 'identifier_selector', 'rules'],
+        [
+            'webhook',
+            'tps',
+            'identifier_selector',
+            'user_subject_selector',
+            'identity_plugin_slug',
+            'rules',
+        ],
     )
 
     if not existing:
@@ -450,6 +489,12 @@ async def patch_webhook(
         ),
         'identifier_selector': graph.parse_agtype(
             existing[0].get('identifier_selector')
+        ),
+        'user_subject_selector': graph.parse_agtype(
+            existing[0].get('user_subject_selector')
+        ),
+        'identity_plugin_slug': graph.parse_agtype(
+            existing[0].get('identity_plugin_slug')
         ),
         'rules': [
             {
@@ -547,7 +592,11 @@ async def patch_webhook(
             f' {set_stmt}'
             ' CREATE (w)-[impl:IMPLEMENTED_BY]->(tps)'
             ' SET impl.identifier_selector'
-            ' = {identifier_selector}' + rule_clauses + ' RETURN w.id AS id'
+            ' = {identifier_selector},'
+            ' impl.user_subject_selector = {user_subject_selector},'
+            ' impl.identity_plugin_slug = {identity_plugin_slug}'
+            + rule_clauses
+            + ' RETURN w.id AS id'
         )
         params: dict[str, typing.Any] = {
             'webhook_id': existing_webhook_id,
@@ -555,6 +604,8 @@ async def patch_webhook(
             'tps_slug': data.third_party_service_slug,
             **props,
             'identifier_selector': data.identifier_selector,
+            'user_subject_selector': data.user_subject_selector,
+            'identity_plugin_slug': data.identity_plugin_slug,
             **rules_params,
         }
     else:
@@ -600,7 +651,14 @@ async def patch_webhook(
     records = await db.execute(
         _FETCH_WEBHOOK_QUERY,
         {'identifier': existing_webhook_id, 'org_slug': org_slug},
-        ['webhook', 'tps', 'identifier_selector', 'rules'],
+        [
+            'webhook',
+            'tps',
+            'identifier_selector',
+            'user_subject_selector',
+            'identity_plugin_slug',
+            'rules',
+        ],
     )
     return models.WebhookResponse.from_graph_record(records[0])
 

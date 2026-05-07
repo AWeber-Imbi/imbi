@@ -947,6 +947,21 @@ class WebhookCreate(pydantic.BaseModel):
         default=None,
         description='JSON Path expression to extract project identifier',
     )
+    user_subject_selector: str | None = pydantic.Field(
+        default=None,
+        description=(
+            'JSON Pointer that locates the external identity subject '
+            '(e.g. /deployment/creator/id) used to resolve the Imbi user.'
+        ),
+    )
+    identity_plugin_slug: str | None = pydantic.Field(
+        default=None,
+        description=(
+            'Optional override for the identity plugin slug used to resolve '
+            'the Imbi user; falls back to identity plugins attached to the '
+            'third-party service when unset.'
+        ),
+    )
     rules: list[WebhookRuleCreate] = pydantic.Field(
         default_factory=list,
     )
@@ -957,6 +972,14 @@ class WebhookCreate(pydantic.BaseModel):
         if self.identifier_selector and not self.third_party_service_slug:
             raise ValueError(
                 'identifier_selector requires third_party_service_slug'
+            )
+        if self.user_subject_selector and not self.third_party_service_slug:
+            raise ValueError(
+                'user_subject_selector requires third_party_service_slug'
+            )
+        if self.identity_plugin_slug and not self.third_party_service_slug:
+            raise ValueError(
+                'identity_plugin_slug requires third_party_service_slug'
             )
         return self
 
@@ -983,6 +1006,21 @@ class WebhookUpdate(pydantic.BaseModel):
         default=None,
         description='JSON Path expression to extract project identifier',
     )
+    user_subject_selector: str | None = pydantic.Field(
+        default=None,
+        description=(
+            'JSON Pointer that locates the external identity subject '
+            '(e.g. /deployment/creator/id) used to resolve the Imbi user.'
+        ),
+    )
+    identity_plugin_slug: str | None = pydantic.Field(
+        default=None,
+        description=(
+            'Optional override for the identity plugin slug used to resolve '
+            'the Imbi user; falls back to identity plugins attached to the '
+            'third-party service when unset.'
+        ),
+    )
     rules: list[WebhookRuleCreate] = pydantic.Field(
         default_factory=list,
     )
@@ -993,6 +1031,14 @@ class WebhookUpdate(pydantic.BaseModel):
         if self.identifier_selector and not self.third_party_service_slug:
             raise ValueError(
                 'identifier_selector requires third_party_service_slug'
+            )
+        if self.user_subject_selector and not self.third_party_service_slug:
+            raise ValueError(
+                'user_subject_selector requires third_party_service_slug'
+            )
+        if self.identity_plugin_slug and not self.third_party_service_slug:
+            raise ValueError(
+                'identity_plugin_slug requires third_party_service_slug'
             )
         return self
 
@@ -1020,6 +1066,8 @@ class WebhookResponse(pydantic.BaseModel):
     notification_path: str
     third_party_service: dict[str, typing.Any] | None = None
     identifier_selector: str | None = None
+    user_subject_selector: str | None = None
+    identity_plugin_slug: str | None = None
     rules: list[WebhookRuleResponse] = []
 
     @classmethod
@@ -1064,6 +1112,12 @@ class WebhookResponse(pydantic.BaseModel):
             third_party_service=tps,
             identifier_selector=graph.parse_agtype(
                 record.get('identifier_selector')
+            ),
+            user_subject_selector=graph.parse_agtype(
+                record.get('user_subject_selector')
+            ),
+            identity_plugin_slug=graph.parse_agtype(
+                record.get('identity_plugin_slug')
             ),
             rules=rules,
         )
