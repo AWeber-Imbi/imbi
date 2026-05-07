@@ -42,7 +42,18 @@ class Assistant(pydantic_settings.BaseSettings):
         """Path prefix derived from the public URL's path component."""
         if not self.url:
             return ''
-        return urllib.parse.urlparse(self.url).path.rstrip('/')
+        path = urllib.parse.urlparse(self.url).path.rstrip('/')
+        if not path:
+            return ''
+        if not path.startswith('/'):
+            msg = (
+                'IMBI_ASSISTANT_URL must include an absolute path '
+                "(e.g. 'https://imbi.example.com/assistant' or "
+                "'/assistant'); got "
+                f'{self.url!r}.'
+            )
+            raise ValueError(msg)
+        return path
 
     @property
     def api_key(self) -> str | None:
