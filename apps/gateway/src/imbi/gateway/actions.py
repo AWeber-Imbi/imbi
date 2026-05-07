@@ -2,6 +2,7 @@ import http
 import logging
 import typing
 
+import celpy
 import httpx
 import jsonpointer
 import pydantic
@@ -163,40 +164,25 @@ class ImbiClient(httpx.AsyncClient):
         return response
 
 
-class _DeploymentCreator(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(extra='ignore')
-    id: int
+class CreateReleaseConfig(pydantic.BaseModel):
+    """Validates ``handler_config`` for :func:`create_release`."""
+
+    title_selector: JsonPointer
+    version_expression: str
 
 
-class _Deployment(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(extra='ignore')
-    ref: str
-    url: pydantic.HttpUrl
-    environment: str
-    creator: _DeploymentCreator | None = None
+class AddDeploymentEventConfig(pydantic.BaseModel):
+    """Validates ``handler_config`` for :func:`add_deployment_event`."""
+
+    environment_selector: JsonPointer
+    version_expression: str
+    status_selector: JsonPointer
+    note_selector: JsonPointer | None = None
 
 
-class _DeploymentEvent(pydantic.BaseModel):
-    """Subset of the GitHub ``deployment`` webhook payload."""
-
-    model_config = pydantic.ConfigDict(extra='ignore')
-    deployment: _Deployment
-
-
-class _DeploymentStatus(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(extra='ignore')
-    state: str
-
-
-class _DeploymentStatusEvent(pydantic.BaseModel):
-    """Subset of the GitHub ``deployment_status`` webhook payload."""
-
-    model_config = pydantic.ConfigDict(extra='ignore')
-    deployment: _Deployment
-    deployment_status: _DeploymentStatus
-
-
-# GitHub deployment_status.state -> Imbi _DEPLOYMENT_STATUS literal.
+# Raw deployment-status state -> Imbi _DEPLOYMENT_STATUS literal.
+# The selector decides where the state is read from; this map is the
+# static translation from GitHub-style vocabulary to Imbi's enum.
 # Unknown states are logged and skipped (no event recorded).
 _STATUS_MAP: dict[str, str] = {
     'queued': 'pending',
@@ -207,6 +193,12 @@ _STATUS_MAP: dict[str, str] = {
     'error': 'failed',
     'inactive': 'rolled_back',
 }
+
+
+def _evaluate_cel(expression: str, body: object) -> str:
+    env = celpy.Environment()
+    program = env.program(env.compile(expression))
+    return str(program.evaluate(celpy.json_to_cel(body)))
 
 
 async def update_project(
@@ -241,25 +233,17 @@ async def create_release(
 ) -> None:
     """Processes a deployment notification and ensures the release exists.
 
-    https://docs.github.com/en/enterprise-cloud@latest/webhooks/webhook-events-and-payloads#deployment
-
-    The release version is taken from ``/deployment/ref`` and a link to
-    the GitHub deployment URL is attached. ``user_id`` (the resolved
-    Imbi user's email) is passed as ``created_by`` when present;
-    otherwise the API defaults to the gateway's service principal.
+    The version is the result of evaluating the CEL
+    ``version_expression`` against the body; the title is taken from
+    the JSONPointer ``title_selector``. ``user_id`` (the resolved Imbi
+    user's email) is passed as ``created_by`` when present; otherwise
+    the API defaults to the gateway's service principal.
     """
-    del handler_config  # not used by this handler today
-    payload = _DeploymentEvent.model_validate(body)
+    config = CreateReleaseConfig.model_validate_json(handler_config)
+    version_value = _evaluate_cel(config.version_expression, body)
     create_body: dict[str, object] = {
-        'version': payload.deployment.ref,
-        'title': payload.deployment.ref,
-        'links': [
-            {
-                'type': 'github_deployment',
-                'url': str(payload.deployment.url),
-                'label': 'GitHub Deployment',
-            }
-        ],
+        'version': version_value,
+        'title': str(config.title_selector.resolve(body)),
     }
     if user_id is not None:
         create_body['created_by'] = user_id
@@ -270,7 +254,7 @@ async def create_release(
     if response.status_code == http.HTTPStatus.CONFLICT:
         LOGGER.debug(
             'Release %r already exists for project %s',
-            payload.deployment.ref,
+            version_value,
             project_id,
         )
 
@@ -284,33 +268,30 @@ async def add_deployment_event(
 ) -> None:
     """Processes a deployment_status notification.
 
-    https://docs.github.com/en/enterprise-cloud@latest/webhooks/webhook-events-and-payloads#deployment_status
-
     Appends a deployment event to the release's DEPLOYED_TO edge for
     the matching environment. ``record_deployment`` has no
     ``created_by`` field so ``user_id`` is unused here.
     """
-    del user_id, handler_config
-    payload = _DeploymentStatusEvent.model_validate(body)
-    status = _STATUS_MAP.get(payload.deployment_status.state)
+    del user_id
+    config = AddDeploymentEventConfig.model_validate_json(handler_config)
+    raw_state = str(config.status_selector.resolve(body))
+    status = _STATUS_MAP.get(raw_state)
     if status is None:
-        LOGGER.warning(
-            'Unmapped deployment_status.state %r — skipping',
-            payload.deployment_status.state,
-        )
+        LOGGER.warning('Unmapped deployment status %r — skipping', raw_state)
         return
+    version_value = _evaluate_cel(config.version_expression, body)
+    environment = str(config.environment_selector.resolve(body))
+    event_body: dict[str, object] = {'status': status}
+    if config.note_selector is not None:
+        event_body['note'] = str(config.note_selector.resolve(body))
     async with ImbiClient() as client:
         response = await client.record_deployment(
-            org_slug,
-            project_id,
-            payload.deployment.ref,
-            payload.deployment.environment,
-            {'status': status, 'note': str(payload.deployment.url)},
+            org_slug, project_id, version_value, environment, event_body
         )
     if response.status_code == http.HTTPStatus.NOT_FOUND:
         LOGGER.warning(
             'Release %r missing for project %s; status %r dropped',
-            payload.deployment.ref,
+            version_value,
             project_id,
             status,
         )
