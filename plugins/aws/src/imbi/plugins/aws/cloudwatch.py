@@ -12,6 +12,7 @@ import typing
 
 from imbi_common.plugins.base import (
     LogEntry,
+    LogHistogramBucket,
     LogQuery,
     LogResult,
     LogsPlugin,
@@ -46,6 +47,7 @@ from imbi_plugin_aws.log_groups import (
 )
 from imbi_plugin_aws.query import (
     INSIGHTS_LIMIT_CEILING,
+    build_histogram_query,
     build_query,
     decode_cursor,
     encode_cursor,
@@ -107,6 +109,63 @@ def _row_to_dict(
     return {
         field['field']: field['value'] for field in row if 'field' in field
     }
+
+
+def _merge_histogram_rows(
+    totals_rows: list[list[dict[str, str]]],
+    level_rows: list[list[dict[str, str]]],
+) -> list[LogHistogramBucket]:
+    """Combine totals + per-level Insights row sets into buckets.
+
+    The totals query (``stats count(*) by bin()``) drives bucket
+    timestamps and totals — Logs Insights drops null grouping keys, so
+    the level query alone would miss buckets where every row had a
+    null ``level``. The level query supplies the per-bucket breakdown
+    used for stacked bars; missing rows are tolerated.
+    """
+    by_ts: dict[datetime.datetime, dict[str, int | dict[str, int]]] = {}
+    for row in totals_rows:
+        rd = _row_to_dict(row)
+        ts_str = rd.get('ts')
+        if not ts_str:
+            continue
+        try:
+            timestamp = _parse_insights_timestamp(ts_str)
+        except ValueError:
+            continue
+        try:
+            count = int(float(rd.get('count') or '0'))
+        except (TypeError, ValueError):
+            count = 0
+        slot = by_ts.setdefault(timestamp, {'count': 0, 'levels': {}})
+        slot['count'] = typing.cast(int, slot['count']) + count
+    for row in level_rows:
+        rd = _row_to_dict(row)
+        ts_str = rd.get('ts')
+        if not ts_str:
+            continue
+        try:
+            timestamp = _parse_insights_timestamp(ts_str)
+        except ValueError:
+            continue
+        try:
+            count = int(float(rd.get('count') or '0'))
+        except (TypeError, ValueError):
+            count = 0
+        level = (rd.get('level') or '').strip()
+        if not level:
+            continue
+        slot = by_ts.setdefault(timestamp, {'count': 0, 'levels': {}})
+        levels = typing.cast(dict[str, int], slot['levels'])
+        levels[level] = levels.get(level, 0) + count
+    return [
+        LogHistogramBucket(
+            timestamp=ts,
+            count=typing.cast(int, slot['count']),
+            levels=typing.cast(dict[str, int], slot['levels']),
+        )
+        for ts, slot in sorted(by_ts.items(), key=lambda x: x[0])
+    ]
 
 
 @dataclasses.dataclass
@@ -313,6 +372,7 @@ class CloudWatchLogsPlugin(LogsPlugin):
         plugin_type='logs',
         api_version=1,
         cacheable=False,
+        supports_histogram=True,
         options=[
             PluginOption(
                 name='region',
@@ -379,6 +439,19 @@ class CloudWatchLogsPlugin(LogsPlugin):
                 label='Query Timeout',
                 type='integer',
                 default=30,
+            ),
+            PluginOption(
+                name='default_role_name',
+                label='Default Role Name',
+                type='string',
+                required=False,
+                description=(
+                    'IAM role assumed when a per-environment account '
+                    "binding doesn't specify one of its own. Falls back "
+                    "to the identity plugin's default_role_name when "
+                    'unset. Supports ${project_slug}, ${org_slug}, '
+                    '${environment}, ${project_id}.'
+                ),
             ),
         ],
         credentials=[],
@@ -477,6 +550,95 @@ class CloudWatchLogsPlugin(LogsPlugin):
             total=total,
             warnings=selection.warnings,
         )
+
+    async def histogram(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        query: LogQuery,
+        bucket_count: int = 60,
+    ) -> list[LogHistogramBucket]:
+        """Time-bucketed counts via Logs Insights ``stats … by bin()``.
+
+        Runs two ``StartQuery`` calls in parallel against the same
+        selection used by ``search``: one for total counts per bin and
+        one (only when ``level_field`` is configured) for the per-level
+        breakdown. The level query is best-effort — when it returns no
+        rows (e.g. the underlying logs have no structured ``level``
+        field, so Logs Insights drops null grouping keys), the totals
+        query still populates the chart.
+        """
+        creds = resolve_credentials(
+            credentials, region=assignment_region(ctx), ctx=ctx
+        )
+        timeout = assignment_timeout(ctx, default=30.0)
+        selection = await self._build_selection(ctx, creds, timeout=timeout)
+        if selection.names is not None and not selection.names:
+            return []
+
+        level_field = self._option(ctx, 'level_field', 'level')
+        base_filter = self._expanded_base_filter(ctx)
+        poll_interval = self._poll_interval(ctx)
+
+        # Pick a bin width that yields ~bucket_count buckets across the
+        # query range. Floor at 1s so very short ranges still aggregate.
+        duration_s = max(
+            1, int((query.end_time - query.start_time).total_seconds())
+        )
+        bin_seconds = max(1, duration_s // max(1, bucket_count))
+
+        async def _run(query_string: str) -> list[list[dict[str, str]]]:
+            full = (
+                f'{selection.source_clause} | {query_string}'
+                if selection.source_clause is not None
+                else query_string
+            )
+            body: dict[str, typing.Any] = {
+                'queryString': full,
+                'startTime': _epoch_seconds(query.start_time),
+                'endTime': _epoch_seconds(query.end_time),
+                'limit': INSIGHTS_LIMIT_CEILING,
+            }
+            if selection.names is not None:
+                body['logGroupNames'] = selection.names
+            resp = await call_aws_json(
+                service='logs',
+                action='StartQuery',
+                body=body,
+                credentials=creds,
+                error_map=_LOGS_ERROR_MAP,
+                timeout=timeout,
+            )
+            results = await self._poll_results(
+                creds=creds,
+                query_id=str(resp['queryId']),
+                poll_interval=poll_interval,
+                timeout=timeout,
+            )
+            return typing.cast(
+                list[list[dict[str, str]]], results.get('results', []) or []
+            )
+
+        totals_q = build_histogram_query(
+            base_filter=base_filter,
+            filters=query.filters,
+            bin_seconds=bin_seconds,
+            level_field=None,
+        )
+        if level_field:
+            level_q = build_histogram_query(
+                base_filter=base_filter,
+                filters=query.filters,
+                bin_seconds=bin_seconds,
+                level_field=level_field,
+            )
+            totals_rows, level_rows = await asyncio.gather(
+                _run(totals_q), _run(level_q)
+            )
+        else:
+            totals_rows = await _run(totals_q)
+            level_rows = []
+        return _merge_histogram_rows(totals_rows, level_rows)
 
     async def _start_with_cache_bust(
         self,
