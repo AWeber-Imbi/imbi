@@ -21,7 +21,9 @@ dependencies = [
 ]
 
 [project.entry-points."imbi.plugins"]
+aws-cloudwatch-logs = "imbi_plugin_aws.cloudwatch:CloudWatchLogsPlugin"
 aws-iam-ic = "imbi_plugin_aws.identity:AwsIamIcPlugin"
+aws-ssm = "imbi_plugin_aws.ssm:SsmPlugin"
 
 [dependency-groups]
 dev = [
