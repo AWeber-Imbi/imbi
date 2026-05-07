@@ -135,7 +135,11 @@ def _quote_source_string(value: str) -> str:
 
 
 def _resolve_cache_key(
-    creds: AwsCredentials, pattern: str, *, account_id: str | None
+    creds: AwsCredentials,
+    pattern: str,
+    *,
+    account_id: str | None,
+    kind: str,
 ) -> str:
     """Cache key scoped to a stable AWS-account identity, not session.
 
@@ -145,6 +149,10 @@ def _resolve_cache_key(
     ``ctx.identity.extra['aws_account_id']`` after ``materialize``),
     we scope by it instead — same account → same DescribeLogGroups
     output, regardless of which session is asking.
+
+    ``kind`` (the selector mode: ``glob``/``regex``/``prefix``) is
+    folded into the key so a glob ``foo*`` and a regex ``foo*`` (which
+    resolve differently) cannot collide on the same cache entry.
     """
     pattern_digest = hashlib.sha1(
         pattern.encode(), usedforsecurity=False
@@ -158,7 +166,7 @@ def _resolve_cache_key(
                 creds.access_key_id.encode(), usedforsecurity=False
             ).hexdigest()[:16]
         )
-    return f'cwlogs:{scope}:{creds.region}:{pattern_digest}'
+    return f'cwlogs:{scope}:{creds.region}:{kind}:{pattern_digest}'
 
 
 def _account_id_from_ctx(ctx: PluginContext) -> str | None:
@@ -245,12 +253,24 @@ async def _resolve_pattern(
     entry: Entry,
     timeout: float,
 ) -> list[str]:
-    """Page DescribeLogGroups by literal prefix and filter by matcher."""
+    """Page DescribeLogGroups by literal prefix and filter by matcher.
+
+    A single deadline is computed from ``timeout`` and shared across
+    every page; each ``call_aws_json`` is given the remaining budget so
+    the loop honours the caller's overall time limit instead of letting
+    pagination multiply it by ``_DESCRIBE_PAGE_LIMIT``.
+    """
     matcher = compile_matcher(entry.expanded, is_regex=entry.kind == 'regex')
     prefix = literal_prefix(entry.expanded, is_regex=entry.kind == 'regex')
     matches: set[str] = set()
     next_token: str | None = None
+    deadline = asyncio.get_running_loop().time() + timeout
     for _ in range(_DESCRIBE_PAGE_LIMIT):
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            raise PluginTimeoutError(
+                f'DescribeLogGroups exceeded {timeout:.1f}s budget'
+            )
         body: dict[str, typing.Any] = {'limit': _DESCRIBE_PAGE_SIZE}
         if prefix:
             body['logGroupNamePrefix'] = prefix
@@ -262,7 +282,7 @@ async def _resolve_pattern(
             body=body,
             credentials=creds,
             error_map=_LOGS_ERROR_MAP,
-            timeout=timeout,
+            timeout=remaining,
         )
         for group in resp.get('logGroups', []):
             name = group.get('logGroupName')
@@ -805,7 +825,10 @@ async def _build_resolve_selection(
         if sample_entry is None:
             sample_entry = entry
         cache_key = _resolve_cache_key(
-            creds, entry.expanded, account_id=account_id
+            creds,
+            entry.expanded,
+            account_id=account_id,
+            kind=entry.kind,
         )
         cache_keys.append(cache_key)
         cached = await _cache_get(client, cache_key)

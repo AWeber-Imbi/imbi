@@ -506,7 +506,10 @@ class ResolveModeTestCase(unittest.IsolatedAsyncioTestCase):
             region='us-east-1',
         )
         cache_key = cw_module._resolve_cache_key(
-            creds, '/aws/rds/widget-*/postgresql', account_id=None
+            creds,
+            '/aws/rds/widget-*/postgresql',
+            account_id=None,
+            kind='glob',
         )
         fake.store[cache_key] = json.dumps(['/aws/rds/widget-1/postgresql'])
 
@@ -658,7 +661,10 @@ class CacheBustTestCase(unittest.IsolatedAsyncioTestCase):
             region='us-east-1',
         )
         cache_key = cw_module._resolve_cache_key(
-            creds, '/aws/rds/widget-*/postgresql', account_id=None
+            creds,
+            '/aws/rds/widget-*/postgresql',
+            account_id=None,
+            kind='glob',
         )
         fake = _FakeValkey()
         fake.store[cache_key] = json.dumps(

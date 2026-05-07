@@ -438,6 +438,14 @@ class AwsIamIcPlugin(IdentityPlugin):
         Returns ``(None, None, None)`` when ``db`` is not available
         (smoke / unit harnesses) or when the environment / mapping is
         not configured.
+
+        Operational ``db.execute`` failures are *not* swallowed: an
+        empty result is the only signal callers may treat as "no
+        mapping".  Quietly returning ``(None, None, None)`` on a real
+        DB error would mask a graph outage and let ``materialize``
+        fall back to legacy connection-level credentials, which can
+        mint a session for the *wrong* AWS account in an
+        environment-scoped deployment.
         """
         if db is None or not ctx.environment:
             return None, None, None
@@ -449,19 +457,11 @@ class AwsIamIcPlugin(IdentityPlugin):
             'a.default_region AS region '
             'LIMIT 1'
         )
-        try:
-            rows = await db.execute(
-                query,
-                {'env': ctx.environment},
-                ['account_id', 'role_name', 'region'],
-            )
-        except Exception as exc:  # noqa: BLE001
-            LOGGER.debug(
-                'AwsIamIcPlugin: account resolve failed for env=%s: %s',
-                ctx.environment,
-                exc,
-            )
-            return None, None, None
+        rows = await db.execute(
+            query,
+            {'env': ctx.environment},
+            ['account_id', 'role_name', 'region'],
+        )
         if not rows:
             return None, None, None
         try:

@@ -643,7 +643,7 @@ wheels = [
 
 [[package]]
 name = "imbi-common"
-version = "0.3.0"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
   { name = "cryptography" },
@@ -657,9 +657,9 @@ dependencies = [
   { name = "python-slugify" },
   { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b2/77/631b1f84677fb6e3130465b25fe99c5ff6146c4d5afc3acc36bbd6352be0/imbi_common-0.3.0.tar.gz", hash = "sha256:61529b6707061b9f103dca187bfc61d4189bc326d31321ba1ab0d6b807cf398a", size = 233720, upload-time = "2026-05-06T22:57:21.398Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a2/36/787c9873d55de11c1f74b9df9cfcd3838418639d1d543776dae1e5c4589e/imbi_common-0.4.0.tar.gz", hash = "sha256:f9e76a5682d56caac874086c807e4987d50dbad1b4a68083144c53644f725a42", size = 233976, upload-time = "2026-05-07T16:17:55.599Z" }
 wheels = [
-  { url = "https://files.pythonhosted.org/packages/2d/84/0709aa4520484c32bc63dc8a580df4ec7e1b1ea773db89ec5aec5367f568/imbi_common-0.3.0-py3-none-any.whl", hash = "sha256:ca8ea1a08f8de42de03576339b0e50ca7737a4dd82b69a8c8623341378f8a322", size = 66639, upload-time = "2026-05-06T22:57:19.869Z" },
+  { url = "https://files.pythonhosted.org/packages/91/fe/400d9ff4becf6d197862bb019a265915e17a8a54969934c0996273f4d77a/imbi_common-0.4.0-py3-none-any.whl", hash = "sha256:d0ed8630a33c91aba652e5e094c6b5ccd1353ec3dee5a8303ceabbbc920dc2a6", size = 66909, upload-time = "2026-05-07T16:17:52.962Z" },
 ]
 
 [package.optional-dependencies]
@@ -706,7 +706,7 @@ dist = [
 [package.metadata]
 requires-dist = [
   { name = "httpx", specifier = ">=0.27,<1" },
-  { name = "imbi-common", specifier = ">=0.3.0" },
+  { name = "imbi-common", specifier = ">=0.4.0" },
   { name = "pydantic", specifier = ">=2" },
 ]
 
