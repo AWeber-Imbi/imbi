@@ -11,29 +11,43 @@ from imbi_common.graph import (
 )
 
 import imbi_gateway.app
-from imbi_gateway import notifications
+from imbi_gateway import actions, notifications
 from tests import helpers
 
 if typing.TYPE_CHECKING:
     from collections import abc
 
-HANDLER_CALLS: list[tuple[str, str, object, str]] = []
+_TOKEN = 'test-token'  # noqa: S105
+
+HANDLER_CALLS: list[tuple[str, str, object, str | None, str]] = []
 
 
 async def stub_handler(
-    org_slug: str, project_id: str, body: object, config: str
+    org_slug: str,
+    project_id: str,
+    body: object,
+    user_id: str | None,
+    config: str,
 ) -> None:
-    HANDLER_CALLS.append((org_slug, project_id, body, config))
+    HANDLER_CALLS.append((org_slug, project_id, body, user_id, config))
 
 
 def sync_stub_handler(
-    org_slug: str, project_id: str, body: object, config: str
+    org_slug: str,
+    project_id: str,
+    body: object,
+    user_id: str | None,
+    config: str,
 ) -> None:
     pass
 
 
 async def raising_stub_handler(
-    _org_slug: str, _project_id: str, _body: object, _config: str
+    _org_slug: str,
+    _project_id: str,
+    _body: object,
+    _user_id: str | None,
+    _config: str,
 ) -> None:
     raise RuntimeError('test error')
 
@@ -236,7 +250,7 @@ class ProcessNotificationTests(helpers.TestCase):
             'imbi_gateway.notifications', level='WARNING'
         ) as cm:
             response = await self._post(nanoid.generate(), {})
-        self.assertEqual(200, response.status_code)
+        self.assertEqual(204, response.status_code)
         self.assertEqual([], HANDLER_CALLS)
         self.assertTrue(any('No records found' in line for line in cm.output))
 
@@ -245,7 +259,7 @@ class ProcessNotificationTests(helpers.TestCase):
         # nodes exist
         body = {'repo': {'id': self.ext_id}}
         response = await self._post(self.webhook_id, body)
-        self.assertEqual(200, response.status_code)
+        self.assertEqual(204, response.status_code)
         self.assertEqual([], HANDLER_CALLS)
 
     async def test_no_service_global_webhook_not_implemented(self) -> None:
@@ -275,7 +289,7 @@ class ProcessNotificationTests(helpers.TestCase):
                 'imbi_gateway.notifications', level='WARNING'
             ) as cm:
                 response = await self._post(no_tps_webhook_id, {})
-            self.assertEqual(200, response.status_code)
+            self.assertEqual(204, response.status_code)
             self.assertEqual([], HANDLER_CALLS)
             self.assertTrue(
                 any('Global webhooks' in line for line in cm.output)
@@ -290,9 +304,11 @@ class ProcessNotificationTests(helpers.TestCase):
     async def test_all_conditions_false_no_handler_called(self) -> None:
         await self._add_rule(filter_expression='false')
         body = {'repo': {'id': self.ext_id}}
-        with self.assertLogs('imbi_gateway.notifications', level='INFO') as cm:
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='DEBUG'
+        ) as cm:
             response = await self._post(self.webhook_id, body)
-        self.assertEqual(200, response.status_code)
+        self.assertEqual(204, response.status_code)
         self.assertEqual([], HANDLER_CALLS)
         self.assertTrue(any('no filter matches' in line for line in cm.output))
 
@@ -300,12 +316,14 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._add_rule(filter_expression='true')
         body = {'repo': {'id': self.ext_id}}
         response = await self._post(self.webhook_id, body)
-        self.assertEqual(200, response.status_code)
+        self.assertEqual(202, response.status_code)
         self.assertEqual(1, len(HANDLER_CALLS))
-        org_slug, project_id, received_body, _ = HANDLER_CALLS[0]
+        org_slug, project_id, received_body, user_id, _ = HANDLER_CALLS[0]
         self.assertEqual(self.org_slug, org_slug)
         self.assertEqual(self.proj_id, project_id)
         self.assertEqual(body, received_body)
+        # No user_subject_selector configured on the IMPLEMENTED_BY edge
+        self.assertIsNone(user_id)
 
     async def test_handler_called_for_each_matching_project(self) -> None:
         await self._add_rule(filter_expression='true')
@@ -333,7 +351,7 @@ class ProcessNotificationTests(helpers.TestCase):
         try:
             body = {'repo': {'id': self.ext_id}}
             response = await self._post(self.webhook_id, body)
-            self.assertEqual(200, response.status_code)
+            self.assertEqual(202, response.status_code)
             self.assertEqual(2, len(HANDLER_CALLS))
             project_ids = {call[1] for call in HANDLER_CALLS}
             self.assertEqual({self.proj_id, second_proj_id}, project_ids)
@@ -351,7 +369,7 @@ class ProcessNotificationTests(helpers.TestCase):
             'imbi_gateway.notifications', level='WARNING'
         ) as cm:
             response = await self._post(self.webhook_id, body)
-        self.assertEqual(200, response.status_code)
+        self.assertEqual(204, response.status_code)
         self.assertEqual([], HANDLER_CALLS)
         self.assertTrue(any('no project found' in line for line in cm.output))
 
@@ -362,7 +380,7 @@ class ProcessNotificationTests(helpers.TestCase):
             'imbi_gateway.notifications', level='ERROR'
         ) as cm:
             response = await self._post(self.webhook_id, body)
-        self.assertEqual(200, response.status_code)
+        self.assertEqual(204, response.status_code)
         self.assertEqual([], HANDLER_CALLS)
         self.assertTrue(
             any('failed to deserialize rules' in line for line in cm.output)
@@ -374,7 +392,7 @@ class ProcessNotificationTests(helpers.TestCase):
             'imbi_gateway.notifications', level='ERROR'
         ) as cm:
             response = await self._post(self.webhook_id, {})
-        self.assertEqual(200, response.status_code)
+        self.assertEqual(204, response.status_code)
         self.assertTrue(
             any(
                 'failed to select project identifier' in line
@@ -429,8 +447,194 @@ class ProcessNotificationTests(helpers.TestCase):
             )
         self.assertEqual(422, response.status_code)
 
+    async def _set_implemented_by(
+        self,
+        *,
+        identifier_selector: str = '/repo/id',
+        user_subject_selector: str | None = None,
+        identity_plugin_slug: str | None = None,
+    ) -> None:
+        """Replace the IMPLEMENTED_BY edge with one carrying given props."""
+        await self.g.execute(
+            'MATCH (w:Webhook {{id: {wid}}})-[i:IMPLEMENTED_BY]->()'
+            ' DELETE i RETURN 1 AS r',
+            {'wid': self.webhook_id},
+            ['r'],
+        )
+        await self.g.execute(
+            'MATCH (w:Webhook {{id: {wid}}}),'
+            ' (tps:ThirdPartyService {{id: {tid}}})'
+            ' CREATE (w)-[:IMPLEMENTED_BY {{'
+            'identifier_selector: {sel},'
+            ' user_subject_selector: {uss},'
+            ' identity_plugin_slug: {ips}'
+            '}}]->(tps) RETURN w',
+            {
+                'wid': self.webhook_id,
+                'tid': self.tps_id,
+                'sel': identifier_selector,
+                'uss': user_subject_selector,
+                'ips': identity_plugin_slug,
+            },
+            ['w'],
+        )
+
+    async def test_user_subject_selector_resolves_user(self) -> None:
+        await self._add_rule(filter_expression='true')
+        await self._set_implemented_by(
+            user_subject_selector='/sender/id', identity_plugin_slug='github'
+        )
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(return_value='alice@example.com'),
+            ) as mock_lookup,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_awaited_once_with('github', '12345')
+        self.assertEqual(1, len(HANDLER_CALLS))
+        self.assertEqual('alice@example.com', HANDLER_CALLS[0][3])
+
+    async def test_user_subject_selector_misses_returns_none(self) -> None:
+        await self._add_rule(filter_expression='true')
+        await self._set_implemented_by(
+            user_subject_selector='/sender/id', identity_plugin_slug='github'
+        )
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 99999}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(return_value=None),
+            ),
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertIsNone(HANDLER_CALLS[0][3])
+
+    async def test_user_subject_selector_unresolvable_pointer(self) -> None:
+        await self._add_rule(filter_expression='true')
+        await self._set_implemented_by(
+            user_subject_selector='/missing/path',
+            identity_plugin_slug='github',
+        )
+        body = {'repo': {'id': self.ext_id}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(),
+            ) as mock_lookup,
+            self.assertLogs('imbi_gateway.notifications', level='WARNING'),
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_not_awaited()
+        self.assertIsNone(HANDLER_CALLS[0][3])
+
+    async def test_user_subject_selector_resolves_to_empty_string(
+        self,
+    ) -> None:
+        # An empty subject is treated as "no identity" — no lookup
+        await self._add_rule(filter_expression='true')
+        await self._set_implemented_by(
+            user_subject_selector='/sender/id', identity_plugin_slug='github'
+        )
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': ''}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(),
+            ) as mock_lookup,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_not_awaited()
+        self.assertIsNone(HANDLER_CALLS[0][3])
+
+    async def test_user_subject_selector_no_candidate_plugins(self) -> None:
+        # user_subject_selector resolves, but no edge identity_plugin_slug
+        # and no HAS_PLUGIN edges, so the slug list is empty and the
+        # handler runs without attribution.
+        await self._add_rule(filter_expression='true')
+        await self._set_implemented_by(user_subject_selector='/sender/id')
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(),
+            ) as mock_lookup,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_not_awaited()
+        self.assertIsNone(HANDLER_CALLS[0][3])
+
+    async def test_user_resolution_two_distinct_users_logs_error(self) -> None:
+        await self._add_rule(filter_expression='true')
+        await self._set_implemented_by(user_subject_selector='/sender/id')
+        # Add two identity plugins to the TPS so candidate_plugin_slugs
+        # has two entries that resolve to different users.
+        ts = '2024-01-01T00:00:00+00:00'
+        plugin_ids = [nanoid.generate(), nanoid.generate()]
+        slugs = ['github', 'gitlab']
+        for plugin_id, slug in zip(plugin_ids, slugs, strict=True):
+            await self.g.execute(
+                'CREATE (p:Plugin {{id: {id}, plugin_slug: {slug},'
+                ' label: {slug}, created_at: {ts}}}) RETURN p',
+                {'id': plugin_id, 'slug': slug, 'ts': ts},
+                ['p'],
+            )
+            await self.g.execute(
+                'MATCH (p:Plugin {{id: {pid}}}),'
+                ' (tps:ThirdPartyService {{id: {tid}}})'
+                ' CREATE (tps)-[:HAS_PLUGIN]->(p) RETURN p',
+                {'pid': plugin_id, 'tid': self.tps_id},
+                ['p'],
+            )
+
+        try:
+            body = {'repo': {'id': self.ext_id}, 'sender': {'id': 1}}
+            with (
+                self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+                unittest.mock.patch.object(
+                    actions.ImbiClient,
+                    'find_user_by_identity',
+                    new=unittest.mock.AsyncMock(
+                        side_effect=['alice@x.com', 'bob@y.com']
+                    ),
+                ),
+                self.assertLogs(
+                    'imbi_gateway.notifications', level='ERROR'
+                ) as cm,
+            ):
+                response = await self._post(self.webhook_id, body)
+            self.assertEqual(202, response.status_code)
+            self.assertIsNone(HANDLER_CALLS[0][3])
+            self.assertTrue(
+                any('multiple Imbi users' in line for line in cm.output)
+            )
+        finally:
+            for plugin_id in plugin_ids:
+                await self.g.execute(
+                    'MATCH (n:Plugin {{id: {id}}})'
+                    ' DETACH DELETE n RETURN 1 AS r',
+                    {'id': plugin_id},
+                    ['r'],
+                )
+
     async def test_handler_exception_is_caught(self) -> None:
-        # Handler raises at dispatch time; exception logged, 200 returned
+        # Handler raises at dispatch time; exception logged, 202 returned
         await self._add_rule(
             handler='tests.test_notifications.raising_stub_handler'
         )
@@ -439,5 +643,5 @@ class ProcessNotificationTests(helpers.TestCase):
             'imbi_gateway.notifications', level='ERROR'
         ) as cm:
             response = await self._post(self.webhook_id, body)
-        self.assertEqual(200, response.status_code)
+        self.assertEqual(202, response.status_code)
         self.assertTrue(any('Failure in' in line for line in cm.output))

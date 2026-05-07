@@ -28,10 +28,21 @@ docker:
     pg_port=$(get_port postgres 5432)
     valkey_port=$(get_port valkey 6379)
     test_host="${TEST_HOST:-127.0.0.1}"
-    cat>".env"<<-EOF
-    POSTGRES_URL="postgresql://postgres:secret@$test_host:$pg_port/imbi"
-    VALKEY_URL="valkey://$test_host:$valkey_port"
-    EOF
+    # Preserve any user-managed lines in .env (e.g. ACTIONS_IMBI_URL,
+    # ACTIONS_IMBI_TOKEN) by stripping only the docker-managed entries
+    # and rewriting the file with the fresh ports.
+    preserved=""
+    if [ -f .env ]; then
+        preserved="$(grep -vE '^(POSTGRES_URL|VALKEY_URL)=' .env || true)"
+    fi
+    {
+        printf 'POSTGRES_URL="postgresql://postgres:secret@%s:%s/imbi"\n' \
+            "$test_host" "$pg_port"
+        printf 'VALKEY_URL="valkey://%s:%s"\n' "$test_host" "$valkey_port"
+        if [ -n "$preserved" ]; then
+            printf '%s\n' "$preserved"
+        fi
+    } >.env
 
 [doc("Run tests")]
 [group("Testing")]
