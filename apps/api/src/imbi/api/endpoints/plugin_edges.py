@@ -164,6 +164,37 @@ def _parse_edge_props(raw: typing.Any) -> dict[str, typing.Any]:
     return out
 
 
+def _row_to_edge(
+    row: dict[str, typing.Any],
+    rel_type: str,
+    edge: PluginEdgeLabel,
+) -> EdgeResponse | None:
+    if row.get('t') is None:
+        return None
+    target: typing.Any = graph.parse_agtype(row['t'])
+    labels_raw: typing.Any = graph.parse_agtype(row['target_labels'])
+    labels: list[str] = (
+        [str(lbl) for lbl in labels_raw]  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType]
+        if isinstance(labels_raw, list)
+        else []
+    )
+    target_label = next(
+        (lbl for lbl in labels if lbl in edge.to_labels),
+        edge.to_labels[0],
+    )
+    target_dict: dict[str, typing.Any] = (
+        {str(k): v for k, v in target.items()}  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType,reportUnknownMemberType]
+        if isinstance(target, dict)
+        else {}
+    )
+    return EdgeResponse(
+        rel_type=rel_type,
+        target_label=target_label,
+        target=target_dict,
+        properties=_parse_edge_props(row.get('r')),
+    )
+
+
 async def list_anchor_edges(
     *,
     db: graph.Graph,
@@ -184,32 +215,54 @@ async def list_anchor_edges(
     rows = await db.execute(query, anchor_params, ['r', 't', 'target_labels'])
     out: list[EdgeResponse] = []
     for row in rows:
-        if row.get('t') is None:
+        parsed = _row_to_edge(row, rel_type, edge)
+        if parsed is not None:
+            out.append(parsed)
+    return out
+
+
+async def list_org_environment_edges(
+    *,
+    db: graph.Graph,
+    rel_type: str,
+    org_slug: str,
+) -> dict[str, list[EdgeResponse]]:
+    """Return ``{env_slug: [edges]}`` for every environment in ``org_slug``.
+
+    Resolves the edge from the plugin manifest (anchor=``Environment``)
+    and walks all environments under the organization in a single query,
+    so a card mounting N environment rows costs one HTTP round-trip
+    instead of N.
+
+    Environments without an outgoing edge of ``rel_type`` are present in
+    the result with an empty list — callers can render an empty row
+    without an extra "exists?" check.
+    """
+    edge = resolve_edge_for('Environment', rel_type)
+    target_label_expr = '|'.join(edge.to_labels)
+    query = (
+        'MATCH (a:Environment)-[:BELONGS_TO]->'
+        '(:Organization {{slug: {org_slug}}}) '
+        f'OPTIONAL MATCH (a)-[r:{rel_type}]->(t:{target_label_expr}) '
+        'RETURN a.slug AS anchor_slug, r, t, labels(t) AS target_labels'
+    )
+    rows = await db.execute(
+        query,
+        {'org_slug': org_slug},
+        ['anchor_slug', 'r', 't', 'target_labels'],
+    )
+    out: dict[str, list[EdgeResponse]] = {}
+    for row in rows:
+        anchor_raw = row.get('anchor_slug')
+        if anchor_raw is None:
             continue
-        target: typing.Any = graph.parse_agtype(row['t'])
-        labels_raw: typing.Any = graph.parse_agtype(row['target_labels'])
-        labels: list[str] = (
-            [str(lbl) for lbl in labels_raw]  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType]
-            if isinstance(labels_raw, list)
-            else []
-        )
-        target_label = next(
-            (lbl for lbl in labels if lbl in edge.to_labels),
-            edge.to_labels[0],
-        )
-        target_dict: dict[str, typing.Any] = (
-            {str(k): v for k, v in target.items()}  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType,reportUnknownMemberType]
-            if isinstance(target, dict)
-            else {}
-        )
-        out.append(
-            EdgeResponse(
-                rel_type=rel_type,
-                target_label=target_label,
-                target=target_dict,
-                properties=_parse_edge_props(row.get('r')),
-            )
-        )
+        anchor_slug = graph.parse_agtype(anchor_raw)
+        if not isinstance(anchor_slug, str):
+            continue
+        bucket = out.setdefault(anchor_slug, [])
+        parsed = _row_to_edge(row, rel_type, edge)
+        if parsed is not None:
+            bucket.append(parsed)
     return out
 
 
@@ -310,6 +363,7 @@ __all__ = [
     'EdgeResponse',
     'delete_anchor_edge',
     'list_anchor_edges',
+    'list_org_environment_edges',
     'put_anchor_edge',
     'resolve_edge_for',
 ]

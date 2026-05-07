@@ -18,6 +18,7 @@ from imbi_common.plugins.registry import (
 )
 
 from imbi_api.auth import permissions
+from imbi_api.endpoints import plugin_edges as _plugin_edges
 from imbi_api.plugins.lifecycle import (
     get_enabled_map,
     set_plugin_enabled,
@@ -381,6 +382,51 @@ async def _set_vertex_label_overrides(
             'REMOVE r.vertex_label_overrides'
         )
         await db.execute(query, {'slug': slug}, [])
+
+
+@admin_plugins_router.get('/plugins/{slug}/edges')
+async def list_plugin_edges(
+    slug: str,
+    rel_type: str,
+    org_slug: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('admin:plugins:read'),
+        ),
+    ],
+) -> dict[str, list[_plugin_edges.EdgeResponse]]:
+    """Bulk-fetch every Environment-anchored edge of ``rel_type`` for an org.
+
+    Returns ``{env_slug: [edges]}`` for every environment in ``org_slug``,
+    including environments with no outgoing edge (empty list).  Used by
+    the plugin admin UI to render the per-org edge mapping table without
+    one HTTP request per environment.
+    """
+    _ = auth
+    try:
+        entry = get_plugin(slug)
+    except PluginNotFoundError as exc:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Plugin {slug!r} is not installed',
+        ) from exc
+    declares = any(
+        edge.name == rel_type and 'Environment' in edge.from_labels
+        for edge in entry.manifest.edge_labels
+    )
+    if not declares:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=(
+                f'Plugin {slug!r} does not declare Environment edge '
+                f'{rel_type!r}'
+            ),
+        )
+    return await _plugin_edges.list_org_environment_edges(
+        db=db, rel_type=rel_type, org_slug=org_slug
+    )
 
 
 @admin_plugins_router.patch('/plugins/{slug}')
