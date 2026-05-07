@@ -165,6 +165,7 @@ class LogzioPlugin(LogsPlugin):
             ctx_vars=ctx_vars,
             environment_field=environment_field,
             environment_value=ctx.environment,
+            level_field=level_field,
         )
         fp = compute_fp(query_body)
 

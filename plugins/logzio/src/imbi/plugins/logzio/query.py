@@ -20,6 +20,7 @@ def _build_bool_clause(
     ctx_vars: dict[str, str | None],
     environment_field: str | None = None,
     environment_value: str | None = None,
+    level_field: str | None = None,
 ) -> dict[str, object]:
     must: list[dict[str, object]] = [
         {
@@ -35,6 +36,9 @@ def _build_bool_clause(
 
     if environment_field and environment_value:
         must.append({'term': {environment_field: environment_value}})
+
+    if level_field and query.levels:
+        must.append({'terms': {level_field: list(query.levels)}})
 
     if base_query:
         expanded = expand_template(base_query, ctx_vars)
@@ -65,6 +69,7 @@ def build_query_body(
     ctx_vars: dict[str, str | None],
     environment_field: str | None = None,
     environment_value: str | None = None,
+    level_field: str | None = None,
 ) -> dict[str, object]:
     bool_clause = _build_bool_clause(
         query,
@@ -74,6 +79,7 @@ def build_query_body(
         ctx_vars=ctx_vars,
         environment_field=environment_field,
         environment_value=environment_value,
+        level_field=level_field,
     )
     return {
         'query': {'bool': bool_clause},
