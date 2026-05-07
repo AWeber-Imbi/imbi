@@ -57,6 +57,12 @@ export function WebhookForm({
   const [identifierSelector, setIdentifierSelector] = useState(
     webhook?.identifier_selector || '',
   )
+  const [userSubjectSelector, setUserSubjectSelector] = useState(
+    webhook?.user_subject_selector || '',
+  )
+  const [identityPluginSlug, setIdentityPluginSlug] = useState(
+    webhook?.identity_plugin_slug || '',
+  )
   const [rules, setRules] = useState<RuleDraft[]>(() =>
     (webhook?.rules || []).map((r) => ({ ...r, _clientId: makeClientId() })),
   )
@@ -90,6 +96,14 @@ export function WebhookForm({
       newErrors.identifier_selector =
         'Identifier selector requires a third-party service'
     }
+    if (userSubjectSelector && !tpsSlug) {
+      newErrors.user_subject_selector =
+        'User subject selector requires a third-party service'
+    }
+    if (identityPluginSlug && !tpsSlug) {
+      newErrors.identity_plugin_slug =
+        'Identity plugin slug requires a third-party service'
+    }
     for (let i = 0; i < rules.length; i++) {
       if (!rules[i].filter_expression.trim()) {
         newErrors[`rule_${i}_filter`] = 'Filter expression is required'
@@ -109,6 +123,7 @@ export function WebhookForm({
       description: description.trim() || null,
       icon: icon.trim() || null,
       identifier_selector: identifierSelector.trim() || null,
+      identity_plugin_slug: identityPluginSlug.trim() || null,
       name: name.trim(),
       rules: rules.map((r) => ({
         filter_expression: r.filter_expression.trim(),
@@ -117,6 +132,7 @@ export function WebhookForm({
       })),
       secret: secret.trim() || null,
       third_party_service_slug: tpsSlug || null,
+      user_subject_selector: userSubjectSelector.trim() || null,
       // Include slug only when editing so the PATCH can update it.
       ...(isEditing ? { slug: slug.trim() } : {}),
     }
@@ -138,7 +154,11 @@ export function WebhookForm({
 
   const handleServiceChange = (newTps: string) => {
     setTpsSlug(newTps)
-    if (!newTps) setIdentifierSelector('')
+    if (!newTps) {
+      setIdentifierSelector('')
+      setUserSubjectSelector('')
+      setIdentityPluginSlug('')
+    }
     // In edit mode, auto-update the displayed slug to the computed value
     // so the user can see what will be saved if they don't override it.
     if (isEditing) {
@@ -416,34 +436,97 @@ export function WebhookForm({
               </div>
 
               {tpsSlug && (
-                <div>
-                  <label className="mb-1.5 block text-sm text-secondary">
-                    Identifier Selector (JSON Path)
-                  </label>
-                  <Input
-                    className={`font-mono text-sm ${
-                      errors.identifier_selector ? 'border-red-500' : ''
-                    }`}
-                    disabled={isLoading}
-                    onChange={(e) => setIdentifierSelector(e.target.value)}
-                    placeholder="e.g., $.repository.full_name"
-                    value={identifierSelector}
-                  />
-                  {errors.identifier_selector && (
-                    <div
-                      className={
-                        'mt-1 flex items-center gap-1 text-xs text-danger'
-                      }
-                    >
-                      <AlertCircle className="h-3 w-3" />
-                      {errors.identifier_selector}
-                    </div>
-                  )}
-                  <p className="mt-1 text-xs text-tertiary">
-                    JSON Path expression to extract the project identifier from
-                    the webhook payload.
-                  </p>
-                </div>
+                <>
+                  <div>
+                    <label className="mb-1.5 block text-sm text-secondary">
+                      Identifier Selector (JSON Path)
+                    </label>
+                    <Input
+                      className={`font-mono text-sm ${
+                        errors.identifier_selector ? 'border-red-500' : ''
+                      }`}
+                      disabled={isLoading}
+                      onChange={(e) => setIdentifierSelector(e.target.value)}
+                      placeholder="e.g., $.repository.full_name"
+                      value={identifierSelector}
+                    />
+                    {errors.identifier_selector && (
+                      <div
+                        className={
+                          'mt-1 flex items-center gap-1 text-xs text-danger'
+                        }
+                      >
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.identifier_selector}
+                      </div>
+                    )}
+                    <p className="mt-1 text-xs text-tertiary">
+                      JSON Path expression to extract the project identifier
+                      from the webhook payload.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-sm text-secondary">
+                      User Subject Selector (JSON Pointer)
+                    </label>
+                    <Input
+                      className={`font-mono text-sm ${
+                        errors.user_subject_selector ? 'border-red-500' : ''
+                      }`}
+                      disabled={isLoading}
+                      onChange={(e) => setUserSubjectSelector(e.target.value)}
+                      placeholder="e.g., /deployment/creator/id"
+                      value={userSubjectSelector}
+                    />
+                    {errors.user_subject_selector && (
+                      <div
+                        className={
+                          'mt-1 flex items-center gap-1 text-xs text-danger'
+                        }
+                      >
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.user_subject_selector}
+                      </div>
+                    )}
+                    <p className="mt-1 text-xs text-tertiary">
+                      JSON Pointer to the external identity subject in the
+                      payload. Used to resolve the Imbi user attributed to
+                      handler events.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-sm text-secondary">
+                      Identity Plugin Slug{' '}
+                      <span className="text-xs text-tertiary">(optional)</span>
+                    </label>
+                    <Input
+                      className={`font-mono text-sm ${
+                        errors.identity_plugin_slug ? 'border-red-500' : ''
+                      }`}
+                      disabled={isLoading}
+                      onChange={(e) => setIdentityPluginSlug(e.target.value)}
+                      placeholder="e.g., github"
+                      value={identityPluginSlug}
+                    />
+                    {errors.identity_plugin_slug && (
+                      <div
+                        className={
+                          'mt-1 flex items-center gap-1 text-xs text-danger'
+                        }
+                      >
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.identity_plugin_slug}
+                      </div>
+                    )}
+                    <p className="mt-1 text-xs text-tertiary">
+                      Override which identity plugin resolves the user. Leave
+                      blank to fall back to identity plugins attached to the
+                      third-party service.
+                    </p>
+                  </div>
+                </>
               )}
             </div>
           </CardContent>

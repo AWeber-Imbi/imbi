@@ -110,6 +110,30 @@ export function WebhookDetail({ onBack, onEdit, webhook }: WebhookDetailProps) {
                 </div>
               </div>
             )}
+            {webhook.user_subject_selector && (
+              <div>
+                <div className="text-sm text-secondary">
+                  User Subject Selector
+                </div>
+                <div className="mt-1">
+                  <code className="rounded bg-secondary px-2 py-1 text-sm text-primary">
+                    {webhook.user_subject_selector}
+                  </code>
+                </div>
+              </div>
+            )}
+            {webhook.identity_plugin_slug && (
+              <div>
+                <div className="text-sm text-secondary">
+                  Identity Plugin Slug
+                </div>
+                <div className="mt-1">
+                  <code className="rounded bg-secondary px-2 py-1 text-sm text-primary">
+                    {webhook.identity_plugin_slug}
+                  </code>
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

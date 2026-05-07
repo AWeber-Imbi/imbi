@@ -4900,6 +4900,16 @@ export interface components {
              * @description JSON Path expression to extract project identifier
              */
             identifier_selector?: string | null;
+            /**
+             * User Subject Selector
+             * @description JSON Pointer that locates the external identity subject (e.g. /deployment/creator/id) used to resolve the Imbi user.
+             */
+            user_subject_selector?: string | null;
+            /**
+             * Identity Plugin Slug
+             * @description Optional override for the identity plugin slug used to resolve the Imbi user; falls back to identity plugins attached to the third-party service when unset.
+             */
+            identity_plugin_slug?: string | null;
             /** Rules */
             rules?: components["schemas"]["WebhookRuleCreate"][];
         };
@@ -4926,6 +4936,10 @@ export interface components {
             } | null;
             /** Identifier Selector */
             identifier_selector?: string | null;
+            /** User Subject Selector */
+            user_subject_selector?: string | null;
+            /** Identity Plugin Slug */
+            identity_plugin_slug?: string | null;
             /**
              * Rules
              * @default []
@@ -4992,6 +5006,16 @@ export interface components {
              * @description JSON Path expression to extract project identifier
              */
             identifier_selector?: string | null;
+            /**
+             * User Subject Selector
+             * @description JSON Pointer that locates the external identity subject (e.g. /deployment/creator/id) used to resolve the Imbi user.
+             */
+            user_subject_selector?: string | null;
+            /**
+             * Identity Plugin Slug
+             * @description Optional override for the identity plugin slug used to resolve the Imbi user; falls back to identity plugins attached to the third-party service when unset.
+             */
+            identity_plugin_slug?: string | null;
             /** Rules */
             rules?: components["schemas"]["WebhookRuleCreate"][];
         };
