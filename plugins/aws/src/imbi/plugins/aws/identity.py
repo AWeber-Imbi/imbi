@@ -331,9 +331,12 @@ class AwsIamIcPlugin(IdentityPlugin):
            available.  This is the per-environment path: each env has
            its own AWS account, so log searches scoped to a specific
            env mint STS keys against that env's account.
-        2. Connect-time defaults stamped onto ``connection.extra``
+        2. The data plugin's assignment options (``default_role_name``
+           on the calling AWS plugin instance — e.g. CloudWatch Logs or
+           SSM — set per plugin in admin).
+        3. Connect-time defaults stamped onto ``connection.extra``
            (legacy single-account path).
-        3. Identity plugin instance ``options`` (``default_role_name``
+        4. Identity plugin instance ``options`` (``default_role_name``
            in particular — operators usually have one canonical
            role across accounts).
 
@@ -353,8 +356,10 @@ class AwsIamIcPlugin(IdentityPlugin):
         if not account_id:
             account_id = extra.get('aws_account_id')
         if not role_name:
-            role_name = extra.get('aws_role_name') or identity_options.get(
-                'default_role_name'
+            role_name = (
+                ctx.assignment_options.get('default_role_name')
+                or extra.get('aws_role_name')
+                or identity_options.get('default_role_name')
             )
 
         # Region: assignment option (data plugin) > AwsAccount.default_region

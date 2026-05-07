@@ -129,6 +129,19 @@ class SsmPlugin(ConfigurationPlugin):
                 type='integer',
                 default=15,
             ),
+            PluginOption(
+                name='default_role_name',
+                label='Default Role Name',
+                type='string',
+                required=False,
+                description=(
+                    'IAM role assumed when a per-environment account '
+                    "binding doesn't specify one of its own. Falls back "
+                    "to the identity plugin's default_role_name when "
+                    'unset. Supports ${project_slug}, ${org_slug}, '
+                    '${environment}, ${project_id}.'
+                ),
+            ),
         ],
         credentials=[],
         data_types=[

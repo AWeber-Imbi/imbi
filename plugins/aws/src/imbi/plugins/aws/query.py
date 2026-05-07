@@ -97,6 +97,36 @@ def build_query(
     return ' | '.join(parts)
 
 
+def build_histogram_query(
+    *,
+    base_filter: str | None,
+    filters: collections.abc.Sequence[LogFilter],
+    bin_seconds: int,
+    level_field: str | None = None,
+) -> str:
+    """Assemble a Logs Insights histogram query.
+
+    Aggregates with ``stats count(*) by [<level_field>,] bin(<bin>s) as ts``
+    so the API can build per-bucket / per-level totals. ``level_field`` is
+    optional — when omitted, returns a flat count-over-time series.
+    """
+    parts: list[str] = []
+    if base_filter:
+        parts.append(f'filter {base_filter.strip()}')
+    parts.extend(filter_clause(f) for f in filters)
+    bin_clause = f'bin({max(1, int(bin_seconds))}s) as ts'
+    if level_field:
+        # Alias to ``level`` so the parser doesn't have to know what the
+        # operator named the source field on the log line.
+        parts.append(
+            f'stats count(*) as count by {level_field} as level, {bin_clause}'
+        )
+    else:
+        parts.append(f'stats count(*) as count by {bin_clause}')
+    parts.append('sort ts asc')
+    return ' | '.join(parts)
+
+
 def query_fingerprint(
     *,
     query_string: str,
@@ -159,6 +189,7 @@ def decode_cursor(cursor: str, *, fingerprint: str) -> datetime.datetime:
 
 __all__ = [
     'INSIGHTS_LIMIT_CEILING',
+    'build_histogram_query',
     'build_query',
     'decode_cursor',
     'encode_cursor',
