@@ -625,19 +625,54 @@ class CloudWatchLogsPlugin(LogsPlugin):
             bin_seconds=bin_seconds,
             level_field=None,
         )
-        if level_field:
-            level_q = build_histogram_query(
+        level_q = (
+            build_histogram_query(
                 base_filter=base_filter,
                 filters=query.filters,
                 bin_seconds=bin_seconds,
                 level_field=level_field,
             )
-            totals_rows, level_rows = await asyncio.gather(
-                _run(totals_q), _run(level_q)
+            if level_field
+            else None
+        )
+
+        async def _execute() -> tuple[
+            list[list[dict[str, str]]], list[list[dict[str, str]]]
+        ]:
+            if level_q is None:
+                return await _run(totals_q), []
+            # Run both queries in parallel. When one raises, cancel the
+            # sibling so a failed StartQuery doesn't leave the other
+            # coroutine polling GetQueryResults until its own deadline
+            # fires (asyncio.gather alone keeps siblings running).
+            totals_task = asyncio.create_task(_run(totals_q))
+            level_task = asyncio.create_task(_run(level_q))
+            try:
+                return await asyncio.gather(totals_task, level_task)
+            except BaseException:
+                for t in (totals_task, level_task):
+                    if not t.done():
+                        t.cancel()
+                # Drain cancellations so the loop doesn't warn about
+                # un-awaited tasks; swallow CancelledError raised by
+                # the cancellation we just issued.
+                await asyncio.gather(
+                    totals_task, level_task, return_exceptions=True
+                )
+                raise
+
+        try:
+            totals_rows, level_rows = await _execute()
+        except _ResourceNotFound:
+            if not selection.cache_keys:
+                raise
+            await _cache_delete(_try_get_valkey(), selection.cache_keys)
+            selection = await self._build_selection(
+                ctx, creds, timeout=timeout
             )
-        else:
-            totals_rows = await _run(totals_q)
-            level_rows = []
+            if selection.names is not None and not selection.names:
+                return []
+            totals_rows, level_rows = await _execute()
         return _merge_histogram_rows(totals_rows, level_rows)
 
     async def _start_with_cache_bust(
