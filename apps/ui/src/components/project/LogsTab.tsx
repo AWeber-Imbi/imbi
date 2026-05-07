@@ -36,7 +36,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import type { LogEntryResponse } from '@/types'
+import { useTheme } from '@/contexts/ThemeContext'
+import { deriveChipColors } from '@/lib/chip-colors'
+import { sortEnvironments } from '@/lib/utils'
+import type { Environment, LogEntryResponse } from '@/types'
 
 // ── Types & Interfaces (alphabetical) ─────────────────────────────────────
 type DetailTab = 'json' | 'stack' | 'table'
@@ -67,6 +70,7 @@ interface LogsConfig {
 }
 
 interface LogsTabProps {
+  environments?: Environment[]
   orgSlug: string
   projectId: string
 }
@@ -133,12 +137,45 @@ const SEV_BAR_COLORS: Record<string, string> = {
   WARN: 'var(--color-action-bg)',
 }
 
-const CONTAINER_H = 600 // px — must match the scroll container height
+const CONTAINER_H_DEFAULT = 600 // px — initial scroll-container height
 const ROW_H_COLLAPSED = 36 // px — estimated height for a collapsed log row
 const VIRTUAL_OVERSCAN = 8 // rows pre-rendered above and below the viewport
 
 // ── Export ─────────────────────────────────────────────────────────────────
-export function LogsTab({ orgSlug, projectId }: LogsTabProps) {
+export function LogsTab({
+  environments = [],
+  orgSlug,
+  projectId,
+}: LogsTabProps) {
+  const { isDarkMode } = useTheme()
+  const sortedEnvironments = useMemo(
+    () => sortEnvironments(environments),
+    [environments],
+  )
+  const envChipColors = useMemo(() => {
+    const out: Record<string, ReturnType<typeof deriveChipColors>> = {}
+    for (const e of sortedEnvironments) {
+      if (e.label_color)
+        out[e.slug] = deriveChipColors(e.label_color, isDarkMode)
+    }
+    return out
+  }, [sortedEnvironments, isDarkMode])
+  const envOptions = useMemo(
+    () =>
+      sortedEnvironments.length > 0
+        ? sortedEnvironments.map((e) => ({
+            color: envChipColors[e.slug],
+            name: e.name,
+            slug: e.slug,
+          }))
+        : ENVS.map((slug) => ({ color: null, name: slug, slug })),
+    [sortedEnvironments, envChipColors],
+  )
+  const envSlugToName = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const e of sortedEnvironments) out[e.slug] = e.name
+    return out
+  }, [sortedEnvironments])
   const storageKey = `imbi.logs.config.${projectId}`
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -191,7 +228,6 @@ export function LogsTab({ orgSlug, projectId }: LogsTabProps) {
     searchParams.getAll('filter'),
   )
   const [datePickerOpen, setDatePickerOpen] = useState(false)
-  const [envDropOpen, setEnvDropOpen] = useState(false)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [selectedBucket, setSelectedBucket] = useState<null | number>(null)
   const [cursor, setCursor] = useState<null | string>(null)
@@ -202,6 +238,19 @@ export function LogsTab({ orgSlug, projectId }: LogsTabProps) {
 
   // Virtual scroll
   const listRef = useRef<HTMLDivElement>(null)
+  // Tracks the actual rendered height of the scroll container so the
+  // virtual-scroll math (visStart/visEnd) stays in sync when the panel
+  // is sized via CSS calc against the viewport rather than a fixed px.
+  const [containerH, setContainerH] = useState(CONTAINER_H_DEFAULT)
+  useEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    const update = () => setContainerH(el.clientHeight || CONTAINER_H_DEFAULT)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
   const loadTriggerRef = useRef<HTMLDivElement>(null)
   const rowHeightCache = useRef<Map<string, number>>(new Map())
   const [listScrollTop, setListScrollTop] = useState(0)
@@ -414,7 +463,10 @@ export function LogsTab({ orgSlug, projectId }: LogsTabProps) {
   // bucket counts. Independent of the table pagination state so scrolling
   // never causes the histogram to flicker or reset.
   const { data: histData } = useQuery({
-    enabled: config.showHistogram && !!activeSource,
+    enabled:
+      config.showHistogram &&
+      !!activeSource &&
+      Boolean(activeAssignment?.supports_histogram),
     queryFn: ({ signal }) =>
       getProjectLogsHistogram(
         orgSlug,
@@ -500,7 +552,7 @@ export function LogsTab({ orgSlug, projectId }: LogsTabProps) {
   const { visEnd, visStart } = useMemo(() => {
     if (!offsets.length) return { visEnd: 0, visStart: 0 }
     const viewTop = listScrollTop
-    const viewBot = listScrollTop + CONTAINER_H
+    const viewBot = listScrollTop + containerH
 
     // Lower bound: first row whose bottom edge is below viewTop
     let hi = offsets.length,
@@ -525,7 +577,7 @@ export function LogsTab({ orgSlug, projectId }: LogsTabProps) {
       visEnd: Math.min(offsets.length, lo + VIRTUAL_OVERSCAN),
       visStart: Math.max(0, first - VIRTUAL_OVERSCAN),
     }
-  }, [offsets, listScrollTop])
+  }, [offsets, listScrollTop, containerH])
 
   const topPad = offsets[visStart]?.top ?? 0
   const botPad = Math.max(
@@ -694,62 +746,51 @@ export function LogsTab({ orgSlug, projectId }: LogsTabProps) {
           )}
         </div>
 
-        {/* Env filter */}
-        <div className="relative">
-          <button
-            className="flex items-center gap-1.5 rounded border bg-primary px-2 py-1.5 text-xs text-tertiary hover:border-primary"
-            onClick={() => setEnvDropOpen(!envDropOpen)}
-          >
-            <span className="text-tertiary">env:</span>
-            {envs.map((e) => (
-              <span
-                className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${envChipClass(e)}`}
-                key={e}
+        {/* Visual gap between date and env groups */}
+        <div aria-hidden className="ml-3 h-5 w-px bg-tertiary opacity-50" />
+
+        {/* Env toggles — same pattern as the level toggles below, ordered
+            by sort_order and colored from each Environment's label_color. */}
+        <div className="flex items-center gap-1">
+          {envOptions.map((opt) => {
+            const active = envs.includes(opt.slug)
+            const c = opt.color
+            const activeStyle: React.CSSProperties | undefined =
+              active && c
+                ? {
+                    backgroundColor: c.bg,
+                    borderColor: c.border,
+                    color: c.fg,
+                  }
+                : undefined
+            return (
+              <button
+                className={`rounded border px-2 py-1 font-mono text-[10px] transition-colors ${
+                  active && !c
+                    ? 'border-secondary bg-secondary text-primary'
+                    : !active
+                      ? 'border-tertiary text-tertiary opacity-50'
+                      : ''
+                }`}
+                key={opt.slug}
+                onClick={() =>
+                  setEnvs(
+                    envs.includes(opt.slug)
+                      ? envs.filter((x) => x !== opt.slug)
+                      : [...envs, opt.slug],
+                  )
+                }
+                style={activeStyle}
+                type="button"
               >
-                {e}
-              </span>
-            ))}
-          </button>
-          {envDropOpen && (
-            <div className="absolute right-0 top-full z-30 mt-1 min-w-48 rounded-lg border bg-primary p-3 shadow-lg">
-              <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-tertiary">
-                Environments
-              </div>
-              {ENVS.map((e) => (
-                <label
-                  className="flex cursor-pointer items-center gap-2 py-1.5 text-xs"
-                  key={e}
-                >
-                  <input
-                    checked={envs.includes(e)}
-                    className="rounded border-secondary"
-                    onChange={() =>
-                      setEnvs(
-                        envs.includes(e)
-                          ? envs.filter((x) => x !== e)
-                          : [...envs, e],
-                      )
-                    }
-                    type="checkbox"
-                  />
-                  <span
-                    className={`rounded px-1.5 py-0.5 font-mono text-[11px] ${envChipClass(e)}`}
-                  >
-                    {e}
-                  </span>
-                </label>
-              ))}
-              <div className="mt-2 border-t pt-2 text-right">
-                <button
-                  className="rounded bg-action px-2.5 py-1 text-xs font-medium text-action-foreground"
-                  onClick={() => setEnvDropOpen(false)}
-                >
-                  Done
-                </button>
-              </div>
-            </div>
-          )}
+                {opt.name}
+              </button>
+            )
+          })}
         </div>
+
+        {/* Visual gap between env and severity groups */}
+        <div aria-hidden className="ml-3 h-5 w-px bg-tertiary opacity-50" />
 
         {/* Level toggles */}
         <div className="flex items-center gap-1">
@@ -773,6 +814,9 @@ export function LogsTab({ orgSlug, projectId }: LogsTabProps) {
             </button>
           ))}
         </div>
+
+        {/* Visual gap between level toggles and the action icons */}
+        <div aria-hidden className="ml-3 h-5 w-px bg-tertiary opacity-50" />
 
         <TooltipProvider>
           <Tooltip>
@@ -846,8 +890,12 @@ export function LogsTab({ orgSlug, projectId }: LogsTabProps) {
         </div>
       )}
 
-      {/* Histogram */}
-      {config.showHistogram && (
+      {/* Histogram — only render when the active log plugin advertises
+          time-bucket aggregation. CloudWatch Logs Insights, for example,
+          can do it via `stats count(*) by bin(...)` but the AWS plugin
+          doesn't yet implement it, so we hide the strip rather than
+          showing an empty chart. */}
+      {config.showHistogram && activeAssignment?.supports_histogram && (
         <Histogram
           buckets={buckets}
           levels={levels}
@@ -861,18 +909,26 @@ export function LogsTab({ orgSlug, projectId }: LogsTabProps) {
       <div className="overflow-hidden rounded-lg border bg-primary">
         <div
           className="grid gap-2.5 border-b bg-secondary px-3 py-2 font-mono text-[11px] uppercase tracking-widest text-tertiary"
-          style={{ gridTemplateColumns: '16px 164px 58px minmax(0,1fr)' }}
+          style={{ gridTemplateColumns: '16px 164px 96px 58px minmax(0,1fr)' }}
         >
           <div />
           <div>Time (UTC)</div>
-          <div>Level</div>
+          <div className="text-center">Environment</div>
+          <div className="text-center">Level</div>
           <div>Message</div>
         </div>
 
         <div
-          className="h-[600px] overflow-y-auto"
+          className="overflow-y-auto"
           onScroll={(e) => setListScrollTop(e.currentTarget.scrollTop)}
           ref={listRef}
+          style={{
+            height:
+              config.showHistogram && activeAssignment?.supports_histogram
+                ? 'calc(100dvh - 660px)'
+                : 'calc(100dvh - 500px)',
+            minHeight: '320px',
+          }}
         >
           {isFetching && failureCount > 0 && displayEntries.length === 0 ? (
             <div className="py-10 text-center">
@@ -917,6 +973,8 @@ export function LogsTab({ orgSlug, projectId }: LogsTabProps) {
                 return (
                   <LogRow
                     entry={entry}
+                    envChipColors={envChipColors}
+                    envNames={envSlugToName}
                     expanded={expandedRows.has(rowId)}
                     key={rowId}
                     onAddFilter={handleAddFilter}
@@ -951,12 +1009,6 @@ export function LogsTab({ orgSlug, projectId }: LogsTabProps) {
 }
 
 // ── Internal helpers & components ──────────────────────────────────────────
-
-function envChipClass(env: string): string {
-  if (env === 'production') return 'bg-amber-bg text-amber-text'
-  if (env === 'staging') return 'bg-info text-info'
-  return 'bg-success text-success'
-}
 
 function extractEnv(entry: LogEntryResponse): string {
   const r = entry.raw
@@ -1056,11 +1108,21 @@ function Histogram({
 }) {
   const BAR_H = 60
   const n = buckets.length
+  // ``activeSum`` is the height-driving total for each bucket. Prefer the
+  // sum of the level toggles the user has on; fall back to ``b.count``
+  // when this bucket has no per-level breakdown (e.g. Postgres logs in
+  // CloudWatch have no structured ``level`` field, so the per-level
+  // Insights query returns nothing — but the totals query still
+  // populates ``b.count``). The fallback is evaluated per bucket so a
+  // mixed response (some buckets with level data, others count-only)
+  // still renders every bar at the right height.
   const activeSum = (b: HistogramBucket) =>
-    (['ERROR', 'WARN', 'INFO', 'DEBUG'] as const).reduce(
-      (s, lv) => s + (levels[lv] ? b[lv] : 0),
-      0,
-    )
+    (['ERROR', 'WARN', 'INFO', 'DEBUG'] as const).some((lv) => b[lv] > 0)
+      ? (['ERROR', 'WARN', 'INFO', 'DEBUG'] as const).reduce(
+          (s, lv) => s + (levels[lv] ? b[lv] : 0),
+          0,
+        )
+      : b.count
   const max = Math.max(1, ...buckets.map(activeSum))
 
   // 5 evenly-spaced axis ticks that work for any bucket count
@@ -1250,6 +1312,8 @@ function JsonPretty({ value }: { value: unknown }) {
 
 function LogRow({
   entry,
+  envChipColors,
+  envNames,
   expanded,
   onAddFilter,
   onHeightChange,
@@ -1258,6 +1322,8 @@ function LogRow({
   wrap,
 }: {
   entry: LogEntryResponse
+  envChipColors: Record<string, ReturnType<typeof deriveChipColors>>
+  envNames: Record<string, string>
   expanded: boolean
   onAddFilter: (field: string, value: string) => void
   onHeightChange?: (h: number) => void
@@ -1304,7 +1370,7 @@ function LogRow({
     >
       <div
         className="grid items-start gap-2.5 px-3 py-2"
-        style={{ gridTemplateColumns: '16px 164px 58px minmax(0,1fr)' }}
+        style={{ gridTemplateColumns: '16px 164px 96px 58px minmax(0,1fr)' }}
       >
         <ChevronRight
           className={`mt-0.5 text-tertiary transition-transform duration-100 ${expanded ? 'rotate-90 text-primary' : ''}`}
@@ -1314,7 +1380,30 @@ function LogRow({
           {t.date} {t.hms}
           <span className="text-tertiary">.{t.ms}</span>
         </div>
-        <div>
+        <div className="flex min-w-0 justify-center">
+          {(() => {
+            const slug = extractEnv(entry)
+            if (!slug) return null
+            const c = envChipColors[slug]
+            return (
+              <span
+                className="inline-flex h-5 max-w-full items-center overflow-hidden text-ellipsis whitespace-nowrap rounded px-1.5 font-mono text-[10px] font-medium"
+                style={
+                  c
+                    ? {
+                        backgroundColor: c.bg,
+                        color: c.fg,
+                      }
+                    : undefined
+                }
+                title={envNames[slug] ?? slug}
+              >
+                {envNames[slug] ?? slug}
+              </span>
+            )
+          })()}
+        </div>
+        <div className="flex justify-center">
           <SevBadge level={entry.level} />
         </div>
         <div
@@ -1498,7 +1587,7 @@ function SevBadge({ level }: { level: null | string }) {
           : 'bg-info text-info'
   return (
     <span
-      className={`inline-block rounded px-1.5 py-px font-mono text-[10px] font-semibold uppercase leading-none tracking-wide ${cls}`}
+      className={`inline-flex h-5 max-w-full items-center overflow-hidden text-ellipsis whitespace-nowrap rounded px-1.5 font-mono text-[10px] font-medium ${cls}`}
     >
       {lv === 'WARNING' ? 'WARN' : lv === 'FATAL' ? 'ERROR' : lv}
     </span>

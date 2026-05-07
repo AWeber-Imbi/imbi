@@ -328,19 +328,34 @@ function DefaultOptionsCard({
   serviceSlug,
 }: DefaultOptionsCardProps) {
   const [draft, setDraft] = useState<Record<string, unknown>>(plugin.options)
+  const [identityDraft, setIdentityDraft] = useState<null | string>(
+    plugin.identity_plugin_id ?? null,
+  )
 
   useEffect(() => {
     setDraft(plugin.options)
-  }, [plugin.id, plugin.options])
+    setIdentityDraft(plugin.identity_plugin_id ?? null)
+  }, [plugin.id, plugin.options, plugin.identity_plugin_id])
+
+  const { data: identityPlugins } = useQuery({
+    queryFn: ({ signal }) => listIdentityPlugins(orgSlug, signal),
+    queryKey: queryKeys.identityPlugins(orgSlug),
+    staleTime: 60 * 1000,
+  })
 
   const dirty = useMemo(
-    () => JSON.stringify(draft) !== JSON.stringify(plugin.options),
-    [draft, plugin.options],
+    () =>
+      JSON.stringify(draft) !== JSON.stringify(plugin.options) ||
+      (identityDraft ?? null) !== (plugin.identity_plugin_id ?? null),
+    [draft, identityDraft, plugin.options, plugin.identity_plugin_id],
   )
 
   const saveMutation = useMutation({
     mutationFn: () =>
       updateServicePlugin(orgSlug, serviceSlug, plugin.id, {
+        // Empty string explicitly clears the binding on the backend;
+        // omitting it would leave the previous value in place.
+        identity_plugin_id: identityDraft ?? '',
         label: plugin.label,
         options: draft,
       }),
@@ -358,7 +373,10 @@ function DefaultOptionsCard({
   })
 
   if (!manifest) return null
-  if (manifest.options.length === 0) return null
+  // Even when the manifest has no plugin options, we still render the card
+  // when a default identity plugin can be configured.
+  const hasOptions = manifest.options.length > 0
+  if (!hasOptions && manifest.plugin_type === 'identity') return null
 
   return (
     <Card>
@@ -381,6 +399,24 @@ function DefaultOptionsCard({
         )}
       </CardHeader>
       <CardContent className="space-y-3 px-6 pb-6">
+        {manifest.plugin_type !== 'identity' && (
+          <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+            <Label className="truncate text-xs" title="Identity Plugin">
+              Identity Plugin
+            </Label>
+            <div className="space-y-1">
+              <IdentityPluginSelect
+                identityPlugins={identityPlugins ?? []}
+                onChange={setIdentityDraft}
+                value={identityDraft}
+              />
+              <p className="text-xs text-secondary">
+                Default identity used for plugin calls when no project-type
+                assignment names one. Per-type bindings still take precedence.
+              </p>
+            </div>
+          </div>
+        )}
         {manifest.options.map((opt) => (
           <OptionRow
             description={opt.description ?? null}

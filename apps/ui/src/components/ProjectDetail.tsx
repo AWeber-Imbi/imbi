@@ -6,10 +6,12 @@ import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import {
   ArrowRight,
+  Check,
   ChevronDown,
   Filter,
   Rocket,
   Settings2 as SettingsIcon,
+  TrendingDown,
 } from 'lucide-react'
 
 import {
@@ -20,7 +22,9 @@ import {
   listCurrentReleases,
   listLinkDefinitions,
   listProjectNotes,
+  listProjectPlugins,
   listProjectTypes,
+  listScoringPolicies,
   listTeams,
   type ScoreTrend,
 } from '@/api/endpoints'
@@ -61,7 +65,7 @@ import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import { formatFieldKey } from '@/lib/project-field-formatting'
 import { sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
-import type { Project } from '@/types'
+import type { Project, ScoringPolicy } from '@/types'
 
 interface ProjectDetailProps {
   initialSubAction?: string
@@ -172,6 +176,13 @@ export function ProjectDetail({
   })
   const scoreBreakdown = projectWithBreakdown?.breakdown
   const [breakdownOpen, setBreakdownOpen] = useState(false)
+
+  const { data: scoringPolicies = [] } = useQuery({
+    enabled: breakdownOpen,
+    queryFn: ({ signal }) => listScoringPolicies(signal),
+    queryKey: ['scoringPolicies'],
+    staleTime: 5 * 60 * 1000,
+  })
   // Capture the score present at page load so intra-session changes are visible
   // even when the 30d baseline equals the current live score.
   const sessionBaseScore = useRef<null | number>(project.score ?? null)
@@ -198,6 +209,53 @@ export function ProjectDetail({
       listProjectNotes(orgSlug, project.id, undefined, signal),
     queryKey: ['projectNotes', orgSlug, project.id],
   })
+  // Drives whether the Configuration / Logs tabs are surfaced. Only
+  // treat the absence of a plugin as authoritative once the assignments
+  // lookup has actually succeeded — a still-loading or errored query
+  // must not render the tab as "no plugin", because that would silently
+  // strip an existing tab and leave a deep-link landing on a blank
+  // pane. While the query is unresolved or failed, we hold both flags
+  // back; the redirect effect already waits on success before rerouting.
+  const {
+    data: projectPlugins,
+    isFetched: projectPluginsFetched,
+    isSuccess: projectPluginsSuccess,
+  } = useQuery({
+    enabled: !!orgSlug && !!project.id,
+    queryFn: ({ signal }) => listProjectPlugins(orgSlug, project.id, signal),
+    queryKey: ['project-plugins', orgSlug, project.id],
+    staleTime: 5 * 60 * 1000,
+  })
+  const hasConfigurationPlugin =
+    projectPluginsSuccess &&
+    (projectPlugins ?? []).some((a) => a.tab === 'configuration')
+  const hasLogsPlugin =
+    projectPluginsSuccess &&
+    (projectPlugins ?? []).some((a) => a.tab === 'logs')
+
+  // Redirect to overview when a deep-link points at a tab that no
+  // longer surfaces (e.g. /configuration on a project type with no
+  // configuration plugin assigned). Wait for the assignments query to
+  // resolve successfully before deciding — otherwise the empty default
+  // during the initial fetch redirects every direct navigation to
+  // /logs or /configuration.
+  useEffect(() => {
+    if (!projectPluginsFetched || !projectPluginsSuccess) return
+    if (
+      (activeTab === 'configuration' && !hasConfigurationPlugin) ||
+      (activeTab === 'logs' && !hasLogsPlugin)
+    ) {
+      navigate(`/projects/${project.id}`, { replace: true })
+    }
+  }, [
+    activeTab,
+    hasConfigurationPlugin,
+    hasLogsPlugin,
+    navigate,
+    project.id,
+    projectPluginsFetched,
+    projectPluginsSuccess,
+  ])
 
   // Bumps when an icon-set chunk finishes loading; include in useMemo deps
   // where icons are resolved so they refresh once available.
@@ -274,9 +332,11 @@ export function ProjectDetail({
 
   const tabs: { id: TabType; label: string }[] = [
     { id: 'overview', label: 'Overview' },
-    { id: 'configuration', label: 'Configuration' },
+    ...(hasConfigurationPlugin
+      ? [{ id: 'configuration' as const, label: 'Configuration' }]
+      : []),
     { id: 'dependencies', label: 'Dependencies' },
-    { id: 'logs', label: 'Logs' },
+    ...(hasLogsPlugin ? [{ id: 'logs' as const, label: 'Logs' }] : []),
     {
       id: 'notes',
       label:
@@ -551,6 +611,7 @@ export function ProjectDetail({
                       {breakdownOpen && (
                         <ScoreBreakdownDetail
                           contributions={scoreBreakdown.attribute_contributions}
+                          policies={scoringPolicies}
                         />
                       )}
                     </CardFooter>
@@ -577,9 +638,17 @@ export function ProjectDetail({
           </div>
         </TabsContent>
 
-        <TabsContent value="configuration">
-          <ConfigurationTab orgSlug={orgSlug} projectId={project.id} />
-        </TabsContent>
+        {hasConfigurationPlugin && (
+          <TabsContent value="configuration">
+            <ConfigurationTab
+              environments={sortedEnvironments}
+              orgSlug={orgSlug}
+              projectId={project.id}
+              projectSlug={project.slug}
+              teamSlug={project.team.slug}
+            />
+          </TabsContent>
+        )}
         <TabsContent value="relationships">
           <ProjectRelationshipsTab
             orgSlug={project.team.organization.slug}
@@ -590,9 +659,15 @@ export function ProjectDetail({
         <TabsContent value="dependencies">
           <PlaceholderTab name="Dependencies" />
         </TabsContent>
-        <TabsContent value="logs">
-          <LogsTab orgSlug={orgSlug} projectId={project.id} />
-        </TabsContent>
+        {hasLogsPlugin && (
+          <TabsContent value="logs">
+            <LogsTab
+              environments={sortedEnvironments}
+              orgSlug={orgSlug}
+              projectId={project.id}
+            />
+          </TabsContent>
+        )}
         <TabsContent value="notes">
           <ProjectNotesTab
             initialAction={activeTab === 'notes' ? initialSubAction : undefined}
@@ -627,6 +702,35 @@ export function ProjectDetail({
   )
 }
 
+function buildRecommendation(
+  c: AttributeContribution,
+  policy: ScoringPolicy,
+): null | string {
+  const current = c.mapped_score
+  if (policy.value_score_map) {
+    const better = Object.entries(policy.value_score_map)
+      .filter(([, score]) => score > current)
+      .sort(([, a], [, b]) => b - a)
+    if (better.length === 0) return null
+    const topScore = better[0][1]
+    const top = better
+      .filter(([, score]) => score === topScore)
+      .map(([name]) => name)
+    if (top.length === 1) return `Update to ${top[0]}`
+    if (top.length === 2) return `Update to ${top[0]} or ${top[1]}`
+    return `Update to ${top.slice(0, -1).join(', ')}, or ${top[top.length - 1]}`
+  }
+  if (policy.range_score_map) {
+    const better = Object.entries(policy.range_score_map)
+      .filter(([, score]) => score > current)
+      .sort(([, a], [, b]) => b - a)
+    if (better.length === 0) return null
+    const [target] = better[0]
+    return `Update to reach ${target}`
+  }
+  return null
+}
+
 function fmtAttributeValue(value: unknown): string {
   const n = Number(value)
   return isFinite(n) && String(value).trim() !== ''
@@ -649,73 +753,151 @@ function PlaceholderTab({ name }: { name: string }) {
 
 function ScoreBreakdownDetail({
   contributions,
+  policies,
 }: {
   contributions: AttributeContribution[]
+  policies: ScoringPolicy[]
 }) {
   const totalWeight = contributions.reduce((s, c) => s + c.weight, 0)
-  const sorted = [...contributions].sort(
-    (a, b) => b.weighted_contribution - a.weighted_contribution,
-  )
+  const policyBySlug = useMemo(() => {
+    const map = new Map<string, ScoringPolicy>()
+    for (const p of policies) map.set(p.slug, p)
+    return map
+  }, [policies])
+
+  const enriched = contributions.map((c) => {
+    const maxPts = totalWeight > 0 ? (c.weight / totalWeight) * 100 : 0
+    return {
+      contribution: c,
+      isPerfect: c.mapped_score >= 100,
+      maxPts,
+      policy: policyBySlug.get(c.policy_slug),
+    }
+  })
+  const improve = enriched
+    .filter((e) => !e.isPerfect)
+    .sort(
+      (a, b) =>
+        b.maxPts -
+        b.contribution.weighted_contribution -
+        (a.maxPts - a.contribution.weighted_contribution),
+    )
+  const perfect = enriched
+    .filter((e) => e.isPerfect)
+    .sort((a, b) => b.maxPts - a.maxPts)
+
   return (
-    <div className="w-full px-6 pb-4">
-      <p className="mb-3 text-[11px] text-tertiary">
+    <div className="flex w-full flex-col gap-5 px-6 pb-4">
+      <p className="text-[11px] text-tertiary">
         {contributions.length} policies
       </p>
-      {sorted.map((c) => {
-        const maxPts = totalWeight > 0 ? (c.weight / totalWeight) * 100 : 0
-        const fillPct =
-          maxPts > 0 ? (c.weighted_contribution / maxPts) * 100 : 0
-        const isDrag = c.mapped_score === 0
-        const isPartial = !isDrag && c.mapped_score < 100
-        const policyName = formatFieldKey(c.policy_slug.replace(/-/g, '_'))
-        return (
-          <div className="mb-3 last:mb-0" key={c.policy_slug}>
-            <div className="flex items-baseline justify-between gap-2">
-              <div className="flex min-w-0 items-baseline gap-1.5">
-                <span className="text-[13px] font-semibold text-primary">
-                  {policyName}
-                </span>
-                <span className="font-mono text-[11px] text-tertiary">
-                  w{c.weight}
-                </span>
-              </div>
-              <div className="shrink-0 font-mono text-[13px] tabular-nums">
-                <span
-                  className={
-                    isDrag
-                      ? 'font-semibold text-danger'
-                      : 'font-semibold text-primary'
-                  }
-                >
-                  {Math.round(c.weighted_contribution)}
-                </span>
-                <span className="text-tertiary"> / {Math.round(maxPts)}</span>
-              </div>
-            </div>
-            <div className="mt-1 flex items-center gap-2">
-              <span
-                className={`w-1/3 shrink-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11.5px] ${
-                  isDrag
-                    ? 'text-danger'
-                    : isPartial
-                      ? 'text-amber-text'
-                      : 'text-tertiary'
-                }`}
-              >
-                {c.value != null ? fmtAttributeValue(c.value) : 'Not set'}
-              </span>
-              <div className="relative h-1.5 flex-1 rounded-full bg-secondary">
-                {fillPct > 0 && (
-                  <div
-                    className="absolute inset-y-0 left-0 rounded-full bg-action"
-                    style={{ width: `${fillPct}%` }}
-                  />
-                )}
-              </div>
-            </div>
+      {improve.length > 0 && (
+        <section>
+          <div className="mb-2.5 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-tertiary">
+            <span>To improve</span>
+            <span className="font-mono">{improve.length}</span>
           </div>
-        )
-      })}
+          <div className="flex flex-col gap-3">
+            {improve.map(({ contribution: c, maxPts, policy }) => {
+              const fillPct =
+                maxPts > 0 ? (c.weighted_contribution / maxPts) * 100 : 0
+              const lost = Math.round(maxPts - c.weighted_contribution)
+              const policyName = formatFieldKey(
+                c.policy_slug.replace(/-/g, '_'),
+              )
+              const recommendation = policy
+                ? buildRecommendation(c, policy)
+                : null
+              return (
+                <div
+                  className="rounded-md border border-tertiary bg-primary p-3.5"
+                  key={c.policy_slug}
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <div className="flex min-w-0 items-baseline gap-1.5">
+                      <span className="text-[14px] font-semibold text-primary">
+                        {policyName}
+                      </span>
+                      <span className="font-mono text-[11px] text-tertiary">
+                        w{c.weight}
+                      </span>
+                    </div>
+                    <div className="shrink-0 font-mono text-[13px] tabular-nums">
+                      <span className="font-semibold text-primary">
+                        {Math.round(c.weighted_contribution)}
+                      </span>
+                      <span className="text-tertiary">
+                        {' '}
+                        / {Math.round(maxPts)}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="mb-2.5 mt-1 text-[13px] text-secondary">
+                    Currently{' '}
+                    <span className="font-medium text-amber-text">
+                      {c.value != null ? fmtAttributeValue(c.value) : 'Not set'}
+                    </span>
+                  </p>
+                  <div className="relative h-1.5 rounded-full bg-secondary">
+                    {fillPct > 0 && (
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-full bg-action"
+                        style={{ width: `${fillPct}%` }}
+                      />
+                    )}
+                  </div>
+                  <div className="mt-2 flex items-center gap-1.5 text-[12.5px] text-secondary">
+                    <TrendingDown className="h-3 w-3 shrink-0 text-tertiary" />
+                    <span>
+                      Losing{' '}
+                      <span className="font-mono font-medium text-danger">
+                        {lost} pts
+                      </span>
+                      {recommendation ? ` · ${recommendation}` : ''}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+      {perfect.length > 0 && (
+        <section>
+          <div className="mb-2.5 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-tertiary">
+            <span>At maximum</span>
+            <span className="font-mono">{perfect.length}</span>
+          </div>
+          <div className="overflow-hidden rounded-md border border-tertiary">
+            {perfect.map(({ contribution: c, maxPts }, idx) => {
+              const policyName = formatFieldKey(
+                c.policy_slug.replace(/-/g, '_'),
+              )
+              return (
+                <div
+                  className={`grid grid-cols-[auto_1fr_auto] items-center gap-2.5 bg-primary px-3 py-2.5 ${
+                    idx > 0 ? 'border-t border-tertiary' : ''
+                  }`}
+                  key={c.policy_slug}
+                >
+                  <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-success text-success">
+                    <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                  </span>
+                  <span className="text-[13.5px] font-medium text-primary">
+                    {policyName}
+                    <span className="ml-1.5 font-normal text-tertiary">
+                      {c.value != null ? fmtAttributeValue(c.value) : 'Not set'}
+                    </span>
+                  </span>
+                  <span className="font-mono text-[12px] tabular-nums text-tertiary">
+                    {Math.round(c.weighted_contribution)}/{Math.round(maxPts)}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
     </div>
   )
 }

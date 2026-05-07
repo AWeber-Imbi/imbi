@@ -615,6 +615,7 @@ export interface PluginAssignmentResponse {
   plugin_id: string
   plugin_slug: string
   source: 'merged' | 'project' | 'project_type'
+  supports_histogram?: boolean
   tab: PluginTab
 }
 
@@ -694,15 +695,22 @@ export interface PluginOptionDef {
 // Plugin types (hand-written until api-generated.ts snapshot is refreshed)
 export interface PluginResponse {
   api_version: number
+  connects_users_to?: null | string
   id: string
+  identity_plugin_id?: null | string
   label: string
+  login_capable?: boolean
   options: Record<string, unknown>
   plugin_slug: string
   service_slug: null | string
   status: 'active' | 'unavailable'
+  used_as_login?: boolean
 }
 export type PluginTab = 'configuration' | 'logs'
 export interface PluginUpdate {
+  // Pass an explicit empty string to clear; omitting the field leaves
+  // the existing value untouched on the backend.
+  identity_plugin_id?: null | string
   label: string
   options?: Record<string, unknown>
 }
