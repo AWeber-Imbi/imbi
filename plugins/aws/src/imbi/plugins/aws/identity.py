@@ -148,12 +148,7 @@ class AwsIamIcPlugin(IdentityPlugin):
         edge_labels=[
             PluginEdgeLabel(
                 name='MAPS_TO',
-                from_labels=[
-                    'Environment',
-                    'Project',
-                    'ProjectType',
-                    'Organization',
-                ],
+                from_labels=['Environment'],
                 to_labels=['AwsAccount'],
                 properties={'tags': 'dict[str, str]'},
             ),
