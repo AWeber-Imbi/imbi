@@ -92,18 +92,27 @@ async def validate_identity_plugin_ids(
         )
 
 
+def coerce_identity_plugin_id(raw: typing.Any) -> str | None:
+    """Coerce a graph-stored identity_plugin_id to ``str | None``.
+
+    Treats empty strings and non-string types as missing.
+    """
+    return str(raw) if isinstance(raw, str) and raw else None
+
+
 def build_assignment_response(
     plugin: dict[str, typing.Any],
     edge: dict[str, typing.Any],
     source: typing.Literal['project', 'project_type', 'merged'],
 ) -> models.PluginAssignmentResponse:
     """Build a PluginAssignmentResponse from parsed plugin/edge dicts."""
-    raw_identity = edge.get('identity_plugin_id')
-    identity_plugin_id = (
-        str(raw_identity)
-        if isinstance(raw_identity, str) and raw_identity
-        else None
-    )
+    supports_histogram = False
+    try:
+        supports_histogram = bool(
+            get_plugin(plugin['plugin_slug']).manifest.supports_histogram
+        )
+    except PluginNotFoundError:
+        pass
     return models.PluginAssignmentResponse(
         plugin_id=plugin['id'],
         plugin_slug=plugin['plugin_slug'],
@@ -112,5 +121,8 @@ def build_assignment_response(
         default=bool(edge.get('default', False)),
         options=parse_options(edge.get('options')),
         source=source,
-        identity_plugin_id=identity_plugin_id,
+        identity_plugin_id=coerce_identity_plugin_id(
+            edge.get('identity_plugin_id')
+        ),
+        supports_histogram=supports_histogram,
     )

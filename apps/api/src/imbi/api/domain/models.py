@@ -817,6 +817,10 @@ class PluginUpdate(pydantic.BaseModel):
     options: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
     used_as_login: bool | None = None
     connects_users_to: str | None = None
+    # Default identity plugin used when a USES_PLUGIN edge does not name
+    # one of its own. Pass an explicit empty string to clear; ``None``
+    # leaves the existing value untouched.
+    identity_plugin_id: str | None = None
 
 
 class PluginResponse(pydantic.BaseModel):
@@ -832,6 +836,7 @@ class PluginResponse(pydantic.BaseModel):
     login_capable: bool = False
     used_as_login: bool = False
     connects_users_to: str | None = None
+    identity_plugin_id: str | None = None
 
 
 class PluginAssignmentCreate(pydantic.BaseModel):
@@ -857,6 +862,10 @@ class PluginAssignmentResponse(pydantic.BaseModel):
         'project_type'
     )
     identity_plugin_id: str | None = None
+    # Pulled from the plugin manifest so the UI can hide affordances
+    # (e.g. the histogram strip on the Logs tab) for plugins whose
+    # underlying API does not support them.
+    supports_histogram: bool = False
 
 
 # -- Configuration / Logs response models ---------------------------------
@@ -1088,7 +1097,7 @@ class WebhookResponse(pydantic.BaseModel):
                 config: dict[str, typing.Any] | list[typing.Any]
                 try:
                     config = json.loads(raw_config) if raw_config else {}
-                except (json.JSONDecodeError, TypeError):
+                except json.JSONDecodeError, TypeError:
                     config = {}
                 rules.append(
                     WebhookRuleResponse(

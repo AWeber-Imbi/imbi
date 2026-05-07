@@ -19,7 +19,10 @@ from imbi_api.auth import login_providers, permissions
 from imbi_api.domain import models
 from imbi_api.graph_sql import props_template, set_clause
 from imbi_api.plugins import parse_options as _parse_options
-from imbi_api.plugins.assignments import validate_identity_plugin_ids
+from imbi_api.plugins.assignments import (
+    coerce_identity_plugin_id,
+    validate_identity_plugin_ids,
+)
 from imbi_api.plugins.credentials import (
     get_plugin_configuration_keys,
     patch_plugin_configuration,
@@ -50,6 +53,9 @@ def _build_plugin_response(
         login_capable=bool(plugin.get('login_capable', False)),
         used_as_login=bool(plugin.get('used_as_login', False)),
         connects_users_to=plugin.get('connects_users_to'),
+        identity_plugin_id=coerce_identity_plugin_id(
+            plugin.get('identity_plugin_id')
+        ),
     )
 
 
@@ -204,6 +210,14 @@ async def update_service_plugin(
     }
     if data.connects_users_to is not None:
         props['connects_users_to'] = data.connects_users_to
+    if data.identity_plugin_id is not None:
+        # Empty string clears the binding; non-empty must reference a
+        # real identity plugin in this org.
+        if data.identity_plugin_id:
+            await validate_identity_plugin_ids(
+                db, org_slug, [data.identity_plugin_id]
+            )
+        props['identity_plugin_id'] = data.identity_plugin_id
     if data.used_as_login is not None:
         # Toggling on requires the manifest to declare login_capable=true.
         # Consult the registry — the Plugin node's snapshot may be stale
@@ -520,12 +534,6 @@ async def _list_assignments(
         edge: dict[str, typing.Any] = (  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType]
             graph.parse_agtype(r.get('edge', '{}')) or {}
         )
-        raw_identity = edge.get('identity_plugin_id')
-        identity_plugin_id = (
-            str(raw_identity)
-            if isinstance(raw_identity, str) and raw_identity
-            else None
-        )
         rows.append(
             _AssignmentRow(
                 project_type_slug=pt.get('slug', ''),
@@ -533,7 +541,9 @@ async def _list_assignments(
                 tab=edge.get('tab', 'configuration'),
                 default=bool(edge.get('default', False)),
                 options=_parse_options(edge.get('options')),
-                identity_plugin_id=identity_plugin_id,
+                identity_plugin_id=coerce_identity_plugin_id(
+                    edge.get('identity_plugin_id')
+                ),
             )
         )
     return rows

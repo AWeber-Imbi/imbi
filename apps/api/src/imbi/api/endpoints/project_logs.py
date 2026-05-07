@@ -68,18 +68,31 @@ async def _search_one_env(
     credentials: dict[str, typing.Any],
     query: LogQuery,
     environment: str | None,
+    db: graph.Graph,
+    auth: permissions.AuthContext,
+    identity_options: dict[str, typing.Any] | None,
 ) -> LogResult:
     """Run a single (env-scoped) plugin search.
 
-    The caller is responsible for hydrating identity and resolving
-    plugin credentials once — those operations don't vary by
-    environment, so doing them inside each fan-out task would
-    downgrade shared identity / credential failures into per-env
-    warnings.
+    Identity must be hydrated per-env: identity plugins like AWS IAM IC
+    walk ``Environment → MAPS_TO → AwsAccount`` to mint env-specific
+    STS keys, which can't be done before the env is known. Plugin
+    credentials are resolved once by the caller and shared.
     """
     ctx = ctx_template.model_copy(update={'environment': environment})
+    ctx = await attach_identity(
+        db, ctx, resolved, auth, identity_options=identity_options
+    )
     handler = typing.cast(LogsPlugin, resolved.entry.handler_cls())
-    return await call_with_timeout(handler.search(ctx, credentials, query))
+    result = await call_with_timeout(handler.search(ctx, credentials, query))
+    # Stamp the env slug onto each entry's ``raw`` so the UI can render an
+    # env column without requiring the upstream log source to include one.
+    # Existing values are preserved (handler-supplied env wins).
+    if environment:
+        for entry in result.entries:
+            if 'environment' not in entry.raw:
+                entry.raw['environment'] = environment
+    return result
 
 
 def _to_response_entries(
@@ -179,19 +192,16 @@ async def search_logs(
         team_slug=team_slug,
         assignment_options=resolved.options,
     )
-    # Hydrate identity and resolve plugin credentials once before
-    # fanning out — neither depends on ``ctx.environment`` and doing
-    # them per-task would downgrade shared identity / credential
-    # failures into per-env warnings on multi-env requests.
+    # Plugin credentials are env-independent so resolve them once.
+    # Identity must be hydrated per-env (handled inside _search_one_env)
+    # because env-aware identity plugins like AWS IAM IC mint different
+    # STS keys depending on the env's AwsAccount binding.
     identity_options = (
         await identity_resolution.load_plugin_options(
             db, resolved.identity_plugin_id
         )
         if resolved.identity_plugin_id
         else None
-    )
-    ctx_template = await attach_identity(
-        db, ctx_template, resolved, auth, identity_options=identity_options
     )
     try:
         credentials = await get_plugin_credentials(
@@ -213,6 +223,9 @@ async def search_logs(
                 credentials=credentials,
                 query=query,
                 environment=envs[0],
+                db=db,
+                auth=auth,
+                identity_options=identity_options,
             )
         except CursorExpiredError as exc:
             raise fastapi.HTTPException(
@@ -229,10 +242,11 @@ async def search_logs(
             warnings=result.warnings,
         )
 
-    # Multi-env fan-out.  Identity / credentials are already resolved
-    # above; per-env failures from ``handler.search`` are surfaced as
-    # warnings rather than failing the whole request — partial
-    # results are still useful.
+    # Multi-env fan-out. Each task hydrates its own identity (so
+    # env-aware identity plugins can mint per-env STS keys) and per-env
+    # failures from identity hydration or ``handler.search`` are
+    # surfaced as warnings rather than failing the whole request —
+    # partial results are still useful.
     raw_results = await asyncio.gather(
         *(
             _search_one_env(
@@ -241,6 +255,9 @@ async def search_logs(
                 credentials=credentials,
                 query=query,
                 environment=env,
+                db=db,
+                auth=auth,
+                identity_options=identity_options,
             )
             for env in envs
         ),
@@ -286,8 +303,14 @@ async def _histogram_one_env(
     query: LogQuery,
     bucket_count: int,
     environment: str | None,
+    db: graph.Graph,
+    auth: permissions.AuthContext,
+    identity_options: dict[str, typing.Any] | None,
 ) -> list[LogHistogramBucket]:
     ctx = ctx_template.model_copy(update={'environment': environment})
+    ctx = await attach_identity(
+        db, ctx, resolved, auth, identity_options=identity_options
+    )
     handler = typing.cast(LogsPlugin, resolved.entry.handler_cls())
     return await call_with_timeout(
         handler.histogram(ctx, credentials, query, bucket_count)
@@ -364,17 +387,12 @@ async def get_log_histogram(
         team_slug=team_slug,
         assignment_options=resolved.options,
     )
-    # Hydrate identity and resolve plugin credentials once before the
-    # fan-out — see the equivalent comment in ``search_logs``.
     identity_options = (
         await identity_resolution.load_plugin_options(
             db, resolved.identity_plugin_id
         )
         if resolved.identity_plugin_id
         else None
-    )
-    ctx_template = await attach_identity(
-        db, ctx_template, resolved, auth, identity_options=identity_options
     )
     try:
         credentials = await get_plugin_credentials(
@@ -396,6 +414,9 @@ async def get_log_histogram(
             query=query,
             bucket_count=bucket_count,
             environment=envs[0],
+            db=db,
+            auth=auth,
+            identity_options=identity_options,
         )
         return [
             models.LogHistogramBucketResponse(
@@ -407,9 +428,11 @@ async def get_log_histogram(
         ]
 
     # Multi-env fan-out: sum bucket counts at matching timestamps,
-    # aggregate level breakdowns.  Failures from any env are logged
-    # and that env's contribution is dropped — the histogram is not
-    # the place to surface partial-failure warnings (the search
+    # aggregate level breakdowns.  Identity is hydrated per-env inside
+    # ``_histogram_one_env`` so env-aware identity plugins (AWS IAM IC)
+    # mint the right STS keys per env.  Failures from any env are
+    # logged and that env's contribution is dropped — the histogram is
+    # not the place to surface partial-failure warnings (the search
     # endpoint already does).
     raw_results = await asyncio.gather(
         *(
@@ -420,6 +443,9 @@ async def get_log_histogram(
                 query=query,
                 bucket_count=bucket_count,
                 environment=env,
+                db=db,
+                auth=auth,
+                identity_options=identity_options,
             )
             for env in envs
         ),

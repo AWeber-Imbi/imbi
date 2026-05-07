@@ -48,6 +48,10 @@ async def resolve_plugin(
     # ``SQL.format()``-based template renderer doesn't treat them as
     # replacement fields. ``options`` is read from the edge (``pe`` /
     # ``pte``) so per-assignment overrides reach the plugin handler.
+    # ``plugin_identity_plugin_id`` is the default identity plugin set on
+    # the Plugin node itself (org-wide). It is used as the lowest-tier
+    # fallback when neither the project edge nor the project-type edge
+    # names an identity plugin of its own.
     query: typing.LiteralString = """
     MATCH (proj:Project {{id: {project_id}}})
     OPTIONAL MATCH (proj)-[pe:USES_PLUGIN]->(p:Plugin)
@@ -60,6 +64,7 @@ async def resolve_plugin(
                          edge_options: pe.options,
                          plugin_options: p.options,
                          identity_plugin_id: pe.identity_plugin_id,
+                         plugin_identity_plugin_id: p.identity_plugin_id,
                          default: pe.default,
                          src: 'project'}})
        AS proj_plugins,
@@ -67,6 +72,7 @@ async def resolve_plugin(
                          edge_options: pte.options,
                          plugin_options: p2.options,
                          identity_plugin_id: pte.identity_plugin_id,
+                         plugin_identity_plugin_id: p2.identity_plugin_id,
                          default: pte.default,
                          src: 'project_type'}})
        AS pt_plugins
@@ -116,6 +122,8 @@ async def resolve_plugin(
                 'pt_identity_plugin_id': pt_by_id[pid].get(
                     'identity_plugin_id'
                 ),
+                'plugin_identity_plugin_id': p.get('plugin_identity_plugin_id')
+                or pt_by_id[pid].get('plugin_identity_plugin_id'),
             }
         else:
             merged[pid] = p
@@ -199,12 +207,17 @@ async def resolve_plugin(
 def _select_identity_plugin_id(
     chosen: dict[str, typing.Any],
 ) -> str | None:
-    """Pick the identity plugin id, preferring the project-level binding.
+    """Pick the identity plugin id with three-tier precedence.
 
-    Falls back to the project-type binding (carried as
-    ``pt_identity_plugin_id``) when the chosen edge omits its own
-    ``identity_plugin_id`` so a partial project override does not drop the
-    type-level identity requirement.
+    Order, highest precedence first:
+
+    1. ``identity_plugin_id`` on the chosen edge (project or project-type
+       edge).
+    2. ``pt_identity_plugin_id`` — the project-type edge's value, carried
+       across when a project edge wins but did not name its own identity.
+    3. ``plugin_identity_plugin_id`` — the default declared on the Plugin
+       node itself, applied org-wide so admins do not have to repeat it
+       on every project-type assignment.
     """
     identity_plugin_id = chosen.get('identity_plugin_id')
     if isinstance(identity_plugin_id, str) and not identity_plugin_id:
@@ -213,4 +226,8 @@ def _select_identity_plugin_id(
         pt_identity = chosen.get('pt_identity_plugin_id')
         if isinstance(pt_identity, str) and pt_identity:
             identity_plugin_id = pt_identity
+    if identity_plugin_id is None:
+        plugin_identity = chosen.get('plugin_identity_plugin_id')
+        if isinstance(plugin_identity, str) and plugin_identity:
+            identity_plugin_id = plugin_identity
     return identity_plugin_id
