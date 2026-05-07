@@ -26,6 +26,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { queryKeys } from '@/lib/queryKeys'
 import type { AdminPluginsResponse, InstalledPlugin } from '@/types'
 
 type ActiveTab = 'disabled' | 'enabled'
@@ -52,7 +53,7 @@ export function PluginsManagement() {
 
   const { data, error, isError, isLoading } = useQuery<AdminPluginsResponse>({
     queryFn: ({ signal }) => getAdminPlugins(signal),
-    queryKey: ['admin-plugins'],
+    queryKey: queryKeys.adminPlugins(),
     staleTime: 60 * 1000,
   })
 
@@ -114,7 +115,9 @@ function DisabledList({ parentLoading, plugins }: DisabledListProps) {
     },
     onSuccess: (_, slug) => {
       toast.success(`${slug} enabled`)
-      void queryClient.invalidateQueries({ queryKey: ['admin-plugins'] })
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.adminPlugins(),
+      })
     },
   })
 

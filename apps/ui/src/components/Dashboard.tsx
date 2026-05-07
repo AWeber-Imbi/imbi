@@ -26,6 +26,7 @@ import { getAdminPlugins, getMyIdentities, getProjects } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useRecentDeployments } from '@/hooks/useRecentDeployments'
+import { queryKeys } from '@/lib/queryKeys'
 import type { AdminPluginsResponse, IdentityConnectionResponse } from '@/types'
 
 import { MyPullRequestsWidget } from './dashboard/widgets/MyPullRequestsWidget'
@@ -171,7 +172,7 @@ export function Dashboard({
   // becomes active.
   const pluginsQuery = useQuery<AdminPluginsResponse>({
     queryFn: ({ signal }) => getAdminPlugins(signal),
-    queryKey: ['admin-plugins'],
+    queryKey: queryKeys.adminPlugins(),
     staleTime: 60 * 1000,
   })
   const identitiesQuery = useQuery<IdentityConnectionResponse[]>({

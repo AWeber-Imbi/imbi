@@ -2079,3 +2079,15 @@ export const deleteEnvironmentEdge = (
   envSlug: string,
   relType: string,
 ) => apiClient.delete<void>(environmentEdgesPath(orgSlug, envSlug, relType))
+
+export const listPluginEdgesByOrg = (
+  pluginSlug: string,
+  relType: string,
+  orgSlug: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<Record<string, PluginEdge[]>>(
+    `/admin/plugins/${encodeURIComponent(pluginSlug)}/edges`,
+    { org_slug: orgSlug, rel_type: relType },
+    signal,
+  )

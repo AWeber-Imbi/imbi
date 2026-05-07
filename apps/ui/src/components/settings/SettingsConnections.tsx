@@ -29,6 +29,7 @@ import {
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { getIcon, iconRegistry, useIconRegistryVersion } from '@/lib/icons'
 import type { IconComponent } from '@/lib/icons'
+import { queryKeys } from '@/lib/queryKeys'
 import type {
   AdminPluginsResponse,
   IdentityConnectionResponse,
@@ -178,7 +179,7 @@ export function SettingsConnections() {
 
   const pluginsQuery = useQuery<AdminPluginsResponse>({
     queryFn: ({ signal }) => getAdminPlugins(signal),
-    queryKey: ['admin-plugins'],
+    queryKey: queryKeys.adminPlugins(),
     staleTime: 60 * 1000,
   })
 

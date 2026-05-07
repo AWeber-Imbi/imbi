@@ -1,17 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
-import {
-  useMutation,
-  useQueries,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import {
-  createPluginEntity,
-  listEnvironmentEdges,
   listEnvironments,
+  listPluginEdgesByOrg,
   listPluginEntities,
   setEnvironmentEdge,
 } from '@/api/endpoints'
@@ -33,13 +27,17 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import {
+  findOrCreatePluginEntityByKey,
+  naturalKeyField,
+} from '@/lib/plugin-entities'
+import { queryKeys } from '@/lib/queryKeys'
 import type {
   Environment,
   InstalledPlugin,
   PluginEdge,
   PluginEdgeLabel,
   PluginEntity,
-  PluginVertexLabel,
 } from '@/types'
 
 interface EnvironmentEdgeTableProps {
@@ -112,31 +110,19 @@ function EnvironmentEdgeTable({
   const targetsQuery = useQuery<PluginEntity[]>({
     queryFn: ({ signal }) =>
       listPluginEntities(entityPluginSlug, targetLabel, signal),
-    queryKey: ['plugin-entities', entityPluginSlug, targetLabel],
+    queryKey: queryKeys.pluginEntities(entityPluginSlug, targetLabel),
     staleTime: 30 * 1000,
   })
 
   const environments = environmentsQuery.data ?? []
-  const edgeQueries = useQueries({
-    queries: environments.map((env) => ({
-      queryFn: ({ signal }: { signal?: AbortSignal }) =>
-        listEnvironmentEdges(orgSlug, env.slug, edge.name, signal),
-      queryKey: ['anchor-edges', 'environment', orgSlug, env.slug, edge.name],
-      staleTime: 30 * 1000,
-    })),
+  const edgesByEnvQuery = useQuery<Record<string, PluginEdge[]>>({
+    queryFn: ({ signal }) =>
+      listPluginEdgesByOrg(entityPluginSlug, edge.name, orgSlug, signal),
+    queryKey: queryKeys.pluginEdgesByOrg(entityPluginSlug, edge.name, orgSlug),
+    staleTime: 30 * 1000,
   })
 
   const [pendingValue, setPendingValue] = useState<Record<string, string>>({})
-
-  const targetsByKey = useMemo(() => {
-    const map = new Map<string, PluginEntity>()
-    if (!naturalKey) return map
-    for (const t of targetsQuery.data ?? []) {
-      const k = t[naturalKey]
-      if (typeof k === 'string') map.set(k, t)
-    }
-    return map
-  }, [naturalKey, targetsQuery.data])
 
   const mapMutation = useMutation({
     mutationFn: async ({
@@ -152,22 +138,16 @@ function EnvironmentEdgeTable({
             `cannot resolve "${pasted}".`,
         )
       }
-      let target = targetsByKey.get(pasted)
-      if (!target) {
-        const body: Record<string, unknown> = { name: pasted }
-        body[naturalKey] = pasted
-        try {
-          target = await createPluginEntity(entityPluginSlug, targetLabel, body)
-        } catch (err) {
-          // Race with a concurrent create; resolve via a fresh list.
-          const fresh = await listPluginEntities(entityPluginSlug, targetLabel)
-          target = fresh.find((t) => t[naturalKey] === pasted)
-          if (!target) throw err
-        }
-        await queryClient.invalidateQueries({
-          queryKey: ['plugin-entities', entityPluginSlug, targetLabel],
-        })
-      }
+      const target = await findOrCreatePluginEntityByKey({
+        existing: targetsQuery.data,
+        keyField: naturalKey,
+        label: targetLabel,
+        pluginSlug: entityPluginSlug,
+        value: pasted,
+      })
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.pluginEntities(entityPluginSlug, targetLabel),
+      })
       return setEnvironmentEdge(orgSlug, envSlug, edge.name, {
         target_id: target.id,
         target_label: targetLabel,
@@ -184,7 +164,19 @@ function EnvironmentEdgeTable({
         return next
       })
       void queryClient.invalidateQueries({
-        queryKey: ['anchor-edges', 'environment', orgSlug, envSlug, edge.name],
+        queryKey: queryKeys.pluginEdgesByOrg(
+          entityPluginSlug,
+          edge.name,
+          orgSlug,
+        ),
+      })
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.anchorEdges(
+          'environment',
+          orgSlug,
+          envSlug,
+          edge.name,
+        ),
       })
     },
   })
@@ -217,8 +209,8 @@ function EnvironmentEdgeTable({
                 </TableCell>
               </TableRow>
             ) : (
-              environments.map((env, i) => {
-                const edges: PluginEdge[] | undefined = edgeQueries[i]?.data
+              environments.map((env) => {
+                const edges = edgesByEnvQuery.data?.[env.slug]
                 const current = edges?.[0] ?? null
                 const currentTargetKey = naturalKey
                   ? current?.target[naturalKey]
@@ -275,12 +267,4 @@ function EnvironmentEdgeTable({
       </div>
     </div>
   )
-}
-
-// First single-field unique index is the operator-facing natural key.
-function naturalKeyField(vlabel: PluginVertexLabel | undefined): null | string {
-  for (const idx of vlabel?.indexes ?? []) {
-    if (idx.unique && idx.fields.length === 1) return idx.fields[0]
-  }
-  return null
 }

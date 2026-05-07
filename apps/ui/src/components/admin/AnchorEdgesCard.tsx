@@ -12,15 +12,19 @@ import {
 } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
 import { extractApiErrorDetail } from '@/lib/apiError'
-import type { PluginEdge, PluginEdgeLabel, PluginEntity } from '@/types'
+import {
+  findOrCreatePluginEntityByKey,
+  naturalKeyField,
+} from '@/lib/plugin-entities'
+import { queryKeys } from '@/lib/queryKeys'
+import type {
+  InstalledPlugin,
+  PluginEdge,
+  PluginEdgeLabel,
+  PluginEntity,
+} from '@/types'
 
 // Only ``environment`` anchors are wired up today; widen the union when
 // projects/project-types/orgs gain edge endpoints.
@@ -31,6 +35,7 @@ interface AnchorEdgesCardProps {
   anchorKind: AnchorKind
   edge: PluginEdgeLabel
   entityPluginSlug: string
+  manifest: InstalledPlugin
   title?: string
 }
 
@@ -55,17 +60,22 @@ export function AnchorEdgesCard({
   anchorKind,
   edge,
   entityPluginSlug,
+  manifest,
   title,
 }: AnchorEdgesCardProps) {
   const queryClient = useQueryClient()
   const targetLabel = edge.to_labels[0]
-  const edgesKey = [
-    'anchor-edges',
+  const targetVlabel = manifest.vertex_labels?.find(
+    (v) => v.name === targetLabel,
+  )
+  const targetDisplay = targetVlabel?.display_name || targetLabel
+  const naturalKey = naturalKeyField(targetVlabel)
+  const edgesKey = queryKeys.anchorEdges(
     anchorKind,
     anchor.orgSlug,
     anchor.slug,
     edge.name,
-  ]
+  )
 
   const edgesQuery = useQuery<PluginEdge[]>({
     queryFn: ({ signal }) =>
@@ -77,24 +87,41 @@ export function AnchorEdgesCard({
   const targetsQuery = useQuery<PluginEntity[]>({
     queryFn: ({ signal }) =>
       listPluginEntities(entityPluginSlug, targetLabel, signal),
-    queryKey: ['plugin-entities', entityPluginSlug, targetLabel],
+    queryKey: queryKeys.pluginEntities(entityPluginSlug, targetLabel),
     staleTime: 30 * 1000,
   })
 
-  const [pendingId, setPendingId] = useState<null | string>(null)
+  const [draft, setDraft] = useState<null | string>(null)
 
   const setMutation = useMutation({
-    mutationFn: (targetId: string) =>
-      setEnvironmentEdge(anchor.orgSlug, anchor.slug, edge.name, {
-        target_id: targetId,
+    mutationFn: async (pasted: string) => {
+      if (!naturalKey) {
+        throw new Error(
+          `Plugin ${manifest.slug} declared no unique key for ${targetLabel}; ` +
+            `cannot resolve "${pasted}".`,
+        )
+      }
+      const target = await findOrCreatePluginEntityByKey({
+        existing: targetsQuery.data,
+        keyField: naturalKey,
+        label: targetLabel,
+        pluginSlug: entityPluginSlug,
+        value: pasted,
+      })
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.pluginEntities(entityPluginSlug, targetLabel),
+      })
+      return setEnvironmentEdge(anchor.orgSlug, anchor.slug, edge.name, {
+        target_id: target.id,
         target_label: targetLabel,
-      }),
+      })
+    },
     onError: (err) => {
       toast.error(extractApiErrorDetail(err) ?? 'Failed to set mapping')
     },
     onSuccess: () => {
       toast.success(`${edge.name} edge saved`)
-      setPendingId(null)
+      setDraft(null)
       void queryClient.invalidateQueries({ queryKey: edgesKey })
     },
   })
@@ -111,16 +138,20 @@ export function AnchorEdgesCard({
     },
   })
 
-  const targets = targetsQuery.data ?? []
   const current = edgesQuery.data?.[0] ?? null
   const submitting = setMutation.isPending || deleteMutation.isPending
+  const currentTargetKey = naturalKey ? current?.target[naturalKey] : undefined
+  const currentKey =
+    typeof currentTargetKey === 'string' ? currentTargetKey : ''
+  const inputValue = draft ?? currentKey
+  const dirty = inputValue !== currentKey
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{title ?? `${edge.name} → ${targetLabel}`}</CardTitle>
+        <CardTitle>{title ?? `${edge.name} → ${targetDisplay}`}</CardTitle>
         <p className="mt-1 text-sm text-secondary">
-          Map this {anchorKind} to a {targetLabel} via the{' '}
+          Map this {anchorKind} to a {targetDisplay} via the{' '}
           <code className="text-xs">{edge.name}</code> edge.
         </p>
       </CardHeader>
@@ -151,49 +182,27 @@ export function AnchorEdgesCard({
           </div>
         ) : (
           <div className="text-sm text-secondary">
-            Not mapped to any {targetLabel} yet.
+            Not mapped to any {targetDisplay} yet.
           </div>
         )}
 
-        {targets.length === 0 ? (
-          <p className="text-sm text-tertiary">
-            No {targetLabel} records have been registered.
-          </p>
-        ) : (
-          <div className="flex items-center gap-3">
-            <Select
-              onValueChange={(value) => setPendingId(value)}
-              value={pendingId ?? current?.target.id ?? ''}
-            >
-              <SelectTrigger className="w-[300px]">
-                <SelectValue placeholder={`Choose a ${targetLabel}…`} />
-              </SelectTrigger>
-              <SelectContent>
-                {targets.map((target) => (
-                  <SelectItem key={target.id} value={target.id}>
-                    {labelEntityName(target)}
-                    {labelEntitySubtitle(target)
-                      ? ` (${labelEntitySubtitle(target)})`
-                      : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              disabled={
-                submitting ||
-                pendingId === null ||
-                pendingId === current?.target.id
-              }
-              onClick={() => {
-                if (pendingId) setMutation.mutate(pendingId)
-              }}
-              size="sm"
-            >
-              {current ? 'Change' : `Map ${targetLabel}`}
-            </Button>
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          <Input
+            className="w-[300px]"
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={
+              naturalKey ? `Paste ${naturalKey}` : `Paste ${targetDisplay}`
+            }
+            value={inputValue}
+          />
+          <Button
+            disabled={submitting || !dirty || inputValue.trim() === ''}
+            onClick={() => setMutation.mutate(inputValue.trim())}
+            size="sm"
+          >
+            {current ? 'Change' : `Map ${targetDisplay}`}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   )

@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input'
 import { LoadingState } from '@/components/ui/loading-state'
 import { Textarea } from '@/components/ui/textarea'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { queryKeys } from '@/lib/queryKeys'
 import type { InstalledPlugin, PluginVertexLabel } from '@/types'
 
 import { PluginEntityManagement } from './PluginEntityManagement'
@@ -68,7 +69,7 @@ export function PluginPackageDetail({
 
   const pluginQuery = useQuery<InstalledPlugin>({
     queryFn: ({ signal }) => getAdminPlugin(slug, signal),
-    queryKey: ['admin-plugin', slug],
+    queryKey: queryKeys.adminPlugin(slug),
     staleTime: 30 * 1000,
   })
 
@@ -131,8 +132,10 @@ export function PluginPackageDetail({
     },
     onSuccess: (data) => {
       toast.success('Saved')
-      queryClient.setQueryData(['admin-plugin', slug], data)
-      void queryClient.invalidateQueries({ queryKey: ['admin-plugins'] })
+      queryClient.setQueryData(queryKeys.adminPlugin(slug), data)
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.adminPlugins(),
+      })
     },
   })
 

@@ -41,6 +41,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { queryKeys } from '@/lib/queryKeys'
 import type {
   InstalledPlugin,
   PluginAssignmentInput,
@@ -122,7 +123,7 @@ export function ServicePluginConfiguration({
 
   const { data: manifest, isLoading: manifestLoading } = useQuery({
     queryFn: ({ signal }) => getAdminPlugin(plugin.plugin_slug, signal),
-    queryKey: ['admin-plugin', plugin.plugin_slug],
+    queryKey: queryKeys.adminPlugin(plugin.plugin_slug),
     staleTime: 5 * 60 * 1000,
   })
 

@@ -39,6 +39,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { queryKeys } from '@/lib/queryKeys'
 
 import { ServicePluginConfiguration } from './ServicePluginConfiguration'
 
@@ -83,7 +84,7 @@ export function ServicePluginList({
     isError: isAdminPluginsError,
   } = useQuery({
     queryFn: ({ signal }) => getAdminPlugins(signal),
-    queryKey: ['admin-plugins'],
+    queryKey: queryKeys.adminPlugins(),
     staleTime: 5 * 60 * 1000,
   })
 

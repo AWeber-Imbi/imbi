@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DynamicDetailFields } from '@/components/ui/dynamic-fields'
 import { EntityIcon } from '@/components/ui/entity-icon'
 import { ENVIRONMENT_BASE_FIELDS_SET } from '@/lib/constants'
+import { queryKeys } from '@/lib/queryKeys'
 import { extractDynamicFields } from '@/lib/utils'
 import type { Environment, InstalledPlugin } from '@/types'
 
@@ -29,7 +30,7 @@ export function EnvironmentDetail({
   })
   const { data: pluginsResponse } = useQuery({
     queryFn: ({ signal }) => getAdminPlugins(signal),
-    queryKey: ['admin-plugins'],
+    queryKey: queryKeys.adminPlugins(),
     staleTime: 60 * 1000,
   })
 
@@ -143,6 +144,7 @@ export function EnvironmentDetail({
           edge={edge}
           entityPluginSlug={plugin.slug}
           key={`${plugin.slug}:${edge.name}`}
+          manifest={plugin}
           title={`${plugin.name}: ${edge.name}`}
         />
       ))}

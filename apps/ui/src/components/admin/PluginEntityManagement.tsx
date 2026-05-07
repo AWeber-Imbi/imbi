@@ -36,6 +36,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { queryKeys } from '@/lib/queryKeys'
 import type {
   PluginEntity,
   PluginEntitySchema,
@@ -89,11 +90,11 @@ export function PluginEntityManagement({
   const queryClient = useQueryClient()
   const label = vertexLabel.name
   const queryKey = useMemo(
-    () => ['plugin-entities', pluginSlug, label],
+    () => queryKeys.pluginEntities(pluginSlug, label),
     [pluginSlug, label],
   )
   const schemaKey = useMemo(
-    () => ['plugin-entity-schema', pluginSlug, label],
+    () => queryKeys.pluginEntitySchema(pluginSlug, label),
     [pluginSlug, label],
   )
 
