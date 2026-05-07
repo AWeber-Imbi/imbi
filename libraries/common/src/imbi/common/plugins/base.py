@@ -177,6 +177,7 @@ class PluginContext(pydantic.BaseModel):
     project_id: str
     project_slug: str
     org_slug: str
+    team_slug: str | None = None
     environment: str | None = None
     assignment_options: dict[str, typing.Any] = {}
     actor_user_id: str | None = None
@@ -235,6 +236,7 @@ class LogResult(pydantic.BaseModel):
     entries: list[LogEntry]
     next_cursor: str | None = None
     total: int | None = None
+    warnings: list[str] = []
 
 
 class ConfigurationPlugin(abc.ABC):
@@ -364,6 +366,9 @@ class IdentityPlugin(abc.ABC):
         ctx: PluginContext,
         credentials: dict[str, str],
         connection: IdentityCredentials,
+        *,
+        db: typing.Any | None = None,
+        identity_options: dict[str, typing.Any] | None = None,
     ) -> IdentityCredentials:
         """Hook for plugins that need to exchange the IdP token for a
         backend-specific credential at call time.
@@ -371,5 +376,17 @@ class IdentityPlugin(abc.ABC):
         Default: return ``connection`` unchanged.  AWS IAM IC overrides
         this to call ``GetRoleCredentials`` and return STS keys in
         ``IdentityCredentials.extra``.
+
+        ``db`` is the host's :class:`graph.Graph` (typed loosely to
+        keep this base module independent of the graph package).
+        Plugins that need to resolve per-environment configuration via
+        ``MAPS_TO`` walks consult it.
+
+        ``identity_options`` is the identity plugin instance's own
+        ``Plugin.options`` dict, loaded by the host before the call.
+        Distinct from ``credentials`` (which holds the plugin's
+        OIDC/api-token configuration) and from
+        ``ctx.assignment_options`` (which carries the *data* plugin's
+        edge options at request time).
         """
         return connection

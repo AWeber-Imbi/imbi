@@ -3,7 +3,7 @@
 import re
 
 _ALLOWED_VARS: frozenset[str] = frozenset(
-    {'project_slug', 'org_slug', 'environment', 'project_id'}
+    {'project_slug', 'org_slug', 'team_slug', 'environment', 'project_id'}
 )
 
 _VAR_PATTERN = re.compile(r'\$\{([^}]+)\}')
