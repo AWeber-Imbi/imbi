@@ -120,3 +120,6 @@ default-groups = ["dev"]
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
+
+[tool.uv.sources]
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", rev = "main" }

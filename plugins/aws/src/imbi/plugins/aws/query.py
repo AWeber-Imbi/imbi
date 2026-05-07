@@ -85,16 +85,37 @@ def build_query(
         '@message',
         '@logStream',
     ),
+    level_field: str | None = None,
+    levels: collections.abc.Sequence[str] = (),
 ) -> str:
     """Assemble a Logs Insights query string."""
     parts: list[str] = ['fields ' + ', '.join(fields)]
     if base_filter:
         parts.append(f'filter {base_filter.strip()}')
     parts.extend(filter_clause(f) for f in filters)
+    if level_field and levels:
+        parts.append(_levels_clause(level_field, levels))
     parts.append(f'sort {timestamp_field} desc')
     capped = max(1, min(int(limit), INSIGHTS_LIMIT_CEILING))
     parts.append(f'limit {capped}')
     return ' | '.join(parts)
+
+
+def _levels_clause(
+    level_field: str, levels: collections.abc.Sequence[str]
+) -> str:
+    """Case-insensitive level membership filter for Insights.
+
+    Uses ``like`` with a regex literal carrying the ``(?i)`` flag so
+    upstream logs that record the level in any case ("WARN", "warn",
+    "Warning") still match the canonical aliases supplied by the API.
+    """
+    field = _field_token(level_field)
+    # ``re.escape`` does not escape ``/`` (Py3.7+), but the surrounding
+    # Insights regex literal is delimited by ``/`` -- a level alias
+    # containing a slash would otherwise terminate the literal early.
+    pattern = '|'.join(re.escape(lv).replace('/', '\\/') for lv in levels)
+    return f'filter {field} like /(?i)^({pattern})$/'
 
 
 def build_histogram_query(

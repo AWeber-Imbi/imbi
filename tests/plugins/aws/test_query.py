@@ -41,6 +41,36 @@ class FilterClauseTestCase(unittest.TestCase):
         self.assertEqual(clause, 'filter @message like /ERR.*/')
 
 
+class LevelsClauseTestCase(unittest.TestCase):
+    def test_levels_clause_in_build_query(self) -> None:
+        q = query.build_query(
+            base_filter=None,
+            filters=[],
+            limit=10,
+            level_field='level',
+            levels=['ERROR', 'WARN'],
+        )
+        self.assertIn(
+            'filter level like /(?i)^(ERROR|WARN)$/',
+            q,
+        )
+
+    def test_slash_in_level_is_escaped_for_regex_literal(self) -> None:
+        q = query.build_query(
+            base_filter=None,
+            filters=[],
+            limit=10,
+            level_field='level',
+            levels=['WARN/X'],
+        )
+        # The slash in the level alias must be escaped so it does not
+        # terminate the surrounding Insights regex literal.
+        self.assertIn(
+            r'filter level like /(?i)^(WARN\/X)$/',
+            q,
+        )
+
+
 class BuildQueryTestCase(unittest.TestCase):
     def test_assembly_orders_clauses(self) -> None:
         q = query.build_query(

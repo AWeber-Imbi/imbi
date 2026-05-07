@@ -494,6 +494,8 @@ class CloudWatchLogsPlugin(LogsPlugin):
             limit=capped_limit,
             timestamp_field=timestamp_field,
             fields=fields,
+            level_field=level_field,
+            levels=query.levels,
         )
 
         start_resp = await self._start_with_cache_bust(
