@@ -213,6 +213,12 @@ class LogQuery(pydantic.BaseModel):
     filters: list[LogFilter] = []
     limit: int = 100
     cursor: str | None = None
+    # Canonical level names to include (e.g. ['ERROR', 'WARN']). Empty
+    # list means no level filter — return all levels. Plugins translate
+    # this into the underlying log source's level field at query time
+    # so matching events can be returned even when the requested levels
+    # are rare in the time window.
+    levels: list[str] = []
 
 
 class LogEntry(pydantic.BaseModel):
