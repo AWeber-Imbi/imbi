@@ -1740,6 +1740,7 @@ export interface LogSearchParams {
   end_time?: string
   environment?: string | string[]
   filter?: string[]
+  level?: string[]
   limit?: number
   source?: string
   start_time?: string
@@ -1790,6 +1791,7 @@ export const searchProjectLogs = (
     if (params.cursor) query.cursor = params.cursor
     if (params.limit != null) query.limit = String(params.limit)
     if (params.filter?.length) query.filter = params.filter
+    if (params.level?.length) query.level = params.level
   }
   return apiClient.get<LogResultResponse>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/logs/`,

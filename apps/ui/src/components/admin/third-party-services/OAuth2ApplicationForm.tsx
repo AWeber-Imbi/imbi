@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { AlertCircle } from 'lucide-react'
 
+import { API_BASE_URL } from '@/api/client'
 import { FormHeader } from '@/components/admin/form-header'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/hooks/useAuth'
@@ -11,6 +12,9 @@ import type {
   ServiceApplicationCreate,
   ServiceApplicationUpdate,
 } from '@/types'
+
+const callbackUrlForSlug = (slug: string): string =>
+  slug ? `${API_BASE_URL}/me/identities/${slug}/callback` : ''
 
 interface OAuth2ApplicationFormProps {
   application: null | ServiceApplication
@@ -66,6 +70,10 @@ export function OAuth2ApplicationForm({
   const [callbackUrl, setCallbackUrl] = useState(
     application?.callback_url || '',
   )
+  // Tracks whether the user has typed into the callback URL field. Until
+  // they do, we keep it in lock-step with the slug so the value matches
+  // the imbi-api OAuth callback route the third party must redirect to.
+  const [callbackUrlTouched, setCallbackUrlTouched] = useState(isEdit)
   const [clientId, setClientId] = useState(application?.client_id || '')
   const [scopes, setScopes] = useState(application?.scopes?.join(', ') || '')
   const [status, setStatus] = useState<AppStatus>(
@@ -85,8 +93,24 @@ export function OAuth2ApplicationForm({
   const handleNameChange = (value: string) => {
     setName(value)
     if (!isEdit) {
-      setSlug(slugify(value))
+      const nextSlug = slugify(value)
+      setSlug(nextSlug)
+      if (!callbackUrlTouched) {
+        setCallbackUrl(callbackUrlForSlug(nextSlug))
+      }
     }
+  }
+
+  const handleSlugChange = (value: string) => {
+    setSlug(value)
+    if (!isEdit && !callbackUrlTouched) {
+      setCallbackUrl(callbackUrlForSlug(value))
+    }
+  }
+
+  const handleCallbackUrlChange = (value: string) => {
+    setCallbackUrl(value)
+    setCallbackUrlTouched(true)
   }
 
   const handleSubmit = () => {
@@ -210,7 +234,7 @@ export function OAuth2ApplicationForm({
             <Input
               className={inputClass}
               disabled={isEdit}
-              onChange={(e) => setSlug(e.target.value)}
+              onChange={(e) => handleSlugChange(e.target.value)}
               placeholder="my-github-app"
               value={slug}
             />
@@ -241,7 +265,7 @@ export function OAuth2ApplicationForm({
             <label className={labelClass}>Callback URL</label>
             <Input
               className={inputClass}
-              onChange={(e) => setCallbackUrl(e.target.value)}
+              onChange={(e) => handleCallbackUrlChange(e.target.value)}
               placeholder="https://app.example.com/auth/callback"
               value={callbackUrl}
             />
