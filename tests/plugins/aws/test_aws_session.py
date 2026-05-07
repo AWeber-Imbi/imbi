@@ -70,6 +70,69 @@ class ResolveCredentialsTestCase(unittest.TestCase):
                 }
             )
 
+    def test_identity_extra_supplies_keys_when_credentials_empty(
+        self,
+    ) -> None:
+        from imbi_common.plugins.base import (
+            IdentityCredentials,
+            PluginContext,
+        )
+
+        ctx = PluginContext(
+            project_id='p',
+            project_slug='s',
+            org_slug='o',
+            environment='prod',
+            assignment_options={},
+            identity=IdentityCredentials(
+                access_token='oidc',
+                extra={
+                    'aws_access_key_id': 'STS',
+                    'aws_secret_access_key': 'sts-secret',
+                    'aws_session_token': 'sts-token',
+                    'aws_region': 'us-east-2',
+                },
+            ),
+        )
+        creds = aws_session.resolve_credentials({}, ctx=ctx)
+        self.assertEqual(creds.access_key_id, 'STS')
+        self.assertEqual(creds.secret_access_key, 'sts-secret')
+        self.assertEqual(creds.session_token, 'sts-token')
+        self.assertEqual(creds.region, 'us-east-2')
+
+    def test_identity_extra_overrides_static_keys(self) -> None:
+        from imbi_common.plugins.base import (
+            IdentityCredentials,
+            PluginContext,
+        )
+
+        ctx = PluginContext(
+            project_id='p',
+            project_slug='s',
+            org_slug='o',
+            environment='prod',
+            assignment_options={},
+            identity=IdentityCredentials(
+                access_token='oidc',
+                extra={
+                    'aws_access_key_id': 'STS',
+                    'aws_secret_access_key': 'sts-secret',
+                    'aws_region': 'us-east-2',
+                },
+            ),
+        )
+        creds = aws_session.resolve_credentials(
+            {
+                'aws_access_key_id': 'STATIC',
+                'aws_secret_access_key': 'static-secret',
+            },
+            region='eu-west-1',
+            ctx=ctx,
+        )
+        # STS takes precedence over static; assignment region wins.
+        self.assertEqual(creds.access_key_id, 'STS')
+        self.assertEqual(creds.region, 'eu-west-1')
+
 
 class SignRequestTestCase(unittest.TestCase):
     def test_authorization_header_is_deterministic(self) -> None:

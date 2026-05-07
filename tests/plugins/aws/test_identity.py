@@ -246,6 +246,212 @@ class MaterializeTestCase(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await plugin.materialize(_ctx(), {}, connection)
 
+    @respx.mock
+    async def test_resolves_account_via_environment_maps_to(self) -> None:
+        captured: list[dict[str, str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured.append(dict(request.url.params))
+            return httpx.Response(
+                200,
+                json={
+                    'roleCredentials': {
+                        'accessKeyId': 'AKIA-prod',
+                        'secretAccessKey': 'sec-prod',
+                        'sessionToken': 'tok-prod',
+                        'expiration': 1700000000000,
+                    }
+                },
+            )
+
+        respx.get(
+            'https://portal.sso.us-east-1.amazonaws.com/federation/credentials'
+        ).mock(side_effect=handler)
+
+        class _FakeDB:
+            def __init__(self, account_id: str, role: str) -> None:
+                self.account_id = account_id
+                self.role = role
+
+            async def execute(
+                self,
+                _query: str,
+                _params: dict[str, object],
+                _columns: list[str],
+            ) -> list[dict[str, object]]:
+                return [
+                    {
+                        'account_id': f'"{self.account_id}"',
+                        'role_name': f'"{self.role}"',
+                        'region': '"us-east-1"',
+                    }
+                ]
+
+        plugin = AwsIamIcPlugin()
+        ctx = PluginContext(
+            project_id='p',
+            project_slug='proj',
+            org_slug='org',
+            environment='production',
+            assignment_options={
+                'region': 'us-east-1',
+                'start_url': 'https://example.awsapps.com/start',
+            },
+            actor_user_id='u-1',
+        )
+        connection = IdentityCredentials(
+            access_token='iam-ic-token',
+            extra={
+                # Connect-time defaults — should be ignored in favor of
+                # the env-mapped account.
+                'aws_account_id': '999999999999',
+                'aws_role_name': 'OldRole',
+            },
+        )
+        result = await plugin.materialize(
+            ctx,
+            {},
+            connection,
+            db=_FakeDB('111111111111', 'ImbiOperator'),
+        )
+        # GetRoleCredentials called with the env-resolved account/role.
+        self.assertEqual(
+            captured[0],
+            {'account_id': '111111111111', 'role_name': 'ImbiOperator'},
+        )
+        self.assertEqual(result.extra['aws_access_key_id'], 'AKIA-prod')
+        self.assertEqual(result.extra['aws_account_id'], '111111111111')
+
+    @respx.mock
+    async def test_role_name_template_expanded_with_team_slug(self) -> None:
+        captured: list[dict[str, str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured.append(dict(request.url.params))
+            return httpx.Response(
+                200,
+                json={
+                    'roleCredentials': {
+                        'accessKeyId': 'AKIA',
+                        'secretAccessKey': 'sec',
+                        'sessionToken': 'tok',
+                        'expiration': 1700000000000,
+                    }
+                },
+            )
+
+        respx.get(
+            'https://portal.sso.us-east-1.amazonaws.com/federation/credentials'
+        ).mock(side_effect=handler)
+
+        class _FakeDB:
+            async def execute(
+                self,
+                _query: str,
+                _params: dict[str, object],
+                _columns: list[str],
+            ) -> list[dict[str, object]]:
+                return [
+                    {
+                        'account_id': '"333333333333"',
+                        'role_name': None,
+                        'region': None,
+                    }
+                ]
+
+        plugin = AwsIamIcPlugin()
+        ctx = PluginContext(
+            project_id='p',
+            project_slug='widget',
+            org_slug='org',
+            team_slug='platform',
+            environment='production',
+            assignment_options={
+                'region': 'us-east-1',
+                'start_url': 'https://example.awsapps.com/start',
+            },
+            actor_user_id='u-1',
+        )
+        connection = IdentityCredentials(access_token='iam-ic-token')
+        result = await plugin.materialize(
+            ctx,
+            {},
+            connection,
+            db=_FakeDB(),
+            identity_options={'default_role_name': '${team_slug}'},
+        )
+        # ${team_slug} expanded to 'platform'.
+        self.assertEqual(
+            captured[0],
+            {'account_id': '333333333333', 'role_name': 'platform'},
+        )
+        self.assertEqual(result.extra['aws_access_key_id'], 'AKIA')
+
+    @respx.mock
+    async def test_falls_back_to_identity_options_role(self) -> None:
+        captured: list[dict[str, str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured.append(dict(request.url.params))
+            return httpx.Response(
+                200,
+                json={
+                    'roleCredentials': {
+                        'accessKeyId': 'AKIA',
+                        'secretAccessKey': 'sec',
+                        'sessionToken': 'tok',
+                        'expiration': 1700000000000,
+                    }
+                },
+            )
+
+        respx.get(
+            'https://portal.sso.us-east-1.amazonaws.com/federation/credentials'
+        ).mock(side_effect=handler)
+
+        class _FakeDB:
+            async def execute(
+                self,
+                _query: str,
+                _params: dict[str, object],
+                _columns: list[str],
+            ) -> list[dict[str, object]]:
+                # AwsAccount with no default_role_name — forces fallback
+                # to the identity plugin's default.
+                return [
+                    {
+                        'account_id': '"222222222222"',
+                        'role_name': None,
+                        'region': None,
+                    }
+                ]
+
+        plugin = AwsIamIcPlugin()
+        ctx = PluginContext(
+            project_id='p',
+            project_slug='proj',
+            org_slug='org',
+            environment='staging',
+            assignment_options={
+                'region': 'us-east-1',
+                'start_url': 'https://example.awsapps.com/start',
+            },
+            actor_user_id='u-1',
+        )
+        connection = IdentityCredentials(access_token='iam-ic-token')
+        result = await plugin.materialize(
+            ctx,
+            {},
+            connection,
+            db=_FakeDB(),
+            identity_options={'default_role_name': 'ImbiOperator'},
+        )
+        self.assertEqual(
+            captured[0],
+            {'account_id': '222222222222', 'role_name': 'ImbiOperator'},
+        )
+        self.assertEqual(result.extra['aws_account_id'], '222222222222')
+
 
 class RefreshTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock

@@ -17,6 +17,7 @@ import typing
 import urllib.parse
 
 import httpx
+from imbi_common.plugins.base import PluginContext
 from imbi_common.plugins.errors import (
     PluginCredentialsMissing,
     PluginTimeoutError,
@@ -43,29 +44,50 @@ class AwsCredentials(typing.NamedTuple):
     region: str
 
 
+_AWS_IDENTITY_KEYS = (
+    'aws_access_key_id',
+    'aws_secret_access_key',
+    'aws_session_token',
+    'aws_region',
+    'aws_account_id',
+)
+
+
 def resolve_credentials(
     credentials: dict[str, str],
     *,
     region: str | None = None,
+    ctx: PluginContext | None = None,
 ) -> AwsCredentials:
     """Validate the credentials dict and resolve the effective region.
 
-    The host populates ``credentials`` from one of two paths
-    (service-account static keys vs. STS-minted keys via
-    ``aws-iam-ic``); both shapes use the same well-known field names so
-    the data plugins are oblivious to source.
+    Two credential sources are supported and combined here:
 
-    Region precedence: explicit ``region`` argument (the assignment
-    option) wins over ``credentials['aws_region']`` set by the identity
-    plugin's ``materialize()``.  In the static-key path the identity
-    extras are absent so the assignment region is always used.
+    * ``credentials`` — static keys stored on the ``Plugin`` node by
+      the operator (``api_token``-style auth).
+    * ``ctx.identity.extra`` — STS keys minted by an identity plugin
+      (currently ``aws-iam-ic``).  The host attaches these to
+      :attr:`PluginContext.identity` via ``hydrate_identity`` and the
+      data plugin must consult them, since the host does not merge
+      identity creds into the ``credentials`` dict.
+
+    Identity-supplied keys take precedence when present (a connected
+    user's STS keys are always preferable to static fallbacks).
+    ``region`` argument wins over both — it's the assignment option.
 
     Raises:
         PluginCredentialsMissing: when either AWS key is missing or
             when the region cannot be resolved.
     """
-    access_key = credentials.get('aws_access_key_id') or ''
-    secret_key = credentials.get('aws_secret_access_key') or ''
+    merged: dict[str, str] = {k: v for k, v in credentials.items() if v}
+    if ctx is not None and ctx.identity is not None:
+        for key in _AWS_IDENTITY_KEYS:
+            value = ctx.identity.extra.get(key)
+            if isinstance(value, str) and value:
+                merged[key] = value
+
+    access_key = merged.get('aws_access_key_id') or ''
+    secret_key = merged.get('aws_secret_access_key') or ''
     if not access_key and not secret_key:
         raise PluginCredentialsMissing(
             'AWS credentials missing: aws_access_key_id and '
@@ -76,13 +98,13 @@ def resolve_credentials(
             'AWS credentials malformed: both aws_access_key_id and '
             'aws_secret_access_key must be provided'
         )
-    resolved_region = region or credentials.get('aws_region')
+    resolved_region = region or merged.get('aws_region')
     if not resolved_region:
         raise PluginCredentialsMissing(
             'AWS region missing: pass region explicitly or set '
             'aws_region in credentials'
         )
-    session_token = credentials.get('aws_session_token') or None
+    session_token = merged.get('aws_session_token') or None
     return AwsCredentials(
         access_key_id=access_key,
         secret_access_key=secret_key,

@@ -144,7 +144,9 @@ class SsmPlugin(ConfigurationPlugin):
         credentials: dict[str, str],
     ) -> list[ConfigKey]:
         prefix = self._prefix(ctx)
-        creds = resolve_credentials(credentials, region=assignment_region(ctx))
+        creds = resolve_credentials(
+            credentials, region=assignment_region(ctx), ctx=ctx
+        )
         timeout = assignment_timeout(ctx, default=15.0)
         keys: list[ConfigKey] = []
         next_token: str | None = None
@@ -194,7 +196,9 @@ class SsmPlugin(ConfigurationPlugin):
         keys: list[str] | None = None,
     ) -> list[ConfigKeyWithValue]:
         prefix = self._prefix(ctx)
-        creds = resolve_credentials(credentials, region=assignment_region(ctx))
+        creds = resolve_credentials(
+            credentials, region=assignment_region(ctx), ctx=ctx
+        )
         timeout = assignment_timeout(ctx, default=15.0)
         if keys is None:
             return await self._get_all_values(creds, prefix, timeout)
@@ -278,7 +282,9 @@ class SsmPlugin(ConfigurationPlugin):
                 f'Invalid SSM key {key!r}: keys must be relative '
                 "to the assignment's path_prefix"
             )
-        creds = resolve_credentials(credentials, region=assignment_region(ctx))
+        creds = resolve_credentials(
+            credentials, region=assignment_region(ctx), ctx=ctx
+        )
         timeout = assignment_timeout(ctx, default=15.0)
         ssm_type = _DATA_TYPE_TO_SSM.get(value.data_type)
         if ssm_type is None:
@@ -332,7 +338,9 @@ class SsmPlugin(ConfigurationPlugin):
         key: str,
     ) -> None:
         prefix = self._prefix(ctx)
-        creds = resolve_credentials(credentials, region=assignment_region(ctx))
+        creds = resolve_credentials(
+            credentials, region=assignment_region(ctx), ctx=ctx
+        )
         timeout = assignment_timeout(ctx, default=15.0)
         full_name = _full_name(prefix, key)
         # Deletion is idempotent: route ParameterNotFound through a

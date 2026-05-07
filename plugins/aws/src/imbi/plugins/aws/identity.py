@@ -57,7 +57,9 @@ from imbi_common.plugins.base import (
     PluginVertexLabel,
     PollingDescriptor,
 )
+from imbi_common.plugins.templates import expand_template
 
+from imbi_plugin_aws._helpers import template_vars
 from imbi_plugin_aws.errors import (
     IamIcAuthorizationPending,
     IamIcDeviceFlowExpired,
@@ -316,23 +318,77 @@ class AwsIamIcPlugin(IdentityPlugin):
         ctx: PluginContext,
         credentials: dict[str, str],
         connection: IdentityCredentials,
+        *,
+        db: typing.Any | None = None,
+        identity_options: dict[str, typing.Any] | None = None,
     ) -> IdentityCredentials:
         """Call ``GetRoleCredentials`` to mint short-lived STS keys.
 
-        Reads ``account_id`` / ``role_name`` / ``region`` from
-        ``connection.extra`` (set at connect time) and returns a new
-        :class:`IdentityCredentials` whose ``extra`` carries the STS
-        access key, secret, and session token.
+        Resolves ``(account_id, role_name, region)`` in this order:
+
+        1. The ``Environment.slug`` -> ``MAPS_TO`` -> ``AwsAccount``
+           graph walk when ``ctx.environment`` is set and ``db`` is
+           available.  This is the per-environment path: each env has
+           its own AWS account, so log searches scoped to a specific
+           env mint STS keys against that env's account.
+        2. Connect-time defaults stamped onto ``connection.extra``
+           (legacy single-account path).
+        3. Identity plugin instance ``options`` (``default_role_name``
+           in particular — operators usually have one canonical
+           role across accounts).
+
+        Falls back through the chain so a partially configured
+        deployment keeps working: an account with no
+        ``default_role_name`` still mints creds via the plugin-level
+        default, and a project with no environment query param still
+        lands on the connect-time account.
         """
+        identity_options = identity_options or {}
+        account_id, role_name, account_region = await self._resolve_account(
+            db, ctx
+        )
+
+        # Fallback: connect-time extras (legacy single-account path).
         extra = dict(connection.extra)
-        account_id = extra.get('aws_account_id')
-        role_name = extra.get('aws_role_name')
-        region = extra.get('aws_region') or self._region(ctx)
+        if not account_id:
+            account_id = extra.get('aws_account_id')
+        if not role_name:
+            role_name = extra.get('aws_role_name') or identity_options.get(
+                'default_role_name'
+            )
+
+        # Region: assignment option (data plugin) > AwsAccount.default_region
+        # > connection extras > identity plugin's region option.
+        region = (
+            ctx.assignment_options.get('region')
+            or account_region
+            or extra.get('aws_region')
+            or identity_options.get('region')
+            or self._region(ctx)
+        )
+
         if not account_id or not role_name:
             raise ValueError(
-                'AwsIamIcPlugin.materialize: connection.extra must '
-                'carry aws_account_id and aws_role_name'
+                'AwsIamIcPlugin.materialize: could not resolve '
+                f'aws_account_id / aws_role_name for environment='
+                f'{ctx.environment!r}; expected an Environment-MAPS_TO->'
+                f'AwsAccount with default_role_name, a connect-time '
+                f"extra, or an identity-plugin 'default_role_name' option"
             )
+
+        # The role name may carry template placeholders (e.g.
+        # ``${team_slug}``) so a single identity-plugin option can map
+        # to per-project permission sets.  Expansion is whitelist-driven
+        # (see imbi_common.plugins.templates) — unknown vars raise
+        # ``ValueError`` and don't silently default to empty.
+        if '${' in role_name:
+            role_name = expand_template(role_name, template_vars(ctx))
+            if not role_name:
+                raise ValueError(
+                    'AwsIamIcPlugin.materialize: role_name template '
+                    f'expanded to empty string for environment='
+                    f'{ctx.environment!r}, team_slug={ctx.team_slug!r}'
+                )
 
         async with httpx.AsyncClient(timeout=10.0) as http:
             response = await http.get(
@@ -367,6 +423,59 @@ class AwsIamIcPlugin(IdentityPlugin):
             refresh_token=connection.refresh_token,
             scopes=connection.scopes,
             extra=sts_extra,
+        )
+
+    async def _resolve_account(
+        self,
+        db: typing.Any | None,
+        ctx: PluginContext,
+    ) -> tuple[str | None, str | None, str | None]:
+        """Walk ``Environment.slug -> MAPS_TO -> AwsAccount``.
+
+        Returns ``(account_id, role_name, region)`` from the matched
+        :class:`AwsAccount`.  Any element may be ``None`` if absent;
+        the caller falls back to other sources for what's missing.
+        Returns ``(None, None, None)`` when ``db`` is not available
+        (smoke / unit harnesses) or when the environment / mapping is
+        not configured.
+
+        Operational ``db.execute`` failures are *not* swallowed: an
+        empty result is the only signal callers may treat as "no
+        mapping".  Quietly returning ``(None, None, None)`` on a real
+        DB error would mask a graph outage and let ``materialize``
+        fall back to legacy connection-level credentials, which can
+        mint a session for the *wrong* AWS account in an
+        environment-scoped deployment.
+        """
+        if db is None or not ctx.environment:
+            return None, None, None
+        query: typing.LiteralString = (
+            'MATCH (e:Environment {{slug: {env}}})'
+            '-[:MAPS_TO]->(a:AwsAccount) '
+            'RETURN a.account_id AS account_id, '
+            'a.default_role_name AS role_name, '
+            'a.default_region AS region '
+            'LIMIT 1'
+        )
+        rows = await db.execute(
+            query,
+            {'env': ctx.environment},
+            ['account_id', 'role_name', 'region'],
+        )
+        if not rows:
+            return None, None, None
+        try:
+            from imbi_common.graph import parse_agtype
+        except ImportError:
+            return None, None, None
+        row = rows[0]
+        account_id = parse_agtype(row.get('account_id'))
+        role_name = parse_agtype(row.get('role_name'))
+        region = parse_agtype(row.get('region'))
+        return (
+            str(account_id) if account_id else None,
+            str(role_name) if role_name else None,
+            str(region) if region else None,
         )
 
     async def _register_client(
