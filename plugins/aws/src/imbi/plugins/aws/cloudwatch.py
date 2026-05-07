@@ -580,12 +580,16 @@ class CloudWatchLogsPlugin(LogsPlugin):
         base_filter = self._expanded_base_filter(ctx)
         poll_interval = self._poll_interval(ctx)
 
-        # Pick a bin width that yields ~bucket_count buckets across the
-        # query range. Floor at 1s so very short ranges still aggregate.
+        # Pick a bin width that yields at most ``bucket_count`` buckets
+        # across the query range. Ceiling division (``-(-a // b)``)
+        # ensures short ranges don't blow up — e.g. a 119s window at
+        # bucket_count=60 floor-divides to 1s and produces 119 buckets;
+        # ceiling division keeps it at the requested 60.
         duration_s = max(
             1, int((query.end_time - query.start_time).total_seconds())
         )
-        bin_seconds = max(1, duration_s // max(1, bucket_count))
+        buckets = max(1, bucket_count)
+        bin_seconds = max(1, -(-duration_s // buckets))
 
         async def _run(query_string: str) -> list[list[dict[str, str]]]:
             full = (

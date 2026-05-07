@@ -1095,3 +1095,49 @@ class HistogramTestCase(unittest.IsolatedAsyncioTestCase):
         # Sibling cancellation means few polls (often zero); without
         # cancellation we'd see polling until the test timeout.
         self.assertLess(events['level_polls'], 5)
+
+    @respx.mock
+    async def test_short_window_bucket_count_uses_ceiling_division(
+        self,
+    ) -> None:
+        # 119-second window with default bucket_count=60: floor
+        # division yields 1s bins (≈119 buckets), ceiling division
+        # yields 2s bins (≈60 buckets). The query string carries the
+        # bin width so we can assert directly on it.
+        captured: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            target = request.headers['x-amz-target']
+            payload = json.loads(request.content)
+            if target.endswith('StartQuery'):
+                captured.append(payload['queryString'])
+                return httpx.Response(200, json={'queryId': 'q-1'})
+            if target.endswith('GetQueryResults'):
+                return httpx.Response(
+                    200,
+                    json={
+                        'status': 'Complete',
+                        'results': [],
+                        'statistics': {},
+                    },
+                )
+            return httpx.Response(500, text='unexpected')
+
+        respx.post(_LOGS_URL).mock(side_effect=handler)
+        query = LogQuery(
+            start_time=datetime.datetime(
+                2024, 1, 1, 0, 0, 0, tzinfo=datetime.UTC
+            ),
+            end_time=datetime.datetime(
+                2024, 1, 1, 0, 1, 59, tzinfo=datetime.UTC
+            ),
+            filters=[],
+            limit=2,
+        )
+        plugin = CloudWatchLogsPlugin()
+        await plugin.histogram(_ctx(), _creds(), query)
+        self.assertTrue(captured)
+        # All emitted query strings should bin at 2 seconds, not 1.
+        for qs in captured:
+            self.assertIn('bin(2s)', qs)
+            self.assertNotIn('bin(1s)', qs)
