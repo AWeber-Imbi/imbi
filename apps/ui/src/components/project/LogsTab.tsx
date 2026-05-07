@@ -925,7 +925,7 @@ export function LogsTab({
           style={{
             height:
               config.showHistogram && activeAssignment?.supports_histogram
-                ? 'calc(100dvh - 660px)'
+                ? 'calc(100dvh - 680px)'
                 : 'calc(100dvh - 500px)',
             minHeight: '320px',
           }}
