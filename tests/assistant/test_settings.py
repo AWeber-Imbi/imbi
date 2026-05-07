@@ -98,3 +98,51 @@ class AssistantSettingsTestCase(unittest.TestCase):
             _env_file=None,
         )
         self.assertEqual(s.model, 'claude-opus-4-20250514')
+
+    @mock.patch.dict(os.environ, {}, clear=True)
+    def test_api_prefix_empty_when_url_unset(self) -> None:
+        """Test api_prefix is empty when URL is not set."""
+        s = settings.Assistant(_env_file=None)
+        self.assertEqual(s.api_prefix, '')
+
+    @mock.patch.dict(
+        os.environ,
+        {'IMBI_ASSISTANT_URL': 'https://imbi.example.com/assistant'},
+        clear=True,
+    )
+    def test_api_prefix_from_full_url(self) -> None:
+        """Test api_prefix derived from a full URL with path."""
+        s = settings.Assistant(_env_file=None)
+        self.assertEqual(s.api_prefix, '/assistant')
+
+    @mock.patch.dict(
+        os.environ,
+        {'IMBI_ASSISTANT_URL': 'https://imbi.example.com'},
+        clear=True,
+    )
+    def test_api_prefix_empty_for_url_without_path(self) -> None:
+        """Test api_prefix is empty when URL has no path component."""
+        s = settings.Assistant(_env_file=None)
+        self.assertEqual(s.api_prefix, '')
+
+    @mock.patch.dict(
+        os.environ,
+        {'IMBI_ASSISTANT_URL': '/assistant'},
+        clear=True,
+    )
+    def test_api_prefix_from_absolute_path(self) -> None:
+        """Test api_prefix accepts an absolute path."""
+        s = settings.Assistant(_env_file=None)
+        self.assertEqual(s.api_prefix, '/assistant')
+
+    @mock.patch.dict(
+        os.environ,
+        {'IMBI_ASSISTANT_URL': 'assistant'},
+        clear=True,
+    )
+    def test_api_prefix_rejects_relative_path(self) -> None:
+        """Test api_prefix raises when URL has no scheme or leading slash."""
+        s = settings.Assistant(_env_file=None)
+        with self.assertRaises(ValueError) as ctx:
+            _ = s.api_prefix
+        self.assertIn('IMBI_ASSISTANT_URL', str(ctx.exception))

@@ -7,7 +7,7 @@ import typer
 from imbi_common import graph, lifespan, server
 
 import imbi_assistant
-from imbi_assistant import app_status, client, endpoints, mcp
+from imbi_assistant import app_status, client, endpoints, mcp, settings
 
 if TYPE_CHECKING:
     from collections import abc
@@ -42,8 +42,9 @@ def create_app() -> fastapi.FastAPI:
             _mcp_lifespan,
         ),
     )
+    prefix = settings.get_assistant_settings().api_prefix
     app.include_router(app_status.router)
-    app.include_router(endpoints.assistant_router)
+    app.include_router(endpoints.assistant_router, prefix=prefix)
     return app
 
 

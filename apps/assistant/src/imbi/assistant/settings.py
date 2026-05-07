@@ -2,6 +2,7 @@
 
 import logging
 import os
+import urllib.parse
 
 import pydantic
 import pydantic_settings
@@ -24,6 +25,35 @@ class Assistant(pydantic_settings.BaseSettings):
     max_tool_rounds: int = 10
     system_prompt: str | None = None
     api_url: str = 'http://localhost:8000'
+    # Public URL where the assistant is reachable (e.g.
+    # ``https://imbi.example.com/assistant``). The path component is used
+    # as the route prefix so routes match the Okteto ingress path.
+    url: str = pydantic.Field(
+        default='', validation_alias='IMBI_ASSISTANT_URL'
+    )
+
+    @pydantic.field_validator('url')
+    @classmethod
+    def _normalize_url(cls, value: str) -> str:
+        return value.rstrip('/')
+
+    @property
+    def api_prefix(self) -> str:
+        """Path prefix derived from the public URL's path component."""
+        if not self.url:
+            return ''
+        path = urllib.parse.urlparse(self.url).path.rstrip('/')
+        if not path:
+            return ''
+        if not path.startswith('/'):
+            msg = (
+                'IMBI_ASSISTANT_URL must include an absolute path '
+                "(e.g. 'https://imbi.example.com/assistant' or "
+                "'/assistant'); got "
+                f'{self.url!r}.'
+            )
+            raise ValueError(msg)
+        return path
 
     @property
     def api_key(self) -> str | None:

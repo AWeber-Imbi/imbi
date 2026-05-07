@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "imbi-assistant"
-version = "0.0.0"
+version = "1.0.0"
 description = "Imbi AI assistant service"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -15,7 +15,7 @@ dependencies = [
   "fastapi>=0.135.1",
   "fastmcp>=2.0.0",
   "httpx>=0.28.1",
-  "imbi-common[server]",
+  "imbi-common[databases,server]>=0.3.0",
   "pydantic~=2.12",
 ]
 
@@ -172,6 +172,3 @@ addopts = [
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
-
-[tool.uv.sources]
-imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common", rev = "main" }
