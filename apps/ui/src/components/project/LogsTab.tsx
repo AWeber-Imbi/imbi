@@ -303,7 +303,7 @@ export function LogsTab({ orgSlug, projectId }: LogsTabProps) {
         {
           cursor: cursor ?? undefined,
           end_time: datetimes.end,
-          environment: envs.length === 1 ? envs[0] : undefined,
+          environment: envs.length > 0 ? envs : undefined,
           filter: apiFilters,
           limit: 100,
           source: activeSource,
@@ -422,7 +422,7 @@ export function LogsTab({ orgSlug, projectId }: LogsTabProps) {
         {
           bucket_count: 60,
           end_time: datetimes.end,
-          environment: envs.length === 1 ? envs[0] : undefined,
+          environment: envs.length > 0 ? envs : undefined,
           filter: apiFilters,
           source: activeSource,
           start_time: datetimes.start,

@@ -258,7 +258,18 @@ function buildUrl(url: string, params?: Record<string, unknown>): string {
   if (params) {
     const searchParams = new URLSearchParams()
     for (const [key, value] of Object.entries(params)) {
-      if (value !== undefined && value !== null) {
+      if (value === undefined || value === null) continue
+      // Arrays serialize as repeated query params (?k=a&k=b) so they
+      // map cleanly to FastAPI ``list[str]`` query params.  String(arr)
+      // would join with commas and produce a single key=a,b entry that
+      // every list-based endpoint mis-parses as one element.
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (item !== undefined && item !== null) {
+            searchParams.append(key, String(item))
+          }
+        }
+      } else {
         searchParams.set(key, String(value))
       }
     }

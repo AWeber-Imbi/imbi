@@ -7,6 +7,8 @@ import { toast } from 'sonner'
 import {
   getAdminPlugin,
   getServicePluginConfiguration,
+  type IdentityPluginRef,
+  listIdentityPlugins,
   listProjectTypes,
   listServicePluginAssignments,
   patchServicePluginConfiguration,
@@ -72,6 +74,7 @@ interface DefaultOptionsCardProps {
 
 interface DraftAssignment {
   default: boolean
+  identity_plugin_id: null | string
   options: Record<string, unknown>
   project_type_slug: string
   tab: PluginTab
@@ -573,6 +576,12 @@ function ProjectTypesCard({
     staleTime: 60 * 1000,
   })
 
+  const { data: identityPlugins } = useQuery({
+    queryFn: ({ signal }) => listIdentityPlugins(orgSlug, signal),
+    queryKey: queryKeys.identityPlugins(orgSlug),
+    staleTime: 60 * 1000,
+  })
+
   // Re-seed drafts whenever the server-returned list actually changes.
   // Tracking by hash avoids stomping a user's in-progress edits on a
   // stale refetch and avoids the seeded/refetch race after save.
@@ -583,6 +592,7 @@ function ProjectTypesCard({
     setDrafts(
       existing.map((a: PluginAssignmentRow) => ({
         default: a.default,
+        identity_plugin_id: a.identity_plugin_id ?? null,
         options: a.options,
         project_type_slug: a.project_type_slug,
         tab: a.tab,
@@ -624,6 +634,7 @@ function ProjectTypesCard({
   const isDirty = useMemo(() => {
     const baseline = (existing ?? []).map((a: PluginAssignmentRow) => ({
       default: a.default,
+      identity_plugin_id: a.identity_plugin_id ?? null,
       options: a.options,
       project_type_slug: a.project_type_slug,
       tab: a.tab,
@@ -640,6 +651,7 @@ function ProjectTypesCard({
       ...prev,
       {
         default: false,
+        identity_plugin_id: null,
         options: {},
         project_type_slug: remainingPts[0].slug,
         tab: supportedTab,
@@ -719,6 +731,7 @@ function ProjectTypesCard({
                 <TableHead>Project Type</TableHead>
                 <TableHead>Tab</TableHead>
                 <TableHead>Default</TableHead>
+                <TableHead>Identity Plugin</TableHead>
                 <TableHead>Option Overrides</TableHead>
                 <TableHead className="w-12" />
               </TableRow>
@@ -769,6 +782,15 @@ function ProjectTypesCard({
                           updateDraft(idx, { default: e.target.checked })
                         }
                         type="checkbox"
+                      />
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <IdentityPluginSelect
+                        identityPlugins={identityPlugins ?? []}
+                        onChange={(next) =>
+                          updateDraft(idx, { identity_plugin_id: next })
+                        }
+                        value={draft.identity_plugin_id ?? null}
                       />
                     </TableCell>
                     <TableCell className="align-top">
@@ -824,5 +846,40 @@ function ProjectTypesCard({
         )}
       </CardContent>
     </Card>
+  )
+}
+
+const IDENTITY_NONE_VALUE = '__none__'
+
+function IdentityPluginSelect({
+  identityPlugins,
+  onChange,
+  value,
+}: {
+  identityPlugins: IdentityPluginRef[]
+  onChange: (next: null | string) => void
+  value: null | string
+}) {
+  const selectedLabel =
+    value && identityPlugins.find((ip) => ip.plugin_id === value)?.label
+  return (
+    <Select
+      onValueChange={(v) => onChange(v === IDENTITY_NONE_VALUE ? null : v)}
+      value={value ?? IDENTITY_NONE_VALUE}
+    >
+      <SelectTrigger>
+        <SelectValue placeholder="None">
+          {value ? (selectedLabel ?? value) : 'None'}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={IDENTITY_NONE_VALUE}>None</SelectItem>
+        {identityPlugins.map((ip) => (
+          <SelectItem key={ip.plugin_id} value={ip.plugin_id}>
+            {ip.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }

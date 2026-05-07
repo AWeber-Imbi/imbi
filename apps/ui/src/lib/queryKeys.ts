@@ -13,6 +13,7 @@ export const queryKeys = {
     anchorSlug: string,
     relType: string,
   ) => ['anchor-edges', kind, orgSlug, anchorSlug, relType] as const,
+  identityPlugins: (orgSlug: string) => ['identity-plugins', orgSlug] as const,
   pluginEdgesByOrg: (pluginSlug: string, relType: string, orgSlug: string) =>
     ['plugin-edges-by-org', pluginSlug, relType, orgSlug] as const,
   pluginEntities: (slug: string, label: string) =>

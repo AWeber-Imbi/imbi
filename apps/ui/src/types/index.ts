@@ -595,18 +595,21 @@ export type Permission = Schemas['Permission']
 
 export interface PluginAssignmentCreate {
   default: boolean
+  identity_plugin_id?: null | string
   options?: Record<string, unknown>
   plugin_id: string
   tab: PluginTab
 }
 export interface PluginAssignmentInput {
   default: boolean
+  identity_plugin_id?: null | string
   options: Record<string, unknown>
   project_type_slug: string
   tab: PluginTab
 }
 export interface PluginAssignmentResponse {
   default: boolean
+  identity_plugin_id?: null | string
   label: string
   options: Record<string, unknown>
   plugin_id: string
@@ -617,6 +620,7 @@ export interface PluginAssignmentResponse {
 
 export interface PluginAssignmentRow {
   default: boolean
+  identity_plugin_id?: null | string
   options: Record<string, unknown>
   project_type_name: string
   project_type_slug: string

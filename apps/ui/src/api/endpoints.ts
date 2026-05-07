@@ -1582,6 +1582,25 @@ export const listCurrentReleases = async (
   return Array.isArray(response) ? response : []
 }
 
+// Identity Plugins (org-scoped)
+export interface IdentityPluginRef {
+  label: string
+  plugin_id: string
+  plugin_slug: string
+}
+
+export const listIdentityPlugins = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<IdentityPluginRef[]> => {
+  const response = await apiClient.get<IdentityPluginRef[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/identity-plugins/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
 // Service Plugins
 export const listServicePlugins = (
   orgSlug: string,
@@ -1719,7 +1738,7 @@ export const deleteConfigurationKey = (
 export interface LogSearchParams {
   cursor?: string
   end_time?: string
-  environment?: string
+  environment?: string | string[]
   filter?: string[]
   limit?: number
   source?: string
@@ -1732,7 +1751,7 @@ export const getProjectLogsHistogram = (
   params?: {
     bucket_count?: number
     end_time?: string
-    environment?: string
+    environment?: string | string[]
     filter?: string[]
     source?: string
     start_time?: string
@@ -1751,7 +1770,7 @@ export const getProjectLogsHistogram = (
   }
   return apiClient.get<LogHistogramBucket[]>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/logs/histogram`,
-    query as Record<string, string>,
+    query,
     signal,
   )
 }
@@ -1774,7 +1793,7 @@ export const searchProjectLogs = (
   }
   return apiClient.get<LogResultResponse>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/logs/`,
-    query as Record<string, string>,
+    query,
     signal,
   )
 }
