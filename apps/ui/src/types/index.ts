@@ -638,6 +638,7 @@ export interface PluginCreate {
   label: string
   options?: Record<string, unknown>
   plugin_slug: string
+  service_application_slug?: null | string
 }
 export interface PluginCredentialField {
   description: null | string
@@ -695,6 +696,8 @@ export interface PluginOptionDef {
 // Plugin types (hand-written until api-generated.ts snapshot is refreshed)
 export interface PluginResponse {
   api_version: number
+  application_name?: null | string
+  application_slug?: null | string
   connects_users_to?: null | string
   id: string
   identity_plugin_id?: null | string
@@ -713,6 +716,9 @@ export interface PluginUpdate {
   identity_plugin_id?: null | string
   label: string
   options?: Record<string, unknown>
+  // Tri-state: omit to leave the link alone, ``null`` to clear, a slug
+  // to set/replace the linked ServiceApplication.
+  service_application_slug?: null | string
 }
 export interface PluginVertexLabel {
   // Resolved (override-or-manifest) operator-facing display fields.

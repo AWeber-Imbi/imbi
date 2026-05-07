@@ -10,6 +10,7 @@ import {
   type IdentityPluginRef,
   listIdentityPlugins,
   listProjectTypes,
+  listServiceApplications,
   listServicePluginAssignments,
   patchServicePluginConfiguration,
   replaceServicePluginAssignments,
@@ -54,6 +55,13 @@ import type {
 } from '@/types'
 
 import { ServicePluginEdgesCard } from './ServicePluginEdgesCard'
+
+interface ApplicationCardProps {
+  orgSlug: string
+  plugin: PluginResponse
+  queryClient: ReturnType<typeof useQueryClient>
+  serviceSlug: string
+}
 
 interface CredentialsCardProps {
   orgSlug: string
@@ -142,14 +150,21 @@ export function ServicePluginConfiguration({
             queryClient={queryClient}
             serviceSlug={serviceSlug}
           />
-          {manifest?.auth_type === 'api_token' && (
+          {manifest?.auth_type === 'api_token' ? (
             <CredentialsCard
               orgSlug={orgSlug}
               pluginId={plugin.id}
               queryClient={queryClient}
               serviceSlug={serviceSlug}
             />
-          )}
+          ) : manifest ? (
+            <ApplicationCard
+              orgSlug={orgSlug}
+              plugin={plugin}
+              queryClient={queryClient}
+              serviceSlug={serviceSlug}
+            />
+          ) : null}
           <DefaultOptionsCard
             manifest={manifest ?? null}
             orgSlug={orgSlug}
@@ -174,6 +189,144 @@ export function ServicePluginConfiguration({
 }
 
 // --------------------------- Project Types -----------------------------
+
+const APPLICATION_NONE_VALUE = '__none__'
+
+function ApplicationCard({
+  orgSlug,
+  plugin,
+  queryClient,
+  serviceSlug,
+}: ApplicationCardProps) {
+  // Local draft so the operator can pick from the dropdown without
+  // dispatching a save on every change. ``null`` means "no link" /
+  // clear the binding on save.
+  const initial = plugin.application_slug ?? null
+  const [draft, setDraft] = useState<null | string>(initial)
+
+  useEffect(() => {
+    setDraft(plugin.application_slug ?? null)
+  }, [plugin.id, plugin.application_slug])
+
+  const { data: applications, isLoading } = useQuery({
+    // ``usage='integration'`` is the default; the same call already
+    // appears on the OAuth2 Applications tab. Filter to apps whose
+    // service_slug matches this service so cross-service apps are
+    // excluded — the backend enforces same-service on save anyway,
+    // but pre-filtering avoids a confusing 400.
+    queryFn: ({ signal }) =>
+      listServiceApplications(orgSlug, serviceSlug, 'integration', signal),
+    queryKey: ['service-applications', orgSlug, serviceSlug, 'integration'],
+    staleTime: 30 * 1000,
+  })
+
+  // The list endpoint already restricts to apps registered to this
+  // service, then folds in any global login apps as ``is_global=true``.
+  // Drop the latter — they're login-providers from a different org and
+  // can't legally back this Plugin's outbound credentials.
+  const sameServiceApps = useMemo(
+    () => (applications ?? []).filter((a) => !a.is_global),
+    [applications],
+  )
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      updateServicePlugin(orgSlug, serviceSlug, plugin.id, {
+        label: plugin.label,
+        options: plugin.options,
+        // Tri-state: ``null`` clears, a string sets/replaces. Omitting
+        // would leave the old link in place — never what the operator
+        // who just changed the dropdown wants.
+        service_application_slug: draft,
+      }),
+    onError: (err) => {
+      toast.error(extractApiErrorDetail(err) ?? 'Failed to link application')
+    },
+    onSuccess: () => {
+      toast.success(
+        draft === null ? 'Application unlinked' : 'Application linked',
+      )
+      void queryClient.invalidateQueries({
+        queryKey: ['service-plugins', orgSlug, serviceSlug],
+      })
+    },
+  })
+
+  const dirty = (draft ?? null) !== (initial ?? null)
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between px-6 py-4">
+        <div>
+          <CardTitle>Application</CardTitle>
+          <CardDescription>
+            Picks the OAuth2 application this plugin uses for client_id and
+            client_secret. Edit the credentials themselves on the Applications
+            tab. This setting is unrelated to using the app as an Imbi login
+            provider.
+          </CardDescription>
+        </div>
+        {dirty && (
+          <Button
+            disabled={saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
+            size="sm"
+          >
+            {saveMutation.isPending ? 'Saving…' : 'Save'}
+          </Button>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-2 px-6 pb-6">
+        <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+          <Label htmlFor="plugin-application">
+            Application
+            <span className="ml-1 text-destructive">*</span>
+          </Label>
+          {isLoading ? (
+            <LoadingState label="Loading…" />
+          ) : (
+            <Select
+              onValueChange={(v) =>
+                setDraft(v === APPLICATION_NONE_VALUE ? null : v)
+              }
+              value={draft ?? APPLICATION_NONE_VALUE}
+            >
+              <SelectTrigger id="plugin-application">
+                <SelectValue placeholder="Select an application…">
+                  {draft
+                    ? (sameServiceApps.find((a) => a.slug === draft)?.name ??
+                      plugin.application_name ??
+                      draft)
+                    : 'None'}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={APPLICATION_NONE_VALUE}>None</SelectItem>
+                {sameServiceApps.map((a) => (
+                  <SelectItem key={a.slug} value={a.slug}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+        {!isLoading && sameServiceApps.length === 0 && (
+          <p className="text-xs text-secondary">
+            No OAuth2 applications are registered to this service yet. Add one
+            on the Applications tab before linking it here.
+          </p>
+        )}
+        {draft === null && initial !== null && (
+          <p className="text-xs text-destructive">
+            Saving will clear the link. The plugin will fail with
+            "PluginCredentialsMissing" until another application is linked.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
 
 function CredentialsCard({
   orgSlug,
