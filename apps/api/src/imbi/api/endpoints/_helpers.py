@@ -98,6 +98,40 @@ async def update_membership_role(
         )
 
 
+async def lookup_project_slugs(
+    db: graph.Graph,
+    project_id: str,
+) -> tuple[str, str | None]:
+    """Look up the project's slug and the slug of its owning team.
+
+    Returns ``('', None)`` on lookup failure or missing project — these
+    are template-only inputs (never authorization-relevant) and audit
+    writes also tolerate an empty slug.
+    """
+    query: typing.LiteralString = (
+        'MATCH (p:Project {{id: {project_id}}}) '
+        'OPTIONAL MATCH (p)-[:OWNED_BY]->(t:Team) '
+        'RETURN p.slug AS slug, t.slug AS team_slug'
+    )
+    try:
+        records = await db.execute(
+            query,
+            {'project_id': project_id},
+            ['slug', 'team_slug'],
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.debug('Project slug lookup failed', exc_info=True)
+        return '', None
+    if not records:
+        return '', None
+    slug_raw = graph.parse_agtype(records[0]['slug'])
+    team_raw = graph.parse_agtype(records[0].get('team_slug'))
+    return (
+        str(slug_raw) if slug_raw else '',
+        str(team_raw) if team_raw else None,
+    )
+
+
 def extract_role_slug(
     operations: list[json_patch.PatchOperation],
 ) -> str:

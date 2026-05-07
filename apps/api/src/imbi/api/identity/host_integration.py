@@ -38,6 +38,8 @@ async def attach_identity(
     ctx: PluginContext,
     resolved: ResolvedPlugin,
     auth: permissions.AuthContext,
+    *,
+    identity_options: dict[str, typing.Any] | None = None,
 ) -> PluginContext:
     """Hydrate ``ctx.identity`` for a plugin call.
 
@@ -52,6 +54,10 @@ async def attach_identity(
     ``identity_required`` shape (401 +
     ``WWW-Authenticate: Imbi-Identity plugin_id=<id>``) when the actor
     has no active connection.
+
+    ``identity_options`` lets a multi-call host (e.g. multi-env log
+    fan-out) pre-load the identity plugin's ``Plugin.options`` once
+    and share them across N attaches instead of re-querying per call.
     """
     actor_user_id = auth.user.id if auth.user else None
     ctx = ctx.model_copy(update={'actor_user_id': actor_user_id})
@@ -59,7 +65,10 @@ async def attach_identity(
         return ctx
     try:
         return await identity_resolution.hydrate_identity(
-            db, ctx, resolved.identity_plugin_id
+            db,
+            ctx,
+            resolved.identity_plugin_id,
+            identity_options=identity_options,
         )
     except identity_errors.IdentityRequiredError as exc:
         raise _identity_required_response(exc) from exc

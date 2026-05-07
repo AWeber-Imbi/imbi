@@ -19,6 +19,7 @@ from imbi_api.auth import login_providers, permissions
 from imbi_api.domain import models
 from imbi_api.graph_sql import props_template, set_clause
 from imbi_api.plugins import parse_options as _parse_options
+from imbi_api.plugins.assignments import validate_identity_plugin_ids
 from imbi_api.plugins.credentials import (
     get_plugin_configuration_keys,
     patch_plugin_configuration,
@@ -484,6 +485,7 @@ class _AssignmentInput(pydantic.BaseModel):
     tab: typing.Literal['configuration', 'logs']
     default: bool = False
     options: dict[str, typing.Any] = {}
+    identity_plugin_id: str | None = None
 
 
 class _AssignmentRow(pydantic.BaseModel):
@@ -492,6 +494,7 @@ class _AssignmentRow(pydantic.BaseModel):
     tab: typing.Literal['configuration', 'logs']
     default: bool
     options: dict[str, typing.Any]
+    identity_plugin_id: str | None = None
 
 
 async def _list_assignments(
@@ -517,6 +520,12 @@ async def _list_assignments(
         edge: dict[str, typing.Any] = (  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType]
             graph.parse_agtype(r.get('edge', '{}')) or {}
         )
+        raw_identity = edge.get('identity_plugin_id')
+        identity_plugin_id = (
+            str(raw_identity)
+            if isinstance(raw_identity, str) and raw_identity
+            else None
+        )
         rows.append(
             _AssignmentRow(
                 project_type_slug=pt.get('slug', ''),
@@ -524,6 +533,7 @@ async def _list_assignments(
                 tab=edge.get('tab', 'configuration'),
                 default=bool(edge.get('default', False)),
                 options=_parse_options(edge.get('options')),
+                identity_plugin_id=identity_plugin_id,
             )
         )
     return rows
@@ -626,6 +636,14 @@ async def replace_plugin_assignments(
                 detail='One or more project_type_slug values are invalid',
             )
 
+        await validate_identity_plugin_ids(
+            db,
+            org_slug,
+            sorted(
+                {a.identity_plugin_id for a in body if a.identity_plugin_id}
+            ),
+        )
+
     delete_query: typing.LiteralString = """
     MATCH (pt:ProjectType)
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
@@ -647,11 +665,13 @@ async def replace_plugin_assignments(
     """
 
     for a in body:
-        edge_props = {
+        edge_props: dict[str, typing.Any] = {
             'tab': a.tab,
             'default': a.default,
             'options': json.dumps(a.options),
         }
+        if a.identity_plugin_id:
+            edge_props['identity_plugin_id'] = a.identity_plugin_id
         if a.default:
             await db.execute(
                 clear_default_query,

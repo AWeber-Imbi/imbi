@@ -12,6 +12,7 @@ from imbi_api.graph_sql import props_template
 from imbi_api.plugins.assignments import (
     PluginAssignmentRow,
     build_assignment_response,
+    validate_identity_plugin_ids,
     validate_one_default_per_tab,
 )
 
@@ -107,6 +108,7 @@ async def replace_project_plugins(
             tab=a.tab,
             default=a.default,
             options=a.options,
+            identity_plugin_id=a.identity_plugin_id,
         )
         for a in assignments
     ]
@@ -146,6 +148,14 @@ async def replace_project_plugins(
                 detail='One or more plugin IDs are invalid',
             )
 
+        await validate_identity_plugin_ids(
+            db,
+            org_slug,
+            sorted(
+                {iid for row in rows if (iid := row.get('identity_plugin_id'))}
+            ),
+        )
+
     # Scope mutations to the org via the project's team→org chain so a
     # caller from another org can't modify edges by guessing project_id.
     delete_query: typing.LiteralString = """
@@ -163,11 +173,14 @@ async def replace_project_plugins(
     )
 
     for row in rows:
-        edge_props = {
+        edge_props: dict[str, typing.Any] = {
             'tab': row['tab'],
             'default': row['default'],
             'options': json.dumps(row['options']),
         }
+        identity_id = row.get('identity_plugin_id')
+        if identity_id:
+            edge_props['identity_plugin_id'] = identity_id
         create_query: str = (
             'MATCH (proj:Project {{id: {project_id}}})'
             ' -[:OWNED_BY]->(:Team)-[:BELONGS_TO]->'

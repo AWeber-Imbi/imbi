@@ -841,6 +841,7 @@ class PluginAssignmentCreate(pydantic.BaseModel):
     tab: typing.Literal['configuration', 'logs']
     default: bool = False
     options: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
+    identity_plugin_id: str | None = None
 
 
 class PluginAssignmentResponse(pydantic.BaseModel):
@@ -855,6 +856,7 @@ class PluginAssignmentResponse(pydantic.BaseModel):
     source: typing.Literal['project', 'project_type', 'merged'] = (
         'project_type'
     )
+    identity_plugin_id: str | None = None
 
 
 # -- Configuration / Logs response models ---------------------------------
@@ -900,6 +902,7 @@ class LogResultResponse(pydantic.BaseModel):
     entries: list[LogEntryResponse]
     next_cursor: str | None = None
     total: int | None = None
+    warnings: list[str] = []
 
 
 class OAuth2TokenResponse(pydantic.BaseModel):

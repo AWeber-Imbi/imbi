@@ -15,6 +15,7 @@ from imbi_common.plugins.registry import get_plugin
 
 from imbi_api.identity import errors as identity_errors
 from imbi_api.identity import repository
+from imbi_api.plugins import parse_options
 
 LOGGER = logging.getLogger(__name__)
 
@@ -28,6 +29,8 @@ async def hydrate_identity(
     db: graph.Graph,
     ctx: PluginContext,
     identity_plugin_id: str,
+    *,
+    identity_options: dict[str, typing.Any] | None = None,
 ) -> PluginContext:
     """Load the actor's connection for ``identity_plugin_id`` and attach
     materialized credentials to ``ctx.identity``.
@@ -83,10 +86,15 @@ async def hydrate_identity(
         scopes=connection.scopes,
     )
 
+    if identity_options is None:
+        identity_options = await load_plugin_options(db, identity_plugin_id)
+
     materialized = await handler.materialize(
         ctx,
         {},
         base_credentials,
+        db=db,
+        identity_options=identity_options,
     )
 
     return ctx.model_copy(update={'identity': materialized})
@@ -102,6 +110,24 @@ async def _plugin_slug(db: graph.Graph, plugin_id: str) -> str | None:
         return None
     parsed = graph.parse_agtype(rows[0]['slug'])
     return str(parsed) if parsed is not None else None
+
+
+async def load_plugin_options(
+    db: graph.Graph, plugin_id: str
+) -> dict[str, typing.Any]:
+    """Return the identity plugin instance's ``Plugin.options`` dict.
+
+    Materialize implementations are expected to validate the keys they
+    need; an empty dict is returned when the blob is absent.
+    """
+    query: typing.LiteralString = (
+        'MATCH (p:Plugin {{id: {plugin_id}}}) '
+        'RETURN p.options AS options LIMIT 1'
+    )
+    rows = await db.execute(query, {'plugin_id': plugin_id}, ['options'])
+    if not rows:
+        return {}
+    return parse_options(graph.parse_agtype(rows[0]['options']))
 
 
 def is_active(connection_expires_at: datetime.datetime | None) -> bool:

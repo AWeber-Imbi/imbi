@@ -21,6 +21,7 @@ from imbi_common.plugins.errors import (
 
 from imbi_api.auth import permissions
 from imbi_api.domain import models
+from imbi_api.endpoints._helpers import lookup_project_slugs
 from imbi_api.identity.host_integration import attach_identity
 from imbi_api.plugins import call_with_timeout
 from imbi_api.plugins.credentials import get_plugin_credentials
@@ -77,27 +78,9 @@ async def _lookup_project_slug(
     db: graph.Graph,
     project_id: str,
 ) -> str:
-    """Look up the project's slug for audit-log writes.
-
-    Returns an empty string if the project can't be matched — the audit
-    record still wins more value than failing the user's write.
-    """
-    query: typing.LiteralString = (
-        'MATCH (p:Project {{id: {project_id}}}) RETURN p.slug AS slug'
-    )
-    try:
-        records = await db.execute(
-            query,
-            {'project_id': project_id},
-            ['slug'],
-        )
-    except Exception:  # noqa: BLE001
-        LOGGER.debug('Project slug lookup failed', exc_info=True)
-        return ''
-    if not records:
-        return ''
-    parsed = graph.parse_agtype(records[0]['slug'])
-    return str(parsed) if parsed else ''
+    """Look up the project's slug for audit-log writes."""
+    slug, _ = await lookup_project_slugs(db, project_id)
+    return slug
 
 
 @project_configuration_router.get('/')
@@ -116,10 +99,12 @@ async def get_configuration(
 ) -> list[models.ConfigKeyResponse]:
     """List configuration keys for a project via the assigned plugin."""
     resolved = await resolve_plugin(db, project_id, 'configuration', source)
+    project_slug, team_slug = await lookup_project_slugs(db, project_id)
     ctx = PluginContext(
         project_id=project_id,
-        project_slug='',
+        project_slug=project_slug,
         org_slug=org_slug,
+        team_slug=team_slug,
         environment=environment,
         assignment_options=resolved.options,
     )
@@ -192,10 +177,12 @@ async def fetch_values(
 ) -> list[models.ConfigKeyValueResponse]:
     """Fetch values for specific configuration keys."""
     resolved = await resolve_plugin(db, project_id, 'configuration', source)
+    project_slug, team_slug = await lookup_project_slugs(db, project_id)
     ctx = PluginContext(
         project_id=project_id,
-        project_slug='',
+        project_slug=project_slug,
         org_slug=org_slug,
+        team_slug=team_slug,
         environment=environment,
         assignment_options=resolved.options,
     )
@@ -246,10 +233,12 @@ async def set_configuration_value(
 ) -> models.ConfigKeyResponse:
     """Set a configuration value via the assigned plugin."""
     resolved = await resolve_plugin(db, project_id, 'configuration', source)
+    project_slug, team_slug = await lookup_project_slugs(db, project_id)
     ctx = PluginContext(
         project_id=project_id,
-        project_slug='',
+        project_slug=project_slug,
         org_slug=org_slug,
+        team_slug=team_slug,
         environment=environment,
         assignment_options=resolved.options,
     )
@@ -307,10 +296,12 @@ async def delete_configuration_key(
 ) -> None:
     """Delete a configuration key via the assigned plugin."""
     resolved = await resolve_plugin(db, project_id, 'configuration', source)
+    project_slug, team_slug = await lookup_project_slugs(db, project_id)
     ctx = PluginContext(
         project_id=project_id,
-        project_slug='',
+        project_slug=project_slug,
         org_slug=org_slug,
+        team_slug=team_slug,
         environment=environment,
         assignment_options=resolved.options,
     )

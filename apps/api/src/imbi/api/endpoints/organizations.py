@@ -15,6 +15,7 @@ from imbi_api.relationships import build_relationships
 
 from .environments import environments_router
 from .events import events_project_router
+from .identity_plugins import identity_plugins_router
 from .link_definitions import link_definitions_router
 from .note_templates import note_templates_router
 from .notes import notes_project_router, notes_router
@@ -101,6 +102,10 @@ organizations_router.include_router(
 organizations_router.include_router(
     service_plugins_router,
     prefix='/{org_slug}/third-party-services/{slug}/plugins',
+)
+organizations_router.include_router(
+    identity_plugins_router,
+    prefix='/{org_slug}/identity-plugins',
 )
 organizations_router.include_router(
     project_type_plugins_router,

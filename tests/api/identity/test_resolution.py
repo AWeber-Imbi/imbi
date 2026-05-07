@@ -185,6 +185,11 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
             ),
             mock.patch.object(
                 resolution,
+                'load_plugin_options',
+                new=mock.AsyncMock(return_value={'k': 'v'}),
+            ),
+            mock.patch.object(
+                resolution,
                 'get_plugin',
                 return_value=entry,
             ),
@@ -196,6 +201,10 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
         # ctx.model_copy is patched to capture the update kwargs.
         self.assertEqual(result, ('ctx-with', {'identity': materialized}))
         handler.materialize.assert_awaited_once()
+        # The new identity_options + db kwargs are forwarded.
+        _args, kwargs = handler.materialize.call_args
+        self.assertEqual(kwargs.get('identity_options'), {'k': 'v'})
+        self.assertIs(kwargs.get('db'), self.db)
 
 
 class PluginSlugHelperTestCase(unittest.IsolatedAsyncioTestCase):
