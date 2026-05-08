@@ -627,15 +627,33 @@ class EventTestCase(unittest.TestCase):
         self.assertEqual(event.metadata, {})
         self.assertEqual(event.payload, {})
 
+    def test_id_defaults_to_nonempty_string(self) -> None:
+        event = self._make()
+        self.assertIsInstance(event.id, str)
+        self.assertNotEqual(event.id, '')
+
+    def test_id_is_unique_per_instance(self) -> None:
+        a = self._make()
+        b = self._make()
+        self.assertNotEqual(a.id, b.id)
+
+    def test_type_defaults_to_empty_string(self) -> None:
+        event = self._make()
+        self.assertEqual(event.type, '')
+
     def test_optional_fields_can_be_set(self) -> None:
         now = datetime.datetime.now(datetime.UTC)
         event = self._make(
+            id='custom-id',
             recorded_at=now,
+            type='deployment-status',
             attributed_to='user@example.com',
             metadata={'source': 'webhook'},
             payload={'action': 'opened', 'number': 42},
         )
+        self.assertEqual(event.id, 'custom-id')
         self.assertEqual(event.recorded_at, now)
+        self.assertEqual(event.type, 'deployment-status')
         self.assertEqual(event.attributed_to, 'user@example.com')
         self.assertEqual(event.metadata, {'source': 'webhook'})
         self.assertEqual(event.payload, {'action': 'opened', 'number': 42})
@@ -651,8 +669,10 @@ class EventTestCase(unittest.TestCase):
         event = self._make()
         keys = list(event.model_dump(by_alias=True).keys())
         expected = [
+            'id',
             'project_id',
             'recorded_at',
+            'type',
             'third_party_service',
             'attributed_to',
             'metadata',

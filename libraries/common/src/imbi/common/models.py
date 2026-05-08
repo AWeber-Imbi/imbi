@@ -584,10 +584,12 @@ class OperationLog(pydantic.BaseModel):
 class Event(pydantic.BaseModel):
     """A third-party service event recorded in ClickHouse."""
 
+    id: str = pydantic.Field(default_factory=nanoid.generate)
     project_id: str
     recorded_at: datetime.datetime = pydantic.Field(
         default_factory=lambda: datetime.datetime.now(datetime.UTC),
     )
+    type: str = ''
     third_party_service: str
     attributed_to: str | None = None
     metadata: dict[str, typing.Any] = {}

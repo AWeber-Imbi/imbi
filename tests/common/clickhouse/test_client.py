@@ -651,8 +651,10 @@ class EventsSchemaTestCase(unittest.TestCase):
         schemata = self._load_schemata()
         ddl = schemata['events']['query']
         expected_columns = [
+            'id',
             'project_id',
             'recorded_at',
+            'type',
             'third_party_service',
             'attributed_to',
             'metadata',
