@@ -25,20 +25,26 @@ docker:
         return 1
     }
     docker compose up -d --wait || (docker compose logs && false)
+    docker compose exec -T clickhouse clickhouse client \
+        --user default --password password \
+        -q "CREATE DATABASE IF NOT EXISTS imbi"
     pg_port=$(get_port postgres 5432)
     valkey_port=$(get_port valkey 6379)
+    clickhouse_port=$(get_port clickhouse 8123)
     test_host="${TEST_HOST:-127.0.0.1}"
     # Preserve any user-managed lines in .env (e.g. ACTIONS_IMBI_URL,
     # ACTIONS_IMBI_TOKEN) by stripping only the docker-managed entries
     # and rewriting the file with the fresh ports.
     preserved=""
     if [ -f .env ]; then
-        preserved="$(grep -vE '^(POSTGRES_URL|VALKEY_URL)=' .env || true)"
+        preserved="$(grep -vE '^(POSTGRES_URL|VALKEY_URL|CLICKHOUSE_URL)=' .env || true)"
     fi
     {
         printf 'POSTGRES_URL="postgresql://postgres:secret@%s:%s/imbi"\n' \
             "$test_host" "$pg_port"
         printf 'VALKEY_URL="valkey://%s:%s"\n' "$test_host" "$valkey_port"
+        printf 'CLICKHOUSE_URL="clickhouse+http://default:password@%s:%s/imbi"\n' \
+            "$test_host" "$clickhouse_port"
         if [ -n "$preserved" ]; then
             printf '%s\n' "$preserved"
         fi
