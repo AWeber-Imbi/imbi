@@ -4910,6 +4910,11 @@ export interface components {
              * @description Optional override for the identity plugin slug used to resolve the Imbi user; falls back to identity plugins attached to the third-party service when unset.
              */
             identity_plugin_slug?: string | null;
+            /**
+             * Event Type Selector
+             * @description Resolves the activity-feed event type for each webhook. Values starting with "/" are JSON pointers evaluated against the request body; otherwise the value is treated as an HTTP header name (case-insensitive). When the header is absent, the literal selector value is used as the label.
+             */
+            event_type_selector?: string | null;
             /** Rules */
             rules?: components["schemas"]["WebhookRuleCreate"][];
         };
@@ -4940,6 +4945,8 @@ export interface components {
             user_subject_selector?: string | null;
             /** Identity Plugin Slug */
             identity_plugin_slug?: string | null;
+            /** Event Type Selector */
+            event_type_selector?: string | null;
             /**
              * Rules
              * @default []
@@ -5016,6 +5023,11 @@ export interface components {
              * @description Optional override for the identity plugin slug used to resolve the Imbi user; falls back to identity plugins attached to the third-party service when unset.
              */
             identity_plugin_slug?: string | null;
+            /**
+             * Event Type Selector
+             * @description Resolves the activity-feed event type for each webhook. Values starting with "/" are JSON pointers evaluated against the request body; otherwise the value is treated as an HTTP header name (case-insensitive). When the header is absent, the literal selector value is used as the label.
+             */
+            event_type_selector?: string | null;
             /** Rules */
             rules?: components["schemas"]["WebhookRuleCreate"][];
         };
