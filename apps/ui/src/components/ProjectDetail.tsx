@@ -336,7 +336,6 @@ export function ProjectDetail({
       ? [{ id: 'configuration' as const, label: 'Configuration' }]
       : []),
     { id: 'dependencies', label: 'Dependencies' },
-    ...(hasLogsPlugin ? [{ id: 'logs' as const, label: 'Logs' }] : []),
     {
       id: 'documents',
       label:
@@ -344,6 +343,7 @@ export function ProjectDetail({
           ? `Documents (${projectDocuments.length})`
           : 'Documents',
     },
+    ...(hasLogsPlugin ? [{ id: 'logs' as const, label: 'Logs' }] : []),
     { id: 'operations-log', label: 'Operations Log' },
     {
       id: 'relationships',
