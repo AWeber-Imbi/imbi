@@ -13,11 +13,11 @@ name = [
   "Blueprint",
   "ClientCredential",
   "Conversation",
+  "DocumentTemplate",
   "Environment",
   "IdentityConnection",
   "LinkDefinition",
   "Message",
-  "NoteTemplate",
   "OAuthIdentity",
   "Organization",
   "Permission",
@@ -98,7 +98,7 @@ vlabel = "Message"
 attributes = ["conversation_id"]
 
 [[vlabel_indexes]]
-vlabel = "NoteTemplate"
+vlabel = "DocumentTemplate"
 attributes = ["slug"]
 
 [[vlabel_indexes]]

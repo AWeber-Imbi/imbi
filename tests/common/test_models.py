@@ -405,16 +405,16 @@ class ProjectModelTestCase(unittest.TestCase):
             )
 
 
-class NoteTemplateModelTestCase(unittest.TestCase):
-    """Test cases for NoteTemplate model."""
+class DocumentTemplateModelTestCase(unittest.TestCase):
+    """Test cases for DocumentTemplate model."""
 
     def _org(self) -> models.Organization:
         return models.Organization(name='Org', slug='org')
 
-    def test_note_template_creation(self) -> None:
+    def test_document_template_creation(self) -> None:
         org = self._org()
         adr = models.Tag(name='ADR', slug='adr', organization=org)
-        template = models.NoteTemplate(
+        template = models.DocumentTemplate(
             name='ADR',
             slug='adr',
             description='Context · Decision · Trade-offs',
@@ -432,8 +432,8 @@ class NoteTemplateModelTestCase(unittest.TestCase):
         self.assertEqual(template.project_type_slugs, ['http-api'])
         self.assertEqual(template.sort_order, 10)
 
-    def test_note_template_defaults(self) -> None:
-        template = models.NoteTemplate(
+    def test_document_template_defaults(self) -> None:
+        template = models.DocumentTemplate(
             name='Runbook',
             slug='runbook',
             organization=self._org(),
@@ -444,9 +444,9 @@ class NoteTemplateModelTestCase(unittest.TestCase):
         self.assertEqual(template.sort_order, 0)
         self.assertIsNone(template.title)
 
-    def test_note_template_requires_organization(self) -> None:
+    def test_document_template_requires_organization(self) -> None:
         with self.assertRaises(pydantic.ValidationError):
-            models.NoteTemplate(name='ADR', slug='adr')
+            models.DocumentTemplate(name='ADR', slug='adr')
 
 
 class OperationLogTestCase(unittest.TestCase):

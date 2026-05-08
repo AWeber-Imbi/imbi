@@ -13,6 +13,8 @@ __all__ = [
     'BlueprintEdge',
     'BlueprintFilter',
     'DeploymentEvent',
+    'Document',
+    'DocumentTemplate',
     'Edge',
     'Embeddable',
     'Embedding',
@@ -22,8 +24,6 @@ __all__ = [
     'IdentityConnection',
     'LinkDefinition',
     'Node',
-    'Note',
-    'NoteTemplate',
     'OperationLog',
     'Organization',
     'Plugin',
@@ -399,11 +399,11 @@ class Tag(Node):
     organization: BelongsToOrganization
 
 
-class Note(GraphModel):
-    """A free-form, taggable note attached to a ``Project``.
+class Document(GraphModel):
+    """A free-form, taggable document attached to a ``Project``.
 
     ``content`` is markdown and is embedded so future semantic search
-    can surface notes alongside other corpus content.
+    can surface documents alongside other corpus content.
 
     """
 
@@ -425,10 +425,10 @@ class Note(GraphModel):
     is_pinned: bool = False
 
 
-class NoteTemplate(Node):
-    """Reusable starter content for a project ``Note``.
+class DocumentTemplate(Node):
+    """Reusable starter content for a project ``Document``.
 
-    Templates are scoped to an organization and seed a new note's
+    Templates are scoped to an organization and seed a new document's
     title, content, and tag set. ``project_type_slugs`` restricts
     which project types may use the template; an empty list means
     the template applies to every project type in the organization.
