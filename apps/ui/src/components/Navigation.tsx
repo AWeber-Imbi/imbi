@@ -42,7 +42,6 @@ interface NavigationProps {
   onNewDeployment?: () => void
   onNewOpsEntry?: () => void
   onNewProject?: () => void
-  onViewChange?: (view: string) => void
 }
 
 export function Navigation({
@@ -50,7 +49,6 @@ export function Navigation({
   onNewDeployment,
   onNewOpsEntry,
   onNewProject,
-  onViewChange,
 }: NavigationProps) {
   const { isDarkMode, toggleTheme } = useTheme()
   const { logout, user } = useAuth()
@@ -268,7 +266,13 @@ export function Navigation({
                 </div>
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onViewChange?.('user-profile')}>
+              <DropdownMenuItem
+                disabled={!user?.email}
+                onClick={() =>
+                  user?.email &&
+                  navigate(`/users/${encodeURIComponent(user.email)}`)
+                }
+              >
                 <UserCircle className="mr-2 h-4 w-4" />
                 <span>Profile</span>
               </DropdownMenuItem>

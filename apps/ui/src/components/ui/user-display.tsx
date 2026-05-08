@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+
 import { cn } from '@/lib/utils'
 
 import { Gravatar } from './gravatar'
@@ -7,6 +9,11 @@ interface Props {
   displayNames?: Map<string, string>
   email: string
   hideName?: boolean
+  /**
+   * When true (default), wraps the chip in a link to /users/:email so the
+   * user's profile page is reachable from any opslog/note/release row.
+   */
+  linkToProfile?: boolean
   size?: number
   textClassName?: string
   title?: string
@@ -21,16 +28,14 @@ export function UserDisplay({
   displayNames,
   email,
   hideName = false,
+  linkToProfile = true,
   size = 18,
   textClassName,
   title,
 }: Props) {
   const name = displayNames?.get(email) ?? email.split('@')[0] ?? email
-  return (
-    <span
-      className={cn('inline-flex items-center gap-1.5 truncate', className)}
-      title={title ?? name}
-    >
+  const body = (
+    <>
       <Gravatar
         className="flex-shrink-0 rounded-full"
         email={email}
@@ -39,6 +44,29 @@ export function UserDisplay({
       {!hideName && (
         <span className={cn('truncate', textClassName)}>{name}</span>
       )}
+    </>
+  )
+  if (linkToProfile && email) {
+    return (
+      <Link
+        className={cn(
+          'inline-flex items-center gap-1.5 truncate hover:underline',
+          className,
+        )}
+        onClick={(event) => event.stopPropagation()}
+        title={title ?? name}
+        to={`/users/${encodeURIComponent(email)}`}
+      >
+        {body}
+      </Link>
+    )
+  }
+  return (
+    <span
+      className={cn('inline-flex items-center gap-1.5 truncate', className)}
+      title={title ?? name}
+    >
+      {body}
     </span>
   )
 }

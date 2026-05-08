@@ -35,6 +35,11 @@ const ReportsPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 )
+const UserProfilePage = lazy(() =>
+  import('./pages/UserProfile/UserProfilePage').then((m) => ({
+    default: m.UserProfilePage,
+  })),
+)
 const LoginPage = lazy(() =>
   import('./pages/LoginPage').then((m) => ({ default: m.LoginPage })),
 )
@@ -134,6 +139,14 @@ function App() {
                     </AdminProtectedRoute>
                   }
                   path="/admin/:section?/:slug?/:action?"
+                />
+                <Route
+                  element={
+                    <ProtectedRoute>
+                      <UserProfilePage />
+                    </ProtectedRoute>
+                  }
+                  path="/users/:email"
                 />
                 <Route
                   element={<Navigate replace to="/operations-log" />}
