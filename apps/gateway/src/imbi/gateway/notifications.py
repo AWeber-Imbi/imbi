@@ -20,6 +20,35 @@ ActionFunction = typing.Callable[
     [str, str, typing.Any, str | None, str], abc.Awaitable[None]
 ]
 
+#: Headers that may carry credentials or webhook signatures. These are
+#: replaced with ``'[redacted]'`` before persisting ``metadata.headers``
+#: so the activity-feed event row never stores secrets in ClickHouse.
+_SENSITIVE_HEADERS = frozenset(
+    {
+        'authorization',
+        'cookie',
+        'set-cookie',
+        'proxy-authorization',
+        'x-hub-signature',
+        'x-hub-signature-256',
+        'x-gitlab-token',
+        'x-pagerduty-signature',
+        'x-sonar-webhook-hmac-sha256',
+    }
+)
+
+
+def _safe_headers(headers: abc.Mapping[str, str]) -> dict[str, str]:
+    """Return a redacted copy of ``headers`` for persisted metadata.
+
+    Sensitive header values (authorization, cookies, webhook signatures)
+    are replaced with ``'[redacted]'`` so secrets never reach ClickHouse.
+    """
+    return {
+        key: ('[redacted]' if key.lower() in _SENSITIVE_HEADERS else value)
+        for key, value in headers.items()
+    }
+
 
 class WebhookRule(pydantic.BaseModel):
     handler: pydantic.ImportString[ActionFunction]
@@ -175,7 +204,7 @@ async def process_notification(
             )
             metadata: dict[str, typing.Any] = {
                 'webhook_id': webhook_id,
-                'headers': dict(request.headers),
+                'headers': _safe_headers(request.headers),
             }
             payload = _payload_dict(body)
             events = [

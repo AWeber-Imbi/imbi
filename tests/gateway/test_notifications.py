@@ -784,3 +784,57 @@ class ResolveEventTypeUnitTests(unittest.IsolatedAsyncioTestCase):
             'x-github-event',
             _resolve_event_type('x-github-event', {}, {'x-github-event': ''}),
         )
+
+
+_safe_headers = (
+    notifications._safe_headers  # pyright: ignore[reportPrivateUsage]
+)
+
+
+class SafeHeadersUnitTests(helpers.TestCase):
+    """Unit tests for the `_safe_headers` redaction helper."""
+
+    def test_non_sensitive_headers_pass_through(self) -> None:
+        self.assertEqual(
+            {
+                'content-type': 'application/json',
+                'x-github-event': 'pull_request',
+            },
+            _safe_headers(
+                {
+                    'content-type': 'application/json',
+                    'x-github-event': 'pull_request',
+                }
+            ),
+        )
+
+    def test_authorization_is_redacted(self) -> None:
+        self.assertEqual(
+            {'authorization': '[redacted]'},
+            _safe_headers({'authorization': 'Bearer s3cret'}),
+        )
+
+    def test_signature_headers_are_redacted(self) -> None:
+        result = _safe_headers(
+            {
+                'X-Hub-Signature-256': 'sha256=deadbeef',
+                'X-PagerDuty-Signature': 'v1=abcd',
+                'X-Sonar-Webhook-HMAC-SHA256': 'feedface',
+            }
+        )
+        self.assertEqual(
+            {
+                'X-Hub-Signature-256': '[redacted]',
+                'X-PagerDuty-Signature': '[redacted]',
+                'X-Sonar-Webhook-HMAC-SHA256': '[redacted]',
+            },
+            result,
+        )
+
+    def test_redaction_is_case_insensitive(self) -> None:
+        self.assertEqual(
+            {'AUTHORIZATION': '[redacted]', 'Cookie': '[redacted]'},
+            _safe_headers(
+                {'AUTHORIZATION': 'Bearer s3cret', 'Cookie': 'sid=xyz'}
+            ),
+        )
