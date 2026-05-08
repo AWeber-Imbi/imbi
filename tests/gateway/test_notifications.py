@@ -97,6 +97,7 @@ class ProcessNotificationTests(helpers.TestCase):
         self.proj_id = nanoid.generate()
         self.ext_id = f'ext-{nanoid.generate()[:8]}'
         self.rule_ids: list[str] = []
+        self.extra_project_ids: list[str] = []
 
         self.g = graph.Graph()
         await self.g.open()
@@ -193,6 +194,12 @@ class ProcessNotificationTests(helpers.TestCase):
                 {'id': rule_id},
                 ['r'],
             )
+        for project_id in self.extra_project_ids:
+            await self.g.execute(
+                'MATCH (n:Project {{id: {id}}}) DETACH DELETE n RETURN 1 AS r',
+                {'id': project_id},
+                ['r'],
+            )
         for label, node_id in [
             ('Project', self.proj_id),
             ('ThirdPartyService', self.tps_id),
@@ -252,6 +259,35 @@ class ProcessNotificationTests(helpers.TestCase):
             return await client.post(
                 f'/notifications/{webhook_id}', json=body, headers=headers
             )
+
+    async def _create_extra_project(self) -> str:
+        """Create a second Project linked to the test TPS via ``self.ext_id``.
+
+        Returns the new project id. The project is tracked for teardown.
+        """
+        project_id = nanoid.generate()
+        self.extra_project_ids.append(project_id)
+        ts = '2024-01-01T00:00:00+00:00'
+        await self.g.execute(
+            'CREATE (n:Project {{id: {id}, slug: {slug},'
+            ' name: {name}, created_at: {ts}}}) RETURN n',
+            {
+                'id': project_id,
+                'slug': f'proj-{project_id[:8]}',
+                'name': 'Second Project',
+                'ts': ts,
+            },
+            ['n'],
+        )
+        await self.g.execute(
+            'MATCH (p:Project {{id: {pid}}}),'
+            ' (tps:ThirdPartyService {{id: {tid}}})'
+            ' CREATE (p)-[:EXISTS_IN {{identifier: {ext_id}}}]->(tps)'
+            ' RETURN p',
+            {'pid': project_id, 'tid': self.tps_id, 'ext_id': self.ext_id},
+            ['p'],
+        )
+        return project_id
 
     async def test_no_webhook_found(self) -> None:
         with self.assertLogs(
@@ -335,40 +371,13 @@ class ProcessNotificationTests(helpers.TestCase):
 
     async def test_handler_called_for_each_matching_project(self) -> None:
         await self._add_rule(filter_expression='true')
-        ts = '2024-01-01T00:00:00+00:00'
-        second_proj_id = nanoid.generate()
-        await self.g.execute(
-            'CREATE (n:Project {{id: {id}, slug: {slug},'
-            ' name: {name}, created_at: {ts}}}) RETURN n',
-            {
-                'id': second_proj_id,
-                'slug': f'proj2-{second_proj_id[:8]}',
-                'name': 'Second Project',
-                'ts': ts,
-            },
-            ['n'],
-        )
-        await self.g.execute(
-            'MATCH (p:Project {{id: {pid}}}),'
-            ' (tps:ThirdPartyService {{id: {tid}}})'
-            ' CREATE (p)-[:EXISTS_IN {{identifier: {ext_id}}}]->(tps)'
-            ' RETURN p',
-            {'pid': second_proj_id, 'tid': self.tps_id, 'ext_id': self.ext_id},
-            ['p'],
-        )
-        try:
-            body = {'repo': {'id': self.ext_id}}
-            response = await self._post(self.webhook_id, body)
-            self.assertEqual(202, response.status_code)
-            self.assertEqual(2, len(HANDLER_CALLS))
-            project_ids = {call[1] for call in HANDLER_CALLS}
-            self.assertEqual({self.proj_id, second_proj_id}, project_ids)
-        finally:
-            await self.g.execute(
-                'MATCH (n:Project {{id: {id}}}) DETACH DELETE n RETURN 1 AS r',
-                {'id': second_proj_id},
-                ['r'],
-            )
+        second_proj_id = await self._create_extra_project()
+        body = {'repo': {'id': self.ext_id}}
+        response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(2, len(HANDLER_CALLS))
+        project_ids = {call[1] for call in HANDLER_CALLS}
+        self.assertEqual({self.proj_id, second_proj_id}, project_ids)
 
     async def test_project_not_found_for_external_id(self) -> None:
         await self._add_rule(filter_expression='true')
@@ -661,6 +670,7 @@ class ProcessNotificationTests(helpers.TestCase):
         """Each project that matches the webhook gets one events row."""
         await self._add_rule(filter_expression='true')
         await self._set_implemented_by(event_type_selector='x-github-event')
+        second_proj_id = await self._create_extra_project()
         body = {'repo': {'id': self.ext_id}, 'action': 'opened'}
         with unittest.mock.patch.object(
             clickhouse, 'insert', new=unittest.mock.AsyncMock()
@@ -675,15 +685,22 @@ class ProcessNotificationTests(helpers.TestCase):
         assert mock_insert.await_args is not None  # noqa: S101 - test narrowing
         table_arg, events_arg = mock_insert.await_args.args
         self.assertEqual('events', table_arg)
-        self.assertEqual(1, len(events_arg))
-        ev = events_arg[0]
-        self.assertEqual(self.proj_id, ev.project_id)
-        self.assertEqual('deployment_status', ev.type)
-        self.assertEqual(body, ev.payload)
-        self.assertEqual(self.webhook_id, ev.metadata['webhook_id'])
+        # Both matching projects get their own events row
+        self.assertEqual(2, len(events_arg))
         self.assertEqual(
-            'deployment_status', ev.metadata['headers'].get('x-github-event')
+            {self.proj_id, second_proj_id},
+            {ev.project_id for ev in events_arg},
         )
+        # Per-row contract: type, payload, and metadata are populated the
+        # same way for every fan-out row.
+        for ev in events_arg:
+            self.assertEqual('deployment_status', ev.type)
+            self.assertEqual(body, ev.payload)
+            self.assertEqual(self.webhook_id, ev.metadata['webhook_id'])
+            self.assertEqual(
+                'deployment_status',
+                ev.metadata['headers'].get('x-github-event'),
+            )
 
     async def test_no_event_when_filter_does_not_match(self) -> None:
         await self._add_rule(filter_expression='false')
