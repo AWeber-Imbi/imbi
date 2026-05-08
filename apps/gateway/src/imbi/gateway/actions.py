@@ -195,9 +195,22 @@ _STATUS_MAP: dict[str, str] = {
 }
 
 
+def _cel_substring(
+    string: celpy.celtypes.StringType,
+    start: celpy.celtypes.IntType,
+    end: celpy.celtypes.IntType | None = None,
+) -> celpy.celtypes.StringType:
+    if end is None:
+        return celpy.celtypes.StringType(string[int(start) :])
+    return celpy.celtypes.StringType(string[int(start) : int(end)])
+
+
+_CEL_FUNCTIONS: dict[str, celpy.CELFunction] = {'substring': _cel_substring}
+
+
 def _evaluate_cel(expression: str, body: object) -> str:
     env = celpy.Environment()
-    program = env.program(env.compile(expression))
+    program = env.program(env.compile(expression), functions=_CEL_FUNCTIONS)
     return str(program.evaluate(celpy.json_to_cel(body)))
 
 

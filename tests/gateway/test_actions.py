@@ -305,6 +305,80 @@ class CreateReleaseTests(helpers.TestCase):
             )
             self.assertEqual('1.2.3', mock_create.call_args.args[2]['version'])
 
+    async def test_substring_function_available(self) -> None:
+        # `substring(s, start, end)` for trimming a git sha to its
+        # short form. Same call also works as the method form
+        # `s.substring(start, end)`.
+        config = json.dumps(
+            {
+                'title_selector': '/deployment/ref',
+                'version_expression': 'substring(deployment.sha, 0, 7)',
+            }
+        )
+        method_config = json.dumps(
+            {
+                'title_selector': '/deployment/ref',
+                'version_expression': 'deployment.sha.substring(0, 7)',
+            }
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201),
+            ) as mock_create,
+        ):
+            await actions.create_release(
+                'org',
+                'proj',
+                {'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}},
+                None,
+                config,
+            )
+            self.assertEqual(
+                'abcdef1', mock_create.call_args.args[2]['version']
+            )
+
+            await actions.create_release(
+                'org',
+                'proj',
+                {'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}},
+                None,
+                method_config,
+            )
+            self.assertEqual(
+                'abcdef1', mock_create.call_args.args[2]['version']
+            )
+
+    async def test_substring_with_only_start(self) -> None:
+        config = json.dumps(
+            {
+                'title_selector': '/deployment/ref',
+                'version_expression': 'deployment.sha.substring(8)',
+            }
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201),
+            ) as mock_create,
+        ):
+            await actions.create_release(
+                'org',
+                'proj',
+                {'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}},
+                None,
+                config,
+            )
+            self.assertEqual(
+                '34567890', mock_create.call_args.args[2]['version']
+            )
+
     async def test_invalid_handler_config_raises_validation_error(
         self,
     ) -> None:
