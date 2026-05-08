@@ -1,5 +1,7 @@
+import json
 import unittest.mock
 
+import celpy.celparser
 import httpx
 import jsonpointer
 import pydantic
@@ -161,6 +163,8 @@ class ImbiClientPatchProjectTests(helpers.TestCase):
 _DEPLOYMENT_BODY: dict[str, object] = {
     'deployment': {
         'ref': 'v1.2.3',
+        'sha': 'abcdef1234567890',
+        'description': 'Deployed v1.2.3 to production',
         'url': 'https://api.github.com/repos/o/r/deployments/42',
         'environment': 'production',
         'creator': {'id': 12345},
@@ -173,12 +177,22 @@ _STATUS_BODY: dict[str, object] = {
         'url': 'https://api.github.com/repos/o/r/deployments/42',
         'environment': 'production',
     },
-    'deployment_status': {'state': 'success'},
+    'deployment_status': {'state': 'success', 'environment': 'production'},
 }
+
+_CREATE_RELEASE_CONFIG = (
+    '{"title_selector": "/deployment/ref",'
+    ' "version_expression": "deployment.ref"}'
+)
+_DEPLOYMENT_EVENT_CONFIG = (
+    '{"environment_selector": "/deployment_status/environment",'
+    ' "version_expression": "deployment.ref",'
+    ' "status_selector": "/deployment_status/state"}'
+)
 
 
 class CreateReleaseTests(helpers.TestCase):
-    async def test_happy_path_includes_user_id_and_link(self) -> None:
+    async def test_happy_path_includes_user_id(self) -> None:
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
             unittest.mock.patch.object(
@@ -189,7 +203,11 @@ class CreateReleaseTests(helpers.TestCase):
             ) as mock_create,
         ):
             await actions.create_release(
-                'org', 'proj', _DEPLOYMENT_BODY, 'alice@example.com', '{}'
+                'org',
+                'proj',
+                _DEPLOYMENT_BODY,
+                'alice@example.com',
+                _CREATE_RELEASE_CONFIG,
             )
 
         mock_create.assert_called_once()
@@ -197,9 +215,9 @@ class CreateReleaseTests(helpers.TestCase):
         self.assertEqual('org', org_arg)
         self.assertEqual('proj', proj_arg)
         self.assertEqual('v1.2.3', body_arg['version'])
+        self.assertEqual('v1.2.3', body_arg['title'])
         self.assertEqual('alice@example.com', body_arg['created_by'])
-        self.assertEqual(1, len(body_arg['links']))
-        self.assertEqual('github_deployment', body_arg['links'][0]['type'])
+        self.assertNotIn('links', body_arg)
 
     async def test_no_user_omits_created_by(self) -> None:
         with (
@@ -212,11 +230,178 @@ class CreateReleaseTests(helpers.TestCase):
             ) as mock_create,
         ):
             await actions.create_release(
-                'org', 'proj', _DEPLOYMENT_BODY, None, '{}'
+                'org', 'proj', _DEPLOYMENT_BODY, None, _CREATE_RELEASE_CONFIG
             )
 
         body_arg = mock_create.call_args.args[2]
         self.assertNotIn('created_by', body_arg)
+
+    async def test_title_selector_used(self) -> None:
+        config = (
+            '{"title_selector": "/deployment/description",'
+            ' "version_expression": "deployment.ref"}'
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201),
+            ) as mock_create,
+        ):
+            await actions.create_release(
+                'org', 'proj', _DEPLOYMENT_BODY, None, config
+            )
+
+        body_arg = mock_create.call_args.args[2]
+        self.assertEqual('Deployed v1.2.3 to production', body_arg['title'])
+        self.assertEqual('v1.2.3', body_arg['version'])
+
+    async def test_version_expression_evaluated(self) -> None:
+        # Same shape as the feature-file example (ref when it looks
+        # like a semver tag, otherwise fall back to the sha) but using
+        # `[.]` character classes since `\.` would require a four-deep
+        # escape stack through Python -> JSON -> CEL.
+        config = json.dumps(
+            {
+                'title_selector': '/deployment/ref',
+                'version_expression': (
+                    'deployment.ref.matches('
+                    "'^[0-9]+[.][0-9]+[.][0-9]+$'"
+                    ') ? deployment.ref'
+                    " : 'sha-' + deployment.sha"
+                ),
+            }
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201),
+            ) as mock_create,
+        ):
+            # Branch-style ref -> takes the fallback expression.
+            await actions.create_release(
+                'org',
+                'proj',
+                {'deployment': {'ref': 'feature/x', 'sha': 'abcdef1234'}},
+                None,
+                config,
+            )
+            self.assertEqual(
+                'sha-abcdef1234', mock_create.call_args.args[2]['version']
+            )
+
+            # Semver-style ref -> takes the deployment.ref branch.
+            await actions.create_release(
+                'org',
+                'proj',
+                {'deployment': {'ref': '1.2.3', 'sha': 'abcdef1234'}},
+                None,
+                config,
+            )
+            self.assertEqual('1.2.3', mock_create.call_args.args[2]['version'])
+
+    async def test_substring_function_available(self) -> None:
+        # `substring(s, start, end)` for trimming a git sha to its
+        # short form. Same call also works as the method form
+        # `s.substring(start, end)`.
+        config = json.dumps(
+            {
+                'title_selector': '/deployment/ref',
+                'version_expression': 'substring(deployment.sha, 0, 7)',
+            }
+        )
+        method_config = json.dumps(
+            {
+                'title_selector': '/deployment/ref',
+                'version_expression': 'deployment.sha.substring(0, 7)',
+            }
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201),
+            ) as mock_create,
+        ):
+            await actions.create_release(
+                'org',
+                'proj',
+                {'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}},
+                None,
+                config,
+            )
+            self.assertEqual(
+                'abcdef1', mock_create.call_args.args[2]['version']
+            )
+
+            await actions.create_release(
+                'org',
+                'proj',
+                {'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}},
+                None,
+                method_config,
+            )
+            self.assertEqual(
+                'abcdef1', mock_create.call_args.args[2]['version']
+            )
+
+    async def test_substring_with_only_start(self) -> None:
+        config = json.dumps(
+            {
+                'title_selector': '/deployment/ref',
+                'version_expression': 'deployment.sha.substring(8)',
+            }
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201),
+            ) as mock_create,
+        ):
+            await actions.create_release(
+                'org',
+                'proj',
+                {'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}},
+                None,
+                config,
+            )
+            self.assertEqual(
+                '34567890', mock_create.call_args.args[2]['version']
+            )
+
+    async def test_invalid_handler_config_raises_validation_error(
+        self,
+    ) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.assertRaises(pydantic.ValidationError),
+        ):
+            await actions.create_release(
+                'org', 'proj', _DEPLOYMENT_BODY, None, '{}'
+            )
+
+    async def test_invalid_version_expression_propagates(self) -> None:
+        config = (
+            '{"title_selector": "/deployment/ref",'
+            ' "version_expression": "this is not valid CEL"}'
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.assertRaises(celpy.celparser.CELParseError),
+        ):
+            await actions.create_release(
+                'org', 'proj', _DEPLOYMENT_BODY, None, config
+            )
 
     async def test_409_is_treated_as_idempotent(self) -> None:
         with (
@@ -231,14 +416,14 @@ class CreateReleaseTests(helpers.TestCase):
         ):
             # No exception expected — already exists is the steady state.
             await actions.create_release(
-                'org', 'proj', _DEPLOYMENT_BODY, None, '{}'
+                'org', 'proj', _DEPLOYMENT_BODY, None, _CREATE_RELEASE_CONFIG
             )
 
         self.assertTrue(any('already exists' in line for line in cm.output))
 
 
 class AddDeploymentEventTests(helpers.TestCase):
-    async def test_status_mapping_and_note(self) -> None:
+    async def test_status_mapping(self) -> None:
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
             unittest.mock.patch.object(
@@ -249,22 +434,22 @@ class AddDeploymentEventTests(helpers.TestCase):
             ) as mock_record,
         ):
             await actions.add_deployment_event(
-                'org', 'proj', _STATUS_BODY, None, '{}'
+                'org', 'proj', _STATUS_BODY, None, _DEPLOYMENT_EVENT_CONFIG
             )
 
         mock_record.assert_called_once_with(
-            'org',
-            'proj',
-            'v1.2.3',
-            'production',
-            {
-                'status': 'success',
-                'note': 'https://api.github.com/repos/o/r/deployments/42',
-            },
+            'org', 'proj', 'v1.2.3', 'production', {'status': 'success'}
         )
 
-    async def test_failure_state_maps_to_failed(self) -> None:
-        body = {**_STATUS_BODY, 'deployment_status': {'state': 'failure'}}
+    async def test_note_selector_emits_note(self) -> None:
+        config = json.dumps(
+            {
+                'environment_selector': '/deployment_status/environment',
+                'version_expression': 'deployment.ref',
+                'status_selector': '/deployment_status/state',
+                'note_selector': '/deployment/url',
+            }
+        )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
             unittest.mock.patch.object(
@@ -274,12 +459,47 @@ class AddDeploymentEventTests(helpers.TestCase):
                 return_value=httpx.Response(200),
             ) as mock_record,
         ):
-            await actions.add_deployment_event('org', 'proj', body, None, '{}')
+            await actions.add_deployment_event(
+                'org', 'proj', _STATUS_BODY, None, config
+            )
+
+        event_body = mock_record.call_args.args[4]
+        self.assertEqual(
+            'https://api.github.com/repos/o/r/deployments/42',
+            event_body['note'],
+        )
+
+    async def test_failure_state_maps_to_failed(self) -> None:
+        body = {
+            **_STATUS_BODY,
+            'deployment_status': {
+                'state': 'failure',
+                'environment': 'production',
+            },
+        }
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'record_deployment',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(200),
+            ) as mock_record,
+        ):
+            await actions.add_deployment_event(
+                'org', 'proj', body, None, _DEPLOYMENT_EVENT_CONFIG
+            )
 
         self.assertEqual('failed', mock_record.call_args.args[4]['status'])
 
     async def test_unknown_state_skipped(self) -> None:
-        body = {**_STATUS_BODY, 'deployment_status': {'state': 'frobbed'}}
+        body = {
+            **_STATUS_BODY,
+            'deployment_status': {
+                'state': 'frobbed',
+                'environment': 'production',
+            },
+        }
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
             unittest.mock.patch.object(
@@ -289,7 +509,9 @@ class AddDeploymentEventTests(helpers.TestCase):
             ) as mock_record,
             self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
         ):
-            await actions.add_deployment_event('org', 'proj', body, None, '{}')
+            await actions.add_deployment_event(
+                'org', 'proj', body, None, _DEPLOYMENT_EVENT_CONFIG
+            )
 
         mock_record.assert_not_called()
         self.assertTrue(
@@ -308,12 +530,23 @@ class AddDeploymentEventTests(helpers.TestCase):
             self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
         ):
             await actions.add_deployment_event(
-                'org', 'proj', _STATUS_BODY, None, '{}'
+                'org', 'proj', _STATUS_BODY, None, _DEPLOYMENT_EVENT_CONFIG
             )
 
         self.assertTrue(
             any('Release' in line and 'missing' in line for line in cm.output)
         )
+
+    async def test_invalid_handler_config_raises_validation_error(
+        self,
+    ) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.assertRaises(pydantic.ValidationError),
+        ):
+            await actions.add_deployment_event(
+                'org', 'proj', _STATUS_BODY, None, '{}'
+            )
 
 
 class ImbiClientFindUserByIdentityTests(helpers.TestCase):
@@ -525,7 +758,13 @@ class StatusMapTests(helpers.TestCase):
     """Verify every GitHub deployment_status state mapping."""
 
     async def _capture_status(self, github_state: str) -> str:
-        body = {**_STATUS_BODY, 'deployment_status': {'state': github_state}}
+        body = {
+            **_STATUS_BODY,
+            'deployment_status': {
+                'state': github_state,
+                'environment': 'production',
+            },
+        }
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
             unittest.mock.patch.object(
@@ -535,7 +774,9 @@ class StatusMapTests(helpers.TestCase):
                 return_value=httpx.Response(200),
             ) as mock_record,
         ):
-            await actions.add_deployment_event('o', 'p', body, None, '{}')
+            await actions.add_deployment_event(
+                'o', 'p', body, None, _DEPLOYMENT_EVENT_CONFIG
+            )
         return str(mock_record.call_args.args[4]['status'])
 
     async def test_all_known_states(self) -> None:
