@@ -978,6 +978,16 @@ class WebhookCreate(pydantic.BaseModel):
             'third-party service when unset.'
         ),
     )
+    event_type_selector: str | None = pydantic.Field(
+        default=None,
+        description=(
+            'Resolves the activity-feed event type for each webhook. '
+            'Values starting with "/" are JSON pointers evaluated against '
+            'the request body; otherwise the value is treated as an HTTP '
+            'header name (case-insensitive). When the header is absent, '
+            'the literal selector value is used as the label.'
+        ),
+    )
     rules: list[WebhookRuleCreate] = pydantic.Field(
         default_factory=list,
     )
@@ -996,6 +1006,10 @@ class WebhookCreate(pydantic.BaseModel):
         if self.identity_plugin_slug and not self.third_party_service_slug:
             raise ValueError(
                 'identity_plugin_slug requires third_party_service_slug'
+            )
+        if self.event_type_selector and not self.third_party_service_slug:
+            raise ValueError(
+                'event_type_selector requires third_party_service_slug'
             )
         return self
 
@@ -1037,6 +1051,16 @@ class WebhookUpdate(pydantic.BaseModel):
             'third-party service when unset.'
         ),
     )
+    event_type_selector: str | None = pydantic.Field(
+        default=None,
+        description=(
+            'Resolves the activity-feed event type for each webhook. '
+            'Values starting with "/" are JSON pointers evaluated against '
+            'the request body; otherwise the value is treated as an HTTP '
+            'header name (case-insensitive). When the header is absent, '
+            'the literal selector value is used as the label.'
+        ),
+    )
     rules: list[WebhookRuleCreate] = pydantic.Field(
         default_factory=list,
     )
@@ -1055,6 +1079,10 @@ class WebhookUpdate(pydantic.BaseModel):
         if self.identity_plugin_slug and not self.third_party_service_slug:
             raise ValueError(
                 'identity_plugin_slug requires third_party_service_slug'
+            )
+        if self.event_type_selector and not self.third_party_service_slug:
+            raise ValueError(
+                'event_type_selector requires third_party_service_slug'
             )
         return self
 
@@ -1084,6 +1112,7 @@ class WebhookResponse(pydantic.BaseModel):
     identifier_selector: str | None = None
     user_subject_selector: str | None = None
     identity_plugin_slug: str | None = None
+    event_type_selector: str | None = None
     rules: list[WebhookRuleResponse] = []
 
     @classmethod
@@ -1134,6 +1163,9 @@ class WebhookResponse(pydantic.BaseModel):
             ),
             identity_plugin_slug=graph.parse_agtype(
                 record.get('identity_plugin_slug')
+            ),
+            event_type_selector=graph.parse_agtype(
+                record.get('event_type_selector')
             ),
             rules=rules,
         )
