@@ -733,7 +733,7 @@ _resolve_event_type = (
 )
 
 
-class ResolveEventTypeUnitTests(unittest.IsolatedAsyncioTestCase):
+class ResolveEventTypeUnitTests(helpers.TestCase):
     """Unit tests for the `_resolve_event_type` pure function."""
 
     def test_none_selector_returns_empty(self) -> None:
