@@ -148,14 +148,6 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json()['created_by'], 'deploy-bot')
 
-    def test_create_invalid_semver(self) -> None:
-        response = self.client.post(
-            self._url('/'),
-            json={'version': 'not.a.version', 'title': 'x'},
-        )
-        self.assertEqual(response.status_code, 422)
-        self.assertIn('semver', response.json()['detail'].lower())
-
     def test_create_project_not_found(self) -> None:
         self.mock_db.execute.side_effect = [[]]  # project_exists -> no rows
         with mock.patch(
@@ -206,24 +198,21 @@ class CreateReleaseTestCase(_ReleasesTestBase):
             )
         self.assertEqual(response.status_code, 201)
 
-    def test_create_commitish_format_rejects_semver(self) -> None:
-        """With version_format=commitish the semver regex is rejected."""
-        with mock.patch(
-            'imbi_api.endpoints.releases.common_settings.Releases'
-        ) as mock_releases:
-            mock_releases.return_value.version_format = 'commitish'
-            response = self.client.post(
-                self._url('/'),
-                json={'version': '1.2.3', 'title': 'x'},
-            )
-            self.assertEqual(response.status_code, 422)
-            self.assertIn('commitish', response.json()['detail'].lower())
+    def test_create_two_releases_commitish_then_semver(self) -> None:
+        """Create both a commitish and a semver release for one project.
 
-    def test_create_commitish_valid_sha(self) -> None:
+        ``version_format`` is fixed at process start, so this test does
+        not flip it mid-run.
+        """
         self.mock_db.execute.side_effect = [
+            # First create: 214e932
             [{'id': PROJECT_ID}],
             [],
-            [{'release': _release_row(version='abc1234')}],
+            [{'release': _release_row(version='214e932', id='rel-commitish')}],
+            # Second create: 2.2.0
+            [{'id': PROJECT_ID}],
+            [],
+            [{'release': _release_row(version='2.2.0', id='rel-semver')}],
         ]
         with (
             mock.patch(
@@ -232,18 +221,25 @@ class CreateReleaseTestCase(_ReleasesTestBase):
             ),
             mock.patch(
                 'imbi_api.endpoints.releases.nanoid.generate',
-                return_value=RELEASE_ID,
+                side_effect=['rel-commitish', 'rel-semver'],
             ),
-            mock.patch(
-                'imbi_api.endpoints.releases.common_settings.Releases'
-            ) as mock_releases,
         ):
-            mock_releases.return_value.version_format = 'commitish'
-            response = self.client.post(
+            first = self.client.post(
                 self._url('/'),
-                json={'version': 'abc1234', 'title': 'x'},
+                json={'version': '214e932', 'title': 'commitish build'},
             )
-        self.assertEqual(response.status_code, 201)
+            second = self.client.post(
+                self._url('/'),
+                json={'version': '2.2.0', 'title': 'semver release'},
+            )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(first.json()['version'], '214e932')
+        self.assertEqual(first.json()['id'], 'rel-commitish')
+
+        self.assertEqual(second.status_code, 201)
+        self.assertEqual(second.json()['version'], '2.2.0')
+        self.assertEqual(second.json()['id'], 'rel-semver')
 
 
 class ListGetReleaseTestCase(_ReleasesTestBase):

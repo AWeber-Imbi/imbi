@@ -16,8 +16,7 @@ import typing
 import fastapi
 import nanoid
 import pydantic
-from imbi_common import graph, models, versioning
-from imbi_common import settings as common_settings
+from imbi_common import graph, models
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
@@ -139,11 +138,6 @@ _RELEASE_READONLY_PATHS: frozenset[str] = frozenset(
 )
 
 
-def _version_format() -> versioning.VersionFormat:
-    """Return the active configured release version format."""
-    return common_settings.Releases().version_format
-
-
 def _serialize_links(
     links: list[models.ReleaseLink] | list[dict[str, typing.Any]],
 ) -> str:
@@ -260,10 +254,7 @@ async def create_release(
     ],
 ) -> ReleaseResponse:
     """Create a new release for a project."""
-    try:
-        version = versioning.validate_version(data.version, _version_format())
-    except ValueError as e:
-        raise fastapi.HTTPException(status_code=422, detail=str(e)) from e
+    version = data.version
 
     if not await _project_exists(db, org_slug, project_id):
         raise fastapi.HTTPException(
