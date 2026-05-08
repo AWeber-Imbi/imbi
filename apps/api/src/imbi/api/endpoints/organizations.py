@@ -13,12 +13,12 @@ from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.relationships import build_relationships
 
+from .document_templates import document_templates_router
+from .documents import documents_project_router, documents_router
 from .environments import environments_router
 from .events import events_project_router
 from .identity_plugins import identity_plugins_router
 from .link_definitions import link_definitions_router
-from .note_templates import note_templates_router
-from .notes import notes_project_router, notes_router
 from .operations_log import operations_log_project_router
 from .project_configuration import project_configuration_router
 from .project_logs import project_logs_router
@@ -88,16 +88,16 @@ organizations_router.include_router(
     prefix='/{org_slug}/tags',
 )
 organizations_router.include_router(
-    notes_router,
-    prefix='/{org_slug}/notes',
+    documents_router,
+    prefix='/{org_slug}/documents',
 )
 organizations_router.include_router(
-    notes_project_router,
-    prefix='/{org_slug}/projects/{project_id}/notes',
+    documents_project_router,
+    prefix='/{org_slug}/projects/{project_id}/documents',
 )
 organizations_router.include_router(
-    note_templates_router,
-    prefix='/{org_slug}/note-templates',
+    document_templates_router,
+    prefix='/{org_slug}/document-templates',
 )
 organizations_router.include_router(
     service_plugins_router,

@@ -1,7 +1,7 @@
 """Tag management endpoints.
 
 Tags are org-scoped, slug-identified labels. Today they attach to
-``Note`` nodes via ``TAGGED_WITH``; the edge type is generic so
+``Document`` nodes via ``TAGGED_WITH``; the edge type is generic so
 future work can attach the same tags to ``Project``/``Service``
 nodes without schema changes.
 """
@@ -52,13 +52,13 @@ def _tag_relationships(
     request: fastapi.Request,
     org_slug: str,
     tag_slug: str,
-    note_count: int,
+    document_count: int,
 ) -> dict[str, models.RelationshipLink]:
     return build_relationships(
         request.app.url_path_for(
             'get_tag', org_slug=org_slug, tag_slug=tag_slug
         ),
-        {'notes': ('/notes', note_count)},
+        {'documents': ('/documents', document_count)},
     )
 
 
@@ -129,18 +129,18 @@ async def list_tags(
         fastapi.Depends(permissions.require_permission('tag:read')),
     ],
 ) -> list[dict[str, typing.Any]]:
-    """List tags in an organization, each with a note count."""
+    """List tags in an organization, each with a document count."""
     query: typing.LiteralString = """
     MATCH (t:Tag)-[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    OPTIONAL MATCH (n:Note)-[:TAGGED_WITH]->(t)
-    WITH t, o, count(DISTINCT n) AS note_count
-    RETURN t, o, note_count
+    OPTIONAL MATCH (n:Document)-[:TAGGED_WITH]->(t)
+    WITH t, o, count(DISTINCT n) AS document_count
+    RETURN t, o, document_count
     ORDER BY t.name
     """
     records = await db.execute(
         query,
         {'org_slug': org_slug},
-        columns=['t', 'o', 'note_count'],
+        columns=['t', 'o', 'document_count'],
     )
     results: list[dict[str, typing.Any]] = []
     for record in records:
@@ -150,7 +150,7 @@ async def list_tags(
             request,
             org_slug,
             tag['slug'],
-            graph.parse_agtype(record['note_count']) or 0,
+            graph.parse_agtype(record['document_count']) or 0,
         )
         results.append(tag)
     return results
@@ -171,14 +171,14 @@ async def get_tag(
     query: typing.LiteralString = """
     MATCH (t:Tag {{slug: {tag_slug}}})
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    OPTIONAL MATCH (n:Note)-[:TAGGED_WITH]->(t)
-    WITH t, o, count(DISTINCT n) AS note_count
-    RETURN t, o, note_count
+    OPTIONAL MATCH (n:Document)-[:TAGGED_WITH]->(t)
+    WITH t, o, count(DISTINCT n) AS document_count
+    RETURN t, o, document_count
     """
     records = await db.execute(
         query,
         {'tag_slug': tag_slug, 'org_slug': org_slug},
-        columns=['t', 'o', 'note_count'],
+        columns=['t', 'o', 'document_count'],
     )
     if not records:
         raise fastapi.HTTPException(
@@ -191,7 +191,7 @@ async def get_tag(
         request,
         org_slug,
         tag['slug'],
-        graph.parse_agtype(records[0]['note_count']) or 0,
+        graph.parse_agtype(records[0]['document_count']) or 0,
     )
     return tag
 
@@ -269,9 +269,9 @@ async def patch_tag(
         t.description = {description},
         t.updated_at = {updated_at}
     WITH t, o
-    OPTIONAL MATCH (n:Note)-[:TAGGED_WITH]->(t)
-    WITH t, o, count(DISTINCT n) AS note_count
-    RETURN t, o, note_count
+    OPTIONAL MATCH (n:Document)-[:TAGGED_WITH]->(t)
+    WITH t, o, count(DISTINCT n) AS document_count
+    RETURN t, o, document_count
     """
     try:
         updated = await db.execute(
@@ -284,7 +284,7 @@ async def patch_tag(
                 'description': new_description,
                 'updated_at': now.isoformat(),
             },
-            columns=['t', 'o', 'note_count'],
+            columns=['t', 'o', 'document_count'],
         )
     except psycopg.errors.UniqueViolation as e:
         raise fastapi.HTTPException(
@@ -302,7 +302,7 @@ async def patch_tag(
         request,
         org_slug,
         tag['slug'],
-        graph.parse_agtype(updated[0]['note_count']) or 0,
+        graph.parse_agtype(updated[0]['document_count']) or 0,
     )
     return tag
 

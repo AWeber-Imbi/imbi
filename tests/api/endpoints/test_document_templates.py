@@ -1,4 +1,4 @@
-"""Tests for note template CRUD endpoints."""
+"""Tests for document template CRUD endpoints."""
 
 import datetime
 import typing
@@ -11,8 +11,8 @@ from imbi_common import graph
 from imbi_api import app, models
 
 
-class NoteTemplateEndpointsTestCase(unittest.TestCase):
-    """Test cases for note template CRUD."""
+class DocumentTemplateEndpointsTestCase(unittest.TestCase):
+    """Test cases for document template CRUD."""
 
     def setUp(self) -> None:
         from imbi_api.auth import permissions
@@ -33,10 +33,10 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
             session_id='test-session',
             auth_method='jwt',
             permissions={
-                'note_template:create',
-                'note_template:read',
-                'note_template:write',
-                'note_template:delete',
+                'document_template:create',
+                'document_template:read',
+                'document_template:write',
+                'document_template:delete',
             },
         )
 
@@ -93,7 +93,7 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
             'imbi_common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
-                '/organizations/engineering/note-templates/',
+                '/organizations/engineering/document-templates/',
                 json={
                     'name': 'ADR',
                     'slug': 'adr',
@@ -137,7 +137,7 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
             'imbi_common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
-                '/organizations/engineering/note-templates/',
+                '/organizations/engineering/document-templates/',
                 json={
                     'name': 'ADR',
                     'slug': 'adr',
@@ -158,7 +158,7 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
             'imbi_common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
-                '/organizations/engineering/note-templates/',
+                '/organizations/engineering/document-templates/',
                 json={
                     'name': 'ADR',
                     'slug': 'adr',
@@ -175,7 +175,7 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
             'imbi_common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
-                '/organizations/missing/note-templates/',
+                '/organizations/missing/document-templates/',
                 json={'name': 'ADR', 'slug': 'adr'},
             )
         self.assertEqual(response.status_code, 404)
@@ -187,7 +187,7 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
             'imbi_common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
-                '/organizations/engineering/note-templates/',
+                '/organizations/engineering/document-templates/',
                 json={'name': 'ADR', 'slug': 'adr'},
             )
         self.assertEqual(response.status_code, 409)
@@ -195,7 +195,7 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
 
     def test_create_missing_name_rejected(self) -> None:
         response = self.client.post(
-            '/organizations/engineering/note-templates/',
+            '/organizations/engineering/document-templates/',
             json={'slug': 'adr'},
         )
         self.assertEqual(response.status_code, 422)
@@ -215,7 +215,7 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
             'imbi_common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
-                '/organizations/engineering/note-templates/'
+                '/organizations/engineering/document-templates/'
             )
         self.assertEqual(response.status_code, 200)
         slugs = [t['slug'] for t in response.json()]
@@ -249,7 +249,7 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
             'imbi_common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
-                '/organizations/engineering/note-templates/'
+                '/organizations/engineering/document-templates/'
                 '?project_type=http-api'
             )
         self.assertEqual(response.status_code, 200)
@@ -264,7 +264,7 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
             'imbi_common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
-                '/organizations/engineering/note-templates/adr'
+                '/organizations/engineering/document-templates/adr'
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['slug'], 'adr')
@@ -272,7 +272,7 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
     def test_get_not_found(self) -> None:
         self.mock_db.execute.return_value = []
         response = self.client.get(
-            '/organizations/engineering/note-templates/nope'
+            '/organizations/engineering/document-templates/nope'
         )
         self.assertEqual(response.status_code, 404)
 
@@ -297,7 +297,7 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
             'imbi_common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.put(
-                '/organizations/engineering/note-templates/adr',
+                '/organizations/engineering/document-templates/adr',
                 json={'name': 'Architecture Decision'},
             )
         self.assertEqual(response.status_code, 200)
@@ -323,7 +323,7 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
             'imbi_common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.put(
-                '/organizations/engineering/note-templates/adr',
+                '/organizations/engineering/document-templates/adr',
                 json={'tags': ['incident']},
             )
         self.assertEqual(response.status_code, 200)
@@ -333,7 +333,7 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
     def test_update_not_found(self) -> None:
         self.mock_db.execute.return_value = []
         response = self.client.put(
-            '/organizations/engineering/note-templates/nope',
+            '/organizations/engineering/document-templates/nope',
             json={'name': 'X'},
         )
         self.assertEqual(response.status_code, 404)
@@ -348,7 +348,7 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
             'imbi_common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.put(
-                '/organizations/engineering/note-templates/adr',
+                '/organizations/engineering/document-templates/adr',
                 json={'slug': 'taken'},
             )
         self.assertEqual(response.status_code, 409)
@@ -371,7 +371,7 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
             'imbi_common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
-                '/organizations/engineering/note-templates/adr',
+                '/organizations/engineering/document-templates/adr',
                 json=[{'op': 'replace', 'path': '/name', 'value': 'ADR v2'}],
             )
         self.assertEqual(response.status_code, 200)
@@ -383,7 +383,7 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
             'imbi_common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
-                '/organizations/engineering/note-templates/adr',
+                '/organizations/engineering/document-templates/adr',
                 json=[
                     {
                         'op': 'replace',
@@ -400,7 +400,7 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
             'imbi_common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
-                '/organizations/engineering/note-templates/adr',
+                '/organizations/engineering/document-templates/adr',
                 json=[{'op': 'replace', 'path': '/name', 'value': ''}],
             )
         self.assertEqual(response.status_code, 400)
@@ -408,7 +408,7 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
     def test_patch_template_not_found(self) -> None:
         self.mock_db.execute.return_value = []
         response = self.client.patch(
-            '/organizations/engineering/note-templates/nope',
+            '/organizations/engineering/document-templates/nope',
             json=[{'op': 'replace', 'path': '/name', 'value': 'X'}],
         )
         self.assertEqual(response.status_code, 404)
@@ -418,13 +418,13 @@ class NoteTemplateEndpointsTestCase(unittest.TestCase):
     def test_delete_success(self) -> None:
         self.mock_db.execute.return_value = [{'nt': True}]
         response = self.client.delete(
-            '/organizations/engineering/note-templates/adr'
+            '/organizations/engineering/document-templates/adr'
         )
         self.assertEqual(response.status_code, 204)
 
     def test_delete_not_found(self) -> None:
         self.mock_db.execute.return_value = []
         response = self.client.delete(
-            '/organizations/engineering/note-templates/nope'
+            '/organizations/engineering/document-templates/nope'
         )
         self.assertEqual(response.status_code, 404)

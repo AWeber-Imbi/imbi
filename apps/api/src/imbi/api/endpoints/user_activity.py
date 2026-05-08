@@ -1,7 +1,7 @@
 """User profile activity endpoints.
 
 Aggregates per-user activity from ClickHouse (`operations_log`,
-`events`) and the AGE graph (`Note`, `Release`, `Upload`,
+`events`) and the AGE graph (`Document`, `Release`, `Upload`,
 `Conversation`) into a small set of read-only endpoints that power the
 v2 UI's user profile page.
 
@@ -39,7 +39,7 @@ MAX_ACTIVITY_LIMIT: int = 100
 ActivitySource = typing.Literal[
     'operations_log',
     'events',
-    'note',
+    'document',
     'release',
     'upload',
     'conversation',
@@ -272,8 +272,8 @@ async def _events_buckets(
 
 
 _GRAPH_BUCKET_QUERIES: dict[str, str] = {
-    'note': """
-        MATCH (n:Note)
+    'document': """
+        MATCH (n:Document)
         WHERE (n.created_by = {email}
                OR n.updated_by = {email})
           AND n.created_at >= {since}
@@ -348,7 +348,7 @@ async def get_user_contributions(
 ) -> ContributionsResponse:
     """Return per-day contribution counts for the user.
 
-    Aggregates ClickHouse opslog/events with graph-authored items (Note,
+    Aggregates ClickHouse opslog/events with graph-authored items (Document,
     Release, Upload, Conversation) into one daily map keyed by the
     requested ``tz``.
     """
@@ -363,7 +363,12 @@ async def get_user_contributions(
         _opslog_buckets(email=email, since=start, until=end, tz=tz),
         _events_buckets(subjects=subjects, since=start, until=end, tz=tz),
         _graph_buckets(
-            db, label='note', email=email, since=start, until=end, zone=zone
+            db,
+            label='document',
+            email=email,
+            since=start,
+            until=end,
+            zone=zone,
         ),
         _graph_buckets(
             db,
@@ -393,7 +398,7 @@ async def get_user_contributions(
     leg_names = (
         'operations_log',
         'events',
-        'note',
+        'document',
         'release',
         'upload',
         'conversation',
@@ -469,15 +474,15 @@ async def _projects_touched(
     graph_rows = await db.execute(
         """
         MATCH (p:Project)
-        OPTIONAL MATCH (p)<-[:ATTACHED_TO]-(n:Note)
+        OPTIONAL MATCH (p)<-[:ATTACHED_TO]-(n:Document)
         WHERE (n.created_by = {email} OR n.updated_by = {email})
           AND n.created_at >= {since}
           AND n.created_at <  {until}
-        WITH p, count(n) AS note_count
+        WITH p, count(n) AS document_count
         OPTIONAL MATCH (p)-[:HAS_RELEASE]->(r:Release {{created_by: {email}}})
         WHERE r.created_at >= {since} AND r.created_at < {until}
-        WITH p, note_count, count(r) AS release_count
-        WHERE note_count + release_count > 0
+        WITH p, document_count, count(r) AS release_count
+        WHERE document_count + release_count > 0
         RETURN DISTINCT p.id AS project_id
         """,
         {
@@ -813,8 +818,8 @@ async def _events_activity(
 
 
 _GRAPH_ACTIVITY_QUERIES: dict[str, str] = {
-    'note': """
-        MATCH (n:Note)-[:ATTACHED_TO]->(p:Project)
+    'document': """
+        MATCH (n:Document)-[:ATTACHED_TO]->(p:Project)
         WHERE (n.created_by = {email} OR n.updated_by = {email})
           AND n.created_at <= {before}
         RETURN n.id AS id,
@@ -864,14 +869,14 @@ _GRAPH_ACTIVITY_QUERIES: dict[str, str] = {
 
 
 def _graph_summary(label: str, row: dict[str, typing.Any]) -> str:
-    if label == 'note':
+    if label == 'document':
         title = graph.parse_agtype(row.get('title')) or '(untitled)'
         proj = (
             graph.parse_agtype(row.get('project_name'))
             or graph.parse_agtype(row.get('project_slug'))
             or 'a project'
         )
-        return f'Wrote note "{title}" on {proj}'
+        return f'Wrote document "{title}" on {proj}'
     if label == 'release':
         version = graph.parse_agtype(row.get('version')) or ''
         proj = (
@@ -890,14 +895,14 @@ def _graph_summary(label: str, row: dict[str, typing.Any]) -> str:
 
 
 _LABEL_TO_SOURCE: dict[str, ActivitySource] = {
-    'note': 'note',
+    'document': 'document',
     'release': 'release',
     'upload': 'upload',
     'conversation': 'conversation',
 }
 
 _LABEL_TO_TYPE: dict[str, str] = {
-    'note': 'Note',
+    'document': 'Document',
     'release': 'Release',
     'upload': 'Upload',
     'conversation': 'Conversation',
@@ -989,7 +994,7 @@ async def get_user_activity(
         _opslog_activity(email=email, before=before, limit=per_source),
         _events_activity(subjects=subjects, before=before, limit=per_source),
         _graph_activity(
-            db, label='note', email=email, before=before, limit=per_source
+            db, label='document', email=email, before=before, limit=per_source
         ),
         _graph_activity(
             db,

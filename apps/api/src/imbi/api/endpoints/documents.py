@@ -1,9 +1,9 @@
-"""Project notes with tag support.
+"""Project documents with tag support.
 
-Notes are project-scoped via a required ``ATTACHED_TO`` edge and may
+Documents are project-scoped via a required ``ATTACHED_TO`` edge and may
 optionally be tagged with org-scoped ``Tag`` nodes via ``TAGGED_WITH``.
-The top-level ``notes_router`` supports cross-project search filtered
-by tag; ``notes_project_router`` handles CRUD scoped to a single
+The top-level ``documents_router`` supports cross-project search filtered
+by tag; ``documents_project_router`` handles CRUD scoped to a single
 project.
 """
 
@@ -24,13 +24,13 @@ from imbi_api.auth import permissions
 
 LOGGER = logging.getLogger(__name__)
 
-notes_router = fastapi.APIRouter(tags=['Notes'])
-notes_project_router = fastapi.APIRouter(tags=['Notes'])
+documents_router = fastapi.APIRouter(tags=['Documents'])
+documents_project_router = fastapi.APIRouter(tags=['Documents'])
 
 DEFAULT_LIMIT: int = 50
 MAX_LIMIT: int = 500
 
-_NOTE_READONLY_PATHS: frozenset[str] = frozenset(
+_DOCUMENT_READONLY_PATHS: frozenset[str] = frozenset(
     [
         '/id',
         '/project_id',
@@ -47,7 +47,7 @@ class TagRef(pydantic.BaseModel):
     slug: str
 
 
-class NoteResponse(pydantic.BaseModel):
+class DocumentResponse(pydantic.BaseModel):
     id: str
     title: str = ''
     content: str
@@ -60,7 +60,7 @@ class NoteResponse(pydantic.BaseModel):
     tags: list[TagRef] = []
 
 
-class NoteCreate(pydantic.BaseModel):
+class DocumentCreate(pydantic.BaseModel):
     title: str = pydantic.Field(min_length=1, max_length=200)
     content: str = pydantic.Field(min_length=1)
     tags: list[str] = pydantic.Field(
@@ -69,12 +69,12 @@ class NoteCreate(pydantic.BaseModel):
     )
 
 
-class NoteListResponse(pydantic.BaseModel):
-    data: list[NoteResponse]
+class DocumentListResponse(pydantic.BaseModel):
+    data: list[DocumentResponse]
 
 
-def _encode_cursor(created_at: datetime.datetime, note_id: str) -> str:
-    payload = f'{created_at.isoformat()}|{note_id}'.encode()
+def _encode_cursor(created_at: datetime.datetime, document_id: str) -> str:
+    payload = f'{created_at.isoformat()}|{document_id}'.encode()
     return base64.urlsafe_b64encode(payload).rstrip(b'=').decode('ascii')
 
 
@@ -90,8 +90,8 @@ def _decode_cursor(
         return None
     if '|' not in raw:
         return None
-    ts_str, _, note_id = raw.partition('|')
-    if not note_id:
+    ts_str, _, document_id = raw.partition('|')
+    if not document_id:
         return None
     try:
         ts = datetime.datetime.fromisoformat(ts_str)
@@ -99,7 +99,7 @@ def _decode_cursor(
         return None
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=datetime.UTC)
-    return ts.astimezone(datetime.UTC), note_id
+    return ts.astimezone(datetime.UTC), document_id
 
 
 def _build_link_header(
@@ -124,8 +124,10 @@ def _build_link_header(
     return ', '.join(links)
 
 
-def _parse_note_row(record: dict[str, typing.Any]) -> dict[str, typing.Any]:
-    note: dict[str, typing.Any] = graph.parse_agtype(record['n'])
+def _parse_document_row(
+    record: dict[str, typing.Any],
+) -> dict[str, typing.Any]:
+    document: dict[str, typing.Any] = graph.parse_agtype(record['n'])
     project: dict[str, typing.Any] = graph.parse_agtype(record['p'])
     raw_tags: list[typing.Any] = graph.parse_agtype(record['tags']) or []
     tags: list[dict[str, str]] = []
@@ -139,16 +141,16 @@ def _parse_note_row(record: dict[str, typing.Any]) -> dict[str, typing.Any]:
         tags.append(
             {'name': str(entry.get('name', '')), 'slug': str(slug)},
         )
-    note['project_id'] = project.get('id', '')
-    note['tags'] = tags
+    document['project_id'] = project.get('id', '')
+    document['tags'] = tags
     # Defaults for rows written before these columns landed.
-    note['is_pinned'] = bool(note.get('is_pinned', False))
-    note['title'] = str(note.get('title') or '')
-    return note
+    document['is_pinned'] = bool(document.get('is_pinned', False))
+    document['title'] = str(document.get('title') or '')
+    return document
 
 
-# Tail fragment used by every query that returns a note. Always runs
-# on ``n, p`` already in scope and emits ``n, p, tags`` columns.
+# Tail fragment used by every query that returns a document. Always
+# runs on ``n, p`` already in scope and emits ``n, p, tags`` columns.
 _TAGS_TAIL: typing.LiteralString = """
     OPTIONAL MATCH (n)-[:TAGGED_WITH]->(tag:Tag)
     WITH n, p, collect(CASE WHEN tag IS NOT NULL
@@ -162,10 +164,10 @@ _TAGS_TAIL: typing.LiteralString = """
 async def _attach_tags(
     db: graph.Pool,
     org_slug: str,
-    note_id: str,
+    document_id: str,
     tag_slugs: list[str],
 ) -> None:
-    """Create ``TAGGED_WITH`` edges from note -> tags.
+    """Create ``TAGGED_WITH`` edges from document -> tags.
 
     Split from the CREATE/SET query because AGE's Cypher translator does
     not support ``FOREACH``; a plain ``UNWIND`` + ``MATCH`` + ``CREATE``
@@ -174,7 +176,7 @@ async def _attach_tags(
     if not tag_slugs:
         return
     query: typing.LiteralString = """
-    MATCH (n:Note {{id: {note_id}}}),
+    MATCH (n:Document {{id: {document_id}}}),
           (:Organization {{slug: {org_slug}}})<-[:BELONGS_TO]-(t:Tag)
     WHERE t.slug IN {tag_slugs}
     CREATE (n)-[:TAGGED_WITH]->(t)
@@ -182,22 +184,26 @@ async def _attach_tags(
     """
     await db.execute(
         query,
-        {'note_id': note_id, 'org_slug': org_slug, 'tag_slugs': tag_slugs},
+        {
+            'document_id': document_id,
+            'org_slug': org_slug,
+            'tag_slugs': tag_slugs,
+        },
         columns=['attached'],
     )
 
 
 async def _detach_all_tags(
     db: graph.Pool,
-    note_id: str,
+    document_id: str,
 ) -> None:
-    """Remove every ``TAGGED_WITH`` edge from ``note``."""
+    """Remove every ``TAGGED_WITH`` edge from ``document``."""
     query: typing.LiteralString = """
-    MATCH (n:Note {{id: {note_id}}})-[tw:TAGGED_WITH]->(:Tag)
+    MATCH (n:Document {{id: {document_id}}})-[tw:TAGGED_WITH]->(:Tag)
     DELETE tw
     RETURN count(tw) AS removed
     """
-    await db.execute(query, {'note_id': note_id}, columns=['removed'])
+    await db.execute(query, {'document_id': document_id}, columns=['removed'])
 
 
 async def _validate_tag_slugs(
@@ -228,28 +234,30 @@ async def _validate_tag_slugs(
         )
 
 
-@notes_project_router.post('/', status_code=201, response_model=NoteResponse)
-async def create_note(
+@documents_project_router.post(
+    '/', status_code=201, response_model=DocumentResponse
+)
+async def create_document(
     org_slug: str,
     project_id: str,
-    data: NoteCreate,
+    data: DocumentCreate,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('note:create')),
+        fastapi.Depends(permissions.require_permission('document:create')),
     ],
 ) -> dict[str, typing.Any]:
-    """Create a note attached to a project, optionally with tags."""
+    """Create a document attached to a project, optionally with tags."""
     tag_slugs = list(dict.fromkeys(data.tags))
     await _validate_tag_slugs(db, org_slug, tag_slugs)
 
     now = datetime.datetime.now(datetime.UTC)
-    note_id = nanoid.generate()
+    document_id = nanoid.generate()
     create_query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-    CREATE (n:Note {{
+    CREATE (n:Document {{
         id: {id},
         title: {title},
         content: {content},
@@ -265,7 +273,7 @@ async def create_note(
         {
             'org_slug': org_slug,
             'project_id': project_id,
-            'id': note_id,
+            'id': document_id,
             'title': data.title,
             'content': data.content,
             'created_by': auth.principal_name,
@@ -281,17 +289,18 @@ async def create_note(
         )
 
     if tag_slugs:
-        await _attach_tags(db, org_slug, note_id, tag_slugs)
+        await _attach_tags(db, org_slug, document_id, tag_slugs)
 
-    note = await _fetch_note(db, org_slug, project_id, note_id)
-    if note is None:
+    document = await _fetch_document(db, org_slug, project_id, document_id)
+    if document is None:
         raise fastapi.HTTPException(
-            status_code=500, detail='Note created but could not be read back'
+            status_code=500,
+            detail='Document created but could not be read back',
         )
-    return note
+    return document
 
 
-async def _list_notes_impl(
+async def _list_documents_impl(
     *,
     request: fastapi.Request,
     db: graph.Pool,
@@ -342,7 +351,7 @@ async def _list_notes_impl(
     query: str = (
         """
     MATCH (o:Organization {{slug: {org_slug}}})
-    MATCH (n:Note)-[:ATTACHED_TO]->(p:Project)
+    MATCH (n:Document)-[:ATTACHED_TO]->(p:Project)
           -[:OWNED_BY]->(:Team)-[:BELONGS_TO]->(o)
     WHERE 1 = 1"""
         + project_predicate
@@ -358,7 +367,7 @@ async def _list_notes_impl(
 
     records = await db.execute(query, params, columns=['n', 'p', 'tags'])
     next_cursor: str | None = None
-    parsed = [_parse_note_row(r) for r in records]
+    parsed = [_parse_document_row(r) for r in records]
     if len(parsed) > limit:
         parsed = parsed[:limit]
         last = parsed[-1]
@@ -367,11 +376,11 @@ async def _list_notes_impl(
             last_ts = datetime.datetime.fromisoformat(last_ts)
         next_cursor = _encode_cursor(last_ts, last['id'])
 
-    adapter = pydantic.TypeAdapter(list[NoteResponse])
+    adapter = pydantic.TypeAdapter(list[DocumentResponse])
     response = fastapi.responses.JSONResponse(
         {
             'data': adapter.dump_python(
-                [NoteResponse.model_validate(n) for n in parsed],
+                [DocumentResponse.model_validate(n) for n in parsed],
                 mode='json',
             )
         }
@@ -380,22 +389,22 @@ async def _list_notes_impl(
     return response
 
 
-@notes_router.get('/', response_model=NoteListResponse)
-async def list_notes(
+@documents_router.get('/', response_model=DocumentListResponse)
+async def list_documents(
     request: fastapi.Request,
     org_slug: str,
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('note:read')),
+        fastapi.Depends(permissions.require_permission('document:read')),
     ],
     limit: int = DEFAULT_LIMIT,
     cursor: str | None = None,
     tag: str | None = None,
     project_id: str | None = None,
 ) -> fastapi.Response:
-    """Cross-project note search. Filter by tag slug and/or project id."""
-    return await _list_notes_impl(
+    """Cross-project document search. Filter by tag slug and/or project id."""
+    return await _list_documents_impl(
         request=request,
         db=db,
         org_slug=org_slug,
@@ -406,22 +415,22 @@ async def list_notes(
     )
 
 
-@notes_project_router.get('/', response_model=NoteListResponse)
-async def list_project_notes(
+@documents_project_router.get('/', response_model=DocumentListResponse)
+async def list_project_documents(
     request: fastapi.Request,
     org_slug: str,
     project_id: str,
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('note:read')),
+        fastapi.Depends(permissions.require_permission('document:read')),
     ],
     limit: int = DEFAULT_LIMIT,
     cursor: str | None = None,
     tag: str | None = None,
 ) -> fastapi.Response:
-    """List notes attached to a specific project."""
-    return await _list_notes_impl(
+    """List documents attached to a specific project."""
+    return await _list_documents_impl(
         request=request,
         db=db,
         org_slug=org_slug,
@@ -432,15 +441,15 @@ async def list_project_notes(
     )
 
 
-async def _fetch_note(
+async def _fetch_document(
     db: graph.Pool,
     org_slug: str,
     project_id: str,
-    note_id: str,
+    document_id: str,
 ) -> dict[str, typing.Any] | None:
     query: str = (
         """
-    MATCH (n:Note {{id: {note_id}}})
+    MATCH (n:Document {{id: {document_id}}})
           -[:ATTACHED_TO]->(p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
@@ -451,7 +460,7 @@ async def _fetch_note(
     records = await db.execute(
         query,
         {
-            'note_id': note_id,
+            'document_id': document_id,
             'project_id': project_id,
             'org_slug': org_slug,
         },
@@ -459,30 +468,32 @@ async def _fetch_note(
     )
     if not records:
         return None
-    return _parse_note_row(records[0])
+    return _parse_document_row(records[0])
 
 
-@notes_project_router.get('/{note_id}', response_model=NoteResponse)
-async def get_note(
+@documents_project_router.get(
+    '/{document_id}', response_model=DocumentResponse
+)
+async def get_document(
     org_slug: str,
     project_id: str,
-    note_id: str,
+    document_id: str,
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('note:read')),
+        fastapi.Depends(permissions.require_permission('document:read')),
     ],
 ) -> dict[str, typing.Any]:
-    """Retrieve a single note."""
-    note = await _fetch_note(db, org_slug, project_id, note_id)
-    if note is None:
+    """Retrieve a single document."""
+    document = await _fetch_document(db, org_slug, project_id, document_id)
+    if document is None:
         raise fastapi.HTTPException(
-            status_code=404, detail=f'Note {note_id!r} not found'
+            status_code=404, detail=f'Document {document_id!r} not found'
         )
-    return note
+    return document
 
 
-class NoteUpdate(pydantic.BaseModel):
+class DocumentUpdate(pydantic.BaseModel):
     title: str | None = pydantic.Field(
         default=None, min_length=1, max_length=200
     )
@@ -513,23 +524,25 @@ def _resolve_patched_field(
     return fallback
 
 
-@notes_project_router.patch('/{note_id}', response_model=NoteResponse)
-async def patch_note(
+@documents_project_router.patch(
+    '/{document_id}', response_model=DocumentResponse
+)
+async def patch_document(
     org_slug: str,
     project_id: str,
-    note_id: str,
+    document_id: str,
     operations: list[json_patch.PatchOperation],
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('note:write')),
+        fastapi.Depends(permissions.require_permission('document:write')),
     ],
 ) -> dict[str, typing.Any]:
-    """Update note content and/or tag attachments via JSON Patch."""
-    existing = await _fetch_note(db, org_slug, project_id, note_id)
+    """Update document content and/or tag attachments via JSON Patch."""
+    existing = await _fetch_document(db, org_slug, project_id, document_id)
     if existing is None:
         raise fastapi.HTTPException(
-            status_code=404, detail=f'Note {note_id!r} not found'
+            status_code=404, detail=f'Document {document_id!r} not found'
         )
 
     current = {
@@ -538,11 +551,13 @@ async def patch_note(
         'tags': [t['slug'] for t in existing.get('tags', [])],
         'is_pinned': bool(existing.get('is_pinned', False)),
     }
-    patched = json_patch.apply_patch(current, operations, _NOTE_READONLY_PATHS)
+    patched = json_patch.apply_patch(
+        current, operations, _DOCUMENT_READONLY_PATHS
+    )
     # Only validate fields the patch actually touched. The merged ``patched``
     # dict carries every field from ``current`` (incl. legacy values that
-    # may not satisfy ``NoteUpdate`` constraints), so validating it whole
-    # would reject a ``/is_pinned`` patch on a note with an empty title.
+    # may not satisfy ``DocumentUpdate`` constraints), so validating it whole
+    # would reject a ``/is_pinned`` patch on a document with an empty title.
     touched: set[str] = set()
     for op in operations:
         if op.path.startswith('/'):
@@ -550,7 +565,9 @@ async def patch_note(
             if head:
                 touched.add(head)
     try:
-        update = NoteUpdate(**{k: patched[k] for k in touched if k in patched})
+        update = DocumentUpdate(
+            **{k: patched[k] for k in touched if k in patched}
+        )
     except pydantic.ValidationError as e:
         raise fastapi.HTTPException(
             status_code=400,
@@ -585,7 +602,7 @@ async def patch_note(
 
     now = datetime.datetime.now(datetime.UTC)
     set_query: typing.LiteralString = """
-    MATCH (n:Note {{id: {note_id}}})
+    MATCH (n:Document {{id: {document_id}}})
           -[:ATTACHED_TO]->(:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
@@ -601,7 +618,7 @@ async def patch_note(
         {
             'org_slug': org_slug,
             'project_id': project_id,
-            'note_id': note_id,
+            'document_id': document_id,
             'title': new_title,
             'content': new_content,
             'updated_by': auth.principal_name,
@@ -612,35 +629,35 @@ async def patch_note(
     )
     if not records:
         raise fastapi.HTTPException(
-            status_code=404, detail=f'Note {note_id!r} not found'
+            status_code=404, detail=f'Document {document_id!r} not found'
         )
 
     if replace_tags:
-        await _detach_all_tags(db, note_id)
-        await _attach_tags(db, org_slug, note_id, new_tags)
+        await _detach_all_tags(db, document_id)
+        await _attach_tags(db, org_slug, document_id, new_tags)
 
-    note = await _fetch_note(db, org_slug, project_id, note_id)
-    if note is None:
+    document = await _fetch_document(db, org_slug, project_id, document_id)
+    if document is None:
         raise fastapi.HTTPException(
-            status_code=404, detail=f'Note {note_id!r} not found'
+            status_code=404, detail=f'Document {document_id!r} not found'
         )
-    return note
+    return document
 
 
-@notes_project_router.delete('/{note_id}', status_code=204)
-async def delete_note(
+@documents_project_router.delete('/{document_id}', status_code=204)
+async def delete_document(
     org_slug: str,
     project_id: str,
-    note_id: str,
+    document_id: str,
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('note:delete')),
+        fastapi.Depends(permissions.require_permission('document:delete')),
     ],
 ) -> None:
-    """Delete a note."""
+    """Delete a document."""
     query: typing.LiteralString = """
-    MATCH (n:Note {{id: {note_id}}})
+    MATCH (n:Document {{id: {document_id}}})
           -[:ATTACHED_TO]->(p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
@@ -650,12 +667,12 @@ async def delete_note(
     records = await db.execute(
         query,
         {
-            'note_id': note_id,
+            'document_id': document_id,
             'project_id': project_id,
             'org_slug': org_slug,
         },
     )
     if not records:
         raise fastapi.HTTPException(
-            status_code=404, detail=f'Note {note_id!r} not found'
+            status_code=404, detail=f'Document {document_id!r} not found'
         )

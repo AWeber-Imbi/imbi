@@ -1,9 +1,9 @@
-"""Note template management endpoints.
+"""Document template management endpoints.
 
 Templates are scoped to an organization and seed a new
-``Note``'s title, content, and tag set when a user creates a note
-from one. ``project_type_slugs`` filters the templates that apply
-to a given project type.
+``Document``'s title, content, and tag set when a user creates a
+document from one. ``project_type_slugs`` filters the templates
+that apply to a given project type.
 """
 
 import datetime
@@ -20,7 +20,7 @@ from imbi_api.graph_sql import props_template, set_clause
 
 LOGGER = logging.getLogger(__name__)
 
-note_templates_router = fastapi.APIRouter(tags=['Note Templates'])
+document_templates_router = fastapi.APIRouter(tags=['Document Templates'])
 
 _TEMPLATE_READONLY_PATHS: frozenset[str] = frozenset(
     [
@@ -42,7 +42,7 @@ class OrganizationRef(pydantic.BaseModel):
     slug: str
 
 
-class NoteTemplateBase(pydantic.BaseModel):
+class DocumentTemplateBase(pydantic.BaseModel):
     name: str = pydantic.Field(min_length=1)
     slug: str = pydantic.Field(min_length=1)
     description: str | None = None
@@ -57,11 +57,11 @@ class NoteTemplateBase(pydantic.BaseModel):
     sort_order: int = 0
 
 
-class NoteTemplateCreate(NoteTemplateBase):
+class DocumentTemplateCreate(DocumentTemplateBase):
     pass
 
 
-class NoteTemplateUpdate(pydantic.BaseModel):
+class DocumentTemplateUpdate(pydantic.BaseModel):
     name: str | None = pydantic.Field(default=None, min_length=1)
     slug: str | None = pydantic.Field(default=None, min_length=1)
     description: str | None = None
@@ -73,7 +73,7 @@ class NoteTemplateUpdate(pydantic.BaseModel):
     sort_order: int | None = None
 
 
-class NoteTemplateResponse(pydantic.BaseModel):
+class DocumentTemplateResponse(pydantic.BaseModel):
     id: str
     name: str
     slug: str
@@ -166,7 +166,7 @@ async def _attach_tags(
     # that doesn't first run ``_detach_all_tags``. The TAGGED_WITH edge
     # carries no properties, so no AGE MERGE-with-properties pitfall.
     query: typing.LiteralString = """
-    MATCH (nt:NoteTemplate {{slug: {tpl_slug}}})
+    MATCH (nt:DocumentTemplate {{slug: {tpl_slug}}})
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}}),
           (t:Tag)-[:BELONGS_TO]->(o)
     WHERE t.slug IN {tag_slugs}
@@ -188,7 +188,7 @@ async def _detach_all_tags(
     db: graph.Pool, org_slug: str, template_slug: str
 ) -> None:
     query: typing.LiteralString = """
-    MATCH (nt:NoteTemplate {{slug: {tpl_slug}}})
+    MATCH (nt:DocumentTemplate {{slug: {tpl_slug}}})
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}}),
           (nt)-[tw:TAGGED_WITH]->(:Tag)
     DELETE tw
@@ -206,7 +206,7 @@ async def _fetch_template(
 ) -> dict[str, typing.Any] | None:
     query: str = (
         """
-    MATCH (nt:NoteTemplate {{slug: {slug}}})
+    MATCH (nt:DocumentTemplate {{slug: {slug}}})
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
     WITH nt, o
     """
@@ -222,27 +222,27 @@ async def _fetch_template(
     return _parse_template_row(records[0])
 
 
-@note_templates_router.post(
-    '/', status_code=201, response_model=NoteTemplateResponse
+@document_templates_router.post(
+    '/', status_code=201, response_model=DocumentTemplateResponse
 )
-async def create_note_template(
+async def create_document_template(
     org_slug: str,
-    data: NoteTemplateCreate,
+    data: DocumentTemplateCreate,
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
-            permissions.require_permission('note_template:create'),
+            permissions.require_permission('document_template:create'),
         ),
     ],
 ) -> dict[str, typing.Any]:
-    """Create a note template scoped to ``org_slug``."""
+    """Create a document template scoped to ``org_slug``."""
     tag_slugs = list(dict.fromkeys(data.tags))
     await _validate_tag_slugs(db, org_slug, tag_slugs)
 
     # Slugs are unique per-org, not globally — enforce in app code.
     duplicate_query: typing.LiteralString = """
-    MATCH (nt:NoteTemplate {{slug: {slug}}})
+    MATCH (nt:DocumentTemplate {{slug: {slug}}})
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
     RETURN nt.slug AS slug
     """
@@ -254,7 +254,7 @@ async def create_note_template(
     if existing:
         raise fastapi.HTTPException(
             status_code=409,
-            detail=f'Note template with slug {data.slug!r} already exists',
+            detail=f'Document template with slug {data.slug!r} already exists',
         )
 
     now = datetime.datetime.now(datetime.UTC)
@@ -274,7 +274,7 @@ async def create_note_template(
     create_tpl = props_template(props)
     query = (
         f'MATCH (o:Organization {{{{slug: {{org_slug}}}}}})'
-        f' CREATE (nt:NoteTemplate {create_tpl})'
+        f' CREATE (nt:DocumentTemplate {create_tpl})'
         f' CREATE (nt)-[:BELONGS_TO]->(o)'
         f' RETURN nt, o'
     )
@@ -294,24 +294,26 @@ async def create_note_template(
     if template is None:
         raise fastapi.HTTPException(
             status_code=500,
-            detail='Note template created but could not be read back',
+            detail='Document template created but could not be read back',
         )
     return template
 
 
-@note_templates_router.get('/', response_model=list[NoteTemplateResponse])
-async def list_note_templates(
+@document_templates_router.get(
+    '/', response_model=list[DocumentTemplateResponse]
+)
+async def list_document_templates(
     org_slug: str,
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
-            permissions.require_permission('note_template:read'),
+            permissions.require_permission('document_template:read'),
         ),
     ],
     project_type: str | None = None,
 ) -> list[dict[str, typing.Any]]:
-    """List note templates for an organization.
+    """List document templates for an organization.
 
     ``project_type`` (optional): when provided, only templates that
     apply to the given project-type slug are returned. Templates with
@@ -319,7 +321,7 @@ async def list_note_templates(
     """
     query: str = (
         """
-    MATCH (nt:NoteTemplate)
+    MATCH (nt:DocumentTemplate)
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
     WITH nt, o
     ORDER BY nt.sort_order, nt.name
@@ -345,24 +347,26 @@ async def list_note_templates(
     return results
 
 
-@note_templates_router.get('/{slug}', response_model=NoteTemplateResponse)
-async def get_note_template(
+@document_templates_router.get(
+    '/{slug}', response_model=DocumentTemplateResponse
+)
+async def get_document_template(
     org_slug: str,
     slug: str,
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
-            permissions.require_permission('note_template:read'),
+            permissions.require_permission('document_template:read'),
         ),
     ],
 ) -> dict[str, typing.Any]:
-    """Get a note template by slug."""
+    """Get a document template by slug."""
     template = await _fetch_template(db, org_slug, slug)
     if template is None:
         raise fastapi.HTTPException(
             status_code=404,
-            detail=f'Note template with slug {slug!r} not found',
+            detail=f'Document template with slug {slug!r} not found',
         )
     return template
 
@@ -385,7 +389,7 @@ async def _persist_update(
     new_slug = props.get('slug', original_slug)
     if new_slug != original_slug:
         duplicate_query: typing.LiteralString = """
-        MATCH (nt:NoteTemplate {{slug: {slug}}})
+        MATCH (nt:DocumentTemplate {{slug: {slug}}})
               -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
         RETURN nt.slug AS slug
         """
@@ -398,13 +402,13 @@ async def _persist_update(
             raise fastapi.HTTPException(
                 status_code=409,
                 detail=(
-                    f'Note template with slug {new_slug!r} already exists'
+                    f'Document template with slug {new_slug!r} already exists'
                 ),
             )
 
     set_stmt = set_clause('nt', props)
     update_query = (
-        f'MATCH (nt:NoteTemplate {{{{slug: {{slug}}}}}})'
+        f'MATCH (nt:DocumentTemplate {{{{slug: {{slug}}}}}})'
         f' -[:BELONGS_TO]->'
         f'(:Organization {{{{slug: {{org_slug}}}}}})'
         f' {set_stmt}'
@@ -416,7 +420,9 @@ async def _persist_update(
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
-            detail=(f'Note template with slug {original_slug!r} not found'),
+            detail=(
+                f'Document template with slug {original_slug!r} not found'
+            ),
         )
     new_slug = graph.parse_agtype(records[0]['slug']) or props.get(
         'slug', original_slug
@@ -430,30 +436,32 @@ async def _persist_update(
     if template is None:
         raise fastapi.HTTPException(
             status_code=404,
-            detail=f'Note template with slug {new_slug!r} not found',
+            detail=f'Document template with slug {new_slug!r} not found',
         )
     return template
 
 
-@note_templates_router.put('/{slug}', response_model=NoteTemplateResponse)
-async def update_note_template(
+@document_templates_router.put(
+    '/{slug}', response_model=DocumentTemplateResponse
+)
+async def update_document_template(
     org_slug: str,
     slug: str,
-    data: NoteTemplateUpdate,
+    data: DocumentTemplateUpdate,
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
-            permissions.require_permission('note_template:write'),
+            permissions.require_permission('document_template:write'),
         ),
     ],
 ) -> dict[str, typing.Any]:
-    """Update a note template (whole-or-partial replace)."""
+    """Update a document template (whole-or-partial replace)."""
     existing = await _fetch_template(db, org_slug, slug)
     if existing is None:
         raise fastapi.HTTPException(
             status_code=404,
-            detail=f'Note template with slug {slug!r} not found',
+            detail=f'Document template with slug {slug!r} not found',
         )
 
     incoming = data.model_dump(exclude_unset=True)
@@ -485,8 +493,10 @@ async def update_note_template(
     )
 
 
-@note_templates_router.patch('/{slug}', response_model=NoteTemplateResponse)
-async def patch_note_template(
+@document_templates_router.patch(
+    '/{slug}', response_model=DocumentTemplateResponse
+)
+async def patch_document_template(
     org_slug: str,
     slug: str,
     operations: list[json_patch.PatchOperation],
@@ -494,16 +504,16 @@ async def patch_note_template(
     _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
-            permissions.require_permission('note_template:write'),
+            permissions.require_permission('document_template:write'),
         ),
     ],
 ) -> dict[str, typing.Any]:
-    """Partially update a note template using JSON Patch (RFC 6902)."""
+    """Partially update a document template using JSON Patch (RFC 6902)."""
     existing = await _fetch_template(db, org_slug, slug)
     if existing is None:
         raise fastapi.HTTPException(
             status_code=404,
-            detail=f'Note template with slug {slug!r} not found',
+            detail=f'Document template with slug {slug!r} not found',
         )
 
     current: dict[str, typing.Any] = {
@@ -523,7 +533,7 @@ async def patch_note_template(
     # Re-validate against the schema — apply_patch is type-blind, so a
     # patch like ``/sort_order = 'oops'`` would otherwise reach the DB.
     try:
-        patched = NoteTemplateBase.model_validate(patched).model_dump()
+        patched = DocumentTemplateBase.model_validate(patched).model_dump()
     except pydantic.ValidationError as e:
         raise fastapi.HTTPException(
             status_code=400,
@@ -553,21 +563,21 @@ async def patch_note_template(
     )
 
 
-@note_templates_router.delete('/{slug}', status_code=204)
-async def delete_note_template(
+@document_templates_router.delete('/{slug}', status_code=204)
+async def delete_document_template(
     org_slug: str,
     slug: str,
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
-            permissions.require_permission('note_template:delete'),
+            permissions.require_permission('document_template:delete'),
         ),
     ],
 ) -> None:
-    """Delete a note template."""
+    """Delete a document template."""
     query: typing.LiteralString = """
-    MATCH (nt:NoteTemplate {{slug: {slug}}})
+    MATCH (nt:DocumentTemplate {{slug: {slug}}})
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
     DETACH DELETE nt
     RETURN nt
@@ -576,5 +586,5 @@ async def delete_note_template(
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
-            detail=f'Note template with slug {slug!r} not found',
+            detail=f'Document template with slug {slug!r} not found',
         )

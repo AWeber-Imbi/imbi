@@ -86,7 +86,7 @@ class TagEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         body = response.json()
         self.assertEqual(body['slug'], 'runbook')
-        self.assertEqual(body['relationships']['notes']['count'], 0)
+        self.assertEqual(body['relationships']['documents']['count'], 0)
 
     def test_create_auto_slugifies_from_name(self) -> None:
         self.mock_db.execute.return_value = [
@@ -136,12 +136,12 @@ class TagEndpointsTestCase(unittest.TestCase):
             {
                 't': self._tag_data(),
                 'o': self._org_data(),
-                'note_count': 4,
+                'document_count': 4,
             },
             {
                 't': self._tag_data(name='Alert', slug='alert'),
                 'o': self._org_data(),
-                'note_count': 0,
+                'document_count': 0,
             },
         ]
         with mock.patch(
@@ -151,7 +151,7 @@ class TagEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(len(data), 2)
-        self.assertEqual(data[0]['relationships']['notes']['count'], 4)
+        self.assertEqual(data[0]['relationships']['documents']['count'], 4)
 
     # -- Get -----------------------------------------------------------
 
@@ -160,7 +160,7 @@ class TagEndpointsTestCase(unittest.TestCase):
             {
                 't': self._tag_data(),
                 'o': self._org_data(),
-                'note_count': 2,
+                'document_count': 2,
             }
         ]
         with mock.patch(
@@ -170,7 +170,9 @@ class TagEndpointsTestCase(unittest.TestCase):
                 '/organizations/engineering/tags/runbook'
             )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['relationships']['notes']['count'], 2)
+        self.assertEqual(
+            response.json()['relationships']['documents']['count'], 2
+        )
 
     def test_get_not_found(self) -> None:
         self.mock_db.execute.return_value = []
@@ -191,7 +193,7 @@ class TagEndpointsTestCase(unittest.TestCase):
                 {
                     't': self._tag_data(name='Runbooks'),
                     'o': self._org_data(),
-                    'note_count': 3,
+                    'document_count': 3,
                 }
             ],
         ]

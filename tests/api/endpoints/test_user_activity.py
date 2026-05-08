@@ -166,7 +166,7 @@ class ContributionsTests(_Base):
                             2026, 4, 17, 11, 0, tzinfo=datetime.UTC
                         ).isoformat(),
                     },
-                ],  # notes
+                ],  # documents
                 [],  # releases
                 [],  # uploads
                 [],  # conversations
@@ -186,7 +186,7 @@ class ContributionsTests(_Base):
         sources = {b['date']: b['by_source'] for b in body['buckets']}
         self.assertEqual(sources[opslog_day.isoformat()]['operations_log'], 5)
         self.assertEqual(sources[events_day.isoformat()]['events'], 2)
-        self.assertEqual(sources['2026-04-17']['note'], 2)
+        self.assertEqual(sources['2026-04-17']['document'], 2)
 
     def test_invalid_tz_returns_400(self) -> None:
         self._execute_returns([[{'id': 'u1'}]])
@@ -290,13 +290,13 @@ class ActivityFeedTests(_Base):
             [
                 [{'id': 'u1'}],  # _ensure_user_exists
                 [{'conn_subjects': [], 'oauth_subjects': []}],  # subjects
-                # graph legs in registration order (note, release, upload,
+                # graph legs in registration order (document, release, upload,
                 # conversation)
                 [
                     {
-                        'id': 'note-1',
+                        'id': 'document-1',
                         'ts': ts2.isoformat(),
-                        'title': 'A note',
+                        'title': 'A document',
                         'created_by': 'alice@example.com',
                         'updated_by': None,
                         'project_id': 'p1',
@@ -339,11 +339,11 @@ class ActivityFeedTests(_Base):
         self.assertEqual(resp.status_code, 200, resp.text)
         body = resp.json()
         self.assertEqual(len(body['data']), 2)
-        # Newest first: op-2 (ts3), note-1 (ts2)
+        # Newest first: op-2 (ts3), document-1 (ts2)
         self.assertEqual(body['data'][0]['id'], 'op-2')
         self.assertEqual(body['data'][0]['source'], 'operations_log')
-        self.assertEqual(body['data'][1]['id'], 'note-1')
-        self.assertEqual(body['data'][1]['source'], 'note')
+        self.assertEqual(body['data'][1]['id'], 'document-1')
+        self.assertEqual(body['data'][1]['source'], 'document')
         # Has Link header
         self.assertIn('Link', resp.headers)
 
@@ -368,7 +368,7 @@ class ActivityFeedTests(_Base):
             [
                 [{'id': 'u1'}],  # _ensure_user_exists
                 [{'conn_subjects': [], 'oauth_subjects': []}],  # subjects
-                [],  # notes
+                [],  # documents
                 [],  # releases
                 [],  # uploads
                 [],  # conversations
