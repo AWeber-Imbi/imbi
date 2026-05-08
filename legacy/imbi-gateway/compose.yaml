@@ -21,3 +21,18 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    ports:
+      - "8123"
+      - "9000"
+    environment:
+      - CLICKHOUSE_DB=default
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=password
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping | grep -q 'Ok'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

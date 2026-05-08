@@ -8,7 +8,7 @@ import celpy
 import fastapi
 import jsonpointer
 import pydantic
-from imbi_common import graph
+from imbi_common import clickhouse, graph, models
 
 from imbi_gateway import actions
 
@@ -170,6 +170,26 @@ async def process_notification(
                 edge_plugin_slug=sel.get('identity_plugin_slug'),
                 candidate_plugin_slugs=plugin_slugs,
             )
+            event_type = _resolve_event_type(
+                sel.get('event_type_selector'), body, request.headers
+            )
+            metadata: dict[str, typing.Any] = {
+                'webhook_id': webhook_id,
+                'headers': dict(request.headers),
+            }
+            payload = _payload_dict(body)
+            events = [
+                models.Event(
+                    project_id=graph.parse_agtype(record['project_id']),
+                    type=event_type,
+                    third_party_service=service['slug'],
+                    attributed_to=user_id or '',
+                    metadata=metadata,
+                    payload=payload,
+                )
+                for record in records
+            ]
+            await _record_events(events)
             for record in records:
                 await _run_handlers(
                     org['slug'],
@@ -270,3 +290,60 @@ async def _extract_json_body(request: fastapi.Request) -> object:
         raise fastapi.HTTPException(
             http.HTTPStatus.UNPROCESSABLE_CONTENT
         ) from None
+
+
+def _payload_dict(body: object) -> dict[str, typing.Any]:
+    """Coerce a webhook body into a dict for the ``payload`` column.
+
+    Non-dict bodies map to ``{}`` so the typed ClickHouse insert never
+    sees ``None`` or scalar JSON for the ``payload`` JSON column.
+    """
+    if isinstance(body, dict):
+        return typing.cast('dict[str, typing.Any]', body)
+    return {}
+
+
+def _resolve_event_type(
+    selector: str | None, body: object, headers: abc.Mapping[str, str]
+) -> str:
+    """Resolve the event-type label per the configured selector.
+
+    - ``None`` / empty selector -> ``''``.
+    - Selector starting with ``/`` -> JSON pointer against ``body``;
+      on miss, log a warning and return ``''``.
+    - Otherwise -> case-insensitive HTTP header lookup. If the header
+      is absent, return the selector itself as a literal label so
+      sources without a useful event-type field (e.g. SonarQube)
+      still get a stable string.
+    """
+    if not selector:
+        return ''
+    if selector.startswith('/'):
+        try:
+            resolved = jsonpointer.JsonPointer(selector).resolve(body)
+        except jsonpointer.JsonPointerException:
+            LOGGER.warning(
+                'event_type_selector %r failed to resolve', selector
+            )
+            return ''
+        return '' if resolved is None else str(resolved)
+    header_value = headers.get(selector)
+    if header_value:
+        return header_value
+    return selector
+
+
+async def _record_events(events: list[models.Event]) -> None:
+    """Insert one ``events`` row per matched project into ClickHouse.
+
+    Best-effort — failures are logged and swallowed so handlers run
+    regardless of analytics insert health.
+    """
+    if not events:
+        return
+    try:
+        await clickhouse.insert(
+            'events', typing.cast('list[pydantic.BaseModel]', events)
+        )
+    except Exception:
+        LOGGER.exception('Failed to record webhook events in ClickHouse')

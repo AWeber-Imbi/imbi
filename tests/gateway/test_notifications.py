@@ -5,7 +5,7 @@ import celpy
 import httpx
 import nanoid
 import pydantic
-from imbi_common import graph
+from imbi_common import clickhouse, graph
 from imbi_common.graph import (
     _inject_graph,  # pyright: ignore[reportPrivateUsage]
 )
@@ -239,11 +239,19 @@ class ProcessNotificationTests(helpers.TestCase):
         )
         return rule_id
 
-    async def _post(self, webhook_id: str, body: object) -> httpx.Response:
+    async def _post(
+        self,
+        webhook_id: str,
+        body: object,
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> httpx.Response:
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=self.app), base_url='http://test'
         ) as client:
-            return await client.post(f'/notifications/{webhook_id}', json=body)
+            return await client.post(
+                f'/notifications/{webhook_id}', json=body, headers=headers
+            )
 
     async def test_no_webhook_found(self) -> None:
         with self.assertLogs(
@@ -453,6 +461,7 @@ class ProcessNotificationTests(helpers.TestCase):
         identifier_selector: str = '/repo/id',
         user_subject_selector: str | None = None,
         identity_plugin_slug: str | None = None,
+        event_type_selector: str | None = None,
     ) -> None:
         """Replace the IMPLEMENTED_BY edge with one carrying given props."""
         await self.g.execute(
@@ -467,7 +476,8 @@ class ProcessNotificationTests(helpers.TestCase):
             ' CREATE (w)-[:IMPLEMENTED_BY {{'
             'identifier_selector: {sel},'
             ' user_subject_selector: {uss},'
-            ' identity_plugin_slug: {ips}'
+            ' identity_plugin_slug: {ips},'
+            ' event_type_selector: {ets}'
             '}}]->(tps) RETURN w',
             {
                 'wid': self.webhook_id,
@@ -475,6 +485,7 @@ class ProcessNotificationTests(helpers.TestCase):
                 'sel': identifier_selector,
                 'uss': user_subject_selector,
                 'ips': identity_plugin_slug,
+                'ets': event_type_selector,
             },
             ['w'],
         )
@@ -645,3 +656,131 @@ class ProcessNotificationTests(helpers.TestCase):
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
         self.assertTrue(any('Failure in' in line for line in cm.output))
+
+    async def test_event_recorded_for_each_matching_project(self) -> None:
+        """Each project that matches the webhook gets one events row."""
+        await self._add_rule(filter_expression='true')
+        await self._set_implemented_by(event_type_selector='x-github-event')
+        body = {'repo': {'id': self.ext_id}, 'action': 'opened'}
+        with unittest.mock.patch.object(
+            clickhouse, 'insert', new=unittest.mock.AsyncMock()
+        ) as mock_insert:
+            response = await self._post(
+                self.webhook_id,
+                body,
+                headers={'X-GitHub-Event': 'deployment_status'},
+            )
+        self.assertEqual(202, response.status_code)
+        mock_insert.assert_awaited_once()
+        assert mock_insert.await_args is not None  # noqa: S101 - test narrowing
+        table_arg, events_arg = mock_insert.await_args.args
+        self.assertEqual('events', table_arg)
+        self.assertEqual(1, len(events_arg))
+        ev = events_arg[0]
+        self.assertEqual(self.proj_id, ev.project_id)
+        self.assertEqual('deployment_status', ev.type)
+        self.assertEqual(body, ev.payload)
+        self.assertEqual(self.webhook_id, ev.metadata['webhook_id'])
+        self.assertEqual(
+            'deployment_status', ev.metadata['headers'].get('x-github-event')
+        )
+
+    async def test_no_event_when_filter_does_not_match(self) -> None:
+        await self._add_rule(filter_expression='false')
+        body = {'repo': {'id': self.ext_id}}
+        with unittest.mock.patch.object(
+            clickhouse, 'insert', new=unittest.mock.AsyncMock()
+        ) as mock_insert:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(204, response.status_code)
+        mock_insert.assert_not_awaited()
+
+    async def test_no_event_when_no_project_matches(self) -> None:
+        await self._add_rule(filter_expression='true')
+        body = {'repo': {'id': 'no-such-external-id'}}
+        with unittest.mock.patch.object(
+            clickhouse, 'insert', new=unittest.mock.AsyncMock()
+        ) as mock_insert:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(204, response.status_code)
+        mock_insert.assert_not_awaited()
+
+    async def test_event_insert_failure_does_not_block_handlers(self) -> None:
+        """ClickHouse failures are best-effort; handler runs anyway."""
+        await self._add_rule(filter_expression='true')
+        body = {'repo': {'id': self.ext_id}}
+        with (
+            unittest.mock.patch.object(
+                clickhouse,
+                'insert',
+                new=unittest.mock.AsyncMock(side_effect=RuntimeError('boom')),
+            ),
+            self.assertLogs('imbi_gateway.notifications', level='ERROR') as cm,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(1, len(HANDLER_CALLS))
+        self.assertTrue(
+            any(
+                'Failed to record webhook events in ClickHouse' in line
+                for line in cm.output
+            )
+        )
+
+
+_resolve_event_type = (
+    notifications._resolve_event_type  # pyright: ignore[reportPrivateUsage]
+)
+
+
+class ResolveEventTypeUnitTests(unittest.IsolatedAsyncioTestCase):
+    """Unit tests for the `_resolve_event_type` pure function."""
+
+    def test_none_selector_returns_empty(self) -> None:
+        self.assertEqual('', _resolve_event_type(None, {}, {}))
+
+    def test_empty_selector_returns_empty(self) -> None:
+        self.assertEqual('', _resolve_event_type('', {}, {}))
+
+    def test_json_pointer_resolves(self) -> None:
+        self.assertEqual(
+            'opened', _resolve_event_type('/action', {'action': 'opened'}, {})
+        )
+
+    def test_json_pointer_miss_logs_and_returns_empty(self) -> None:
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='WARNING'
+        ) as cm:
+            result = _resolve_event_type('/missing', {'action': 'opened'}, {})
+        self.assertEqual('', result)
+        self.assertTrue(any('failed to resolve' in line for line in cm.output))
+
+    def test_json_pointer_resolves_to_none_returns_empty(self) -> None:
+        self.assertEqual(
+            '', _resolve_event_type('/action', {'action': None}, {})
+        )
+
+    def test_json_pointer_stringifies_non_string(self) -> None:
+        self.assertEqual('42', _resolve_event_type('/n', {'n': 42}, {}))
+
+    def test_header_present_uses_value(self) -> None:
+        self.assertEqual(
+            'deployment_status',
+            _resolve_event_type(
+                'x-github-event', {}, {'x-github-event': 'deployment_status'}
+            ),
+        )
+
+    def test_header_absent_returns_literal_selector(self) -> None:
+        # SonarQube case: no header named "SonarQube Notification" exists;
+        # the selector itself is the stable label.
+        self.assertEqual(
+            'SonarQube Notification',
+            _resolve_event_type('SonarQube Notification', {}, {}),
+        )
+
+    def test_header_empty_string_treated_as_absent(self) -> None:
+        self.assertEqual(
+            'x-github-event',
+            _resolve_event_type('x-github-event', {}, {'x-github-event': ''}),
+        )
