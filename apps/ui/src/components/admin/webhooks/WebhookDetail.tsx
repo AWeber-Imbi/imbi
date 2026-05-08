@@ -134,6 +134,18 @@ export function WebhookDetail({ onBack, onEdit, webhook }: WebhookDetailProps) {
                 </div>
               </div>
             )}
+            {webhook.event_type_selector && (
+              <div>
+                <div className="text-sm text-secondary">
+                  Event Type Selector
+                </div>
+                <div className="mt-1">
+                  <code className="rounded bg-secondary px-2 py-1 text-sm text-primary">
+                    {webhook.event_type_selector}
+                  </code>
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

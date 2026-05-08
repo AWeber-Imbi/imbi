@@ -63,6 +63,9 @@ export function WebhookForm({
   const [identityPluginSlug, setIdentityPluginSlug] = useState(
     webhook?.identity_plugin_slug || '',
   )
+  const [eventTypeSelector, setEventTypeSelector] = useState(
+    webhook?.event_type_selector || '',
+  )
   const [rules, setRules] = useState<RuleDraft[]>(() =>
     (webhook?.rules || []).map((r) => ({ ...r, _clientId: makeClientId() })),
   )
@@ -104,6 +107,10 @@ export function WebhookForm({
       newErrors.identity_plugin_slug =
         'Identity plugin slug requires a third-party service'
     }
+    if (eventTypeSelector && !tpsSlug) {
+      newErrors.event_type_selector =
+        'Event type selector requires a third-party service'
+    }
     for (let i = 0; i < rules.length; i++) {
       if (!rules[i].filter_expression.trim()) {
         newErrors[`rule_${i}_filter`] = 'Filter expression is required'
@@ -121,6 +128,7 @@ export function WebhookForm({
 
     const payload: WebhookSaveData = {
       description: description.trim() || null,
+      event_type_selector: eventTypeSelector.trim() || null,
       icon: icon.trim() || null,
       identifier_selector: identifierSelector.trim() || null,
       identity_plugin_slug: identityPluginSlug.trim() || null,
@@ -158,6 +166,7 @@ export function WebhookForm({
       setIdentifierSelector('')
       setUserSubjectSelector('')
       setIdentityPluginSlug('')
+      setEventTypeSelector('')
     }
     // In edit mode, auto-update the displayed slug to the computed value
     // so the user can see what will be saved if they don't override it.
@@ -524,6 +533,40 @@ export function WebhookForm({
                       Override which identity plugin resolves the user. Leave
                       blank to fall back to identity plugins attached to the
                       third-party service.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-sm text-secondary">
+                      Event Type Selector{' '}
+                      <span className="text-xs text-tertiary">(optional)</span>
+                    </label>
+                    <Input
+                      className={`font-mono text-sm ${
+                        errors.event_type_selector ? 'border-red-500' : ''
+                      }`}
+                      disabled={isLoading}
+                      onChange={(e) => setEventTypeSelector(e.target.value)}
+                      placeholder="e.g., x-github-event or /action"
+                      value={eventTypeSelector}
+                    />
+                    {errors.event_type_selector && (
+                      <div
+                        className={
+                          'mt-1 flex items-center gap-1 text-xs text-danger'
+                        }
+                      >
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.event_type_selector}
+                      </div>
+                    )}
+                    <p className="mt-1 text-xs text-tertiary">
+                      Resolves the activity-feed event type. Values starting
+                      with <code>/</code> are JSON pointers evaluated against
+                      the request body; otherwise the value is treated as an
+                      HTTP header name. When the header is absent, the selector
+                      itself is used as the literal label (e.g.,{' '}
+                      <code>SonarQube Notification</code>).
                     </p>
                   </div>
                 </>
