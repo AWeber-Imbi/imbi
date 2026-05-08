@@ -146,6 +146,7 @@ RETURN w{{.*}} AS webhook,
        impl.identifier_selector AS identifier_selector,
        impl.user_subject_selector AS user_subject_selector,
        impl.identity_plugin_slug AS identity_plugin_slug,
+       impl.event_type_selector AS event_type_selector,
        [x IN all_rules
         | x {{.filter_expression, .handler,
               .handler_config}}]
@@ -165,6 +166,7 @@ _UPDATE_RETURN_TAIL_WITH_TPS: typing.LiteralString = (
     ' impl.identifier_selector AS identifier_selector,'
     ' impl.user_subject_selector AS user_subject_selector,'
     ' impl.identity_plugin_slug AS identity_plugin_slug,'
+    ' impl.event_type_selector AS event_type_selector,'
     ' [x IN all_rules'
     ' | x {{.filter_expression, .handler,'
     ' .handler_config}}] AS rules'
@@ -183,6 +185,7 @@ _UPDATE_RETURN_TAIL_NO_TPS: typing.LiteralString = (
     ' null AS identifier_selector,'
     ' null AS user_subject_selector,'
     ' null AS identity_plugin_slug,'
+    ' null AS event_type_selector,'
     ' [x IN all_rules'
     ' | x {{.filter_expression, .handler,'
     ' .handler_config}}] AS rules'
@@ -272,7 +275,8 @@ async def create_webhook(
             ' CREATE (w)-[:IMPLEMENTED_BY {{'
             'identifier_selector: {identifier_selector},'
             ' user_subject_selector: {user_subject_selector},'
-            ' identity_plugin_slug: {identity_plugin_slug}'
+            ' identity_plugin_slug: {identity_plugin_slug},'
+            ' event_type_selector: {event_type_selector}'
             '}}]->(tps)' + rule_clauses + ' RETURN w.id AS id'
         )
         write_params: dict[str, typing.Any] = {
@@ -281,6 +285,7 @@ async def create_webhook(
             'identifier_selector': data.identifier_selector,
             'user_subject_selector': data.user_subject_selector,
             'identity_plugin_slug': data.identity_plugin_slug,
+            'event_type_selector': data.event_type_selector,
         }
     else:
         write_query = (
@@ -330,6 +335,7 @@ async def create_webhook(
             'identifier_selector',
             'user_subject_selector',
             'identity_plugin_slug',
+            'event_type_selector',
             'rules',
         ],
     )
@@ -367,6 +373,7 @@ async def list_webhooks(
            impl.identifier_selector AS identifier_selector,
            impl.user_subject_selector AS user_subject_selector,
            impl.identity_plugin_slug AS identity_plugin_slug,
+           impl.event_type_selector AS event_type_selector,
            [x IN all_rules
             | x {{.filter_expression, .handler,
                   .handler_config}}]
@@ -382,6 +389,7 @@ async def list_webhooks(
             'identifier_selector',
             'user_subject_selector',
             'identity_plugin_slug',
+            'event_type_selector',
             'rules',
         ],
     )
@@ -410,6 +418,7 @@ async def get_webhook(
             'identifier_selector',
             'user_subject_selector',
             'identity_plugin_slug',
+            'event_type_selector',
             'rules',
         ],
     )
@@ -460,6 +469,7 @@ async def patch_webhook(
             'identifier_selector',
             'user_subject_selector',
             'identity_plugin_slug',
+            'event_type_selector',
             'rules',
         ],
     )
@@ -495,6 +505,9 @@ async def patch_webhook(
         ),
         'identity_plugin_slug': graph.parse_agtype(
             existing[0].get('identity_plugin_slug')
+        ),
+        'event_type_selector': graph.parse_agtype(
+            existing[0].get('event_type_selector')
         ),
         'rules': [
             {
@@ -594,7 +607,8 @@ async def patch_webhook(
             ' SET impl.identifier_selector'
             ' = {identifier_selector},'
             ' impl.user_subject_selector = {user_subject_selector},'
-            ' impl.identity_plugin_slug = {identity_plugin_slug}'
+            ' impl.identity_plugin_slug = {identity_plugin_slug},'
+            ' impl.event_type_selector = {event_type_selector}'
             + rule_clauses
             + ' RETURN w.id AS id'
         )
@@ -606,6 +620,7 @@ async def patch_webhook(
             'identifier_selector': data.identifier_selector,
             'user_subject_selector': data.user_subject_selector,
             'identity_plugin_slug': data.identity_plugin_slug,
+            'event_type_selector': data.event_type_selector,
             **rules_params,
         }
     else:
@@ -657,6 +672,7 @@ async def patch_webhook(
             'identifier_selector',
             'user_subject_selector',
             'identity_plugin_slug',
+            'event_type_selector',
             'rules',
         ],
     )

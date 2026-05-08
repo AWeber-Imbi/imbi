@@ -475,6 +475,7 @@ async def list_service_webhooks(
     RETURN w{{.*}} AS webhook,
            tps{{.*}} AS tps,
            impl.identifier_selector AS identifier_selector,
+           impl.event_type_selector AS event_type_selector,
            [x IN all_rules
             | x {{.filter_expression, .handler,
                   .handler_config}}]
@@ -484,7 +485,13 @@ async def list_service_webhooks(
     records = await db.execute(
         query,
         {'slug': slug, 'org_slug': org_slug},
-        ['webhook', 'tps', 'identifier_selector', 'rules'],
+        [
+            'webhook',
+            'tps',
+            'identifier_selector',
+            'event_type_selector',
+            'rules',
+        ],
     )
     return [models.WebhookResponse.from_graph_record(r) for r in records]
 

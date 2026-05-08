@@ -36,6 +36,7 @@ class _WebhookRecord(typing.TypedDict):
     identifier_selector: typing.NotRequired[str | None]
     user_subject_selector: typing.NotRequired[str | None]
     identity_plugin_slug: typing.NotRequired[str | None]
+    event_type_selector: typing.NotRequired[str | None]
     rules: list[_WebhookRule | None]
 
 
@@ -360,6 +361,46 @@ class WebhookEndpointsTestCase(unittest.TestCase):
             json={
                 'name': 'Test',
                 'identity_plugin_slug': 'github',
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_create_with_event_type_selector(self) -> None:
+        """event_type_selector round-trips through CREATE/GET."""
+        record = copy.deepcopy(self.webhook_record)
+        record['tps'] = {'name': 'GitHub', 'slug': 'github'}
+        record['identifier_selector'] = '/repository/full_name'
+        record['event_type_selector'] = 'x-github-event'
+
+        self.mock_db.execute.return_value = [record]
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            payload = {
+                'name': 'GitHub Events',
+                'third_party_service_slug': 'github',
+                'identifier_selector': '/repository/full_name',
+                'event_type_selector': 'x-github-event',
+            }
+            response = self.client.post(
+                '/organizations/engineering/webhooks/',
+                json=payload,
+            )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data['event_type_selector'], 'x-github-event')
+
+    def test_create_event_type_selector_without_service(self) -> None:
+        """event_type_selector requires a third-party service."""
+        response = self.client.post(
+            '/organizations/engineering/webhooks/',
+            json={
+                'name': 'Test',
+                'event_type_selector': 'x-github-event',
             },
         )
         self.assertEqual(response.status_code, 422)
@@ -773,6 +814,54 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         )
         self.assertEqual(data['identity_plugin_slug'], 'github')
 
+    def test_patch_event_type_selector(self) -> None:
+        """Patching event_type_selector round-trips through the edge."""
+        existing_record = {
+            'webhook': {
+                'id': 'abc123def4',
+                'name': 'GitHub Hook',
+                'slug': 'github-hook',
+                'description': None,
+                'notification_path': '/abc123def4',
+                'secret': None,
+            },
+            'tps': {'slug': 'github', 'name': 'GitHub'},
+            'identifier_selector': '/repository/full_name',
+            'user_subject_selector': None,
+            'identity_plugin_slug': None,
+            'event_type_selector': None,
+            'rules': [],
+        }
+        updated_record = copy.deepcopy(existing_record)
+        updated_record['event_type_selector'] = 'x-github-event'
+
+        self.mock_db.execute.side_effect = [
+            [existing_record],
+            [updated_record],
+            [updated_record],
+        ]
+
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/webhooks/github-hook',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/event_type_selector',
+                        'value': 'x-github-event',
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['event_type_selector'], 'x-github-event')
+
     def test_patch_identity_fields_rejected_without_tps(self) -> None:
         """Setting identity selectors on a TPS-less webhook is a 400.
 
@@ -858,6 +947,46 @@ class WebhookEndpointsTestCase(unittest.TestCase):
                         'op': 'replace',
                         'path': '/identity_plugin_slug',
                         'value': 'github',
+                    }
+                ],
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('third_party_service_slug', response.json()['detail'])
+
+    def test_patch_event_type_selector_rejected_without_tps(self) -> None:
+        """Setting event_type_selector on a TPS-less webhook is a 400."""
+        existing_record = {
+            'webhook': {
+                'id': 'abc123def4',
+                'name': 'Solo Hook',
+                'slug': 'solo-hook',
+                'description': None,
+                'notification_path': '/abc123def4',
+                'secret': None,
+            },
+            'tps': None,
+            'identifier_selector': None,
+            'user_subject_selector': None,
+            'identity_plugin_slug': None,
+            'event_type_selector': None,
+            'rules': [],
+        }
+        self.mock_db.execute.side_effect = [[existing_record]]
+
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/webhooks/solo-hook',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/event_type_selector',
+                        'value': 'x-github-event',
                     }
                 ],
             )
