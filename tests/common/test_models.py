@@ -618,9 +618,16 @@ class EventTestCase(unittest.TestCase):
         self.assertIsNotNone(event.recorded_at)
         self.assertEqual(event.recorded_at.tzinfo, datetime.UTC)
 
-    def test_attributed_to_defaults_to_none(self) -> None:
+    def test_attributed_to_defaults_to_empty_string(self) -> None:
         event = self._make()
-        self.assertIsNone(event.attributed_to)
+        self.assertEqual(event.attributed_to, '')
+
+    def test_attributed_to_none_is_coerced_to_empty_string(self) -> None:
+        """``None`` must be coerced to ``''`` to match the non-Nullable
+        ``LowCardinality(String) DEFAULT ''`` column on the events table.
+        """
+        event = self._make(attributed_to=None)
+        self.assertEqual(event.attributed_to, '')
 
     def test_metadata_and_payload_default_to_empty_dict(self) -> None:
         event = self._make()

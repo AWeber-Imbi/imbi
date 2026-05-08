@@ -591,6 +591,18 @@ class Event(pydantic.BaseModel):
     )
     type: str = ''
     third_party_service: str
-    attributed_to: str | None = None
+    attributed_to: str = ''
     metadata: dict[str, typing.Any] = {}
     payload: dict[str, typing.Any] = {}
+
+    @pydantic.field_validator('attributed_to', mode='before')
+    @classmethod
+    def _coerce_none_to_empty(cls, value: object) -> object:
+        """Coerce ``None`` to ``''`` to match the non-Nullable column.
+
+        The events table stores ``attributed_to`` as ``LowCardinality(String)
+        DEFAULT ''`` (non-Nullable); inserting ``None`` raises a clickhouse
+        DataError. Webhook callers commonly resolve to no attributed user
+        (``user_id is None``) and pass that value through directly.
+        """
+        return '' if value is None else value
