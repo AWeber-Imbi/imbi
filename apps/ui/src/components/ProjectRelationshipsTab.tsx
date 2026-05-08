@@ -31,95 +31,6 @@ type RelFilter = 'all' | 'used-by' | 'uses'
 /*  Sidebar                                                           */
 /* ------------------------------------------------------------------ */
 
-export function ProjectRelationshipsSidebar({
-  filter,
-  inbound,
-  inboundVisible,
-  onAdd,
-  onFilterChange,
-  outbound,
-  outboundVisible,
-}: RelationshipsSidebarProps) {
-  const sectionLabel = 'text-tertiary'
-  const sub = 'text-tertiary'
-
-  const chipBase =
-    'rounded-full px-3 py-1 text-xs font-medium transition-colors'
-  const chipSelected = 'bg-amber-500 text-white'
-  const chipUnselected =
-    'border border-input text-secondary hover:border-secondary'
-
-  return (
-    <Card
-      className={`h-full min-h-0 w-full flex-shrink-0 overflow-y-auto ${''}`}
-    >
-      <CardHeader className="p-4 pb-2">
-        <div className="flex items-center justify-between">
-          <div className="flex flex-wrap gap-1.5">
-            {(['all', 'uses', 'used-by'] as const).map((f) => (
-              <Button
-                aria-pressed={filter === f}
-                className={`h-auto ${chipBase} ${filter === f ? chipSelected : chipUnselected}`}
-                key={f}
-                onClick={() => onFilterChange(f)}
-                type="button"
-                variant="ghost"
-              >
-                {f === 'all' ? 'All' : f === 'uses' ? 'Uses' : 'Used by'}
-              </Button>
-            ))}
-          </div>
-          <Button onClick={onAdd} size="sm" variant="ghost">
-            Edit
-          </Button>
-        </div>
-      </CardHeader>
-
-      <CardContent className="p-4 pt-2">
-        {/* Outbound (USES) section */}
-        {outboundVisible && (
-          <div className="mb-4">
-            <h4
-              className={`mb-2 text-[10px] font-medium uppercase tracking-[0.12em] ${sectionLabel}`}
-            >
-              Uses
-            </h4>
-            {outbound.length === 0 ? (
-              <p className={`text-xs ${sub}`}>None</p>
-            ) : (
-              <ul className="space-y-1">
-                {outbound.map((r, i) => (
-                  <SidebarProjectRow key={`out:${r.project.id}:${i}`} rel={r} />
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        {/* Inbound (USED BY) section */}
-        {inboundVisible && (
-          <div>
-            <h4
-              className={`mb-2 text-[10px] font-medium uppercase tracking-[0.12em] ${sectionLabel}`}
-            >
-              Used by
-            </h4>
-            {inbound.length === 0 ? (
-              <p className={`text-xs ${sub}`}>None</p>
-            ) : (
-              <ul className="space-y-1">
-                {inbound.map((r, i) => (
-                  <SidebarProjectRow key={`in:${r.project.id}:${i}`} rel={r} />
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
 export function ProjectRelationshipsTab({
   orgSlug,
   project,
@@ -259,6 +170,95 @@ export function ProjectRelationshipsTab({
         relationships={rels}
       />
     </>
+  )
+}
+
+function ProjectRelationshipsSidebar({
+  filter,
+  inbound,
+  inboundVisible,
+  onAdd,
+  onFilterChange,
+  outbound,
+  outboundVisible,
+}: RelationshipsSidebarProps) {
+  const sectionLabel = 'text-tertiary'
+  const sub = 'text-tertiary'
+
+  const chipBase =
+    'rounded-full px-3 py-1 text-xs font-medium transition-colors'
+  const chipSelected = 'bg-amber-500 text-white'
+  const chipUnselected =
+    'border border-input text-secondary hover:border-secondary'
+
+  return (
+    <Card
+      className={`h-full min-h-0 w-full flex-shrink-0 overflow-y-auto ${''}`}
+    >
+      <CardHeader className="p-4 pb-2">
+        <div className="flex items-center justify-between">
+          <div className="flex flex-wrap gap-1.5">
+            {(['all', 'uses', 'used-by'] as const).map((f) => (
+              <Button
+                aria-pressed={filter === f}
+                className={`h-auto ${chipBase} ${filter === f ? chipSelected : chipUnselected}`}
+                key={f}
+                onClick={() => onFilterChange(f)}
+                type="button"
+                variant="ghost"
+              >
+                {f === 'all' ? 'All' : f === 'uses' ? 'Uses' : 'Used by'}
+              </Button>
+            ))}
+          </div>
+          <Button onClick={onAdd} size="sm" variant="ghost">
+            Edit
+          </Button>
+        </div>
+      </CardHeader>
+
+      <CardContent className="p-4 pt-2">
+        {/* Outbound (USES) section */}
+        {outboundVisible && (
+          <div className="mb-4">
+            <h4
+              className={`mb-2 text-[10px] font-medium uppercase tracking-[0.12em] ${sectionLabel}`}
+            >
+              Uses
+            </h4>
+            {outbound.length === 0 ? (
+              <p className={`text-xs ${sub}`}>None</p>
+            ) : (
+              <ul className="space-y-1">
+                {outbound.map((r, i) => (
+                  <SidebarProjectRow key={`out:${r.project.id}:${i}`} rel={r} />
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* Inbound (USED BY) section */}
+        {inboundVisible && (
+          <div>
+            <h4
+              className={`mb-2 text-[10px] font-medium uppercase tracking-[0.12em] ${sectionLabel}`}
+            >
+              Used by
+            </h4>
+            {inbound.length === 0 ? (
+              <p className={`text-xs ${sub}`}>None</p>
+            ) : (
+              <ul className="space-y-1">
+                {inbound.map((r, i) => (
+                  <SidebarProjectRow key={`in:${r.project.id}:${i}`} rel={r} />
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

@@ -60,7 +60,7 @@ describe('useProjectPatch', () => {
     })
 
     expect(endpoints.patchProject).toHaveBeenCalledWith('o', 'p1', [
-      { op: 'replace', path: '/name', value: 'Beta' },
+      { op: 'add', path: '/name', value: 'Beta' },
     ])
     expect(qc.getQueryData(['project', 'o', 'p1'])).toEqual(optimistic)
   })
@@ -121,7 +121,7 @@ describe('useProjectPatch', () => {
     })
 
     expect(spy).toHaveBeenCalledWith('o', 'p1', [
-      { op: 'replace', path: '/team/slug', value: 'new-team' },
+      { op: 'add', path: '/team/slug', value: 'new-team' },
     ])
     expect(qc.getQueryData(['project', 'o', 'p1'])).toEqual(baseProject)
   })

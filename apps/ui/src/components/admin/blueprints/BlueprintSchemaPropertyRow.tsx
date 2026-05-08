@@ -10,7 +10,11 @@ import {
 } from '@/components/ui/tooltip'
 import type { SchemaProperty } from '@/types'
 
-import { PROPERTY_TYPES, STRING_FORMATS } from './blueprint-schema-utils'
+import {
+  ARRAY_ITEM_TYPES,
+  PROPERTY_TYPES,
+  STRING_FORMATS,
+} from './blueprint-schema-utils'
 import { BlueprintUiMapEditor } from './BlueprintUiMapEditor'
 
 interface BlueprintSchemaPropertyRowProps {
@@ -295,6 +299,70 @@ export function BlueprintSchemaPropertyRow({
                   }
                   type="number"
                   value={prop.maxLength ?? ''}
+                />
+              </div>
+            </div>
+          )}
+
+          {prop.type === 'array' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs text-secondary">
+                  Items Type
+                </label>
+                <select
+                  className="w-full rounded-md border border-input bg-background px-2 py-2 text-sm text-foreground"
+                  onChange={(e) =>
+                    updateProperty(prop.id, {
+                      itemsType: e.target.value as SchemaProperty['itemsType'],
+                    })
+                  }
+                  value={prop.itemsType ?? 'string'}
+                >
+                  {ARRAY_ITEM_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-secondary">
+                  Items Enum (comma-separated)
+                </label>
+                <Input
+                  className="text-sm"
+                  onBlur={() => {
+                    const stateKey = `items:${prop.id}`
+                    const raw = enumRawText[stateKey]
+                    if (raw !== undefined) {
+                      const parsed = raw
+                        ? raw
+                            .split(',')
+                            .map((v) => v.trim())
+                            .filter(Boolean)
+                        : undefined
+                      updateProperty(prop.id, {
+                        itemsEnumValues:
+                          parsed && parsed.length > 0 ? parsed : undefined,
+                      })
+                      const next = { ...enumRawText }
+                      delete next[stateKey]
+                      setEnumRawText(next)
+                    }
+                  }}
+                  onChange={(e) =>
+                    setEnumRawText({
+                      ...enumRawText,
+                      [`items:${prop.id}`]: e.target.value,
+                    })
+                  }
+                  placeholder="e.g. red, green, blue"
+                  value={
+                    enumRawText[`items:${prop.id}`] ??
+                    prop.itemsEnumValues?.join(', ') ??
+                    ''
+                  }
                 />
               </div>
             </div>

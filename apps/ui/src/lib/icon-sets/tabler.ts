@@ -17,7 +17,7 @@ import {
 const tablerLookup = TablerIcons as Record<string, unknown>
 
 // Tabler icon exports are named "Icon*" (e.g. IconHome, IconHomeFilled)
-export const TABLER_ICONS: IconEntry[] = Object.keys(tablerLookup)
+const TABLER_ICONS: IconEntry[] = Object.keys(tablerLookup)
   .filter((k) => isForwardRefComponent(tablerLookup[k]) && k.startsWith('Icon'))
   .map((k) => {
     const stripped = k.slice(4) // "IconHome" → "Home", "IconHomeFilled" → "HomeFilled"

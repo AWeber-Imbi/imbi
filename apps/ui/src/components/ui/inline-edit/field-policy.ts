@@ -6,7 +6,13 @@ export const READ_ONLY_KEYS: ReadonlySet<string> = new Set([
   'updated_at',
 ])
 
-export type InlineKind = 'date' | 'number' | 'select' | 'switch' | 'text'
+export type InlineKind =
+  | 'array'
+  | 'date'
+  | 'number'
+  | 'select'
+  | 'switch'
+  | 'text'
 
 export function isFieldEditable(
   key: string,
@@ -22,6 +28,7 @@ export function pickInlineComponent(
   def: Partial<ProjectSchemaSectionProperty>,
 ): InlineKind {
   if (def.enum && def.enum.length > 0) return 'select'
+  if (def.type === 'array') return 'array'
   if (def.type === 'boolean') return 'switch'
   if (def.format === 'date' || def.format === 'date-time') return 'date'
   if (def.type === 'integer' || def.type === 'number') return 'number'

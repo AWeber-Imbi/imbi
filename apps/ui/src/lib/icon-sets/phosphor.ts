@@ -18,7 +18,7 @@ const phosphorLookup = PhosphorIcons as Record<string, unknown>
 
 // Deduplicate by component identity (some icons have both Base and BaseIcon export
 // pointing to the same component; 18 icons exist only under the *Icon name)
-export const PHOSPHOR_ICONS: IconEntry[] = Object.keys(phosphorLookup)
+const PHOSPHOR_ICONS: IconEntry[] = Object.keys(phosphorLookup)
   .filter((k) => isForwardRefComponent(phosphorLookup[k]) && /^[A-Z]/.test(k))
   .reduce<{ entries: IconEntry[]; seen: Set<unknown> }>(
     (acc, k) => {

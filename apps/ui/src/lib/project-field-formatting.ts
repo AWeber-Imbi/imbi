@@ -14,7 +14,7 @@ export const COLOR_TEXT: Record<string, string> = {
 }
 
 /** Format a snake_case or camelCase key as a readable label */
-export const WORD_OVERRIDES: Record<string, string> = {
+const WORD_OVERRIDES: Record<string, string> = {
   aws: 'AWS',
   ci: 'CI',
   github: 'GitHub',
@@ -43,6 +43,19 @@ export function formatFieldValue(
   },
 ): null | string {
   if (value === null || value === undefined || value === '') return null
+
+  // Arrays — render as a comma-joined display so the read-only view
+  // looks like "foo, bar, baz" rather than a JSON literal. Empty arrays
+  // are treated as "not set". Object items fall back to JSON so they
+  // don't render as "[object Object]".
+  if (Array.isArray(value)) {
+    if (value.length === 0) return null
+    const hasComplexItem = value.some(
+      (v) => typeof v === 'object' && v !== null,
+    )
+    if (hasComplexItem) return JSON.stringify(value)
+    return value.map((v) => String(v)).join(', ')
+  }
 
   const raw = String(value).trim()
   if (raw === '') return null

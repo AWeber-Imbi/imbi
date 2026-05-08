@@ -92,13 +92,6 @@ export function cleanName(email: null | string | undefined): string {
   return part || email
 }
 
-export function dayKey(iso: string, now: number = Date.now()): DayBucketKey {
-  const d = parseUtcIso(iso)
-  const n = new Date(now)
-  const today = new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime()
-  return dayKeyFromDate(d, today)
-}
-
 // Group contiguous same-version deploys of one project into a single
 // release train. Keys by `project_slug::description` — the API emits the
 // same description for each env a single release moves through.
@@ -158,18 +151,6 @@ export function groupReleases(entries: OperationsLogRecord[]): FeedItem[] {
   return order
 }
 
-export function initials(email: null | string | undefined): string {
-  if (!email) return 'SY'
-  const part = email.split('@')[0]
-  if (!part) return email[0]?.toUpperCase() ?? '?'
-  if (part.length >= 2) return (part[0] + part[part.length - 1]).toUpperCase()
-  return part[0].toUpperCase()
-}
-
-export function parseUtcIso(iso: string): Date {
-  return new Date(iso)
-}
-
 export function relTime(iso: string, now: number = Date.now()): string {
   const t = toMs(iso)
   const diff = Math.max(0, now - t)
@@ -206,4 +187,8 @@ function dayKeyFromDate(d: Date, todayMs: number): DayBucketKey {
     key: d.toDateString(),
     label: d.toLocaleDateString(undefined, { weekday: 'long' }),
   }
+}
+
+function parseUtcIso(iso: string): Date {
+  return new Date(iso)
 }

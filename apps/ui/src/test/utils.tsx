@@ -22,7 +22,7 @@ interface AllTheProvidersProps {
   children: React.ReactNode
 }
 
-export function AllTheProviders({ children }: AllTheProvidersProps) {
+function AllTheProviders({ children }: AllTheProvidersProps) {
   const queryClient = createTestQueryClient()
 
   return (
@@ -39,4 +39,3 @@ const customRender = (
 
 export * from '@testing-library/react'
 export { customRender as render }
-export { userEvent } from '@testing-library/user-event'

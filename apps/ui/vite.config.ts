@@ -20,7 +20,6 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          charts: ['recharts'],
           markdown: ['react-markdown', 'remark-gfm'],
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           tanstack: ['@tanstack/react-query', '@tanstack/react-virtual'],

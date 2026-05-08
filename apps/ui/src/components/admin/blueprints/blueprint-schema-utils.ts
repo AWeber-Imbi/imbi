@@ -5,7 +5,7 @@ import type { SchemaProperty } from '@/types'
 export const ajv = new Ajv()
 
 // Known relationships keyed by "Source:Target"
-export const RELATIONSHIP_MAP: Record<string, string[]> = {
+const RELATIONSHIP_MAP: Record<string, string[]> = {
   'Environment:Organization': ['BELONGS_TO'],
   'Project:Environment': ['DEPLOYED_IN'],
   'Project:Project': ['DEPENDS_ON'],
@@ -42,6 +42,13 @@ export const PROPERTY_TYPES: SchemaProperty['type'][] = [
   'boolean',
   'array',
   'object',
+]
+
+export const ARRAY_ITEM_TYPES: NonNullable<SchemaProperty['itemsType']>[] = [
+  'string',
+  'integer',
+  'number',
+  'boolean',
 ]
 
 export const STRING_FORMATS = [
@@ -92,7 +99,18 @@ export function buildJsonSchema(
     if (prop.maxLength !== undefined) propSchema.maxLength = prop.maxLength
 
     if (prop.type === 'array') {
-      propSchema.items = { type: 'string' }
+      const itemType = prop.itemsType ?? 'string'
+      const itemsSchema: Record<string, unknown> = {
+        type: itemType,
+      }
+      if (
+        itemType === 'string' &&
+        prop.itemsEnumValues &&
+        prop.itemsEnumValues.length > 0
+      ) {
+        itemsSchema.enum = prop.itemsEnumValues
+      }
+      propSchema.items = itemsSchema
     }
 
     const uiEntries: [string, Record<string, string> | undefined][] = [
@@ -136,6 +154,7 @@ export function schemaToProperties(
 
   for (const [name, propSchema] of Object.entries(props)) {
     const xUi = propSchema['x-ui'] as Record<string, unknown> | undefined
+    const items = propSchema.items as Record<string, unknown> | undefined
     result.push({
       colorAge: xUi?.['color-age'] as Record<string, string> | undefined,
       colorMap: xUi?.['color-map'] as Record<string, string> | undefined,
@@ -152,6 +171,8 @@ export function schemaToProperties(
       iconMap: xUi?.['icon-map'] as Record<string, string> | undefined,
       iconRange: xUi?.['icon-range'] as Record<string, string> | undefined,
       id: generateId(),
+      itemsEnumValues: items?.enum as string[] | undefined,
+      itemsType: items?.type as SchemaProperty['itemsType'] | undefined,
       maximum: propSchema.maximum as number | undefined,
       maxLength: propSchema.maxLength as number | undefined,
       minimum: propSchema.minimum as number | undefined,

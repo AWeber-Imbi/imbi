@@ -24,6 +24,3 @@ export function SessionEntry({ content, role }: SessionEntryProps) {
     </div>
   )
 }
-
-// Keep the old name as an alias for backwards compat during transition
-export { SessionEntry as MessageBubble }

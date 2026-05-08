@@ -4,7 +4,8 @@ export type { PatchOperation }
 
 /**
  * Apply JSON Patch operations to a top-level object.
- * Supports only `replace` and `remove` on top-level paths (`/<key>`).
+ * Supports `add`, `replace`, and `remove` on top-level paths (`/<key>`).
+ * `add` and `replace` have the same effect on object members per RFC 6902.
  * Returns a new object; input is not mutated.
  */
 export function applyJsonPatch<T extends Record<string, unknown>>(
@@ -13,7 +14,7 @@ export function applyJsonPatch<T extends Record<string, unknown>>(
 ): T {
   let out: Record<string, unknown> = { ...doc }
   for (const op of ops) {
-    if (op.op !== 'replace' && op.op !== 'remove') {
+    if (op.op !== 'add' && op.op !== 'replace' && op.op !== 'remove') {
       throw new Error(`unsupported op: ${op.op}`)
     }
     const parts = op.path.split('/')
@@ -21,7 +22,7 @@ export function applyJsonPatch<T extends Record<string, unknown>>(
       throw new Error(`only top-level paths supported, got: ${op.path}`)
     }
     const key = decodePointerSegment(parts[1])
-    if (op.op === 'replace') {
+    if (op.op === 'add' || op.op === 'replace') {
       out = { ...out, [key]: op.value }
     } else {
       const { [key]: _removed, ...rest } = out

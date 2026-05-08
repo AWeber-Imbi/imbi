@@ -126,5 +126,8 @@ function buildOp(path: string, value: unknown): PatchOperation {
   if (value === null || value === undefined || value === '') {
     return { op: 'remove', path }
   }
-  return { op: 'replace', path, value }
+  // `add` upserts on object members: creates the key if missing, replaces
+  // it if present. Required so first-time sets for blueprint-defined
+  // attributes succeed against an RFC 6902 strict server.
+  return { op: 'add', path, value }
 }

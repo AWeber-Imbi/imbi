@@ -22,6 +22,7 @@ import { BootstrapGate } from '../../components/BootstrapGate'
 import { useAuthStore } from '../../stores/authStore'
 import { useAuth } from '../useAuth'
 
+// fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
   getUserByUsername: vi.fn(),
   loginWithPassword: vi.fn(),

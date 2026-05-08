@@ -498,19 +498,6 @@ export function BlueprintManagement() {
   )
 }
 
-/** Return the path type used in API URLs and compound keys. */
-export function blueprintPathType(bp: Blueprint): string {
-  return bp.kind === 'relationship' ? 'relationship' : bp.type || 'unknown'
-}
-
-/** Label shown in the type badge. */
-export function blueprintTypeLabel(bp: Blueprint): string {
-  if (bp.kind === 'relationship') {
-    return `${bp.source ?? '?'} → ${bp.target ?? '?'} (${bp.edge ?? '?'})`
-  }
-  return bp.type || 'unknown'
-}
-
 /** Pick a label palette hex for a blueprint type. Relationship is pinned to Honey. */
 export function getTypeSwatch(type: string, allTypes: string[]): string {
   if (type === 'relationship') {
@@ -520,6 +507,19 @@ export function getTypeSwatch(type: string, allTypes: string[]): string {
     )
   }
   return swatchForType(type, allTypes)
+}
+
+/** Return the path type used in API URLs and compound keys. */
+function blueprintPathType(bp: Blueprint): string {
+  return bp.kind === 'relationship' ? 'relationship' : bp.type || 'unknown'
+}
+
+/** Label shown in the type badge. */
+function blueprintTypeLabel(bp: Blueprint): string {
+  if (bp.kind === 'relationship') {
+    return `${bp.source ?? '?'} → ${bp.target ?? '?'} (${bp.edge ?? '?'})`
+  }
+  return bp.type || 'unknown'
 }
 
 function renderFilterCell(filter: null | string | undefined): React.ReactNode {

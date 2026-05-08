@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallowjs/fallow/main/schema/fallowrc.schema.json",
+  "ignoreDependencies": [
+    "aws-svg-icons",
+    "devicon",
+    "eslint-plugin-perfectionist",
+    "eslint-plugin-react-refresh"
+  ],
+  "ignorePatterns": [
+    "src/**/__mocks__/**"
+  ],
+  "ignoreExports": [
+    {
+      "file": "src/components/ui/**/*.{ts,tsx}",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/api/endpoints.ts",
+      "exports": [
+        "getMonthlyImprovement",
+        "getScoreHistoryByTeam",
+        "getScoreHistoryFeed",
+        "getScoreRollup",
+        "ScoreRollupRow",
+        "GlobalScoreEvent",
+        "MonthlyImprovementRow"
+      ]
+    }
+  ]
+}

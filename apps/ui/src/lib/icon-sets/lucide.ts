@@ -10,7 +10,7 @@ import type {
 } from '@/lib/icon-registry'
 import { encodeSvgToDataUrl, toPascalCase } from '@/lib/icon-sets/utils'
 
-export const LUCIDE_ICONS: IconEntry[] = Object.keys(lucideIcons)
+const LUCIDE_ICONS: IconEntry[] = Object.keys(lucideIcons)
   .filter((k) => k !== 'default' && k !== 'icons' && k !== 'createLucideIcon')
   .map((k) => ({
     label: k,

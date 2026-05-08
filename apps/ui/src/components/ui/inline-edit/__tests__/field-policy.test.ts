@@ -36,6 +36,9 @@ describe('pickInlineComponent', () => {
     expect(pickInlineComponent({ type: 'integer' })).toBe('number')
     expect(pickInlineComponent({ type: 'number' })).toBe('number')
   })
+  it('picks array for array type', () => {
+    expect(pickInlineComponent({ type: 'array' })).toBe('array')
+  })
   it('picks text by default', () => {
     expect(pickInlineComponent({})).toBe('text')
   })

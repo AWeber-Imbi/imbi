@@ -212,14 +212,6 @@ export function useIconRegistryVersion(): number {
   return useSyncExternalStore(subscribe, getVersion, getVersion)
 }
 
-export function useIconUrl(
-  iconName: null | string | undefined,
-  color?: string,
-): null | string {
-  useIconRegistryVersion()
-  return getIconUrl(iconName, color)
-}
-
 function computeIconUrl(iconName: string, color?: string): null | string {
   if (iconName.startsWith('/uploads/')) {
     return apiUrl(iconName)

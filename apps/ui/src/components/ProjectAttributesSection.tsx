@@ -4,6 +4,11 @@ import type {
   ProjectSchemaResponse,
   ProjectSchemaSectionProperty,
 } from '@/api/endpoints'
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from '@/components/ui/hover-card'
 import { isFieldEditable } from '@/components/ui/inline-edit/field-policy'
 import { InlineField } from '@/components/ui/inline-edit/InlineField'
 import {
@@ -25,6 +30,7 @@ import type { Project } from '@/types'
 
 interface AttributeField {
   def: ProjectSchemaSectionProperty
+  description?: string
   key: string
   label: string
   rawValue: unknown
@@ -58,6 +64,7 @@ const ProjectAttributeRow = memo(function ProjectAttributeRow({
 }: ProjectAttributeRowProps) {
   const {
     def,
+    description: fieldDescription,
     key,
     label: fieldLabel,
     rawValue,
@@ -107,11 +114,29 @@ const ProjectAttributeRow = memo(function ProjectAttributeRow({
       </span>
     ) : null
 
+  const labelNode = fieldDescription ? (
+    <HoverCard openDelay={200}>
+      <HoverCardTrigger asChild>
+        <button
+          className={`text-sm ${LABEL_CLASS} cursor-help bg-transparent p-0 text-left underline decoration-dotted`}
+          type="button"
+        >
+          {fieldLabel}
+        </button>
+      </HoverCardTrigger>
+      <HoverCardContent className="text-sm" side="top">
+        {fieldDescription}
+      </HoverCardContent>
+    </HoverCard>
+  ) : (
+    <span className={`text-sm ${LABEL_CLASS}`}>{fieldLabel}</span>
+  )
+
   return (
     <div
       className={`flex items-center justify-between border-b py-1.5 ${DIVIDER_CLASS} last:border-0`}
     >
-      <span className={`text-sm ${LABEL_CLASS}`}>{fieldLabel}</span>
+      {labelNode}
       {editable ? (
         <InlineField
           def={def}
@@ -148,6 +173,7 @@ export function ProjectAttributesSection({
         const xUi = def['x-ui']
         fields.push({
           def,
+          description: def.description ?? undefined,
           key,
           label: def.title || formatFieldKey(key),
           rawValue: raw,

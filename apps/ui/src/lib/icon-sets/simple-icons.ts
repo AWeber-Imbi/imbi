@@ -12,7 +12,7 @@ import { encodeSvgToDataUrl, toPascalCase } from '@/lib/icon-sets/utils'
 
 const siLookup = simpleIcons as Record<string, unknown>
 
-export const SI_ICONS: IconEntry[] = Object.keys(siLookup)
+const SI_ICONS: IconEntry[] = Object.keys(siLookup)
   .filter((k) => k.startsWith('Si') && !k.endsWith('Hex') && k !== 'default')
   .map((k) => {
     const raw = k.slice(2)

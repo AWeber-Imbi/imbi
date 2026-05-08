@@ -21,15 +21,6 @@ export const LABEL_SWATCHES: LabelSwatch[] = [
   { hex: '#7A7873', name: 'Stone' },
 ]
 
-export function darken(hex: string, amt: number): null | string {
-  const rgb = hexToRgb(hex)
-  if (!rgb) return null
-  const r = Math.round(rgb.r * (1 - amt))
-  const g = Math.round(rgb.g * (1 - amt))
-  const b = Math.round(rgb.b * (1 - amt))
-  return `rgb(${r},${g},${b})`
-}
-
 export function deriveChipColors(
   hex: string,
   isDarkMode: boolean,
@@ -53,18 +44,27 @@ export function hexToRgb(
   return { b: n & 255, g: (n >> 8) & 255, r: (n >> 16) & 255 }
 }
 
-export function lighten(hex: string, amt: number): null | string {
+/** Deterministically pick a swatch hex for a type name given a full type list. */
+export function swatchForType(type: string, allTypes: string[]): string {
+  const idx = allTypes.indexOf(type)
+  const safe = idx >= 0 ? idx : 0
+  return LABEL_SWATCHES[safe % LABEL_SWATCHES.length].hex
+}
+
+function darken(hex: string, amt: number): null | string {
+  const rgb = hexToRgb(hex)
+  if (!rgb) return null
+  const r = Math.round(rgb.r * (1 - amt))
+  const g = Math.round(rgb.g * (1 - amt))
+  const b = Math.round(rgb.b * (1 - amt))
+  return `rgb(${r},${g},${b})`
+}
+
+function lighten(hex: string, amt: number): null | string {
   const rgb = hexToRgb(hex)
   if (!rgb) return null
   const r = Math.round(rgb.r + (255 - rgb.r) * amt)
   const g = Math.round(rgb.g + (255 - rgb.g) * amt)
   const b = Math.round(rgb.b + (255 - rgb.b) * amt)
   return `rgb(${r},${g},${b})`
-}
-
-/** Deterministically pick a swatch hex for a type name given a full type list. */
-export function swatchForType(type: string, allTypes: string[]): string {
-  const idx = allTypes.indexOf(type)
-  const safe = idx >= 0 ? idx : 0
-  return LABEL_SWATCHES[safe % LABEL_SWATCHES.length].hex
 }

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@/test/utils'
 import type { LoginProviderRead } from '@/types'
 
+// fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
   createAuthProvider: vi.fn(),
   deleteAuthProvider: vi.fn(),
@@ -12,6 +13,7 @@ vi.mock('@/api/endpoints', () => ({
   updateLocalAuthConfig: vi.fn(),
 }))
 
+// fallow-ignore-next-line unresolved-import
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({
     user: { is_admin: true, permissions: ['auth_providers:write'] },

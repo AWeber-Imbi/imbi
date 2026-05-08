@@ -39,7 +39,7 @@ for (const key of Object.keys(pathByValue)) {
   }
 }
 
-export const DEVICON_ICONS: IconEntry[] = Object.entries(techVariants)
+const DEVICON_ICONS: IconEntry[] = Object.entries(techVariants)
   .map(([, variants]) => {
     const value = variants.line ?? variants.plain!
     const tech = value.slice(8).replace(/-plain$|-line$/, '')

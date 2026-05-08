@@ -814,6 +814,8 @@ export interface SchemaProperty {
   iconMap?: Record<string, string>
   iconRange?: Record<string, string>
   id: string
+  itemsEnumValues?: string[]
+  itemsType?: 'boolean' | 'integer' | 'number' | 'string'
   maximum?: number
   maxLength?: number
   minimum?: number

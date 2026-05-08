@@ -40,38 +40,6 @@ export interface XUiMaps {
 }
 
 /**
- * Returns true if any x-ui display maps are configured for this field.
- */
-export function hasAnyUiMap(maps: XUiMaps): boolean {
-  return !!(
-    maps.colorMap ||
-    maps.iconMap ||
-    maps.colorRange ||
-    maps.iconRange ||
-    maps.colorAge ||
-    maps.iconAge
-  )
-}
-
-/**
- * Evaluate a color-age or icon-age map against a date/datetime value.
- * Keys are operator-prefixed durations: ">30d", "<=7d", ">2h"
- * The elapsed seconds since the date value is compared to the threshold.
- * Evaluated in document order; first match wins.
- */
-export function resolveAge(
-  map: ThresholdMap,
-  rawValue: unknown,
-): string | undefined {
-  if (rawValue == null) return undefined
-  const date = new Date(String(rawValue))
-  if (isNaN(date.getTime())) return undefined
-  const elapsedSeconds = (Date.now() - date.getTime()) / 1000
-  const entries = parseThresholds(map, parseDuration)
-  return evaluateThreshold(entries, elapsedSeconds)
-}
-
-/**
  * Resolve color from all x-ui map types. Priority: exact map → range → age.
  */
 export function resolveColor(
@@ -117,25 +85,6 @@ export function resolveIcon(
     if (ageResult) return ageResult
   }
   return undefined
-}
-
-/**
- * Evaluate a color-range or icon-range map against a numeric value.
- * Keys are operator-prefixed numbers: ">=90", "<70", "==0"
- * Evaluated in document order; first match wins.
- */
-export function resolveRange(
-  map: ThresholdMap,
-  rawValue: unknown,
-): string | undefined {
-  const num =
-    typeof rawValue === 'number' ? rawValue : parseFloat(String(rawValue))
-  if (isNaN(num)) return undefined
-  const entries = parseThresholds(map, (v) => {
-    const n = parseFloat(v)
-    return isNaN(n) ? null : n
-  })
-  return evaluateThreshold(entries, num)
 }
 
 /** Case-insensitive lookup in a string-keyed record. */
@@ -201,4 +150,38 @@ function parseThresholds(
     entries.push({ op, result, threshold })
   }
   return entries
+}
+
+/**
+ * Evaluate a color-age or icon-age map against a date/datetime value.
+ * Keys are operator-prefixed durations: ">30d", "<=7d", ">2h"
+ * The elapsed seconds since the date value is compared to the threshold.
+ * Evaluated in document order; first match wins.
+ */
+function resolveAge(map: ThresholdMap, rawValue: unknown): string | undefined {
+  if (rawValue == null) return undefined
+  const date = new Date(String(rawValue))
+  if (isNaN(date.getTime())) return undefined
+  const elapsedSeconds = (Date.now() - date.getTime()) / 1000
+  const entries = parseThresholds(map, parseDuration)
+  return evaluateThreshold(entries, elapsedSeconds)
+}
+
+/**
+ * Evaluate a color-range or icon-range map against a numeric value.
+ * Keys are operator-prefixed numbers: ">=90", "<70", "==0"
+ * Evaluated in document order; first match wins.
+ */
+function resolveRange(
+  map: ThresholdMap,
+  rawValue: unknown,
+): string | undefined {
+  const num =
+    typeof rawValue === 'number' ? rawValue : parseFloat(String(rawValue))
+  if (isNaN(num)) return undefined
+  const entries = parseThresholds(map, (v) => {
+    const n = parseFloat(v)
+    return isNaN(n) ? null : n
+  })
+  return evaluateThreshold(entries, num)
 }

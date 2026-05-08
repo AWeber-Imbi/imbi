@@ -42,7 +42,7 @@ function buildAwsIndex(): Record<string, AwsEntry> {
 const awsIndex = buildAwsIndex()
 const awsIconNames = new Set(Object.keys(awsIndex))
 
-export const AWS_ICONS: IconEntry[] = Object.entries(awsIndex)
+const AWS_ICONS: IconEntry[] = Object.entries(awsIndex)
   .map(([key, entry]) => ({ label: entry.label, value: key }))
   .sort((a, b) => a.label.localeCompare(b.label))
 

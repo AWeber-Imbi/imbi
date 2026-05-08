@@ -2,7 +2,9 @@ import type { ReactNode } from 'react'
 
 import type { ProjectSchemaSectionProperty } from '@/api/endpoints'
 import { pickInlineComponent } from '@/components/ui/inline-edit/field-policy'
+import { InlineArray } from '@/components/ui/inline-edit/InlineArray'
 import { InlineDate } from '@/components/ui/inline-edit/InlineDate'
+import { InlineMultiSelect } from '@/components/ui/inline-edit/InlineMultiSelect'
 import { InlineNumber } from '@/components/ui/inline-edit/InlineNumber'
 import { InlineSelect } from '@/components/ui/inline-edit/InlineSelect'
 import { InlineSwitch } from '@/components/ui/inline-edit/InlineSwitch'
@@ -25,6 +27,36 @@ export function InlineField({
 }: InlineFieldProps) {
   const kind = pickInlineComponent(def)
   switch (kind) {
+    case 'array': {
+      const itemType = def.items?.type
+      const itemEnum = def.items?.enum ?? null
+      const current = Array.isArray(raw) ? raw : []
+      if (itemEnum && itemEnum.length > 0) {
+        return (
+          <InlineMultiSelect
+            onCommit={onCommit}
+            options={itemEnum.map((v) => ({
+              label: String(v),
+              value: String(v),
+            }))}
+            pending={pending}
+            values={current.map(String)}
+          />
+        )
+      }
+      return (
+        <InlineArray
+          itemType={
+            itemType === 'integer' || itemType === 'number'
+              ? itemType
+              : 'string'
+          }
+          onCommit={onCommit}
+          pending={pending}
+          values={current}
+        />
+      )
+    }
     case 'date':
       return (
         <InlineDate

@@ -4,21 +4,18 @@ import {
   TEAM_BASE_FIELDS,
 } from '@/lib/constants'
 import type {
-  ActivityFeedEntry,
   AdminPluginsResponse,
   AdminSettings,
   AdminUser,
   AdminUserCreate,
   ApiKey,
   ApiKeyCreated,
-  ApiStatus,
   AuthProvider,
   Blueprint,
   BlueprintCreate,
   ClientCredential,
   ClientCredentialCreate,
   ClientCredentialCreated,
-  CollectionResponse,
   ConfigKeyResponse,
   ConfigKeyValueResponse,
   CurrentReleaseEnvironment,
@@ -64,8 +61,6 @@ import type {
   Project,
   ProjectCreate,
   ProjectRelationshipsResponse,
-  ProjectService,
-  ProjectServiceCreate,
   ProjectType,
   ProjectTypeCreate,
   Role,
@@ -87,7 +82,6 @@ import type {
   ThirdPartyServiceCreate,
   TokenResponse,
   Upload,
-  User,
   UserResponse,
   Webhook,
   WebhookCreate,
@@ -98,11 +92,6 @@ import { apiClient, apiUrl } from './client'
 // Re-export for backward compatibility with modules that import from here.
 export type { PatchOperation }
 
-// Status/Health
-export const getStatus = (signal?: AbortSignal) =>
-  apiClient.get<ApiStatus>('/status', undefined, signal)
-
-// User/Auth
 export const getAuthProviders = (signal?: AbortSignal) =>
   apiClient.get<{ default_redirect: string; providers: AuthProvider[] }>(
     '/auth/providers',
@@ -123,12 +112,6 @@ export const logoutAuth = () => apiClient.post<void>('/auth/logout', {})
 export const getUserByUsername = (username: string, signal?: AbortSignal) =>
   apiClient.get<UserResponse>(`/users/${username}`, undefined, signal)
 
-// Legacy endpoints (kept for backward compatibility)
-export const getCurrentUser = (signal?: AbortSignal) =>
-  apiClient.get<User>('/ui/user', undefined, signal)
-export const logout = () => apiClient.get<void>('/ui/logout')
-
-// Projects (org-scoped)
 export const getProjects = async (
   orgSlug: string,
   signal?: AbortSignal,
@@ -161,7 +144,7 @@ export interface AttributeContribution {
   weighted_contribution: number
 }
 
-export interface ScoreBreakdown {
+interface ScoreBreakdown {
   attribute_contributions: AttributeContribution[]
   base_score: number
   unfloored_total: number
@@ -194,6 +177,10 @@ export interface ProjectSchemaSectionProperty {
   description?: null | string
   enum?: null | string[]
   format?: null | string
+  items?: null | {
+    enum?: null | string[]
+    type?: null | string
+  }
   maximum?: null | number
   minimum?: null | number
   title?: null | string
@@ -279,17 +266,6 @@ export const listLinkDefinitions = async (
   return Array.isArray(response) ? response : []
 }
 
-export const getLinkDefinition = (
-  orgSlug: string,
-  slug: string,
-  signal?: AbortSignal,
-) =>
-  apiClient.get<LinkDefinition>(
-    `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/${encodeURIComponent(slug)}`,
-    undefined,
-    signal,
-  )
-
 export const createLinkDefinition = (
   orgSlug: string,
   data: LinkDefinitionCreate,
@@ -327,17 +303,6 @@ export const listDocumentTemplates = async (
   return Array.isArray(response) ? response : []
 }
 
-export const getDocumentTemplate = (
-  orgSlug: string,
-  slug: string,
-  signal?: AbortSignal,
-) =>
-  apiClient.get<DocumentTemplate>(
-    `/organizations/${encodeURIComponent(orgSlug)}/document-templates/${encodeURIComponent(slug)}`,
-    undefined,
-    signal,
-  )
-
 export const createDocumentTemplate = (
   orgSlug: string,
   data: DocumentTemplateCreate,
@@ -362,25 +327,6 @@ export const deleteDocumentTemplate = (orgSlug: string, slug: string) =>
     `/organizations/${encodeURIComponent(orgSlug)}/document-templates/${encodeURIComponent(slug)}`,
   )
 
-// Activity Feed
-export const getActivityFeed = async (
-  params?: {
-    limit?: number
-    omit_user?: string
-    token?: string
-  },
-  signal?: AbortSignal,
-): Promise<ActivityFeedEntry[]> => {
-  const response = await apiClient.get<ActivityFeedEntry[]>(
-    '/activity-feed',
-    params,
-    signal,
-  )
-  // Activity feed returns array directly, not wrapped in { data: [] }
-  return Array.isArray(response) ? response : []
-}
-
-// Operations Log
 export interface OperationsLogMetrics {
   deploys: number
   deploys_by_environment: Record<string, number>
@@ -494,30 +440,6 @@ export const listProjectEvents = async (
   }
 }
 
-// Metadata
-export const getEnvironments = async (
-  signal?: AbortSignal,
-): Promise<Environment[]> => {
-  const response = await apiClient.get<CollectionResponse<Environment>>(
-    '/environments',
-    undefined,
-    signal,
-  )
-  return response.data
-}
-
-export const getProjectTypes = async (
-  signal?: AbortSignal,
-): Promise<ProjectType[]> => {
-  const response = await apiClient.get<CollectionResponse<ProjectType>>(
-    '/project-types',
-    undefined,
-    signal,
-  )
-  return response.data
-}
-
-// Admin - Environments
 export const listEnvironments = async (
   orgSlug: string,
   signal?: AbortSignal,
@@ -529,17 +451,6 @@ export const listEnvironments = async (
   )
   return Array.isArray(response) ? response : []
 }
-
-export const getEnvironment = (
-  orgSlug: string,
-  slug: string,
-  signal?: AbortSignal,
-) =>
-  apiClient.get<Environment>(
-    `/organizations/${encodeURIComponent(orgSlug)}/environments/${encodeURIComponent(slug)}`,
-    undefined,
-    signal,
-  )
 
 export const createEnvironment = (orgSlug: string, env: EnvironmentCreate) =>
   apiClient.post<Environment>(
@@ -577,17 +488,6 @@ export const listProjectTypes = async (
   )
   return Array.isArray(response) ? response : []
 }
-
-export const getProjectType = (
-  orgSlug: string,
-  slug: string,
-  signal?: AbortSignal,
-) =>
-  apiClient.get<ProjectType>(
-    `/organizations/${encodeURIComponent(orgSlug)}/project-types/${encodeURIComponent(slug)}`,
-    undefined,
-    signal,
-  )
 
 export const createProjectType = (orgSlug: string, pt: ProjectTypeCreate) =>
   apiClient.post<ProjectType>(
@@ -743,13 +643,6 @@ export const listScoringPolicies = async (
   return Array.isArray(response) ? response : []
 }
 
-export const getScoringPolicy = (slug: string, signal?: AbortSignal) =>
-  apiClient.get<ScoringPolicy>(
-    `/scoring/policies/${encodeURIComponent(slug)}`,
-    undefined,
-    signal,
-  )
-
 export const createScoringPolicy = (data: ScoringPolicyCreate) =>
   apiClient.post<ScoringPolicy>('/scoring/policies/', data)
 
@@ -799,17 +692,17 @@ export type ScoreChangeReason =
   | 'policy_change'
   | 'system'
 
-export interface ScoreHistory {
-  granularity: 'day' | 'hour' | 'raw'
-  points: ScoreHistoryPoint[]
-  project_id: string
-}
-
 export interface ScoreHistoryPoint {
   change_reason: null | ScoreChangeReason
   previous_score: null | number
   score: number
   timestamp: string
+}
+
+interface ScoreHistory {
+  granularity: 'day' | 'hour' | 'raw'
+  points: ScoreHistoryPoint[]
+  project_id: string
 }
 
 export const getScoreHistory = (
@@ -841,19 +734,6 @@ export const listBlueprints = async (
 ): Promise<Blueprint[]> => {
   const response = await apiClient.get<Blueprint[]>(
     '/blueprints/',
-    params,
-    signal,
-  )
-  return Array.isArray(response) ? response : []
-}
-
-export const listBlueprintsByType = async (
-  type: string,
-  params?: { enabled?: boolean },
-  signal?: AbortSignal,
-): Promise<Blueprint[]> => {
-  const response = await apiClient.get<Blueprint[]>(
-    `/blueprints/${encodeURIComponent(type)}`,
     params,
     signal,
   )
@@ -900,13 +780,6 @@ export const listOrganizations = async (
   )
   return Array.isArray(response) ? response : []
 }
-
-export const getOrganization = (slug: string, signal?: AbortSignal) =>
-  apiClient.get<Organization>(
-    `/organizations/${encodeURIComponent(slug)}`,
-    undefined,
-    signal,
-  )
 
 export const createOrganization = (org: OrganizationCreate) =>
   apiClient.post<Organization>('/organizations/', org)
@@ -974,7 +847,7 @@ export function flattenNullableAnyOf(
  * Fetch the dynamic (blueprint) fields for a given OpenAPI schema name,
  * filtering out the provided base fields.
  */
-export const getDynamicSchema = async (
+const getDynamicSchema = async (
   schemaName: string,
   baseFields: string[],
   signal?: AbortSignal,
@@ -1018,13 +891,6 @@ export const listTeams = async (
   )
   return Array.isArray(response) ? response : []
 }
-
-export const getTeam = (orgSlug: string, slug: string, signal?: AbortSignal) =>
-  apiClient.get<Team>(
-    `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}`,
-    undefined,
-    signal,
-  )
 
 export const createTeam = (orgSlug: string, team: TeamCreate) =>
   apiClient.post<Team>(
@@ -1088,17 +954,6 @@ export const listThirdPartyServices = async (
   return Array.isArray(response) ? response : []
 }
 
-export const getThirdPartyService = (
-  orgSlug: string,
-  slug: string,
-  signal?: AbortSignal,
-) =>
-  apiClient.get<ThirdPartyService>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(slug)}`,
-    undefined,
-    signal,
-  )
-
 export const createThirdPartyService = (
   orgSlug: string,
   svc: ThirdPartyServiceCreate,
@@ -1140,18 +995,6 @@ export const listServiceApplications = async (
   )
   return Array.isArray(response) ? response : []
 }
-
-export const getServiceApplication = (
-  orgSlug: string,
-  serviceSlug: string,
-  appSlug: string,
-  signal?: AbortSignal,
-) =>
-  apiClient.get<ServiceApplication>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`,
-    undefined,
-    signal,
-  )
 
 export const createServiceApplication = (
   orgSlug: string,
@@ -1359,17 +1202,6 @@ export const listWebhooks = async (
   return Array.isArray(response) ? response : []
 }
 
-export const getWebhook = (
-  orgSlug: string,
-  slug: string,
-  signal?: AbortSignal,
-) =>
-  apiClient.get<Webhook>(
-    `/organizations/${encodeURIComponent(orgSlug)}/webhooks/${encodeURIComponent(slug)}`,
-    undefined,
-    signal,
-  )
-
 export const createWebhook = (orgSlug: string, data: WebhookCreate) =>
   apiClient.post<Webhook>(
     `/organizations/${encodeURIComponent(orgSlug)}/webhooks/`,
@@ -1419,13 +1251,6 @@ export const listAuthProviders = async (
   return response as LoginProviderRead[]
 }
 
-export const getAuthProvider = (slug: string, signal?: AbortSignal) =>
-  apiClient.get<LoginProviderRead>(
-    `/admin/auth-providers/${encodeURIComponent(slug)}`,
-    undefined,
-    signal,
-  )
-
 export const createAuthProvider = (data: LoginProviderCreate) =>
   apiClient.post<LoginProviderRead>('/admin/auth-providers', data)
 
@@ -1438,19 +1263,6 @@ export const updateAuthProvider = (slug: string, data: LoginProviderUpdate) =>
 export const deleteAuthProvider = (slug: string) =>
   apiClient.delete<void>(`/admin/auth-providers/${encodeURIComponent(slug)}`)
 
-export const promoteAuthProviderToBoth = (slug: string) =>
-  apiClient.post<LoginProviderRead>(
-    `/admin/auth-providers/${encodeURIComponent(slug)}/promote-to-both`,
-    {},
-  )
-
-export const demoteAuthProviderToLogin = (slug: string) =>
-  apiClient.post<LoginProviderRead>(
-    `/admin/auth-providers/${encodeURIComponent(slug)}/demote-to-login`,
-    {},
-  )
-
-// Admin - Local Authentication
 export const getLocalAuthConfig = (signal?: AbortSignal) =>
   apiClient.get<LocalAuthConfig>('/admin/local-auth', undefined, signal)
 
@@ -1459,40 +1271,6 @@ export const updateLocalAuthConfig = (
   signal?: AbortSignal,
 ) => apiClient.put<LocalAuthConfig>('/admin/local-auth', data, signal)
 
-// Project Services (EXISTS_IN)
-export const listProjectServices = async (
-  orgSlug: string,
-  projectSlug: string,
-  signal?: AbortSignal,
-): Promise<ProjectService[]> => {
-  const response = await apiClient.get<ProjectService[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectSlug)}/services/`,
-    undefined,
-    signal,
-  )
-  return Array.isArray(response) ? response : []
-}
-
-export const createProjectService = (
-  orgSlug: string,
-  projectSlug: string,
-  data: ProjectServiceCreate,
-) =>
-  apiClient.post<ProjectService>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectSlug)}/services/`,
-    data,
-  )
-
-export const deleteProjectService = (
-  orgSlug: string,
-  projectSlug: string,
-  serviceSlug: string,
-) =>
-  apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectSlug)}/services/${encodeURIComponent(serviceSlug)}`,
-  )
-
-// Documents (project-scoped)
 export const listProjectDocuments = async (
   orgSlug: string,
   projectId: string,
@@ -1506,18 +1284,6 @@ export const listProjectDocuments = async (
   )
   return response?.data ?? []
 }
-
-export const getProjectDocument = (
-  orgSlug: string,
-  projectId: string,
-  documentId: string,
-  signal?: AbortSignal,
-) =>
-  apiClient.get<Document>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}`,
-    undefined,
-    signal,
-  )
 
 export const createProjectDocument = (
   orgSlug: string,
@@ -1647,29 +1413,6 @@ export const deleteServicePlugin = (
     `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/plugins/${encodeURIComponent(pluginId)}${force ? '?force=true' : ''}`,
   )
 
-// Project Type Plugins
-export const listProjectTypePlugins = (
-  orgSlug: string,
-  ptSlug: string,
-  signal?: AbortSignal,
-) =>
-  apiClient.get<PluginAssignmentResponse[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/project-types/${encodeURIComponent(ptSlug)}/plugins/`,
-    undefined,
-    signal,
-  )
-
-export const replaceProjectTypePlugins = (
-  orgSlug: string,
-  ptSlug: string,
-  assignments: PluginAssignmentCreate[],
-) =>
-  apiClient.put<PluginAssignmentResponse[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/project-types/${encodeURIComponent(ptSlug)}/plugins/`,
-    assignments,
-  )
-
-// Project Plugins
 export const listProjectPlugins = (
   orgSlug: string,
   projectId: string,
@@ -1803,19 +1546,6 @@ export const searchProjectLogs = (
   )
 }
 
-export const getLogSchema = (
-  orgSlug: string,
-  projectId: string,
-  params?: { environment?: string; source?: string },
-  signal?: AbortSignal,
-) =>
-  apiClient.get<Array<{ description?: string; name: string; type: string }>>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/logs/schema`,
-    params,
-    signal,
-  )
-
-// Scoring Rollup
 export interface ScoreRollupRow {
   avg_score: number
   dimension: 'organization' | 'project_type' | 'team'
@@ -1848,11 +1578,6 @@ export interface MonthlyImprovementRow {
   project_count: number
 }
 
-export interface ScoreHistoryByTeamResponse {
-  granularity: 'day' | 'hour'
-  teams: TeamScoreSeries[]
-}
-
 export interface TeamScoreHistoryPoint {
   score: number
   timestamp: string
@@ -1861,6 +1586,11 @@ export interface TeamScoreHistoryPoint {
 export interface TeamScoreSeries {
   key: string
   points: TeamScoreHistoryPoint[]
+}
+
+interface ScoreHistoryByTeamResponse {
+  granularity: 'day' | 'hour'
+  teams: TeamScoreSeries[]
 }
 
 export const getScoreHistoryFeed = (
