@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { TagRef } from '@/types'
 
-import { colorForTag } from './notesHelpers'
+import { colorForTag } from './documentsHelpers'
 
 interface Props {
   active: ReadonlySet<string>
@@ -19,7 +19,7 @@ interface Props {
   totalFiltered: number
 }
 
-export function NotesFilterRail({
+export function DocumentsFilterRail({
   active,
   counts,
   disabled = false,
@@ -46,7 +46,7 @@ export function NotesFilterRail({
           className="h-8 pl-8 text-xs"
           disabled={disabled}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search notes"
+          placeholder="Search documents"
           tabIndex={disabled ? -1 : undefined}
           value={search}
         />
@@ -56,7 +56,7 @@ export function NotesFilterRail({
         <div className="mb-3 flex items-center justify-between gap-2 rounded-md border border-warning bg-warning px-2.5 py-1.5">
           <span className="text-[11.5px] text-warning">
             {activeCount} filter{activeCount > 1 ? 's' : ''} · {totalFiltered}{' '}
-            notes
+            documents
           </span>
           <button
             className="cursor-pointer border-0 bg-transparent p-0 text-[11.5px] text-warning hover:underline"

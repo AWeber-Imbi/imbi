@@ -64,10 +64,10 @@ function pickIcon(record: ActivityRecord) {
   switch (record.source) {
     case 'conversation':
       return <MessageSquare className="h-4 w-4" />
+    case 'document':
+      return <FileText className="h-4 w-4" />
     case 'events':
       return <Zap className="h-4 w-4" />
-    case 'note':
-      return <FileText className="h-4 w-4" />
     case 'release':
       return <Tag className="h-4 w-4" />
     case 'upload':

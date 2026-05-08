@@ -11,7 +11,7 @@ interface Props {
   hideName?: boolean
   /**
    * When true (default), wraps the chip in a link to /users/:email so the
-   * user's profile page is reachable from any opslog/note/release row.
+   * user's profile page is reachable from any opslog/document/release row.
    */
   linkToProfile?: boolean
   size?: number

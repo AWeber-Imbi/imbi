@@ -28,9 +28,9 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 
 import { AuthProvidersManagement } from './admin/AuthProvidersManagement'
 import { BlueprintManagement } from './admin/BlueprintManagement'
+import { DocumentTemplateManagement } from './admin/DocumentTemplateManagement'
 import { EnvironmentManagement } from './admin/EnvironmentManagement'
 import { LinkDefinitionManagement } from './admin/LinkDefinitionManagement'
-import { NoteTemplateManagement } from './admin/NoteTemplateManagement'
 import { OrganizationManagement } from './admin/OrganizationManagement'
 import { PluginPackageDetail } from './admin/PluginPackageDetail'
 import { PluginsManagement } from './admin/PluginsManagement'
@@ -45,9 +45,9 @@ import { WebhookManagement } from './admin/WebhookManagement'
 
 type AdminSection =
   | 'blueprints'
+  | 'document-templates'
   | 'environments'
   | 'link-definitions'
-  | 'note-templates'
   | 'oauth'
   | 'organizations'
   | 'plugins'
@@ -64,7 +64,7 @@ const VALID_SECTIONS: AdminSection[] = [
   'blueprints',
   'environments',
   'link-definitions',
-  'note-templates',
+  'document-templates',
   'oauth',
   'organizations',
   'plugins',
@@ -127,10 +127,10 @@ export function Admin() {
       scope: 'org',
     },
     {
-      description: 'Manage reusable note templates',
+      description: 'Manage reusable document templates',
       icon: StickyNote,
-      id: 'note-templates',
-      label: 'Note Templates',
+      id: 'document-templates',
+      label: 'Document Templates',
       scope: 'org',
     },
     {
@@ -349,7 +349,9 @@ export function Admin() {
             {currentSection === 'link-definitions' && (
               <LinkDefinitionManagement />
             )}
-            {currentSection === 'note-templates' && <NoteTemplateManagement />}
+            {currentSection === 'document-templates' && (
+              <DocumentTemplateManagement />
+            )}
             {currentSection === 'blueprints' && <BlueprintManagement />}
             {currentSection === 'organizations' && <OrganizationManagement />}
             {currentSection === 'users' && <UserManagement />}

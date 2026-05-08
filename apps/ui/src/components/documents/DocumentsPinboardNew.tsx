@@ -6,51 +6,60 @@ import remarkGfm from 'remark-gfm'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { Note, NoteTemplate, TagRef } from '@/types'
+import type { Document, DocumentTemplate, TagRef } from '@/types'
 
-import { NotesFilterRail } from './NotesFilterRail'
-import { EMPTY_ACTIVE, tagCounts, uniqueTagsFromNotes } from './notesHelpers'
+import { DocumentsFilterRail } from './DocumentsFilterRail'
+import {
+  EMPTY_ACTIVE,
+  tagCounts,
+  uniqueTagsFromDocuments,
+} from './documentsHelpers'
 import { TagCombobox } from './TagCombobox'
 
 type EditorMode = 'preview' | 'split' | 'write'
 
 interface Props {
-  allNotes?: Note[]
-  initialNote?: Note | null
+  allDocuments?: Document[]
+  initialDocument?: Document | null
   onDiscard: () => void
   onSave: (draft: { content: string; tags: string[]; title: string }) => void
   orgSlug: string
   saving?: boolean
   /**
-   * When creating a new note, pre-seed the form (title, content, tags) from
-   * the chosen template. Ignored when `initialNote` is provided.
+   * When creating a new document, pre-seed the form (title, content, tags) from
+   * the chosen template. Ignored when `initialDocument` is provided.
    */
-  template?: NoteTemplate | null
+  template?: DocumentTemplate | null
 }
 
 const NOOP = () => {}
 
-export function NotesPinboardNew({
-  allNotes = [],
-  initialNote,
+export function DocumentsPinboardNew({
+  allDocuments = [],
+  initialDocument,
   onDiscard,
   onSave,
   orgSlug,
   saving = false,
   template,
 }: Props) {
-  const railTags = useMemo(() => uniqueTagsFromNotes(allNotes), [allNotes])
-  const railCounts = useMemo(() => tagCounts(allNotes), [allNotes])
-  const isEditing = !!initialNote
-  const seed = !initialNote ? template : null
+  const railTags = useMemo(
+    () => uniqueTagsFromDocuments(allDocuments),
+    [allDocuments],
+  )
+  const railCounts = useMemo(() => tagCounts(allDocuments), [allDocuments])
+  const isEditing = !!initialDocument
+  const seed = !initialDocument ? template : null
   const [mode, setMode] = useState<EditorMode>('split')
-  const [title, setTitle] = useState(initialNote?.title ?? seed?.title ?? '')
+  const [title, setTitle] = useState(
+    initialDocument?.title ?? seed?.title ?? '',
+  )
   const [content, setContent] = useState(
-    initialNote?.content ?? seed?.content ?? '',
+    initialDocument?.content ?? seed?.content ?? '',
   )
   const [tags, setTags] = useState<TagRef[]>(
-    initialNote
-      ? initialNote.tags.map((t) => ({ name: t.name, slug: t.slug }))
+    initialDocument
+      ? initialDocument.tags.map((t) => ({ name: t.name, slug: t.slug }))
       : seed?.tags
         ? seed.tags.map((t) => ({ name: t.name, slug: t.slug }))
         : [],
@@ -67,13 +76,13 @@ export function NotesPinboardNew({
   const trimmedTitle = title.trim()
   const isValid = trimmedTitle.length > 0 && content.trim().length > 0
   const dirty = useMemo(() => {
-    if (!initialNote)
+    if (!initialDocument)
       return trimmedTitle.length > 0 || content.length > 0 || tags.length > 0
     // Compare against the trimmed save value so trailing-space-only edits
     // don't masquerade as dirty.
-    if (trimmedTitle !== initialNote.title.trim()) return true
-    if (content !== initialNote.content) return true
-    const initialSlugs = initialNote.tags
+    if (trimmedTitle !== initialDocument.title.trim()) return true
+    if (content !== initialDocument.content) return true
+    const initialSlugs = initialDocument.tags
       .map((t) => t.slug)
       .sort()
       .join(',')
@@ -82,7 +91,7 @@ export function NotesPinboardNew({
       .sort()
       .join(',')
     return initialSlugs !== currentSlugs
-  }, [initialNote, trimmedTitle, content, tags])
+  }, [initialDocument, trimmedTitle, content, tags])
   const canSave = isValid && dirty
 
   const handleSave = () => {
@@ -100,7 +109,7 @@ export function NotesPinboardNew({
   return (
     <div className="grid grid-cols-[220px_1fr] gap-5">
       {/* Rail stays visible but disabled while composing — preserves spatial continuity. */}
-      <NotesFilterRail
+      <DocumentsFilterRail
         active={EMPTY_ACTIVE}
         counts={railCounts}
         disabled
@@ -109,7 +118,7 @@ export function NotesPinboardNew({
         onToggle={NOOP}
         search=""
         tags={railTags}
-        totalFiltered={allNotes.length}
+        totalFiltered={allDocuments.length}
       />
 
       <div>
@@ -121,11 +130,11 @@ export function NotesPinboardNew({
             type="button"
           >
             <ArrowLeft className="h-3 w-3" />
-            All notes
+            All documents
           </button>
           <span className="text-tertiary">/</span>
           <span className="text-xs font-medium text-primary">
-            {isEditing ? 'Edit note' : 'New note'}
+            {isEditing ? 'Edit document' : 'New document'}
           </span>
 
           <div className="ml-auto inline-flex gap-0.5 rounded-md border border-secondary bg-primary p-0.5">
@@ -260,7 +269,7 @@ function PreviewPane({ content }: { content: string }) {
     )
   }
   return (
-    <div className="note-markdown">
+    <div className="document-markdown">
       <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
     </div>
   )

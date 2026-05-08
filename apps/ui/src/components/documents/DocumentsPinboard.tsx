@@ -12,29 +12,29 @@ import {
 } from '@/components/ui/card'
 import { UserDisplay } from '@/components/ui/user-display'
 import { cn } from '@/lib/utils'
-import type { Note } from '@/types'
+import type { Document } from '@/types'
 
-import { NotesFilterRail } from './NotesFilterRail'
+import { DocumentsFilterRail } from './DocumentsFilterRail'
 import {
   deriveExcerpt,
+  documentTitle,
   formatUpdated,
-  noteTitle,
   tagCounts,
-  uniqueTagsFromNotes,
-} from './notesHelpers'
-import { NoteTagChip } from './NoteTagChip'
+  uniqueTagsFromDocuments,
+} from './documentsHelpers'
+import { DocumentTagChip } from './DocumentTagChip'
 
 interface Props {
   displayNames?: Map<string, string>
-  notes: Note[]
+  documents: Document[]
   onCreate: () => void
-  onOpen: (noteId: string) => void
-  onTogglePin: (note: Note) => void
+  onOpen: (documentId: string) => void
+  onTogglePin: (document: Document) => void
 }
 
-export function NotesPinboard({
+export function DocumentsPinboard({
   displayNames,
-  notes,
+  documents,
   onCreate,
   onOpen,
   onTogglePin,
@@ -42,21 +42,21 @@ export function NotesPinboard({
   const [active, setActive] = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
 
-  const tags = useMemo(() => uniqueTagsFromNotes(notes), [notes])
-  const counts = useMemo(() => tagCounts(notes), [notes])
+  const tags = useMemo(() => uniqueTagsFromDocuments(documents), [documents])
+  const counts = useMemo(() => tagCounts(documents), [documents])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return notes.filter((n) => {
+    return documents.filter((n) => {
       for (const slug of active) {
         if (!n.tags.some((t) => t.slug === slug)) return false
       }
       if (!q) return true
-      const title = noteTitle(n).toLowerCase()
+      const title = documentTitle(n).toLowerCase()
       const content = n.content.toLowerCase()
       return title.includes(q) || content.includes(q)
     })
-  }, [notes, active, search])
+  }, [documents, active, search])
 
   const pinned = useMemo(() => filtered.filter((n) => n.is_pinned), [filtered])
   const rest = useMemo(() => filtered.filter((n) => !n.is_pinned), [filtered])
@@ -72,7 +72,7 @@ export function NotesPinboard({
 
   return (
     <div className="grid grid-cols-[220px_1fr] gap-5">
-      <NotesFilterRail
+      <DocumentsFilterRail
         active={active}
         counts={counts}
         onClear={() => setActive(new Set())}
@@ -90,8 +90,8 @@ export function NotesPinboard({
               {pinned.map((n) => (
                 <HeroCard
                   displayNames={displayNames}
+                  document={n}
                   key={n.id}
-                  note={n}
                   onOpen={onOpen}
                 />
               ))}
@@ -103,7 +103,7 @@ export function NotesPinboard({
             size="sm"
           >
             <Plus className="h-3 w-3" />
-            New note
+            New document
           </Button>
         </section>
 
@@ -116,7 +116,7 @@ export function NotesPinboard({
                   'minmax(0, 1.6fr) minmax(0, 1fr) 100px 60px 60px',
               }}
             >
-              <span>Note</span>
+              <span>Document</span>
               <span>Tags</span>
               <span>Author</span>
               <span className="text-right">Updated</span>
@@ -125,8 +125,8 @@ export function NotesPinboard({
             {rest.map((n) => (
               <IndexRow
                 displayNames={displayNames}
+                document={n}
                 key={n.id}
-                note={n}
                 onOpen={onOpen}
                 onTogglePin={onTogglePin}
               />
@@ -134,8 +134,8 @@ export function NotesPinboard({
             {rest.length === 0 && (
               <div className="px-8 py-7 text-center text-sm text-tertiary">
                 {filtered.length === 0
-                  ? 'No notes match the current filters.'
-                  : 'All remaining notes are pinned.'}
+                  ? 'No documents match the current filters.'
+                  : 'All remaining documents are pinned.'}
               </div>
             )}
           </div>
@@ -147,19 +147,19 @@ export function NotesPinboard({
 
 function HeroCard({
   displayNames,
-  note,
+  document,
   onOpen,
 }: {
   displayNames?: Map<string, string>
-  note: Note
-  onOpen: (noteId: string) => void
+  document: Document
+  onOpen: (documentId: string) => void
 }) {
-  const title = noteTitle(note)
-  const excerpt = deriveExcerpt(note.content)
+  const title = documentTitle(document)
+  const excerpt = deriveExcerpt(document.content)
   return (
     <Card
       className="flex cursor-pointer flex-col transition-colors hover:border-secondary hover:shadow-md"
-      onClick={() => onOpen(note.id)}
+      onClick={() => onOpen(document.id)}
     >
       <CardHeader className="space-y-2">
         <div className="flex items-start justify-between gap-2">
@@ -176,10 +176,10 @@ function HeroCard({
         <p className="m-0 line-clamp-3 text-[13px] leading-[1.55] text-secondary">
           {excerpt}
         </p>
-        {note.tags.length > 0 && (
+        {document.tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
-            {note.tags.map((t) => (
-              <NoteTagChip key={t.slug} size="sm" tag={t} />
+            {document.tags.map((t) => (
+              <DocumentTagChip key={t.slug} size="sm" tag={t} />
             ))}
           </div>
         )}
@@ -188,12 +188,12 @@ function HeroCard({
         <UserDisplay
           className="text-secondary"
           displayNames={displayNames}
-          email={note.created_by}
+          email={document.created_by}
           size={16}
           textClassName="font-medium"
         />
         <span className="text-tertiary">·</span>
-        <span>Updated {formatUpdated(note)}</span>
+        <span>Updated {formatUpdated(document)}</span>
       </CardFooter>
     </Card>
   )
@@ -201,23 +201,23 @@ function HeroCard({
 
 function IndexRow({
   displayNames,
-  note,
+  document,
   onOpen,
   onTogglePin,
 }: {
   displayNames?: Map<string, string>
-  note: Note
-  onOpen: (noteId: string) => void
-  onTogglePin: (note: Note) => void
+  document: Document
+  onOpen: (documentId: string) => void
+  onTogglePin: (document: Document) => void
 }) {
-  const pinned = note.is_pinned
-  const title = noteTitle(note)
-  const excerpt = deriveExcerpt(note.content)
-  const author = note.created_by
+  const pinned = document.is_pinned
+  const title = documentTitle(document)
+  const excerpt = deriveExcerpt(document.content)
+  const author = document.created_by
   return (
     <div
       className="grid cursor-pointer items-center gap-3.5 border-b border-tertiary px-3.5 py-2.5 last:border-b-0 hover:bg-secondary"
-      onClick={() => onOpen(note.id)}
+      onClick={() => onOpen(document.id)}
       style={{
         gridTemplateColumns: 'minmax(0, 1.6fr) minmax(0, 1fr) 100px 60px 60px',
       }}
@@ -229,8 +229,8 @@ function IndexRow({
         <div className="mt-0.5 truncate text-xs text-tertiary">{excerpt}</div>
       </div>
       <div className="flex flex-wrap gap-1">
-        {note.tags.slice(0, 3).map((t) => (
-          <NoteTagChip key={t.slug} tag={t} />
+        {document.tags.slice(0, 3).map((t) => (
+          <DocumentTagChip key={t.slug} tag={t} />
         ))}
       </div>
       <UserDisplay
@@ -240,15 +240,15 @@ function IndexRow({
         size={18}
       />
       <div className="text-right font-mono text-[11.5px] text-tertiary">
-        {formatUpdated(note)}
+        {formatUpdated(document)}
       </div>
       <div className="flex justify-end gap-0.5">
         <RowIconButton
           onClick={(e) => {
             e.stopPropagation()
-            onTogglePin(note)
+            onTogglePin(document)
           }}
-          title={pinned ? 'Unpin note' : 'Pin note'}
+          title={pinned ? 'Unpin document' : 'Pin document'}
         >
           <Pin
             className={cn('h-3 w-3', pinned ? 'text-warning' : 'text-tertiary')}
@@ -257,9 +257,9 @@ function IndexRow({
         <RowIconButton
           onClick={(e) => {
             e.stopPropagation()
-            onOpen(note.id)
+            onOpen(document.id)
           }}
-          title="Open note"
+          title="Open document"
         >
           <ArrowUpRight className="h-3 w-3 text-tertiary" />
         </RowIconButton>

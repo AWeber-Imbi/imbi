@@ -1,20 +1,20 @@
 import { useQuery } from '@tanstack/react-query'
 import { Plus, StickyNote } from 'lucide-react'
 
-import { listNoteTemplates } from '@/api/endpoints'
+import { listDocumentTemplates } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { EntityIcon } from '@/components/ui/entity-icon'
-import type { NoteTemplate } from '@/types'
+import type { DocumentTemplate } from '@/types'
 
-import { NoteTagChip } from './NoteTagChip'
+import { DocumentTagChip } from './DocumentTagChip'
 
 interface Props {
-  onCreate: (template?: NoteTemplate) => void
+  onCreate: (template?: DocumentTemplate) => void
   orgSlug: string
   projectTypeSlugs?: string[]
 }
 
-export function NotesPinboardEmpty({
+export function DocumentsPinboardEmpty({
   onCreate,
   orgSlug,
   projectTypeSlugs,
@@ -23,10 +23,10 @@ export function NotesPinboardEmpty({
     data: templates = [],
     error: templatesError,
     isLoading: templatesLoading,
-  } = useQuery<NoteTemplate[]>({
+  } = useQuery<DocumentTemplate[]>({
     enabled: !!orgSlug,
-    queryFn: ({ signal }) => listNoteTemplates(orgSlug, signal),
-    queryKey: ['noteTemplates', orgSlug],
+    queryFn: ({ signal }) => listDocumentTemplates(orgSlug, signal),
+    queryKey: ['documentTemplates', orgSlug],
   })
 
   const projectTypeSet =
@@ -51,18 +51,19 @@ export function NotesPinboardEmpty({
       </div>
 
       <h2 className="m-0 text-h2 font-medium tracking-[-0.015em]">
-        No notes yet for this project
+        No documents yet for this project
       </h2>
       <p className="m-0 max-w-[720px] text-sm leading-[1.6] text-secondary">
-        Notes capture decisions, reviews, and patterns that outlive any one
+        Documents capture decisions, reviews, and patterns that outlive any one
         deploy. They render as Markdown, carry tags you can filter, and can be
-        pinned to stay at the top of this tab. Notes are also exposed to agents
-        in the graph, providing project-level context across your workflows.
+        pinned to stay at the top of this tab. Documents are also exposed to
+        agents in the graph, providing project-level context across your
+        workflows.
       </p>
 
       <Button className="mt-1 gap-1.5" onClick={() => onCreate()}>
         <Plus className="h-3 w-3" />
-        New note
+        New document
       </Button>
 
       {templatesLoading && (
@@ -99,7 +100,7 @@ export function NotesPinboardEmpty({
                   </span>
                   {t.tags && t.tags.length > 0 && (
                     <span className="ml-auto">
-                      <NoteTagChip size="sm" tag={t.tags[0]} />
+                      <DocumentTagChip size="sm" tag={t.tags[0]} />
                     </span>
                   )}
                 </div>

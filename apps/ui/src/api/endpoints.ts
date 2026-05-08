@@ -22,6 +22,11 @@ import type {
   ConfigKeyResponse,
   ConfigKeyValueResponse,
   CurrentReleaseEnvironment,
+  Document,
+  DocumentCreate,
+  DocumentListResponse,
+  DocumentTemplate,
+  DocumentTemplateCreate,
   Environment,
   EnvironmentCreate,
   IdentityConnectionPollResponse,
@@ -38,11 +43,6 @@ import type {
   LoginProviderUpdate,
   LoginRequest,
   LogResultResponse,
-  Note,
-  NoteCreate,
-  NoteListResponse,
-  NoteTemplate,
-  NoteTemplateCreate,
   OperationsLogFilters,
   OperationsLogRecord,
   Organization,
@@ -314,49 +314,52 @@ export const deleteLinkDefinition = (orgSlug: string, slug: string) =>
     `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/${encodeURIComponent(slug)}`,
   )
 
-// Note Templates (org-scoped)
-export const listNoteTemplates = async (
+// Document Templates (org-scoped)
+export const listDocumentTemplates = async (
   orgSlug: string,
   signal?: AbortSignal,
-): Promise<NoteTemplate[]> => {
-  const response = await apiClient.get<NoteTemplate[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/note-templates/`,
+): Promise<DocumentTemplate[]> => {
+  const response = await apiClient.get<DocumentTemplate[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/document-templates/`,
     undefined,
     signal,
   )
   return Array.isArray(response) ? response : []
 }
 
-export const getNoteTemplate = (
+export const getDocumentTemplate = (
   orgSlug: string,
   slug: string,
   signal?: AbortSignal,
 ) =>
-  apiClient.get<NoteTemplate>(
-    `/organizations/${encodeURIComponent(orgSlug)}/note-templates/${encodeURIComponent(slug)}`,
+  apiClient.get<DocumentTemplate>(
+    `/organizations/${encodeURIComponent(orgSlug)}/document-templates/${encodeURIComponent(slug)}`,
     undefined,
     signal,
   )
 
-export const createNoteTemplate = (orgSlug: string, data: NoteTemplateCreate) =>
-  apiClient.post<NoteTemplate>(
-    `/organizations/${encodeURIComponent(orgSlug)}/note-templates/`,
+export const createDocumentTemplate = (
+  orgSlug: string,
+  data: DocumentTemplateCreate,
+) =>
+  apiClient.post<DocumentTemplate>(
+    `/organizations/${encodeURIComponent(orgSlug)}/document-templates/`,
     data,
   )
 
-export const updateNoteTemplate = (
+export const updateDocumentTemplate = (
   orgSlug: string,
   slug: string,
   operations: PatchOperation[],
 ) =>
-  apiClient.patch<NoteTemplate>(
-    `/organizations/${encodeURIComponent(orgSlug)}/note-templates/${encodeURIComponent(slug)}`,
+  apiClient.patch<DocumentTemplate>(
+    `/organizations/${encodeURIComponent(orgSlug)}/document-templates/${encodeURIComponent(slug)}`,
     operations,
   )
 
-export const deleteNoteTemplate = (orgSlug: string, slug: string) =>
+export const deleteDocumentTemplate = (orgSlug: string, slug: string) =>
   apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/note-templates/${encodeURIComponent(slug)}`,
+    `/organizations/${encodeURIComponent(orgSlug)}/document-templates/${encodeURIComponent(slug)}`,
   )
 
 // Activity Feed
@@ -1489,61 +1492,61 @@ export const deleteProjectService = (
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectSlug)}/services/${encodeURIComponent(serviceSlug)}`,
   )
 
-// Notes (project-scoped)
-export const listProjectNotes = async (
+// Documents (project-scoped)
+export const listProjectDocuments = async (
   orgSlug: string,
   projectId: string,
   params?: { cursor?: string; limit?: number; tag?: string },
   signal?: AbortSignal,
-): Promise<Note[]> => {
-  const response = await apiClient.get<NoteListResponse>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/notes/`,
+): Promise<Document[]> => {
+  const response = await apiClient.get<DocumentListResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/documents/`,
     params,
     signal,
   )
   return response?.data ?? []
 }
 
-export const getProjectNote = (
+export const getProjectDocument = (
   orgSlug: string,
   projectId: string,
-  noteId: string,
+  documentId: string,
   signal?: AbortSignal,
 ) =>
-  apiClient.get<Note>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/notes/${encodeURIComponent(noteId)}`,
+  apiClient.get<Document>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}`,
     undefined,
     signal,
   )
 
-export const createProjectNote = (
+export const createProjectDocument = (
   orgSlug: string,
   projectId: string,
-  data: NoteCreate,
+  data: DocumentCreate,
 ) =>
-  apiClient.post<Note>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/notes/`,
+  apiClient.post<Document>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/documents/`,
     data,
   )
 
-export const patchProjectNote = (
+export const patchProjectDocument = (
   orgSlug: string,
   projectId: string,
-  noteId: string,
+  documentId: string,
   operations: PatchOperation[],
 ) =>
-  apiClient.patch<Note>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/notes/${encodeURIComponent(noteId)}`,
+  apiClient.patch<Document>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}`,
     operations,
   )
 
-export const deleteProjectNote = (
+export const deleteProjectDocument = (
   orgSlug: string,
   projectId: string,
-  noteId: string,
+  documentId: string,
 ) =>
   apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/notes/${encodeURIComponent(noteId)}`,
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}`,
   )
 
 // Tags (org-scoped)

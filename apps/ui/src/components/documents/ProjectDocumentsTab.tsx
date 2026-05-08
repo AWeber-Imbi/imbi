@@ -6,59 +6,59 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import {
-  createProjectNote,
-  deleteProjectNote,
+  createProjectDocument,
+  deleteProjectDocument,
   listAdminUsers,
-  listProjectNotes,
-  patchProjectNote,
+  listProjectDocuments,
+  patchProjectDocument,
 } from '@/api/endpoints'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { LoadingState } from '@/components/ui/loading-state'
 import { extractApiErrorDetail } from '@/lib/apiError'
-import type { Note, NoteTemplate } from '@/types'
+import type { Document, DocumentTemplate } from '@/types'
 
-import { NotesPinboard } from './NotesPinboard'
-import { NotesPinboardEmpty } from './NotesPinboardEmpty'
-import { NotesPinboardNew } from './NotesPinboardNew'
-import { NotesPinboardReader } from './NotesPinboardReader'
+import { DocumentsPinboard } from './DocumentsPinboard'
+import { DocumentsPinboardEmpty } from './DocumentsPinboardEmpty'
+import { DocumentsPinboardNew } from './DocumentsPinboardNew'
+import { DocumentsPinboardReader } from './DocumentsPinboardReader'
 
 interface Props {
   initialAction?: string
-  initialNoteId?: string
+  initialDocumentId?: string
   orgSlug: string
   projectId: string
   projectTypeSlugs?: string[]
 }
 
 type View =
-  | { kind: 'creating'; template?: NoteTemplate | null }
-  | { kind: 'editing'; noteId: string }
+  | { documentId: string; kind: 'editing' }
+  | { documentId: string; kind: 'reading' }
+  | { kind: 'creating'; template?: DocumentTemplate | null }
   | { kind: 'list' }
-  | { kind: 'reading'; noteId: string }
 
-export function ProjectNotesTab({
+export function ProjectDocumentsTab({
   initialAction,
-  initialNoteId,
+  initialDocumentId,
   orgSlug,
   projectId,
   projectTypeSlugs,
 }: Props) {
   const navigate = useNavigate()
   const [view, setView] = useState<View>(() =>
-    viewFromUrl(initialNoteId, initialAction),
+    viewFromUrl(initialDocumentId, initialAction),
   )
   const qc = useQueryClient()
 
   const navigateToView = useCallback(
     (next: View) => {
       setView(next)
-      const base = `/projects/${projectId}/notes`
+      const base = `/projects/${projectId}/documents`
       if (next.kind === 'reading') {
-        navigate(`${base}/${encodeURIComponent(next.noteId)}`, {
+        navigate(`${base}/${encodeURIComponent(next.documentId)}`, {
           replace: true,
         })
       } else if (next.kind === 'editing') {
-        navigate(`${base}/${encodeURIComponent(next.noteId)}/edit`, {
+        navigate(`${base}/${encodeURIComponent(next.documentId)}/edit`, {
           replace: true,
         })
       } else if (next.kind === 'creating') {
@@ -72,30 +72,30 @@ export function ProjectNotesTab({
 
   // Reflect URL changes (e.g. browser back/forward) into local view state.
   useEffect(() => {
-    const next = viewFromUrl(initialNoteId, initialAction)
+    const next = viewFromUrl(initialDocumentId, initialAction)
     setView((prev) => {
       if (
         prev.kind === next.kind &&
-        ('noteId' in prev ? prev.noteId : null) ===
-          ('noteId' in next ? next.noteId : null)
+        ('documentId' in prev ? prev.documentId : null) ===
+          ('documentId' in next ? next.documentId : null)
       ) {
         return prev
       }
       return next
     })
-  }, [initialNoteId, initialAction])
+  }, [initialDocumentId, initialAction])
 
-  const notesKey = ['projectNotes', orgSlug, projectId] as const
+  const documentsKey = ['projectDocuments', orgSlug, projectId] as const
 
   const {
-    data: notes = [],
+    data: documents = [],
     error,
     isLoading,
   } = useQuery({
     enabled: !!orgSlug && !!projectId,
     queryFn: ({ signal }) =>
-      listProjectNotes(orgSlug, projectId, undefined, signal),
-    queryKey: notesKey,
+      listProjectDocuments(orgSlug, projectId, undefined, signal),
+    queryKey: documentsKey,
   })
 
   const { data: users = [], error: usersError } = useQuery({
@@ -109,7 +109,7 @@ export function ProjectNotesTab({
   useEffect(() => {
     if (usersError) {
       console.warn(
-        'Failed to load admin users for note display names',
+        'Failed to load admin users for document display names',
         usersError,
       )
     }
@@ -124,62 +124,68 @@ export function ProjectNotesTab({
   }, [users])
 
   const pinMutation = useMutation<
-    Note,
+    Document,
     unknown,
-    { noteId: string; pinned: boolean },
-    { previous?: Note[] }
+    { documentId: string; pinned: boolean },
+    { previous?: Document[] }
   >({
-    mutationFn: ({ noteId, pinned }: { noteId: string; pinned: boolean }) =>
-      patchProjectNote(orgSlug, projectId, noteId, [
+    mutationFn: ({
+      documentId,
+      pinned,
+    }: {
+      documentId: string
+      pinned: boolean
+    }) =>
+      patchProjectDocument(orgSlug, projectId, documentId, [
         { op: 'replace', path: '/is_pinned', value: pinned },
       ]),
     onError: (err, _vars, ctx) => {
-      if (ctx?.previous) qc.setQueryData(notesKey, ctx.previous)
+      if (ctx?.previous) qc.setQueryData(documentsKey, ctx.previous)
       toast.error(`Pin failed: ${extractApiErrorDetail(err)}`)
     },
-    onMutate: async ({ noteId, pinned }) => {
-      await qc.cancelQueries({ queryKey: notesKey })
-      const previous = qc.getQueryData<Note[]>(notesKey)
+    onMutate: async ({ documentId, pinned }) => {
+      await qc.cancelQueries({ queryKey: documentsKey })
+      const previous = qc.getQueryData<Document[]>(documentsKey)
       if (previous) {
-        qc.setQueryData<Note[]>(
-          notesKey,
+        qc.setQueryData<Document[]>(
+          documentsKey,
           previous.map((n) =>
-            n.id === noteId ? { ...n, is_pinned: pinned } : n,
+            n.id === documentId ? { ...n, is_pinned: pinned } : n,
           ),
         )
       }
       return { previous }
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: notesKey })
+      qc.invalidateQueries({ queryKey: documentsKey })
     },
   })
 
   const createMutation = useMutation({
     mutationFn: (draft: { content: string; tags: string[]; title: string }) =>
-      createProjectNote(orgSlug, projectId, draft),
+      createProjectDocument(orgSlug, projectId, draft),
     onError: (err) => {
       toast.error(`Save failed: ${extractApiErrorDetail(err)}`)
     },
-    onSuccess: (note) => {
-      qc.setQueryData<Note[]>(notesKey, (prev) =>
-        prev ? [note, ...prev] : [note],
+    onSuccess: (document) => {
+      qc.setQueryData<Document[]>(documentsKey, (prev) =>
+        prev ? [document, ...prev] : [document],
       )
-      qc.invalidateQueries({ queryKey: notesKey })
-      toast.success('Note saved')
-      navigateToView({ kind: 'reading', noteId: note.id })
+      qc.invalidateQueries({ queryKey: documentsKey })
+      toast.success('Document saved')
+      navigateToView({ documentId: document.id, kind: 'reading' })
     },
   })
 
   const updateMutation = useMutation({
     mutationFn: ({
+      documentId,
       draft,
-      noteId,
     }: {
+      documentId: string
       draft: { content: string; tags: string[]; title: string }
-      noteId: string
     }) =>
-      patchProjectNote(orgSlug, projectId, noteId, [
+      patchProjectDocument(orgSlug, projectId, documentId, [
         { op: 'replace', path: '/title', value: draft.title },
         { op: 'replace', path: '/content', value: draft.content },
         { op: 'replace', path: '/tags', value: draft.tags },
@@ -187,70 +193,75 @@ export function ProjectNotesTab({
     onError: (err) => {
       toast.error(`Update failed: ${extractApiErrorDetail(err)}`)
     },
-    onSuccess: (note) => {
-      qc.setQueryData<Note[]>(notesKey, (prev) =>
-        prev ? prev.map((n) => (n.id === note.id ? note : n)) : [note],
+    onSuccess: (document) => {
+      qc.setQueryData<Document[]>(documentsKey, (prev) =>
+        prev
+          ? prev.map((n) => (n.id === document.id ? document : n))
+          : [document],
       )
-      qc.invalidateQueries({ queryKey: notesKey })
-      toast.success('Note updated')
-      navigateToView({ kind: 'reading', noteId: note.id })
+      qc.invalidateQueries({ queryKey: documentsKey })
+      toast.success('Document updated')
+      navigateToView({ documentId: document.id, kind: 'reading' })
     },
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (noteId: string) =>
-      deleteProjectNote(orgSlug, projectId, noteId),
+    mutationFn: (documentId: string) =>
+      deleteProjectDocument(orgSlug, projectId, documentId),
     onError: (err) => {
       toast.error(`Delete failed: ${extractApiErrorDetail(err)}`)
     },
-    onSuccess: (_data, noteId) => {
-      qc.setQueryData<Note[]>(notesKey, (prev) =>
-        prev ? prev.filter((n) => n.id !== noteId) : [],
+    onSuccess: (_data, documentId) => {
+      qc.setQueryData<Document[]>(documentsKey, (prev) =>
+        prev ? prev.filter((n) => n.id !== documentId) : [],
       )
-      qc.invalidateQueries({ queryKey: notesKey })
-      toast.success('Note deleted')
+      qc.invalidateQueries({ queryKey: documentsKey })
+      toast.success('Document deleted')
       navigateToView({ kind: 'list' })
     },
   })
 
   const togglePin = useCallback(
-    (note: Note) => {
-      pinMutation.mutate({ noteId: note.id, pinned: !note.is_pinned })
+    (document: Document) => {
+      pinMutation.mutate({
+        documentId: document.id,
+        pinned: !document.is_pinned,
+      })
     },
     [pinMutation],
   )
 
-  const selectedNote = useMemo(
+  const selectedDocument = useMemo(
     () =>
       view.kind === 'reading'
-        ? (notes.find((n) => n.id === view.noteId) ?? null)
+        ? (documents.find((n) => n.id === view.documentId) ?? null)
         : null,
-    [notes, view],
+    [documents, view],
   )
 
-  const editingNote = useMemo(
+  const editingDocument = useMemo(
     () =>
       view.kind === 'editing'
-        ? (notes.find((n) => n.id === view.noteId) ?? null)
+        ? (documents.find((n) => n.id === view.documentId) ?? null)
         : null,
-    [notes, view],
+    [documents, view],
   )
 
-  // If a deep-linked note id doesn't exist (deleted, wrong id), surface a
+  // If a deep-linked document id doesn't exist (deleted, wrong id), surface a
   // toast and bounce back to the list view rather than silently rendering
-  // the empty list. Skip while the notes query is loading or errored —
+  // the empty list. Skip while the documents query is loading or errored —
   // the error banner (rendered below) already covers fetch failures and
-  // an empty-on-error notes array shouldn't masquerade as a missing note.
+  // an empty-on-error documents array shouldn't masquerade as a missing document.
   useEffect(() => {
     if (isLoading || error) return
     if (view.kind !== 'reading' && view.kind !== 'editing') return
-    if (notes.some((n) => n.id === view.noteId)) return
-    toast.error('Note not found')
+    if (documents.some((n) => n.id === view.documentId)) return
+    toast.error('Document not found')
     navigateToView({ kind: 'list' })
-  }, [error, isLoading, navigateToView, notes, view])
+  }, [error, isLoading, navigateToView, documents, view])
 
   const handleCreate = useCallback(
-    (template?: NoteTemplate) => {
+    (template?: DocumentTemplate) => {
       navigateToView({ kind: 'creating', template: template ?? null })
     },
     [navigateToView],
@@ -258,7 +269,7 @@ export function ProjectNotesTab({
 
   const handleDiscard = useCallback(() => {
     if (view.kind === 'editing') {
-      navigateToView({ kind: 'reading', noteId: view.noteId })
+      navigateToView({ documentId: view.documentId, kind: 'reading' })
     } else {
       navigateToView({ kind: 'list' })
     }
@@ -267,7 +278,7 @@ export function ProjectNotesTab({
   const handleSave = useCallback(
     (draft: { content: string; tags: string[]; title: string }) => {
       if (view.kind === 'editing') {
-        updateMutation.mutate({ draft, noteId: view.noteId })
+        updateMutation.mutate({ documentId: view.documentId, draft })
       } else {
         createMutation.mutate(draft)
       }
@@ -275,13 +286,14 @@ export function ProjectNotesTab({
     [createMutation, updateMutation, view],
   )
 
-  if (isLoading) return <LoadingState label="Loading notes…" />
-  if (error) return <ErrorBanner error={error} title="Failed to load notes" />
+  if (isLoading) return <LoadingState label="Loading documents…" />
+  if (error)
+    return <ErrorBanner error={error} title="Failed to load documents" />
 
   if (view.kind === 'creating') {
     return (
-      <NotesPinboardNew
-        allNotes={notes}
+      <DocumentsPinboardNew
+        allDocuments={documents}
         onDiscard={handleDiscard}
         onSave={handleSave}
         orgSlug={orgSlug}
@@ -291,12 +303,12 @@ export function ProjectNotesTab({
     )
   }
 
-  if (editingNote) {
+  if (editingDocument) {
     return (
-      <NotesPinboardNew
-        allNotes={notes}
-        initialNote={editingNote}
-        key={editingNote.id}
+      <DocumentsPinboardNew
+        allDocuments={documents}
+        initialDocument={editingDocument}
+        key={editingDocument.id}
         onDiscard={handleDiscard}
         onSave={handleSave}
         orgSlug={orgSlug}
@@ -305,27 +317,27 @@ export function ProjectNotesTab({
     )
   }
 
-  if (selectedNote) {
+  if (selectedDocument) {
     return (
-      <NotesPinboardReader
-        allNotes={notes}
+      <DocumentsPinboardReader
+        allDocuments={documents}
         deleting={deleteMutation.isPending}
         displayNames={displayNames}
-        note={selectedNote}
+        document={selectedDocument}
         onBack={() => navigateToView({ kind: 'list' })}
-        onDelete={() => deleteMutation.mutate(selectedNote.id)}
+        onDelete={() => deleteMutation.mutate(selectedDocument.id)}
         onEdit={() =>
-          navigateToView({ kind: 'editing', noteId: selectedNote.id })
+          navigateToView({ documentId: selectedDocument.id, kind: 'editing' })
         }
-        onOpen={(id) => navigateToView({ kind: 'reading', noteId: id })}
-        onTogglePin={() => togglePin(selectedNote)}
+        onOpen={(id) => navigateToView({ documentId: id, kind: 'reading' })}
+        onTogglePin={() => togglePin(selectedDocument)}
       />
     )
   }
 
-  if (notes.length === 0) {
+  if (documents.length === 0) {
     return (
-      <NotesPinboardEmpty
+      <DocumentsPinboardEmpty
         onCreate={handleCreate}
         orgSlug={orgSlug}
         projectTypeSlugs={projectTypeSlugs}
@@ -334,24 +346,25 @@ export function ProjectNotesTab({
   }
 
   return (
-    <NotesPinboard
+    <DocumentsPinboard
       displayNames={displayNames}
-      notes={notes}
+      documents={documents}
       onCreate={handleCreate}
-      onOpen={(id) => navigateToView({ kind: 'reading', noteId: id })}
+      onOpen={(id) => navigateToView({ documentId: id, kind: 'reading' })}
       onTogglePin={togglePin}
     />
   )
 }
 
 function viewFromUrl(
-  initialNoteId: string | undefined,
+  initialDocumentId: string | undefined,
   initialAction: string | undefined,
 ): View {
-  if (initialNoteId === 'new') return { kind: 'creating' }
-  if (initialNoteId && initialAction === 'edit') {
-    return { kind: 'editing', noteId: initialNoteId }
+  if (initialDocumentId === 'new') return { kind: 'creating' }
+  if (initialDocumentId && initialAction === 'edit') {
+    return { documentId: initialDocumentId, kind: 'editing' }
   }
-  if (initialNoteId) return { kind: 'reading', noteId: initialNoteId }
+  if (initialDocumentId)
+    return { documentId: initialDocumentId, kind: 'reading' }
   return { kind: 'list' }
 }

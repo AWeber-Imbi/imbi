@@ -8,18 +8,18 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { UserDisplay } from '@/components/ui/user-display'
 import { cn } from '@/lib/utils'
-import type { Note } from '@/types'
+import type { Document } from '@/types'
 
-import { NotesFilterRail } from './NotesFilterRail'
+import { DocumentsFilterRail } from './DocumentsFilterRail'
 import {
+  documentTitle,
   EMPTY_ACTIVE,
   formatFull,
   formatUpdated,
-  noteTitle,
   tagCounts,
-  uniqueTagsFromNotes,
-} from './notesHelpers'
-import { NoteTagChip } from './NoteTagChip'
+  uniqueTagsFromDocuments,
+} from './documentsHelpers'
+import { DocumentTagChip } from './DocumentTagChip'
 
 interface Heading {
   level: 2 | 3
@@ -28,22 +28,22 @@ interface Heading {
 }
 
 interface Props {
-  allNotes: Note[]
+  allDocuments: Document[]
   deleting?: boolean
   displayNames?: Map<string, string>
-  note: Note
+  document: Document
   onBack: () => void
   onDelete?: () => void
   onEdit?: () => void
-  onOpen: (noteId: string) => void
+  onOpen: (documentId: string) => void
   onTogglePin: () => void
 }
 
-export function NotesPinboardReader({
-  allNotes,
+export function DocumentsPinboardReader({
+  allDocuments,
   deleting = false,
   displayNames,
-  note,
+  document,
   onBack,
   onDelete,
   onEdit,
@@ -52,33 +52,40 @@ export function NotesPinboardReader({
 }: Props) {
   const [search, setSearch] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const pinned = note.is_pinned
-  const title = noteTitle(note)
+  const pinned = document.is_pinned
+  const title = documentTitle(document)
 
-  const tags = useMemo(() => uniqueTagsFromNotes(allNotes), [allNotes])
-  const counts = useMemo(() => tagCounts(allNotes), [allNotes])
+  const tags = useMemo(
+    () => uniqueTagsFromDocuments(allDocuments),
+    [allDocuments],
+  )
+  const counts = useMemo(() => tagCounts(allDocuments), [allDocuments])
   const highlightedSlugs = useMemo(
-    () => new Set(note.tags.map((t) => t.slug)),
-    [note.tags],
+    () => new Set(document.tags.map((t) => t.slug)),
+    [document.tags],
   )
 
   const related = useMemo(() => {
-    const noteTags = new Set(note.tags.map((t) => t.slug))
-    return allNotes
+    const documentTags = new Set(document.tags.map((t) => t.slug))
+    return allDocuments
       .filter(
-        (n) => n.id !== note.id && n.tags.some((t) => noteTags.has(t.slug)),
+        (n) =>
+          n.id !== document.id && n.tags.some((t) => documentTags.has(t.slug)),
       )
       .slice(0, 4)
-  }, [allNotes, note])
+  }, [allDocuments, document])
 
-  const headings = useMemo(() => extractHeadings(note.content), [note.content])
+  const headings = useMemo(
+    () => extractHeadings(document.content),
+    [document.content],
+  )
   const headingSlugs = useMemo(() => headings.map((h) => h.slug), [headings])
   const activeSlug = useActiveHeading(headingSlugs)
 
   // Reader is navigable from the same tab; filter rail keeps rail semantics.
   return (
     <div className="grid grid-cols-[220px_1fr] gap-5">
-      <NotesFilterRail
+      <DocumentsFilterRail
         active={EMPTY_ACTIVE}
         counts={counts}
         highlightedSlugs={highlightedSlugs}
@@ -87,7 +94,7 @@ export function NotesPinboardReader({
         onToggle={() => onBack()}
         search={search}
         tags={tags}
-        totalFiltered={allNotes.length}
+        totalFiltered={allDocuments.length}
       />
 
       <div>
@@ -99,7 +106,7 @@ export function NotesPinboardReader({
               type="button"
             >
               <ArrowLeft className="h-3 w-3" />
-              All notes
+              All documents
             </button>
             <div className="ml-auto flex items-center gap-1">
               <Button
@@ -134,7 +141,7 @@ export function NotesPinboardReader({
                 disabled={!onDelete || deleting}
                 onClick={() => setConfirmDelete(true)}
                 size="sm"
-                title="Delete note"
+                title="Delete document"
                 variant="ghost"
               >
                 <Trash2 className="h-3 w-3" />
@@ -154,22 +161,22 @@ export function NotesPinboardReader({
                 <UserDisplay
                   className="text-secondary"
                   displayNames={displayNames}
-                  email={note.created_by}
+                  email={document.created_by}
                   size={22}
                   textClassName="text-[12.5px] text-secondary"
                 />
                 <span className="text-tertiary">·</span>
-                <span>Updated {formatUpdated(note)}</span>
+                <span>Updated {formatUpdated(document)}</span>
               </div>
               <div className="h-3.5 w-px bg-tertiary" />
               <div className="flex flex-wrap gap-1">
-                {note.tags.map((t) => (
-                  <NoteTagChip key={t.slug} tag={t} />
+                {document.tags.map((t) => (
+                  <DocumentTagChip key={t.slug} tag={t} />
                 ))}
               </div>
             </div>
 
-            <div className="note-markdown mt-6">
+            <div className="document-markdown mt-6">
               <Markdown
                 components={{
                   h2: ({ children, ...props }) => (
@@ -193,17 +200,17 @@ export function NotesPinboardReader({
                 }}
                 remarkPlugins={[remarkGfm]}
               >
-                {note.content}
+                {document.content}
               </Markdown>
             </div>
 
             <div className="mt-7 flex flex-wrap items-center gap-2.5 border-t border-tertiary pt-4 text-[11.5px] text-tertiary">
               <Clock className="h-3 w-3" />
-              <span>Created {formatFull(note.created_at)}</span>
-              {note.updated_at && (
+              <span>Created {formatFull(document.created_at)}</span>
+              {document.updated_at && (
                 <>
                   <span className="text-tertiary">·</span>
-                  <span>Last updated {formatFull(note.updated_at)}</span>
+                  <span>Last updated {formatFull(document.updated_at)}</span>
                 </>
               )}
             </div>
@@ -248,7 +255,7 @@ export function NotesPinboardReader({
             {related.length > 0 && (
               <div>
                 <div className="mb-2 text-overline uppercase text-tertiary">
-                  Related notes
+                  Related documents
                 </div>
                 <div className="flex flex-col gap-2">
                   {related.map((r) => (
@@ -259,7 +266,7 @@ export function NotesPinboardReader({
                       type="button"
                     >
                       <div className="line-clamp-2 text-[12.5px] font-medium leading-[1.35] text-primary">
-                        {noteTitle(r)}
+                        {documentTitle(r)}
                       </div>
                       <div className="mt-1 flex items-center gap-1.5 text-[11px] text-tertiary">
                         <UserDisplay
@@ -286,7 +293,7 @@ export function NotesPinboardReader({
           onDelete?.()
         }}
         open={confirmDelete}
-        title="Delete note?"
+        title="Delete document?"
       />
     </div>
   )

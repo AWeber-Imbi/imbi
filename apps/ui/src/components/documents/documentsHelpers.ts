@@ -1,5 +1,5 @@
 import { LABEL_SWATCHES } from '@/lib/chip-colors'
-import type { Note, TagRef } from '@/types'
+import type { Document, TagRef } from '@/types'
 
 /**
  * Deterministic color for a tag slug. Stable hash keeps each tag on the same
@@ -49,6 +49,24 @@ export function deriveExcerpt(content: string): string {
   return truncate(text, EXCERPT_MAX)
 }
 
+/**
+ * Prefer the document's explicit title; fall back to the first heading or line
+ * of content for rows written before the title column existed.
+ */
+export function documentTitle(document: Document): string {
+  const explicit = (document.title ?? '').trim()
+  if (explicit) return truncate(explicit, TITLE_MAX)
+  const lines = document.content.split('\n')
+  for (const raw of lines) {
+    const line = raw.trim()
+    if (!line) continue
+    const heading = line.match(/^#{1,6}\s+(.+?)\s*#*$/)
+    if (heading) return truncate(heading[1], TITLE_MAX)
+    return truncate(line.replace(/^[*_>`~-]+\s*/, ''), TITLE_MAX)
+  }
+  return 'Untitled document'
+}
+
 export function formatFull(iso: null | string | undefined): string {
   if (!iso) return ''
   try {
@@ -61,8 +79,8 @@ export function formatFull(iso: null | string | undefined): string {
   }
 }
 
-export function formatUpdated(note: Note): string {
-  const iso = note.updated_at ?? note.created_at
+export function formatUpdated(document: Document): string {
+  const iso = document.updated_at ?? document.created_at
   return relativeShort(iso)
 }
 
@@ -72,24 +90,6 @@ export function initials(name: string): string {
   const parts = trimmed.split(/\s+/)
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-}
-
-/**
- * Prefer the note's explicit title; fall back to the first heading or line
- * of content for rows written before the title column existed.
- */
-export function noteTitle(note: Note): string {
-  const explicit = (note.title ?? '').trim()
-  if (explicit) return truncate(explicit, TITLE_MAX)
-  const lines = note.content.split('\n')
-  for (const raw of lines) {
-    const line = raw.trim()
-    if (!line) continue
-    const heading = line.match(/^#{1,6}\s+(.+?)\s*#*$/)
-    if (heading) return truncate(heading[1], TITLE_MAX)
-    return truncate(line.replace(/^[*_>`~-]+\s*/, ''), TITLE_MAX)
-  }
-  return 'Untitled note'
 }
 
 function relativeShort(iso: null | string | undefined): string {
@@ -119,18 +119,18 @@ function truncate(s: string, max: number): string {
 
 export const EMPTY_ACTIVE: ReadonlySet<string> = new Set()
 
-export function tagCounts(notes: Note[]): Record<string, number> {
+export function tagCounts(documents: Document[]): Record<string, number> {
   const counts: Record<string, number> = {}
-  for (const n of notes) {
+  for (const n of documents) {
     for (const t of n.tags) counts[t.slug] = (counts[t.slug] ?? 0) + 1
   }
   return counts
 }
 
-/** Dedupe tags by slug across the whole note list. */
-export function uniqueTagsFromNotes(notes: Note[]): TagRef[] {
+/** Dedupe tags by slug across the whole document list. */
+export function uniqueTagsFromDocuments(documents: Document[]): TagRef[] {
   const seen = new Map<string, TagRef>()
-  for (const n of notes) {
+  for (const n of documents) {
     for (const t of n.tags) {
       if (!seen.has(t.slug)) seen.set(t.slug, t)
     }

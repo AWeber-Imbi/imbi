@@ -9,7 +9,7 @@ import { extractApiErrorDetail } from '@/lib/apiError'
 import { cn } from '@/lib/utils'
 import type { Tag, TagRef } from '@/types'
 
-import { NoteTagChip } from './NoteTagChip'
+import { DocumentTagChip } from './DocumentTagChip'
 
 interface Props {
   onChange: (tags: TagRef[]) => void
@@ -17,7 +17,7 @@ interface Props {
   selected: TagRef[]
   /**
    * Layout variant. `'compact'` (default) is the right-aligned inline pill
-   * used in the note composer header. `'full'` stretches to fill its
+   * used in the document composer header. `'full'` stretches to fill its
    * container and uses input-sized padding/text — for use inside forms.
    */
   variant?: 'compact' | 'full'
@@ -168,7 +168,7 @@ export function TagCombobox({
             key={t.slug}
             onClick={(e) => e.stopPropagation()}
           >
-            <NoteTagChip size="sm" tag={t} />
+            <DocumentTagChip size="sm" tag={t} />
             <button
               aria-label={`Remove tag ${t.name}`}
               className="rounded border-0 bg-transparent p-0 text-tertiary hover:text-primary"
@@ -222,7 +222,7 @@ export function TagCombobox({
                     onMouseEnter={() => setActiveIdx(i)}
                     type="button"
                   >
-                    <NoteTagChip size="sm" tag={t} />
+                    <DocumentTagChip size="sm" tag={t} />
                     <span className="ml-auto text-[11px] text-tertiary">
                       {isActive && (
                         <CornerDownLeft className="h-3 w-3 text-tertiary" />

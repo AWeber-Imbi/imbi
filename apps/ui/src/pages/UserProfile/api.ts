@@ -18,8 +18,8 @@ export type ActivityResponse = {
 
 export type ActivitySource =
   | 'conversation'
+  | 'document'
   | 'events'
-  | 'note'
   | 'operations_log'
   | 'release'
   | 'upload'

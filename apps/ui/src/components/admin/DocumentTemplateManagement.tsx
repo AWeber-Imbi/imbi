@@ -3,10 +3,10 @@ import { useMemo, useState } from 'react'
 import { StickyNote } from 'lucide-react'
 
 import {
-  createNoteTemplate,
-  deleteNoteTemplate,
-  listNoteTemplates,
-  updateNoteTemplate,
+  createDocumentTemplate,
+  deleteDocumentTemplate,
+  listDocumentTemplates,
+  updateDocumentTemplate,
 } from '@/api/endpoints'
 import { AdminTable } from '@/components/ui/admin-table'
 import { EntityIcon } from '@/components/ui/entity-icon'
@@ -15,12 +15,16 @@ import { useAdminCrud } from '@/hooks/useAdminCrud'
 import { useAdminNav } from '@/hooks/useAdminNav'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { buildDiffPatch } from '@/lib/json-patch'
-import type { NoteTemplate, NoteTemplateCreate, PatchOperation } from '@/types'
+import type {
+  DocumentTemplate,
+  DocumentTemplateCreate,
+  PatchOperation,
+} from '@/types'
 
 import { AdminSection } from './AdminSection'
-import { NoteTemplateForm } from './note-templates/NoteTemplateForm'
+import { DocumentTemplateForm } from './document-templates/DocumentTemplateForm'
 
-export function NoteTemplateManagement() {
+export function DocumentTemplateManagement() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
   const {
@@ -37,25 +41,25 @@ export function NoteTemplateManagement() {
     deleteMutation,
     error,
     isLoading,
-    items: noteTemplates,
+    items: documentTemplates,
     updateMutation,
   } = useAdminCrud<
-    NoteTemplate,
-    { data: NoteTemplateCreate; orgSlug: string },
+    DocumentTemplate,
+    { data: DocumentTemplateCreate; orgSlug: string },
     { operations: PatchOperation[]; orgSlug: string; slug: string },
     { orgSlug: string; slug: string }
   >({
-    createFn: ({ data, orgSlug }) => createNoteTemplate(orgSlug, data),
-    deleteErrorLabel: 'note template',
-    deleteFn: ({ orgSlug, slug }) => deleteNoteTemplate(orgSlug, slug),
-    listFn: orgSlug ? (signal) => listNoteTemplates(orgSlug, signal) : null,
+    createFn: ({ data, orgSlug }) => createDocumentTemplate(orgSlug, data),
+    deleteErrorLabel: 'document template',
+    deleteFn: ({ orgSlug, slug }) => deleteDocumentTemplate(orgSlug, slug),
+    listFn: orgSlug ? (signal) => listDocumentTemplates(orgSlug, signal) : null,
     onMutationSuccess: goToList,
-    queryKey: ['noteTemplates', orgSlug],
+    queryKey: ['documentTemplates', orgSlug],
     updateFn: ({ operations, orgSlug, slug }) =>
-      updateNoteTemplate(orgSlug, slug, operations),
+      updateDocumentTemplate(orgSlug, slug, operations),
   })
 
-  const filteredNoteTemplates = noteTemplates.filter((nt) => {
+  const filteredDocumentTemplates = documentTemplates.filter((nt) => {
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       return (
@@ -67,29 +71,29 @@ export function NoteTemplateManagement() {
     return true
   })
 
-  const selectedNoteTemplate = useMemo(
-    () => noteTemplates.find((nt) => nt.slug === selectedSlug) || null,
-    [noteTemplates, selectedSlug],
+  const selectedDocumentTemplate = useMemo(
+    () => documentTemplates.find((nt) => nt.slug === selectedSlug) || null,
+    [documentTemplates, selectedSlug],
   )
 
-  const handleDelete = (nt: NoteTemplate) => {
+  const handleDelete = (nt: DocumentTemplate) => {
     deleteMutation.mutate({ orgSlug: nt.organization.slug, slug: nt.slug })
   }
 
-  const handleSave = (formOrgSlug: string, data: NoteTemplateCreate) => {
+  const handleSave = (formOrgSlug: string, data: DocumentTemplateCreate) => {
     if (viewMode === 'create') {
       createMutation.mutate({ data, orgSlug: formOrgSlug })
-    } else if (selectedSlug && selectedNoteTemplate) {
+    } else if (selectedSlug && selectedDocumentTemplate) {
       const beforeFields: Record<string, unknown> = {
-        content: selectedNoteTemplate.content ?? '',
-        description: selectedNoteTemplate.description ?? null,
-        icon: selectedNoteTemplate.icon ?? null,
-        name: selectedNoteTemplate.name,
-        project_type_slugs: selectedNoteTemplate.project_type_slugs ?? [],
-        slug: selectedNoteTemplate.slug,
-        sort_order: selectedNoteTemplate.sort_order ?? 0,
-        tags: (selectedNoteTemplate.tags ?? []).map((t) => t.slug),
-        title: selectedNoteTemplate.title ?? null,
+        content: selectedDocumentTemplate.content ?? '',
+        description: selectedDocumentTemplate.description ?? null,
+        icon: selectedDocumentTemplate.icon ?? null,
+        name: selectedDocumentTemplate.name,
+        project_type_slugs: selectedDocumentTemplate.project_type_slugs ?? [],
+        slug: selectedDocumentTemplate.slug,
+        sort_order: selectedDocumentTemplate.sort_order ?? 0,
+        tags: (selectedDocumentTemplate.tags ?? []).map((t) => t.slug),
+        title: selectedDocumentTemplate.title ?? null,
       }
       const operations = buildDiffPatch(
         beforeFields,
@@ -102,7 +106,7 @@ export function NoteTemplateManagement() {
       }
       updateMutation.mutate({
         operations,
-        orgSlug: selectedNoteTemplate.organization.slug || formOrgSlug,
+        orgSlug: selectedDocumentTemplate.organization.slug || formOrgSlug,
         slug: selectedSlug,
       })
     }
@@ -115,38 +119,40 @@ export function NoteTemplateManagement() {
   if (!orgSlug && !isLoading && !error) {
     return (
       <div className="py-12 text-center text-tertiary">
-        Select an organization to manage note templates.
+        Select an organization to manage document templates.
       </div>
     )
   }
 
-  if (viewMode === 'edit' && !selectedNoteTemplate) {
+  if (viewMode === 'edit' && !selectedDocumentTemplate) {
     return (
       <div className="py-12 text-center text-tertiary">
-        {isLoading ? 'Loading note template...' : 'Note template not found.'}
+        {isLoading
+          ? 'Loading document template...'
+          : 'Document template not found.'}
       </div>
     )
   }
 
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
-      <NoteTemplateForm
+      <DocumentTemplateForm
+        documentTemplate={selectedDocumentTemplate}
         error={createMutation.error || updateMutation.error}
         isLoading={createMutation.isPending || updateMutation.isPending}
         key={selectedSlug ?? 'create'}
-        noteTemplate={selectedNoteTemplate}
         onCancel={handleCancel}
         onSave={handleSave}
       />
     )
   }
 
-  if (viewMode === 'detail' && selectedNoteTemplate) {
+  if (viewMode === 'detail' && selectedDocumentTemplate) {
     return (
-      <NoteTemplateForm
+      <DocumentTemplateForm
+        documentTemplate={selectedDocumentTemplate}
         error={updateMutation.error}
         isLoading={updateMutation.isPending}
-        noteTemplate={selectedNoteTemplate}
         onCancel={handleCancel}
         onSave={handleSave}
       />
@@ -155,15 +161,15 @@ export function NoteTemplateManagement() {
 
   return (
     <AdminSection
-      createLabel="New Note Template"
+      createLabel="New Document Template"
       error={error}
-      errorTitle="Failed to load note templates"
+      errorTitle="Failed to load document templates"
       isLoading={isLoading}
-      loadingLabel="Loading note templates..."
+      loadingLabel="Loading document templates..."
       onCreate={goToCreate}
       onSearchChange={setSearchQuery}
       search={searchQuery}
-      searchPlaceholder="Search note templates..."
+      searchPlaceholder="Search document templates..."
     >
       <AdminTable
         columns={[
@@ -257,17 +263,17 @@ export function NoteTemplateManagement() {
         ]}
         emptyMessage={
           searchQuery
-            ? 'No note templates found matching your search.'
+            ? 'No document templates found matching your search.'
             : selectedOrganization
-              ? `No note templates in ${selectedOrganization.name} yet.`
-              : 'No note templates created yet.'
+              ? `No document templates in ${selectedOrganization.name} yet.`
+              : 'No document templates created yet.'
         }
         getDeleteLabel={(nt) => nt.name}
         getRowKey={(nt) => nt.slug}
         isDeleting={deleteMutation.isPending}
         onDelete={handleDelete}
         onRowClick={(nt) => goToEdit(nt.slug)}
-        rows={filteredNoteTemplates}
+        rows={filteredDocumentTemplates}
       />
     </AdminSection>
   )

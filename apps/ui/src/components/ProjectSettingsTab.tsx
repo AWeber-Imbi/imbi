@@ -191,7 +191,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
               {project.slug}
             </code>{' '}
             immediately, removing the project and all associated data, including
-            facts, operation logs, and notes. Are you absolutely sure?
+            facts, operation logs, and documents. Are you absolutely sure?
           </CardDescription>
         </CardHeader>
         <CardContent>

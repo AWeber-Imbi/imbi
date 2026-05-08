@@ -2,7 +2,7 @@ import { LabelChip } from '@/components/ui/label-chip'
 import { cn } from '@/lib/utils'
 import type { TagRef } from '@/types'
 
-import { colorForTag } from './notesHelpers'
+import { colorForTag } from './documentsHelpers'
 
 interface Props {
   className?: string
@@ -11,7 +11,12 @@ interface Props {
   tag: TagRef
 }
 
-export function NoteTagChip({ className, onClick, size = 'md', tag }: Props) {
+export function DocumentTagChip({
+  className,
+  onClick,
+  size = 'md',
+  tag,
+}: Props) {
   const hex = colorForTag(tag.slug)
   return (
     <LabelChip

@@ -21,14 +21,14 @@ import {
   getScoreTrend,
   listCurrentReleases,
   listLinkDefinitions,
-  listProjectNotes,
+  listProjectDocuments,
   listProjectPlugins,
   listProjectTypes,
   listScoringPolicies,
   listTeams,
   type ScoreTrend,
 } from '@/api/endpoints'
-import { ProjectNotesTab } from '@/components/notes/ProjectNotesTab'
+import { ProjectDocumentsTab } from '@/components/documents/ProjectDocumentsTab'
 import { OperationsLog } from '@/components/OperationsLog'
 import { ConfigurationTab } from '@/components/project/ConfigurationTab'
 import { LogsTab } from '@/components/project/LogsTab'
@@ -80,7 +80,7 @@ const VALID_TABS = [
   'dependencies',
   'relationships',
   'logs',
-  'notes',
+  'documents',
   'operations-log',
   'score-history',
   'settings',
@@ -203,11 +203,11 @@ export function ProjectDetail({
     queryFn: ({ signal }) => listProjectTypes(orgSlug, signal),
     queryKey: ['projectTypes', orgSlug],
   })
-  const { data: projectNotes = [] } = useQuery({
+  const { data: projectDocuments = [] } = useQuery({
     enabled: !!orgSlug && !!project.id,
     queryFn: ({ signal }) =>
-      listProjectNotes(orgSlug, project.id, undefined, signal),
-    queryKey: ['projectNotes', orgSlug, project.id],
+      listProjectDocuments(orgSlug, project.id, undefined, signal),
+    queryKey: ['projectDocuments', orgSlug, project.id],
   })
   // Drives whether the Configuration / Logs tabs are surfaced. Only
   // treat the absence of a plugin as authoritative once the assignments
@@ -338,9 +338,11 @@ export function ProjectDetail({
     { id: 'dependencies', label: 'Dependencies' },
     ...(hasLogsPlugin ? [{ id: 'logs' as const, label: 'Logs' }] : []),
     {
-      id: 'notes',
+      id: 'documents',
       label:
-        projectNotes.length > 0 ? `Notes (${projectNotes.length})` : 'Notes',
+        projectDocuments.length > 0
+          ? `Documents (${projectDocuments.length})`
+          : 'Documents',
     },
     { id: 'operations-log', label: 'Operations Log' },
     {
@@ -668,10 +670,14 @@ export function ProjectDetail({
             />
           </TabsContent>
         )}
-        <TabsContent value="notes">
-          <ProjectNotesTab
-            initialAction={activeTab === 'notes' ? initialSubAction : undefined}
-            initialNoteId={activeTab === 'notes' ? initialSubId : undefined}
+        <TabsContent value="documents">
+          <ProjectDocumentsTab
+            initialAction={
+              activeTab === 'documents' ? initialSubAction : undefined
+            }
+            initialDocumentId={
+              activeTab === 'documents' ? initialSubId : undefined
+            }
             orgSlug={project.team.organization.slug}
             projectId={project.id}
             projectTypeSlugs={

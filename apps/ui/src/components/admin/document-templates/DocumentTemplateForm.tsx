@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { AlertCircle, Save, X } from 'lucide-react'
 
 import { listProjectTypes } from '@/api/endpoints'
-import { TagCombobox } from '@/components/notes/TagCombobox'
+import { TagCombobox } from '@/components/documents/TagCombobox'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -15,47 +15,47 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { slugify } from '@/lib/utils'
 import type {
-  NoteTemplate,
-  NoteTemplateCreate,
+  DocumentTemplate,
+  DocumentTemplateCreate,
   ProjectType,
   TagRef,
 } from '@/types'
 
-interface NoteTemplateFormProps {
+interface DocumentTemplateFormProps {
+  documentTemplate: DocumentTemplate | null
   error?: unknown
   isLoading?: boolean
-  noteTemplate: NoteTemplate | null
   onCancel: () => void
-  onSave: (orgSlug: string, data: NoteTemplateCreate) => void
+  onSave: (orgSlug: string, data: DocumentTemplateCreate) => void
 }
 
-export function NoteTemplateForm({
+export function DocumentTemplateForm({
+  documentTemplate,
   error,
   isLoading = false,
-  noteTemplate,
   onCancel,
   onSave,
-}: NoteTemplateFormProps) {
-  const isEditing = !!noteTemplate
+}: DocumentTemplateFormProps) {
+  const isEditing = !!documentTemplate
   const { selectedOrganization } = useOrganization()
   const orgSlug =
-    noteTemplate?.organization?.slug || selectedOrganization?.slug || ''
+    documentTemplate?.organization?.slug || selectedOrganization?.slug || ''
 
-  const [name, setName] = useState(noteTemplate?.name || '')
-  const [slug, setSlug] = useState(noteTemplate?.slug || '')
+  const [name, setName] = useState(documentTemplate?.name || '')
+  const [slug, setSlug] = useState(documentTemplate?.slug || '')
   const [description, setDescription] = useState(
-    noteTemplate?.description || '',
+    documentTemplate?.description || '',
   )
-  const [icon, setIcon] = useState(noteTemplate?.icon || '')
+  const [icon, setIcon] = useState(documentTemplate?.icon || '')
   const handleIconChange = useIconWithCleanup(icon, setIcon)
-  const [title, setTitle] = useState(noteTemplate?.title || '')
-  const [content, setContent] = useState(noteTemplate?.content || '')
-  const [tags, setTags] = useState<TagRef[]>(noteTemplate?.tags || [])
+  const [title, setTitle] = useState(documentTemplate?.title || '')
+  const [content, setContent] = useState(documentTemplate?.content || '')
+  const [tags, setTags] = useState<TagRef[]>(documentTemplate?.tags || [])
   const [projectTypeSlugs, setProjectTypeSlugs] = useState<string[]>(
-    noteTemplate?.project_type_slugs || [],
+    documentTemplate?.project_type_slugs || [],
   )
   const [sortOrder, setSortOrder] = useState<string>(
-    String(noteTemplate?.sort_order ?? 0),
+    String(documentTemplate?.sort_order ?? 0),
   )
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -118,10 +118,10 @@ export function NoteTemplateForm({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-medium text-primary">
-            {isEditing ? 'Edit Note Template' : 'Create Note Template'}
+            {isEditing ? 'Edit Document Template' : 'Create Document Template'}
           </h2>
           <p className="mt-1 text-secondary">
-            Reusable note skeleton offered when authoring project notes.
+            Reusable document skeleton offered when authoring project documents.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -148,7 +148,7 @@ export function NoteTemplateForm({
 
       {/* API Error */}
       {!!error && (
-        <ErrorBanner error={error} title="Failed to save note template" />
+        <ErrorBanner error={error} title="Failed to save document template" />
       )}
 
       <form className="space-y-6" onSubmit={handleSubmit}>
@@ -160,14 +160,14 @@ export function NoteTemplateForm({
               <div>
                 <label
                   className="mb-1.5 block text-sm text-secondary"
-                  htmlFor="note-tpl-name"
+                  htmlFor="document-tpl-name"
                 >
                   Name <span className="text-red-500">*</span>
                 </label>
                 <Input
                   className={errors.name ? 'border-red-500' : ''}
                   disabled={isLoading}
-                  id="note-tpl-name"
+                  id="document-tpl-name"
                   onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="e.g., Architecture Decision Record"
                   value={name}
@@ -184,14 +184,14 @@ export function NoteTemplateForm({
                 <div>
                   <label
                     className="mb-1.5 block text-sm text-secondary"
-                    htmlFor="note-tpl-slug"
+                    htmlFor="document-tpl-slug"
                   >
                     Slug <span className="text-red-500">*</span>
                   </label>
                   <Input
                     className={errors.slug ? 'border-red-500' : ''}
                     disabled={isLoading}
-                    id="note-tpl-slug"
+                    id="document-tpl-slug"
                     onChange={(e) => setSlug(e.target.value)}
                     placeholder="e.g., adr"
                     value={slug}
@@ -209,14 +209,14 @@ export function NoteTemplateForm({
             <div>
               <label
                 className="mb-1.5 block text-sm text-secondary"
-                htmlFor="note-tpl-description"
+                htmlFor="document-tpl-description"
               >
                 Description
               </label>
               <textarea
                 className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground"
                 disabled={isLoading}
-                id="note-tpl-description"
+                id="document-tpl-description"
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Brief description shown when picking a template"
                 rows={2}
@@ -259,15 +259,15 @@ export function NoteTemplateForm({
             <div>
               <label
                 className="mb-1.5 block text-sm text-secondary"
-                htmlFor="note-tpl-title"
+                htmlFor="document-tpl-title"
               >
-                Default Note Title
+                Default Document Title
               </label>
               <Input
                 disabled={isLoading}
-                id="note-tpl-title"
+                id="document-tpl-title"
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Pre-fills the title field of new notes"
+                placeholder="Pre-fills the title field of new documents"
                 value={title}
               />
             </div>
@@ -275,16 +275,16 @@ export function NoteTemplateForm({
             <div>
               <label
                 className="mb-1.5 block text-sm text-secondary"
-                htmlFor="note-tpl-content"
+                htmlFor="document-tpl-content"
               >
                 Content
               </label>
               <textarea
                 className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground"
                 disabled={isLoading}
-                id="note-tpl-content"
+                id="document-tpl-content"
                 onChange={(e) => setContent(e.target.value)}
-                placeholder="Markdown body that pre-fills new notes"
+                placeholder="Markdown body that pre-fills new documents"
                 rows={10}
                 value={content}
               />
@@ -295,7 +295,7 @@ export function NoteTemplateForm({
                 Default Tags
               </label>
               <p className="mb-2 text-xs text-tertiary">
-                Tags applied to notes created from this template.
+                Tags applied to documents created from this template.
               </p>
               {orgSlug && (
                 <TagCombobox
@@ -360,14 +360,14 @@ export function NoteTemplateForm({
             <div>
               <label
                 className="mb-1.5 block text-sm text-secondary"
-                htmlFor="note-tpl-sort-order"
+                htmlFor="document-tpl-sort-order"
               >
                 Sort Order
               </label>
               <Input
                 className={errors.sort_order ? 'border-red-500' : ''}
                 disabled={isLoading}
-                id="note-tpl-sort-order"
+                id="document-tpl-sort-order"
                 onChange={(e) => setSortOrder(e.target.value)}
                 placeholder="0"
                 type="number"

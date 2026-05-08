@@ -338,6 +338,58 @@ export type DeploymentStatus =
   | 'rolled_back'
   | 'success'
 
+export interface Document {
+  content: string
+  created_at: string
+  created_by: string
+  id: string
+  is_pinned: boolean
+  project_id: string
+  tags: TagRef[]
+  title: string
+  updated_at?: null | string
+  updated_by?: null | string
+}
+
+export interface DocumentCreate {
+  content: string
+  tags?: string[]
+  title: string
+}
+
+export type DocumentListResponse = CollectionResponse<Document>
+
+// Document Templates. Inlined for the same reason as Document/Tag — the
+// committed openapi.json snapshot predates these endpoints. Switch to
+// `Schemas['DocumentTemplateResponse']` etc. once the snapshot is refreshed.
+export interface DocumentTemplate {
+  content: string
+  created_at: string
+  description?: null | string
+  icon?: null | string
+  id: string
+  name: string
+  organization: { name: string; slug: string }
+  project_type_slugs: string[]
+  slug: string
+  sort_order: number
+  tags: TagRef[]
+  title?: null | string
+  updated_at?: null | string
+}
+
+export interface DocumentTemplateCreate {
+  content?: string
+  description?: null | string
+  icon?: null | string
+  name: string
+  project_type_slugs?: string[]
+  slug: string
+  sort_order?: number
+  tags?: string[]
+  title?: null | string
+}
+
 export interface IdentityConnectionPollResponse {
   return_to?: null | string
   status: 'complete' | 'pending'
@@ -498,58 +550,6 @@ export interface LogResultResponse {
   entries: LogEntryResponse[]
   next_cursor: null | string
   total: null | number
-}
-
-export interface Note {
-  content: string
-  created_at: string
-  created_by: string
-  id: string
-  is_pinned: boolean
-  project_id: string
-  tags: TagRef[]
-  title: string
-  updated_at?: null | string
-  updated_by?: null | string
-}
-
-export interface NoteCreate {
-  content: string
-  tags?: string[]
-  title: string
-}
-
-export type NoteListResponse = CollectionResponse<Note>
-
-// Note Templates. Inlined for the same reason as Note/Tag — the committed
-// openapi.json snapshot predates these endpoints. Switch to
-// `Schemas['NoteTemplateResponse']` etc. once the snapshot is refreshed.
-export interface NoteTemplate {
-  content: string
-  created_at: string
-  description?: null | string
-  icon?: null | string
-  id: string
-  name: string
-  organization: { name: string; slug: string }
-  project_type_slugs: string[]
-  slug: string
-  sort_order: number
-  tags: TagRef[]
-  title?: null | string
-  updated_at?: null | string
-}
-
-export interface NoteTemplateCreate {
-  content?: string
-  description?: null | string
-  icon?: null | string
-  name: string
-  project_type_slugs?: string[]
-  slug: string
-  sort_order?: number
-  tags?: string[]
-  title?: null | string
 }
 
 // Auth provider types — mirror the consolidated `ServiceApplication`-backed
@@ -874,10 +874,10 @@ export interface Tag {
   updated_at?: null | string
 }
 
-// Notes & tags. Inlined here (not from api-generated.ts) because the
-// committed openapi.json snapshot predates the notes endpoints.
+// Documents & tags. Inlined here (not from api-generated.ts) because the
+// committed openapi.json snapshot predates the documents endpoints.
 // Regenerate with `npm run codegen:fetch` once the snapshot is refreshed
-// and switch these to `Schemas['NoteResponse']` etc.
+// and switch these to `Schemas['DocumentResponse']` etc.
 export interface TagRef {
   name: string
   slug: string
