@@ -723,7 +723,7 @@ wheels = [
 
 [[package]]
 name = "imbi-common"
-version = "0.7.1"
+version = "0.8.0"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
@@ -803,7 +803,7 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.40.0" },
     { name = "valkey", marker = "extra == 'databases'", specifier = ">=6" },
 ]
-provides-extras = ["databases", "server", "llm"]
+provides-extras = ["databases", "llm", "server"]
 
 [package.metadata.requires-dev]
 dev = [
