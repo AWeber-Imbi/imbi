@@ -21,6 +21,7 @@ def create_app() -> fastapi.FastAPI:
             graph.graph_lifespan,
             lifespans.email_hook,
             lifespans.storage_hook,
+            lifespans.anthropic_hook,
             valkey.valkey_lifespan,
             lifespans.score_worker_hook,
             lifespans.identity_refresh_hook,

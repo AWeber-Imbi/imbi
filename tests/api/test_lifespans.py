@@ -80,6 +80,35 @@ class ApplicationLifespanTestCase(unittest.TestCase):
 
         self.assertTrue(any('Graph not ready' in line for line in cm.output))
 
+    def test_anthropic_hook_disabled_when_api_key_missing(self) -> None:
+        """anthropic_hook yields a disabled client when no API key is set."""
+        loop = asyncio.new_event_loop()
+        captured: list[object] = []
+        try:
+            with (
+                unittest.mock.patch.dict(
+                    'os.environ', {'ANTHROPIC_API_KEY': ''}, clear=False
+                ),
+                self.assertLogs(lifespans.LOGGER, level='INFO') as cm,
+            ):
+
+                async def _run() -> None:
+                    async with lifespans.anthropic_hook() as client:
+                        captured.append(client)
+
+                loop.run_until_complete(_run())
+        finally:
+            loop.close()
+
+        self.assertEqual(len(captured), 1)
+        self.assertFalse(captured[0].available)  # type: ignore[attr-defined]
+        self.assertTrue(
+            any('Anthropic client disabled' in line for line in cm.output)
+        )
+        self.assertFalse(
+            any('Anthropic client initialized' in line for line in cm.output)
+        )
+
     def test_openapi_refresh_blueprint_failure(self) -> None:
         failure = RuntimeError()
         with (

@@ -633,6 +633,83 @@ def _edge_to_response(
     )
 
 
+async def append_deployment_event(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    version: str,
+    env_slug: str,
+    status: typing.Literal[
+        'pending', 'in_progress', 'success', 'failed', 'rolled_back'
+    ],
+    note: str | None = None,
+) -> ReleaseEnvironmentEdgeResponse | None:
+    """Append a ``DeploymentEvent`` to ``Release -[:DEPLOYED_TO]-> Env``.
+
+    Returns the resulting edge, or ``None`` when the named ``Release``
+    or ``Environment`` cannot be found — callers that auto-record from
+    a deploy of a SHA (which has no ``Release`` node) treat ``None`` as
+    "skip persistence, deploy still succeeded".
+    """
+    release = await _fetch_release(db, org_slug, project_id, version)
+    if release is None:
+        return None
+    env, existing = await _fetch_deployment_edge(
+        db, org_slug, project_id, version, env_slug
+    )
+    if env is None:
+        return None
+    event = models.DeploymentEvent(
+        timestamp=datetime.datetime.now(datetime.UTC),
+        status=status,
+        note=note,
+    )
+    deployments = [*existing, event]
+    serialized = json.dumps(
+        [e.model_dump(mode='json') for e in deployments],
+    )
+    if existing:
+        set_query: typing.LiteralString = """
+        MATCH (:Project {{id: {project_id}}})
+              -[:HAS_RELEASE]->(r:Release {{version: {version}}})
+        MATCH (r)-[d:DEPLOYED_TO]->(:Environment {{slug: {env_slug}}})
+        SET d.deployments = {deployments}
+        RETURN d.deployments AS deployments
+        """
+        await db.execute(
+            set_query,
+            {
+                'project_id': project_id,
+                'version': version,
+                'env_slug': env_slug,
+                'deployments': serialized,
+            },
+            ['deployments'],
+        )
+    else:
+        create_query: typing.LiteralString = """
+        MATCH (:Project {{id: {project_id}}})
+              -[:HAS_RELEASE]->(r:Release {{version: {version}}})
+        MATCH (e:Environment {{slug: {env_slug}}})
+              -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+        CREATE (r)-[d:DEPLOYED_TO {{deployments: {deployments}}}]->(e)
+        RETURN d.deployments AS deployments
+        """
+        await db.execute(
+            create_query,
+            {
+                'project_id': project_id,
+                'version': version,
+                'env_slug': env_slug,
+                'org_slug': org_slug,
+                'deployments': serialized,
+            },
+            ['deployments'],
+        )
+    return _edge_to_response(env, deployments)
+
+
 @releases_router.post(
     '/{version}/environments/{env_slug}',
     response_model=ReleaseEnvironmentEdgeResponse,

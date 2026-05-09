@@ -21,6 +21,7 @@ from .identity_plugins import identity_plugins_router
 from .link_definitions import link_definitions_router
 from .operations_log import operations_log_project_router
 from .project_configuration import project_configuration_router
+from .project_deployments import project_deployments_router
 from .project_logs import project_logs_router
 from .project_plugins import project_plugins_router
 from .project_type_plugins import project_type_plugins_router
@@ -122,6 +123,10 @@ organizations_router.include_router(
 organizations_router.include_router(
     project_logs_router,
     prefix='/{org_slug}/projects/{project_id}/logs',
+)
+organizations_router.include_router(
+    project_deployments_router,
+    prefix='/{org_slug}/projects/{project_id}/deployments',
 )
 
 

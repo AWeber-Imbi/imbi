@@ -11,6 +11,7 @@ import logging
 from collections import abc
 
 from imbi_common import clickhouse, graph, valkey
+from imbi_common.llm import AnthropicClient
 
 from imbi_api import openapi
 from imbi_api.email.client import EmailClient
@@ -71,6 +72,27 @@ async def storage_hook() -> abc.AsyncGenerator[StorageClient]:
     await storage_client.initialize()
     async with contextlib.aclosing(storage_client):
         yield storage_client
+
+
+@contextlib.asynccontextmanager
+async def anthropic_hook() -> abc.AsyncGenerator[AnthropicClient]:
+    """Initialize the shared Anthropic client.
+
+    Falls back to a disabled client when ``ANTHROPIC_API_KEY`` is
+    absent — endpoints that depend on this still resolve but their
+    completions return ``degraded=True`` with a fallback payload.
+    """
+    client = AnthropicClient()
+    if client.available:
+        LOGGER.info(
+            'Anthropic client initialized (model=%s)', client.default_model
+        )
+    else:
+        LOGGER.info('Anthropic client disabled — ANTHROPIC_API_KEY not set')
+    try:
+        yield client
+    finally:
+        await client.aclose()
 
 
 @contextlib.asynccontextmanager

@@ -1,0 +1,751 @@
+"""Tests for the project deployment plugin endpoints."""
+
+import datetime
+import typing
+import unittest
+from unittest import mock
+
+from fastapi import testclient
+from imbi_common import graph
+from imbi_common.llm import AnthropicClient, CompletionResult
+from imbi_common.plugins.base import (
+    Commit,
+    CompareResult,
+    DeploymentPlugin,
+    DeploymentRun,
+    PluginManifest,
+    Ref,
+    RefInfo,
+    ReleaseInfo,
+)
+from imbi_common.plugins.registry import RegistryEntry
+
+from imbi_api import app, models
+from imbi_api.auth import password, permissions
+from imbi_api.endpoints.project_deployments import DraftReleaseNotes
+from imbi_api.llm.dependencies import _get_anthropic_client
+from imbi_api.plugins.resolution import ResolvedPlugin
+
+
+class _FakeDeploymentPlugin(DeploymentPlugin):
+    manifest = PluginManifest(
+        slug='github-deployment',
+        name='GitHub Deployment',
+        plugin_type='deployment',
+    )
+
+    async def list_refs(  # type: ignore[override]
+        self, ctx, credentials, kind='all', query=None
+    ):
+        return [
+            Ref(name='main', kind='default', sha='m-sha', is_default=True),
+            Ref(name='feature/x', kind='branch', sha='fx'),
+        ]
+
+    async def list_commits(  # type: ignore[override]
+        self, ctx, credentials, ref, limit=25
+    ):
+        return [
+            Commit(
+                sha='abc1234567',
+                short_sha='abc1234',
+                message='Top',
+                is_head=True,
+            ),
+            Commit(sha='def5678901', short_sha='def5678', message='prev'),
+        ]
+
+    async def resolve_committish(  # type: ignore[override]
+        self, ctx, credentials, committish
+    ):
+        return Commit(sha=committish, short_sha=committish[:7], message='hi')
+
+    async def compare(  # type: ignore[override]
+        self, ctx, credentials, base, head
+    ):
+        return CompareResult(base_sha=base, head_sha=head, ahead=1, behind=0)
+
+    async def trigger_deployment(  # type: ignore[override]
+        self, ctx, credentials, ref_or_sha, inputs=None
+    ):
+        return DeploymentRun(
+            run_id='42',
+            run_url='https://gh/runs/42',
+            status='queued',
+        )
+
+    async def get_deployment_status(  # type: ignore[override]
+        self, ctx, credentials, run_id
+    ):
+        return DeploymentRun(run_id=run_id, status='in_progress')
+
+    async def create_tag(  # type: ignore[override]
+        self, ctx, credentials, sha, tag, message
+    ):
+        return RefInfo(name=f'refs/tags/{tag}', sha=sha)
+
+    async def create_release(  # type: ignore[override]
+        self, ctx, credentials, tag, name, body_markdown, prerelease=False
+    ):
+        return ReleaseInfo(
+            id='rel-1',
+            tag=tag,
+            name=name,
+            html_url=f'https://gh/releases/{tag}',
+            url=f'https://api.gh/releases/{tag}',
+            prerelease=prerelease,
+        )
+
+
+def _entry() -> RegistryEntry:
+    return RegistryEntry(
+        handler_cls=_FakeDeploymentPlugin,
+        manifest=_FakeDeploymentPlugin.manifest,
+        package_name='imbi-plugin-github',
+        package_version='0.1.0',
+    )
+
+
+_MODULE = 'imbi_api.endpoints.project_deployments'
+
+
+class ProjectDeploymentsTestCase(unittest.TestCase):
+    def setUp(self) -> None:
+        self.test_app = app.create_app()
+        self.test_user = models.User(
+            email='admin@example.com',
+            display_name='Admin User',
+            is_active=True,
+            is_admin=True,
+            password_hash=password.hash_password('testpassword123'),
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.auth_context = permissions.AuthContext(
+            user=self.test_user,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions={
+                'project:deployment:read',
+                'project:deployment:write',
+            },
+        )
+
+        async def mock_get_current_user() -> permissions.AuthContext:
+            return self.auth_context
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            mock_get_current_user
+        )
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
+        )
+
+        self.mock_anthropic = mock.MagicMock(spec=AnthropicClient)
+        self.mock_anthropic.complete_json = mock.AsyncMock(
+            return_value=CompletionResult(
+                data=DraftReleaseNotes(
+                    bump='minor',
+                    version='v1.1.0',
+                    reasoning='added feature foo',
+                    notes_markdown='## Foo',
+                ),
+                degraded=False,
+            )
+        )
+        self.test_app.dependency_overrides[_get_anthropic_client] = lambda: (
+            self.mock_anthropic
+        )
+
+        self.mocks = {
+            'resolve_plugin': self._start(
+                mock.patch(
+                    f'{_MODULE}.resolve_plugin', return_value=self._resolved()
+                )
+            ),
+            'lookup_project_slugs': self._start(
+                mock.patch(
+                    f'{_MODULE}.lookup_project_slugs',
+                    return_value=('proj', 'team'),
+                )
+            ),
+            'attach_identity': self._start(
+                mock.patch(
+                    f'{_MODULE}.attach_identity',
+                    side_effect=lambda db, ctx, resolved, auth: ctx,
+                )
+            ),
+            'get_plugin_credentials': self._start(
+                mock.patch(
+                    f'{_MODULE}.get_plugin_credentials',
+                    return_value={'access_token': 'gho_test'},
+                )
+            ),
+            'append_deployment_event': self._start(
+                mock.patch(
+                    f'{_MODULE}.append_deployment_event',
+                    return_value=None,
+                )
+            ),
+        }
+
+    def _start(self, patcher: typing.Any) -> mock.MagicMock:
+        m = patcher.start()
+        self.addCleanup(patcher.stop)
+        return m
+
+    def _resolved(self) -> ResolvedPlugin:
+        return ResolvedPlugin(
+            plugin_id='p-1',
+            plugin_slug='github-deployment',
+            entry=_entry(),
+            options={'owner': 'octo', 'repo': 'demo'},
+        )
+
+    def test_list_refs(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/refs'
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]['name'], 'main')
+        self.assertTrue(data[0]['is_default'])
+
+    def test_list_commits(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'refs/main/commits'
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 2)
+        self.assertTrue(data[0]['is_head'])
+
+    def test_resolve_commit(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'commits/abc1234'
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['sha'], 'abc1234')
+
+    def test_compare(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'compare?base=v1&head=v2'
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['ahead'], 1)
+        self.assertEqual(data['head_sha'], 'v2')
+
+    def test_compare_missing_query_param_400(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/compare'
+            )
+        self.assertEqual(response.status_code, 422)
+
+    def test_trigger_deploy(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'deploy',
+                    'environment': 'testing',
+                    'committish': 'main',
+                    'ref_label': 'main',
+                },
+            )
+        self.assertEqual(response.status_code, 202)
+        data = response.json()
+        self.assertEqual(data['plugin_slug'], 'github-deployment')
+        self.assertEqual(data['run']['run_id'], '42')
+        self.assertEqual(data['run']['status'], 'queued')
+        self.assertFalse(data['recorded'])
+
+    def test_trigger_deploy_records_event_when_release_matches(self) -> None:
+        self.mocks['append_deployment_event'].return_value = mock.Mock()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'deploy',
+                    'environment': 'staging',
+                    'committish': 'v6.4.0',
+                },
+            )
+        self.assertEqual(response.status_code, 202)
+        self.assertTrue(response.json()['recorded'])
+        self.mocks['append_deployment_event'].assert_called_once()
+        call = self.mocks['append_deployment_event'].call_args
+        self.assertEqual(call.kwargs['version'], 'v6.4.0')
+        self.assertEqual(call.kwargs['env_slug'], 'staging')
+        self.assertEqual(call.kwargs['status'], 'in_progress')
+        self.assertIn('https://gh/runs/42', call.kwargs['note'] or '')
+
+    def test_trigger_redeploy(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'redeploy',
+                    'environment': 'staging',
+                    'committish': 'v1.2.3',
+                },
+            )
+        self.assertEqual(response.status_code, 202)
+
+    def test_trigger_invalid_action(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'promote',
+                    'environment': 'staging',
+                    'committish': 'v1',
+                },
+            )
+        self.assertEqual(response.status_code, 422)
+
+    def test_no_credentials_returns_503(self) -> None:
+        self.mocks['get_plugin_credentials'].return_value = {}
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/refs'
+            )
+        self.assertEqual(response.status_code, 503)
+
+    def test_write_permission_required_for_post(self) -> None:
+        non_admin = models.User(
+            email='dev@example.com',
+            display_name='Dev',
+            is_active=True,
+            is_admin=False,
+            password_hash=password.hash_password('testpassword123'),
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.auth_context = permissions.AuthContext(
+            user=non_admin,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions={'project:deployment:read'},
+        )
+
+        async def mock_get_current_user() -> permissions.AuthContext:
+            return self.auth_context
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            mock_get_current_user
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'deploy',
+                    'environment': 'testing',
+                    'committish': 'main',
+                },
+            )
+        self.assertEqual(response.status_code, 403)
+
+    def test_draft_release_notes_happy_path(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': 'aaa',
+                    'head_sha': 'bbb',
+                    'last_tag': 'v1.0.0',
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['bump'], 'minor')
+        self.assertEqual(data['version'], 'v1.1.0')
+        self.assertFalse(data['degraded'])
+        # Compare came back empty in the fake plugin (no commits stubbed
+        # for this path), so commits_considered is 0.
+        self.assertEqual(data['commits_considered'], 0)
+        # The Anthropic client was called with the system + prompt.
+        self.mock_anthropic.complete_json.assert_called_once()
+        call = self.mock_anthropic.complete_json.call_args
+        prompt = call.args[0] if call.args else call.kwargs.get('prompt', '')
+        self.assertIn('Project: proj', prompt)
+        self.assertIn('aaa..bbb', prompt)
+        self.assertTrue(call.kwargs['cache_system_prompt'])
+
+    def test_draft_release_notes_degraded_falls_back(self) -> None:
+        self.mock_anthropic.complete_json = mock.AsyncMock(
+            side_effect=lambda *args, **kwargs: CompletionResult(
+                data=kwargs['fallback'], degraded=True
+            )
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': 'aaa',
+                    'head_sha': 'bbb',
+                    'last_tag': 'v1.2.3',
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['degraded'])
+        # No commits in the stub → patch bump → v1.2.4
+        self.assertEqual(data['bump'], 'patch')
+        self.assertEqual(data['version'], 'v1.2.4')
+        self.assertIn('AI unavailable', data['reasoning'])
+
+    def test_draft_release_notes_rebumps_invalid_version(self) -> None:
+        self.mock_anthropic.complete_json = mock.AsyncMock(
+            return_value=CompletionResult(
+                data=DraftReleaseNotes(
+                    bump='major',
+                    version='v9.0',  # not a valid semver
+                    reasoning='breaking',
+                    notes_markdown='## Breaking',
+                ),
+                degraded=False,
+            )
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': 'aaa',
+                    'head_sha': 'bbb',
+                    'last_tag': 'v6.3.0',
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        # last_tag bumped major: 6.3.0 → 7.0.0
+        self.assertEqual(data['version'], 'v7.0.0')
+
+    def test_promote_happy_path(self) -> None:
+        # The append_deployment_event mock pretends a Release exists.
+        self.mocks['append_deployment_event'].return_value = mock.Mock()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'promote',
+                    'from_environment': 'testing',
+                    'to_environment': 'staging',
+                    'from_committish': '1a9c610',
+                    'tag': 'v6.4.0',
+                    'release_name': 'v6.4.0',
+                    'release_notes_markdown': '## Highlights\n- foo',
+                    'prerelease': False,
+                },
+            )
+        self.assertEqual(response.status_code, 202)
+        data = response.json()
+        self.assertEqual(data['tag'], 'v6.4.0')
+        self.assertEqual(data['release_url'], 'https://gh/releases/v6.4.0')
+        self.assertTrue(data['recorded'])
+        # The Release node was upserted via two db.execute calls
+        # (CREATE-if-missing then SET).
+        self.assertGreaterEqual(self.mock_db.execute.call_count, 2)
+        # The append_deployment_event helper saw the new tag as version.
+        call = self.mocks['append_deployment_event'].call_args
+        self.assertEqual(call.kwargs['version'], 'v6.4.0')
+        self.assertEqual(call.kwargs['env_slug'], 'staging')
+
+    def test_promote_falls_back_when_plugin_lacks_create_tag(self) -> None:
+        class _NoTag(_FakeDeploymentPlugin):
+            async def create_tag(  # type: ignore[override]
+                self, ctx, credentials, sha, tag, message
+            ):
+                raise NotImplementedError
+
+        self.mocks['resolve_plugin'].return_value = ResolvedPlugin(
+            plugin_id='p-1',
+            plugin_slug='no-tag',
+            entry=RegistryEntry(
+                handler_cls=_NoTag,
+                manifest=_NoTag.manifest,
+                package_name='x',
+                package_version='1',
+            ),
+            options={},
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'promote',
+                    'from_environment': 'testing',
+                    'to_environment': 'staging',
+                    'from_committish': '1a9c610',
+                    'tag': 'v1.2.3',
+                },
+            )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            'does not support creating tags', response.json()['detail']
+        )
+
+    def test_promotion_options_returns_consecutive_pairs(self) -> None:
+        # The endpoint runs a Cypher query, then for each gap calls
+        # plugin.compare().  Stub the graph response with three envs;
+        # the helper deduplicates by env-slug into the latest release
+        # per env, so we feed one row per env to keep the test simple.
+        def _mock_execute(query, params, columns):
+            del query, params, columns
+            return [
+                {
+                    'env': '{"slug": "testing", "name": "Testing", '
+                    '"sort_order": 1}',
+                    'release': '{"version": "v6.4.0"}',
+                    'deployments': None,
+                },
+                {
+                    'env': '{"slug": "staging", "name": "Staging", '
+                    '"sort_order": 2}',
+                    'release': '{"version": "v6.3.0"}',
+                    'deployments': None,
+                },
+                {
+                    'env': '{"slug": "production", "name": "Production", '
+                    '"sort_order": 3}',
+                    'release': '{"version": "v6.2.0"}',
+                    'deployments': None,
+                },
+            ]
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_mock_execute)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'promotion-options'
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]['from_environment'], 'testing')
+        self.assertEqual(data[0]['to_environment'], 'staging')
+        self.assertEqual(data[0]['from_version'], 'v6.4.0')
+        self.assertEqual(data[0]['to_version'], 'v6.3.0')
+        # Fake plugin's compare() returns ahead=1.
+        self.assertEqual(data[0]['commits_pending'], 1)
+        self.assertEqual(data[1]['from_environment'], 'staging')
+        self.assertEqual(data[1]['to_environment'], 'production')
+
+    def test_promotion_options_picks_latest_release_per_env(self) -> None:
+        # Two rows for the same env: an older v6.3.0 with an earlier
+        # event timestamp and a newer v6.4.0.  The reducer should pick
+        # v6.4.0 as the testing env's current release.  We pair it
+        # against staging (single-row) so the test asserts the
+        # deterministic ordering rather than the staging row choice.
+        def _mock_execute(query, params, columns):
+            del query, params, columns
+            return [
+                {
+                    'env': '{"slug": "testing", "name": "Testing", '
+                    '"sort_order": 1}',
+                    'release': '{"version": "v6.3.0"}',
+                    'deployments': (
+                        '[{"timestamp": "2024-01-01T00:00:00+00:00", '
+                        '"status": "success"}]'
+                    ),
+                },
+                {
+                    'env': '{"slug": "testing", "name": "Testing", '
+                    '"sort_order": 1}',
+                    'release': '{"version": "v6.4.0"}',
+                    'deployments': (
+                        '[{"timestamp": "2024-06-01T00:00:00+00:00", '
+                        '"status": "success"}]'
+                    ),
+                },
+                {
+                    'env': '{"slug": "staging", "name": "Staging", '
+                    '"sort_order": 2}',
+                    'release': '{"version": "v6.2.0"}',
+                    'deployments': None,
+                },
+            ]
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_mock_execute)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'promotion-options'
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['from_environment'], 'testing')
+        self.assertEqual(data[0]['from_version'], 'v6.4.0')
+        self.assertEqual(data[0]['to_version'], 'v6.2.0')
+
+    def test_promotion_options_falls_back_to_non_null_release(self) -> None:
+        # When neither row for an env has any deployment events, the
+        # reducer should still surface a non-null release if one row
+        # has it.
+        def _mock_execute(query, params, columns):
+            del query, params, columns
+            return [
+                {
+                    'env': '{"slug": "testing", "name": "Testing", '
+                    '"sort_order": 1}',
+                    'release': None,
+                    'deployments': None,
+                },
+                {
+                    'env': '{"slug": "testing", "name": "Testing", '
+                    '"sort_order": 1}',
+                    'release': '{"version": "v1.0.0"}',
+                    'deployments': None,
+                },
+                {
+                    'env': '{"slug": "staging", "name": "Staging", '
+                    '"sort_order": 2}',
+                    'release': '{"version": "v0.9.0"}',
+                    'deployments': None,
+                },
+            ]
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_mock_execute)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'promotion-options'
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['from_version'], 'v1.0.0')
+
+
+class FallbackNotesTestCase(unittest.TestCase):
+    """Direct tests for ``_classify_bump`` and ``_fallback_notes``."""
+
+    def test_classify_bump_breaking(self) -> None:
+        from imbi_api.endpoints.project_deployments import _classify_bump
+
+        commits = [Commit(sha='a', short_sha='a', message='feat!: drop')]
+        self.assertEqual(_classify_bump(commits), 'major')
+
+    def test_classify_bump_feature(self) -> None:
+        from imbi_api.endpoints.project_deployments import _classify_bump
+
+        commits = [Commit(sha='a', short_sha='a', message='feat: new thing')]
+        self.assertEqual(_classify_bump(commits), 'minor')
+
+    def test_classify_bump_patch_default(self) -> None:
+        from imbi_api.endpoints.project_deployments import _classify_bump
+
+        commits = [Commit(sha='a', short_sha='a', message='fix: thing')]
+        self.assertEqual(_classify_bump(commits), 'patch')
+
+    def test_fallback_notes_groups_by_prefix(self) -> None:
+        from imbi_api.endpoints.project_deployments import _fallback_notes
+
+        commits = [
+            Commit(sha='a', short_sha='aaa', message='feat: one'),
+            Commit(sha='b', short_sha='bbb', message='fix: two'),
+            Commit(sha='c', short_sha='ccc', message='feat: three'),
+        ]
+        body = _fallback_notes(commits)
+        self.assertIn('### feat', body)
+        self.assertIn('### fix', body)
+        self.assertIn('feat: one (aaa)', body)
+        self.assertIn('fix: two (bbb)', body)
+
+    def test_fallback_notes_empty(self) -> None:
+        from imbi_api.endpoints.project_deployments import _fallback_notes
+
+        self.assertIn('No commits', _fallback_notes([]))
+
+    def test_fallback_notes_falls_back_to_other_for_long_prefix(self) -> None:
+        from imbi_api.endpoints.project_deployments import _fallback_notes
+
+        commits = [
+            Commit(
+                sha='a',
+                short_sha='aaa',
+                message='thisprefixiswaytoolong: hi',
+            ),
+        ]
+        body = _fallback_notes(commits)
+        self.assertIn('### other', body)
+
+
+class LatestDeploymentTimestampTestCase(unittest.TestCase):
+    """Direct tests for ``_latest_deployment_timestamp``."""
+
+    def test_returns_none_for_empty_or_missing(self) -> None:
+        from imbi_api.endpoints.project_deployments import (
+            _latest_deployment_timestamp,
+        )
+
+        self.assertIsNone(_latest_deployment_timestamp(None))
+        self.assertIsNone(_latest_deployment_timestamp(''))
+        self.assertIsNone(_latest_deployment_timestamp('[]'))
+
+    def test_returns_none_for_non_list_payloads(self) -> None:
+        from imbi_api.endpoints.project_deployments import (
+            _latest_deployment_timestamp,
+        )
+
+        self.assertIsNone(_latest_deployment_timestamp('"oops"'))
+        self.assertIsNone(_latest_deployment_timestamp('{"x": 1}'))
+
+    def test_picks_max_timestamp(self) -> None:
+        from imbi_api.endpoints.project_deployments import (
+            _latest_deployment_timestamp,
+        )
+
+        raw = (
+            '[{"timestamp": "2024-01-01T00:00:00+00:00", "status": "success"},'
+            ' {"timestamp": "2024-06-01T00:00:00+00:00", "status": "success"},'
+            ' {"timestamp": "2024-03-01T00:00:00+00:00", "status": "success"}]'
+        )
+        result = _latest_deployment_timestamp(raw)
+        self.assertEqual(
+            result,
+            datetime.datetime(2024, 6, 1, tzinfo=datetime.UTC),
+        )
+
+    def test_skips_invalid_entries(self) -> None:
+        from imbi_api.endpoints.project_deployments import (
+            _latest_deployment_timestamp,
+        )
+
+        raw = (
+            '[{"timestamp": "not-a-date", "status": "success"},'
+            ' "scalar",'
+            ' {"timestamp": 42, "status": "success"},'
+            ' {"timestamp": "2024-06-01T00:00:00+00:00", '
+            '"status": "success"}]'
+        )
+        result = _latest_deployment_timestamp(raw)
+        self.assertEqual(
+            result,
+            datetime.datetime(2024, 6, 1, tzinfo=datetime.UTC),
+        )
+
+    def test_accepts_already_decoded_list(self) -> None:
+        from imbi_api.endpoints.project_deployments import (
+            _latest_deployment_timestamp,
+        )
+
+        result = _latest_deployment_timestamp(
+            [{'timestamp': '2024-06-01T00:00:00+00:00', 'status': 'success'}]
+        )
+        self.assertEqual(
+            result,
+            datetime.datetime(2024, 6, 1, tzinfo=datetime.UTC),
+        )

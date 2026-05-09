@@ -353,6 +353,18 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'logs:read',
         'Read project logs via plugins',
     ),
+    (
+        'project:deployment:read',
+        'project',
+        'deployment:read',
+        'Read project deployment state via plugins',
+    ),
+    (
+        'project:deployment:write',
+        'project',
+        'deployment:write',
+        'Trigger deployments and promotions via plugins',
+    ),
     # Identity plugin connections
     (
         'me:identities:manage',
