@@ -19,6 +19,7 @@ import urllib.parse
 import httpx
 from imbi_common.plugins.base import PluginContext
 from imbi_common.plugins.errors import (
+    PluginAuthenticationFailed,
     PluginCredentialsMissing,
     PluginTimeoutError,
     PluginUnavailableError,
@@ -33,6 +34,20 @@ _TARGET_PREFIX: dict[ServiceName, str] = {
     'ssm': 'AmazonSSM',
     'logs': 'Logs_20140328',
 }
+
+# AWS error codes that indicate the caller's credentials are no longer
+# accepted by the upstream service.  Refreshing the IAM IC session and
+# retrying the call once is a reasonable recovery, so the host's retry
+# layer is given a chance via :class:`PluginAuthenticationFailed`.
+_AUTH_ERROR_CODES: frozenset[str] = frozenset(
+    {
+        'ExpiredToken',
+        'ExpiredTokenException',
+        'InvalidClientTokenId',
+        'UnauthorizedException',
+        'UnrecognizedClientException',
+    }
+)
 
 
 class AwsCredentials(typing.NamedTuple):
@@ -223,7 +238,17 @@ def _map_status_error(
     message: str,
     error_map: dict[str, type[Exception]],
 ) -> Exception:
-    """Translate an AWS error into the appropriate Imbi exception."""
+    """Translate an AWS error into the appropriate Imbi exception.
+
+    Auth-failure error codes take precedence over the caller-supplied
+    ``error_map`` so the host retry layer can refresh the actor's IAM
+    IC connection — historical maps surface these as
+    :class:`PluginCredentialsMissing`, which means "configure new
+    static creds" and would terminate the request before the refresh
+    has a chance to fire.
+    """
+    if error_code in _AUTH_ERROR_CODES:
+        return PluginAuthenticationFailed(message or error_code)
     if error_code in error_map:
         return error_map[error_code](message or error_code)
     if status_code >= 500:

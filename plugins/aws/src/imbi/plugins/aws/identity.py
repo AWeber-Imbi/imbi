@@ -67,6 +67,10 @@ from imbi_plugin_aws.errors import (
 
 LOGGER = logging.getLogger(__name__)
 
+# IAM IC only issues refresh tokens when the registered client's
+# declared scopes include this value (or another long-lived scope).
+_REFRESH_SCOPE = 'sso:account:access'
+
 
 def _oidc_url(region: str, path: str) -> str:
     return f'https://oidc.{region}.amazonaws.com{path}'
@@ -88,7 +92,7 @@ class AwsIamIcPlugin(IdentityPlugin):
         cacheable=False,
         login_capable=True,
         requires_identity=False,
-        default_scopes=['sso:account:access'],
+        default_scopes=[_REFRESH_SCOPE],
         widget_text=(
             'Connect to enable project level functionality '
             'such as configuration and log access.'
@@ -136,6 +140,18 @@ class AwsIamIcPlugin(IdentityPlugin):
                 description='Auto-managed via RegisterClient.',
                 required=False,
             ),
+            CredentialField(
+                name='client_scopes',
+                label='Cached IAM IC Client Scopes',
+                description=(
+                    f'Space-separated scopes the cached client was '
+                    f'registered with.  Auto-managed; absence (or a set '
+                    f'that omits {_REFRESH_SCOPE}) forces a fresh '
+                    f'RegisterClient on the next connect so refresh '
+                    f'tokens are issued.'
+                ),
+                required=False,
+            ),
         ],
         vertex_labels=[
             PluginVertexLabel(
@@ -178,26 +194,30 @@ class AwsIamIcPlugin(IdentityPlugin):
 
         client_id = credentials.get('client_id')
         client_secret = credentials.get('client_secret')
+        cached_scopes = _parse_cached_scopes(credentials.get('client_scopes'))
+        requested_scopes = (
+            self.manifest.default_scopes if scopes is None else scopes
+        )
+        # A cached client registered before scope-tracking landed (or
+        # with a stale scope set) silently produces connections with no
+        # refresh token; force a re-register so the sweeper has
+        # something to work with.
+        scopes_stale = not _scopes_cover(cached_scopes, requested_scopes)
         registered: dict[str, str] | None = None
-        if not client_id or not client_secret:
-            # IAM IC only issues a refresh token on CreateToken when the
-            # registered client's declared scopes include
-            # ``sso:account:access`` (or another long-lived scope).  Pass
-            # the requested scopes through to RegisterClient so the
-            # device-flow grant is allowed to refresh later.
-            requested_scopes = (
-                self.manifest.default_scopes if scopes is None else scopes
-            )
+        if not client_id or not client_secret or scopes_stale:
             client_id, client_secret = await self._register_client(
                 region, requested_scopes
             )
             # Surface the freshly-minted client back to the host so it
             # can persist them; otherwise the matching CreateToken call
             # (which only sees ``credentials`` from storage) would
-            # arrive with empty client_id and AWS would 401.
+            # arrive with empty client_id and AWS would 401.  The
+            # ``client_scopes`` echo lets the next call short-circuit
+            # the scope-staleness check above.
             registered = {
                 'client_id': client_id,
                 'client_secret': client_secret,
+                'client_scopes': ' '.join(requested_scopes),
             }
 
         async with httpx.AsyncClient(timeout=10.0) as http:
@@ -591,3 +611,23 @@ def _expires_at(token: dict[str, typing.Any]) -> datetime.datetime | None:
     return datetime.datetime.now(datetime.UTC) + datetime.timedelta(
         seconds=int(token['expiresIn'])
     )
+
+
+def _parse_cached_scopes(raw: str | None) -> frozenset[str]:
+    """Decode the persisted ``client_scopes`` blob.
+
+    Stored as a space-separated string so it survives the
+    ``dict[str, str]`` shape of plugin credentials.  An empty / absent
+    value yields an empty set, which fails :func:`_scopes_cover` and
+    forces re-registration.
+    """
+    if not raw:
+        return frozenset()
+    return frozenset(part for part in raw.split() if part)
+
+
+def _scopes_cover(cached: frozenset[str], requested: list[str] | None) -> bool:
+    """True when ``cached`` is a superset of every requested scope."""
+    if not requested:
+        return True
+    return all(scope in cached for scope in requested)

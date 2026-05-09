@@ -6,6 +6,7 @@ import unittest
 import httpx
 import respx
 from imbi_common.plugins.errors import (
+    PluginAuthenticationFailed,
     PluginCredentialsMissing,
     PluginTimeoutError,
     PluginUnavailableError,
@@ -248,6 +249,50 @@ class CallAwsJsonTestCase(unittest.IsolatedAsyncioTestCase):
                 credentials=aws_session.AwsCredentials(
                     'AKID', 'sec', None, 'us-east-1'
                 ),
+                error_map={},
+            )
+
+    @respx.mock
+    async def test_expired_token_raises_authentication_failed(
+        self,
+    ) -> None:
+        respx.post('https://ssm.us-east-1.amazonaws.com/').mock(
+            return_value=httpx.Response(
+                400,
+                json={
+                    '__type': 'com.amazonaws.ssm#ExpiredTokenException',
+                    'message': 'session token expired',
+                },
+            )
+        )
+        with self.assertRaises(PluginAuthenticationFailed):
+            await aws_session.call_aws_json(
+                service='ssm',
+                action='DescribeParameters',
+                body={},
+                credentials=self._creds(),
+                error_map={'ExpiredTokenException': PluginCredentialsMissing},
+            )
+
+    @respx.mock
+    async def test_unauthorized_exception_raises_authentication_failed(
+        self,
+    ) -> None:
+        respx.post('https://logs.us-east-1.amazonaws.com/').mock(
+            return_value=httpx.Response(
+                403,
+                json={
+                    '__type': 'UnauthorizedException',
+                    'message': 'access denied',
+                },
+            )
+        )
+        with self.assertRaises(PluginAuthenticationFailed):
+            await aws_session.call_aws_json(
+                service='logs',
+                action='StartQuery',
+                body={},
+                credentials=self._creds(),
                 error_map={},
             )
 

@@ -643,8 +643,8 @@ wheels = [
 
 [[package]]
 name = "imbi-common"
-version = "0.5.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=main#3c89a42d3fc07f82d7215a253fd5b8860a3302be" }
+version = "0.8.2"
+source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=main#a3475e2bac6bdc234f2a250d6393d0e9b5c9a032" }
 dependencies = [
   { name = "cryptography" },
   { name = "jsonschema-models" },

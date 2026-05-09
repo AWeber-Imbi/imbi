@@ -80,7 +80,11 @@ class AuthorizationRequestTestCase(unittest.IsolatedAsyncioTestCase):
         plugin = AwsIamIcPlugin()
         request = await plugin.authorization_request(
             _ctx(),
-            {'client_id': 'cached-cid', 'client_secret': 'cached-sec'},
+            {
+                'client_id': 'cached-cid',
+                'client_secret': 'cached-sec',
+                'client_scopes': 'sso:account:access',
+            },
             'https://imbi.test/cb',
         )
         self.assertEqual(request.state, 'dev-code')
@@ -88,6 +92,9 @@ class AuthorizationRequestTestCase(unittest.IsolatedAsyncioTestCase):
         assert request.polling is not None
         self.assertEqual(request.polling.user_code, 'ABCD-1234')
         self.assertEqual(request.polling.interval, 5)
+        # Cached scopes already cover the request — no re-registration
+        # round-trip surfaced.
+        self.assertIsNone(request.registered_credentials)
 
     @respx.mock
     async def test_registers_client_when_missing(self) -> None:
@@ -124,6 +131,69 @@ class AuthorizationRequestTestCase(unittest.IsolatedAsyncioTestCase):
             'https://imbi.test/cb',
         )
         self.assertEqual(request.state, 'dev-code')
+        # Freshly registered client + the scope echo must round-trip
+        # back so the host can persist them; otherwise the next call
+        # would see no ``client_scopes`` and re-register again.
+        self.assertIsNotNone(request.registered_credentials)
+        assert request.registered_credentials is not None
+        self.assertEqual(
+            request.registered_credentials['client_id'], 'fresh-cid'
+        )
+        self.assertEqual(
+            request.registered_credentials['client_secret'], 'fresh-sec'
+        )
+        self.assertEqual(
+            request.registered_credentials['client_scopes'],
+            'sso:account:access',
+        )
+
+    @respx.mock
+    async def test_re_registers_when_cached_scopes_stale(self) -> None:
+        register_route = respx.post(
+            'https://oidc.us-east-1.amazonaws.com/client/register'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'clientId': 'fresh-cid',
+                    'clientSecret': 'fresh-sec',
+                    'clientSecretExpiresAt': 999999999,
+                },
+            )
+        )
+        respx.post(
+            'https://oidc.us-east-1.amazonaws.com/device_authorization'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'deviceCode': 'dev-code',
+                    'userCode': 'CODE',
+                    'verificationUri': 'https://device.sso',
+                    'interval': 3,
+                    'expiresIn': 300,
+                },
+            )
+        )
+        plugin = AwsIamIcPlugin()
+        # Cached client predates the scope-tracking change: client_id /
+        # client_secret are present but ``client_scopes`` is missing,
+        # so the next connect must re-register to get refresh tokens.
+        request = await plugin.authorization_request(
+            _ctx(),
+            {'client_id': 'stale-cid', 'client_secret': 'stale-sec'},
+            'https://imbi.test/cb',
+        )
+        self.assertTrue(register_route.called)
+        self.assertIsNotNone(request.registered_credentials)
+        assert request.registered_credentials is not None
+        self.assertEqual(
+            request.registered_credentials['client_id'], 'fresh-cid'
+        )
+        self.assertIn(
+            'sso:account:access',
+            request.registered_credentials['client_scopes'],
+        )
 
 
 class ExchangeCodeTestCase(unittest.IsolatedAsyncioTestCase):
