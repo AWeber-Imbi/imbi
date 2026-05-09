@@ -10,6 +10,7 @@ from imbi_common.plugins.base import (
     DeploymentPlugin,
     PluginContext,
 )
+from imbi_common.plugins.errors import PluginAuthenticationFailed
 
 from imbi_plugin_github.deployment import (
     GitHubDeploymentPlugin,
@@ -861,3 +862,42 @@ class TagAndReleaseTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(info.id, '12345')
         self.assertEqual(info.tag, 'v1.0.0')
         self.assertFalse(info.prerelease)
+
+
+class AuthenticationFailureTestCase(unittest.IsolatedAsyncioTestCase):
+    """The deployment client converts 401 responses into
+    :class:`PluginAuthenticationFailed` so the host's retry-with-
+    refresh layer can recover from a token that expired between the
+    sweeper's last refresh and the user's request.
+    """
+
+    @respx.mock
+    async def test_401_on_repo_get_raises_authentication_failed(
+        self,
+    ) -> None:
+        respx.get('https://api.github.com/repos/octo/demo/').mock(
+            return_value=httpx.Response(
+                401, json={'message': 'Bad credentials'}
+            )
+        )
+        plugin = GitHubDeploymentPlugin()
+        with self.assertRaises(PluginAuthenticationFailed):
+            await plugin.list_refs(_ctx(), _CREDS, kind='default')
+
+    @respx.mock
+    async def test_401_on_dispatch_raises_authentication_failed(
+        self,
+    ) -> None:
+        respx.post(
+            'https://api.github.com/repos/octo/demo/'
+            'actions/workflows/deploy.yml/dispatches'
+        ).mock(
+            return_value=httpx.Response(401, json={'message': 'token expired'})
+        )
+        plugin = GitHubDeploymentPlugin()
+        with self.assertRaises(PluginAuthenticationFailed):
+            await plugin.trigger_deployment(
+                _ctx(environment='production'),
+                _CREDS,
+                'main',
+            )

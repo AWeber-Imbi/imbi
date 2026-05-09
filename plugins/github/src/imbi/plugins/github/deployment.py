@@ -40,6 +40,7 @@ from imbi_common.plugins.base import (
     RefInfo,
     ReleaseInfo,
 )
+from imbi_common.plugins.errors import PluginAuthenticationFailed
 
 from imbi_plugin_github._hosts import normalize_host, require_ghec_tenant_host
 
@@ -53,6 +54,26 @@ _HTTP_TIMEOUT_SECONDS = 10.0
 # us indefinitely.  100 per page * 10 pages = 1000 refs is plenty for
 # the deployment-plugin UI's purposes.
 _MAX_REF_PAGES = 10
+
+
+async def _raise_on_401(response: httpx.Response) -> None:
+    """Convert a 401 from GitHub into :class:`PluginAuthenticationFailed`.
+
+    Installed as an httpx response hook on the deployment client so the
+    host's retry layer can refresh the actor's identity connection
+    once before failing the user-visible request.  Other status codes
+    pass through to ``raise_for_status`` (or per-call swallowing) as
+    before.
+    """
+    if response.status_code != 401:
+        return
+    # The exception message is surfaced in API logs; reading the body
+    # keeps GitHub's ``message`` field (e.g. "Bad credentials") in
+    # the trail without leaking the bearer token.
+    await response.aread()
+    raise PluginAuthenticationFailed(
+        f'GitHub 401 from {response.request.url}: {response.text}'
+    )
 
 
 def _accept_header() -> dict[str, str]:
@@ -212,6 +233,7 @@ class _DeploymentBase(DeploymentPlugin):
             timeout=_HTTP_TIMEOUT_SECONDS,
             headers=_auth_headers(self._token(credentials)),
             base_url=self._repo_url(ctx.assignment_options),
+            event_hooks={'response': [_raise_on_401]},
         )
 
     # -- Refs ---------------------------------------------------------------
