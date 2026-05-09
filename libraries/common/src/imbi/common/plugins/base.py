@@ -419,6 +419,9 @@ class Ref(pydantic.BaseModel):
     pr_state: typing.Literal['open', 'closed', 'merged'] | None = None
 
 
+CheckStatus = typing.Literal['pass', 'fail', 'warn', 'unknown']
+
+
 class Commit(pydantic.BaseModel):
     """A commit on a deployable repo, hydrated for UI display."""
 
@@ -428,7 +431,7 @@ class Commit(pydantic.BaseModel):
     author: str | None = None
     authored_at: datetime.datetime | None = None
     url: str | None = None
-    ci_status: typing.Literal['pass', 'fail', 'warn', 'unknown'] = 'unknown'
+    ci_status: CheckStatus = 'unknown'
     pr_number: int | None = None
     is_head: bool = False
 
@@ -546,6 +549,21 @@ class DeploymentPlugin(abc.ABC):
         credentials: dict[str, str],
         run_id: str,
     ) -> DeploymentRun: ...
+
+    async def get_check_status(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        committish: str,
+    ) -> CheckStatus:
+        """Aggregate CI check-runs status for a ref / SHA / tag.
+
+        Optional — used by the release-train read path to surface a
+        green/red dot per env's currently-deployed version.  Plugins
+        without a CI concept return ``'unknown'`` (the default).
+        """
+        del ctx, credentials, committish
+        return 'unknown'
 
     async def create_tag(
         self,

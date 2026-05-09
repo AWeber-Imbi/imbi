@@ -318,3 +318,9 @@ class DeploymentPluginDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
         plugin = _StubDeploymentPlugin()
         with self.assertRaises(NotImplementedError):
             await plugin.create_release(ctx, {}, 'v1.0.0', 'v1.0.0', '')
+
+    async def test_get_check_status_default_returns_unknown(self) -> None:
+        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
+        plugin = _StubDeploymentPlugin()
+        status = await plugin.get_check_status(ctx, {}, 'v1.0.0')
+        self.assertEqual(status, 'unknown')
