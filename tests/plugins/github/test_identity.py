@@ -7,7 +7,7 @@ import httpx
 import respx
 from imbi_common.plugins.base import IdentityPlugin, PluginContext
 
-from imbi_plugin_github.plugin import (
+from imbi_plugin_github.identity import (
     GitHubEnterpriseCloudPlugin,
     GitHubEnterpriseServerPlugin,
     GitHubPlugin,

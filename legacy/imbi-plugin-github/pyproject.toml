@@ -21,9 +21,9 @@ dependencies = [
 ]
 
 [project.entry-points."imbi.plugins"]
-github = "imbi_plugin_github.plugin:GitHubPlugin"
-github-enterprise-cloud = "imbi_plugin_github.plugin:GitHubEnterpriseCloudPlugin"
-github-enterprise-server = "imbi_plugin_github.plugin:GitHubEnterpriseServerPlugin"
+github = "imbi_plugin_github.identity:GitHubPlugin"
+github-enterprise-cloud = "imbi_plugin_github.identity:GitHubEnterpriseCloudPlugin"
+github-enterprise-server = "imbi_plugin_github.identity:GitHubEnterpriseServerPlugin"
 github-deployment = "imbi_plugin_github.deployment:GitHubDeploymentPlugin"
 github-deployment-ec = "imbi_plugin_github.deployment:GitHubEnterpriseCloudDeploymentPlugin"
 github-deployment-es = "imbi_plugin_github.deployment:GitHubEnterpriseServerDeploymentPlugin"
