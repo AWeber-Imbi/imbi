@@ -468,6 +468,8 @@ class DeploymentEvent(pydantic.BaseModel):
         'rolled_back',
     ]
     note: str | None = None
+    external_run_id: str | None = None
+    external_run_url: str | None = None
 
 
 class ReleaseLink(pydantic.BaseModel):

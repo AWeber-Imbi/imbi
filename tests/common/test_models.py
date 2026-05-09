@@ -747,6 +747,26 @@ class DeploymentEventTestCase(unittest.TestCase):
         self.assertEqual(roundtrip.note, 'shipped')
         self.assertEqual(roundtrip.timestamp, original.timestamp)
 
+    def test_external_run_fields_default_to_none(self) -> None:
+        event = models.DeploymentEvent(status='pending')
+        self.assertIsNone(event.external_run_id)
+        self.assertIsNone(event.external_run_url)
+
+    def test_external_run_fields_round_trip(self) -> None:
+        original = models.DeploymentEvent(
+            status='in_progress',
+            external_run_id='12345678',
+            external_run_url='https://github.com/org/repo/actions/runs/12345678',
+        )
+        roundtrip = models.DeploymentEvent.model_validate_json(
+            original.model_dump_json(),
+        )
+        self.assertEqual(roundtrip.external_run_id, '12345678')
+        self.assertEqual(
+            roundtrip.external_run_url,
+            'https://github.com/org/repo/actions/runs/12345678',
+        )
+
 
 class ReleaseLinkTestCase(unittest.TestCase):
     """Tests for the ReleaseLink model."""
