@@ -987,7 +987,7 @@ requires-dist = [
   { name = "fastapi" },
   { name = "filetype" },
   { name = "httpx", specifier = ">=0.28.1,<1" },
-  { name = "imbi-common", extras = ["databases", "llm", "server"], git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=main" },
+  { name = "imbi-common", extras = ["databases", "llm", "server"], specifier = ">=0.8.3" },
   { name = "jinja2" },
   { name = "jsonpatch", specifier = ">=1.33" },
   { name = "nanoid", specifier = ">=2.0.0" },
@@ -1039,8 +1039,8 @@ plugins = [
 
 [[package]]
 name = "imbi-common"
-version = "0.8.2"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=main#a3475e2bac6bdc234f2a250d6393d0e9b5c9a032" }
+version = "0.8.3"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
   { name = "cryptography" },
   { name = "jsonschema-models" },
@@ -1052,6 +1052,10 @@ dependencies = [
   { name = "pyjwt" },
   { name = "python-slugify" },
   { name = "typer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9c/5e/4bd8ffe146a88d245ee7254d7fd1fca10e55fb5f3fc45a206260f882a39f/imbi_common-0.8.3.tar.gz", hash = "sha256:d3ee611a5b1996ede7d266a693a4f359c7ac6600dc2f2dc1912380ea26f3bc10", size = 245708, upload-time = "2026-05-09T23:30:20.319Z" }
+wheels = [
+  { url = "https://files.pythonhosted.org/packages/de/6b/38e785ec18ef80d6644fffe7648de5038e52ab1e806eff1ded19a47ecf00/imbi_common-0.8.3-py3-none-any.whl", hash = "sha256:c4ad388799422dc5f4f8e1d47ba4492ad7b3fefd2a293ea59187a151e53873ba", size = 71657, upload-time = "2026-05-09T23:30:18.522Z" },
 ]
 
 [package.optional-dependencies]
@@ -1073,7 +1077,7 @@ server = [
 [[package]]
 name = "imbi-plugin-aws"
 version = "0.1.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-plugin-aws.git?rev=main#dc4eab42b9fcc9fb4aabc50602731e88b1af7d9d" }
+source = { git = "https://github.com/AWeber-Imbi/imbi-plugin-aws.git?rev=main#ed1ced67f01825ed030c7aefd70a595228f474df" }
 dependencies = [
   { name = "httpx" },
   { name = "imbi-common" },
@@ -1083,7 +1087,7 @@ dependencies = [
 [[package]]
 name = "imbi-plugin-github"
 version = "0.1.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-plugin-github.git?rev=main#5568863e28a147f57d754e1da9e25ae47b092f22" }
+source = { git = "https://github.com/AWeber-Imbi/imbi-plugin-github.git?rev=main#067c262a1be84dacd14e83d412b61893b250d0e2" }
 dependencies = [
   { name = "httpx" },
   { name = "imbi-common" },
