@@ -267,6 +267,98 @@ class LoadPluginsIdentityTestCase(unittest.TestCase):
         _reset_registry()
 
 
+class LoadPluginsDeploymentTestCase(unittest.TestCase):
+    def setUp(self) -> None:
+        _reset_registry()
+
+    def test_load_deployment_plugin_round_trip(self) -> None:
+        manifest = base.PluginManifest(
+            slug='deploy',
+            name='Deployment Plugin',
+            plugin_type='deployment',
+        )
+
+        class _FakeDeploy(base.DeploymentPlugin):
+            async def list_refs(  # type: ignore[override]
+                self, ctx, credentials, kind='all', query=None
+            ):
+                return []
+
+            async def list_commits(  # type: ignore[override]
+                self, ctx, credentials, ref, limit=25
+            ):
+                return []
+
+            async def resolve_committish(  # type: ignore[override]
+                self, ctx, credentials, committish
+            ):
+                return base.Commit(sha='x', short_sha='x', message='')
+
+            async def compare(  # type: ignore[override]
+                self, ctx, credentials, base_, head
+            ):
+                return base.CompareResult(
+                    base_sha=base_, head_sha=head, ahead=0, behind=0
+                )
+
+            async def trigger_deployment(  # type: ignore[override]
+                self, ctx, credentials, ref_or_sha, inputs=None
+            ):
+                return base.DeploymentRun(run_id='1')
+
+            async def get_deployment_status(  # type: ignore[override]
+                self, ctx, credentials, run_id
+            ):
+                return base.DeploymentRun(run_id=run_id)
+
+        _FakeDeploy.manifest = manifest  # type: ignore[attr-defined]
+
+        ep = unittest.mock.MagicMock()
+        ep.name = 'deploy'
+        ep.load.return_value = _FakeDeploy
+        ep.dist.name = 'imbi-plugin-deploy'
+        ep.dist.version = '1.0'
+
+        with unittest.mock.patch(
+            'importlib.metadata.entry_points', return_value=[ep]
+        ):
+            result = registry.load_plugins()
+
+        self.assertIn('deploy', result.loaded)
+        entry = registry.get_plugin('deploy')
+        self.assertIs(entry.handler_cls, _FakeDeploy)
+        self.assertEqual(entry.manifest.plugin_type, 'deployment')
+
+    def test_load_deployment_plugin_type_mismatch(self) -> None:
+        manifest = base.PluginManifest(
+            slug='mis-deploy',
+            name='Mismatch',
+            plugin_type='deployment',
+        )
+
+        class _ConfigImpl(base.ConfigurationPlugin):
+            pass
+
+        _ConfigImpl.manifest = manifest  # type: ignore[attr-defined]
+
+        ep = unittest.mock.MagicMock()
+        ep.name = 'mis-deploy'
+        ep.load.return_value = _ConfigImpl
+        ep.dist.name = 'pkg'
+        ep.dist.version = '1.0'
+
+        with unittest.mock.patch(
+            'importlib.metadata.entry_points', return_value=[ep]
+        ):
+            result = registry.load_plugins()
+
+        self.assertIn('mis-deploy', result.errors)
+        self.assertEqual(result.loaded, [])
+
+    def tearDown(self) -> None:
+        _reset_registry()
+
+
 class LoadPluginsDuplicateSlugTestCase(unittest.TestCase):
     def setUp(self) -> None:
         _reset_registry()

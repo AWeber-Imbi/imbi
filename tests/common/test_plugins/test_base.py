@@ -3,8 +3,12 @@ import unittest
 
 from imbi_common.plugins.base import (
     AuthorizationRequest,
+    Commit,
+    CompareResult,
     ConfigKey,
     ConfigKeyWithValue,
+    DeploymentPlugin,
+    DeploymentRun,
     IdentityCredentials,
     IdentityProfile,
     LogFilter,
@@ -16,6 +20,9 @@ from imbi_common.plugins.base import (
     PluginOption,
     PluginVertexLabel,
     PollingDescriptor,
+    Ref,
+    RefInfo,
+    ReleaseInfo,
 )
 
 
@@ -177,3 +184,137 @@ class IdentityPluginManifestTestCase(unittest.TestCase):
         )
         self.assertEqual(edge.name, 'MAPS_TO')
         self.assertEqual(edge.to_labels, ['AwsAccount'])
+
+
+class DeploymentModelsTestCase(unittest.TestCase):
+    def test_ref_round_trip(self) -> None:
+        ref = Ref(
+            name='main',
+            kind='default',
+            sha='1a2b3c4',
+            is_default=True,
+            ahead=0,
+            behind=0,
+        )
+        restored = Ref.model_validate(ref.model_dump())
+        self.assertEqual(restored.name, 'main')
+        self.assertEqual(restored.kind, 'default')
+        self.assertTrue(restored.is_default)
+
+    def test_commit_defaults(self) -> None:
+        commit = Commit(
+            sha='abcdef0123456789',
+            short_sha='abcdef0',
+            message='Fix bug',
+        )
+        self.assertEqual(commit.ci_status, 'unknown')
+        self.assertFalse(commit.is_head)
+        self.assertIsNone(commit.author)
+
+    def test_compare_result_aggregates(self) -> None:
+        commit = Commit(sha='abc', short_sha='abc', message='one')
+        result = CompareResult(
+            base_sha='base',
+            head_sha='head',
+            ahead=1,
+            behind=0,
+            commits=[commit],
+            files_changed=2,
+            additions=10,
+            deletions=3,
+        )
+        restored = CompareResult.model_validate(result.model_dump())
+        self.assertEqual(len(restored.commits), 1)
+        self.assertEqual(restored.commits[0].sha, 'abc')
+        self.assertEqual(restored.additions, 10)
+
+    def test_release_info_round_trip(self) -> None:
+        release = ReleaseInfo(
+            id='123',
+            tag='v6.4.0',
+            name='v6.4.0',
+            url='https://api.github.com/repos/o/r/releases/123',
+            html_url='https://github.com/o/r/releases/tag/v6.4.0',
+            prerelease=False,
+        )
+        restored = ReleaseInfo.model_validate(release.model_dump())
+        self.assertEqual(restored.tag, 'v6.4.0')
+        self.assertFalse(restored.prerelease)
+
+    def test_ref_info_round_trip(self) -> None:
+        info = RefInfo(name='refs/tags/v6.4.0', sha='abc')
+        self.assertEqual(info.name, 'refs/tags/v6.4.0')
+        self.assertEqual(info.sha, 'abc')
+
+    def test_deployment_run_default_status(self) -> None:
+        run = DeploymentRun(run_id='42')
+        self.assertEqual(run.status, 'queued')
+        self.assertIsNone(run.completed_at)
+
+
+class DeploymentManifestTestCase(unittest.TestCase):
+    def test_deployment_plugin_type_accepted(self) -> None:
+        manifest = PluginManifest(
+            slug='gh-deploy',
+            name='GitHub Deployment',
+            plugin_type='deployment',
+            options=[
+                PluginOption(name='workflow', label='Workflow file'),
+            ],
+        )
+        self.assertEqual(manifest.plugin_type, 'deployment')
+        self.assertEqual(manifest.options[0].name, 'workflow')
+
+
+class _StubDeploymentPlugin(DeploymentPlugin):
+    """Minimal subclass used to exercise default optional methods."""
+
+    manifest = PluginManifest(
+        slug='stub-deploy',
+        name='Stub Deployment',
+        plugin_type='deployment',
+    )
+
+    async def list_refs(  # type: ignore[override]
+        self, ctx, credentials, kind='all', query=None
+    ):
+        return []
+
+    async def list_commits(  # type: ignore[override]
+        self, ctx, credentials, ref, limit=25
+    ):
+        return []
+
+    async def resolve_committish(  # type: ignore[override]
+        self, ctx, credentials, committish
+    ):
+        return Commit(sha='x', short_sha='x', message='')
+
+    async def compare(  # type: ignore[override]
+        self, ctx, credentials, base, head
+    ):
+        return CompareResult(base_sha=base, head_sha=head, ahead=0, behind=0)
+
+    async def trigger_deployment(  # type: ignore[override]
+        self, ctx, credentials, ref_or_sha, inputs=None
+    ):
+        return DeploymentRun(run_id='1')
+
+    async def get_deployment_status(  # type: ignore[override]
+        self, ctx, credentials, run_id
+    ):
+        return DeploymentRun(run_id=run_id, status='in_progress')
+
+
+class DeploymentPluginDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_create_tag_default_raises(self) -> None:
+        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
+        plugin = _StubDeploymentPlugin()
+        with self.assertRaises(NotImplementedError):
+            await plugin.create_tag(ctx, {}, 'sha', 'v1.0.0', 'msg')
+
+    async def test_create_release_default_raises(self) -> None:
+        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
+        plugin = _StubDeploymentPlugin()
+        with self.assertRaises(NotImplementedError):
+            await plugin.create_release(ctx, {}, 'v1.0.0', 'v1.0.0', '')

@@ -79,7 +79,9 @@ class PluginManifest(pydantic.BaseModel):
     slug: str
     name: str
     description: str | None = None
-    plugin_type: typing.Literal['configuration', 'logs', 'identity']
+    plugin_type: typing.Literal[
+        'configuration', 'logs', 'identity', 'deployment'
+    ]
     auth_type: typing.Literal['api_token', 'oauth2', 'oidc', 'aws-iam-ic'] = (
         'api_token'
     )
@@ -396,3 +398,183 @@ class IdentityPlugin(abc.ABC):
         edge options at request time).
         """
         return connection
+
+
+# ---------------------------------------------------------------------------
+# Deployment plugin
+# ---------------------------------------------------------------------------
+
+
+class Ref(pydantic.BaseModel):
+    """A branch, tag, or default-ref pointer on a deployable repo."""
+
+    name: str
+    kind: typing.Literal['branch', 'tag', 'default']
+    sha: str
+    is_default: bool = False
+    ahead: int | None = None
+    behind: int | None = None
+    pr_number: int | None = None
+    pr_title: str | None = None
+    pr_state: typing.Literal['open', 'closed', 'merged'] | None = None
+
+
+class Commit(pydantic.BaseModel):
+    """A commit on a deployable repo, hydrated for UI display."""
+
+    sha: str
+    short_sha: str
+    message: str
+    author: str | None = None
+    authored_at: datetime.datetime | None = None
+    url: str | None = None
+    ci_status: typing.Literal['pass', 'fail', 'warn', 'unknown'] = 'unknown'
+    pr_number: int | None = None
+    is_head: bool = False
+
+
+class CompareResult(pydantic.BaseModel):
+    """Result of comparing two commit-ish refs (``base..head``)."""
+
+    base_sha: str
+    head_sha: str
+    ahead: int
+    behind: int
+    commits: list[Commit] = []
+    files_changed: int = 0
+    additions: int = 0
+    deletions: int = 0
+    pr_numbers: list[int] = []
+
+
+class RefInfo(pydantic.BaseModel):
+    """Metadata returned after creating a ref (e.g. an annotated tag)."""
+
+    name: str
+    sha: str
+    url: str | None = None
+
+
+class ReleaseInfo(pydantic.BaseModel):
+    """Metadata returned after creating a release on the remote."""
+
+    id: str
+    tag: str
+    name: str | None = None
+    url: str | None = None
+    html_url: str | None = None
+    prerelease: bool = False
+
+
+class DeploymentRun(pydantic.BaseModel):
+    """A workflow / pipeline run triggered by ``trigger_deployment``."""
+
+    run_id: str
+    run_url: str | None = None
+    status: typing.Literal[
+        'queued',
+        'in_progress',
+        'success',
+        'failure',
+        'cancelled',
+        'unknown',
+    ] = 'queued'
+    started_at: datetime.datetime | None = None
+    completed_at: datetime.datetime | None = None
+
+
+class DeploymentPlugin(abc.ABC):
+    """Plugins must not stash global state.
+
+    A new instance is created per request.  Deployment plugins act on a
+    repo: enumerate refs/commits, compare them, create tags/releases,
+    and trigger CI workflow runs.  They are typically paired with an
+    :class:`IdentityPlugin` so deploy actions run as the human user
+    rather than a shared service principal.
+    """
+
+    manifest: PluginManifest
+
+    @abc.abstractmethod
+    async def list_refs(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        kind: typing.Literal['default', 'branch', 'tag', 'all'] = 'all',
+        query: str | None = None,
+    ) -> list[Ref]: ...
+
+    @abc.abstractmethod
+    async def list_commits(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        ref: str,
+        limit: int = 25,
+    ) -> list[Commit]: ...
+
+    @abc.abstractmethod
+    async def resolve_committish(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        committish: str,
+    ) -> Commit: ...
+
+    @abc.abstractmethod
+    async def compare(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        base: str,
+        head: str,
+    ) -> CompareResult: ...
+
+    @abc.abstractmethod
+    async def trigger_deployment(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        ref_or_sha: str,
+        inputs: dict[str, str] | None = None,
+    ) -> DeploymentRun: ...
+
+    @abc.abstractmethod
+    async def get_deployment_status(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        run_id: str,
+    ) -> DeploymentRun: ...
+
+    async def create_tag(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        sha: str,
+        tag: str,
+        message: str,
+    ) -> RefInfo:
+        """Create an annotated tag on the remote.
+
+        Optional — only required for the Promote flow.  Plugins that
+        cannot mint tags raise :class:`NotImplementedError`; the host
+        surfaces the error to the caller.
+        """
+        raise NotImplementedError
+
+    async def create_release(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        tag: str,
+        name: str,
+        body_markdown: str,
+        prerelease: bool = False,
+    ) -> ReleaseInfo:
+        """Create a release on the remote (e.g. a GitHub Release).
+
+        Optional — paired with :meth:`create_tag`.  Plugins without a
+        release concept raise :class:`NotImplementedError`.
+        """
+        raise NotImplementedError
