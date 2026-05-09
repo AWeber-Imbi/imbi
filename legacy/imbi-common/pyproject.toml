@@ -39,6 +39,9 @@ databases = [
   "psycopg[binary,pool]>=3.3",
   "valkey>=6",
 ]
+llm = [
+  "anthropic>=0.40",
+]
 server = [
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.40.0",
