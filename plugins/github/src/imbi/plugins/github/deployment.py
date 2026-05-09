@@ -27,6 +27,7 @@ import urllib.parse
 
 import httpx
 from imbi_common.plugins.base import (
+    CheckStatus,
     Commit,
     CompareResult,
     CredentialField,
@@ -587,6 +588,34 @@ class _DeploymentBase(DeploymentPlugin):
         if len(candidates) == 1:
             return candidates[0]
         return None
+
+    async def get_check_status(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        committish: str,
+    ) -> CheckStatus:
+        """Aggregate ``/commits/{ref}/check-runs`` to a single status.
+
+        Tolerates the same failure modes as commit-level hydration:
+        network errors, non-200 responses, and unparseable JSON all
+        degrade to ``'unknown'`` rather than raising — the release
+        train should never fail to render because a side hydration
+        call hiccuped.
+        """
+        encoded = urllib.parse.quote(committish, safe='')
+        async with self._client(ctx, credentials) as client:
+            try:
+                resp = await client.get(f'/commits/{encoded}/check-runs')
+            except httpx.HTTPError:
+                return 'unknown'
+            if resp.status_code != 200:
+                return 'unknown'
+            try:
+                payload = typing.cast(dict[str, typing.Any], resp.json())
+            except ValueError:
+                return 'unknown'
+            return _check_runs_to_status(payload)
 
     async def get_deployment_status(
         self,

@@ -737,6 +737,81 @@ class GetDeploymentStatusTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(run.status, 'failure')
 
 
+class CheckStatusTestCase(unittest.IsolatedAsyncioTestCase):
+    @respx.mock
+    async def test_check_status_pass(self) -> None:
+        respx.get(
+            'https://api.github.com/repos/octo/demo/commits/v1.0.0/check-runs'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'check_runs': [
+                        {'status': 'completed', 'conclusion': 'success'},
+                    ]
+                },
+            )
+        )
+        plugin = GitHubDeploymentPlugin()
+        status = await plugin.get_check_status(_ctx(), _CREDS, 'v1.0.0')
+        self.assertEqual(status, 'pass')
+
+    @respx.mock
+    async def test_check_status_fail(self) -> None:
+        respx.get(
+            'https://api.github.com/repos/octo/demo/commits/abc/check-runs'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'check_runs': [
+                        {'status': 'completed', 'conclusion': 'failure'}
+                    ]
+                },
+            )
+        )
+        plugin = GitHubDeploymentPlugin()
+        status = await plugin.get_check_status(_ctx(), _CREDS, 'abc')
+        self.assertEqual(status, 'fail')
+
+    @respx.mock
+    async def test_check_status_404_returns_unknown(self) -> None:
+        respx.get(
+            'https://api.github.com/repos/octo/demo/commits/abc/check-runs'
+        ).mock(return_value=httpx.Response(404, json={}))
+        plugin = GitHubDeploymentPlugin()
+        status = await plugin.get_check_status(_ctx(), _CREDS, 'abc')
+        self.assertEqual(status, 'unknown')
+
+    @respx.mock
+    async def test_check_status_network_error_returns_unknown(self) -> None:
+        respx.get(
+            'https://api.github.com/repos/octo/demo/commits/abc/check-runs'
+        ).mock(side_effect=httpx.ConnectError('boom'))
+        plugin = GitHubDeploymentPlugin()
+        status = await plugin.get_check_status(_ctx(), _CREDS, 'abc')
+        self.assertEqual(status, 'unknown')
+
+    @respx.mock
+    async def test_check_status_quotes_committish(self) -> None:
+        # A tag like ``refs/tags/v1.0.0`` should be percent-encoded
+        # so the URL stays inside ``/commits/.../check-runs``.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/commits'
+            '/refs%2Ftags%2Fv1.0.0/check-runs'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={'check_runs': []},
+            )
+        )
+        plugin = GitHubDeploymentPlugin()
+        status = await plugin.get_check_status(
+            _ctx(), _CREDS, 'refs/tags/v1.0.0'
+        )
+        self.assertEqual(status, 'unknown')
+
+
 class TagAndReleaseTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
     async def test_create_tag_and_ref(self) -> None:

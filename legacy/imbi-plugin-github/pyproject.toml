@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27",
-  "imbi-common>=0.3.0",
+  "imbi-common>=0.8.2",
   "pydantic>=2",
 ]
 
