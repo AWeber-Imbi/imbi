@@ -34,7 +34,10 @@ from imbi_common.plugins.errors import PluginCredentialsMissing
 from imbi_api.auth import permissions
 from imbi_api.endpoints._helpers import lookup_project_slugs
 from imbi_api.endpoints.releases import append_deployment_event
-from imbi_api.identity.host_integration import attach_identity
+from imbi_api.identity.host_integration import (
+    attach_identity,
+    call_with_identity_retry,
+)
 from imbi_api.llm.dependencies import InjectAnthropicClient
 from imbi_api.plugins import call_with_timeout
 from imbi_api.plugins.credentials import get_plugin_credentials
@@ -233,6 +236,22 @@ async def _resolve_and_context(
 def _handler(resolved: ResolvedPlugin) -> DeploymentPlugin:
     """Instantiate and type-narrow the plugin handler."""
     return typing.cast(DeploymentPlugin, resolved.entry.handler_cls())
+
+
+def _resolve_credentials(
+    ctx: PluginContext, fallback: dict[str, str]
+) -> dict[str, str]:
+    """Pick the deployment-call credentials for ``ctx``.
+
+    Prefers the per-user identity's bearer token (so the API call is
+    attributed to the human and refreshes apply) and falls back to the
+    service-account PAT bound to the plugin instance.  Recomputed
+    inside :func:`call_with_identity_retry`'s closure so a refreshed
+    identity surfaces the new access token on retry.
+    """
+    if ctx.identity is not None and ctx.identity.access_token:
+        return {'access_token': ctx.identity.access_token}
+    return fallback
 
 
 async def _record_deployment_audit(
@@ -483,13 +502,19 @@ async def _handle_deploy(
         environment=body.environment,
     )
     handler = _handler(resolved)
-    run = await call_with_timeout(
-        handler.trigger_deployment(
-            ctx,
-            credentials,
-            ref_or_sha=body.committish,
-            inputs=body.inputs,
+
+    async def _trigger(c: PluginContext) -> DeploymentRun:
+        return await call_with_timeout(
+            handler.trigger_deployment(
+                c,
+                _resolve_credentials(c, credentials),
+                ref_or_sha=body.committish,
+                inputs=body.inputs,
+            )
         )
+
+    run = await call_with_identity_retry(
+        db, ctx, resolved, auth, fn=_trigger, attached=True
     )
     LOGGER.info(
         'Deployment triggered: project=%s env=%s ref=%s plugin=%s '
@@ -559,15 +584,21 @@ async def _handle_promote(
 
     # 1. Cut the annotated tag at the chosen build commit.
     tag_message = body.release_name or body.tag
-    try:
-        await call_with_timeout(
+
+    async def _create_tag(c: PluginContext) -> typing.Any:
+        return await call_with_timeout(
             handler.create_tag(
-                ctx,
-                credentials,
+                c,
+                _resolve_credentials(c, credentials),
                 sha=body.from_committish,
                 tag=body.tag,
                 message=tag_message,
             )
+        )
+
+    try:
+        await call_with_identity_retry(
+            db, ctx, resolved, auth, fn=_create_tag, attached=True
         )
     except NotImplementedError as exc:
         raise fastapi.HTTPException(
@@ -580,16 +611,22 @@ async def _handle_promote(
 
     # 2. Create the release on the remote.
     release_info = None
-    try:
-        release_info = await call_with_timeout(
+
+    async def _create_release(c: PluginContext) -> typing.Any:
+        return await call_with_timeout(
             handler.create_release(
-                ctx,
-                credentials,
+                c,
+                _resolve_credentials(c, credentials),
                 tag=body.tag,
                 name=body.release_name or body.tag,
                 body_markdown=body.release_notes_markdown,
                 prerelease=body.prerelease,
             )
+        )
+
+    try:
+        release_info = await call_with_identity_retry(
+            db, ctx, resolved, auth, fn=_create_release, attached=True
         )
     except NotImplementedError:
         LOGGER.info(
@@ -604,13 +641,18 @@ async def _handle_promote(
     # 3. Dispatch the workflow against the new tag.  We do this before
     #    upserting the Release node so a trigger failure doesn't leave
     #    a Release in the graph with no associated deployment run.
-    run = await call_with_timeout(
-        handler.trigger_deployment(
-            ctx,
-            credentials,
-            ref_or_sha=body.tag,
-            inputs=None,
+    async def _trigger(c: PluginContext) -> DeploymentRun:
+        return await call_with_timeout(
+            handler.trigger_deployment(
+                c,
+                _resolve_credentials(c, credentials),
+                ref_or_sha=body.tag,
+                inputs=None,
+            )
         )
+
+    run = await call_with_identity_retry(
+        db, ctx, resolved, auth, fn=_trigger, attached=True
     )
 
     # 4. Upsert the Release node so future deploys of the same tag

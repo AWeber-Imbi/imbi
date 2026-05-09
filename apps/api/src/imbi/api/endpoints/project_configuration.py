@@ -22,7 +22,7 @@ from imbi_common.plugins.errors import (
 from imbi_api.auth import permissions
 from imbi_api.domain import models
 from imbi_api.endpoints._helpers import lookup_project_slugs
-from imbi_api.identity.host_integration import attach_identity
+from imbi_api.identity.host_integration import call_with_identity_retry
 from imbi_api.plugins import call_with_timeout
 from imbi_api.plugins.credentials import get_plugin_credentials
 from imbi_api.plugins.resolution import resolve_plugin
@@ -108,7 +108,6 @@ async def get_configuration(
         environment=environment,
         assignment_options=resolved.options,
     )
-    ctx = await attach_identity(db, ctx, resolved, auth)
     try:
         credentials = await get_plugin_credentials(
             db, resolved.plugin_id, resolved.entry
@@ -137,7 +136,13 @@ async def get_configuration(
             LOGGER.debug('Cache read failed', exc_info=True)
 
     handler = typing.cast(ConfigurationPlugin, resolved.entry.handler_cls())
-    keys = await call_with_timeout(handler.list_keys(ctx, credentials))
+
+    async def _list_keys(c: PluginContext) -> typing.Any:
+        return await call_with_timeout(handler.list_keys(c, credentials))
+
+    keys = await call_with_identity_retry(
+        db, ctx, resolved, auth, fn=_list_keys
+    )
 
     result = [
         models.ConfigKeyResponse(
@@ -186,7 +191,6 @@ async def fetch_values(
         environment=environment,
         assignment_options=resolved.options,
     )
-    ctx = await attach_identity(db, ctx, resolved, auth)
     try:
         credentials = await get_plugin_credentials(
             db, resolved.plugin_id, resolved.entry
@@ -199,8 +203,14 @@ async def fetch_values(
 
     keys: list[str] | None = body.get('keys')
     handler = typing.cast(ConfigurationPlugin, resolved.entry.handler_cls())
-    values = await call_with_timeout(
-        handler.get_values(ctx, credentials, keys)
+
+    async def _get_values(c: PluginContext) -> typing.Any:
+        return await call_with_timeout(
+            handler.get_values(c, credentials, keys)
+        )
+
+    values = await call_with_identity_retry(
+        db, ctx, resolved, auth, fn=_get_values
     )
 
     return [
@@ -242,7 +252,6 @@ async def set_configuration_value(
         environment=environment,
         assignment_options=resolved.options,
     )
-    ctx = await attach_identity(db, ctx, resolved, auth)
     try:
         credentials = await get_plugin_credentials(
             db, resolved.plugin_id, resolved.entry
@@ -254,8 +263,14 @@ async def set_configuration_value(
         ) from exc
 
     handler = typing.cast(ConfigurationPlugin, resolved.entry.handler_cls())
-    result_key = await call_with_timeout(
-        handler.set_value(ctx, credentials, key, body)
+
+    async def _set_value(c: PluginContext) -> typing.Any:
+        return await call_with_timeout(
+            handler.set_value(c, credentials, key, body)
+        )
+
+    result_key = await call_with_identity_retry(
+        db, ctx, resolved, auth, fn=_set_value
     )
 
     await _invalidate_cache(resolved.plugin_id, project_id)
@@ -305,7 +320,6 @@ async def delete_configuration_key(
         environment=environment,
         assignment_options=resolved.options,
     )
-    ctx = await attach_identity(db, ctx, resolved, auth)
     try:
         credentials = await get_plugin_credentials(
             db, resolved.plugin_id, resolved.entry
@@ -317,7 +331,11 @@ async def delete_configuration_key(
         ) from exc
 
     handler = typing.cast(ConfigurationPlugin, resolved.entry.handler_cls())
-    await call_with_timeout(handler.delete_key(ctx, credentials, key))
+
+    async def _delete_key(c: PluginContext) -> None:
+        await call_with_timeout(handler.delete_key(c, credentials, key))
+
+    await call_with_identity_retry(db, ctx, resolved, auth, fn=_delete_key)
 
     await _invalidate_cache(resolved.plugin_id, project_id)
     project_slug = await _lookup_project_slug(db, project_id)

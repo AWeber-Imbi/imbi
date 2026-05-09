@@ -15,9 +15,16 @@ from imbi_common.plugins.registry import get_plugin
 
 from imbi_api.identity import errors as identity_errors
 from imbi_api.identity import repository
+from imbi_api.identity.models import IdentityCredentialsInternal
 from imbi_api.plugins import parse_options
 
 LOGGER = logging.getLogger(__name__)
+
+# Refresh proactively when the access token expires within this many
+# seconds.  Smaller than the sweeper's 5-minute lookahead so the two
+# layers don't fight; this hook only catches the race between sweeper
+# ticks.
+_PROACTIVE_REFRESH_WINDOW_SECONDS = 60
 
 
 def _start_url_for(plugin_id: str) -> str:
@@ -53,6 +60,9 @@ async def hydrate_identity(
             plugin_id=identity_plugin_id,
             start_url=_start_url_for(identity_plugin_id),
         )
+
+    if _should_refresh(connection):
+        connection = await _refresh_and_reload(db, identity_plugin_id, user_id)
 
     # Look up the identity plugin's slug + handler so we can call
     # ``materialize`` for plugins that exchange the IdP token (AWS IAM IC).
@@ -135,3 +145,59 @@ def is_active(connection_expires_at: datetime.datetime | None) -> bool:
     if connection_expires_at is None:
         return True
     return connection_expires_at > datetime.datetime.now(datetime.UTC)
+
+
+def _should_refresh(connection: IdentityCredentialsInternal) -> bool:
+    """True when ``connection`` should be refreshed before hydration.
+
+    Connections without a refresh token are skipped — the sweeper
+    would have flipped them to ``expired`` if it could have refreshed
+    them.
+    """
+    if not connection.refresh_token:
+        return False
+    if connection.expires_at is None:
+        return False
+    horizon = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
+        seconds=_PROACTIVE_REFRESH_WINDOW_SECONDS
+    )
+    return connection.expires_at <= horizon
+
+
+async def _refresh_and_reload(
+    db: graph.Graph,
+    plugin_id: str,
+    user_id: str,
+) -> IdentityCredentialsInternal:
+    """Force-refresh the actor's connection and re-load it.
+
+    On refresh failure the underlying flow marks the connection
+    ``status='expired'``; we surface :class:`IdentityRequiredError`
+    so the request gets the same 401 as a missing connection.
+    """
+    from imbi_api.identity import flows
+
+    try:
+        await flows.refresh_connection(
+            db, plugin_id=plugin_id, actor_user_id=user_id
+        )
+    except identity_errors.IdentityRefreshFailed as exc:
+        LOGGER.info(
+            'Proactive refresh failed plugin_id=%s user_id=%s: %s; '
+            'returning IdentityRequired to caller',
+            plugin_id,
+            user_id,
+            exc,
+        )
+        raise identity_errors.IdentityRequiredError(
+            plugin_id=plugin_id,
+            start_url=_start_url_for(plugin_id),
+        ) from exc
+
+    refreshed = await repository.load_connection(db, plugin_id, user_id)
+    if refreshed is None or refreshed.status != 'active':
+        raise identity_errors.IdentityRequiredError(
+            plugin_id=plugin_id,
+            start_url=_start_url_for(plugin_id),
+        )
+    return refreshed

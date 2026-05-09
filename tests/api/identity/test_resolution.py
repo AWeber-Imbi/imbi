@@ -73,6 +73,8 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_inactive_connection_raises_identity_required(self) -> None:
         connection = mock.MagicMock()
         connection.status = 'expired'
+        connection.expires_at = None
+        connection.refresh_token = None
         with mock.patch.object(
             resolution.repository,
             'load_connection',
@@ -86,6 +88,8 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_missing_plugin_slug_raises_identity_required(self) -> None:
         connection = mock.MagicMock()
         connection.status = 'active'
+        connection.expires_at = None
+        connection.refresh_token = None
         with (
             mock.patch.object(
                 resolution.repository,
@@ -106,6 +110,8 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_plugin_not_found_raises_identity_required(self) -> None:
         connection = mock.MagicMock()
         connection.status = 'active'
+        connection.expires_at = None
+        connection.refresh_token = None
         with (
             mock.patch.object(
                 resolution.repository,
@@ -131,6 +137,8 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_handler_not_identity_plugin_raises(self) -> None:
         connection = mock.MagicMock()
         connection.status = 'active'
+        connection.expires_at = None
+        connection.refresh_token = None
 
         # Handler that is *not* an IdentityPlugin instance.
         non_identity_handler = mock.MagicMock()
@@ -151,6 +159,139 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
                 resolution,
                 'get_plugin',
                 return_value=entry,
+            ),
+        ):
+            with self.assertRaises(identity_errors.IdentityRequiredError):
+                await resolution.hydrate_identity(
+                    self.db, self.ctx, 'plugin-1'
+                )
+
+    async def test_proactive_refresh_when_near_expiry(self) -> None:
+        # expires_at is 10 seconds from now → inside the 60s window.
+        connection = mock.MagicMock()
+        connection.status = 'active'
+        connection.access_token = 'old-access'
+        connection.refresh_token = 'refresh'
+        connection.expires_at = datetime.datetime.now(
+            datetime.UTC
+        ) + datetime.timedelta(seconds=10)
+        connection.scopes = []
+
+        refreshed = mock.MagicMock()
+        refreshed.status = 'active'
+        refreshed.access_token = 'new-access'
+        refreshed.refresh_token = 'refresh-2'
+        refreshed.expires_at = datetime.datetime.now(
+            datetime.UTC
+        ) + datetime.timedelta(hours=1)
+        refreshed.scopes = []
+
+        load = mock.AsyncMock(side_effect=[connection, refreshed])
+        materialized = mock.MagicMock(name='materialized')
+        handler = mock.MagicMock(spec=resolution.IdentityPlugin)
+        handler.materialize = mock.AsyncMock(return_value=materialized)
+        entry = mock.MagicMock()
+        entry.handler_cls = mock.MagicMock(return_value=handler)
+
+        # Patch the lazy import target inside imbi_api.identity.flows.
+        from imbi_api.identity import flows
+
+        with (
+            mock.patch.object(resolution.repository, 'load_connection', load),
+            mock.patch.object(
+                resolution,
+                '_plugin_slug',
+                new=mock.AsyncMock(return_value='oidc'),
+            ),
+            mock.patch.object(
+                resolution,
+                'load_plugin_options',
+                new=mock.AsyncMock(return_value={}),
+            ),
+            mock.patch.object(resolution, 'get_plugin', return_value=entry),
+            mock.patch.object(
+                flows,
+                'refresh_connection',
+                new=mock.AsyncMock(return_value=mock.MagicMock()),
+            ) as refresh_mock,
+        ):
+            await resolution.hydrate_identity(self.db, self.ctx, 'plugin-1')
+
+        refresh_mock.assert_awaited_once()
+        # The materialized credentials should derive from the refreshed
+        # connection (post-refresh access token), not the stale one.
+        base_credentials = handler.materialize.await_args[0][2]
+        self.assertEqual(base_credentials.access_token, 'new-access')
+
+    async def test_no_proactive_refresh_when_far_from_expiry(self) -> None:
+        connection = mock.MagicMock()
+        connection.status = 'active'
+        connection.access_token = 'access'
+        connection.refresh_token = 'refresh'
+        connection.expires_at = datetime.datetime.now(
+            datetime.UTC
+        ) + datetime.timedelta(hours=1)
+        connection.scopes = []
+
+        materialized = mock.MagicMock(name='materialized')
+        handler = mock.MagicMock(spec=resolution.IdentityPlugin)
+        handler.materialize = mock.AsyncMock(return_value=materialized)
+        entry = mock.MagicMock()
+        entry.handler_cls = mock.MagicMock(return_value=handler)
+
+        from imbi_api.identity import flows
+
+        with (
+            mock.patch.object(
+                resolution.repository,
+                'load_connection',
+                new=mock.AsyncMock(return_value=connection),
+            ),
+            mock.patch.object(
+                resolution,
+                '_plugin_slug',
+                new=mock.AsyncMock(return_value='oidc'),
+            ),
+            mock.patch.object(
+                resolution,
+                'load_plugin_options',
+                new=mock.AsyncMock(return_value={}),
+            ),
+            mock.patch.object(resolution, 'get_plugin', return_value=entry),
+            mock.patch.object(
+                flows,
+                'refresh_connection',
+                new=mock.AsyncMock(),
+            ) as refresh_mock,
+        ):
+            await resolution.hydrate_identity(self.db, self.ctx, 'plugin-1')
+
+        refresh_mock.assert_not_awaited()
+
+    async def test_proactive_refresh_failure_maps_to_identity_required(
+        self,
+    ) -> None:
+        connection = mock.MagicMock()
+        connection.status = 'active'
+        connection.refresh_token = 'refresh'
+        connection.expires_at = datetime.datetime.now(
+            datetime.UTC
+        ) - datetime.timedelta(seconds=5)
+
+        from imbi_api.identity import flows
+
+        with (
+            mock.patch.object(
+                resolution.repository,
+                'load_connection',
+                new=mock.AsyncMock(return_value=connection),
+            ),
+            mock.patch.object(
+                flows,
+                'refresh_connection',
+                new=mock.AsyncMock(
+                    side_effect=identity_errors.IdentityRefreshFailed('nope')
+                ),
             ),
         ):
             with self.assertRaises(identity_errors.IdentityRequiredError):
