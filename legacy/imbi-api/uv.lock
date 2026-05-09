@@ -987,7 +987,7 @@ requires-dist = [
   { name = "fastapi" },
   { name = "filetype" },
   { name = "httpx", specifier = ">=0.28.1,<1" },
-  { name = "imbi-common", extras = ["databases", "llm", "server"], git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=main" },
+  { name = "imbi-common", extras = ["databases", "llm", "server"], git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=feature%2Fdeployment-event-run-url" },
   { name = "jinja2" },
   { name = "jsonpatch", specifier = ">=1.33" },
   { name = "nanoid", specifier = ">=2.0.0" },
@@ -1039,8 +1039,8 @@ plugins = [
 
 [[package]]
 name = "imbi-common"
-version = "0.7.1"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=main#3e04f673c3b0c8b7f187627bfbbc9a1fcbb03b78" }
+version = "0.8.0"
+source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=feature%2Fdeployment-event-run-url#e6e780e26db9c19d3bb76d12cc8d3f12db2aec9b" }
 dependencies = [
   { name = "cryptography" },
   { name = "jsonschema-models" },

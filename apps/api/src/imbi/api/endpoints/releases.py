@@ -644,6 +644,8 @@ async def append_deployment_event(
         'pending', 'in_progress', 'success', 'failed', 'rolled_back'
     ],
     note: str | None = None,
+    external_run_id: str | None = None,
+    external_run_url: str | None = None,
 ) -> ReleaseEnvironmentEdgeResponse | None:
     """Append a ``DeploymentEvent`` to ``Release -[:DEPLOYED_TO]-> Env``.
 
@@ -664,6 +666,8 @@ async def append_deployment_event(
         timestamp=datetime.datetime.now(datetime.UTC),
         status=status,
         note=note,
+        external_run_id=external_run_id,
+        external_run_url=external_run_url,
     )
     deployments = [*existing, event]
     serialized = json.dumps(

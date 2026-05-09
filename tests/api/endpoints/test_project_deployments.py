@@ -187,6 +187,18 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
                     return_value=None,
                 )
             ),
+            'clickhouse': self._start(
+                mock.patch(
+                    f'{_MODULE}.clickhouse.client.Clickhouse.get_instance',
+                    return_value=mock.MagicMock(
+                        insert=mock.AsyncMock(return_value=None),
+                        initialize=mock.AsyncMock(return_value=True),
+                        setup_schema=mock.AsyncMock(return_value=None),
+                        aclose=mock.AsyncMock(return_value=None),
+                        close=mock.AsyncMock(return_value=None),
+                    ),
+                )
+            ),
         }
 
     def _start(self, patcher: typing.Any) -> mock.MagicMock:
@@ -287,7 +299,11 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         self.assertEqual(call.kwargs['version'], 'v6.4.0')
         self.assertEqual(call.kwargs['env_slug'], 'staging')
         self.assertEqual(call.kwargs['status'], 'in_progress')
-        self.assertIn('https://gh/runs/42', call.kwargs['note'] or '')
+        self.assertEqual(call.kwargs['external_run_id'], '42')
+        self.assertEqual(call.kwargs['external_run_url'], 'https://gh/runs/42')
+        # Note no longer encodes the run URL — that lives in the
+        # external_run_url field now.
+        self.assertNotIn('https://gh/runs/42', call.kwargs['note'] or '')
 
     def test_trigger_redeploy(self) -> None:
         with testclient.TestClient(self.test_app) as client:
@@ -461,6 +477,9 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         call = self.mocks['append_deployment_event'].call_args
         self.assertEqual(call.kwargs['version'], 'v6.4.0')
         self.assertEqual(call.kwargs['env_slug'], 'staging')
+        # Run id/url surface on the event, not in note.
+        self.assertEqual(call.kwargs['external_run_id'], '42')
+        self.assertEqual(call.kwargs['external_run_url'], 'https://gh/runs/42')
 
     def test_promote_falls_back_when_plugin_lacks_create_tag(self) -> None:
         class _NoTag(_FakeDeploymentPlugin):
@@ -627,6 +646,92 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         data = response.json()
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['from_version'], 'v1.0.0')
+
+    def test_get_run_status_returns_plugin_status(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/runs/42'
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['run_id'], '42')
+        self.assertEqual(data['status'], 'in_progress')
+
+    def test_get_run_status_400_when_plugin_unsupported(self) -> None:
+        class _NoStatus(_FakeDeploymentPlugin):
+            async def get_deployment_status(  # type: ignore[override]
+                self, ctx, credentials, run_id
+            ):
+                raise NotImplementedError
+
+        self.mocks['resolve_plugin'].return_value = ResolvedPlugin(
+            plugin_id='p-1',
+            plugin_slug='no-status',
+            entry=RegistryEntry(
+                handler_cls=_NoStatus,
+                manifest=_NoStatus.manifest,
+                package_name='x',
+                package_version='1',
+            ),
+            options={},
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/runs/abc'
+            )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            'does not report deployment status', response.json()['detail']
+        )
+
+    def test_deploy_writes_operations_log_audit(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'deploy',
+                    'environment': 'testing',
+                    'committish': 'main',
+                    'ref_label': 'main',
+                },
+            )
+        self.assertEqual(response.status_code, 202)
+        ch = self.mocks['clickhouse'].return_value
+        ch.insert.assert_awaited_once()
+        args, _kwargs = ch.insert.call_args
+        self.assertEqual(args[0], 'operations_log')
+        rows = args[1]
+        cols = args[2]
+        self.assertEqual(len(rows), 1)
+        row = dict(zip(cols, rows[0], strict=False))
+        self.assertEqual(row['entry_type'], 'Deployed')
+        self.assertEqual(row['environment_slug'], 'testing')
+        self.assertEqual(row['link'], 'https://gh/runs/42')
+        self.assertEqual(row['version'], 'main')
+
+    def test_promote_writes_operations_log_audit(self) -> None:
+        self.mocks['append_deployment_event'].return_value = mock.Mock()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'promote',
+                    'from_environment': 'testing',
+                    'to_environment': 'staging',
+                    'from_committish': '1a9c610',
+                    'tag': 'v6.4.0',
+                },
+            )
+        self.assertEqual(response.status_code, 202)
+        ch = self.mocks['clickhouse'].return_value
+        ch.insert.assert_awaited_once()
+        args, _kwargs = ch.insert.call_args
+        rows = args[1]
+        cols = args[2]
+        row = dict(zip(cols, rows[0], strict=False))
+        self.assertEqual(row['entry_type'], 'Deployed')
+        self.assertEqual(row['environment_slug'], 'staging')
+        self.assertEqual(row['version'], 'v6.4.0')
 
 
 class FallbackNotesTestCase(unittest.TestCase):

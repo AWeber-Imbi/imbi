@@ -19,7 +19,8 @@ import typing
 import fastapi
 import nanoid
 import pydantic
-from imbi_common import graph
+from imbi_common import clickhouse, graph
+from imbi_common import models as common_models
 from imbi_common.plugins.base import (
     Commit,
     CompareResult,
@@ -234,6 +235,59 @@ def _handler(resolved: ResolvedPlugin) -> DeploymentPlugin:
     return typing.cast(DeploymentPlugin, resolved.entry.handler_cls())
 
 
+async def _record_deployment_audit(
+    *,
+    project_id: str,
+    project_slug: str,
+    environment_slug: str,
+    recorded_by: str,
+    action: str,
+    version: str,
+    plugin_slug: str,
+    run_url: str | None,
+    release_url: str | None = None,
+    from_environment: str | None = None,
+) -> None:
+    """Write a deployment audit row to the ``operations_log``.
+
+    Mirrors the configuration audit pattern in
+    ``project_configuration._record_configuration_event`` so the
+    project's history pane surfaces deploys/promotes the same way
+    it surfaces config changes.  Audit failures intentionally
+    propagate so a bad write never silently desyncs the log.
+    """
+    description = json.dumps(
+        {
+            'action': action,
+            'plugin_slug': plugin_slug,
+            'run_url': run_url,
+            'release_url': release_url,
+            'from_environment': from_environment,
+        },
+        sort_keys=True,
+    )
+    entry = common_models.OperationLog(
+        id=nanoid.generate(),
+        recorded_at=datetime.datetime.now(datetime.UTC),
+        recorded_by=recorded_by,
+        performed_by=recorded_by,
+        project_id=project_id,
+        project_slug=project_slug,
+        environment_slug=environment_slug,
+        entry_type='Deployed',
+        description=description,
+        link=run_url,
+        version=version,
+    )
+    row = entry.model_dump(by_alias=True, mode='python')
+    row['is_deleted'] = 1 if entry.is_deleted else 0
+    await clickhouse.client.Clickhouse.get_instance().insert(
+        'operations_log',
+        [list(row.values())],
+        list(row.keys()),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -373,6 +427,44 @@ async def trigger_deployment(
     )
 
 
+@project_deployments_router.get('/runs/{run_id}')
+async def get_deployment_run(
+    org_slug: str,
+    project_id: str,
+    run_id: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:read'),
+        ),
+    ],
+    source: str | None = None,
+) -> DeploymentRun:
+    """Fetch live status for an in-flight deployment workflow run.
+
+    Pass-through to plugin ``get_deployment_status``.  Used by the UI's
+    TanStack Query ``refetchInterval`` hook to flip
+    ``in_progress → success / failed`` without a page reload.
+    """
+    resolved, ctx, credentials = await _resolve_and_context(
+        db, org_slug, project_id, auth, source=source
+    )
+    handler = _handler(resolved)
+    try:
+        return await call_with_timeout(
+            handler.get_deployment_status(ctx, credentials, run_id=run_id)
+        )
+    except NotImplementedError as exc:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                f'Plugin {resolved.plugin_slug!r} does not report '
+                'deployment status.'
+            ),
+        ) from exc
+
+
 async def _handle_deploy(
     db: graph.Graph,
     org_slug: str,
@@ -410,8 +502,9 @@ async def _handle_deploy(
         ctx.actor_user_id,
         run.run_id,
     )
-    note = _deploy_note(resolved.plugin_slug, run.run_url)
-    recorded = False
+    note = f'via {resolved.plugin_slug}'
+    recorded_version: str | None = None
+    edge = None
     for candidate in filter(None, (body.ref_label, body.committish)):
         edge = await append_deployment_event(
             db,
@@ -421,23 +514,28 @@ async def _handle_deploy(
             env_slug=body.environment,
             status='in_progress',
             note=note,
+            external_run_id=str(run.run_id) if run.run_id else None,
+            external_run_url=run.run_url,
         )
         if edge is not None:
-            recorded = True
+            recorded_version = candidate
             break
+    await _record_deployment_audit(
+        project_id=project_id,
+        project_slug=ctx.project_slug,
+        environment_slug=body.environment,
+        recorded_by=auth.principal_name,
+        action=body.action,
+        version=recorded_version or body.ref_label or body.committish,
+        plugin_slug=resolved.plugin_slug,
+        run_url=run.run_url,
+    )
     return DeploymentTriggerResponse(
         run=run,
         plugin_id=resolved.plugin_id,
         plugin_slug=resolved.plugin_slug,
-        recorded=recorded,
+        recorded=edge is not None,
     )
-
-
-def _deploy_note(plugin_slug: str, run_url: str | None) -> str:
-    parts = [f'via {plugin_slug}']
-    if run_url:
-        parts.append(run_url)
-    return ' — '.join(parts)
 
 
 async def _handle_promote(
@@ -528,7 +626,7 @@ async def _handle_promote(
     )
 
     # 5. Record the deployment event.
-    note = _deploy_note(resolved.plugin_slug, run.run_url)
+    note = f'via {resolved.plugin_slug}'
     edge = await append_deployment_event(
         db,
         org_slug=org_slug,
@@ -537,6 +635,8 @@ async def _handle_promote(
         env_slug=body.to_environment,
         status='in_progress',
         note=note,
+        external_run_id=str(run.run_id) if run.run_id else None,
+        external_run_url=run.run_url,
     )
 
     LOGGER.info(
@@ -549,6 +649,18 @@ async def _handle_promote(
         resolved.plugin_slug,
         ctx.actor_user_id,
         run.run_id,
+    )
+    await _record_deployment_audit(
+        project_id=project_id,
+        project_slug=ctx.project_slug,
+        environment_slug=body.to_environment,
+        recorded_by=auth.principal_name,
+        action='promote',
+        version=body.tag,
+        plugin_slug=resolved.plugin_slug,
+        run_url=run.run_url,
+        release_url=release_url,
+        from_environment=body.from_environment,
     )
     return DeploymentTriggerResponse(
         run=run,
