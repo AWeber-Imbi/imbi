@@ -32,6 +32,8 @@ from imbi_common.plugins.base import (
     PluginOption,
 )
 
+from imbi_plugin_github._hosts import normalize_host, require_ghec_tenant_host
+
 LOGGER = logging.getLogger(__name__)
 
 DEFAULT_SCOPES = ['read:user', 'user:email']
@@ -67,29 +69,6 @@ class _GitHubBase(IdentityPlugin):
     def _resolve_host(cls, options: dict[str, typing.Any]) -> str:
         """Return the hostname this plugin instance targets."""
         raise NotImplementedError
-
-    @staticmethod
-    def _normalize_host(raw: typing.Any, label: str) -> str:
-        """Validate and normalize a manifest ``host`` value.
-
-        Strips whitespace, accepts optional scheme, and rejects values
-        with paths/queries/fragments so callers can compose URLs from
-        the result without producing malformed endpoints.
-        """
-        host = str(raw or '').strip()
-        if not host:
-            raise ValueError(f'{label} requires the "host" option')
-        parsed = urllib.parse.urlsplit(
-            host if '://' in host else f'https://{host}'
-        )
-        if (
-            not parsed.hostname
-            or parsed.path not in ('', '/')
-            or parsed.query
-            or parsed.fragment
-        ):
-            raise ValueError(f'{label} got invalid host value: {host!r}')
-        return parsed.hostname
 
     def _endpoints(self, options: dict[str, typing.Any]) -> dict[str, str]:
         host = self._resolve_host(options)
@@ -385,17 +364,10 @@ class GitHubEnterpriseCloudPlugin(_GitHubBase):
 
     @classmethod
     def _resolve_host(cls, options: dict[str, typing.Any]) -> str:
-        host = cls._normalize_host(options.get('host'), 'GHEC plugin')
-        if (
-            not host.endswith('.ghe.com')
-            or host == '.ghe.com'
-            or host.startswith('api.')
-        ):
-            raise ValueError(
-                'GHEC plugin requires a tenant host like "tenant.ghe.com"; '
-                f'got {host!r}'
-            )
-        return host
+        return require_ghec_tenant_host(
+            normalize_host(options.get('host'), 'GHEC plugin'),
+            'GHEC plugin',
+        )
 
 
 class GitHubEnterpriseServerPlugin(_GitHubBase):
@@ -441,4 +413,4 @@ class GitHubEnterpriseServerPlugin(_GitHubBase):
 
     @classmethod
     def _resolve_host(cls, options: dict[str, typing.Any]) -> str:
-        return cls._normalize_host(options.get('host'), 'GHES plugin')
+        return normalize_host(options.get('host'), 'GHES plugin')
