@@ -21,6 +21,19 @@ class PluginCredentialsMissing(Exception):
     """Raised when required credentials are absent for a plugin."""
 
 
+class PluginAuthenticationFailed(Exception):
+    """Raised when a plugin's API call is rejected by the upstream IdP
+    or service for an authentication-related reason (HTTP 401, an AWS
+    ``ExpiredToken`` JSON-1.1 error, etc.).
+
+    Distinct from :class:`PluginCredentialsMissing` (which signals a
+    config-time absence) and :class:`PluginUnavailableError` (which
+    signals an upstream outage): this error tells the host's retry
+    layer that refreshing the actor's :class:`IdentityConnection` and
+    retrying the call once is a reasonable next step.
+    """
+
+
 class PluginSchemaCollisionError(Exception):
     """Raised when a plugin declares a vlabel that collides with another
     plugin or with core's static schemata.

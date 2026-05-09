@@ -2,6 +2,7 @@ import unittest
 
 from imbi_common.plugins.errors import (
     CursorExpiredError,
+    PluginAuthenticationFailed,
     PluginCredentialsMissing,
     PluginNotFoundError,
     PluginTimeoutError,
@@ -44,3 +45,10 @@ class ErrorsTestCase(unittest.TestCase):
     def test_plugin_credentials_missing_can_be_raised(self) -> None:
         with self.assertRaises(PluginCredentialsMissing):
             raise PluginCredentialsMissing('api_key')
+
+    def test_plugin_authentication_failed_is_exception(self) -> None:
+        self.assertTrue(issubclass(PluginAuthenticationFailed, Exception))
+
+    def test_plugin_authentication_failed_can_be_raised(self) -> None:
+        with self.assertRaises(PluginAuthenticationFailed):
+            raise PluginAuthenticationFailed('401 from upstream')
