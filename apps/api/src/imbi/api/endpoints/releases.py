@@ -8,6 +8,7 @@ deployed to via a ``DEPLOYED_TO`` edge carrying an append-only
 
 """
 
+import asyncio
 import datetime
 import json
 import logging
@@ -17,9 +18,11 @@ import fastapi
 import nanoid
 import pydantic
 from imbi_common import graph, models
+from imbi_common.plugins.base import CheckStatus
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
+from imbi_api.plugins import call_with_timeout
 
 LOGGER = logging.getLogger(__name__)
 
@@ -115,12 +118,20 @@ class CurrentReleaseEnvironment(pydantic.BaseModel):
     ``release`` and ``current_status`` are ``None`` when the project is
     configured to deploy in the environment but has no recorded
     deployment events there yet.
+
+    ``external_run_url`` and ``ci_status`` are populated by the
+    deployment-plugin hydration pass: the former is the workflow run
+    URL of the latest event (when present), the latter the aggregate
+    check-runs status of the deployed version (``None`` when the
+    plugin can't or won't report it).
     """
 
     environment: ReleaseEnvironmentRef
     release: ReleaseResponse | None = None
     current_status: _DEPLOYMENT_STATUS | None = None
     last_event_at: datetime.datetime | None = None
+    external_run_url: str | None = None
+    ci_status: CheckStatus | None = None
 
 
 # -- Helpers ------------------------------------------------------------
@@ -235,6 +246,150 @@ async def _fetch_release(
     return typing.cast(
         dict[str, typing.Any], graph.parse_agtype(rows[0]['release'])
     )
+
+
+_RUN_STATUS_TO_EVENT_STATUS: dict[str, _DEPLOYMENT_STATUS] = {
+    'queued': 'pending',
+    'in_progress': 'in_progress',
+    'success': 'success',
+    'failure': 'failed',
+    # The DeploymentEvent literal has no 'cancelled' bucket; treat
+    # it as a failed terminal so the train stops showing "deploying…".
+    'cancelled': 'failed',
+}
+
+
+async def _hydrate_release_train(
+    db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+    auth: permissions.AuthContext,
+    by_env: dict[
+        str,
+        tuple[
+            dict[str, typing.Any],
+            dict[str, typing.Any] | None,
+            models.DeploymentEvent | None,
+        ],
+    ],
+) -> dict[str, CheckStatus | None]:
+    """Hydrate live deploy run + CI check-runs status per env.
+
+    Mutates ``by_env`` in place: when the plugin reports a terminal
+    status for an in-flight workflow run we update the in-memory event
+    so the response reflects the live state, and we append a fresh
+    ``DeploymentEvent`` to the edge so the system self-heals on
+    subsequent reads.  Returns a slug → ``CheckStatus`` map that the
+    caller folds into the response.
+
+    Failures are tolerated silently — the release train must keep
+    rendering even if the plugin can't be resolved or its calls hiccup.
+    """
+    in_flight: list[tuple[str, str, models.DeploymentEvent]] = []
+    deployed: list[tuple[str, str]] = []
+    for slug, (_env, release_raw, event) in by_env.items():
+        if release_raw is None:
+            continue
+        version = str(release_raw.get('version') or '')
+        if not version:
+            continue
+        deployed.append((slug, version))
+        if (
+            event is not None
+            and event.status == 'in_progress'
+            and event.external_run_id
+        ):
+            in_flight.append((slug, version, event))
+
+    if not in_flight and not deployed:
+        return {}
+
+    # Lazy import to avoid a circular dependency: project_deployments
+    # already imports ``append_deployment_event`` from this module.
+    from imbi_api.endpoints.project_deployments import (
+        _handler,  # pyright: ignore[reportPrivateUsage]
+        _resolve_and_context,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    try:
+        resolved, ctx, credentials = await _resolve_and_context(
+            db, org_slug, project_id, auth
+        )
+    except fastapi.HTTPException:
+        return {}
+    except Exception:  # noqa: BLE001
+        LOGGER.debug(
+            'release-train hydration: plugin resolution failed',
+            exc_info=True,
+        )
+        return {}
+    handler = _handler(resolved)
+
+    run_results = await asyncio.gather(
+        *(
+            call_with_timeout(
+                handler.get_deployment_status(
+                    ctx, credentials, run_id=str(event.external_run_id)
+                )
+            )
+            for _, _, event in in_flight
+        ),
+        return_exceptions=True,
+    )
+    ci_results = await asyncio.gather(
+        *(
+            call_with_timeout(
+                handler.get_check_status(ctx, credentials, committish=version)
+            )
+            for _, version in deployed
+        ),
+        return_exceptions=True,
+    )
+
+    for (slug, version, event), result in zip(
+        in_flight, run_results, strict=True
+    ):
+        if isinstance(result, BaseException):
+            continue
+        new_status = _RUN_STATUS_TO_EVENT_STATUS.get(result.status)
+        if new_status is None or new_status == event.status:
+            continue
+        new_event = event.model_copy(
+            update={
+                'status': new_status,
+                'timestamp': datetime.datetime.now(datetime.UTC),
+            }
+        )
+        env, release_raw, _ = by_env[slug]
+        by_env[slug] = (env, release_raw, new_event)
+        if new_status in ('success', 'failed'):
+            try:
+                await append_deployment_event(
+                    db,
+                    org_slug=org_slug,
+                    project_id=project_id,
+                    version=version,
+                    env_slug=slug,
+                    status=new_status,
+                    note='via release-train hydration',
+                    external_run_id=event.external_run_id,
+                    external_run_url=event.external_run_url,
+                )
+            except Exception:
+                LOGGER.exception(
+                    'release-train hydration: failed to persist '
+                    'terminal event for %s/%s',
+                    project_id,
+                    slug,
+                )
+
+    ci_status_by_slug: dict[str, CheckStatus | None] = {}
+    for (slug, _version), ci_result in zip(deployed, ci_results, strict=True):
+        if isinstance(ci_result, BaseException) or ci_result == 'unknown':
+            ci_status_by_slug[slug] = None
+        else:
+            ci_status_by_slug[slug] = ci_result
+    return ci_status_by_slug
 
 
 # -- Endpoints ----------------------------------------------------------
@@ -384,8 +539,12 @@ async def list_current_releases(
     Environments with no deployment events are returned with
     ``release=None``. Results are sorted by ``Environment.sort_order``
     ascending, then by name.
+
+    The deployment plugin (when bound) is consulted for live workflow
+    run status on any in-flight ``DeploymentEvent`` and aggregate CI
+    check-runs status on each env's currently-deployed version.
+    Hydration failures are tolerated silently.
     """
-    del auth
     if not await _project_exists(db, org_slug, project_id):
         raise fastapi.HTTPException(
             status_code=404,
@@ -442,6 +601,10 @@ async def list_current_releases(
         ):
             by_env[slug] = (env, release_raw, latest)
 
+    ci_status_by_slug = await _hydrate_release_train(
+        db, org_slug, project_id, auth, by_env
+    )
+
     sortable: list[tuple[int, str, CurrentReleaseEnvironment]] = []
     for env, release_raw, event in by_env.values():
         release_resp = (
@@ -456,6 +619,8 @@ async def list_current_releases(
             release=release_resp,
             current_status=event.status if event else None,
             last_event_at=event.timestamp if event else None,
+            external_run_url=event.external_run_url if event else None,
+            ci_status=ci_status_by_slug.get(env['slug']),
         )
         sortable.append((env.get('sort_order') or 0, env['name'], item))
 

@@ -68,8 +68,8 @@ class _ReleasesTestBase(unittest.TestCase):
         )
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
         self.client = fastapi.testclient.TestClient(self.test_app)
         self.addCleanup(self.client.close)
@@ -763,3 +763,210 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
         by_slug = {row['environment']['slug']: row for row in data}
         self.assertIsNone(by_slug['testing']['release'])
         self.assertEqual(by_slug['production']['release']['version'], '1.0.0')
+
+
+class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
+    """GET /releases/current — deployment-plugin hydration pass.
+
+    Exercises the optional ``_hydrate_release_train`` step that asks the
+    project's bound deployment plugin for live workflow run status (for
+    in-flight events with an ``external_run_id``) and aggregate CI
+    check-runs status (for each env's currently-deployed version).
+    """
+
+    @staticmethod
+    def _env(slug: str, sort_order: int = 0) -> dict[str, typing.Any]:
+        return {
+            'slug': slug,
+            'name': slug.title(),
+            'sort_order': sort_order,
+        }
+
+    @staticmethod
+    def _events_with_run(
+        ts: str,
+        status: str,
+        run_id: str | None = None,
+        run_url: str | None = None,
+    ) -> str:
+        entry: dict[str, typing.Any] = {
+            'timestamp': ts,
+            'status': status,
+            'note': None,
+        }
+        if run_id is not None:
+            entry['external_run_id'] = run_id
+        if run_url is not None:
+            entry['external_run_url'] = run_url
+        return json.dumps([entry])
+
+    def _patch_plugin_resolution(
+        self,
+        *,
+        get_deployment_status: mock.AsyncMock | None = None,
+        get_check_status: mock.AsyncMock | None = None,
+    ) -> tuple[mock.AsyncMock, mock.AsyncMock]:
+        """Return (run_mock, ci_mock) bound to a stub plugin handler."""
+        run_mock = get_deployment_status or mock.AsyncMock(
+            return_value=mock.MagicMock(
+                status='in_progress',
+                run_id='42',
+                run_url=None,
+            )
+        )
+        ci_mock = get_check_status or mock.AsyncMock(return_value='unknown')
+
+        class _Handler:
+            get_deployment_status = run_mock
+            get_check_status = ci_mock
+
+        resolved = mock.MagicMock()
+        resolved.entry.handler_cls = lambda: _Handler()
+        resolved.options = {}
+
+        async def _resolve_and_context(
+            db: typing.Any, org_slug: str, project_id: str, auth: typing.Any
+        ) -> tuple[typing.Any, typing.Any, dict[str, str]]:
+            del db, org_slug, project_id, auth
+            return resolved, mock.MagicMock(), {'access_token': 'x'}
+
+        self._patcher = mock.patch(
+            'imbi_api.endpoints.project_deployments._resolve_and_context',
+            new=_resolve_and_context,
+        )
+        self._patcher.start()
+        self.addCleanup(self._patcher.stop)
+        return run_mock, ci_mock
+
+    def test_hydration_skipped_when_no_plugin_bound(self) -> None:
+        # Three db.execute calls: project_exists, deployments query,
+        # then the plugin-resolution query (returns no rows → 404 →
+        # hydration skipped).  No fields populated by hydration.
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'env': self._env('production', sort_order=30),
+                    'release': _release_row(version='1.0.0', id='r1'),
+                    'deployments': self._events_with_run(
+                        '2026-04-20T10:00:00+00:00', 'success'
+                    ),
+                },
+            ],
+            [],  # resolve_plugin → no plugin → HTTPException(404)
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200)
+        body = response.json()[0]
+        self.assertIsNone(body['ci_status'])
+        self.assertIsNone(body['external_run_url'])
+
+    def test_in_flight_run_promoted_to_terminal(self) -> None:
+        run_mock = mock.AsyncMock(
+            return_value=mock.MagicMock(
+                status='success',
+                run_id='42',
+                run_url='https://gh/runs/42',
+            )
+        )
+        ci_mock = mock.AsyncMock(return_value='pass')
+        self._patch_plugin_resolution(
+            get_deployment_status=run_mock,
+            get_check_status=ci_mock,
+        )
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'env': self._env('production', sort_order=30),
+                    'release': _release_row(version='1.0.0', id='r1'),
+                    'deployments': self._events_with_run(
+                        '2026-04-20T10:00:00+00:00',
+                        'in_progress',
+                        run_id='42',
+                        run_url='https://gh/runs/42',
+                    ),
+                },
+            ],
+            # The persistence path does additional db.execute calls
+            # (re-fetch release, edge MATCH, SET).  Provide enough
+            # truthy results so append_deployment_event can land.
+            [{'release': _release_row(version='1.0.0', id='r1')}],
+            [{'env': self._env('production'), 'deployments': None}],
+            [{'deployments': '[]'}],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200)
+        body = response.json()[0]
+        self.assertEqual(body['current_status'], 'success')
+        self.assertEqual(body['ci_status'], 'pass')
+        self.assertEqual(body['external_run_url'], 'https://gh/runs/42')
+        run_mock.assert_awaited_once()
+        ci_mock.assert_awaited_once()
+
+    def test_unknown_ci_status_returns_null(self) -> None:
+        self._patch_plugin_resolution(
+            get_check_status=mock.AsyncMock(return_value='unknown'),
+        )
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'env': self._env('production', sort_order=30),
+                    'release': _release_row(version='1.0.0', id='r1'),
+                    'deployments': self._events_with_run(
+                        '2026-04-20T10:00:00+00:00', 'success'
+                    ),
+                },
+            ],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200)
+        body = response.json()[0]
+        self.assertIsNone(body['ci_status'])
+
+    def test_plugin_call_failure_does_not_break_response(self) -> None:
+        run_mock = mock.AsyncMock(
+            side_effect=RuntimeError('plugin boom'),
+        )
+        ci_mock = mock.AsyncMock(side_effect=RuntimeError('ci boom'))
+        self._patch_plugin_resolution(
+            get_deployment_status=run_mock,
+            get_check_status=ci_mock,
+        )
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'env': self._env('production', sort_order=30),
+                    'release': _release_row(version='1.0.0', id='r1'),
+                    'deployments': self._events_with_run(
+                        '2026-04-20T10:00:00+00:00',
+                        'in_progress',
+                        run_id='42',
+                    ),
+                },
+            ],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200)
+        body = response.json()[0]
+        # Status untouched (still in_progress); ci_status null.
+        self.assertEqual(body['current_status'], 'in_progress')
+        self.assertIsNone(body['ci_status'])
