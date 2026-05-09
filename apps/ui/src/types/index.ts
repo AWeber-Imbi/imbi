@@ -317,8 +317,10 @@ export interface ConfigKeyValueResponse extends ConfigKeyResponse {
 }
 
 export interface CurrentReleaseEnvironment {
+  ci_status: DeploymentCommitCiStatus | null
   current_status: DeploymentStatus | null
   environment: { name: string; slug: string }
+  external_run_url: null | string
   last_event_at: null | string
   release: null | Release
 }

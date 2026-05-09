@@ -5,14 +5,17 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import {
+  AlertCircle,
   ArrowRight,
   Check,
+  CheckCircle2,
   ChevronDown,
   Filter,
   GitMerge,
   Rocket,
   Settings2 as SettingsIcon,
   TrendingDown,
+  XCircle,
 } from 'lucide-react'
 
 import {
@@ -137,15 +140,33 @@ export function ProjectDetail({
 
   const deploymentStatus: Record<
     string,
-    { status: string; updated: string; version: string }
+    {
+      ciStatus: 'fail' | 'pass' | 'warn' | null
+      runUrl: null | string
+      status: string
+      updated: string
+      version: string
+    }
   > = useMemo(() => {
     const out: Record<
       string,
-      { status: string; updated: string; version: string }
+      {
+        ciStatus: 'fail' | 'pass' | 'warn' | null
+        runUrl: null | string
+        status: string
+        updated: string
+        version: string
+      }
     > = {}
     for (const row of currentReleases) {
       if (!row.release || !row.last_event_at) continue
+      // ``ci_status === 'unknown'`` is the API's null-equivalent;
+      // collapse it so we don't render a useless gray dot.
+      const ci =
+        row.ci_status && row.ci_status !== 'unknown' ? row.ci_status : null
       out[row.environment.slug] = {
+        ciStatus: ci,
+        runUrl: row.external_run_url,
         status: row.current_status ?? '',
         updated: formatDistanceToNow(new Date(row.last_event_at), {
           addSuffix: true,
@@ -451,6 +472,10 @@ export function ProjectDetail({
                 .map((env, idx) => {
                   const deployment = deploymentStatus[env.slug]
                   const color = env.label_color
+                  const ciDot = renderCiDot(deployment.ciStatus)
+                  const title = deployment.runUrl
+                    ? `${env.name}: ${deployment.version} · ${deployment.updated} · run: ${deployment.runUrl}`
+                    : `${env.name}: ${deployment.version} · ${deployment.updated}`
                   return (
                     <span className="contents" key={env.slug}>
                       {idx > 0 && (
@@ -460,6 +485,7 @@ export function ProjectDetail({
                         aria-label={`Deploy to ${env.name}`}
                         className="cursor-pointer rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         onClick={() => openDeploy(env.slug)}
+                        title={title}
                         type="button"
                       >
                         {color ? (
@@ -467,11 +493,15 @@ export function ProjectDetail({
                             className="rounded-md px-3 py-1.5 text-sm"
                             hex={color}
                           >
-                            {env.name}: {deployment.version}
+                            <span className="inline-flex items-center gap-1.5">
+                              {env.name}: {deployment.version}
+                              {ciDot}
+                            </span>
                           </LabelChip>
                         ) : (
-                          <span className="inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium">
+                          <span className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium">
                             {env.name}: {deployment.version}
+                            {ciDot}
                           </span>
                         )}
                       </button>
@@ -880,6 +910,16 @@ function PlaceholderTab({ name }: { name: string }) {
       </CardContent>
     </Card>
   )
+}
+
+function renderCiDot(status: 'fail' | 'pass' | 'warn' | null): React.ReactNode {
+  if (status === 'pass')
+    return <CheckCircle2 aria-label="CI passing" className="h-3.5 w-3.5" />
+  if (status === 'fail')
+    return <XCircle aria-label="CI failing" className="h-3.5 w-3.5" />
+  if (status === 'warn')
+    return <AlertCircle aria-label="CI warning" className="h-3.5 w-3.5" />
+  return null
 }
 
 function ScoreBreakdownDetail({
