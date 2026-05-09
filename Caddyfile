@@ -12,12 +12,24 @@
 		reverse_proxy 127.0.0.1:8002
 	}
 
+	handle_path /docs/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
 	handle_path /gateway/* {
 		reverse_proxy 127.0.0.1:8003
 	}
 
 	handle_path /mcp/* {
 		reverse_proxy 127.0.0.1:8001
+	}
+
+	handle_path /openapi.json {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle_path /uploads/* {
+		reverse_proxy 127.0.0.1:8000
 	}
 
 	handle {

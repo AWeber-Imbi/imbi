@@ -1,9 +1,6 @@
 [submodule "imbi-api"]
 	path = imbi-api
 	url = git@github.com:AWeber-Imbi/imbi-api.git
-[submodule "imbi-common"]
-	path = imbi-common
-	url = git@github.com:AWeber-Imbi/imbi-common.git
 [submodule "imbi-gateway"]
 	path = imbi-gateway
 	url = git@github.com:AWeber-Imbi/imbi-gateway.git
