@@ -19,11 +19,19 @@ import type {
   ConfigKeyResponse,
   ConfigKeyValueResponse,
   CurrentReleaseEnvironment,
+  DeploymentCommit,
+  DeploymentCompareResult,
+  DeploymentPromoteRequest,
+  DeploymentRef,
+  DeploymentTriggerRequest,
+  DeploymentTriggerResponse,
   Document,
   DocumentCreate,
   DocumentListResponse,
   DocumentTemplate,
   DocumentTemplateCreate,
+  DraftReleaseNotesRequest,
+  DraftReleaseNotesResponse,
   Environment,
   EnvironmentCreate,
   IdentityConnectionPollResponse,
@@ -63,6 +71,7 @@ import type {
   ProjectRelationshipsResponse,
   ProjectType,
   ProjectTypeCreate,
+  PromotionOption,
   Role,
   RoleCreate,
   RoleDetail,
@@ -1345,6 +1354,138 @@ export const listCurrentReleases = async (
 ): Promise<CurrentReleaseEnvironment[]> => {
   const response = await apiClient.get<CurrentReleaseEnvironment[]>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/releases/current`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+// Deployments
+const deploymentsBase = (orgSlug: string, projectId: string): string =>
+  `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/deployments`
+
+export const listDeploymentRefs = async (
+  orgSlug: string,
+  projectId: string,
+  params: {
+    kind?: 'all' | 'branch' | 'default' | 'tag'
+    q?: string
+    source?: string
+  } = {},
+  signal?: AbortSignal,
+): Promise<DeploymentRef[]> => {
+  const search = new URLSearchParams()
+  if (params.kind) search.set('kind', params.kind)
+  if (params.q) search.set('q', params.q)
+  if (params.source) search.set('source', params.source)
+  const query = search.toString()
+  const response = await apiClient.get<DeploymentRef[]>(
+    `${deploymentsBase(orgSlug, projectId)}/refs${query ? `?${query}` : ''}`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const listRefCommits = async (
+  orgSlug: string,
+  projectId: string,
+  ref: string,
+  params: { limit?: number; source?: string } = {},
+  signal?: AbortSignal,
+): Promise<DeploymentCommit[]> => {
+  const search = new URLSearchParams()
+  if (params.limit != null) search.set('limit', String(params.limit))
+  if (params.source) search.set('source', params.source)
+  const query = search.toString()
+  const response = await apiClient.get<DeploymentCommit[]>(
+    `${deploymentsBase(orgSlug, projectId)}/refs/${encodeURIComponent(ref)}/commits${query ? `?${query}` : ''}`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const resolveCommit = (
+  orgSlug: string,
+  projectId: string,
+  committish: string,
+  source?: string,
+  signal?: AbortSignal,
+): Promise<DeploymentCommit> => {
+  const search = source ? `?source=${encodeURIComponent(source)}` : ''
+  return apiClient.get<DeploymentCommit>(
+    `${deploymentsBase(orgSlug, projectId)}/commits/${encodeURIComponent(committish)}${search}`,
+    undefined,
+    signal,
+  )
+}
+
+export const compareDeploymentRefs = (
+  orgSlug: string,
+  projectId: string,
+  base: string,
+  head: string,
+  source?: string,
+  signal?: AbortSignal,
+): Promise<DeploymentCompareResult> => {
+  const search = new URLSearchParams({ base, head })
+  if (source) search.set('source', source)
+  return apiClient.get<DeploymentCompareResult>(
+    `${deploymentsBase(orgSlug, projectId)}/compare?${search.toString()}`,
+    undefined,
+    signal,
+  )
+}
+
+export const triggerDeployment = (
+  orgSlug: string,
+  projectId: string,
+  body: DeploymentTriggerRequest,
+  source?: string,
+): Promise<DeploymentTriggerResponse> => {
+  const search = source ? `?source=${encodeURIComponent(source)}` : ''
+  return apiClient.post<DeploymentTriggerResponse>(
+    `${deploymentsBase(orgSlug, projectId)}${search}`,
+    body,
+  )
+}
+
+export const promoteDeployment = (
+  orgSlug: string,
+  projectId: string,
+  body: DeploymentPromoteRequest,
+  source?: string,
+): Promise<DeploymentTriggerResponse> => {
+  const search = source ? `?source=${encodeURIComponent(source)}` : ''
+  return apiClient.post<DeploymentTriggerResponse>(
+    `${deploymentsBase(orgSlug, projectId)}${search}`,
+    body,
+  )
+}
+
+export const draftReleaseNotes = (
+  orgSlug: string,
+  projectId: string,
+  body: DraftReleaseNotesRequest,
+  source?: string,
+): Promise<DraftReleaseNotesResponse> => {
+  const search = source ? `?source=${encodeURIComponent(source)}` : ''
+  return apiClient.post<DraftReleaseNotesResponse>(
+    `${deploymentsBase(orgSlug, projectId)}/draft-release-notes${search}`,
+    body,
+  )
+}
+
+export const listPromotionOptions = async (
+  orgSlug: string,
+  projectId: string,
+  source?: string,
+  signal?: AbortSignal,
+): Promise<PromotionOption[]> => {
+  const search = source ? `?source=${encodeURIComponent(source)}` : ''
+  const response = await apiClient.get<PromotionOption[]>(
+    `${deploymentsBase(orgSlug, projectId)}/promotion-options${search}`,
     undefined,
     signal,
   )

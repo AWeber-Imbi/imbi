@@ -9,6 +9,7 @@ import {
   Check,
   ChevronDown,
   Filter,
+  GitMerge,
   Rocket,
   Settings2 as SettingsIcon,
   TrendingDown,
@@ -28,6 +29,11 @@ import {
   listTeams,
   type ScoreTrend,
 } from '@/api/endpoints'
+import {
+  DeploymentModal,
+  type DeployModalTab,
+} from '@/components/deploy/DeploymentModal'
+import { PromoteDialog } from '@/components/deploy/PromoteDialog'
 import { ProjectDocumentsTab } from '@/components/documents/ProjectDocumentsTab'
 import { OperationsLog } from '@/components/OperationsLog'
 import { ConfigurationTab } from '@/components/project/ConfigurationTab'
@@ -148,8 +154,6 @@ export function ProjectDetail({
     return out
   }, [currentReleases])
 
-  const isDev = import.meta.env.DEV
-
   const sortedEnvironments = useMemo(
     () => sortEnvironments(project.environments || []),
     [project.environments],
@@ -186,6 +190,32 @@ export function ProjectDetail({
   // Capture the score present at page load so intra-session changes are visible
   // even when the 30d baseline equals the current live score.
   const sessionBaseScore = useRef<null | number>(project.score ?? null)
+
+  const [deployModal, setDeployModal] = useState<{
+    envSlug?: string
+    open: boolean
+    promoteFrom?: string
+    promoteFromCommittish?: string
+    promoteTo?: string
+    tab: DeployModalTab
+  }>({ open: false, tab: 'deploy' })
+  const openDeploy = useCallback(
+    (envSlug?: string) =>
+      setDeployModal({ envSlug, open: true, tab: 'deploy' }),
+    [],
+  )
+  const openPromote = useCallback(
+    (promoteFrom: string, promoteTo: string, promoteFromCommittish?: string) =>
+      setDeployModal({
+        open: true,
+        promoteFrom,
+        promoteFromCommittish,
+        promoteTo,
+        tab: 'promote',
+      }),
+    [],
+  )
+  const [promotePopoverOpen, setPromotePopoverOpen] = useState(false)
 
   const { data: projectSchema } = useQuery({
     enabled: !!orgSlug,
@@ -374,10 +404,12 @@ export function ProjectDetail({
             </div>
           </div>
 
-          {/* Deployment Pipeline */}
-          {Object.keys(deploymentStatus).length > 0 && (
-            <div className="flex items-center gap-2">
-              {sortedEnvironments
+          {/* Deployment Pipeline — chips render only when there's
+               release history; the Deploy/Promote controls render
+               unconditionally so first-time deployments are reachable. */}
+          <div className="flex items-center gap-2">
+            {Object.keys(deploymentStatus).length > 0 &&
+              sortedEnvironments
                 .filter((env) => !!deploymentStatus[env.slug])
                 .map((env, idx) => {
                   const deployment = deploymentStatus[env.slug]
@@ -387,33 +419,57 @@ export function ProjectDetail({
                       {idx > 0 && (
                         <ArrowRight className="h-4 w-4 text-tertiary" />
                       )}
-                      {color ? (
-                        <LabelChip
-                          className="rounded-md px-3 py-1.5 text-sm"
-                          hex={color}
-                        >
-                          {env.name}: {deployment.version}
-                        </LabelChip>
-                      ) : (
-                        <span className="inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium">
-                          {env.name}: {deployment.version}
-                        </span>
-                      )}
+                      <button
+                        aria-label={`Deploy to ${env.name}`}
+                        className="cursor-pointer rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={() => openDeploy(env.slug)}
+                        type="button"
+                      >
+                        {color ? (
+                          <LabelChip
+                            className="rounded-md px-3 py-1.5 text-sm"
+                            hex={color}
+                          >
+                            {env.name}: {deployment.version}
+                          </LabelChip>
+                        ) : (
+                          <span className="inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium">
+                            {env.name}: {deployment.version}
+                          </span>
+                        )}
+                      </button>
                     </span>
                   )
                 })}
-              {isDev && (
-                <Button
-                  className="ml-4 border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100"
-                  size="sm"
-                  variant="outline"
-                >
-                  <Rocket className="mr-1 h-4 w-4" />
-                  Deploy
-                </Button>
-              )}
-            </div>
-          )}
+            <Button
+              className="ml-4 border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100"
+              onClick={() => openDeploy()}
+              size="sm"
+              variant="outline"
+            >
+              <Rocket className="mr-1 h-4 w-4" />
+              Deploy
+            </Button>
+            <PromoteDialog
+              onOpenChange={setPromotePopoverOpen}
+              onPromote={(opt) => {
+                setPromotePopoverOpen(false)
+                openPromote(
+                  opt.from_environment,
+                  opt.to_environment,
+                  opt.from_sha ?? opt.from_version ?? undefined,
+                )
+              }}
+              open={promotePopoverOpen}
+              orgSlug={orgSlug}
+              projectId={project.id}
+            >
+              <Button size="sm" variant="outline">
+                <GitMerge className="mr-1 h-4 w-4" />
+                Promote
+              </Button>
+            </PromoteDialog>
+          </div>
         </div>
 
         <div className="-ml-[18px] mt-3 text-secondary">
@@ -704,6 +760,19 @@ export function ProjectDetail({
           <ProjectSettingsTab project={project} />
         </TabsContent>
       </Tabs>
+      <DeploymentModal
+        environments={sortedEnvironments}
+        initialEnvSlug={deployModal.envSlug}
+        initialTab={deployModal.tab}
+        onOpenChange={(open) => setDeployModal((prev) => ({ ...prev, open }))}
+        open={deployModal.open}
+        orgSlug={orgSlug}
+        projectId={project.id}
+        projectName={project.name}
+        promoteFrom={deployModal.promoteFrom}
+        promoteFromCommittish={deployModal.promoteFromCommittish}
+        promoteTo={deployModal.promoteTo}
+      />
     </div>
   )
 }
