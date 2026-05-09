@@ -125,6 +125,48 @@ export function DeployTab({
     [isFirstEnv, refs],
   )
 
+  // Phase 1.5 picker: on Testing the user can swap from the flat
+  // default-branch commit list into a "Branches" pane that lists every
+  // branch (filterable) and pulls commits for the chosen one on demand.
+  const [pickerMode, setPickerMode] = useState<'branches' | 'default'>(
+    'default',
+  )
+  const [branchQuery, setBranchQuery] = useState('')
+  const [activeBranch, setActiveBranch] = useState<null | string>(null)
+  useEffect(() => {
+    setPickerMode('default')
+    setActiveBranch(null)
+    setBranchQuery('')
+  }, [envSlug])
+
+  const showBranchPane = isFirstEnv && pickerMode === 'branches'
+  const { data: branchRefs = [], isLoading: branchesLoading } = useQuery<
+    DeploymentRef[]
+  >({
+    enabled: open && showBranchPane,
+    queryFn: ({ signal }) =>
+      listDeploymentRefs(orgSlug, projectId, { kind: 'branch' }, signal),
+    queryKey: ['deploymentRefs', orgSlug, projectId, 'branch'],
+  })
+  const filteredBranches = useMemo(() => {
+    const q = branchQuery.trim().toLowerCase()
+    if (!q) return branchRefs
+    return branchRefs.filter((b) => b.name.toLowerCase().includes(q))
+  }, [branchRefs, branchQuery])
+  const { data: activeBranchCommits = [], isLoading: activeBranchLoading } =
+    useQuery<DeploymentCommit[]>({
+      enabled: open && showBranchPane && !!activeBranch,
+      queryFn: ({ signal }) =>
+        listRefCommits(
+          orgSlug,
+          projectId,
+          activeBranch ?? '',
+          { limit: 25 },
+          signal,
+        ),
+      queryKey: ['refCommits', orgSlug, projectId, activeBranch],
+    })
+
   const [selected, setSelected] = useState<null | SelectedVersion>(null)
   useEffect(() => {
     setSelected(null)
@@ -260,10 +302,56 @@ export function DeployTab({
 
       {/* Step 2 — version picker */}
       <section className="min-h-[180px]">
-        <p className="mb-2 text-xs uppercase tracking-wider text-tertiary">
-          {`Step 2 — ${isFirstEnv ? `Commit on ${defaultBranchName}` : 'Tag'}`}
-        </p>
-        {isFirstEnv ? (
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-xs uppercase tracking-wider text-tertiary">
+            {isFirstEnv
+              ? showBranchPane
+                ? activeBranch
+                  ? `Step 2 — Commit on ${activeBranch}`
+                  : 'Step 2 — Pick a branch'
+                : `Step 2 — Commit on ${defaultBranchName}`
+              : 'Step 2 — Tag'}
+          </p>
+          {isFirstEnv ? (
+            <PickerToggle
+              defaultLabel={defaultBranchName}
+              mode={pickerMode}
+              onChange={(m) => {
+                setPickerMode(m)
+                setSelected(null)
+                if (m === 'default') setActiveBranch(null)
+              }}
+            />
+          ) : null}
+        </div>
+        {!isFirstEnv ? (
+          <TagList
+            current={current?.release?.version ?? null}
+            onSelect={(r) => setSelected({ label: r.name, sha: r.sha })}
+            selectedSha={selected?.sha ?? null}
+            tags={tagOptions}
+          />
+        ) : showBranchPane ? (
+          <BranchPicker
+            activeBranch={activeBranch}
+            branches={filteredBranches}
+            branchesLoading={branchesLoading}
+            commits={activeBranchCommits}
+            commitsLoading={activeBranchLoading}
+            current={current?.release?.version ?? null}
+            onBranchSelect={(name) => {
+              setActiveBranch(name)
+              setSelected(null)
+            }}
+            onCommitSelect={(c) => {
+              if (!activeBranch) return
+              setSelected({ label: activeBranch, sha: c.sha })
+            }}
+            onQueryChange={setBranchQuery}
+            query={branchQuery}
+            selectedSha={selected?.sha ?? null}
+          />
+        ) : (
           <CommitList
             commits={branchCommits}
             current={current?.release?.version ?? null}
@@ -272,13 +360,6 @@ export function DeployTab({
               setSelected({ label: defaultBranchName, sha: c.sha })
             }
             selectedSha={selected?.sha ?? null}
-          />
-        ) : (
-          <TagList
-            current={current?.release?.version ?? null}
-            onSelect={(r) => setSelected({ label: r.name, sha: r.sha })}
-            selectedSha={selected?.sha ?? null}
-            tags={tagOptions}
           />
         )}
       </section>
@@ -312,6 +393,96 @@ export function DeployTab({
             selected?.label ?? selected?.sha.slice(0, 7) ?? ''
           } to ${env?.name ?? envSlug}`}
         </Button>
+      </div>
+    </div>
+  )
+}
+
+function BranchPicker({
+  activeBranch,
+  branches,
+  branchesLoading,
+  commits,
+  commitsLoading,
+  current,
+  onBranchSelect,
+  onCommitSelect,
+  onQueryChange,
+  query,
+  selectedSha,
+}: {
+  activeBranch: null | string
+  branches: DeploymentRef[]
+  branchesLoading: boolean
+  commits: DeploymentCommit[]
+  commitsLoading: boolean
+  current: null | string
+  onBranchSelect: (name: string) => void
+  onCommitSelect: (commit: DeploymentCommit) => void
+  onQueryChange: (q: string) => void
+  query: string
+  selectedSha: null | string
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <div className="flex flex-col gap-2">
+        <input
+          aria-label="Filter branches"
+          className="rounded-md border border-secondary bg-transparent px-2 py-1 text-sm placeholder:text-tertiary focus:border-action focus:outline-none"
+          onChange={(e) => onQueryChange(e.target.value)}
+          placeholder="Filter branches…"
+          type="text"
+          value={query}
+        />
+        {branchesLoading ? (
+          <LoadingState label="Loading branches…" />
+        ) : branches.length === 0 ? (
+          <p className="rounded-md border border-secondary p-3 text-sm text-tertiary">
+            No branches.
+          </p>
+        ) : (
+          <ul className="max-h-[260px] overflow-y-auto rounded-md border border-secondary">
+            {branches.map((b) => {
+              const active = b.name === activeBranch
+              return (
+                <li
+                  className={cn(
+                    'border-b border-tertiary last:border-b-0',
+                    active && 'bg-action/5',
+                  )}
+                  key={b.name}
+                >
+                  <button
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left"
+                    onClick={() => onBranchSelect(b.name)}
+                    type="button"
+                  >
+                    <span className="flex-1 truncate text-sm">{b.name}</span>
+                    {b.pr_number ? (
+                      <Badge variant="outline">#{b.pr_number}</Badge>
+                    ) : null}
+                    {active ? <Check className="text-action h-4 w-4" /> : null}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+      <div>
+        {!activeBranch ? (
+          <p className="rounded-md border border-dashed border-secondary p-3 text-sm text-tertiary">
+            Select a branch to see commits.
+          </p>
+        ) : (
+          <CommitList
+            commits={commits}
+            current={current}
+            isLoading={commitsLoading}
+            onSelect={onCommitSelect}
+            selectedSha={selectedSha}
+          />
+        )}
       </div>
     </div>
   )
@@ -422,6 +593,50 @@ function DiffSummary({
         <span className="text-success">+{data.additions}</span>
         <span className="text-danger">−{data.deletions}</span>
       </div>
+    </div>
+  )
+}
+
+function PickerToggle({
+  defaultLabel,
+  mode,
+  onChange,
+}: {
+  defaultLabel: string
+  mode: 'branches' | 'default'
+  onChange: (mode: 'branches' | 'default') => void
+}) {
+  return (
+    <div
+      className="inline-flex rounded-md border border-secondary text-xs"
+      role="group"
+    >
+      <button
+        aria-pressed={mode === 'default'}
+        className={cn(
+          'px-2 py-1',
+          mode === 'default'
+            ? 'bg-action/10 text-primary'
+            : 'text-tertiary hover:bg-tertiary/30',
+        )}
+        onClick={() => onChange('default')}
+        type="button"
+      >
+        {defaultLabel}
+      </button>
+      <button
+        aria-pressed={mode === 'branches'}
+        className={cn(
+          'border-l border-secondary px-2 py-1',
+          mode === 'branches'
+            ? 'bg-action/10 text-primary'
+            : 'text-tertiary hover:bg-tertiary/30',
+        )}
+        onClick={() => onChange('branches')}
+        type="button"
+      >
+        Branches
+      </button>
     </div>
   )
 }
