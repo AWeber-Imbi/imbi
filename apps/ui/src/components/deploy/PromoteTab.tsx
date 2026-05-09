@@ -19,12 +19,14 @@ import { Textarea } from '@/components/ui/textarea'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { ciStatusDotClass } from '@/lib/status-colors'
 import { cn } from '@/lib/utils'
-import type { DraftReleaseNotesResponse } from '@/types'
+import type { DraftReleaseNotesResponse, Environment } from '@/types'
 
 interface PromoteTabProps {
+  environments: Environment[]
   fromCommittish?: null | string
   fromEnvironment: string
   onClose: () => void
+  onRunStarted?: (run: import('./DeploymentModal').DeploymentRunStarted) => void
   open: boolean
   orgSlug: string
   projectId: string
@@ -34,14 +36,21 @@ interface PromoteTabProps {
 const SEMVER_RE = /^v?\d+\.\d+\.\d+(?:[-+].+)?$/
 
 export function PromoteTab({
+  environments,
   fromCommittish,
   fromEnvironment,
   onClose,
+  onRunStarted,
   open,
   orgSlug,
   projectId,
   toEnvironment,
 }: PromoteTabProps) {
+  const toEnvName = useMemo(
+    () =>
+      environments.find((e) => e.slug === toEnvironment)?.name ?? toEnvironment,
+    [environments, toEnvironment],
+  )
   const { data: currentReleases = [] } = useQuery({
     enabled: open && !!orgSlug && !!projectId,
     queryFn: ({ signal }) => listCurrentReleases(orgSlug, projectId, signal),
@@ -147,18 +156,59 @@ export function PromoteTab({
       void queryClient.invalidateQueries({
         queryKey: ['promotionOptions', orgSlug, projectId],
       })
-      const url = data.release_url ?? data.run.run_url
-      toast.success(
-        `Promoted ${data.tag ?? tag} to ${toEnvironment}`,
-        url
-          ? {
-              action: {
-                label: 'View',
-                onClick: () => window.open(url, '_blank', 'noopener'),
-              },
-            }
-          : undefined,
-      )
+      const releaseUrl = data.release_url
+      const runUrl = data.run.run_url
+      const tagLabel = data.tag ?? tag
+      // Prefer the run URL when present; fall back to the release URL
+      // so the watcher's recreated toast still has a useful action.
+      const actionUrl = runUrl ?? releaseUrl
+      const actionLabel = runUrl
+        ? 'View run'
+        : releaseUrl
+          ? 'View release'
+          : undefined
+      if (onRunStarted && data.run.run_id) {
+        const toastId = toast.loading(
+          `Promoting ${tagLabel} to ${toEnvName}…`,
+          {
+            action:
+              actionUrl && actionLabel
+                ? {
+                    label: actionLabel,
+                    onClick: () => window.open(actionUrl, '_blank', 'noopener'),
+                  }
+                : undefined,
+            description: data.run.status
+              ? `status: ${data.run.status}`
+              : undefined,
+            icon: <Loader2 className="h-4 w-4 animate-spin" />,
+          },
+        )
+        onRunStarted({
+          actionLabel,
+          actionUrl,
+          envName: toEnvName,
+          initialStatus: data.run.status,
+          originOrgSlug: orgSlug,
+          originProjectId: projectId,
+          runId: data.run.run_id,
+          runUrl,
+          toastId,
+        })
+      } else {
+        const url = releaseUrl ?? runUrl
+        toast.success(
+          `Promoted ${tagLabel} to ${toEnvName}`,
+          url
+            ? {
+                action: {
+                  label: 'View',
+                  onClick: () => window.open(url, '_blank', 'noopener'),
+                },
+              }
+            : undefined,
+        )
+      }
       onClose()
     },
   })

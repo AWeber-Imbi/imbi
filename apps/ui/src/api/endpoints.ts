@@ -23,6 +23,7 @@ import type {
   DeploymentCompareResult,
   DeploymentPromoteRequest,
   DeploymentRef,
+  DeploymentRun,
   DeploymentTriggerRequest,
   DeploymentTriggerResponse,
   Document,
@@ -1474,6 +1475,21 @@ export const draftReleaseNotes = (
   return apiClient.post<DraftReleaseNotesResponse>(
     `${deploymentsBase(orgSlug, projectId)}/draft-release-notes${search}`,
     body,
+  )
+}
+
+export const getDeploymentRunStatus = (
+  orgSlug: string,
+  projectId: string,
+  runId: string,
+  source?: string,
+  signal?: AbortSignal,
+): Promise<DeploymentRun> => {
+  const search = source ? `?source=${encodeURIComponent(source)}` : ''
+  return apiClient.get<DeploymentRun>(
+    `${deploymentsBase(orgSlug, projectId)}/runs/${encodeURIComponent(runId)}${search}`,
+    undefined,
+    signal,
   )
 }
 

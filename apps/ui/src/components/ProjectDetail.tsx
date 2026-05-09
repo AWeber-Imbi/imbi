@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useNavigate } from 'react-router-dom'
 
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import {
   ArrowRight,
@@ -31,8 +31,10 @@ import {
 } from '@/api/endpoints'
 import {
   DeploymentModal,
+  type DeploymentRunStarted,
   type DeployModalTab,
 } from '@/components/deploy/DeploymentModal'
+import { DeploymentRunWatcher } from '@/components/deploy/DeploymentRunWatcher'
 import { PromoteDialog } from '@/components/deploy/PromoteDialog'
 import { ProjectDocumentsTab } from '@/components/documents/ProjectDocumentsTab'
 import { OperationsLog } from '@/components/OperationsLog'
@@ -216,6 +218,41 @@ export function ProjectDetail({
     [],
   )
   const [promotePopoverOpen, setPromotePopoverOpen] = useState(false)
+
+  // Active deployment runs (one watcher per entry).  Pushed by the
+  // DeployTab/PromoteTab onRunStarted callback; the watcher itself
+  // calls back to remove its entry once the run reaches a terminal
+  // state.  Refreshes the release-train view too so the freshly
+  // recorded ``DeploymentEvent.status`` flips out of ``in_progress``.
+  const [activeRuns, setActiveRuns] = useState<DeploymentRunStarted[]>([])
+  const queryClient = useQueryClient()
+  const handleRunStarted = useCallback((run: DeploymentRunStarted) => {
+    setActiveRuns((prev) =>
+      prev.some((r) => r.runId === run.runId) ? prev : [...prev, run],
+    )
+  }, [])
+  const handleRunTerminal = useCallback(
+    (runId: string) => {
+      // Invalidate the originating project's release cache rather than
+      // the currently-mounted project, so promotions trigger from one
+      // project but settle while viewing another still refresh
+      // correctly.
+      setActiveRuns((prev) => {
+        const settled = prev.find((r) => r.runId === runId)
+        if (settled) {
+          void queryClient.invalidateQueries({
+            queryKey: [
+              'currentReleases',
+              settled.originOrgSlug,
+              settled.originProjectId,
+            ],
+          })
+        }
+        return prev.filter((r) => r.runId !== runId)
+      })
+    },
+    [queryClient],
+  )
 
   const { data: projectSchema } = useQuery({
     enabled: !!orgSlug,
@@ -765,6 +802,7 @@ export function ProjectDetail({
         initialEnvSlug={deployModal.envSlug}
         initialTab={deployModal.tab}
         onOpenChange={(open) => setDeployModal((prev) => ({ ...prev, open }))}
+        onRunStarted={handleRunStarted}
         open={deployModal.open}
         orgSlug={orgSlug}
         projectId={project.id}
@@ -773,6 +811,24 @@ export function ProjectDetail({
         promoteFromCommittish={deployModal.promoteFromCommittish}
         promoteTo={deployModal.promoteTo}
       />
+      {activeRuns.map((run) => (
+        // Bind each watcher to the org/project that triggered the run
+        // so polling stays correct if the user navigates to another
+        // project before the workflow settles.
+        <DeploymentRunWatcher
+          actionLabel={run.actionLabel}
+          actionUrl={run.actionUrl}
+          envName={run.envName}
+          initialStatus={run.initialStatus}
+          key={run.runId}
+          onTerminal={handleRunTerminal}
+          orgSlug={run.originOrgSlug}
+          projectId={run.originProjectId}
+          runId={run.runId}
+          runUrl={run.runUrl}
+          toastId={run.toastId}
+        />
+      ))}
     </div>
   )
 }

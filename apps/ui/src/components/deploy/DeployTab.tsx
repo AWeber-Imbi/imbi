@@ -30,6 +30,7 @@ interface DeployTabProps {
   environments: Environment[]
   initialEnvSlug?: string
   onClose: () => void
+  onRunStarted?: (run: import('./DeploymentModal').DeploymentRunStarted) => void
   // Modal-open gate: queries only fire while the modal is open so the
   // hidden DeployTab doesn't issue GitHub round-trips on every page load.
   open: boolean
@@ -46,6 +47,7 @@ export function DeployTab({
   environments,
   initialEnvSlug,
   onClose,
+  onRunStarted,
   open,
   orgSlug,
   projectId,
@@ -162,17 +164,44 @@ export function DeployTab({
         queryKey: ['currentReleases', orgSlug, projectId],
       })
       const url = data.run.run_url
-      toast.success(
-        `Workflow dispatched to ${env?.name ?? envSlug}`,
-        url
-          ? {
-              action: {
+      const envName = env?.name ?? envSlug
+      if (onRunStarted && data.run.run_id) {
+        const toastId = toast.loading(`Deploying to ${envName}…`, {
+          action: url
+            ? {
                 label: 'View run',
                 onClick: () => window.open(url, '_blank', 'noopener'),
-              },
-            }
-          : undefined,
-      )
+              }
+            : undefined,
+          description: data.run.status
+            ? `status: ${data.run.status}`
+            : undefined,
+          icon: <Loader2 className="h-4 w-4 animate-spin" />,
+        })
+        onRunStarted({
+          actionLabel: url ? 'View run' : undefined,
+          actionUrl: url,
+          envName,
+          initialStatus: data.run.status,
+          originOrgSlug: orgSlug,
+          originProjectId: projectId,
+          runId: data.run.run_id,
+          runUrl: url,
+          toastId,
+        })
+      } else {
+        toast.success(
+          `Workflow dispatched to ${envName}`,
+          url
+            ? {
+                action: {
+                  label: 'View run',
+                  onClick: () => window.open(url, '_blank', 'noopener'),
+                },
+              }
+            : undefined,
+        )
+      }
       onClose()
     },
   })
