@@ -238,13 +238,9 @@ export const setProjectRelationships = (
     { depends_on: dependsOn },
   )
 
-export const createProject = (
-  orgSlug: string,
-  projectTypeSlug: string,
-  project: ProjectCreate,
-) =>
+export const createProject = (orgSlug: string, project: ProjectCreate) =>
   apiClient.post<Project>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectTypeSlug)}`,
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/`,
     project,
   )
 
