@@ -36,7 +36,27 @@ from imbi_plugin_github._hosts import normalize_host, require_ghec_tenant_host
 
 LOGGER = logging.getLogger(__name__)
 
-DEFAULT_SCOPES = ['read:user', 'user:email']
+# Default scope set for the GitHub identity flow. Each scope maps to
+# at least one endpoint the plugin family actually calls:
+#   * ``read:user``   — ``GET /user`` (sign-in / profile)
+#   * ``user:email``  — ``GET /user/emails`` (verified email fallback)
+#   * ``repo``        — ``GET /repos/{owner}/{repo}/...`` (branches,
+#                       tags, commits, compare, check-runs, action
+#                       runs) plus ``POST /git/refs`` and
+#                       ``POST /releases`` for the Promote tab. There
+#                       is no read-only equivalent in OAuth classic
+#                       once private repos are in play.
+#   * ``workflow``    — ``POST /actions/workflows/{file}/dispatches``
+#                       (Deploy tab).
+# ``read:org`` was deliberately dropped — no org/team endpoints are
+# called today. Operators that need a narrower bind can override this
+# on the identity assignment via the ``default_scopes`` plugin option.
+DEFAULT_SCOPES = [
+    'read:user',
+    'user:email',
+    'repo',
+    'workflow',
+]
 
 
 def _build_userinfo(claims: dict[str, typing.Any]) -> IdentityProfile:

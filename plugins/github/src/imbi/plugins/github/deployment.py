@@ -21,7 +21,9 @@ from __future__ import annotations
 import asyncio
 import collections.abc
 import datetime
+import hashlib
 import logging
+import time
 import typing
 import urllib.parse
 
@@ -54,6 +56,21 @@ _HTTP_TIMEOUT_SECONDS = 10.0
 # us indefinitely.  100 per page * 10 pages = 1000 refs is plenty for
 # the deployment-plugin UI's purposes.
 _MAX_REF_PAGES = 10
+
+# Process-wide cache of (token, host, repo) tuples for which the
+# GitHub ``/check-runs`` endpoint has already returned 403 (insufficient
+# scope, or Actions disabled on the repo). Keys are short SHA-256
+# digests over the bearer token plus the resolved host and
+# ``<owner>/<repo>`` so a single forbidden repo doesn't suppress CI
+# status for every other repo the same user opens. Values are the
+# unix timestamp at which the entry was recorded. Hydrating commit
+# CI status spawns one call per commit; without this cache a missing
+# scope produces 25+ wasted 403s every time the deploy dialog opens.
+_CHECKS_DISABLED_TOKENS: dict[str, float] = {}
+# How long to remember a 403 before re-probing. Long enough that a
+# scope fix takes effect on the next session, short enough that we
+# don't spam after the user fixes the underlying scope.
+_CHECKS_DISABLED_TTL_SECONDS = 600.0
 
 
 async def _raise_on_401(response: httpx.Response) -> None:
@@ -130,6 +147,65 @@ def _parse_iso(value: str | None) -> datetime.datetime | None:
         return None
 
 
+def _checks_cache_key(
+    credentials: dict[str, str], host: str, owner: str, repo: str
+) -> str | None:
+    """Hash the bearer token together with the resolved host and
+    ``<owner>/<repo>`` so the 403 cache is scoped per repo+host+token.
+
+    Returns ``None`` when no token is present, which short-circuits
+    both ``_checks_disabled`` and ``_record_checks_disabled``.
+    """
+    token = credentials.get('access_token') or credentials.get('token')
+    if not token:
+        return None
+    material = f'{token}\n{host.lower()}\n{owner}/{repo}'
+    return hashlib.sha256(material.encode()).hexdigest()
+
+
+def _checks_disabled(
+    credentials: dict[str, str], host: str, owner: str, repo: str
+) -> bool:
+    """Return ``True`` when this (token, host, repo) tuple has 403'd
+    on ``/check-runs`` recently enough that we shouldn't probe again.
+    """
+    key = _checks_cache_key(credentials, host, owner, repo)
+    if key is None:
+        return False
+    recorded = _CHECKS_DISABLED_TOKENS.get(key)
+    if recorded is None:
+        return False
+    if time.monotonic() - recorded > _CHECKS_DISABLED_TTL_SECONDS:
+        _CHECKS_DISABLED_TOKENS.pop(key, None)
+        return False
+    return True
+
+
+def _record_checks_disabled(
+    credentials: dict[str, str], host: str, owner: str, repo: str
+) -> None:
+    """Mark this (token, host, repo) as forbidden from ``/check-runs``
+    for the TTL.
+
+    Also opportunistically evicts any entries whose TTL has expired so
+    the dict can't grow unbounded — ``_checks_disabled`` only prunes
+    the key it looks up, which leaves long-tail stale tuples sitting
+    around forever for tokens / repos that never get re-probed.
+    """
+    key = _checks_cache_key(credentials, host, owner, repo)
+    if key is None:
+        return
+    now = time.monotonic()
+    expired = [
+        k
+        for k, recorded in _CHECKS_DISABLED_TOKENS.items()
+        if now - recorded > _CHECKS_DISABLED_TTL_SECONDS
+    ]
+    for k in expired:
+        _CHECKS_DISABLED_TOKENS.pop(k, None)
+    _CHECKS_DISABLED_TOKENS[key] = now
+
+
 def _commit_from_payload(payload: dict[str, typing.Any]) -> Commit:
     """Convert a GitHub commit list/object payload into a :class:`Commit`."""
     sha = str(payload.get('sha', ''))
@@ -192,20 +268,109 @@ class _DeploymentBase(DeploymentPlugin):
             return f'https://api.{host}'
         return f'https://{host}/api/v3'
 
-    @staticmethod
-    def _owner_repo(options: dict[str, typing.Any]) -> tuple[str, str]:
-        owner = str(options.get('owner') or '').strip()
-        repo = str(options.get('repo') or '').strip()
-        if not owner or not repo:
-            raise ValueError(
-                'GitHub deployment plugin requires "owner" and "repo" '
-                'options on the project assignment'
-            )
-        return owner, repo
+    # Reserved GitHub URL prefixes that share the host with repository
+    # URLs but never point at a real ``<owner>/<repo>`` pair.  Any link
+    # whose first path segment matches one of these is skipped during
+    # owner/repo derivation so e.g. ``github.com/orgs/<org>`` or a
+    # marketplace link can't silently bind a deployment to the wrong
+    # target.
+    _RESERVED_LINK_PREFIXES = frozenset(
+        {
+            'orgs',
+            'marketplace',
+            'settings',
+            'enterprises',
+            'features',
+            'pricing',
+            'about',
+            'login',
+            'logout',
+            'signup',
+            'sponsors',
+            'topics',
+            'collections',
+            'trending',
+            'codespaces',
+            'notifications',
+            'issues',
+            'pulls',
+            'search',
+            'stars',
+            'explore',
+        }
+    )
 
-    def _repo_url(self, options: dict[str, typing.Any]) -> str:
-        owner, repo = self._owner_repo(options)
-        return f'{self._api_base(options)}/repos/{owner}/{repo}'
+    @classmethod
+    def _derive_owner_repo_from_links(
+        cls, links: dict[str, str], host: str
+    ) -> tuple[str, str] | None:
+        """Find a project link pointing at ``host`` and parse owner/repo.
+
+        Prefers an explicit ``github-repository`` link key when one is
+        present and points at ``host``; otherwise scans the remaining
+        same-host links and returns the first usable one.  Path entries
+        whose first segment is a reserved GitHub route (e.g. ``orgs``,
+        ``marketplace``) are rejected so a non-repo URL can't silently
+        bind the deployment to a wrong target.  A trailing ``.git`` is
+        stripped from the repo segment.  Returns ``None`` when nothing
+        matches.
+        """
+        target = host.lower()
+        preferred = links.get('github-repository')
+        if preferred is not None:
+            owner_repo = cls._parse_owner_repo(preferred, target)
+            if owner_repo is not None:
+                return owner_repo
+        for key, url in links.items():
+            if key == 'github-repository':
+                continue
+            owner_repo = cls._parse_owner_repo(url, target)
+            if owner_repo is not None:
+                return owner_repo
+        return None
+
+    @classmethod
+    def _parse_owner_repo(
+        cls, url: str, target_host: str
+    ) -> tuple[str, str] | None:
+        """Extract ``(owner, repo)`` from ``url`` when it's a repo URL on
+        ``target_host``.  Returns ``None`` for other hosts, short paths,
+        or reserved-prefix paths like ``/orgs/<org>``.
+        """
+        try:
+            parsed = urllib.parse.urlparse(url)
+        except ValueError:
+            return None
+        if (parsed.hostname or '').lower() != target_host:
+            return None
+        parts = [p for p in parsed.path.split('/') if p]
+        if len(parts) < 2:
+            return None
+        if parts[0].lower() in cls._RESERVED_LINK_PREFIXES:
+            return None
+        return parts[0], parts[1].removesuffix('.git')
+
+    def _owner_repo(self, ctx: PluginContext) -> tuple[str, str]:
+        derived = self._derive_owner_repo_from_links(
+            ctx.project_links, self._resolve_host(ctx.assignment_options)
+        )
+        if derived is not None:
+            return derived
+        # Final fallback: convention is ``<project_type_slug>/<project_slug>``.
+        # Most projects carry a single type, so the first slug is what
+        # callers expect; we don't probe each candidate against GitHub here
+        # because ``_owner_repo`` is consulted on every API call.
+        if ctx.project_type_slugs and ctx.project_slug:
+            return ctx.project_type_slugs[0], ctx.project_slug
+        raise ValueError(
+            'GitHub deployment plugin could not determine the target '
+            "repository: set the project's GitHub Repository link or "
+            'tag the project with a ProjectType'
+        )
+
+    def _repo_url(self, ctx: PluginContext) -> str:
+        owner, repo = self._owner_repo(ctx)
+        return f'{self._api_base(ctx.assignment_options)}/repos/{owner}/{repo}'
 
     @staticmethod
     def _option_str(
@@ -232,7 +397,7 @@ class _DeploymentBase(DeploymentPlugin):
         return httpx.AsyncClient(
             timeout=_HTTP_TIMEOUT_SECONDS,
             headers=_auth_headers(self._token(credentials)),
-            base_url=self._repo_url(ctx.assignment_options),
+            base_url=self._repo_url(ctx),
             event_hooks={'response': [_raise_on_401]},
         )
 
@@ -268,7 +433,13 @@ class _DeploymentBase(DeploymentPlugin):
             return [ref for group in groups for ref in group]
 
     async def _fetch_default_branch(self, client: httpx.AsyncClient) -> str:
-        repo_resp = await client.get('')
+        # ``base_url`` is normalized with a trailing slash by httpx, so
+        # ``client.get('')`` produces ``.../repos/<owner>/<repo>/`` which
+        # GHEC's API gateway answers with a 404 even though the
+        # trailing-slash form succeeds on github.com. Pass the absolute
+        # URL with the trailing slash stripped so both backends agree.
+        url = str(client.base_url).rstrip('/')
+        repo_resp = await client.get(url)
         repo_resp.raise_for_status()
         repo_meta = typing.cast(dict[str, typing.Any], repo_resp.json())
         return str(repo_meta.get('default_branch') or 'main')
@@ -366,6 +537,8 @@ class _DeploymentBase(DeploymentPlugin):
         limit: int = 25,
     ) -> list[Commit]:
         params = {'sha': ref, 'per_page': str(max(1, min(limit, 100)))}
+        host = self._resolve_host(ctx.assignment_options)
+        owner, repo = self._owner_repo(ctx)
         async with self._client(ctx, credentials) as client:
             resp = await client.get('/commits', params=params)
             resp.raise_for_status()
@@ -373,18 +546,47 @@ class _DeploymentBase(DeploymentPlugin):
             commits = [_commit_from_payload(row) for row in rows]
             if commits:
                 commits[0] = commits[0].model_copy(update={'is_head': True})
-            return list(
-                await asyncio.gather(
-                    *(self._hydrate_check_status(client, c) for c in commits)
+            if not commits or _checks_disabled(credentials, host, owner, repo):
+                return commits
+            # Probe the head commit synchronously: if check-runs is
+            # forbidden for this token (missing scope or Actions
+            # disabled on the repo) we'd otherwise issue one wasted
+            # 403 per commit in parallel. Probing first lets the cache
+            # short-circuit the rest.
+            commits[0] = await self._hydrate_check_status(
+                client, credentials, host, owner, repo, commits[0]
+            )
+            if len(commits) == 1 or _checks_disabled(
+                credentials, host, owner, repo
+            ):
+                return commits
+            tail = await asyncio.gather(
+                *(
+                    self._hydrate_check_status(
+                        client, credentials, host, owner, repo, c
+                    )
+                    for c in commits[1:]
                 )
             )
+            return [commits[0], *tail]
 
     async def _hydrate_check_status(
-        self, client: httpx.AsyncClient, commit: Commit
+        self,
+        client: httpx.AsyncClient,
+        credentials: dict[str, str],
+        host: str,
+        owner: str,
+        repo: str,
+        commit: Commit,
     ) -> Commit:
+        if _checks_disabled(credentials, host, owner, repo):
+            return commit
         try:
             resp = await client.get(f'/commits/{commit.sha}/check-runs')
         except httpx.HTTPError:
+            return commit
+        if resp.status_code == 403:
+            _record_checks_disabled(credentials, host, owner, repo)
             return commit
         if resp.status_code != 200:
             return commit
@@ -625,11 +827,18 @@ class _DeploymentBase(DeploymentPlugin):
         train should never fail to render because a side hydration
         call hiccuped.
         """
+        host = self._resolve_host(ctx.assignment_options)
+        owner, repo = self._owner_repo(ctx)
+        if _checks_disabled(credentials, host, owner, repo):
+            return 'unknown'
         encoded = urllib.parse.quote(committish, safe='')
         async with self._client(ctx, credentials) as client:
             try:
                 resp = await client.get(f'/commits/{encoded}/check-runs')
             except httpx.HTTPError:
+                return 'unknown'
+            if resp.status_code == 403:
+                _record_checks_disabled(credentials, host, owner, repo)
                 return 'unknown'
             if resp.status_code != 200:
                 return 'unknown'
@@ -683,24 +892,6 @@ class _DeploymentBase(DeploymentPlugin):
 
 
 _COMMON_OPTIONS: list[PluginOption] = [
-    PluginOption(
-        name='owner',
-        label='Repository owner / organization',
-        type='string',
-        required=True,
-    ),
-    PluginOption(
-        name='repo',
-        label='Repository name',
-        type='string',
-        required=True,
-    ),
-    PluginOption(
-        name='default_branch',
-        label='Default branch',
-        type='string',
-        default='main',
-    ),
     PluginOption(
         name='workflow',
         label='Workflow file',

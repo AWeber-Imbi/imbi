@@ -129,7 +129,10 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
             'https://github.com/login/oauth/authorize',
         )
         params = urllib.parse.parse_qs(parsed.query)
-        self.assertEqual(params['scope'], ['read:user user:email'])
+        self.assertEqual(
+            params['scope'],
+            ['read:user user:email repo workflow'],
+        )
         self.assertEqual(params['client_id'], ['cid'])
 
     @respx.mock
