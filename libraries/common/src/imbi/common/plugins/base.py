@@ -182,6 +182,15 @@ class PluginContext(pydantic.BaseModel):
     team_slug: str | None = None
     environment: str | None = None
     assignment_options: dict[str, typing.Any] = {}
+    # Project's external links (e.g. ``{"github-repository": "https://..."}``).
+    # Populated by the host so plugins can derive per-project state (e.g. the
+    # GitHub owner/repo) from the link map instead of duplicating it as
+    # plugin options on every assignment.
+    project_links: dict[str, str] = {}
+    # Slugs of every ``ProjectType`` the project is tagged with. Plugins
+    # may use these as a discovery hint (e.g. trying each as a candidate
+    # GitHub owner) when an explicit link or option isn't supplied.
+    project_type_slugs: list[str] = []
     actor_user_id: str | None = None
     identity: IdentityCredentials | None = None
 
