@@ -51,7 +51,7 @@ export NEO4J_PASSWORD="your-neo4j-password"
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `IMBI_API_ENVIRONMENT` | `development` | Environment name (development, staging, production) |
+| `ENVIRONMENT` | `development` | Environment name (development, staging, production). Unprefixed so it picks up whatever the deploy target already exports. |
 | `IMBI_API_HOST` | `localhost` | Server bind address |
 | `IMBI_API_PORT` | `8000` | Server bind port |
 | `IMBI_API_CORS_ALLOWED_ORIGINS` | `[]` | JSON array of allowed CORS origins |
@@ -238,7 +238,7 @@ For development, use environment variables or a `.env` file:
 
 ```bash
 # Application
-IMBI_API_ENVIRONMENT=development
+ENVIRONMENT=development
 IMBI_API_HOST=localhost
 IMBI_API_PORT=8000
 IMBI_LOG_LEVEL=INFO

@@ -158,7 +158,7 @@ class Email(pydantic_settings.BaseSettings):
     @pydantic.model_validator(mode='after')
     def configure_mailpit_defaults(self) -> Email:
         """Auto-configure for Mailpit in development."""
-        if os.getenv('IMBI_API_ENVIRONMENT', 'development') != 'development':
+        if os.getenv('ENVIRONMENT', 'development') != 'development':
             return self
         if self.smtp_host == 'localhost' and self.smtp_port == 587:
             mailpit_port = os.getenv('MAILPIT_SMTP_PORT')
