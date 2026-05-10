@@ -51,7 +51,7 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_initialize_no_api_url(self) -> None:
         with mock.patch.dict(
             os.environ,
-            {'IMBI_ASSISTANT_API_URL': ''},
+            {'IMBI_API_URL': ''},
             clear=True,
         ):
             manager = mcp.MCPManager()
@@ -88,7 +88,7 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
         with mock.patch.dict(
             os.environ,
             {
-                'IMBI_ASSISTANT_API_URL': 'http://api:8000',
+                'IMBI_API_URL': 'http://api:8000',
             },
             clear=True,
         ):
@@ -154,7 +154,7 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
         with mock.patch.dict(
             os.environ,
             {
-                'IMBI_ASSISTANT_API_URL': 'http://api:8000',
+                'IMBI_API_URL': 'http://api:8000',
             },
             clear=True,
         ):
@@ -217,7 +217,7 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
         with mock.patch.dict(
             os.environ,
             {
-                'IMBI_ASSISTANT_API_URL': 'http://api:8000',
+                'IMBI_API_URL': 'http://api:8000',
             },
             clear=True,
         ):
@@ -279,7 +279,7 @@ class ModuleLevelFunctionsTestCase(
 
     @mock.patch.dict(
         os.environ,
-        {'IMBI_ASSISTANT_API_URL': ''},
+        {'IMBI_API_URL': ''},
         clear=True,
     )
     async def test_initialize_and_get_manager(self) -> None:
@@ -294,7 +294,7 @@ class ModuleLevelFunctionsTestCase(
 
     @mock.patch.dict(
         os.environ,
-        {'IMBI_ASSISTANT_API_URL': ''},
+        {'IMBI_API_URL': ''},
         clear=True,
     )
     async def test_aclose_clears_manager(self) -> None:
@@ -304,7 +304,7 @@ class ModuleLevelFunctionsTestCase(
 
     @mock.patch.dict(
         os.environ,
-        {'IMBI_ASSISTANT_API_URL': 'http://bad:9999'},
+        {'IMBI_API_URL': 'http://bad:9999'},
         clear=True,
     )
     async def test_initialize_handles_connection_error(
