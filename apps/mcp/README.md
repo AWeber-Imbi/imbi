@@ -47,7 +47,7 @@ imbi-mcp serve [OPTIONS]
 
 | Option          | Default                  | Env Var        | Description              |
 | --------------- | ------------------------ | -------------- | ------------------------ |
-| `--api-url`     | `http://localhost:8000`  | `IMBI_API_URL` | Base URL of the Imbi API |
+| `--api-url`     | `http://localhost:8000`  | `IMBI_INTERNAL_API_URL` | Base URL of the Imbi API |
 | `--transport`   | `streamable-http`        |                | MCP transport type       |
 | `--host`        | `127.0.0.1`              |                | Host to bind to          |
 | `--port`        | `8001`                   |                | Port to bind to          |
@@ -58,7 +58,7 @@ Supported transports: `stdio`, `http`, `sse`, `streamable-http`
 
 ```bash
 docker build -t imbi-mcp .
-docker run -p 8001:8001 -e IMBI_API_URL=http://imbi-api:8000 imbi-mcp
+docker run -p 8001:8001 -e IMBI_INTERNAL_API_URL=http://imbi-api:8000 imbi-mcp
 ```
 
 ## Development

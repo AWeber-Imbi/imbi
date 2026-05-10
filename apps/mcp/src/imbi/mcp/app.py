@@ -15,8 +15,8 @@ def serve(
     api_url: t.Annotated[
         str,
         typer.Option(
-            help='Base URL of the Imbi API',
-            envvar='IMBI_API_URL',
+            help='Internal base URL of the Imbi API (cluster service)',
+            envvar='IMBI_INTERNAL_API_URL',
         ),
     ] = 'http://localhost:8000',
     transport: t.Annotated[
