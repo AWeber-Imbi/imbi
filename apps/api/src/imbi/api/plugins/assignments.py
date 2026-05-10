@@ -13,7 +13,7 @@ from imbi_api.plugins import parse_options
 
 class PluginAssignmentRow(typing.TypedDict):
     plugin_id: str
-    tab: typing.Literal['configuration', 'logs']
+    tab: typing.Literal['configuration', 'logs', 'deployment']
     default: bool
     options: dict[str, typing.Any]
     identity_plugin_id: typing.NotRequired[str | None]

@@ -850,7 +850,7 @@ class PluginAssignmentCreate(pydantic.BaseModel):
     """Request model for assigning a plugin to a project-type or project."""
 
     plugin_id: str
-    tab: typing.Literal['configuration', 'logs']
+    tab: typing.Literal['configuration', 'logs', 'deployment']
     default: bool = False
     options: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
     identity_plugin_id: str | None = None
@@ -862,7 +862,7 @@ class PluginAssignmentResponse(pydantic.BaseModel):
     plugin_id: str
     plugin_slug: str
     label: str
-    tab: typing.Literal['configuration', 'logs']
+    tab: typing.Literal['configuration', 'logs', 'deployment']
     default: bool
     options: dict[str, typing.Any] = {}
     source: typing.Literal['project', 'project_type', 'merged'] = (

@@ -1,5 +1,6 @@
 """Shared helpers for endpoint handlers."""
 
+import json
 import logging
 import typing
 
@@ -130,6 +131,72 @@ async def lookup_project_slugs(
         str(slug_raw) if slug_raw else '',
         str(team_raw) if team_raw else None,
     )
+
+
+async def lookup_project_links(
+    db: graph.Graph,
+    project_id: str,
+) -> dict[str, str]:
+    """Return the project's external link map.
+
+    Returns ``{}`` on lookup failure or when no links are set. Plugins
+    use these as a side-channel for per-project state (e.g. resolving
+    a GitHub owner/repo from the ``github-repository`` link) so that
+    callers don't have to duplicate the data as assignment options.
+    """
+    query: typing.LiteralString = (
+        'MATCH (p:Project {{id: {project_id}}}) RETURN p.links AS links'
+    )
+    try:
+        records = await db.execute(
+            query, {'project_id': project_id}, ['links']
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.debug('Project links lookup failed', exc_info=True)
+        return {}
+    if not records:
+        return {}
+    raw = graph.parse_agtype(records[0].get('links'))
+    # ``links`` is persisted as a JSON-encoded string on the AGE node
+    # (not a property map), so ``parse_agtype`` returns ``str`` here —
+    # decode it once more to recover the dict.
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (TypeError, ValueError):
+            return {}
+    if not isinstance(raw, dict):
+        return {}
+    items = typing.cast('dict[object, object]', raw)
+    return {str(k): str(v) for k, v in items.items() if v}
+
+
+async def lookup_project_type_slugs(
+    db: graph.Graph,
+    project_id: str,
+) -> list[str]:
+    """Return slugs for every ProjectType the project is tagged with.
+
+    Returns ``[]`` on lookup failure or when the project has no type
+    edges. Plugins use this list as a side-channel for per-project
+    discovery (e.g. ``owner`` derivation when the project lacks an
+    explicit GitHub Repository link).
+    """
+    query: typing.LiteralString = (
+        'MATCH (p:Project {{id: {project_id}}})-[:TYPE]->(pt:ProjectType) '
+        'RETURN pt.slug AS slug'
+    )
+    try:
+        records = await db.execute(query, {'project_id': project_id}, ['slug'])
+    except Exception:  # noqa: BLE001
+        LOGGER.debug('Project type lookup failed', exc_info=True)
+        return []
+    slugs: list[str] = []
+    for row in records:
+        raw = graph.parse_agtype(row.get('slug'))
+        if isinstance(raw, str) and raw:
+            slugs.append(raw)
+    return slugs
 
 
 def extract_role_slug(

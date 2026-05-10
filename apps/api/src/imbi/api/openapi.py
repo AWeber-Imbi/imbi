@@ -425,11 +425,13 @@ async def stoplights_html(
     openapi_url += app.openapi_url
     elements_url = _STOPLIGHT_ELEMENTS_URL.removesuffix('/')
     return starlette.responses.HTMLResponse(
+        '<!DOCTYPE html><html><head>'
         f'<title>{app.title}</title>'
         f'<script src="{elements_url}/web-components.min.js"></script>'
         f'<link rel="stylesheet" href="{elements_url}/styles.min.css">'
         '</head><body>'
         '<noscript>Stoplights documentation requires JavaScript</noscript>'
-        f'<elements-api apiDescriptionUrl="{openapi_url}" router="hash" />'
+        f'<elements-api apiDescriptionUrl="{openapi_url}" router="hash">'
+        '</elements-api>'
         '</body></html>'
     )

@@ -32,7 +32,11 @@ from imbi_common.plugins.base import (
 from imbi_common.plugins.errors import PluginCredentialsMissing
 
 from imbi_api.auth import permissions
-from imbi_api.endpoints._helpers import lookup_project_slugs
+from imbi_api.endpoints._helpers import (
+    lookup_project_links,
+    lookup_project_slugs,
+    lookup_project_type_slugs,
+)
 from imbi_api.endpoints.releases import append_deployment_event
 from imbi_api.identity.host_integration import (
     attach_identity,
@@ -196,6 +200,8 @@ async def _resolve_and_context(
     """Common boilerplate: resolve plugin, attach identity, build creds."""
     resolved = await resolve_plugin(db, project_id, 'deployment', source)
     project_slug, team_slug = await lookup_project_slugs(db, project_id)
+    project_links = await lookup_project_links(db, project_id)
+    project_type_slugs = await lookup_project_type_slugs(db, project_id)
     ctx = PluginContext(
         project_id=project_id,
         project_slug=project_slug,
@@ -203,6 +209,8 @@ async def _resolve_and_context(
         team_slug=team_slug,
         environment=environment,
         assignment_options=resolved.options,
+        project_links=project_links,
+        project_type_slugs=project_type_slugs,
     )
     ctx = await attach_identity(db, ctx, resolved, auth)
 
