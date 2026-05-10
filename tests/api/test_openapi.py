@@ -3,6 +3,7 @@
 import unittest
 import unittest.mock
 
+import fastapi
 import imbi_common.blueprints
 import imbi_common.models
 import pydantic
@@ -388,3 +389,33 @@ class ClearSchemaCacheTestCase(unittest.TestCase):
         openapi.clear_schema_cache()
 
         self.assertIsNone(openapi._schema_cache)
+
+
+class StoplightsHtmlTestCase(unittest.IsolatedAsyncioTestCase):
+    """Test cases for stoplights_html."""
+
+    async def test_injects_title_and_root_path(self) -> None:
+        """Test templated title and root path are injected."""
+        app = fastapi.FastAPI(
+            title='Imbi API Docs',
+            version='1.0.0',
+            root_path='/imbi',
+        )
+        request = fastapi.Request(
+            {
+                'type': 'http',
+                'app': app,
+                'root_path': '/imbi/',
+                'path': '/docs',
+                'headers': [],
+            }
+        )
+
+        response = await openapi.stoplights_html(request)
+        content = response.body.decode()
+
+        self.assertIn('<title>Imbi API Docs</title>', content)
+        self.assertIn(
+            'apiDescriptionUrl="/imbi/openapi.json"',
+            content,
+        )

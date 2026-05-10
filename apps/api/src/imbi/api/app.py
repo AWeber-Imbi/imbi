@@ -27,7 +27,7 @@ def create_app() -> fastapi.FastAPI:
             lifespans.identity_refresh_hook,
         ),
         version=version,
-        redoc_url='/docs',
+        redoc_url=None,
         docs_url=None,
         license_info={
             'name': 'BSD 3-Clause',
@@ -70,6 +70,7 @@ def create_app() -> fastapi.FastAPI:
     # Phase 5: Setup rate limiting middleware
     rate_limit.setup_rate_limiting(app)
 
+    app.add_route('/docs', openapi.stoplights_html, include_in_schema=False)
     for router in endpoints.prefixed_routers:
         app.include_router(router, prefix=server_config.api_prefix)
     for router in endpoints.unprefixed_routers:

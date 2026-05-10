@@ -22,11 +22,15 @@ import typing
 import fastapi.openapi.utils
 import imbi_common.blueprints
 import pydantic
+import starlette.responses
 from imbi_common import graph
 
 from imbi_api import models as imbi_models
 
 LOGGER = logging.getLogger(__name__)
+
+# Constant for where to fetch the UI script from
+_STOPLIGHT_ELEMENTS_URL = 'https://unpkg.com/@stoplight/elements'
 
 # Cache for blueprint-enhanced write models
 _blueprint_models: dict[str, type[pydantic.BaseModel]] = {}
@@ -407,3 +411,25 @@ def clear_schema_cache() -> None:
     global _schema_cache
     _schema_cache = None
     LOGGER.debug('Cleared OpenAPI schema cache')
+
+
+async def stoplights_html(
+    req: fastapi.Request,
+) -> starlette.responses.HTMLResponse:
+    """Expose the API using Stoplight Elements.
+
+    https://docs.stoplight.io/docs/elements/a71d7fcfefcd6-elements-in-html
+    """
+    app = typing.cast(fastapi.FastAPI, req.app)
+    openapi_url = req.scope.get('root_path', '').removesuffix('/')
+    openapi_url += app.openapi_url
+    elements_url = _STOPLIGHT_ELEMENTS_URL.removesuffix('/')
+    return starlette.responses.HTMLResponse(
+        f'<title>{app.title}</title>'
+        f'<script src="{elements_url}/web-components.min.js"></script>'
+        f'<link rel="stylesheet" href="{elements_url}/styles.min.css">'
+        '</head><body>'
+        '<noscript>Stoplights documentation requires JavaScript</noscript>'
+        f'<elements-api apiDescriptionUrl="{openapi_url}" router="hash" />'
+        '</body></html>'
+    )
