@@ -24,7 +24,13 @@ class Assistant(pydantic_settings.BaseSettings):
     max_conversation_turns: int = 100
     max_tool_rounds: int = 10
     system_prompt: str | None = None
-    api_url: str = 'http://localhost:8000'
+    # Where the assistant reaches the Imbi REST API. Matches the
+    # ``IMBI_API_URL`` env var used by ``imbi-api`` (its own public URL)
+    # and ``imbi-mcp`` (its upstream API URL) so all three services
+    # share a single configuration knob in compose / Okteto.
+    api_url: str = pydantic.Field(
+        default='http://localhost:8000', validation_alias='IMBI_API_URL'
+    )
     # Public URL where the assistant is reachable (e.g.
     # ``https://imbi.example.com/assistant``). The path component is used
     # as the route prefix so routes match the Okteto ingress path.
