@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronRight, CirclePlay, Package } from 'lucide-react'
+import { ChevronRight, CirclePlay, Package, PowerOff } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { getAdminPlugins, setAdminPluginEnabled } from '@/api/endpoints'
@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { LoadingState } from '@/components/ui/loading-state'
 import {
   Table,
@@ -199,6 +200,27 @@ function DisabledList({ parentLoading, plugins }: DisabledListProps) {
 
 function EnabledList({ error, isError, isLoading, plugins }: EnabledListProps) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [pluginToDisable, setPluginToDisable] =
+    useState<InstalledPlugin | null>(null)
+
+  const disableMutation = useMutation({
+    mutationFn: (slug: string) => setAdminPluginEnabled(slug, false),
+    onError: (err) => {
+      toast.error(extractApiErrorDetail(err) ?? 'Failed to disable plugin')
+    },
+    onSuccess: (_, slug) => {
+      toast.success(`${slug} disabled`)
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.adminPlugins(),
+      })
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.adminPlugin(slug),
+      })
+      setPluginToDisable(null)
+    },
+  })
+
   if (isLoading) {
     return <LoadingState label="Loading..." />
   }
@@ -229,71 +251,104 @@ function EnabledList({ error, isError, isLoading, plugins }: EnabledListProps) {
   }
 
   return (
-    <Card>
-      <CardContent className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Plugin</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Package</TableHead>
-              <TableHead>Version</TableHead>
-              <TableHead>Auth</TableHead>
-              <TableHead>Tabs</TableHead>
-              <TableHead className="w-10" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {plugins.map((plugin) => (
-              <TableRow
-                className="hover:bg-secondary/40 cursor-pointer"
-                key={plugin.slug}
-                onClick={() => navigate(`/admin/plugins/${plugin.slug}`)}
-              >
-                <TableCell>
-                  <div className="font-medium">{plugin.name}</div>
-                  <div className="text-xs text-secondary">
-                    {plugin.description}
-                  </div>
-                  {plugin.login_capable && (
-                    <div className="mt-1">
-                      <Badge variant="outline">Login provider</Badge>
-                    </div>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="secondary">
-                    {plugin.plugin_type ?? plugin.supported_tabs[0] ?? '—'}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <code className="rounded bg-secondary px-1.5 py-0.5 text-xs">
-                    {plugin.package_name}
-                  </code>
-                </TableCell>
-                <TableCell className="text-sm text-secondary">
-                  {plugin.package_version}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="secondary">{plugin.auth_type}</Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="flex gap-1">
-                    {plugin.supported_tabs.map((tab) => (
-                      <Badge key={tab} variant="secondary">
-                        {tab}
-                      </Badge>
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <ChevronRight className="h-4 w-4 text-tertiary" />
-                </TableCell>
+    <>
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Plugin</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Package</TableHead>
+                <TableHead>Version</TableHead>
+                <TableHead>Auth</TableHead>
+                <TableHead>Tabs</TableHead>
+                <TableHead className="w-28" />
+                <TableHead className="w-10" />
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+            </TableHeader>
+            <TableBody>
+              {plugins.map((plugin) => (
+                <TableRow
+                  className="hover:bg-secondary/40 cursor-pointer"
+                  key={plugin.slug}
+                  onClick={() => navigate(`/admin/plugins/${plugin.slug}`)}
+                >
+                  <TableCell>
+                    <div className="font-medium">{plugin.name}</div>
+                    <div className="text-xs text-secondary">
+                      {plugin.description}
+                    </div>
+                    {plugin.login_capable && (
+                      <div className="mt-1">
+                        <Badge variant="outline">Login provider</Badge>
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">
+                      {plugin.plugin_type ?? plugin.supported_tabs[0] ?? '—'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <code className="rounded bg-secondary px-1.5 py-0.5 text-xs">
+                      {plugin.package_name}
+                    </code>
+                  </TableCell>
+                  <TableCell className="text-sm text-secondary">
+                    {plugin.package_version}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">{plugin.auth_type}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-1">
+                      {plugin.supported_tabs.map((tab) => (
+                        <Badge key={tab} variant="secondary">
+                          {tab}
+                        </Badge>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      disabled={disableMutation.isPending}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setPluginToDisable(plugin)
+                      }}
+                      size="sm"
+                      variant="outline"
+                    >
+                      <PowerOff className="mr-1 h-3 w-3" />
+                      Disable
+                    </Button>
+                  </TableCell>
+                  <TableCell>
+                    <ChevronRight className="h-4 w-4 text-tertiary" />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+      <ConfirmDialog
+        confirmLabel="Disable"
+        description={
+          pluginToDisable
+            ? `Disable ${pluginToDisable.name}? It will no longer be available for new project type or service assignments. Existing configuration is preserved and the plugin can be re-enabled at any time.`
+            : ''
+        }
+        onCancel={() => {
+          if (!disableMutation.isPending) setPluginToDisable(null)
+        }}
+        onConfirm={() => {
+          if (pluginToDisable) disableMutation.mutate(pluginToDisable.slug)
+        }}
+        open={pluginToDisable !== null}
+        title="Disable plugin"
+      />
+    </>
   )
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, ChevronRight, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
@@ -201,12 +201,17 @@ export function ServicePluginList({
                   <TableHead>Plugin</TableHead>
                   <TableHead>Version</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="w-20" />
+                  <TableHead className="w-12" />
+                  <TableHead className="w-12" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {(plugins ?? []).map((plugin) => (
-                  <TableRow key={plugin.id}>
+                  <TableRow
+                    className="hover:bg-secondary/40 cursor-pointer"
+                    key={plugin.id}
+                    onClick={() => setConfigurePluginId(plugin.id)}
+                  >
                     <TableCell className="font-medium">
                       {plugin.label}
                     </TableCell>
@@ -232,23 +237,20 @@ export function ServicePluginList({
                       )}
                     </TableCell>
                     <TableCell>
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          onClick={() => setConfigurePluginId(plugin.id)}
-                          size="sm"
-                          variant="ghost"
-                        >
-                          Configure
-                        </Button>
-                        <Button
-                          aria-label={`Remove ${plugin.label}`}
-                          onClick={() => setConfirmDeleteId(plugin.id)}
-                          size="icon"
-                          variant="ghost"
-                        >
-                          <Trash2 className="h-3 w-3 text-destructive" />
-                        </Button>
-                      </div>
+                      <Button
+                        aria-label={`Remove ${plugin.label}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setConfirmDeleteId(plugin.id)
+                        }}
+                        size="icon"
+                        variant="ghost"
+                      >
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
+                    </TableCell>
+                    <TableCell>
+                      <ChevronRight className="h-4 w-4 text-tertiary" />
                     </TableCell>
                   </TableRow>
                 ))}

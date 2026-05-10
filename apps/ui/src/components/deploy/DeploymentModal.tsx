@@ -1,7 +1,6 @@
 import { GitMerge, Rocket } from 'lucide-react'
 
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import { cn } from '@/lib/utils'
 import type { DeploymentRunStatus, Environment } from '@/types'
 
 import { DeployTab } from './DeployTab'
@@ -35,12 +34,9 @@ export interface DeploymentRunStarted {
   toastId: number | string
 }
 
-export type DeployModalTab = 'deploy' | 'promote'
-
-interface DeploymentModalProps {
+interface DeployModalProps {
   environments: Environment[]
   initialEnvSlug?: string
-  initialTab?: DeployModalTab
   onOpenChange: (open: boolean) => void
   /**
    * Called after a successful trigger so the parent can mount a
@@ -52,109 +48,109 @@ interface DeploymentModalProps {
   orgSlug: string
   projectId: string
   projectName: string
-  // Promote-tab inputs.  When set together with initialTab='promote'
-  // the modal opens directly into the Promote flow with the gap
-  // pre-selected (via the popover hand-off) or the testing → next-env
-  // gap inferred from the chip click.
-  promoteFrom?: null | string
-  promoteFromCommittish?: null | string
-  promoteTo?: null | string
 }
 
-export function DeploymentModal({
+interface PromoteModalProps {
+  environments: Environment[]
+  fromCommittish?: null | string
+  fromEnvironment: string
+  onOpenChange: (open: boolean) => void
+  onRunStarted?: (run: DeploymentRunStarted) => void
+  open: boolean
+  orgSlug: string
+  projectId: string
+  projectName: string
+  toEnvironment: string
+}
+
+export function DeployModal({
   environments,
   initialEnvSlug,
-  initialTab = 'deploy',
   onOpenChange,
   onRunStarted,
   open,
   orgSlug,
   projectId,
   projectName,
-  promoteFrom,
-  promoteFromCommittish,
-  promoteTo,
-}: DeploymentModalProps) {
-  const isPromote = initialTab === 'promote' && !!promoteFrom && !!promoteTo
+}: DeployModalProps) {
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="max-w-[680px] gap-0 p-0 sm:max-w-[680px]">
-        <header className="flex items-stretch border-b border-secondary px-6">
-          <DialogTitle className="sr-only">
-            {isPromote ? `Promote ${projectName}` : `Deploy ${projectName}`}
-          </DialogTitle>
-          <TabHeader
-            active={!isPromote}
-            icon={<Rocket className="h-4 w-4" />}
-            subtitle="existing version"
-            title="Deploy"
-          />
-          <TabHeader
-            active={isPromote}
-            icon={<GitMerge className="h-4 w-4" />}
-            subtitle="tag & release notes"
-            title="Promote"
-          />
-        </header>
+      <DialogContent className="max-w-[920px] gap-0 p-0 sm:max-w-[920px]">
+        <ModalHeader
+          icon={<Rocket className="h-4 w-4" />}
+          subtitle="Roll an existing commit or tag onto an environment"
+          title={`Deploy ${projectName}`}
+        />
         <div className="px-6 py-4">
-          {isPromote ? (
-            <PromoteTab
-              environments={environments}
-              fromCommittish={promoteFromCommittish}
-              fromEnvironment={promoteFrom}
-              onClose={() => onOpenChange(false)}
-              onRunStarted={onRunStarted}
-              open={open}
-              orgSlug={orgSlug}
-              projectId={projectId}
-              toEnvironment={promoteTo}
-            />
-          ) : (
-            <DeployTab
-              environments={environments}
-              initialEnvSlug={initialEnvSlug}
-              onClose={() => onOpenChange(false)}
-              onRunStarted={onRunStarted}
-              open={open}
-              orgSlug={orgSlug}
-              projectId={projectId}
-            />
-          )}
+          <DeployTab
+            environments={environments}
+            initialEnvSlug={initialEnvSlug}
+            onClose={() => onOpenChange(false)}
+            onRunStarted={onRunStarted}
+            open={open}
+            orgSlug={orgSlug}
+            projectId={projectId}
+          />
         </div>
       </DialogContent>
     </Dialog>
   )
 }
 
-function TabHeader({
-  active,
+export function PromoteModal({
+  environments,
+  fromCommittish,
+  fromEnvironment,
+  onOpenChange,
+  onRunStarted,
+  open,
+  orgSlug,
+  projectId,
+  projectName,
+  toEnvironment,
+}: PromoteModalProps) {
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogContent className="max-w-[920px] gap-0 p-0 sm:max-w-[920px]">
+        <ModalHeader
+          icon={<GitMerge className="h-4 w-4" />}
+          subtitle={`Tag & release ${fromEnvironment} → ${toEnvironment}`}
+          title={`Promote ${projectName}`}
+        />
+        <div className="px-6 py-4">
+          <PromoteTab
+            environments={environments}
+            fromCommittish={fromCommittish}
+            fromEnvironment={fromEnvironment}
+            onClose={() => onOpenChange(false)}
+            onRunStarted={onRunStarted}
+            open={open}
+            orgSlug={orgSlug}
+            projectId={projectId}
+            toEnvironment={toEnvironment}
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ModalHeader({
   icon,
   subtitle,
   title,
 }: {
-  active: boolean
   icon: React.ReactNode
   subtitle: string
   title: string
 }) {
-  // Headers are presentational — the modal mode is fixed by props at
-  // mount time, so mark non-active headers as disabled to make that
-  // unambiguous to assistive tech and keyboard users.
   return (
-    <div
-      aria-current={active ? 'page' : undefined}
-      aria-disabled={!active}
-      className={cn(
-        'flex flex-col py-4 pr-6 text-sm',
-        active ? '-mb-px border-b-2 border-action' : 'text-tertiary opacity-60',
-      )}
-      role="presentation"
-    >
-      <span className="flex items-center gap-1.5 font-medium">
+    <header className="border-b border-secondary px-6 py-4">
+      <DialogTitle className="flex items-center gap-1.5 text-sm font-medium">
         {icon}
         {title}
-      </span>
-      <span className="mt-0.5 text-xs">{subtitle}</span>
-    </div>
+      </DialogTitle>
+      <p className="mt-0.5 text-xs text-tertiary">{subtitle}</p>
+    </header>
   )
 }

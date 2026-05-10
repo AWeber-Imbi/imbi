@@ -11,8 +11,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Filter,
-  GitMerge,
-  Rocket,
+  Info,
   Settings2 as SettingsIcon,
   TrendingDown,
   XCircle,
@@ -20,10 +19,12 @@ import {
 
 import {
   type AttributeContribution,
+  getMyIdentities,
   getProjectBreakdown,
   getProjectSchema,
   getScoreTrend,
   listCurrentReleases,
+  listIdentityPlugins,
   listLinkDefinitions,
   listProjectDocuments,
   listProjectPlugins,
@@ -33,12 +34,11 @@ import {
   type ScoreTrend,
 } from '@/api/endpoints'
 import {
-  DeploymentModal,
   type DeploymentRunStarted,
-  type DeployModalTab,
+  DeployModal,
+  PromoteModal,
 } from '@/components/deploy/DeploymentModal'
 import { DeploymentRunWatcher } from '@/components/deploy/DeploymentRunWatcher'
-import { PromoteDialog } from '@/components/deploy/PromoteDialog'
 import { ProjectDocumentsTab } from '@/components/documents/ProjectDocumentsTab'
 import { OperationsLog } from '@/components/OperationsLog'
 import { ConfigurationTab } from '@/components/project/ConfigurationTab'
@@ -49,7 +49,6 @@ import { ProjectEnvironmentsCard } from '@/components/ProjectEnvironmentsCard'
 import { ProjectRelationshipsTab } from '@/components/ProjectRelationshipsTab'
 import { ProjectSettingsTab } from '@/components/ProjectSettingsTab'
 import { ScoreHistoryTab } from '@/components/ScoreHistoryTab'
-import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -125,12 +124,10 @@ export function ProjectDetail({
     navigate(path, { replace: true })
   }
 
-  // Redirect to clean URL when the tab slug is invalid
-  useEffect(() => {
-    if (initialTab && !VALID_TAB_SET.has(initialTab)) {
-      navigate(`/projects/${project.id}`, { replace: true })
-    }
-  }, [initialTab, navigate, project.id])
+  const sortedEnvironments = useMemo(
+    () => sortEnvironments(project.environments || []),
+    [project.environments],
+  )
 
   const { data: currentReleases = [] } = useQuery({
     enabled: !!orgSlug && !!project.id,
@@ -177,10 +174,59 @@ export function ProjectDetail({
     return out
   }, [currentReleases])
 
-  const sortedEnvironments = useMemo(
-    () => sortEnvironments(project.environments || []),
-    [project.environments],
-  )
+  // Redirect to clean URL when the tab slug or sub-id is invalid.
+  // ``deploy`` and ``promote`` are not page tabs — they are URL-driven
+  // modal triggers (``/projects/<id>/deploy/<env>``) — so they bypass
+  // the page-tab redirect, but they must carry a *known* env in
+  // ``subId`` to be meaningful, ``promote`` requires a previous env in
+  // the pipeline, *and* ``promote`` requires the upstream env to have a
+  // deployed version (otherwise ``fromCommittish`` would be undefined
+  // and the promote flow can't succeed).
+  useEffect(() => {
+    const isModalTab = initialTab === 'deploy' || initialTab === 'promote'
+    if (initialTab && !VALID_TAB_SET.has(initialTab) && !isModalTab) {
+      navigate(`/projects/${project.id}`, { replace: true })
+      return
+    }
+    if (isModalTab) {
+      if (!initialSubId) {
+        navigate(`/projects/${project.id}`, { replace: true })
+        return
+      }
+      // Wait for environments to load before validating; an empty list
+      // here just means the project hasn't finished resolving.
+      if (sortedEnvironments.length === 0) return
+      const idx = sortedEnvironments.findIndex((e) => e.slug === initialSubId)
+      if (idx < 0) {
+        navigate(`/projects/${project.id}`, { replace: true })
+        return
+      }
+      if (initialTab === 'promote') {
+        if (idx <= 0) {
+          navigate(`/projects/${project.id}`, { replace: true })
+          return
+        }
+        const fromSlug = sortedEnvironments[idx - 1]?.slug
+        const fromVersion = fromSlug
+          ? deploymentStatus[fromSlug]?.version
+          : undefined
+        // Wait for the releases query (drives ``deploymentStatus``) to
+        // settle before deciding the upstream is empty.
+        if (currentReleases.length === 0) return
+        if (!fromVersion) {
+          navigate(`/projects/${project.id}`, { replace: true })
+        }
+      }
+    }
+  }, [
+    currentReleases,
+    deploymentStatus,
+    initialSubId,
+    initialTab,
+    navigate,
+    project.id,
+    sortedEnvironments,
+  ])
 
   const { data: linkDefs = [] } = useQuery({
     enabled: !!orgSlug,
@@ -214,31 +260,30 @@ export function ProjectDetail({
   // even when the 30d baseline equals the current live score.
   const sessionBaseScore = useRef<null | number>(project.score ?? null)
 
-  const [deployModal, setDeployModal] = useState<{
-    envSlug?: string
-    open: boolean
-    promoteFrom?: string
-    promoteFromCommittish?: string
-    promoteTo?: string
-    tab: DeployModalTab
-  }>({ open: false, tab: 'deploy' })
+  // Modal state is derived from the URL: ``/projects/<id>/deploy/<env>``
+  // and ``/projects/<id>/promote/<env>``. Closing a modal navigates
+  // back to ``/projects/<id>`` so the URL is the single source of truth
+  // and a deploy/promote view is deep-linkable.
+  const isDeployModal = initialTab === 'deploy' && !!initialSubId
+  const isPromoteModal = initialTab === 'promote' && !!initialSubId
+  const closeModal = useCallback(
+    () => navigate(`/projects/${project.id}`, { replace: true }),
+    [navigate, project.id],
+  )
   const openDeploy = useCallback(
-    (envSlug?: string) =>
-      setDeployModal({ envSlug, open: true, tab: 'deploy' }),
-    [],
+    (envSlug?: string) => {
+      // The bare "Deploy" button doesn't carry an env, so default to
+      // the entry-point env (idx 0) for first-time deployments.
+      const slug = envSlug ?? sortedEnvironments[0]?.slug
+      if (slug) navigate(`/projects/${project.id}/deploy/${slug}`)
+    },
+    [navigate, project.id, sortedEnvironments],
   )
   const openPromote = useCallback(
-    (promoteFrom: string, promoteTo: string, promoteFromCommittish?: string) =>
-      setDeployModal({
-        open: true,
-        promoteFrom,
-        promoteFromCommittish,
-        promoteTo,
-        tab: 'promote',
-      }),
-    [],
+    (_fromEnvironment: string, toEnvironment: string) =>
+      navigate(`/projects/${project.id}/promote/${toEnvironment}`),
+    [navigate, project.id],
   )
-  const [promotePopoverOpen, setPromotePopoverOpen] = useState(false)
 
   // Active deployment runs (one watcher per entry).  Pushed by the
   // DeployTab/PromoteTab onRunStarted callback; the watcher itself
@@ -320,6 +365,112 @@ export function ProjectDetail({
   const hasLogsPlugin =
     projectPluginsSuccess &&
     (projectPlugins ?? []).some((a) => a.tab === 'logs')
+  const deploymentPlugin = projectPluginsSuccess
+    ? (projectPlugins ?? []).find((a) => a.tab === 'deployment')
+    : undefined
+  const deploymentIdentityPluginId =
+    deploymentPlugin?.identity_plugin_id ?? null
+
+  // Per-user identity connections — used to gate deploy/promote on the
+  // current user actually having an active connection to the deployment
+  // provider. Without this, chips render as buttons that 401 on click.
+  // Fetch any time a deployment plugin exists so we can also surface the
+  // identity-plugin label in the "connect to ..." banner even when the
+  // assignment lacks an explicit identity_plugin_id.
+  const {
+    data: myIdentities,
+    isError: myIdentitiesError,
+    isLoading: myIdentitiesLoading,
+    isSuccess: myIdentitiesSuccess,
+  } = useQuery({
+    enabled: !!deploymentPlugin,
+    queryFn: ({ signal }) => getMyIdentities(signal),
+    queryKey: ['my-identities'],
+    staleTime: 5 * 60 * 1000,
+  })
+  // Look up the identity plugin's display label so the banner names the
+  // provider the user actually has to authenticate against (e.g.
+  // "GitHub Enterprise Cloud") rather than the deployment plugin label.
+  // Fetch whenever a deployment plugin is present so the catalog is
+  // available — we may need it even before ``deploymentIdentityPluginId``
+  // resolves on the first render.
+  const {
+    data: identityPlugins,
+    isError: identityPluginsError,
+    isLoading: identityPluginsLoading,
+  } = useQuery({
+    enabled: !!orgSlug && !!deploymentPlugin,
+    queryFn: ({ signal }) => listIdentityPlugins(orgSlug, signal),
+    queryKey: ['identity-plugins', orgSlug],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // Resolve the identity plugin we expect the user to authenticate
+  // against. Prefer the explicit binding on the merged assignment; fall
+  // back to a sibling identity plugin whose slug shares a prefix with
+  // the deployment plugin's slug (e.g. ``github-enterprise-cloud`` ↔
+  // ``github-deployment-ec``). The fallback covers the case where the
+  // project-type assignment didn't bind an identity plugin but a
+  // matching one exists in the org's plugin catalog.
+  const resolvedIdentityPlugin = useMemo(() => {
+    if (!deploymentPlugin) return null
+    const catalog = identityPlugins ?? []
+    if (deploymentIdentityPluginId) {
+      const match = catalog.find(
+        (p) => p.plugin_id === deploymentIdentityPluginId,
+      )
+      if (match) return match
+    }
+    if (catalog.length === 0) return null
+    const dSlug = deploymentPlugin.plugin_slug
+    const dHead = dSlug.split('-')[0] ?? ''
+    return (
+      catalog.find((p) => dSlug.startsWith(p.plugin_slug)) ??
+      catalog.find((p) => p.plugin_slug.startsWith(dHead)) ??
+      null
+    )
+  }, [deploymentPlugin, deploymentIdentityPluginId, identityPlugins])
+
+  // A deployment plugin ALWAYS needs an identity connection — without an
+  // active connection to the resolved identity plugin we keep the chips
+  // non-interactive (the API would 401 anyway). Distinguish the three
+  // not-ready states so the banner doesn't tell already-connected users
+  // to "connect" while queries are still in flight or failing.
+  const isUserConnectedToDeployment =
+    !!resolvedIdentityPlugin &&
+    myIdentitiesSuccess &&
+    (myIdentities ?? []).some(
+      (i) =>
+        i.plugin_id === resolvedIdentityPlugin.plugin_id &&
+        i.status === 'active',
+    )
+  const deploymentReadiness:
+    | 'connected'
+    | 'disconnected'
+    | 'error'
+    | 'loading' = !deploymentPlugin
+    ? 'disconnected'
+    : myIdentitiesLoading || identityPluginsLoading
+      ? 'loading'
+      : myIdentitiesError || identityPluginsError
+        ? 'error'
+        : isUserConnectedToDeployment
+          ? 'connected'
+          : 'disconnected'
+  const canTriggerDeployments =
+    !!deploymentPlugin && deploymentReadiness === 'connected'
+
+  const deploymentConnectLabel = (() => {
+    if (resolvedIdentityPlugin?.label) return resolvedIdentityPlugin.label
+    if (deploymentIdentityPluginId) {
+      const match = (myIdentities ?? []).find(
+        (i) => i.plugin_id === deploymentIdentityPluginId,
+      )
+      if (match?.plugin_label) return match.plugin_label
+    }
+    if (deploymentPlugin?.label) return deploymentPlugin.label
+    return 'the identity provider'
+  })()
 
   // Redirect to overview when a deep-link points at a tab that no
   // longer surfaces (e.g. /configuration on a project type with no
@@ -462,80 +613,102 @@ export function ProjectDetail({
             </div>
           </div>
 
-          {/* Deployment Pipeline — chips render only when there's
-               release history; the Deploy/Promote controls render
-               unconditionally so first-time deployments are reachable. */}
-          <div className="flex items-center gap-2">
-            {Object.keys(deploymentStatus).length > 0 &&
-              sortedEnvironments
-                .filter((env) => !!deploymentStatus[env.slug])
-                .map((env, idx) => {
+          {/* Deployment Pipeline — chips are the only entry points
+               for Deploy/Promote, routed by position in the train. */}
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex items-center gap-2">
+              {sortedEnvironments.length > 0 &&
+                sortedEnvironments.map((env, idx) => {
                   const deployment = deploymentStatus[env.slug]
                   const color = env.label_color
-                  const ciDot = renderCiDot(deployment.ciStatus)
-                  const title = deployment.runUrl
-                    ? `${env.name}: ${deployment.version} · ${deployment.updated} · run: ${deployment.runUrl}`
-                    : `${env.name}: ${deployment.version} · ${deployment.updated}`
+                  const ciDot = deployment
+                    ? renderCiDot(deployment.ciStatus)
+                    : null
+                  // Release-train conventions, by position only — no
+                  // hardcoded env names:
+                  //   idx 0   — entry point, Deploy a chosen commit
+                  //   idx 1   — Promote (tag + release the idx-0 build)
+                  //   idx 2+  — Deploy: re-roll whatever was tagged at
+                  //             idx 1 to a downstream env
+                  const isPromoteSlot = idx === 1
+                  const previousSlug = isPromoteSlot
+                    ? sortedEnvironments[0]?.slug
+                    : undefined
+                  const handleClick = isPromoteSlot
+                    ? () => openPromote(previousSlug as string, env.slug)
+                    : () => openDeploy(env.slug)
+                  const tooltipText = isPromoteSlot
+                    ? 'Promote'
+                    : 'Deploy / Redeploy'
+                  const versionSuffix = deployment
+                    ? `: ${deployment.version}`
+                    : ''
+                  const chipBody = color ? (
+                    <LabelChip
+                      className="rounded-md px-3 py-1.5 text-sm"
+                      hex={color}
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        {env.name}
+                        {versionSuffix}
+                        {ciDot}
+                      </span>
+                    </LabelChip>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium">
+                      {env.name}
+                      {versionSuffix}
+                      {ciDot}
+                    </span>
+                  )
                   return (
                     <span className="contents" key={env.slug}>
                       {idx > 0 && (
                         <ArrowRight className="h-4 w-4 text-tertiary" />
                       )}
-                      <button
-                        aria-label={`Deploy to ${env.name}`}
-                        className="cursor-pointer rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        onClick={() => openDeploy(env.slug)}
-                        title={title}
-                        type="button"
-                      >
-                        {color ? (
-                          <LabelChip
-                            className="rounded-md px-3 py-1.5 text-sm"
-                            hex={color}
-                          >
-                            <span className="inline-flex items-center gap-1.5">
-                              {env.name}: {deployment.version}
-                              {ciDot}
-                            </span>
-                          </LabelChip>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium">
-                            {env.name}: {deployment.version}
-                            {ciDot}
-                          </span>
-                        )}
-                      </button>
+                      {canTriggerDeployments ? (
+                        <TooltipProvider delayDuration={200}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                aria-label={
+                                  isPromoteSlot
+                                    ? `Promote ${previousSlug} to ${env.name}`
+                                    : `Deploy to ${env.name}`
+                                }
+                                className="cursor-pointer rounded-md transition hover:shadow-md hover:ring-1 hover:ring-ring hover:ring-offset-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                onClick={handleClick}
+                                type="button"
+                              >
+                                {chipBody}
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{tooltipText}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ) : (
+                        chipBody
+                      )}
                     </span>
                   )
                 })}
-            <Button
-              className="ml-4 border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100"
-              onClick={() => openDeploy()}
-              size="sm"
-              variant="outline"
-            >
-              <Rocket className="mr-1 h-4 w-4" />
-              Deploy
-            </Button>
-            <PromoteDialog
-              onOpenChange={setPromotePopoverOpen}
-              onPromote={(opt) => {
-                setPromotePopoverOpen(false)
-                openPromote(
-                  opt.from_environment,
-                  opt.to_environment,
-                  opt.from_sha ?? opt.from_version ?? undefined,
-                )
-              }}
-              open={promotePopoverOpen}
-              orgSlug={orgSlug}
-              projectId={project.id}
-            >
-              <Button size="sm" variant="outline">
-                <GitMerge className="mr-1 h-4 w-4" />
-                Promote
-              </Button>
-            </PromoteDialog>
+            </div>
+            {deploymentPlugin && (
+              <div className="flex items-center gap-1.5 text-xs italic text-tertiary">
+                <Info className="h-3.5 w-3.5" />
+                <span>
+                  {deploymentReadiness === 'connected'
+                    ? 'Click on an environment to deploy to it'
+                    : deploymentReadiness === 'loading'
+                      ? 'Checking deployment access…'
+                      : deploymentReadiness === 'error'
+                        ? 'Could not check deployment access — retry shortly'
+                        : `Connect to ${deploymentConnectLabel} to enable deployments`}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -827,20 +1000,53 @@ export function ProjectDetail({
           <ProjectSettingsTab project={project} />
         </TabsContent>
       </Tabs>
-      <DeploymentModal
+      <DeployModal
         environments={sortedEnvironments}
-        initialEnvSlug={deployModal.envSlug}
-        initialTab={deployModal.tab}
-        onOpenChange={(open) => setDeployModal((prev) => ({ ...prev, open }))}
+        initialEnvSlug={isDeployModal ? initialSubId : undefined}
+        onOpenChange={(open) => {
+          if (!open) closeModal()
+        }}
         onRunStarted={handleRunStarted}
-        open={deployModal.open}
+        open={isDeployModal}
         orgSlug={orgSlug}
         projectId={project.id}
         projectName={project.name}
-        promoteFrom={deployModal.promoteFrom}
-        promoteFromCommittish={deployModal.promoteFromCommittish}
-        promoteTo={deployModal.promoteTo}
       />
+      {(() => {
+        if (!isPromoteModal) return null
+        const toIdx = sortedEnvironments.findIndex(
+          (e) => e.slug === initialSubId,
+        )
+        // Promote requires a previous env in the pipeline to act as the
+        // source AND a deployed version on that upstream env (else
+        // ``fromCommittish`` would be undefined and the API can't
+        // resolve the source). ``idx <= 0`` means the URL points at the
+        // entry-point env (or an unknown one); the redirect effect
+        // above will already navigate away — render nothing here so we
+        // never mount PromoteModal in an impossible state.
+        if (toIdx <= 0) return null
+        const fromSlug = sortedEnvironments[toIdx - 1]?.slug
+        const fromVersion = fromSlug
+          ? deploymentStatus[fromSlug]?.version
+          : undefined
+        if (!fromSlug || !fromVersion) return null
+        return (
+          <PromoteModal
+            environments={sortedEnvironments}
+            fromCommittish={fromVersion}
+            fromEnvironment={fromSlug}
+            onOpenChange={(open) => {
+              if (!open) closeModal()
+            }}
+            onRunStarted={handleRunStarted}
+            open={isPromoteModal}
+            orgSlug={orgSlug}
+            projectId={project.id}
+            projectName={project.name}
+            toEnvironment={initialSubId as string}
+          />
+        )
+      })()}
       {activeRuns.map((run) => (
         // Bind each watcher to the org/project that triggered the run
         // so polling stays correct if the user navigates to another

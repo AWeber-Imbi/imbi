@@ -17,7 +17,6 @@ import { Input } from '@/components/ui/input'
 import { LoadingState } from '@/components/ui/loading-state'
 import { Textarea } from '@/components/ui/textarea'
 import { extractApiErrorDetail } from '@/lib/apiError'
-import { ciStatusDotClass } from '@/lib/status-colors'
 import { cn } from '@/lib/utils'
 import type { DraftReleaseNotesResponse, Environment } from '@/types'
 
@@ -259,25 +258,22 @@ export function PromoteTab({
               return (
                 <li
                   className={cn(
-                    'flex items-center gap-3 border-b border-tertiary px-3 py-2 last:border-b-0',
+                    'flex min-w-0 items-center gap-3 border-b border-tertiary px-3 py-2 last:border-b-0',
                     active && 'bg-action/5',
                   )}
                   key={c.sha}
                 >
                   <button
-                    className="flex flex-1 items-center gap-3 text-left"
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
                     onClick={() => setSelectedSha(c.sha)}
                     type="button"
                   >
-                    <span
-                      aria-label={`CI ${c.ci_status}`}
-                      className={cn(
-                        'inline-block h-2 w-2 rounded-full',
-                        ciStatusDotClass(c.ci_status),
-                      )}
-                    />
-                    <span className="font-mono text-xs">{c.short_sha}</span>
-                    <span className="flex-1 truncate text-sm">{c.message}</span>
+                    <span className="shrink-0 font-mono text-xs">
+                      {c.short_sha}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      {c.message}
+                    </span>
                     <Badge variant="neutral">{tipIndex}</Badge>
                   </button>
                 </li>
@@ -385,7 +381,7 @@ export function PromoteTab({
         <span className="font-mono">{selectedSha?.slice(0, 7) ?? '—'}</span> and
         rolled out to {toEnvironment}.
       </p>
-      <div className="bg-secondary/30 -mx-6 -mb-6 mt-2 flex items-center justify-end gap-2 border-t border-tertiary px-6 py-3">
+      <div className="bg-secondary/30 -mx-6 -mb-4 mt-2 flex items-center justify-end gap-2 border-t border-tertiary px-6 py-4">
         <Button onClick={onClose} type="button" variant="ghost">
           Cancel
         </Button>

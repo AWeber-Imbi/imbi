@@ -401,6 +401,24 @@ export const getOperationsLogEntry = (entryId: string, signal?: AbortSignal) =>
     signal,
   )
 
+export interface OperationsLogCreate {
+  completed_at?: null | string
+  description: string
+  entry_type: string
+  environment_slug: string
+  link?: null | string
+  notes?: null | string
+  occurred_at?: null | string
+  performed_by?: null | string
+  project_id: string
+  project_slug: string
+  ticket_slug?: null | string
+  version?: null | string
+}
+
+export const createOperationsLogEntry = (body: OperationsLogCreate) =>
+  apiClient.post<OperationsLogRecord>('/operations-log/', body)
+
 // Events
 export interface EventRecord {
   attributed_to: string

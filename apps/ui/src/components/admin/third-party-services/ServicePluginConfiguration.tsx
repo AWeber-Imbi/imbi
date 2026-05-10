@@ -1,7 +1,8 @@
+import * as React from 'react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
@@ -25,6 +26,12 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingState } from '@/components/ui/loading-state'
@@ -751,6 +758,14 @@ function ProjectTypesCard({
 }: ProjectTypesCardProps) {
   const [drafts, setDrafts] = useState<DraftAssignment[]>([])
   const [seedHash, setSeedHash] = useState<null | string>(null)
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const toggleExpanded = (idx: number) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return next
+    })
 
   const { data: existing } = useQuery({
     queryFn: ({ signal }) =>
@@ -834,22 +849,34 @@ function ProjectTypesCard({
   const supportedTab = (manifest?.supported_tabs[0] ??
     'configuration') as PluginTab
 
-  const handleAdd = () => {
-    if (!remainingPts.length) return
-    setDrafts((prev) => [
-      ...prev,
-      {
-        default: false,
-        identity_plugin_id: null,
-        options: {},
-        project_type_slug: remainingPts[0].slug,
-        tab: supportedTab,
-      },
-    ])
+  const handleAdd = (slug: string) => {
+    setDrafts((prev) => {
+      if (prev.some((d) => d.project_type_slug === slug)) return prev
+      return [
+        ...prev,
+        {
+          default: true,
+          identity_plugin_id: null,
+          options: {},
+          project_type_slug: slug,
+          tab: supportedTab,
+        },
+      ]
+    })
   }
 
   const handleRemove = (idx: number) => {
     setDrafts((prev) => prev.filter((_, i) => i !== idx))
+    setExpanded((prev) => {
+      const next = new Set<number>()
+      // Indices shift left by 1 once we drop ``idx``; rebuild the set
+      // accordingly so a different row doesn't suddenly appear expanded.
+      for (const i of prev) {
+        if (i === idx) continue
+        next.add(i > idx ? i - 1 : i)
+      }
+      return next
+    })
   }
 
   const updateDraft = (idx: number, patch: Partial<DraftAssignment>) => {
@@ -896,15 +923,28 @@ function ProjectTypesCard({
               {saveMutation.isPending ? 'Saving…' : 'Save'}
             </Button>
           )}
-          <Button
-            disabled={remainingPts.length === 0}
-            onClick={handleAdd}
-            size="sm"
-            variant="outline"
-          >
-            <Plus className="mr-1 h-3 w-3" />
-            Add
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                disabled={remainingPts.length === 0}
+                size="sm"
+                variant="outline"
+              >
+                <Plus className="mr-1 h-3 w-3" />
+                Add
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="max-h-72 overflow-auto">
+              {remainingPts.map((pt) => (
+                <DropdownMenuItem
+                  key={pt.slug}
+                  onSelect={() => handleAdd(pt.slug)}
+                >
+                  {pt.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </CardHeader>
       <CardContent className="px-6 pb-6">
@@ -918,116 +958,123 @@ function ProjectTypesCard({
             <TableHeader>
               <TableRow>
                 <TableHead>Project Type</TableHead>
-                <TableHead>Tab</TableHead>
-                <TableHead>Default</TableHead>
-                <TableHead>Identity Plugin</TableHead>
-                <TableHead>Option Overrides</TableHead>
+                <TableHead className="w-24">Default</TableHead>
+                <TableHead className="w-12" />
                 <TableHead className="w-12" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {drafts.map((draft, idx) => {
-                const usedSlugs = new Set(
-                  drafts
-                    .filter((_, i) => i !== idx)
-                    .map((d) => d.project_type_slug),
-                )
-                const ptOptions = (projectTypes ?? []).filter(
-                  (pt) =>
-                    pt.slug === draft.project_type_slug ||
-                    !usedSlugs.has(pt.slug),
-                )
+                const isExpanded = expanded.has(idx)
+                // Override count = identity-plugin override (if set) + each
+                // explicitly overridden option field. The identity selector
+                // lives inside the accordion now, so the row is always
+                // expandable even when the manifest has no option fields.
+                const overrideCount =
+                  Object.keys(draft.options).length +
+                  (draft.identity_plugin_id ? 1 : 0)
                 return (
-                  <TableRow key={`${draft.project_type_slug}-${idx}`}>
-                    <TableCell className="align-top">
-                      <Select
-                        onValueChange={(v) =>
-                          updateDraft(idx, { project_type_slug: v })
-                        }
-                        value={draft.project_type_slug}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select…">
-                            {ptByName.get(draft.project_type_slug) ??
-                              draft.project_type_slug}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ptOptions.map((pt) => (
-                            <SelectItem key={pt.slug} value={pt.slug}>
-                              {pt.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <Badge variant="secondary">{draft.tab}</Badge>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <input
-                        checked={draft.default}
-                        onChange={(e) =>
-                          updateDraft(idx, { default: e.target.checked })
-                        }
-                        type="checkbox"
-                      />
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <IdentityPluginSelect
-                        identityPlugins={identityPlugins ?? []}
-                        onChange={(next) =>
-                          updateDraft(idx, { identity_plugin_id: next })
-                        }
-                        value={draft.identity_plugin_id ?? null}
-                      />
-                    </TableCell>
-                    <TableCell className="align-top">
-                      {(manifest?.options ?? []).length === 0 ? (
-                        <span className="text-xs text-secondary">—</span>
-                      ) : (
-                        <div className="space-y-2">
-                          {(manifest?.options ?? []).map((opt) => {
-                            const defaultVal =
-                              plugin.options[opt.name] ?? opt.default ?? null
-                            const overridden = opt.name in draft.options
-                            return (
-                              <OptionRow
-                                description={null}
-                                key={opt.name}
-                                label={opt.label}
-                                name={`${opt.name}-${idx}`}
+                  <React.Fragment key={`${draft.project_type_slug}-${idx}`}>
+                    <TableRow
+                      aria-expanded={isExpanded}
+                      className="hover:bg-secondary/40 cursor-pointer"
+                      onClick={() => toggleExpanded(idx)}
+                    >
+                      <TableCell className="align-middle">
+                        <span className="text-sm">
+                          {ptByName.get(draft.project_type_slug) ??
+                            draft.project_type_slug}
+                        </span>
+                      </TableCell>
+                      <TableCell className="align-middle">
+                        <input
+                          checked={draft.default}
+                          onChange={(e) =>
+                            updateDraft(idx, { default: e.target.checked })
+                          }
+                          onClick={(e) => e.stopPropagation()}
+                          type="checkbox"
+                        />
+                      </TableCell>
+                      <TableCell className="align-middle">
+                        <span className="relative inline-flex items-center">
+                          <ChevronDown
+                            className={`h-3.5 w-3.5 text-tertiary transition-transform ${
+                              isExpanded ? 'rotate-180' : ''
+                            }`}
+                          />
+                          {overrideCount > 0 && (
+                            <Badge
+                              className="ml-1 h-4 px-1 text-[10px]"
+                              variant="secondary"
+                            >
+                              {overrideCount}
+                            </Badge>
+                          )}
+                        </span>
+                      </TableCell>
+                      <TableCell className="align-middle">
+                        <Button
+                          aria-label="Remove assignment"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleRemove(idx)
+                          }}
+                          size="icon"
+                          variant="ghost"
+                        >
+                          <Trash2 className="h-3 w-3 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                    {isExpanded && (
+                      <TableRow className="bg-secondary/30 hover:bg-secondary/30">
+                        <TableCell className="p-0" colSpan={4}>
+                          <div className="space-y-3 px-6 py-4">
+                            <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+                              <Label className="text-sm">Identity Plugin</Label>
+                              <IdentityPluginSelect
+                                identityPlugins={identityPlugins ?? []}
                                 onChange={(next) =>
-                                  updateOverride(idx, opt.name, next)
+                                  updateDraft(idx, {
+                                    identity_plugin_id: next,
+                                  })
                                 }
-                                opt={opt}
-                                placeholder={
-                                  overridden
-                                    ? undefined
-                                    : defaultVal !== null
-                                      ? `Inherits: ${String(defaultVal)}`
-                                      : 'Inherits default'
-                                }
-                                value={
-                                  overridden ? draft.options[opt.name] : ''
-                                }
+                                value={draft.identity_plugin_id ?? null}
                               />
-                            )
-                          })}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <Button
-                        aria-label="Remove assignment"
-                        onClick={() => handleRemove(idx)}
-                        size="icon"
-                        variant="ghost"
-                      >
-                        <Trash2 className="h-3 w-3 text-destructive" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                            </div>
+                            {(manifest?.options ?? []).map((opt) => {
+                              const defaultVal =
+                                plugin.options[opt.name] ?? opt.default ?? null
+                              const overridden = opt.name in draft.options
+                              return (
+                                <OptionRow
+                                  description={null}
+                                  key={opt.name}
+                                  label={opt.label}
+                                  name={`${opt.name}-${idx}`}
+                                  onChange={(next) =>
+                                    updateOverride(idx, opt.name, next)
+                                  }
+                                  opt={opt}
+                                  placeholder={
+                                    overridden
+                                      ? undefined
+                                      : defaultVal !== null
+                                        ? `Inherits: ${String(defaultVal)}`
+                                        : 'Inherits default'
+                                  }
+                                  value={
+                                    overridden ? draft.options[opt.name] : ''
+                                  }
+                                />
+                              )
+                            })}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </React.Fragment>
                 )
               })}
             </TableBody>

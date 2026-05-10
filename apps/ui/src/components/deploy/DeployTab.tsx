@@ -17,7 +17,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { LoadingState } from '@/components/ui/loading-state'
 import { extractApiErrorDetail } from '@/lib/apiError'
-import { ciStatusDotClass } from '@/lib/status-colors'
 import { cn, sortEnvironments } from '@/lib/utils'
 import type {
   CurrentReleaseEnvironment,
@@ -53,31 +52,28 @@ export function DeployTab({
   projectId,
 }: DeployTabProps) {
   const sorted = useMemo(() => sortEnvironments(environments), [environments])
-  const [envSlug, setEnvSlug] = useState<string>(
-    initialEnvSlug ?? sorted[sorted.length - 1]?.slug ?? '',
-  )
-  useEffect(() => {
-    // Reset to the requested env whenever the modal is reopened with
-    // a different chip.  ``envSlug`` is intentionally excluded — listing
-    // it would re-snap to ``initialEnvSlug`` after the user picks
-    // another env card.
-    if (initialEnvSlug && initialEnvSlug !== envSlug) setEnvSlug(initialEnvSlug)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialEnvSlug])
-
-  const env = sorted.find((e) => e.slug === envSlug) ?? sorted[0]
+  // Env is locked at modal open time — the URL ``/deploy/<env>`` carries
+  // the target, and re-deploys are scoped to that single env. No picker
+  // is rendered; users navigate to a different chip to change env.
+  // Resolve the env first so a stale ``initialEnvSlug`` falls back to the
+  // first env *and* the slug used to display / dispatch matches.
+  const env = initialEnvSlug
+    ? (sorted.find((e) => e.slug === initialEnvSlug) ?? sorted[0])
+    : sorted[0]
+  const envSlug = env?.slug ?? ''
 
   const { data: currentReleases = [] } = useQuery<CurrentReleaseEnvironment[]>({
     enabled: open && !!orgSlug && !!projectId,
     queryFn: ({ signal }) => listCurrentReleases(orgSlug, projectId, signal),
     queryKey: ['currentReleases', orgSlug, projectId],
   })
-  const currentByEnv = useMemo(() => {
-    const map = new Map<string, CurrentReleaseEnvironment>()
-    for (const row of currentReleases) map.set(row.environment.slug, row)
-    return map
-  }, [currentReleases])
-  const current = env ? currentByEnv.get(env.slug) : undefined
+  const current = useMemo(
+    () =>
+      env
+        ? currentReleases.find((r) => r.environment.slug === env.slug)
+        : undefined,
+    [currentReleases, env],
+  )
 
   // For the first env (e.g. Testing) we list commits on the default
   // branch.  For staging / production we list tags.
@@ -255,62 +251,44 @@ export function DeployTab({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Step 1 — environment pickers */}
+      {/* Locked target environment */}
       <section>
         <p className="mb-2 text-xs uppercase tracking-wider text-tertiary">
-          Step 1 — Environment
+          Environment
         </p>
-        <div className="grid grid-cols-3 gap-2">
-          {sorted.map((e) => {
-            const row = currentByEnv.get(e.slug)
-            const active = e.slug === envSlug
-            return (
-              <button
-                className={cn(
-                  'rounded-md border p-3 text-left transition-colors',
-                  active
-                    ? 'border-action bg-action/5'
-                    : 'border-secondary hover:bg-tertiary/30',
-                )}
-                key={e.slug}
-                onClick={() => setEnvSlug(e.slug)}
-                type="button"
-              >
-                <div className="text-sm font-medium">{e.name}</div>
-                <div className="mt-1 text-xs text-tertiary">
-                  {row?.release ? (
-                    <>
-                      <span className="font-mono">{row.release.version}</span>
-                      {row.last_event_at ? (
-                        <>
-                          {' · '}
-                          {formatDistanceToNow(new Date(row.last_event_at), {
-                            addSuffix: true,
-                          })}
-                        </>
-                      ) : null}
-                    </>
-                  ) : (
-                    'not deployed'
-                  )}
-                </div>
-              </button>
-            )
-          })}
+        <div className="bg-action/5 rounded-md border border-action p-3">
+          <div className="text-sm font-medium">{env?.name ?? envSlug}</div>
+          <div className="mt-1 text-xs text-tertiary">
+            {current?.release ? (
+              <>
+                <span className="font-mono">{current.release.version}</span>
+                {current.last_event_at ? (
+                  <>
+                    {' · '}
+                    {formatDistanceToNow(new Date(current.last_event_at), {
+                      addSuffix: true,
+                    })}
+                  </>
+                ) : null}
+              </>
+            ) : (
+              'not deployed'
+            )}
+          </div>
         </div>
       </section>
 
-      {/* Step 2 — version picker */}
+      {/* Version picker */}
       <section className="min-h-[180px]">
         <div className="mb-2 flex items-center justify-between">
           <p className="text-xs uppercase tracking-wider text-tertiary">
             {isFirstEnv
               ? showBranchPane
                 ? activeBranch
-                  ? `Step 2 — Commit on ${activeBranch}`
-                  : 'Step 2 — Pick a branch'
-                : `Step 2 — Commit on ${defaultBranchName}`
-              : 'Step 2 — Tag'}
+                  ? `Commit on ${activeBranch}`
+                  : 'Pick a branch'
+                : `Commit on ${defaultBranchName}`
+              : 'Tag'}
           </p>
           {isFirstEnv ? (
             <PickerToggle
@@ -375,7 +353,7 @@ export function DeployTab({
       ) : null}
 
       {/* Footer */}
-      <div className="bg-secondary/30 -mx-6 -mb-6 mt-2 flex items-center justify-end gap-2 border-t border-tertiary px-6 py-3">
+      <div className="bg-secondary/30 -mx-6 -mb-4 mt-2 flex items-center justify-end gap-2 border-t border-tertiary px-6 py-4">
         <Button onClick={onClose} type="button" variant="ghost">
           Cancel
         </Button>
@@ -453,11 +431,13 @@ function BranchPicker({
                   key={b.name}
                 >
                   <button
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left"
+                    className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left"
                     onClick={() => onBranchSelect(b.name)}
                     type="button"
                   >
-                    <span className="flex-1 truncate text-sm">{b.name}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      {b.name}
+                    </span>
                     {b.pr_number ? (
                       <Badge variant="outline">#{b.pr_number}</Badge>
                     ) : null}
@@ -516,25 +496,20 @@ function CommitList({
         return (
           <li
             className={cn(
-              'flex items-center gap-3 border-b border-tertiary px-3 py-2 last:border-b-0',
+              'flex min-w-0 items-center gap-3 border-b border-tertiary px-3 py-2 last:border-b-0',
               active && 'bg-action/5',
             )}
             key={c.sha}
           >
             <button
-              className="flex flex-1 items-center gap-3 text-left"
+              className="flex min-w-0 flex-1 items-center gap-3 text-left"
               onClick={() => onSelect(c)}
               type="button"
             >
-              <span
-                aria-label={`CI ${c.ci_status}`}
-                className={cn(
-                  'inline-block h-2 w-2 rounded-full',
-                  ciStatusDotClass(c.ci_status),
-                )}
-              />
-              <span className="font-mono text-xs">{c.short_sha}</span>
-              <span className="flex-1 truncate text-sm">{c.message}</span>
+              <span className="shrink-0 font-mono text-xs">{c.short_sha}</span>
+              <span className="min-w-0 flex-1 truncate text-sm">
+                {c.message}
+              </span>
               <span className="shrink-0 text-xs text-tertiary">{c.author}</span>
               {c.is_head ? <Badge variant="outline">HEAD</Badge> : null}
               {isCurrent ? <Badge variant="neutral">current</Badge> : null}
