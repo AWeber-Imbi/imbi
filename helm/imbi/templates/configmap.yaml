@@ -6,6 +6,12 @@ metadata:
     {{- include "imbi.labels" . | nindent 4 }}
 data:
   IMBI_ASSISTANT_ENABLED: {{ .Values.assistant.enabled | quote }}
+  # Internal upstream URL used by imbi-mcp and imbi-assistant for
+  # service-to-service calls to imbi-api. Distinct from the API's
+  # public URL. Defaults to the in-pod loopback for "all" mode; set
+  # service.internalApiUrl when running imbi-mcp or imbi-assistant
+  # as separate pods.
+  IMBI_INTERNAL_API_URL: {{ .Values.service.internalApiUrl | quote }}
   IMBI_EMAIL_ENABLED: {{ .Values.email.enabled | quote }}
   {{- if .Values.email.enabled }}
   IMBI_EMAIL_SMTP_HOST: {{ .Values.email.smtp.host | quote }}

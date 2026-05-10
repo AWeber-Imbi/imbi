@@ -12,6 +12,11 @@ replicaCount: 1
 # Use the matching .service.<name>.replicas value to scale that service.
 service:
   mode: all
+  # Internal upstream URL imbi-mcp and imbi-assistant use to reach
+  # imbi-api. The default works for "all" and "api" modes; override
+  # when running "mcp" or "assistant" as separate pods (e.g.
+  # http://imbi-api.<namespace>.svc.cluster.local:8000).
+  internalApiUrl: "http://localhost:8000"
   api:
     replicas: 1
   assistant:
