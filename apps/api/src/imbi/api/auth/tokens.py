@@ -16,6 +16,7 @@ from imbi_common import graph
 from imbi_common.auth import core
 
 from imbi_api import settings
+from imbi_api.auth import membership
 
 LOGGER = logging.getLogger(__name__)
 
@@ -173,6 +174,17 @@ async def issue_token_pair(
             'issue_token_pair: no %s principal matched', principal_type
         )
         raise PrincipalNotFoundError(f'No {principal_type} found')
+
+    # Assign the seeded default role to users that have no organization
+    # membership yet. Best-effort: any failure here must not block
+    # token issuance, since the tokens have already been persisted.
+    if principal_type == 'user':
+        try:
+            await membership.ensure_user_membership(db, principal_id)
+        except Exception:
+            LOGGER.exception(
+                'ensure_user_membership failed during token issuance'
+            )
 
     return (
         access_token,

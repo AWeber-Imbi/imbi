@@ -386,14 +386,20 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ),
 ]
 
-# Default role definitions
-DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
+# Default role definitions.
+#
+# The 6th tuple element marks the role auto-assigned to newly-logging-in
+# users that have no organization membership yet (see
+# ``imbi_api.auth.membership.ensure_user_membership``). Exactly one
+# entry should set this to True; ``bootstrap_auth_system`` enforces it.
+DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
     (
         'admin',
         'Administrator',
         'Full system access with all permissions',
         1000,
         [perm[0] for perm in STANDARD_PERMISSIONS],  # All permissions
+        False,
     ),
     (
         'developer',
@@ -431,6 +437,33 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
             'document_template:read',
             'me:identities:manage',
         ],
+        False,
+    ),
+    (
+        'default',
+        'Default',
+        'Baseline access granted automatically on first login',
+        150,
+        [
+            'blueprint:read',
+            'document:read',
+            'document_template:read',
+            'environment:read',
+            'link_definition:read',
+            'me:identities:manage',
+            'operations_log:read',
+            'organization:read',
+            'project:read',
+            'project_type:read',
+            'role:read',
+            'tag:read',
+            'team:read',
+            'third_party_service:read',
+            'upload:read',
+            'user:read',
+            'webhook:read',
+        ],
+        True,
     ),
     (
         'readonly',
@@ -456,8 +489,18 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
             'document_template:read',
             'me:identities:manage',
         ],
+        False,
     ),
 ]
+
+# Invariant: exactly one seeded role is the auto-assignment target so
+# ``ensure_user_membership`` can resolve it unambiguously. Enforced at
+# module import time so a misconfigured DEFAULT_ROLES table fails fast
+# rather than producing silent permission gaps in production.
+if sum(role[5] for role in DEFAULT_ROLES) != 1:
+    raise RuntimeError(
+        'Exactly one DEFAULT_ROLES entry must set is_default=True'
+    )
 
 
 async def seed_permissions(db: graph.Graph) -> int:
@@ -513,15 +556,18 @@ async def seed_default_roles(db: graph.Graph) -> int:
         description,
         priority,
         permission_names,
+        is_default,
     ) in enumerate(DEFAULT_ROLES):
         role_maps.append(
             f'{{{{slug: {{r_s_{i}}}, name: {{r_n_{i}}},'
-            f' description: {{r_d_{i}}}, priority: {{r_p_{i}}}}}}}'
+            f' description: {{r_d_{i}}}, priority: {{r_p_{i}}},'
+            f' is_default: {{r_dflt_{i}}}}}}}'
         )
         params[f'r_s_{i}'] = slug
         params[f'r_n_{i}'] = name
         params[f'r_d_{i}'] = description
         params[f'r_p_{i}'] = priority
+        params[f'r_dflt_{i}'] = is_default
         for j, perm_name in enumerate(permission_names):
             grant_maps.append(
                 f'{{{{slug: {{r_s_{i}}}, perm: {{g_{i}_{j}}}}}}}'
@@ -536,6 +582,7 @@ async def seed_default_roles(db: graph.Graph) -> int:
         'SET r.name = role.name, '
         'r.description = role.description, '
         'r.priority = role.priority, '
+        'r.is_default = role.is_default, '
         'r.is_system = true '
         'WITH sum(CASE WHEN existing IS NULL THEN 1 ELSE 0 END) '
         'AS created '

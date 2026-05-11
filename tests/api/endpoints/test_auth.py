@@ -727,8 +727,19 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
 
         self.client = testclient.TestClient(self.test_app)
 
+        # Default-role auto-assignment is exercised separately in
+        # tests/auth/test_membership.py; patch it out here so its
+        # ``db.execute`` calls do not consume the tightly-sized
+        # ``side_effect`` lists each test below configures.
+        self._membership_patch = mock.patch(
+            'imbi_api.auth.tokens.membership.ensure_user_membership',
+            return_value=None,
+        )
+        self._membership_patch.start()
+
     def tearDown(self) -> None:
         """Reset settings singleton after tests."""
+        self._membership_patch.stop()
         settings._auth_settings = None
 
     @mock.patch.dict(

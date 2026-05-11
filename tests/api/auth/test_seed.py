@@ -89,7 +89,10 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
     def test_default_roles_structure(self) -> None:
         """Verify default role definitions are well-formed."""
         role_slugs = {role[0] for role in seed.DEFAULT_ROLES}
-        self.assertEqual(role_slugs, {'admin', 'developer', 'readonly'})
+        self.assertEqual(
+            role_slugs,
+            {'admin', 'developer', 'default', 'readonly'},
+        )
 
         # Verify admin has all permissions
         admin_role = next(r for r in seed.DEFAULT_ROLES if r[0] == 'admin')
@@ -98,6 +101,16 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
             len(admin_permissions),
             len(seed.STANDARD_PERMISSIONS),
         )
+
+    def test_exactly_one_role_is_default(self) -> None:
+        """Exactly one seeded role is the auto-assignment target."""
+        defaults = [r for r in seed.DEFAULT_ROLES if r[5]]
+        self.assertEqual(
+            len(defaults),
+            1,
+            'Exactly one DEFAULT_ROLES entry must set is_default=True',
+        )
+        self.assertEqual(defaults[0][0], 'default')
 
         # Verify developer has subset of permissions
         dev_role = next(r for r in seed.DEFAULT_ROLES if r[0] == 'developer')
@@ -185,7 +198,7 @@ class BootstrapAuthSystemTestCase(unittest.IsolatedAsyncioTestCase):
             ) as mock_perms,
             mock.patch(
                 'imbi_api.auth.seed.seed_default_roles',
-                return_value=3,
+                return_value=len(seed.DEFAULT_ROLES),
             ) as mock_roles,
         ):
             result = await seed.bootstrap_auth_system(mock_db)
@@ -199,7 +212,7 @@ class BootstrapAuthSystemTestCase(unittest.IsolatedAsyncioTestCase):
             result['permissions'],
             len(seed.STANDARD_PERMISSIONS),
         )
-        self.assertEqual(result['roles'], 3)
+        self.assertEqual(result['roles'], len(seed.DEFAULT_ROLES))
 
     async def test_bootstrap_auth_system_idempotent(self) -> None:
         """Bootstrap can be safely run multiple times."""
