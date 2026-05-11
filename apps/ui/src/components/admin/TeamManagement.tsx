@@ -22,6 +22,7 @@ export function TeamManagement() {
   const { selectedOrganization } = useOrganization()
   const {
     goToCreate,
+    goToDetail,
     goToEdit,
     goToList,
     slug: selectedTeamSlug,
@@ -291,7 +292,7 @@ export function TeamManagement() {
         getRowKey={(team) => team.slug}
         isDeleting={deleteMutation.isPending}
         onDelete={handleDelete}
-        onRowClick={(team) => goToEdit(team.slug)}
+        onRowClick={(team) => goToDetail(team.slug)}
         rows={filteredTeams}
       />
     </AdminSection>
