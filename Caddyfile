@@ -12,7 +12,7 @@
 		reverse_proxy 127.0.0.1:8002
 	}
 
-	handle_path /docs/* {
+	handle /docs/* {
 		reverse_proxy 127.0.0.1:8000
 	}
 
@@ -24,11 +24,15 @@
 		reverse_proxy 127.0.0.1:8001
 	}
 
-	handle_path /openapi.json {
+	handle /openapi.json {
 		reverse_proxy 127.0.0.1:8000
 	}
 
-	handle_path /uploads/* {
+	handle /status {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle /uploads/* {
 		reverse_proxy 127.0.0.1:8000
 	}
 
