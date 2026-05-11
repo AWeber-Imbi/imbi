@@ -107,7 +107,7 @@ attributes = ["email"]
 
 [[vlabel_indexes]]
 vlabel = "OAuthIdentity"
-attributes = ["provider", "provider_user_id"]
+attributes = ["provider_slug", "provider_user_id"]
 unique = true
 
 [[vlabel_indexes]]
