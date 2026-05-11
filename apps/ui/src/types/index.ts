@@ -86,6 +86,8 @@ export interface OperationsLogEntry {
 // a looser `relationships` shape than the generated `ProjectResponse`.
 export interface Project {
   [key: string]: unknown
+  archived?: boolean
+  archived_at?: null | string
   created_at?: null | string
   description?: null | string
   environments?: Environment[]

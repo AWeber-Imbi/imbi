@@ -6,11 +6,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import {
+  archiveProject,
   deleteProject,
   listEnvironments,
   listLinkDefinitions,
   patchProject,
   rescoreProject,
+  unarchiveProject,
 } from '@/api/endpoints'
 import { EditEnvironmentsCard } from '@/components/EditEnvironmentsCard'
 import { EditIdentifiersCard } from '@/components/EditIdentifiersCard'
@@ -24,6 +26,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -42,6 +45,8 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
   const { patch, scheduleScoreRefresh } = useProjectPatch(orgSlug, project.id)
   const [deleteConfirmSlug, setDeleteConfirmSlug] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
+  const isArchived = project.archived === true
 
   const invalidateProject = () => {
     queryClient.invalidateQueries({
@@ -57,6 +62,25 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
     mutationFn: () => deleteProject(orgSlug, project.id),
     onError: mutationErrorHandler('delete project'),
     onSuccess: () => navigate('/'),
+  })
+
+  const archiveMutation = useMutation({
+    mutationFn: (action: 'archive' | 'unarchive') =>
+      action === 'unarchive'
+        ? unarchiveProject(orgSlug, project.id)
+        : archiveProject(orgSlug, project.id),
+    onError: (error, action) =>
+      mutationErrorHandler(
+        action === 'unarchive' ? 'unarchive project' : 'archive project',
+      )(error),
+    onSuccess: (_data, action) => {
+      toast.success(
+        action === 'unarchive' ? 'Project restored' : 'Project archived',
+      )
+      setShowArchiveConfirm(false)
+      invalidateProject()
+      queryClient.invalidateQueries({ queryKey: ['projects', orgSlug] })
+    },
   })
 
   const rescoreMutation = useMutation({
@@ -163,20 +187,47 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
 
       <Card className="border-amber-300">
         <CardHeader>
-          <CardTitle>Archive project</CardTitle>
+          <CardTitle>
+            {isArchived ? 'Restore project' : 'Archive project'}
+          </CardTitle>
           <CardDescription className="text-secondary">
-            Archiving the project will make it entirely read only. It will be
-            hidden from the dashboard, won&apos;t show up in searches, and will
-            be disabled as a dependency for any other projects that are
-            dependent upon it.
+            {isArchived
+              ? 'This project is archived. Restoring will return it to the dashboard and search results.'
+              : 'Archiving the project will hide it from the dashboard and search results. Existing data is preserved and the project can be restored at any time.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button disabled size="sm" variant="outline">
-            Archive project
+          <Button
+            disabled={archiveMutation.isPending}
+            onClick={() => {
+              if (isArchived) {
+                archiveMutation.mutate('unarchive')
+              } else {
+                setShowArchiveConfirm(true)
+              }
+            }}
+            size="sm"
+            variant="outline"
+          >
+            {archiveMutation.isPending
+              ? isArchived
+                ? 'Restoring...'
+                : 'Archiving...'
+              : isArchived
+                ? 'Restore project'
+                : 'Archive project'}
           </Button>
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        confirmLabel="Archive project"
+        description={`Archiving ${project.slug} will hide it from the dashboard and search results until it is restored.`}
+        onCancel={() => setShowArchiveConfirm(false)}
+        onConfirm={() => archiveMutation.mutate('archive')}
+        open={showArchiveConfirm}
+        title="Archive this project?"
+      />
 
       <Card className="border-red-300">
         <CardHeader>

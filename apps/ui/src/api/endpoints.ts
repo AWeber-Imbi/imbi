@@ -259,6 +259,16 @@ export const deleteProject = (orgSlug: string, projectId: string) =>
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}`,
   )
 
+export const archiveProject = (orgSlug: string, projectId: string) =>
+  apiClient.post<Project>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/archive`,
+  )
+
+export const unarchiveProject = (orgSlug: string, projectId: string) =>
+  apiClient.post<Project>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/unarchive`,
+  )
+
 // Link Definitions (org-scoped)
 export const listLinkDefinitions = async (
   orgSlug: string,

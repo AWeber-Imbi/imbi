@@ -610,6 +610,11 @@ export function ProjectDetail({
                 renderValue={renderNameValue}
                 value={project.name}
               />
+              {project.archived && (
+                <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                  Archived
+                </span>
+              )}
             </div>
           </div>
 
