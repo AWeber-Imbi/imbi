@@ -408,6 +408,88 @@ class ActivityFeedTests(_Base):
         self.assertNotIn('rel="next"', link)
 
 
+class GraphActivityColumnsTests(unittest.TestCase):
+    """Cypher RETURN arity must match ``_GRAPH_ACTIVITY_COLUMNS``.
+
+    AGE requires the SQL ``AS (...)`` column list passed to ``cypher()``
+    to match the number of ``RETURN`` expressions, otherwise psycopg
+    raises ``DatatypeMismatch: return row and column definition list do
+    not match`` — which is what surfaced as a 500 on the
+    ``GET /users/{email}/activity`` endpoint.
+    """
+
+    @staticmethod
+    def _return_arity(template: str) -> int:
+        """Count comma-separated aliases in the Cypher RETURN clause."""
+        import re
+
+        upper = template.upper()
+        start = upper.index('RETURN')
+        tail = template[start + len('RETURN') :]
+        tail_upper = tail.upper()
+        stop = len(tail)
+        for kw in (' ORDER BY ', ' LIMIT ', ' WITH ', ' UNION '):
+            idx = tail_upper.find(kw)
+            if idx != -1 and idx < stop:
+                stop = idx
+        clause = tail[:stop]
+        flat = re.sub(r'\s+', ' ', clause).strip()
+        return len([p for p in flat.split(',') if p.strip()])
+
+    def test_columns_match_return_arity(self) -> None:
+        for label, template in user_activity._GRAPH_ACTIVITY_QUERIES.items():
+            with self.subTest(label=label):
+                arity = self._return_arity(template)
+                self.assertEqual(
+                    len(user_activity._GRAPH_ACTIVITY_COLUMNS[label]),
+                    arity,
+                    f'columns for {label!r} must match RETURN arity',
+                )
+
+
+class GraphActivityExecuteTests(_Base):
+    """``_graph_activity`` must pass a columns list matching the query."""
+
+    def test_execute_columns_match_per_label(self) -> None:
+        """Regression for the 500 on /users/{email}/activity.
+
+        AGE's ``cypher()`` wrapper requires an ``AS (...)`` column list
+        whose arity matches the Cypher ``RETURN`` clause; the bug was
+        that ``_graph_activity`` omitted the ``columns`` argument
+        entirely, so psycopg attempted a single-column unpack of an
+        N-column row and raised ``DatatypeMismatch``.
+        """
+        self._execute_returns(
+            [
+                [{'id': 'u1'}],  # _ensure_user_exists
+                [{'conn_subjects': [], 'oauth_subjects': []}],  # subjects
+                [],  # documents
+                [],  # releases
+                [],  # uploads
+                [],  # conversations
+            ]
+        )
+        self.mock_query.side_effect = [[], []]  # opslog, events
+        resp = self.client.get('/users/alice@example.com/activity')
+        self.assertEqual(resp.status_code, 200, resp.text)
+
+        # First two execute calls are _ensure_user_exists + subjects; the
+        # next four are the graph-activity legs in registration order.
+        graph_calls = self.mock_db.execute.await_args_list[2:6]
+        for call, label in zip(
+            graph_calls,
+            ('document', 'release', 'upload', 'conversation'),
+            strict=True,
+        ):
+            with self.subTest(label=label):
+                self.assertGreaterEqual(len(call.args), 3, call)
+                columns = call.args[2]
+                self.assertEqual(
+                    columns,
+                    user_activity._GRAPH_ACTIVITY_COLUMNS[label],
+                )
+
+
 class PermissionTests(unittest.TestCase):
     """Endpoints must require user:read."""
 

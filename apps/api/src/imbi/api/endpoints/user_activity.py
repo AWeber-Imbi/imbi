@@ -908,6 +908,35 @@ _LABEL_TO_TYPE: dict[str, str] = {
     'conversation': 'Conversation',
 }
 
+# AGE requires the SQL ``AS (...)`` column list to match the Cypher
+# ``RETURN`` arity; otherwise psycopg raises ``DatatypeMismatch:
+# return row and column definition list do not match``.  Keep these
+# lists aligned with the ``RETURN`` clauses in
+# ``_GRAPH_ACTIVITY_QUERIES`` above.
+_GRAPH_ACTIVITY_COLUMNS: dict[str, list[str]] = {
+    'document': [
+        'id',
+        'ts',
+        'title',
+        'created_by',
+        'updated_by',
+        'project_id',
+        'project_slug',
+        'project_name',
+    ],
+    'release': [
+        'id',
+        'ts',
+        'version',
+        'title',
+        'project_id',
+        'project_slug',
+        'project_name',
+    ],
+    'upload': ['id', 'ts', 'filename'],
+    'conversation': ['id', 'ts', 'title'],
+}
+
 
 async def _graph_activity(
     db: graph.Graph,
@@ -925,6 +954,7 @@ async def _graph_activity(
             'before': before.isoformat(),
             'row_limit': limit,
         },
+        _GRAPH_ACTIVITY_COLUMNS[label],
     )
     out: list[ActivityRecord] = []
     for row in rows:
