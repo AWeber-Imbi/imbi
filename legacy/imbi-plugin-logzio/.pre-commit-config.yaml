@@ -24,13 +24,12 @@ repos:
 
   - repo: local
     hooks:
-      - id: mypy
-        name: mypy
+      - id: basedpyright
+        name: basedpyright
         language: system
         types: [python]
         pass_filenames: false
         entry: uv
         args:
           - run
-          - mypy
-          - src
+          - basedpyright
