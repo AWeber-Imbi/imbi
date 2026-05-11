@@ -109,10 +109,13 @@ start_api() {
     local attempts=0
     local max_attempts=30
     until python3 -c "
+import os
+from urllib import parse
 import http.client
+parsed = parse.urlparse(os.environ.get('IMBI_API_URL', ''))
 try:
     conn = http.client.HTTPConnection('localhost', 8000, timeout=2)
-    conn.request('GET', '/status')
+    conn.request('GET', f'{parsed.path.removesuffix("/")}/status')
     resp = conn.getresponse()
     exit(0 if resp.status == 200 else 1)
 except Exception:
