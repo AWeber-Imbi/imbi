@@ -102,6 +102,28 @@ class OrgMembershipPermissionTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(perms, set())
 
+    async def test_query_does_not_use_zero_hop_variable_length(
+        self,
+    ) -> None:
+        """Guard against regressing to ``*0..``.
+
+        Apache AGE does not honor the zero-hop case in variable-length
+        paths, so the assigned role's own GRANTS would be silently
+        excluded. The query must collect ancestors with ``*1..`` and
+        union the start role back in.
+        """
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = []
+
+        await permissions.load_principal_permissions(
+            mock_db, 'User', 'email', 'someone@example.com'
+        )
+
+        query = mock_db.execute.call_args.args[0]
+        self.assertNotIn('*0..', query)
+        self.assertIn('*1..', query)
+        self.assertIn('ancestors + [r]', query)
+
 
 class ResourceLevelPermissionTestCase(
     unittest.IsolatedAsyncioTestCase,

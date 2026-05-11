@@ -104,13 +104,19 @@ async def load_principal_permissions(
         raise ValueError(
             f'Unsupported principal selector: ({label!r}, {match_prop!r})'
         )
+    # Apache AGE does not honor the zero-hop case in variable-length
+    # paths (``*0..``), so the start role itself would be excluded
+    # from the traversal. Collect ancestors with ``*1..`` then union
+    # the start role back in.
     query = (
         f'MATCH (p:{label} {{{{{match_prop}: {{value}}}}}})'
         '-[m:MEMBER_OF]->(o:Organization) '
         'MATCH (r:Role {{slug: m.role}}) '
-        'OPTIONAL MATCH (r)-[:INHERITS_FROM*0..]->(parent:Role) '
-        'WITH DISTINCT parent '
-        'OPTIONAL MATCH (parent)-[:GRANTS]->(perm:Permission) '
+        'OPTIONAL MATCH (r)-[:INHERITS_FROM*1..]->(ancestor:Role) '
+        'WITH r, collect(DISTINCT ancestor) AS ancestors '
+        'UNWIND ancestors + [r] AS role '
+        'WITH DISTINCT role '
+        'OPTIONAL MATCH (role)-[:GRANTS]->(perm:Permission) '
         'RETURN collect(DISTINCT perm.name)'
     )
     records = await db.execute(
