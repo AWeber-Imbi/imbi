@@ -5,11 +5,23 @@ The middleware emits one record per HTTP request on the
 can suppress records for specific paths *only* when the response was
 successful, so high-frequency endpoints (health checks, ``/status``)
 stay quiet without hiding failures.
+
+The authenticated principal is extracted from the ``Authorization``
+header and rendered in the NCSA-style ``authuser`` slot of the log
+line. JWTs are decoded and signature-verified; valid tokens log the
+local part of the ``sub`` claim (or the full subject if it is not an
+email). API keys (``ik_<id>_<secret>``) log the ``ik_<id>`` prefix
+only. Anything else logs ``-``.
 """
 
 import logging
 import typing
 from collections import abc
+
+import jwt
+
+from imbi_common import settings
+from imbi_common.auth import core
 
 LOGGER = logging.getLogger('imbi_common.access')
 
@@ -34,6 +46,11 @@ class AccessLogMiddleware:
             endpoint isn't wired up).
         logger: Logger to emit records on. Defaults to
             ``imbi_common.access``.
+        include_principal: When ``True`` (the default), inspect the
+            ``Authorization`` header on each request and render the
+            authenticated principal in the log line. Set to ``False``
+            to suppress the lookup for services that don't issue JWTs
+            or API keys.
     """
 
     def __init__(
@@ -43,11 +60,13 @@ class AccessLogMiddleware:
         quiet_paths: abc.Collection[str] = (),
         quiet_status_codes: abc.Container[int] = range(200, 300),
         logger: logging.Logger | None = None,
+        include_principal: bool = True,
     ) -> None:
         self.app = app
         self.quiet_paths = frozenset(quiet_paths)
         self.quiet_status_codes = quiet_status_codes
         self.logger = logger or LOGGER
+        self.include_principal = include_principal
 
     async def __call__(
         self, scope: Scope, receive: Receive, send: Send
@@ -79,12 +98,64 @@ class AccessLogMiddleware:
         full_path = path
         if query:
             full_path = f'{path}?{query.decode("latin-1")}'
+        principal = '-'
+        if self.include_principal:
+            try:
+                principal = _principal_from_scope(scope)
+            except Exception:  # noqa: BLE001 - defensive: never fail logging
+                principal = '-'
         self.logger.info(
-            '%s:%s - "%s %s HTTP/%s" %d',
+            '%s:%s - %s "%s %s HTTP/%s" %d',
             client[0],
             client[1],
+            principal,
             scope.get('method', '-'),
             full_path,
             scope.get('http_version', '1.1'),
             status,
         )
+
+
+def _principal_from_scope(scope: Scope) -> str:
+    """Return the authenticated principal label for an ASGI request.
+
+    Returns ``-`` when no usable ``Authorization: Bearer`` credential
+    is present, the JWT signature fails to verify, or the credential
+    is otherwise malformed. JWT verification reuses the shared
+    ``imbi_common.auth.core.verify_token`` path; auth settings are
+    fetched lazily so middleware import doesn't force-load them.
+    """
+    headers = scope.get('headers') or ()
+    auth_value: bytes | None = None
+    for name, value in headers:
+        if name.lower() == b'authorization':
+            auth_value = value
+            break
+    if auth_value is None:
+        return '-'
+    auth = auth_value.decode('latin-1')
+    scheme, _, token = auth.partition(' ')
+    if scheme.lower() != 'bearer':
+        return '-'
+    token = token.strip()
+    if not token:
+        return '-'
+    if token.startswith('ik_'):
+        # API key: ``ik_<key_id>_<secret>`` — log the key id only.
+        # Verifying the secret would require a database lookup, so we
+        # accept the (cheap) tradeoff of logging the claimed key id
+        # before the auth dependency confirms it. The request's status
+        # reflects whether validation actually succeeded.
+        parts = token.split('_', 2)
+        if len(parts) == 3 and parts[1] and parts[2]:
+            return f'ik_{parts[1]}'
+        return '-'
+    try:
+        claims = core.verify_token(token, settings.get_auth_settings())
+    except jwt.PyJWTError:
+        return '-'
+    subject = claims.get('sub')
+    if not isinstance(subject, str) or not subject:
+        return '-'
+    local, sep, _ = subject.partition('@')
+    return local if sep else subject
