@@ -2,8 +2,8 @@ apiVersion: v2
 name: imbi
 description: DevOps Service Management Platform
 type: application
-version: 0.1.0
-appVersion: "2.0.0-alpha"
+version: 2.0.0
+appVersion: "2.0.0"
 
 dependencies:
   - name: neo4j
