@@ -15,7 +15,7 @@ authors = [
   { name = "Gavin M. Roy", email = "gavinr@aweber.com" }
 ]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "Natural Language :: English",
   "Operating System :: OS Independent",
@@ -212,18 +212,12 @@ docs = [
   "mkdocstrings[python]"
 ]
 plugins = [
-  "imbi-plugin-aws",
-  "imbi-plugin-github",
-  "imbi-plugin-logzio",
-  "imbi-plugin-oidc",
+  "imbi-plugin-aws>=1.0.0",
+  "imbi-plugin-github>=1.0.0",
+  "imbi-plugin-logzio>=1.0.0",
+  "imbi-plugin-oidc>=1.0.0",
 ]
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
-
-[tool.uv.sources]
-imbi-plugin-aws = { git = "https://github.com/AWeber-Imbi/imbi-plugin-aws.git", rev = "main" }
-imbi-plugin-github = { git = "https://github.com/AWeber-Imbi/imbi-plugin-github.git", rev = "main" }
-imbi-plugin-logzio = { git = "https://github.com/AWeber-Imbi/imbi-plugin-logzio.git", rev = "main" }
-imbi-plugin-oidc = { git = "https://github.com/AWeber-Imbi/imbi-plugin-oidc.git", rev = "main" }
