@@ -22,8 +22,7 @@ Imbi helps organizations answer critical questions about their service landscape
 - **Single Source of Truth**: Centralized service catalog with comprehensive metadata
 - **Relationship Visualization**: Graph database enables intuitive dependency mapping
 - **Automation Ready**: API-first design enables integration with CI/CD, webhooks, and automations
-- **AI-Powered**: Built-in vector search and conversational AI support for natural language queries
-- **Extensible**: Blueprint system for customizable project metadata schemas
+- **Extensible**: Blueprint system for customizable metadata schemas applied via JSON Schema
 - **Developer Friendly**: Automatic data collection via GitHub webhooks and integrations
 
 ## Version 2.0 (Alpha)
@@ -31,45 +30,55 @@ Imbi helps organizations answer critical questions about their service landscape
 **Complete rewrite** using modern Python technologies for improved performance, scalability, and AI integration:
 
 - **FastAPI**: Modern async web framework with automatic OpenAPI documentation
-- **Neo4j**: Graph database for modeling service relationships and dependencies with native vector search
+- **PostgreSQL + Apache AGE**: Graph extension on top of PostgreSQL for modeling service relationships and dependencies with Cypher queries
 - **ClickHouse**: Analytics and time-series data storage for operations logs and metrics
+- **Valkey**: Redis-compatible cache and ephemeral state
+- **S3-compatible object storage**: Icons, avatars, and document uploads (LocalStack in development)
 - **Pydantic v2**: Type-safe data validation and settings management
-- **Cypherantic**: Type-safe Neo4j integration with automatic Pydantic model mapping
 
 ### What's New in v2
 
-- **Graph Database**: Neo4j replaces Postgres for intuitive relationship modeling and AI-friendly Cypher queries
-- **Vector Search**: Built-in support for AI-powered semantic search across the service graph
+- **Apache AGE on PostgreSQL**: Replaces both the v1 PostgreSQL relational schema and the alpha Neo4j prototype — graph plus relational data in a single database
 - **Modern API**: FastAPI provides automatic OpenAPI docs, async performance, and better type safety
-- **Simplified Architecture**: Dropping OpenSearch dependency in favor of Neo4j's native capabilities
-- **AI-Ready**: Foundation for conversational AI, MCP server integration, and natural language queries
-- **Full Authentication**: OAuth2/OIDC (Google, GitHub, Keycloak) and local password authentication with JWT tokens
-- **Fine-Grained Authorization**: Permission-based access control with resource-level permissions and role management
-- **Analytics Ready**: ClickHouse integration for operations logs and time-series metrics
+- **Blueprints**: JSON-Schema-driven custom metadata that extends domain models at runtime
+- **Full Authentication**: OAuth2/OIDC (Google, GitHub, generic OIDC) and local password authentication with JWT access and refresh tokens
+- **Fine-Grained Authorization**: Permission-based access control with resource-level permissions, roles, and groups
+- **API Keys**: Scoped, rotatable API keys with usage tracking for service-to-service access
+- **MFA/2FA**: TOTP-based multi-factor authentication with backup codes
+- **File Uploads**: S3-backed uploads with magic-byte validation and automatic thumbnail generation
+- **Analytics Ready**: ClickHouse integration for operations logs, audit logs, and time-series metrics
 
 ## Quick Start
+
+This project uses [just](https://github.com/casey/just) as a command runner and [uv](https://docs.astral.sh/uv/) for Python package management.
 
 ### Development Environment
 
 ```bash
-# Bootstrap development environment (installs deps, starts Docker services)
-./bootstrap
+# Install dependencies and pre-commit hooks
+just setup
 
-# Run development server with auto-reload
-uv run imbi-api serve --dev
+# Start Docker services (Postgres+AGE, ClickHouse, Valkey, LocalStack,
+# Mailpit, Jaeger), generate .env with assigned ports, and run the
+# server with auto-reload
+just serve --dev
 
-# Access the API
+# First-time only: seed roles/permissions and create the admin user
+uv run imbi-api setup
+
+# Health check
 curl http://localhost:8000/status
 ```
+
+The server starts on `http://localhost:8000` by default (configurable via `IMBI_API_HOST` and `IMBI_API_PORT`). The interactive OpenAPI docs are at `/docs` and the raw schema is at `/openapi.json`.
 
 ### Testing
 
 ```bash
-# Run all tests with coverage
-uv run pytest
-
-# Run pre-commit checks
-uv run pre-commit run --all-files
+just test                                              # All tests with coverage
+just test tests/auth/test_permissions.py               # Single module
+just test tests/auth/test_permissions.py::PermissionTests::test_get_permissions
+just lint                                              # ruff + basedpyright + mypy + pre-commit
 ```
 
 ## Core Concepts
@@ -80,18 +89,20 @@ Imbi organizes services using a flexible, graph-based data model:
 
 - **Organizations**: Top-level organizational units with unique slug identifiers
 - **Teams**: Groups within organizations that own and maintain projects
-- **Projects**: Individual services or applications with comprehensive metadata
+- **Projects**: Individual services or applications with comprehensive metadata, optionally classified by one or more project types
 - **Project Types**: Categories like 'Web Service', 'Library', 'Data Pipeline'
 - **Environments**: Deployment targets like 'production', 'staging', 'development'
-- **Blueprints**: Schema definitions for custom project metadata
+- **Blueprints**: JSON Schema definitions that extend the metadata of any of the above entities
 
 ### Authentication & Authorization
 
-- **OAuth2/OIDC**: Support for Google, GitHub, and Keycloak providers
+- **OAuth2/OIDC**: Google, GitHub, and generic OIDC providers — configured at runtime through the admin API and stored in the graph, not via environment variables
 - **Local Authentication**: Password-based authentication with Argon2id hashing
-- **JWT Tokens**: Access tokens (15 min) and refresh tokens (7 days)
-- **Permission-Based Access Control**: Fine-grained permissions at the resource level
-- **Role Management**: Flexible role system with group-based assignments
+- **JWT Tokens**: Access tokens (default 1 hour) and refresh tokens (default 30 days) with refresh-token rotation
+- **API Keys**: Format `ik_<16chars>_<32chars>` with scoped permissions and ClickHouse-backed usage tracking
+- **MFA**: TOTP-based 2FA with backup codes
+- **Permission-Based Access Control**: Fine-grained permissions enforced via FastAPI dependencies
+- **Rate Limiting**: Per-route limits on login, refresh, OAuth initiation, and API-key authentication
 
 ### Integrations
 
@@ -107,8 +118,11 @@ Imbi integrates with your existing DevOps toolchain:
 
 Imbi v2 uses a multi-database architecture optimized for different data patterns:
 
-- **Neo4j**: Graph database for service relationships, dependencies, and user/permission model
-- **ClickHouse**: Analytics database for operations logs, metrics, and time-series data
+- **PostgreSQL + Apache AGE**: Graph plus relational data for service relationships, dependencies, users, permissions, blueprints, and all domain entities
+- **ClickHouse**: Analytics database for operations logs, audit logs, email logs, API-key usage, and time-series metrics (ReplacingMergeTree for idempotent writes)
+- **Valkey**: Redis-compatible cache for ephemeral state
+- **S3-compatible object storage**: Uploads (LocalStack in development, real S3 in production)
+- **Mailpit**: SMTP capture in development
 - **FastAPI**: Async Python web framework for the REST API
 - **Docker Compose**: Development environment with all required services
 
@@ -116,7 +130,7 @@ For detailed architecture decisions, see the [Architecture Decision Records](adr
 
 ## Documentation
 
-- **[Configuration Guide](configuration.md)**: Configuration via config.toml files, environment variables, and settings
+- **[Configuration Guide](configuration.md)**: All configuration variables — `config.toml`, environment variables, and `.env`
 - **[Architecture Decision Records](adr.md)**: Key architectural decisions and rationale
 
 ## Contributing

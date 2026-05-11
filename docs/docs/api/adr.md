@@ -43,7 +43,7 @@ API keys, and permission management.
 
 **Key Decisions:**
 
-- Neo4j for user and permission data (natural fit for permission inheritance)
+- Graph database (originally Neo4j, since migrated to Apache AGE on PostgreSQL — see ADR 0006/0007) for user and permission data (natural fit for permission inheritance)
 - ClickHouse for audit logs (time-series optimized with automatic TTL)
 - JWT tokens with revocation list (stateless with security)
 - Argon2id for password hashing (modern, memory-hard algorithm)
@@ -132,7 +132,7 @@ for all Node-based entities.
 
 - S3-compatible object storage with aioboto3 for async operations
 - LocalStack for development (full AWS API emulation)
-- Neo4j for upload metadata (consistent with all other entities)
+- Apache AGE (PostgreSQL) for upload metadata (consistent with all other entities)
 - Presigned URL redirects (307) for efficient file serving
 - Pillow for thumbnail generation, filetype for magic-byte validation
 - WEBP thumbnails at 256x256 max, maintaining aspect ratio
@@ -143,6 +143,145 @@ for all Node-based entities.
 - Configurable size limits (default 50 MB)
 - Automatic thumbnail generation for raster images
 - Permission-based access control (upload:create, upload:read, upload:delete)
+
+---
+
+#### [ADR 0006: Project Identity and Multi-Type Support](adr/0006-project-identity-and-multi-type.md)
+
+*Date: 2026-02-13 | Status: Accepted*
+
+Replaces single-type, slug-keyed project identity with a Nano-ID primary key and many-to-many project type relationships, enabling stable URLs and natural blueprint composition.
+
+**Key Decisions:**
+
+- Nano-ID (21-char URL-safe) as the canonical project identifier
+- Many `Project -[:TYPE]-> ProjectType` relationships (was: single)
+- Blueprint aggregation across all of a project's types, merged by priority
+- API paths shift from `/projects/{type_slug}/{slug}` to `/projects/{id}`
+
+---
+
+#### [ADR 0007: Relationship Blueprints](adr/0007-relationship-blueprints.md)
+
+*Date: 2026-02-20 | Status: Proposed*
+
+Extends the blueprint system to relationships (edges), so admins can add custom properties to `[:DEPLOYED_IN]` and other edges without code changes.
+
+**Key Decisions:**
+
+- `kind: 'node' | 'relationship'` discriminator on `Blueprint`
+- Relationship blueprints declare `(source, edge, target)` triple
+- Edge properties become data-driven, mirroring the node-blueprint model
+
+---
+
+### Plugin Platform
+
+#### [ADR 0008: Plugin System Architecture](adr/0008-plugin-system-architecture.md)
+
+*Date: 2026-04-27 | Status: Accepted*
+
+Establishes Imbi as a SaaS IDP with a stable, versioned plugin model. Plugins are standalone Python packages discovered via entry points; capabilities are stored as `Plugin` graph nodes linked to a shared `ThirdPartyService`.
+
+**Key Decisions:**
+
+- `imbi.plugins` entry-point group; manifests are `ClassVar`s on handler classes
+- `ThirdPartyService` + `ServiceApplication` + `Plugin` triplet in the graph
+- One service record can back multiple capabilities (`aws-ssm`, `aws-cloudwatch-logs`, `aws-iam-ic`)
+- Project-type and per-project `USES_PLUGIN` edges with explicit overrides
+- Plugin types grow incrementally (`configuration`, `logs`, then `identity`, `deployment`)
+
+---
+
+#### [ADR 0009: Database-Driven OAuth Provider Configuration](adr/0009-database-driven-oauth-providers.md)
+
+*Date: 2026-04-30 | Status: Accepted*
+
+Moves OAuth provider configuration (Google, GitHub, OIDC) from `IMBI_AUTH_OAUTH_*` environment variables into the graph database, manageable via the admin UI.
+
+**Key Decisions:**
+
+- New `OAuthProvider` node with Fernet-encrypted `client_secret_encrypted`
+- 30-second TTL cache keyed by slug, invalidated on writes
+- New admin endpoints gated by `oauth-providers:read|write` permissions
+- Per-provider env vars deleted; `oauth_auto_link_by_email` / `oauth_auto_create_users` remain
+
+---
+
+#### [ADR 0010: Identity Plugin Architecture](adr/0010-identity-plugin-architecture.md)
+
+*Date: 2026-05-05 | Status: Accepted*
+
+Adds a third plugin type — `identity` — for backends where caller identity matters (AWS IAM IC, GitHub, generic OIDC). Other plugin types declare `identity_plugin_id`; the API materializes per-user credentials at call time.
+
+**Key Decisions:**
+
+- `identity` plugin type alongside `configuration` and `logs`
+- Per-user `IdentityConnection` node with Fernet-encrypted tokens, scoped to `(User, Plugin)`
+- Identity plugins can double as login providers (`used_as_login: bool`)
+- First-party identity entry points in `imbi-plugin-aws`, `imbi-plugin-github`, `imbi-plugin-oidc`
+
+---
+
+#### [ADR 0011: Graph-Based Project Scoring](adr/0011-graph-based-project-scoring.md)
+
+*Date: 2026-04-15 | Status: Accepted*
+
+Replaces v1's fact-based scoring with a blueprint-aware, graph-driven scoring policy model. Attribute policies ship first; event policies are deferred until the integration ingestion path is settled.
+
+**Key Decisions:**
+
+- `ScoringPolicy` node with `value_score_map` or `range_score_map`
+- Effective-attribute-set + optional `TARGETS → ProjectType` for policy selection
+- Materialized `Project.score`, history in ClickHouse (`score_history` + `score_latest` MV)
+- Valkey Streams queue with per-project debounce for async recomputation
+- CH-before-AGE write ordering for durable history
+
+---
+
+#### [ADR 0012: Plugin Manifest Third-Party Service Template](adr/0012-plugin-manifest-service-template.md)
+
+*Date: 2026-05-05 | Status: Accepted*
+
+Plugin manifests declare a `third_party_service` template and an embedded icon asset; install-time auto-provisions the `ThirdPartyService`, dedupes capabilities from the same package, and stops re-entering vendor boilerplate.
+
+**Key Decisions:**
+
+- `PluginManifest.third_party_service` and `PluginIcon` (via `importlib.resources`)
+- One service record per template ID; multi-entry-point packages dedup
+- Manifests carry no secrets; `ServiceApplication` is still operator-supplied
+- Re-install preserves operator edits; opt-in "managed by manifest" mode
+
+---
+
+#### [ADR 0013: Deployment Plugin Type](adr/0013-deployment-plugin-type.md)
+
+*Date: 2026-05-08 | Status: Accepted*
+
+Adds a fourth plugin type — `deployment` — so the release-train UI can trigger workflows, draft AI release notes, and record deployments end-to-end against any plugin-supported backend.
+
+**Key Decisions:**
+
+- `deployment` plugin type with a small protocol (list refs/commits, trigger, tag/release)
+- Separate `github-deployment` entry point alongside the `github` identity plugin
+- `workflow_dispatch` with `{environment, ref}` inputs as the v1 trigger
+- Deploys run as the human via `identity_plugin_id`
+- Anthropic client in `imbi-common` for server-side release-note drafting
+
+---
+
+#### [ADR 0014: Generic Plugin-Entity CRUD Abstraction](adr/0014-generic-plugin-entity-abstraction.md)
+
+*Date: 2026-05-06 | Status: Accepted*
+
+Replaces hand-coded per-plugin entity routers (e.g., `aws_accounts.py`) with a generic CRUD surface driven by `vertex_labels` / `edge_labels` declared in plugin manifests.
+
+**Key Decisions:**
+
+- Generic `/admin/plugins/{slug}/entities/{label}` routes mounted once
+- Edge endpoints for plugin-declared `(source, edge, target)` triples
+- Manifest-driven admin UI consuming JSON Schemas
+- Existing AWS-specific code is migrated, not preserved in parallel (alpha, no URL compatibility owed)
 
 ---
 

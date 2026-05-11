@@ -1,195 +1,257 @@
 # Configuration
 
-Imbi uses a flexible configuration system managed through Pydantic Settings. Configuration can be provided via:
-- **`config.toml` files** - Structured TOML configuration (recommended for production)
-- **Environment variables** - Direct environment variable overrides
-- **`.env` files** - Environment variable files for development
+Imbi uses [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) to load configuration from three sources, merged in priority order:
 
-## Configuration Priority
+1. **Environment variables** — always win
+2. **`config.toml` files** — discovered in this order, first match wins per key:
+    1. `./config.toml` (project root)
+    2. `~/.config/imbi/config.toml` (user)
+    3. `/etc/imbi/config.toml` (system)
+3. **Built-in defaults** — sensible defaults for development
 
-Settings are loaded in the following priority order (highest to lowest):
-
-1. **Environment variables** - Always take precedence
-2. **`./config.toml`** - Project root configuration file
-3. **`~/.config/imbi/config.toml`** - User-specific configuration
-4. **`/etc/imbi/config.toml`** - System-wide configuration
-5. **Built-in defaults** - Sensible defaults for development
+A `.env` file in the working directory is also read for environment variables (pydantic-settings default).
 
 ## Quick Start
 
 ### Development Setup
 
-The `./bootstrap` script automatically generates a `.env` file with sensible defaults for development:
+`just serve` runs `just docker` first, which boots all services and writes a fresh `.env` with the dynamically-allocated host ports (Postgres, ClickHouse, Valkey, LocalStack, Mailpit, Jaeger) and freshly-generated JWT and Fernet secrets if none are present.
 
 ```bash
-./bootstrap
+just setup       # uv sync + pre-commit hooks
+just serve --dev # docker + auto-reload server
 ```
-
-This creates:
-- Neo4j connection settings
-- ClickHouse connection settings
-- OpenTelemetry configuration for Jaeger tracing
-- JWT secret for authentication
 
 ### Production Setup
 
-For production deployments, use a `config.toml` file with environment variable overrides for secrets:
+Put structural configuration in `/etc/imbi/config.toml` and inject secrets via environment variables:
 
 ```bash
-# Create system config
-sudo mkdir -p /etc/imbi
-sudo vim /etc/imbi/config.toml
+sudo install -d /etc/imbi
+sudo $EDITOR /etc/imbi/config.toml
 
-# Set secrets via environment
-export IMBI_AUTH_JWT_SECRET="your-secret-here"
-export NEO4J_PASSWORD="your-neo4j-password"
+export POSTGRES_URL='postgresql://imbi:...@db.example.com:5432/imbi'
+export IMBI_AUTH_JWT_SECRET="$(secrets-manager get jwt-secret)"
+export IMBI_AUTH_ENCRYPTION_KEY="$(secrets-manager get encryption-key)"
 ```
 
-## Core Settings
+Generate the JWT secret and Fernet encryption key with:
 
-### Application Settings
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+!!! warning "Stable secrets in production"
+    If `IMBI_AUTH_JWT_SECRET` or `IMBI_AUTH_ENCRYPTION_KEY` is unset, the application auto-generates a value at startup and logs a warning. This is fine for ephemeral dev runs, but in production it will invalidate every issued token and break every encrypted credential on every restart — always provide both explicitly.
+
+## Application Settings
+
+### Server (`IMBI_API_*`)
+
+Configured by [`ServerConfig`](https://github.com/AWeber-Imbi/imbi-api/blob/main/src/imbi_api/settings.py). The `[server]` section in `config.toml` maps to these.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ENVIRONMENT` | `development` | Environment name (development, staging, production). Unprefixed so it picks up whatever the deploy target already exports. |
+| `ENVIRONMENT` | `development` | Deployment environment (`development`, `staging`, `production`). Unprefixed — picks up whatever the platform (Vercel, ECS, GHA, etc.) already exports. Currently drives Mailpit dev auto-config. |
 | `IMBI_API_HOST` | `localhost` | Server bind address |
-| `IMBI_API_PORT` | `8000` | Server bind port |
-| `IMBI_API_CORS_ALLOWED_ORIGINS` | `[]` | JSON array of allowed CORS origins |
-| `IMBI_LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
-| `IMBI_AUTO_SEED_AUTH` | `true` | Auto-seed default roles and permissions on startup |
+| `IMBI_API_PORT` | `8000` | Server bind port. Strings of the form `tcp://ip:port` (injected by Kubernetes service discovery) are parsed and the port extracted, so the `<SERVICE>_PORT=tcp://…` pattern does not collide with this field. |
+| `IMBI_API_CORS_ALLOWED_ORIGINS` | `[]` | JSON array of allowed CORS origins. Credentials and the `Authorization` header are allowed for cross-origin requests from these origins. |
+| `IMBI_API_FORWARDED_ALLOW_IPS` | `''` | Comma-separated list (or `*`) of trusted proxy IPs whose `X-Forwarded-*` headers are honored. Required when running behind a reverse proxy so rate limiting keys on the real client IP. Empty disables the middleware. |
+| `IMBI_API_URL` | `''` | Public URL where the API is reachable from a browser, including any path prefix it is mounted under (e.g. `https://imbi.example.com/api`). Drives FastAPI route mounting, hypermedia links, and OAuth redirect URIs. Falls back to `http://{host}:{port}` (no prefix) for dev loopback. `/docs` and `/openapi.json` are always served at the root regardless of prefix. |
 
-### Neo4j Configuration
+### PostgreSQL + Apache AGE (`POSTGRES_*`)
 
-Neo4j is used for the graph database storing service relationships, dependencies, and user/permission models.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NEO4J_URL` | `neo4j://localhost:7687` | Neo4j Bolt connection URL (supports credential extraction) |
-| `NEO4J_USER` | *(from URL or none)* | Neo4j username (overrides URL credentials) |
-| `NEO4J_PASSWORD` | *(from URL or none)* | Neo4j password (overrides URL credentials) |
-| `NEO4J_DATABASE` | `neo4j` | Neo4j database name |
-| `NEO4J_MAX_POOL_SIZE` | `50` | Maximum connection pool size |
-| `NEO4J_KEEP_ALIVE` | `true` | Enable keep-alive for connections |
-
-!!! note "URL Credential Extraction"
-    The settings model automatically extracts and URL-decodes credentials from connection URLs like:
-    ```
-    neo4j://user:pass@localhost:7687
-    ```
-    Explicit `NEO4J_USER`/`NEO4J_PASSWORD` environment variables take precedence over URL credentials.
-
-### ClickHouse Configuration
-
-ClickHouse is used for analytics, operations logs, and time-series metrics.
+PostgreSQL with the Apache AGE extension stores all graph and relational domain data (organizations, teams, projects, users, permissions, blueprints, etc.). The `[postgres]` section in `config.toml` maps to these.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLICKHOUSE_URL` | `clickhouse+http://localhost:8123` | ClickHouse HTTP connection URL |
-| `CLICKHOUSE_USER` | `default` | ClickHouse username |
-| `CLICKHOUSE_PASSWORD` | `password` | ClickHouse password |
-| `CLICKHOUSE_DATABASE` | `imbi` | ClickHouse database name |
+| `POSTGRES_URL` | `postgresql://postgres:secret@localhost:5432/imbi` | PostgreSQL DSN |
+| `POSTGRES_GRAPH_NAME` | `imbi` | Apache AGE graph name |
+| `POSTGRES_MIN_POOL_SIZE` | `2` | Minimum connection pool size |
+| `POSTGRES_MAX_POOL_SIZE` | `10` | Maximum connection pool size |
 
-### Authentication & Authorization
+### ClickHouse (`CLICKHOUSE_*`)
 
-#### JWT Token Settings
+ClickHouse stores analytics, operations logs, audit logs, email send logs, and API-key usage metrics. The `[clickhouse]` section in `config.toml` maps to these.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `IMBI_AUTH_JWT_SECRET` | *(required)* | Secret key for JWT token signing |
+| `CLICKHOUSE_URL` | `clickhouse+http://localhost:8123` | ClickHouse DSN. Credentials in the URL are honored. |
+| `CLICKHOUSE_CONNECT_TIMEOUT` | `10.0` | Connection timeout in seconds |
+| `CLICKHOUSE_MAX_CONNECT_ATTEMPTS` | `10` | Maximum connection attempts on startup |
+
+### Valkey (`VALKEY_*`)
+
+Valkey (Redis-compatible) is used for ephemeral caching. The `[valkey]` section in `config.toml` maps to these.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VALKEY_URL` | `valkey://localhost:6379/0` | Valkey DSN (defaults: host `localhost`, port `6379`, db `0`) |
+
+### Object Storage (`S3_*`)
+
+S3-compatible storage holds icons, avatars, and document uploads. The `[storage]` section in `config.toml` maps to these.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `S3_ENDPOINT_URL` | *(none — real AWS S3)* | Set to a LocalStack or MinIO endpoint to override |
+| `S3_ACCESS_KEY` | *(none)* | Access key ID. Omit to use the default AWS credential chain (instance role, profile, etc.). |
+| `S3_SECRET_KEY` | *(none)* | Secret access key |
+| `S3_BUCKET` | `imbi-uploads` | Bucket name |
+| `S3_REGION` | `us-east-1` | AWS region |
+| `S3_CREATE_BUCKET_ON_INIT` | `true` | Auto-create the bucket on startup if it does not exist |
+| `S3_MAX_FILE_SIZE` | `52428800` | Upload size limit in bytes (50 MiB default) |
+| `S3_ALLOWED_CONTENT_TYPES` | image/jpeg, image/png, image/gif, image/webp, image/svg+xml, application/pdf | JSON array of MIME types accepted for upload |
+| `S3_THUMBNAIL_MAX_SIZE` | `256` | Max thumbnail dimension in pixels (aspect ratio preserved) |
+| `S3_THUMBNAIL_QUALITY` | `85` | WEBP quality for generated thumbnails (0–100) |
+
+### Email (`IMBI_EMAIL_*`)
+
+SMTP-based transactional email (password reset, welcome, email verification, security alerts). The `[email]` section in `config.toml` maps to these.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMBI_EMAIL_ENABLED` | `true` | Master switch — disable to no-op all sends |
+| `IMBI_EMAIL_DRY_RUN` | `false` | Build and log messages without sending |
+| `IMBI_EMAIL_SMTP_HOST` | `localhost` | SMTP server host |
+| `IMBI_EMAIL_SMTP_PORT` | `587` | SMTP server port |
+| `IMBI_EMAIL_SMTP_USE_TLS` | `true` | Use STARTTLS |
+| `IMBI_EMAIL_SMTP_USE_SSL` | `false` | Use implicit TLS (SMTPS, typically port 465) |
+| `IMBI_EMAIL_SMTP_USERNAME` | *(none)* | SMTP auth username |
+| `IMBI_EMAIL_SMTP_PASSWORD` | *(none)* | SMTP auth password |
+| `IMBI_EMAIL_SMTP_TIMEOUT` | `30` | SMTP socket timeout in seconds |
+| `IMBI_EMAIL_FROM_EMAIL` | `noreply@imbi.example.com` | From address |
+| `IMBI_EMAIL_FROM_NAME` | `Imbi` | From display name |
+| `IMBI_EMAIL_REPLY_TO` | *(none)* | Optional Reply-To address |
+| `IMBI_EMAIL_MAX_RETRIES` | `3` | Send retry attempts |
+| `IMBI_EMAIL_INITIAL_RETRY_DELAY` | `1.0` | First retry delay in seconds |
+| `IMBI_EMAIL_MAX_RETRY_DELAY` | `60.0` | Maximum backoff delay in seconds |
+| `IMBI_EMAIL_RETRY_BACKOFF_FACTOR` | `2.0` | Exponential backoff multiplier |
+
+!!! note "Mailpit auto-config"
+    When `ENVIRONMENT=development` (or unset) and `IMBI_EMAIL_SMTP_HOST=localhost` with the default port `587`, the settings model checks for `MAILPIT_SMTP_PORT` (written by `just docker`) and substitutes it, disabling TLS unless `IMBI_EMAIL_SMTP_USE_TLS` is set explicitly. This makes development "just work" against Mailpit without manual SMTP wiring.
+
+## Authentication & Authorization (`IMBI_AUTH_*`)
+
+The `[auth]` section in `config.toml` maps to these. Shared JWT/encryption settings come from `imbi_common`; the API service adds password policy, sessions, API keys, MFA, rate limits, and OAuth behavior.
+
+### JWT and Encryption
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMBI_AUTH_JWT_SECRET` | *(auto-generated)* | Secret used to sign JWT access and refresh tokens. **Set explicitly in production** — otherwise every restart invalidates all tokens. |
 | `IMBI_AUTH_JWT_ALGORITHM` | `HS256` | JWT signing algorithm |
-| `IMBI_AUTH_JWT_ACCESS_TOKEN_EXPIRY` | `900` | Access token lifetime in seconds (15 min) |
-| `IMBI_AUTH_JWT_REFRESH_TOKEN_EXPIRY` | `604800` | Refresh token lifetime in seconds (7 days) |
+| `IMBI_AUTH_ACCESS_TOKEN_EXPIRE_SECONDS` | `3600` | Access token lifetime (1 hour) |
+| `IMBI_AUTH_REFRESH_TOKEN_EXPIRE_SECONDS` | `2592000` | Refresh token lifetime (30 days). Refresh tokens rotate on every use. |
+| `IMBI_AUTH_ENCRYPTION_KEY` | *(auto-generated)* | Base64-encoded Fernet key used to encrypt OAuth provider tokens and OAuth client secrets at rest. **Set explicitly in production** — otherwise every restart breaks all encrypted secrets. |
 
-!!! warning "Production Security"
-    Generate a strong random secret for `IMBI_AUTH_JWT_SECRET` in production:
-    ```bash
-    python -c "import secrets; print(secrets.token_urlsafe(32))"
-    ```
-
-#### OAuth2/OIDC Provider Settings
-
-Imbi supports multiple OAuth providers. Each provider requires client credentials from the respective platform.
-
-**Google OAuth**
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `IMBI_AUTH_OAUTH_GOOGLE_CLIENT_ID` | Yes | Google OAuth2 client ID |
-| `IMBI_AUTH_OAUTH_GOOGLE_CLIENT_SECRET` | Yes | Google OAuth2 client secret |
-| `IMBI_AUTH_OAUTH_GOOGLE_REDIRECT_URI` | No | OAuth callback URL (default: auto-generated) |
-
-**GitHub OAuth**
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `IMBI_AUTH_OAUTH_GITHUB_CLIENT_ID` | Yes | GitHub OAuth app client ID |
-| `IMBI_AUTH_OAUTH_GITHUB_CLIENT_SECRET` | Yes | GitHub OAuth app client secret |
-| `IMBI_AUTH_OAUTH_GITHUB_REDIRECT_URI` | No | OAuth callback URL (default: auto-generated) |
-
-**Generic OIDC (Keycloak, Okta, Auth0, etc.)**
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `IMBI_AUTH_OAUTH_OIDC_CLIENT_ID` | Yes | OIDC client ID |
-| `IMBI_AUTH_OAUTH_OIDC_CLIENT_SECRET` | Yes | OIDC client secret |
-| `IMBI_AUTH_OAUTH_OIDC_DISCOVERY_URL` | Yes | OIDC discovery endpoint URL |
-| `IMBI_AUTH_OAUTH_OIDC_REDIRECT_URI` | No | OAuth callback URL (default: auto-generated) |
-
-#### Session Management
+### Password Policy
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `IMBI_AUTH_SESSION_TIMEOUT_SECONDS` | `86400` | Session timeout in seconds (24 hours) |
-| `IMBI_AUTH_MAX_CONCURRENT_SESSIONS` | `5` | Maximum concurrent sessions per user |
+| `IMBI_AUTH_PASSWORD_MIN_LENGTH` | `12` | Minimum password length |
+| `IMBI_AUTH_PASSWORD_REQUIRE_UPPERCASE` | `true` | Require an uppercase letter |
+| `IMBI_AUTH_PASSWORD_REQUIRE_LOWERCASE` | `true` | Require a lowercase letter |
+| `IMBI_AUTH_PASSWORD_REQUIRE_DIGIT` | `true` | Require a digit |
+| `IMBI_AUTH_PASSWORD_REQUIRE_SPECIAL` | `true` | Require a special character |
 
-### OpenTelemetry Configuration
-
-Imbi supports distributed tracing via OpenTelemetry (Jaeger, etc.).
+### Sessions and API Keys
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4317` | OTLP gRPC endpoint |
-| `OTEL_SERVICE_NAME` | `imbi` | Service name in traces |
-| `OTEL_TRACES_EXPORTER` | `otlp` | Trace exporter type |
+| `IMBI_AUTH_SESSION_TIMEOUT_SECONDS` | `86400` | Session timeout (24 hours) |
+| `IMBI_AUTH_MAX_CONCURRENT_SESSIONS` | `5` | Max concurrent sessions per user; oldest is evicted past the limit |
+| `IMBI_AUTH_API_KEY_MAX_LIFETIME_DAYS` | `365` | Maximum lifetime allowed when creating an API key |
+
+### MFA (TOTP)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMBI_AUTH_MFA_ISSUER_NAME` | `Imbi` | Issuer name shown in authenticator apps |
+| `IMBI_AUTH_MFA_TOTP_PERIOD` | `30` | TOTP time step in seconds |
+| `IMBI_AUTH_MFA_TOTP_DIGITS` | `6` | TOTP code length |
+
+### Rate Limiting
+
+Values use the [slowapi](https://slowapi.readthedocs.io/) `<n>/<period>` format (e.g. `5/minute`, `100/hour`).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMBI_AUTH_RATE_LIMIT_LOGIN` | `5/minute` | Password login attempts |
+| `IMBI_AUTH_RATE_LIMIT_TOKEN_REFRESH` | `10/minute` | Refresh-token exchanges |
+| `IMBI_AUTH_RATE_LIMIT_OAUTH_INIT` | `3/minute` | OAuth authorization-flow initiations |
+| `IMBI_AUTH_RATE_LIMIT_API_KEY` | `100/minute` | API-key-authenticated requests |
+
+### OAuth Behavior
+
+OAuth **provider credentials** (Google, GitHub, generic OIDC client IDs and secrets) are no longer environment variables — they are managed at runtime through the admin API and stored encrypted in the graph using `IMBI_AUTH_ENCRYPTION_KEY`. The settings below control behavior across all configured providers.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMBI_AUTH_OAUTH_AUTO_LINK_BY_EMAIL` | `true` | Auto-link an incoming OAuth identity to an existing local user when emails match. Safe for verified-email IdPs (Google, most OIDC). Disable when you require an admin to manually approve linking. |
+| `IMBI_AUTH_OAUTH_AUTO_CREATE_USERS` | `true` | Auto-create a user record on first successful OAuth login. Disable to require pre-provisioned accounts. |
+
+## Other Settings
+
+### Releases (`IMBI_RELEASES_*`)
+
+The `[releases]` section in `config.toml` maps to these.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMBI_RELEASES_VERSION_FORMAT` | `semver` | Version-string format enforced on `Release.version`. Other values supported by `imbi_common.versioning.VersionFormat`. |
+
+### Embeddings (`EMBEDDINGS_*`)
+
+Controls embedding generation for vector search. The `[embeddings]` section in `config.toml` maps to these.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EMBEDDINGS_ENABLED` | `true` | Master enable/disable for embedding generation |
+| `EMBEDDINGS_DEFAULT_MODEL` | `text` | Key into `EMBEDDINGS_MODELS` used by default |
+| `EMBEDDINGS_MODELS` | `{text: {fastembed_id: BAAI/bge-small-en-v1.5, dimensions: 384}}` | JSON map of model key → `{fastembed_id, dimensions}` |
+
+### Reload Watch Paths
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMBI_RELOAD_DIRS` | *(none)* | OS-pathsep-separated list of directories uvicorn should watch when `--dev` is set. Useful when running with an editable `imbi-common` checkout, e.g. `IMBI_RELOAD_DIRS=../imbi-common/src`. |
+
+### Standard OpenTelemetry and uvicorn
+
+The Compose stack and `just docker` populate the standard `OTEL_*` and `UVICORN_*` environment variables. They are read by the OpenTelemetry SDK and uvicorn directly — Imbi does not redefine them. The `.env` written by `just docker` sets sensible development defaults pointing at the bundled Jaeger container:
+
+| Variable | Set by `just docker` to |
+|----------|------------------------|
+| `OTEL_SERVICE_NAME` | `imbi-api` |
+| `OTEL_TRACES_EXPORTER` | `otlp` |
+| `OTEL_LOGS_EXPORTER` | `none` |
+| `OTEL_METRICS_EXPORTER` | `none` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `<host>:<jaeger-otlp-port>` |
+| `OTEL_EXPORTER_OTLP_TRACES_INSECURE` | `true` |
+| `OTEL_RESOURCE_ATTRIBUTES` | `service.name=imbi-api,service.environment=development` |
+
+In production, point `OTEL_EXPORTER_OTLP_ENDPOINT` at your collector.
 
 ## Docker Compose Services
 
-The development environment includes Docker services for all dependencies:
+The development stack defined in `compose.yaml` runs the following with ports mapped to *ephemeral host ports* (resolved by `just docker` and written into `.env`):
 
-```yaml
-services:
-  neo4j:
-    ports:
-      - "7474:7474"  # HTTP browser interface
-      - "7687:7687"  # Bolt protocol
-    environment:
-      - NEO4J_AUTH=none  # No authentication in development
+| Service | Container Port | Purpose |
+|---------|----------------|---------|
+| `postgres` (`ghcr.io/aweber-imbi/postgres:latest`) | 5432 | PostgreSQL + Apache AGE + pg_cron + pgvector |
+| `clickhouse` | 8123 (HTTP), 9000 (native) | Analytics |
+| `valkey` | 6379 | Cache |
+| `localstack` | 4566 | S3-compatible storage |
+| `mailpit` | 1025 (SMTP), 8025 (web UI) | SMTP capture |
+| `jaeger` | 4317 (OTLP), 16686 (UI) | Tracing |
 
-  clickhouse:
-    ports:
-      - "8123:8123"  # HTTP interface
-      - "9000:9000"  # Native protocol
-    environment:
-      - CLICKHOUSE_USER=default
-      - CLICKHOUSE_PASSWORD=password
-
-  jaeger:
-    ports:
-      - "4317:4317"   # OTLP gRPC
-      - "16686:16686" # Jaeger UI
-```
-
-Access the services:
-
-- **Neo4j Browser**: http://localhost:7474
-- **ClickHouse**: http://localhost:8123
-- **Jaeger UI**: http://localhost:16686
+Use `docker compose port <service> <container-port>` to look up the assigned host port, or read it from the generated `.env`.
 
 ## Configuration File Format
 
-### config.toml Example
-
-For production deployments, use a structured TOML configuration file:
+### `config.toml` Example
 
 ```toml
 [server]
@@ -197,31 +259,31 @@ environment = "production"
 host = "0.0.0.0"
 port = 8080
 cors_allowed_origins = ["https://imbi.example.com"]
+forwarded_allow_ips = "10.0.0.0/8"
+url = "https://imbi.example.com/api"
 
-[neo4j]
-url = "neo4j://neo4j-prod:7687"
-user = "admin"
-# Password should come from environment variable: NEO4J_PASSWORD
-database = "neo4j"
-keep_alive = true
-max_connection_lifetime = 300
+[postgres]
+url = "postgresql://imbi:secret@db-prod:5432/imbi"
+graph_name = "imbi"
+min_pool_size = 5
+max_pool_size = 50
 
 [clickhouse]
-url = "clickhouse+http://clickhouse-prod:8123"
-# Credentials should come from environment variables
+url = "clickhouse+http://clickhouse-prod:8123/imbi"
+
+[valkey]
+url = "valkey://valkey-prod:6379/0"
 
 [auth]
-# JWT secret should come from environment variable: IMBI_AUTH_JWT_SECRET
+# JWT secret and encryption key should come from environment variables:
+#   IMBI_AUTH_JWT_SECRET, IMBI_AUTH_ENCRYPTION_KEY
 jwt_algorithm = "HS256"
-access_token_expire_seconds = 900
-refresh_token_expire_seconds = 604800
-min_password_length = 12
+access_token_expire_seconds = 3600
+refresh_token_expire_seconds = 2592000
+password_min_length = 14
 max_concurrent_sessions = 5
-
-# OAuth configuration (optional)
-oauth_google_enabled = true
-oauth_google_client_id = "your-client-id"
-# Client secret should come from environment variable
+oauth_auto_link_by_email = true
+oauth_auto_create_users = false
 
 [email]
 enabled = true
@@ -230,154 +292,151 @@ smtp_port = 587
 smtp_use_tls = true
 from_email = "noreply@example.com"
 from_name = "Imbi Platform"
+
+[storage]
+bucket = "imbi-uploads-prod"
+region = "us-east-1"
+create_bucket_on_init = false
+
+[releases]
+version_format = "semver"
 ```
 
-### .env File Example
-
-For development, use environment variables or a `.env` file:
+### `.env` Example (development)
 
 ```bash
 # Application
 ENVIRONMENT=development
 IMBI_API_HOST=localhost
 IMBI_API_PORT=8000
-IMBI_LOG_LEVEL=INFO
-IMBI_AUTO_SEED_AUTH=true
-IMBI_API_CORS_ALLOWED_ORIGINS='["http://localhost:3000"]'
+IMBI_API_URL=http://localhost:8000
+IMBI_API_CORS_ALLOWED_ORIGINS='["http://localhost:5173"]'
 
-# Neo4j
-NEO4J_URL=neo4j://localhost:7687
-NEO4J_DATABASE=neo4j
-NEO4J_MAX_POOL_SIZE=50
+# Stores
+POSTGRES_URL=postgresql://postgres:secret@localhost:5432/imbi
+CLICKHOUSE_URL=clickhouse+http://default:password@localhost:8123/imbi
+VALKEY_URL=valkey://localhost:6379/0
 
-# ClickHouse
-CLICKHOUSE_URL=clickhouse+http://localhost:8123
-CLICKHOUSE_USER=default
-CLICKHOUSE_PASSWORD=password
-CLICKHOUSE_DATABASE=imbi
+# Auth secrets (production: pull from a secrets manager)
+IMBI_AUTH_JWT_SECRET=...generate-with-secrets.token_urlsafe(32)...
+IMBI_AUTH_ENCRYPTION_KEY=...generate-with-Fernet.generate_key()...
 
-# JWT Authentication
-IMBI_AUTH_JWT_SECRET=your-secret-key-here-generate-with-secrets-module
-IMBI_AUTH_JWT_ALGORITHM=HS256
-IMBI_AUTH_JWT_ACCESS_TOKEN_EXPIRY=900
-IMBI_AUTH_JWT_REFRESH_TOKEN_EXPIRY=604800
+# Object storage (LocalStack in dev)
+S3_ENDPOINT_URL=http://localhost:4566
+S3_ACCESS_KEY=test
+S3_SECRET_KEY=test
+S3_BUCKET=imbi-uploads
+S3_REGION=us-east-1
 
-# OAuth Providers (optional - configure as needed)
-# IMBI_AUTH_OAUTH_GOOGLE_CLIENT_ID=your-google-client-id
-# IMBI_AUTH_OAUTH_GOOGLE_CLIENT_SECRET=your-google-client-secret
+# Email (Mailpit auto-configures if these are left at defaults)
+IMBI_EMAIL_ENABLED=true
+IMBI_EMAIL_FROM_EMAIL=noreply@imbi.example
+IMBI_EMAIL_FROM_NAME=Imbi Development
 
-# OpenTelemetry
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
-OTEL_SERVICE_NAME=imbi
+# Tracing
+OTEL_SERVICE_NAME=imbi-api
 OTEL_TRACES_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_ENDPOINT=localhost:4317
+OTEL_EXPORTER_OTLP_TRACES_INSECURE=true
 ```
 
 ## Production Considerations
 
 ### Security
 
-1. **JWT Secret**: Use a cryptographically secure random string
-2. **OAuth Secrets**: Store in a secrets manager (AWS Secrets Manager, HashiCorp Vault)
-3. **Database Credentials**: Use strong passwords, rotate regularly
-4. **HTTPS**: Always use HTTPS in production (configure via reverse proxy)
-5. **CORS**: Set `IMBI_API_CORS_ALLOWED_ORIGINS` to only the origins that need API access (e.g., your frontend URL). Credentials and the `authorization` header are allowed for authenticated cross-origin requests
+1. **JWT and encryption keys**: Always set `IMBI_AUTH_JWT_SECRET` and `IMBI_AUTH_ENCRYPTION_KEY` explicitly. Auto-generated values change every restart and silently invalidate all tokens and encrypted secrets.
+2. **CORS**: Limit `IMBI_API_CORS_ALLOWED_ORIGINS` to the exact origins that need API access. Credentials and the `Authorization` header are allowed for these origins.
+3. **Reverse proxy**: Set `IMBI_API_FORWARDED_ALLOW_IPS` to the trusted proxy CIDR(s) — otherwise rate limiting keys on the proxy IP.
+4. **TLS**: Terminate HTTPS at the proxy.
+5. **Database credentials**: Use strong passwords and rotate regularly; pass via env vars only.
+6. **Secrets management**: Store sensitive values in AWS Secrets Manager, HashiCorp Vault, or your platform's secret store.
 
 ### Performance
 
-1. **Neo4j Connection Pool**: Increase `NEO4J_MAX_POOL_SIZE` based on load (50-200)
-2. **ClickHouse**: Configure appropriate retention policies for analytics data
-3. **Access Token Expiry**: Balance security vs. user experience (5-15 minutes typical)
+1. **Postgres pool size**: Tune `POSTGRES_MAX_POOL_SIZE` (and `_MIN_`) for your concurrency and DB capacity.
+2. **ClickHouse retention**: Configure TTL on analytics tables to match your data-retention policy.
+3. **Access token expiry**: `IMBI_AUTH_ACCESS_TOKEN_EXPIRE_SECONDS=900` (15 min) is a common production choice; refresh-token rotation makes shorter lifetimes practical.
 
 ### Monitoring
 
-1. **OpenTelemetry**: Configure production-grade tracing backend (Jaeger, Honeycomb, Datadog)
-2. **Logging**: Set `IMBI_LOG_LEVEL=WARNING` or `ERROR` in production
-3. **Health Checks**: Use `/status` endpoint for load balancer health checks
+1. **OpenTelemetry**: Point `OTEL_EXPORTER_OTLP_ENDPOINT` at your production collector (Jaeger, Honeycomb, Datadog, etc.).
+2. **Health checks**: Use `/status` for load-balancer health probes.
 
-## Advanced Configuration
+## Advanced
 
 ### Loading Configuration Programmatically
-
-The configuration system can be accessed programmatically in your code:
 
 ```python
 from imbi_api import settings
 
-# Load configuration from config.toml with environment overrides
 config = settings.load_config()
 
-# Access individual settings sections
-print(f"Server: {config.server.environment} on {config.server.host}:{config.server.port}")
-print(f"Neo4j: {config.neo4j.url}")
-print(f"Auth: JWT algorithm {config.auth.jwt_algorithm}")
+print(config.server.environment, config.server.host, config.server.port)
+print(config.postgres.url)
+print(config.auth.jwt_algorithm)
+print(config.email.smtp_host)
+print(config.storage.bucket)
 
-# Direct access to specific settings classes
-neo4j_settings = settings.Neo4j()
+# Or instantiate a single section directly (env vars and .env apply):
+postgres_settings = settings.Postgres()
 server_config = settings.ServerConfig()
 ```
 
 ### Environment-Specific Configuration
 
-Use different configuration files per environment:
-
 ```bash
-# Development - use .env file
-./bootstrap
-uv run imbi-api serve --dev
+# Development — .env written by `just docker`
+just serve --dev
 
-# Staging - use staging config file
+# Staging — point at a staging config file
 cp /path/to/staging/config.toml ./config.toml
 uv run imbi-api serve
 
-# Production - use system config + environment variables
+# Production — system config + injected secrets
 # Config at /etc/imbi/config.toml
 export IMBI_AUTH_JWT_SECRET="$(load-from-secrets-manager)"
-export NEO4J_PASSWORD="$(load-from-secrets-manager)"
+export IMBI_AUTH_ENCRYPTION_KEY="$(load-from-secrets-manager)"
+export POSTGRES_URL="$(load-from-secrets-manager)"
 uv run imbi-api serve
 ```
 
 ### Configuration Best Practices
 
-1. **Secrets in Environment Variables**: Store sensitive values (passwords, API keys, JWT secrets) in environment variables, not in config files
-2. **Config Files for Structure**: Use `config.toml` for structured, non-sensitive configuration
-3. **Version Control**: Commit example configs (e.g., `config.example.toml`), never commit actual secrets
-4. **Deployment Automation**: Use configuration management tools (Ansible, Terraform) to deploy config files
-5. **Secret Management**: Use proper secret managers (AWS Secrets Manager, HashiCorp Vault) in production
+1. **Secrets via environment variables**: Never check in passwords, JWT secrets, or Fernet keys.
+2. **`config.toml` for structure**: Put non-sensitive settings in version-controlled config files.
+3. **Example configs**: Commit `config.example.toml`, never the real `config.toml`.
+4. **Deployment automation**: Render configs via Ansible/Terraform/Helm.
 
 ## Troubleshooting
 
-### Neo4j Connection Issues
+### PostgreSQL / AGE Connection Issues
 
 ```bash
-# Test Neo4j connectivity
-docker compose exec neo4j cypher-shell
-
-# Check Neo4j logs
-docker compose logs neo4j
+docker compose exec postgres psql -U postgres -d imbi -c '\dx'
+docker compose logs postgres
 ```
+
+Verify the AGE and pgvector extensions are loaded.
 
 ### ClickHouse Connection Issues
 
 ```bash
-# Test ClickHouse connectivity
-curl http://localhost:8123/ping
-
-# Check ClickHouse logs
+HOST_PORT=$(docker compose port clickhouse 8123 | cut -d: -f2)
+curl http://localhost:${HOST_PORT}/ping
 docker compose logs clickhouse
 ```
 
 ### Authentication Issues
 
 ```bash
-# Verify JWT secret is set
-echo $IMBI_AUTH_JWT_SECRET
+# Confirm secrets are present (do not echo the values in shared output)
+env | grep -E '^(IMBI_AUTH_JWT_SECRET|IMBI_AUTH_ENCRYPTION_KEY)=' | wc -l
+# Should print 2 in production.
 
-# Check authentication logs
-uv run imbi-api serve --dev
-# Look for JWT-related errors in output
+just serve --dev   # watch for JWT-related warnings on startup
 ```
 
 ## See Also
 
-- [Architecture Decision Records](adr.md) - Key architectural decisions
-- [GitHub Repository](https://github.com/AWeber-Imbi/imbi-api) - Source code and issues
+- [Architecture Decision Records](adr.md) — Key architectural decisions
+- [GitHub Repository](https://github.com/AWeber-Imbi/imbi-api) — Source code and issues
