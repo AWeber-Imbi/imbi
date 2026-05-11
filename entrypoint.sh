@@ -105,23 +105,17 @@ start_api() {
     echo "Starting imbi-api on :8000..."
     IMBI_HOST=0.0.0.0 IMBI_PORT=8000 imbi-api serve &
 
-    local api_prefix=""
-    if [ -n "$IMBI_API_URL" ]; then
-        local tmp="${IMBI_API_URL#*://}"
-        case "$tmp" in
-            */*) api_prefix="/${tmp#*/}" ;;
-        esac
-        api_prefix="${api_prefix%/}"
-    fi
-
-    echo "Waiting for imbi-api to become healthy at ${api_prefix}/status..."
+    echo "Waiting for imbi-api to become healthy..."
     local attempts=0
     local max_attempts=30
     until python3 -c "
+import os
+from urllib import parse
 import http.client
+parsed = parse.urlparse(os.environ.get('IMBI_API_URL', ''))
 try:
     conn = http.client.HTTPConnection('localhost', 8000, timeout=2)
-    conn.request('GET', '${api_prefix}/status')
+    conn.request('GET', f'{parsed.path.removesuffix("/")}/status')
     resp = conn.getresponse()
     exit(0 if resp.status == 200 else 1)
 except Exception:
