@@ -1,8 +1,10 @@
 import os
+import typing
 import unittest
 import unittest.mock
 
 import fastapi
+from imbi_common import access_log
 
 from imbi_api import app, settings, version
 
@@ -37,6 +39,26 @@ class CreateAppTestCase(unittest.TestCase):
         """Test that the app has a lifespan context manager configured."""
         application = app.create_app()
         self.assertIsNotNone(application.router.lifespan_context)
+
+    def test_access_log_middleware_quiets_status_routes(self) -> None:
+        """``/status`` and ``/api/status`` are silenced on success."""
+        application = app.create_app()
+        access_log_mw = next(
+            (
+                mw
+                for mw in application.user_middleware
+                if mw.cls is access_log.AccessLogMiddleware
+            ),
+            None,
+        )
+        self.assertIsNotNone(
+            access_log_mw, 'AccessLogMiddleware was not installed'
+        )
+        assert access_log_mw is not None  # narrow for basedpyright
+        quiet_paths = typing.cast(
+            'set[str]', access_log_mw.kwargs['quiet_paths']
+        )
+        self.assertEqual(set(quiet_paths), {'/status', '/api/status'})
 
 
 class ApiPrefixTestCase(unittest.TestCase):

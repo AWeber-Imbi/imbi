@@ -3,7 +3,7 @@ import logging
 import fastapi
 from fastapi import responses
 from fastapi.middleware import cors
-from imbi_common import graph, lifespan, valkey
+from imbi_common import access_log, graph, lifespan, valkey
 from imbi_common.plugins.errors import PluginCredentialsMissing
 from uvicorn.middleware import proxy_headers
 
@@ -36,6 +36,13 @@ def create_app() -> fastapi.FastAPI:
     )
 
     server_config = settings.ServerConfig()
+    # Quiet both the unprefixed and ``/api``-prefixed status route
+    # because the served path depends on IMBI_API_URL at startup;
+    # listing both keeps the middleware deployment-agnostic.
+    app.add_middleware(
+        access_log.AccessLogMiddleware,
+        quiet_paths={'/status', '/api/status'},
+    )
     app.add_middleware(
         cors.CORSMiddleware,
         allow_origins=server_config.cors_allowed_origins,
