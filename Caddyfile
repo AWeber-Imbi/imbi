@@ -4,7 +4,7 @@
 }
 
 :8080 {
-	handle_path /api/* {
+	handle /api/* {
 		reverse_proxy 127.0.0.1:8000
 	}
 
@@ -25,10 +25,6 @@
 	}
 
 	handle /openapi.json {
-		reverse_proxy 127.0.0.1:8000
-	}
-
-	handle /status {
 		reverse_proxy 127.0.0.1:8000
 	}
 
