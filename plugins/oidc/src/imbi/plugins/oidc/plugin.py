@@ -228,7 +228,8 @@ class OIDCPlugin(IdentityPlugin):
             expires_at = datetime.datetime.now(
                 datetime.UTC
             ) + datetime.timedelta(seconds=int(token['expires_in']))
-        scopes = token.get('scope', '').split() if token.get('scope') else []
+        scope_str = typing.cast(str, token.get('scope') or '')
+        scopes = scope_str.split()
         return profile, IdentityCredentials(
             access_token=token['access_token'],
             token_type=token.get('token_type', 'Bearer'),
@@ -266,7 +267,8 @@ class OIDCPlugin(IdentityPlugin):
             expires_at = datetime.datetime.now(
                 datetime.UTC
             ) + datetime.timedelta(seconds=int(token['expires_in']))
-        scopes = token.get('scope', '').split() if token.get('scope') else []
+        scope_str = typing.cast(str, token.get('scope') or '')
+        scopes = scope_str.split()
         return IdentityCredentials(
             access_token=token['access_token'],
             token_type=token.get('token_type', 'Bearer'),
@@ -326,5 +328,5 @@ class OIDCPlugin(IdentityPlugin):
         if isinstance(raw, str) and raw.strip():
             return raw.split()
         if isinstance(raw, list):
-            return [str(s) for s in raw]
+            return [str(s) for s in typing.cast(list[typing.Any], raw)]
         return ['openid', 'profile', 'email']

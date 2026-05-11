@@ -13,6 +13,19 @@ from imbi_common.plugins.base import (
 
 from imbi_plugin_oidc.plugin import OIDCPlugin
 
+_DISCOVERY = {
+    'authorization_endpoint': 'https://idp.example.com/authorize',
+    'token_endpoint': 'https://idp.example.com/token',
+    'userinfo_endpoint': 'https://idp.example.com/userinfo',
+    'revocation_endpoint': 'https://idp.example.com/revoke',
+}
+
+
+def _mock_discovery(payload: dict[str, str] | None = None) -> None:
+    respx.get('https://idp.example.com/.well-known/openid-configuration').mock(
+        return_value=httpx.Response(200, json=payload or _DISCOVERY),
+    )
+
 
 def _ctx(options: dict[str, object]) -> PluginContext:
     return PluginContext(
@@ -35,6 +48,9 @@ class ManifestTestCase(unittest.TestCase):
 
 
 class FlowTestCase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        OIDCPlugin._discovery_cache.clear()
+
     @respx.mock
     async def test_authorization_request_pkce(self) -> None:
         respx.get(
@@ -170,3 +186,147 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
         plugin = OIDCPlugin()
         ctx = _ctx({'issuer_url': 'https://idp.example.com'})
         await plugin.revoke(ctx, {'client_id': 'cid'}, 'token-to-revoke')
+
+    @respx.mock
+    async def test_revoke_posts_to_endpoint(self) -> None:
+        _mock_discovery()
+        route = respx.post('https://idp.example.com/revoke').mock(
+            return_value=httpx.Response(200)
+        )
+        plugin = OIDCPlugin()
+        ctx = _ctx({'issuer_url': 'https://idp.example.com'})
+        await plugin.revoke(
+            ctx,
+            {'client_id': 'cid', 'client_secret': 'sec'},
+            'token-to-revoke',
+        )
+        self.assertTrue(route.called)
+
+    @respx.mock
+    async def test_revoke_swallows_http_errors(self) -> None:
+        _mock_discovery()
+        respx.post('https://idp.example.com/revoke').mock(
+            side_effect=httpx.ConnectError('boom')
+        )
+        plugin = OIDCPlugin()
+        ctx = _ctx({'issuer_url': 'https://idp.example.com'})
+        await plugin.revoke(ctx, {'client_id': 'cid'}, 'token-to-revoke')
+
+    @respx.mock
+    async def test_authorization_request_without_pkce_with_audience(
+        self,
+    ) -> None:
+        _mock_discovery()
+        plugin = OIDCPlugin()
+        ctx = _ctx(
+            {
+                'issuer_url': 'https://idp.example.com',
+                'pkce_required': False,
+                'audience': 'aud-1',
+                'default_scopes': 'openid email',
+            }
+        )
+        request = await plugin.authorization_request(
+            ctx,
+            {'client_id': 'cid'},
+            'https://app.example.com/cb',
+            None,
+        )
+        self.assertIsNone(request.code_verifier)
+        self.assertIn('audience=aud-1', request.authorization_url)
+        self.assertNotIn('code_challenge_method', request.authorization_url)
+
+    @respx.mock
+    async def test_authorization_request_default_scopes_list(self) -> None:
+        _mock_discovery()
+        plugin = OIDCPlugin()
+        ctx = _ctx(
+            {
+                'issuer_url': 'https://idp.example.com',
+                'default_scopes': ['openid', 'email'],
+            }
+        )
+        request = await plugin.authorization_request(
+            ctx,
+            {'client_id': 'cid'},
+            'https://app.example.com/cb',
+            None,
+        )
+        self.assertIn('scope=openid+email', request.authorization_url)
+
+    async def test_resolve_endpoints_requires_issuer(self) -> None:
+        plugin = OIDCPlugin()
+        ctx = _ctx({})
+        with self.assertRaises(ValueError):
+            await plugin.authorization_request(
+                ctx,
+                {'client_id': 'cid'},
+                'https://app.example.com/cb',
+                None,
+            )
+
+    @respx.mock
+    async def test_discovery_failure_raises(self) -> None:
+        respx.get(
+            'https://idp.example.com/.well-known/openid-configuration'
+        ).mock(return_value=httpx.Response(500))
+        plugin = OIDCPlugin()
+        ctx = _ctx({'issuer_url': 'https://idp.example.com'})
+        with self.assertRaises(ValueError):
+            await plugin.authorization_request(
+                ctx,
+                {'client_id': 'cid'},
+                'https://app.example.com/cb',
+                None,
+            )
+
+    @respx.mock
+    async def test_exchange_code_token_failure_raises(self) -> None:
+        _mock_discovery()
+        respx.post('https://idp.example.com/token').mock(
+            return_value=httpx.Response(401, text='bad creds')
+        )
+        plugin = OIDCPlugin()
+        ctx = _ctx({'issuer_url': 'https://idp.example.com'})
+        with self.assertRaises(ValueError):
+            await plugin.exchange_code(
+                ctx,
+                {'client_id': 'cid'},
+                'auth-code',
+                'https://app.example.com/cb',
+                None,
+            )
+
+    @respx.mock
+    async def test_exchange_code_userinfo_failure_raises(self) -> None:
+        _mock_discovery()
+        respx.post('https://idp.example.com/token').mock(
+            return_value=httpx.Response(
+                200,
+                json={'access_token': 'at', 'token_type': 'Bearer'},
+            )
+        )
+        respx.get('https://idp.example.com/userinfo').mock(
+            return_value=httpx.Response(500, text='nope')
+        )
+        plugin = OIDCPlugin()
+        ctx = _ctx({'issuer_url': 'https://idp.example.com'})
+        with self.assertRaises(ValueError):
+            await plugin.exchange_code(
+                ctx,
+                {'client_id': 'cid'},
+                'auth-code',
+                'https://app.example.com/cb',
+                'verifier',
+            )
+
+    @respx.mock
+    async def test_refresh_failure_raises(self) -> None:
+        _mock_discovery()
+        respx.post('https://idp.example.com/token').mock(
+            return_value=httpx.Response(400, text='expired')
+        )
+        plugin = OIDCPlugin()
+        ctx = _ctx({'issuer_url': 'https://idp.example.com'})
+        with self.assertRaises(ValueError):
+            await plugin.refresh(ctx, {'client_id': 'cid'}, 'rt-1')
