@@ -131,10 +131,6 @@ const availableWidgets: WidgetConfig[] = [
 const defaultWidgets: WidgetId[] = [
   'stat-total-projects',
   'stat-active-deployments',
-  'stat-teams',
-  'team-activity',
-  'recent-activity',
-  'my-pull-requests',
 ]
 
 const WIDGET_IDS: ReadonlySet<WidgetId> = new Set<WidgetId>([
