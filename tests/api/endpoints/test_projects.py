@@ -730,6 +730,118 @@ class ProjectEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
+    # -- Archive -------------------------------------------------------
+
+    def test_archive_success(self) -> None:
+        """Archiving a project marks it archived and returns it."""
+        archived = self._project_data(
+            archived=True,
+            archived_at='2026-05-11T20:00:00Z',
+        )
+        self.mock_db.execute.return_value = [
+            {
+                'project': archived,
+                'outbound_count': 0,
+                'inbound_count': 0,
+            },
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(
+                f'/organizations/engineering/projects/{PROJECT_ID}/archive',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['archived'])
+        self.assertEqual(data['archived_at'], '2026-05-11T20:00:00Z')
+        call_kwargs = self.mock_db.execute.call_args
+        self.assertIs(call_kwargs.args[1]['archived'], True)
+        self.assertIsNotNone(call_kwargs.args[1]['archived_at'])
+
+    def test_archive_not_found(self) -> None:
+        """Archiving a missing project returns 404."""
+        self.mock_db.execute.return_value = []
+
+        response = self.client.post(
+            '/organizations/engineering/projects/nonexistent/archive',
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])
+
+    def test_unarchive_success(self) -> None:
+        """Unarchiving a project clears archived state."""
+        restored = self._project_data(
+            archived=False,
+            archived_at=None,
+        )
+        self.mock_db.execute.return_value = [
+            {
+                'project': restored,
+                'outbound_count': 0,
+                'inbound_count': 0,
+            },
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(
+                f'/organizations/engineering/projects/{PROJECT_ID}/unarchive',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data['archived'])
+        self.assertIsNone(data['archived_at'])
+        call_kwargs = self.mock_db.execute.call_args
+        self.assertIs(call_kwargs.args[1]['archived'], False)
+        self.assertIsNone(call_kwargs.args[1]['archived_at'])
+
+    def test_unarchive_not_found(self) -> None:
+        """Unarchiving a missing project returns 404."""
+        self.mock_db.execute.return_value = []
+
+        response = self.client.post(
+            '/organizations/engineering/projects/nonexistent/unarchive',
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])
+
+    def test_list_excludes_archived_by_default(self) -> None:
+        """List query filters out archived projects by default."""
+        self.mock_db.execute.return_value = []
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            self.client.get('/organizations/engineering/projects/')
+
+        query = self.mock_db.execute.call_args.args[0]
+        self.assertIn('coalesce(p.archived, false) = false', query)
+
+    def test_list_include_archived(self) -> None:
+        """``include_archived=true`` drops the archive filter."""
+        self.mock_db.execute.return_value = []
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            self.client.get(
+                '/organizations/engineering/projects/?include_archived=true',
+            )
+
+        query = self.mock_db.execute.call_args.args[0]
+        self.assertNotIn('coalesce(p.archived, false)', query)
+
 
 class _RelationshipsTestBase(unittest.TestCase):
     """Shared setup for relationship endpoint tests."""

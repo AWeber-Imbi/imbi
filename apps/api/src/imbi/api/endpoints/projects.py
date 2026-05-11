@@ -135,6 +135,8 @@ class ProjectResponse(pydantic.BaseModel):
     icon: pydantic.HttpUrl | str | None = None
     created_at: datetime.datetime | None = None
     updated_at: datetime.datetime | None = None
+    archived: bool = False
+    archived_at: datetime.datetime | None = None
     team: models.Team
     project_types: list[models.ProjectType] = []
     environments: list[EnvironmentRef] = []
@@ -323,6 +325,8 @@ _RESERVED_FIELDS = frozenset(
         'environments',
         'created_at',
         'updated_at',
+        'archived',
+        'archived_at',
     }
 )
 
@@ -653,17 +657,28 @@ async def list_projects(
         ),
     ],
     project_type: str | None = None,
+    include_archived: bool = False,
 ) -> list[ProjectResponse]:
-    """List all projects, optionally filtered by type."""
+    """List projects in the organization.
+
+    By default archived projects are excluded.  Pass
+    ``include_archived=true`` to include them.
+    """
     type_filter: typing.LiteralString = (
         'MATCH (p)-[:TYPE]->(filter_pt:ProjectType {{slug: {project_type}}})'
         if project_type
         else ''
     )
+    archived_filter: typing.LiteralString = (
+        '' if include_archived else 'WHERE coalesce(p.archived, false) = false'
+    )
     query: typing.LiteralString = (
         """
     MATCH (p:Project)-[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    """
+        + archived_filter
+        + """
     WITH DISTINCT p, o
     """
         + type_filter
@@ -1595,6 +1610,90 @@ async def patch_project(
         patched,
     )
     return response
+
+
+async def _set_archived_state(
+    org_slug: str,
+    project_id: str,
+    archived: bool,
+    request: fastapi.Request,
+    db: graph.Pool,
+) -> ProjectResponse:
+    """Toggle archived state on a project and return the updated entity."""
+    now = datetime.datetime.now(datetime.UTC).isoformat()
+    archived_at: str | None = now if archived else None
+    query: typing.LiteralString = (
+        """
+    MATCH (p:Project {{id: {project_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    SET p.archived = {archived},
+        p.archived_at = {archived_at},
+        p.updated_at = {updated_at}
+    WITH DISTINCT p, o
+    """
+        + _RETURN_FRAGMENT
+    )
+    records = await db.execute(
+        query,
+        {
+            'project_id': project_id,
+            'org_slug': org_slug,
+            'archived': archived,
+            'archived_at': archived_at,
+            'updated_at': now,
+        },
+        ['project', 'outbound_count', 'inbound_count'],
+    )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Project {project_id!r} not found',
+        )
+    project_data = graph.parse_agtype(records[0]['project'])
+    _flatten_edge_props(project_data)
+    _attach_project_relationships(
+        project_data,
+        org_slug,
+        request,
+        graph.parse_agtype(records[0]['outbound_count']),
+        graph.parse_agtype(records[0]['inbound_count']),
+    )
+    return ProjectResponse.model_validate(project_data)
+
+
+@projects_router.post('/{project_id}/archive')
+async def archive_project(
+    org_slug: str,
+    project_id: str,
+    request: fastapi.Request,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:write'),
+        ),
+    ],
+) -> ProjectResponse:
+    """Archive a project (soft-hide from default listings)."""
+    return await _set_archived_state(org_slug, project_id, True, request, db)
+
+
+@projects_router.post('/{project_id}/unarchive')
+async def unarchive_project(
+    org_slug: str,
+    project_id: str,
+    request: fastapi.Request,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:write'),
+        ),
+    ],
+) -> ProjectResponse:
+    """Restore an archived project to the active state."""
+    return await _set_archived_state(org_slug, project_id, False, request, db)
 
 
 @projects_router.delete('/{project_id}', status_code=204)
