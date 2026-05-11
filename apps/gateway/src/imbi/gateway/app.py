@@ -2,7 +2,7 @@ import datetime
 
 import fastapi
 import typer
-from imbi_common import graph, lifespan, server
+from imbi_common import access_log, graph, lifespan, server
 
 import imbi_gateway
 from imbi_gateway import app_status, lifespans, notifications
@@ -18,6 +18,10 @@ def create_app() -> fastapi.FastAPI:
     )
     app.include_router(notifications.router)
     app.include_router(app_status.router)
+    app.add_middleware(
+        access_log.AccessLogMiddleware,
+        quiet_paths={'/status', '/gateway/status'},
+    )
     return app
 
 
