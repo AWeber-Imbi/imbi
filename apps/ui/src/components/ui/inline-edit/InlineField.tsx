@@ -97,7 +97,6 @@ export function InlineField({
         <InlineSwitch
           onCommit={onCommit}
           pending={pending}
-          renderDisplay={display}
           value={raw == null ? null : raw === true || raw === 'true'}
         />
       )
