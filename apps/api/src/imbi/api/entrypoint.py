@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import getpass
 
+import nanoid
 import typer
 from imbi_common import clickhouse, graph, server
 
@@ -11,6 +12,110 @@ from imbi_api.auth import seed
 
 main = typer.Typer(no_args_is_help=True)
 main.command('serve')(server.bind_entrypoint('imbi_api.app:create_app'))
+
+
+@main.command('backfill-node-ids')
+def backfill_node_ids() -> None:
+    """Backfill ``id`` on graph nodes that were created without one.
+
+    Idempotent: only assigns ``id`` where it is currently NULL. Run once
+    against staging/production after deploying the create-path fix from
+    issue #291. Safe to re-run.
+    """
+    asyncio.run(_backfill_node_ids_async())
+
+
+async def _backfill_node_ids_async() -> None:
+    db = graph.Graph()
+    try:
+        await db.open()
+    except Exception as e:
+        typer.echo(f'✗ Failed to connect to PostgreSQL: {e}', err=True)
+        raise typer.Exit(code=1) from e
+
+    try:
+        tps_count = await _backfill_tps_ids(db)
+        typer.echo(
+            f'  ✓ ThirdPartyService: assigned id to {tps_count} node(s)'
+        )
+        app_count = await _backfill_service_application_ids(db)
+        typer.echo(
+            f'  ✓ ServiceApplication: assigned id to {app_count} node(s)'
+        )
+    finally:
+        await db.close()
+
+
+async def _backfill_tps_ids(db: graph.Graph) -> int:
+    """Assign a fresh nanoid to every ``ThirdPartyService`` missing one."""
+    query = (
+        'MATCH (s:ThirdPartyService)-[:BELONGS_TO]->(o:Organization)'
+        ' WHERE s.id IS NULL'
+        ' RETURN o.slug AS org_slug, s.slug AS slug'
+    )
+    records = await db.execute(query, {}, ['org_slug', 'slug'])
+    count = 0
+    for record in records:
+        org_slug = graph.parse_agtype(record['org_slug'])
+        slug = graph.parse_agtype(record['slug'])
+        update_query = (
+            'MATCH (s:ThirdPartyService {{slug: {slug}}})'
+            ' -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})'
+            ' WHERE s.id IS NULL'
+            ' SET s.id = {new_id}'
+            ' RETURN s.id AS id'
+        )
+        updated = await db.execute(
+            update_query,
+            {
+                'slug': slug,
+                'org_slug': org_slug,
+                'new_id': nanoid.generate(),
+            },
+            ['id'],
+        )
+        if updated:
+            count += 1
+    return count
+
+
+async def _backfill_service_application_ids(db: graph.Graph) -> int:
+    """Assign a fresh nanoid to every ``ServiceApplication`` missing one."""
+    query = (
+        'MATCH (a:ServiceApplication)-[:REGISTERED_IN]'
+        '->(s:ThirdPartyService)-[:BELONGS_TO]->(o:Organization)'
+        ' WHERE a.id IS NULL'
+        ' RETURN o.slug AS org_slug,'
+        ' s.slug AS svc_slug, a.slug AS app_slug'
+    )
+    records = await db.execute(query, {}, ['org_slug', 'svc_slug', 'app_slug'])
+    count = 0
+    for record in records:
+        org_slug = graph.parse_agtype(record['org_slug'])
+        svc_slug = graph.parse_agtype(record['svc_slug'])
+        app_slug = graph.parse_agtype(record['app_slug'])
+        update_query = (
+            'MATCH (a:ServiceApplication {{slug: {app_slug}}})'
+            ' -[:REGISTERED_IN]->'
+            '(s:ThirdPartyService {{slug: {svc_slug}}})'
+            ' -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})'
+            ' WHERE a.id IS NULL'
+            ' SET a.id = {new_id}'
+            ' RETURN a.id AS id'
+        )
+        updated = await db.execute(
+            update_query,
+            {
+                'app_slug': app_slug,
+                'svc_slug': svc_slug,
+                'org_slug': org_slug,
+                'new_id': nanoid.generate(),
+            },
+            ['id'],
+        )
+        if updated:
+            count += 1
+    return count
 
 
 @main.command()

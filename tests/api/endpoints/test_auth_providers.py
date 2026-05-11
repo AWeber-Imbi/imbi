@@ -248,6 +248,44 @@ class AuthProvidersEndpointTestCase(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 201)
 
+    def test_create_persists_ids(self) -> None:
+        """CREATE supplies non-empty ids for both the synthetic
+        ThirdPartyService and the new ServiceApplication (#291)."""
+        new = _row('google', usage='login')
+        self.db.execute.side_effect = [
+            [],  # _FETCH_BY_SLUG initial check
+            [new],  # CREATE
+        ]
+        with (
+            _patch_encryptor(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            response = self.client.post(
+                '/admin/auth-providers',
+                json={
+                    'org_slug': 'eng',
+                    'third_party_service_slug': 'svc',
+                    'slug': 'google',
+                    'name': 'Google',
+                    'oauth_app_type': 'google',
+                    'client_id': 'cid',
+                    'client_secret': 'shh',
+                },
+            )
+        self.assertEqual(response.status_code, 201)
+        create_call = self.db.execute.call_args_list[1]
+        params = create_call.args[1]
+        # ServiceApplication id (carried as ``id`` via create_props).
+        self.assertIn('id', params)
+        self.assertIsInstance(params['id'], str)
+        self.assertTrue(params['id'])
+        # Synthetic ThirdPartyService id (carried as ``svc_id``).
+        self.assertIn('svc_id', params)
+        self.assertIsInstance(params['svc_id'], str)
+        self.assertTrue(params['svc_id'])
+
     def test_create_promotes_existing_row(self) -> None:
         # Existing row → promote path: fetch returns row, SET, re-fetch.
         existing = _row('google', usage='integration')

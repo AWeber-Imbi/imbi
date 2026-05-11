@@ -263,3 +263,118 @@ class SetupTestCase(unittest.TestCase):
         self.assertIn('Failed to set up ClickHouse schema', result.output)
         self.mock_graph.close.assert_awaited_once()
         self.mock_ch_close.assert_awaited_once()
+
+
+class BackfillNodeIdsTestCase(unittest.TestCase):
+    """Test cases for the ``backfill-node-ids`` command (#291).
+
+    Uses regular TestCase because the command calls asyncio.run() which
+    creates its own event loop.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.runner = typer.testing.CliRunner()
+
+        self.mock_graph = mock.MagicMock()
+        self.mock_graph.open = mock.AsyncMock()
+        self.mock_graph.close = mock.AsyncMock()
+        self.mock_graph.execute = mock.AsyncMock(return_value=[])
+        self.enterContext(
+            mock.patch.object(
+                entrypoint.graph,
+                'Graph',
+                return_value=self.mock_graph,
+            )
+        )
+        self.enterContext(
+            mock.patch.object(
+                entrypoint.graph,
+                'parse_agtype',
+                side_effect=lambda v: v,
+            )
+        )
+
+    def test_backfill_empty_database(self) -> None:
+        """No rows missing id → no SET queries are emitted."""
+        result = self.runner.invoke(entrypoint.main, ['backfill-node-ids'])
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn('ThirdPartyService: assigned id to 0', result.output)
+        self.assertIn('ServiceApplication: assigned id to 0', result.output)
+        # Only the two SELECTs (one per label); no UPDATEs.
+        self.assertEqual(self.mock_graph.execute.await_count, 2)
+        self.mock_graph.close.assert_awaited_once()
+
+    def test_backfill_assigns_ids(self) -> None:
+        """Each missing-id row triggers a SET query with a nanoid."""
+        self.mock_graph.execute.side_effect = [
+            # First SELECT: TPS missing id.
+            [{'org_slug': 'eng', 'slug': 'stripe'}],
+            # SET on the TPS.
+            [{'id': 'generated'}],
+            # Second SELECT: ServiceApplication missing id.
+            [
+                {
+                    'org_slug': 'eng',
+                    'svc_slug': 'stripe',
+                    'app_slug': 'my-app',
+                }
+            ],
+            # SET on the ServiceApplication.
+            [{'id': 'generated'}],
+        ]
+
+        result = self.runner.invoke(entrypoint.main, ['backfill-node-ids'])
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn('ThirdPartyService: assigned id to 1', result.output)
+        self.assertIn('ServiceApplication: assigned id to 1', result.output)
+        self.assertEqual(self.mock_graph.execute.await_count, 4)
+        # Verify the TPS SET carries a fresh id.
+        tps_set_params = self.mock_graph.execute.await_args_list[1].args[1]
+        self.assertIn('new_id', tps_set_params)
+        self.assertTrue(tps_set_params['new_id'])
+        self.assertEqual(tps_set_params['slug'], 'stripe')
+        self.assertEqual(tps_set_params['org_slug'], 'eng')
+        # Verify the SA SET carries a fresh id.
+        sa_set_params = self.mock_graph.execute.await_args_list[3].args[1]
+        self.assertIn('new_id', sa_set_params)
+        self.assertTrue(sa_set_params['new_id'])
+        self.assertEqual(sa_set_params['app_slug'], 'my-app')
+
+    def test_backfill_skips_updates_that_match_no_rows(self) -> None:
+        """When SET ... WHERE id IS NULL matches nothing, don't count it."""
+        self.mock_graph.execute.side_effect = [
+            # First SELECT: TPS missing id.
+            [{'org_slug': 'eng', 'slug': 'stripe'}],
+            # SET on the TPS returns no rows (e.g. concurrent backfill).
+            [],
+            # Second SELECT: ServiceApplication missing id.
+            [
+                {
+                    'org_slug': 'eng',
+                    'svc_slug': 'stripe',
+                    'app_slug': 'my-app',
+                }
+            ],
+            # SET on the ServiceApplication returns no rows.
+            [],
+        ]
+
+        result = self.runner.invoke(entrypoint.main, ['backfill-node-ids'])
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn('ThirdPartyService: assigned id to 0', result.output)
+        self.assertIn('ServiceApplication: assigned id to 0', result.output)
+
+    def test_backfill_graph_connection_failure(self) -> None:
+        """When the graph pool fails to open, exit non-zero."""
+        self.mock_graph.open.side_effect = ConnectionError('refused')
+
+        result = self.runner.invoke(entrypoint.main, ['backfill-node-ids'])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn('Failed to connect to PostgreSQL', result.output)
+        # Should not have attempted any queries.
+        self.mock_graph.execute.assert_not_awaited()

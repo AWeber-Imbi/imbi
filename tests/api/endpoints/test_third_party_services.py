@@ -50,8 +50,8 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         )
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -119,6 +119,30 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(data['team']['slug'], 'backend')
+
+    def test_create_persists_id(self) -> None:
+        """The CREATE query must carry a non-empty surrogate id (#291)."""
+        self.mock_db.execute.return_value = [{'service': self.service_data}]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(
+                '/organizations/engineering/third-party-services/',
+                json={
+                    'name': 'Stripe',
+                    'slug': 'stripe',
+                    'vendor': 'Stripe Inc',
+                },
+            )
+
+        self.assertEqual(response.status_code, 201)
+        params = self.mock_db.execute.call_args.args[1]
+        self.assertIn('id', params)
+        self.assertIsInstance(params['id'], str)
+        self.assertTrue(params['id'])
+        query = self.mock_db.execute.call_args.args[0]
+        self.assertIn('id', query)
 
     def test_create_missing_vendor(self) -> None:
         response = self.client.post(
@@ -508,8 +532,8 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
         )
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -798,8 +822,8 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
         )
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -932,6 +956,37 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
         data = response.json()
         self.assertEqual(data['slug'], 'my-app')
         self.assertNotIn('client_secret', data)
+
+    def test_create_application_persists_id(self) -> None:
+        """The CREATE query must carry a non-empty surrogate id (#291)."""
+        self.mock_db.execute.side_effect = [
+            [{'cnt': 0}],
+            [{'app': self.app_data}],
+        ]
+
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.post(
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/',
+                json=self.app_create_json,
+            )
+
+        self.assertEqual(response.status_code, 201)
+        # Second execute call is the CREATE; first is the duplicate check.
+        create_call = self.mock_db.execute.call_args_list[1]
+        params = create_call.args[1]
+        self.assertIn('id', params)
+        self.assertIsInstance(params['id'], str)
+        self.assertTrue(params['id'])
+        query = create_call.args[0]
+        self.assertIn('id', query)
 
     def test_create_application_duplicate(self) -> None:
         self.mock_db.execute.return_value = [{'cnt': 1}]

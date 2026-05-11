@@ -6,6 +6,7 @@ import logging
 import typing
 
 import fastapi
+import nanoid
 import psycopg
 import pydantic
 from imbi_common import graph
@@ -62,7 +63,7 @@ def _deserialize_json_fields(
         if isinstance(val, str):
             try:
                 obj[key] = json.loads(val)
-            except (json.JSONDecodeError, TypeError):
+            except json.JSONDecodeError, TypeError:
                 obj[key] = default
         elif val is None:
             obj[key] = default
@@ -137,6 +138,7 @@ async def create_third_party_service(
 
     """
     props = {
+        'id': nanoid.generate(),
         'name': data.name,
         'slug': data.slug,
         'description': data.description,
@@ -616,6 +618,7 @@ async def create_service_application(
     # Encrypt secrets
     encryptor = encryption.TokenEncryption.get_instance()
     props = data.model_dump(mode='json')
+    props['id'] = nanoid.generate()
     props['client_secret'] = encryptor.encrypt(data.client_secret)
     if props.get('webhook_secret') is not None:
         props['webhook_secret'] = encryptor.encrypt(
@@ -1071,7 +1074,7 @@ async def delete_service_application(
     if 'auth_providers:write' not in auth.permissions:
         try:
             existing = await _fetch_application(db, org_slug, slug, app_slug)
-        except (fastapi.HTTPException, KeyError):
+        except fastapi.HTTPException, KeyError:
             existing = None
         if existing and existing.get('usage') in ('login', 'both'):
             raise fastapi.HTTPException(

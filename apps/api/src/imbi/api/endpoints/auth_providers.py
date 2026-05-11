@@ -13,6 +13,7 @@ import logging
 import typing
 
 import fastapi
+import nanoid
 import psycopg
 import pydantic
 from imbi_common import graph
@@ -42,7 +43,7 @@ def _parse_json_field(value: typing.Any, default: typing.Any) -> typing.Any:
     if isinstance(value, str):
         try:
             return json.loads(value)
-        except (json.JSONDecodeError, TypeError):
+        except json.JSONDecodeError, TypeError:
             return default
     return value
 
@@ -385,6 +386,7 @@ async def create_auth_provider(
     # the OAuth app type so admins viewing the third-party-services
     # screen can recognize it.
     create_props: dict[str, typing.Any] = {
+        'id': nanoid.generate(),
         'slug': resolved_slug,
         'name': resolved_name,
         'description': data.description,
@@ -439,7 +441,8 @@ async def create_auth_provider(
         'MATCH (o:Organization {{slug: {org_slug}}})'
         ' MERGE (s:ThirdPartyService {{slug: {svc_slug}}})'
         ' -[:BELONGS_TO]->(o)'
-        ' SET s.name = COALESCE(s.name, {svc_name}),'
+        ' SET s.id = COALESCE(s.id, {svc_id}),'
+        ' s.name = COALESCE(s.name, {svc_name}),'
         ' s.vendor = COALESCE(s.vendor, {svc_vendor}),'
         " s.status = COALESCE(s.status, 'active'),"
         " s.identifiers = COALESCE(s.identifiers, '{{}}'),"
@@ -455,6 +458,7 @@ async def create_auth_provider(
             create_query,
             {
                 'svc_slug': resolved_service_slug,
+                'svc_id': nanoid.generate(),
                 'svc_name': service_label,
                 'svc_vendor': _OAUTH_APP_TYPE_LABELS[data.oauth_app_type],
                 'org_slug': resolved_org_slug,
