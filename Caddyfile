@@ -39,6 +39,7 @@
 	handle {
 		root * /srv/ui
 		try_files {path} /index.html
+		templates
 		file_server
 	}
 }
