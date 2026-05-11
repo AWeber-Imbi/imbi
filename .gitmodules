@@ -13,3 +13,15 @@
 [submodule "imbi-ui"]
 	path = imbi-ui
 	url = git@github.com:AWeber-Imbi/imbi-ui.git
+[submodule "imbi-plugin-logzio"]
+	path = imbi-plugin-logzio
+	url = git@github.com:AWeber-Imbi/imbi-plugin-logzio.git
+[submodule "imbi-plugin-aws"]
+	path = imbi-plugin-aws
+	url = git@github.com:AWeber-Imbi/imbi-plugin-aws.git
+[submodule "imbi-plugin-oidc"]
+	path = imbi-plugin-oidc
+	url = git@github.com:AWeber-Imbi/imbi-plugin-oidc.git
+[submodule "imbi-plugin-github"]
+	path = imbi-plugin-github
+	url = git@github.com:AWeber-Imbi/imbi-plugin-github.git
