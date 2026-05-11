@@ -23,6 +23,7 @@ except ImportError:  # pragma: no cover
 class _UvicornRunParams(typing.TypedDict):
     """Provides type hinting for uvicorn.run parameters."""
 
+    access_log: bool
     env_file: pathlib.Path | None
     factory: bool
     host: str
@@ -118,6 +119,7 @@ def serve(
             loggers.setdefault('imbi_common', {})['level'] = 'DEBUG'
 
     args: _UvicornRunParams = {
+        'access_log': False,
         'factory': True,
         'env_file': env_file,
         'host': host,

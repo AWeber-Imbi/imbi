@@ -25,6 +25,7 @@ class ServerCliTests(unittest.TestCase):
         self.standard_kwargs: dict[
             str, bool | dict[str, typing.Any] | int | str | None
         ] = {
+            'access_log': False,
             'env_file': None,
             'factory': True,
             'host': '127.0.0.1',
