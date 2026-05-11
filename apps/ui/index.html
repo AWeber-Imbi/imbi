@@ -16,6 +16,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Imbi</title>
     <script>
+      window.__IMBI_API_URL__ = '{{env "IMBI_API_URL"}}'
+    </script>
+    <script>
       (function () {
         try {
           var stored = window.localStorage.getItem('imbi-theme')

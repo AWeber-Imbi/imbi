@@ -1,9 +1,20 @@
 import { useAuthStore } from '@/stores/authStore'
 import type { TokenResponse } from '@/types'
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL
+function resolveApiBaseUrl(): string {
+  // index.html injects `{{env "IMBI_API_URL"}}`; when served without a
+  // templater (e.g. Vite dev) the placeholder reaches the browser literally,
+  // so detect the unsubstituted form and fall back.
+  const runtime = window.__IMBI_API_URL__
+  if (runtime && !runtime.includes('{{')) {
+    return runtime
+  }
+  return import.meta.env.VITE_API_URL
+}
+
+export const API_BASE_URL = resolveApiBaseUrl()
 if (!API_BASE_URL) {
-  throw new Error('VITE_API_URL is required')
+  throw new Error('IMBI_API_URL (or VITE_API_URL) is required')
 }
 
 export const apiUrl = (path: string): string =>

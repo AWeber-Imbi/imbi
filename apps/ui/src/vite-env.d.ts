@@ -10,3 +10,7 @@ interface ImportMetaEnv {
   readonly VITE_OAUTH_CLIENT_ID?: string
   readonly VITE_OAUTH_REDIRECT_URI?: string
 }
+
+interface Window {
+  __IMBI_API_URL__?: string
+}
