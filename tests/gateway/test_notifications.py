@@ -93,7 +93,11 @@ class ProcessNotificationTests(helpers.TestCase):
         self.org_id = nanoid.generate()
         self.org_slug = f'org-{self.org_id[:8]}'
         self.webhook_id = nanoid.generate()
-        self.tps_id = nanoid.generate()
+        # ThirdPartyService nodes in production are persisted without an
+        # ``id`` property (the create endpoint does not generate one), so
+        # the test fixture intentionally omits ``id`` and looks the node
+        # up by slug to mirror the real graph.
+        self.tps_slug = f'tps-{nanoid.generate()[:8]}'
         self.proj_id = nanoid.generate()
         self.ext_id = f'ext-{nanoid.generate()[:8]}'
         self.rule_ids: list[str] = []
@@ -140,30 +144,29 @@ class ProcessNotificationTests(helpers.TestCase):
             ['w'],
         )
         await self.g.execute(
-            'CREATE (n:ThirdPartyService {{id: {id}, slug: {slug},'
+            'CREATE (n:ThirdPartyService {{slug: {slug},'
             ' name: {name}, created_at: {ts}}}) RETURN n',
-            {
-                'id': self.tps_id,
-                'slug': f'tps-{self.tps_id[:8]}',
-                'name': 'Test Service',
-                'ts': ts,
-            },
+            {'slug': self.tps_slug, 'name': 'Test Service', 'ts': ts},
             ['n'],
         )
         await self.g.execute(
-            'MATCH (tps:ThirdPartyService {{id: {tid}}}),'
+            'MATCH (tps:ThirdPartyService {{slug: {tslug}}}),'
             ' (o:Organization {{id: {oid}}})'
             ' CREATE (tps)-[:BELONGS_TO]->(o) RETURN tps',
-            {'tid': self.tps_id, 'oid': self.org_id},
+            {'tslug': self.tps_slug, 'oid': self.org_id},
             ['tps'],
         )
         await self.g.execute(
             'MATCH (w:Webhook {{id: {wid}}}),'
-            ' (tps:ThirdPartyService {{id: {tid}}})'
+            ' (tps:ThirdPartyService {{slug: {tslug}}})'
             ' CREATE (w)-[:IMPLEMENTED_BY'
             ' {{identifier_selector: {sel}}}]->(tps)'
             ' RETURN w',
-            {'wid': self.webhook_id, 'tid': self.tps_id, 'sel': '/repo/id'},
+            {
+                'wid': self.webhook_id,
+                'tslug': self.tps_slug,
+                'sel': '/repo/id',
+            },
             ['w'],
         )
         await self.g.execute(
@@ -179,10 +182,14 @@ class ProcessNotificationTests(helpers.TestCase):
         )
         await self.g.execute(
             'MATCH (p:Project {{id: {pid}}}),'
-            ' (tps:ThirdPartyService {{id: {tid}}})'
+            ' (tps:ThirdPartyService {{slug: {tslug}}})'
             ' CREATE (p)-[:EXISTS_IN {{identifier: {ext_id}}}]->(tps)'
             ' RETURN p',
-            {'pid': self.proj_id, 'tid': self.tps_id, 'ext_id': self.ext_id},
+            {
+                'pid': self.proj_id,
+                'tslug': self.tps_slug,
+                'ext_id': self.ext_id,
+            },
             ['p'],
         )
 
@@ -200,9 +207,14 @@ class ProcessNotificationTests(helpers.TestCase):
                 {'id': project_id},
                 ['r'],
             )
+        await self.g.execute(
+            'MATCH (n:ThirdPartyService {{slug: {slug}}})'
+            ' DETACH DELETE n RETURN 1 AS r',
+            {'slug': self.tps_slug},
+            ['r'],
+        )
         for label, node_id in [
             ('Project', self.proj_id),
-            ('ThirdPartyService', self.tps_id),
             ('Webhook', self.webhook_id),
             ('Organization', self.org_id),
         ]:
@@ -281,10 +293,10 @@ class ProcessNotificationTests(helpers.TestCase):
         )
         await self.g.execute(
             'MATCH (p:Project {{id: {pid}}}),'
-            ' (tps:ThirdPartyService {{id: {tid}}})'
+            ' (tps:ThirdPartyService {{slug: {tslug}}})'
             ' CREATE (p)-[:EXISTS_IN {{identifier: {ext_id}}}]->(tps)'
             ' RETURN p',
-            {'pid': project_id, 'tid': self.tps_id, 'ext_id': self.ext_id},
+            {'pid': project_id, 'tslug': self.tps_slug, 'ext_id': self.ext_id},
             ['p'],
         )
         return project_id
@@ -481,7 +493,7 @@ class ProcessNotificationTests(helpers.TestCase):
         )
         await self.g.execute(
             'MATCH (w:Webhook {{id: {wid}}}),'
-            ' (tps:ThirdPartyService {{id: {tid}}})'
+            ' (tps:ThirdPartyService {{slug: {tslug}}})'
             ' CREATE (w)-[:IMPLEMENTED_BY {{'
             'identifier_selector: {sel},'
             ' user_subject_selector: {uss},'
@@ -490,7 +502,7 @@ class ProcessNotificationTests(helpers.TestCase):
             '}}]->(tps) RETURN w',
             {
                 'wid': self.webhook_id,
-                'tid': self.tps_id,
+                'tslug': self.tps_slug,
                 'sel': identifier_selector,
                 'uss': user_subject_selector,
                 'ips': identity_plugin_slug,
@@ -617,9 +629,9 @@ class ProcessNotificationTests(helpers.TestCase):
             )
             await self.g.execute(
                 'MATCH (p:Plugin {{id: {pid}}}),'
-                ' (tps:ThirdPartyService {{id: {tid}}})'
+                ' (tps:ThirdPartyService {{slug: {tslug}}})'
                 ' CREATE (tps)-[:HAS_PLUGIN]->(p) RETURN p',
-                {'pid': plugin_id, 'tid': self.tps_id},
+                {'pid': plugin_id, 'tslug': self.tps_slug},
                 ['p'],
             )
 

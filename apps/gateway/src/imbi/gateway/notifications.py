@@ -176,9 +176,12 @@ async def process_notification(
             records = await db.execute(
                 'MATCH (p:Project)'
                 '      -[:EXISTS_IN {{identifier: {external_id}}}]'
-                '      ->(tps:ThirdPartyService {{id: {tps_id}}}) '
+                '      ->(tps:ThirdPartyService {{slug: {tps_slug}}}) '
                 'RETURN p.id AS project_id',
-                {'external_id': str(resolved), 'tps_id': str(service['id'])},
+                {
+                    'external_id': str(resolved),
+                    'tps_slug': str(service['slug']),
+                },
                 ['project_id'],
             )
             if not records:
