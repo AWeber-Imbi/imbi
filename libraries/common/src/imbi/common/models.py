@@ -581,6 +581,7 @@ class OperationLog(pydantic.BaseModel):
         lt=2**64,
     )
     is_deleted: bool = False
+    plugin_slug: str = ''
 
 
 class Event(pydantic.BaseModel):

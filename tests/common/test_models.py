@@ -544,6 +544,7 @@ class OperationLogTestCase(unittest.TestCase):
             'version',
             '_row_version',
             'is_deleted',
+            'plugin_slug',
         ]
         self.assertEqual(keys, expected)
 
@@ -600,6 +601,17 @@ class OperationLogFieldsTests(unittest.TestCase):
         self.assertNotIn('row_version', dumped)
         self.assertEqual(dumped['_row_version'], 1)
         self.assertFalse(dumped['is_deleted'])
+
+    def test_plugin_slug_defaults_to_empty_string(self) -> None:
+        entry = models.OperationLog(**self._minimum_kwargs())
+        self.assertEqual(entry.plugin_slug, '')
+
+    def test_plugin_slug_can_be_set(self) -> None:
+        entry = models.OperationLog(
+            **self._minimum_kwargs(),
+            plugin_slug='ssm',
+        )
+        self.assertEqual(entry.plugin_slug, 'ssm')
 
 
 class EventTestCase(unittest.TestCase):

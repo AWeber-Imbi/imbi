@@ -20,7 +20,7 @@ enabled = true
 
 [operations_log]
 query = """
-CREATE TABLE IF NOT EXISTS operations_log ON (
+CREATE TABLE IF NOT EXISTS operations_log (
     id                String,
     occurred_at       DateTime64(3, 'UTC'),
     recorded_at       DateTime64(3, 'UTC'),
