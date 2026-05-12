@@ -427,6 +427,13 @@ export interface DeploymentTriggerResponse {
   release_url?: null | string
   run: DeploymentRun
   tag?: null | string
+  // Human-readable narrative for any non-fatal failure encountered
+  // while running the per-environment promote steps (e.g. the
+  // GitHub Deployments POST returned 422 because the repo's
+  // ``on: deployment`` workflow isn't wired up yet). The promote
+  // itself still records a DeploymentEvent; the UI surfaces this as
+  // an amber inline note.
+  warning?: null | string
 }
 
 export interface Document {
