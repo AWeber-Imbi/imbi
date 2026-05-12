@@ -1,9 +1,16 @@
+import { useState } from 'react'
+
 import { useQuery } from '@tanstack/react-query'
-import { ExternalLink } from 'lucide-react'
+import { Copy, ExternalLink } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { getOperationsLogEntry } from '@/api/endpoints'
+import {
+  NewOpsLogDialog,
+  type NewOpsLogInitialValues,
+} from '@/components/NewOpsLogDialog'
+import { Button } from '@/components/ui/button'
 import {
   Tooltip,
   TooltipContent,
@@ -33,6 +40,18 @@ export function OperationsLogEntryDetails({ entry }: Props) {
 
   const record = data ?? entry
   const performer = record.performed_by ?? record.recorded_by
+  const [duplicateOpen, setDuplicateOpen] = useState(false)
+
+  const duplicateInitialValues: NewOpsLogInitialValues = {
+    description: record.description,
+    entry_type: record.entry_type,
+    environment_slug: record.environment_slug,
+    link: record.link,
+    notes: record.notes,
+    project_id: record.project_id,
+    ticket_slug: record.ticket_slug,
+    version: record.version,
+  }
   const parsed = parseDescription(record)
   const pluginRenderer =
     parsed.kind === 'plugin' ? getPluginRenderer(record.plugin_slug) : undefined
@@ -134,6 +153,23 @@ export function OperationsLogEntryDetails({ entry }: Props) {
           No additional notes, link, or ticket for this entry.
         </p>
       )}
+
+      <div className="flex justify-end pt-2">
+        <Button
+          onClick={() => setDuplicateOpen(true)}
+          size="sm"
+          variant="outline"
+        >
+          <Copy className="mr-1.5 h-3.5 w-3.5" />
+          Duplicate
+        </Button>
+      </div>
+
+      <NewOpsLogDialog
+        initialValues={duplicateInitialValues}
+        isOpen={duplicateOpen}
+        onClose={() => setDuplicateOpen(false)}
+      />
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -26,13 +26,28 @@ import {
   type OperationsLogEntryType,
 } from '@/types'
 
+export type NewOpsLogInitialValues = Partial<
+  Pick<
+    OperationsLogCreate,
+    | 'description'
+    | 'environment_slug'
+    | 'link'
+    | 'notes'
+    | 'project_id'
+    | 'ticket_slug'
+    | 'version'
+  >
+> & { entry_type?: null | OperationsLogEntryType }
+
 interface NewOpsLogDialogProps {
+  initialValues?: NewOpsLogInitialValues
   isOpen: boolean
   onClose: () => void
   onEntryCreated?: (id: string) => void
 }
 
 export function NewOpsLogDialog({
+  initialValues,
   isOpen,
   onClose,
   onEntryCreated,
@@ -49,6 +64,20 @@ export function NewOpsLogDialog({
   const [link, setLink] = useState('')
   const [ticketSlug, setTicketSlug] = useState('')
   const [notes, setNotes] = useState('')
+
+  // Re-seed on every open so Duplicate reflects the source entry even if the
+  // user previously opened, edited, and cancelled the dialog.
+  useEffect(() => {
+    if (!isOpen) return
+    setProjectId(initialValues?.project_id ?? '')
+    setEnvironmentSlug(initialValues?.environment_slug ?? '')
+    setEntryType(initialValues?.entry_type ?? '')
+    setDescription(initialValues?.description ?? '')
+    setVersion(initialValues?.version ?? '')
+    setLink(initialValues?.link ?? '')
+    setTicketSlug(initialValues?.ticket_slug ?? '')
+    setNotes(initialValues?.notes ?? '')
+  }, [isOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: projects = [] } = useQuery({
     enabled: !!orgSlug && isOpen,
