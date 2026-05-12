@@ -1,27 +1,55 @@
 # imbi-plugin-github
 
-GitHub identity plugin for Imbi. Ships three entry points so the admin UI
-can distinguish github.com, GitHub Enterprise Cloud, and GitHub Enterprise
-Server installations:
+GitHub plugins for Imbi. Three flavors (github.com, GitHub Enterprise Cloud,
+GitHub Enterprise Server) of each plugin type so the admin UI can wire
+projects to the right backend.
 
-| Entry point                | Slug                          | Host                                |
-| -------------------------- | ----------------------------- | ----------------------------------- |
-| `github`                   | `github`                      | `github.com`                        |
-| `github-enterprise-cloud`  | `github-enterprise-cloud`     | `<tenant>.ghe.com`                  |
-| `github-enterprise-server` | `github-enterprise-server`    | operator-supplied via the `host` option |
+## Plugin types
+
+| Type       | Slugs                                                                |
+| ---------- | -------------------------------------------------------------------- |
+| Identity   | `github`, `github-enterprise-cloud`, `github-enterprise-server`      |
+| Deployment | `github-deployment`, `github-deployment-ec`, `github-deployment-es`  |
+| Lifecycle  | `github-lifecycle`, `github-lifecycle-ec`, `github-lifecycle-es`     |
+
+### Identity
 
 Phase 1 ships the OAuth App flow only; GitHub App installation tokens are
 deferred. The access token returned by the OAuth grant is passed straight
 to GitHub APIs as a `Bearer` token, so `materialize()` is a no-op.
 
-## Manifest options
+### Deployment
+
+Drives the GitHub Deployments API (`POST /repos/{owner}/{repo}/deployments`)
+plus tag and release creation. See `deployment.py` for the per-environment
+`DEPLOYS_VIA` edge contract.
+
+### Lifecycle
+
+Reacts to project archive / unarchive by archiving the matching repo via
+`PATCH /repos/{owner}/{repo}` with `{"archived": true|false}`. When the
+`archive_target_org` option is set, archive **also** transfers the repo to
+that org first via `POST /repos/{owner}/{repo}/transfer` — useful for
+moving sunset projects into a dedicated "archive" org so they no longer
+crowd primary-org searches.
+
+GitHub refuses to transfer archived repos, so an already-archived source
+is briefly unarchived, transferred, and re-archived at the destination.
+On unarchive the plugin only flips `archived` back to `false` at the
+repo's current location — it does **not** transfer back to the original
+org.
+
+Archiving requires admin scope on the repo; transferring additionally
+requires admin permission on the target organization.
+
+## Manifest options (identity)
 
 | Option           | Required  | Description                                                                |
 | ---------------- | --------- | -------------------------------------------------------------------------- |
 | `host`           | GHEC/GHES | Tenant or appliance host (e.g. `tenant.ghe.com`, `github.example.com`).    |
 | `default_scopes` | no        | Space-separated default OAuth scopes (default: `read:user user:email`).    |
 
-## Credentials
+## Credentials (identity)
 
 | Field            | Required |
 | ---------------- | -------- |

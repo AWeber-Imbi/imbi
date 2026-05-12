@@ -52,6 +52,11 @@ from imbi_common.plugins.base import (
 from imbi_common.plugins.errors import PluginAuthenticationFailed
 
 from imbi_plugin_github._hosts import normalize_host, require_ghec_tenant_host
+from imbi_plugin_github._repos import (
+    derive_owner_repo_from_links,
+    parse_owner_repo,
+    resolve_owner_repo,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -272,105 +277,20 @@ class _DeploymentBase(DeploymentPlugin):
             return f'https://api.{host}'
         return f'https://{host}/api/v3'
 
-    # Reserved GitHub URL prefixes that share the host with repository
-    # URLs but never point at a real ``<owner>/<repo>`` pair.  Any link
-    # whose first path segment matches one of these is skipped during
-    # owner/repo derivation so e.g. ``github.com/orgs/<org>`` or a
-    # marketplace link can't silently bind a deployment to the wrong
-    # target.
-    _RESERVED_LINK_PREFIXES = frozenset(
-        {
-            'orgs',
-            'marketplace',
-            'settings',
-            'enterprises',
-            'features',
-            'pricing',
-            'about',
-            'login',
-            'logout',
-            'signup',
-            'sponsors',
-            'topics',
-            'collections',
-            'trending',
-            'codespaces',
-            'notifications',
-            'issues',
-            'pulls',
-            'search',
-            'stars',
-            'explore',
-        }
-    )
-
-    @classmethod
-    def _derive_owner_repo_from_links(
-        cls, links: dict[str, str], host: str
-    ) -> tuple[str, str] | None:
-        """Find a project link pointing at ``host`` and parse owner/repo.
-
-        Prefers an explicit ``github-repository`` link key when one is
-        present and points at ``host``; otherwise scans the remaining
-        same-host links and returns the first usable one.  Path entries
-        whose first segment is a reserved GitHub route (e.g. ``orgs``,
-        ``marketplace``) are rejected so a non-repo URL can't silently
-        bind the deployment to a wrong target.  A trailing ``.git`` is
-        stripped from the repo segment.  Returns ``None`` when nothing
-        matches.
-        """
-        target = host.lower()
-        preferred = links.get('github-repository')
-        if preferred is not None:
-            owner_repo = cls._parse_owner_repo(preferred, target)
-            if owner_repo is not None:
-                return owner_repo
-        for key, url in links.items():
-            if key == 'github-repository':
-                continue
-            owner_repo = cls._parse_owner_repo(url, target)
-            if owner_repo is not None:
-                return owner_repo
-        return None
-
-    @classmethod
-    def _parse_owner_repo(
-        cls, url: str, target_host: str
-    ) -> tuple[str, str] | None:
-        """Extract ``(owner, repo)`` from ``url`` when it's a repo URL on
-        ``target_host``.  Returns ``None`` for other hosts, short paths,
-        or reserved-prefix paths like ``/orgs/<org>``.
-        """
-        try:
-            parsed = urllib.parse.urlparse(url)
-        except ValueError:
-            return None
-        if (parsed.hostname or '').lower() != target_host:
-            return None
-        parts = [p for p in parsed.path.split('/') if p]
-        if len(parts) < 2:
-            return None
-        if parts[0].lower() in cls._RESERVED_LINK_PREFIXES:
-            return None
-        return parts[0], parts[1].removesuffix('.git')
-
     def _owner_repo(self, ctx: PluginContext) -> tuple[str, str]:
-        derived = self._derive_owner_repo_from_links(
-            ctx.project_links, self._resolve_host(ctx.assignment_options)
+        return resolve_owner_repo(
+            ctx,
+            self._resolve_host(ctx.assignment_options),
+            'GitHub deployment plugin',
         )
-        if derived is not None:
-            return derived
-        # Final fallback: convention is ``<project_type_slug>/<project_slug>``.
-        # Most projects carry a single type, so the first slug is what
-        # callers expect; we don't probe each candidate against GitHub here
-        # because ``_owner_repo`` is consulted on every API call.
-        if ctx.project_type_slugs and ctx.project_slug:
-            return ctx.project_type_slugs[0], ctx.project_slug
-        raise ValueError(
-            'GitHub deployment plugin could not determine the target '
-            "repository: set the project's GitHub Repository link or "
-            'tag the project with a ProjectType'
-        )
+
+    # Backwards-compatible aliases for the previously private helpers.
+    # The actual logic lives in :mod:`imbi_plugin_github._repos`; these
+    # remain so existing tests that reach into the class continue to
+    # work and so subclasses overriding the resolution path still have
+    # a stable surface to hook into.
+    _derive_owner_repo_from_links = staticmethod(derive_owner_repo_from_links)
+    _parse_owner_repo = staticmethod(parse_owner_repo)
 
     def _repo_url(self, ctx: PluginContext) -> str:
         owner, repo = self._owner_repo(ctx)
