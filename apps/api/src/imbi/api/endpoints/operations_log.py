@@ -99,6 +99,7 @@ class OperationLogResponse(pydantic.BaseModel):
     notes: str | None = None
     ticket_slug: str | None = None
     version: str | None = None
+    plugin_slug: str = ''
 
 
 def _encode_cursor(occurred_at: datetime.datetime, entry_id: str) -> str:
