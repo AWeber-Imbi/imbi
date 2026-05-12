@@ -23,6 +23,7 @@ from imbi_common.plugins.base import (
     Ref,
     RefInfo,
     ReleaseInfo,
+    WorkflowFile,
 )
 
 
@@ -251,6 +252,18 @@ class DeploymentModelsTestCase(unittest.TestCase):
         self.assertEqual(run.status, 'queued')
         self.assertIsNone(run.completed_at)
 
+    def test_workflow_file_round_trip(self) -> None:
+        wf = WorkflowFile(
+            id='12345',
+            path='.github/workflows/python-api-deploy.yml',
+            name='python-api deploy',
+        )
+        restored = WorkflowFile.model_validate(wf.model_dump())
+        self.assertEqual(
+            restored.path, '.github/workflows/python-api-deploy.yml'
+        )
+        self.assertEqual(restored.state, 'active')
+
 
 class DeploymentManifestTestCase(unittest.TestCase):
     def test_deployment_plugin_type_accepted(self) -> None:
@@ -324,3 +337,31 @@ class DeploymentPluginDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
         plugin = _StubDeploymentPlugin()
         status = await plugin.get_check_status(ctx, {}, 'v1.0.0')
         self.assertEqual(status, 'unknown')
+
+    async def test_list_workflows_default_raises(self) -> None:
+        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
+        plugin = _StubDeploymentPlugin()
+        with self.assertRaises(NotImplementedError):
+            await plugin.list_workflows(ctx, {})
+
+
+class PluginContextEnvironmentConfigTestCase(unittest.TestCase):
+    def test_environment_config_defaults_empty(self) -> None:
+        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
+        self.assertEqual(ctx.environment_config, {})
+
+    def test_environment_config_round_trip(self) -> None:
+        ctx = PluginContext(
+            project_id='p',
+            project_slug='p',
+            org_slug='o',
+            environment='production',
+            environment_config={
+                'action': 'dispatch',
+                'workflow': 'python-api-deploy.yml',
+                'inputs': {'foo': 'bar'},
+            },
+        )
+        restored = PluginContext.model_validate(ctx.model_dump())
+        self.assertEqual(restored.environment_config['action'], 'dispatch')
+        self.assertEqual(restored.environment_config['inputs'], {'foo': 'bar'})

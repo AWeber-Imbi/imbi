@@ -191,6 +191,13 @@ class PluginContext(pydantic.BaseModel):
     # may use these as a discovery hint (e.g. trying each as a candidate
     # GitHub owner) when an explicit link or option isn't supplied.
     project_type_slugs: list[str] = []
+    # Per-environment edge properties resolved by the host from the
+    # plugin-declared ``DEPLOYS_VIA``-style edge (project edge layered
+    # over project-type edge, mirroring how ``assignment_options`` is
+    # merged).  Empty when no per-env edge is configured for
+    # ``environment``.  Plugin authors should treat absent keys as
+    # "fall back to plugin defaults" rather than as a hard error.
+    environment_config: dict[str, typing.Any] = {}
     actor_user_id: str | None = None
     identity: IdentityCredentials | None = None
 
@@ -478,6 +485,23 @@ class ReleaseInfo(pydantic.BaseModel):
     prerelease: bool = False
 
 
+class WorkflowFile(pydantic.BaseModel):
+    """A CI workflow file discoverable in the project's remote repo.
+
+    Returned by :meth:`DeploymentPlugin.list_workflows` so the UI can
+    populate a workflow dropdown when an operator wires up the
+    per-environment dispatch edge.  ``id`` is the remote's stable
+    identifier (e.g. the GitHub workflow id); ``path`` is the repo-
+    relative file path; ``name`` is the human label from the workflow
+    file's ``name:`` field.
+    """
+
+    id: str
+    path: str
+    name: str
+    state: str = 'active'
+
+
 class DeploymentRun(pydantic.BaseModel):
     """A workflow / pipeline run triggered by ``trigger_deployment``."""
 
@@ -604,4 +628,19 @@ class DeploymentPlugin(abc.ABC):
         Optional — paired with :meth:`create_tag`.  Plugins without a
         release concept raise :class:`NotImplementedError`.
         """
+        raise NotImplementedError
+
+    async def list_workflows(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> list[WorkflowFile]:
+        """List CI workflow files defined in the project's remote repo.
+
+        Optional — used by the UI to populate a workflow dropdown when
+        an operator configures the per-environment dispatch edge
+        (e.g. ``DEPLOYS_VIA``).  Plugins without a workflow concept
+        raise :class:`NotImplementedError`.
+        """
+        del ctx, credentials
         raise NotImplementedError
