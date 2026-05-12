@@ -17,10 +17,10 @@ export function InlineSwitch({
   readOnly = false,
   value = false,
 }: InlineSwitchProps) {
-  const [checked, setChecked] = useState(value)
+  const [checked, setChecked] = useState(value ?? false)
 
   useEffect(() => {
-    setChecked(value)
+    setChecked(value ?? false)
   }, [value])
 
   return (
