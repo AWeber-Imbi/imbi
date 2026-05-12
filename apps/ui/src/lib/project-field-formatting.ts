@@ -28,7 +28,12 @@ export function formatFieldKey(key: string): string {
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/\b\w/g, (c) => c.toUpperCase())
     .split(' ')
-    .map((w) => WORD_OVERRIDES[w.toLowerCase()] ?? w)
+    .map((w) => {
+      const override = WORD_OVERRIDES[w.toLowerCase()]
+      if (override) return override
+      if (w.length > 0 && /^[^aeiouAEIOU]+$/.test(w)) return w.toUpperCase()
+      return w
+    })
     .join(' ')
 }
 

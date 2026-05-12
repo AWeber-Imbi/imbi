@@ -818,7 +818,7 @@ export function ProjectDetail({
                     <div
                       className={`flex items-center justify-between border-b py-1.5 ${divider}`}
                     >
-                      <span className={`text-sm ${label}`}>Project types</span>
+                      <span className={`text-sm ${label}`}>Project Types</span>
                       <InlineMultiSelect
                         onCommit={handleCommitProjectTypeSlugs}
                         options={projectTypeOptions}
@@ -1184,9 +1184,7 @@ function ScoreBreakdownDetail({
               const fillPct =
                 maxPts > 0 ? (c.weighted_contribution / maxPts) * 100 : 0
               const lost = Math.round(maxPts - c.weighted_contribution)
-              const policyName = formatFieldKey(
-                c.policy_slug.replace(/-/g, '_'),
-              )
+              const policyName = formatFieldKey(c.attribute_name)
               const recommendation = policy
                 ? buildRecommendation(c, policy)
                 : null
@@ -1252,9 +1250,7 @@ function ScoreBreakdownDetail({
           </div>
           <div className="overflow-hidden rounded-md border border-tertiary">
             {perfect.map(({ contribution: c, maxPts }, idx) => {
-              const policyName = formatFieldKey(
-                c.policy_slug.replace(/-/g, '_'),
-              )
+              const policyName = formatFieldKey(c.attribute_name)
               return (
                 <div
                   className={`grid grid-cols-[auto_1fr_auto] items-center gap-2.5 bg-primary px-3 py-2.5 ${
