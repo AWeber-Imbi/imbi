@@ -493,4 +493,137 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
                 db, self._policy('lang', targets=['api', 'service'])
             )
         self.assertEqual(['p1'], result)
-        self.assertEqual(2, db.execute.await_count)
+
+    async def test_link_presence_skips_attribute_check(self) -> None:
+        from imbi_common.scoring import models as sm
+
+        policy = sm.LinkPresencePolicy(
+            name='has-source',
+            slug='has-source',
+            link_slug='source-code',
+            weight=10,
+        )
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[{'id': 'p1'}])
+        # blueprints.get_model is not consulted for link_presence policies.
+        with mock.patch(
+            'imbi_api.scoring.queue.blueprints.get_model',
+            mock.AsyncMock(side_effect=AssertionError('should not be called')),
+        ):
+            result = await score_queue.affected_projects(db, policy)
+        self.assertEqual(['p1'], result)
+
+
+class DailyTickTests(unittest.IsolatedAsyncioTestCase):
+    async def test_acquires_lock_and_enqueues_all(self) -> None:
+        import datetime
+
+        client = mock.AsyncMock()
+        client.set = mock.AsyncMock(return_value=True)
+        client.xadd = mock.AsyncMock()
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[{'id': 'p1'}, {'id': 'p2'}])
+        await score_queue._try_daily_tick(
+            client, db, datetime.date(2026, 5, 12)
+        )
+        # Daily-tick SET + per-project debounce SETs.
+        self.assertEqual(3, client.set.await_count)
+        self.assertEqual(2, client.xadd.await_count)
+
+    async def test_skips_when_lock_held(self) -> None:
+        import datetime
+
+        client = mock.AsyncMock()
+        client.set = mock.AsyncMock(return_value=None)
+        client.xadd = mock.AsyncMock()
+        db = mock.AsyncMock()
+        await score_queue._try_daily_tick(
+            client, db, datetime.date(2026, 5, 12)
+        )
+        client.xadd.assert_not_called()
+        db.execute.assert_not_called()
+
+    async def test_lock_failure_swallowed(self) -> None:
+        import datetime
+
+        client = mock.AsyncMock()
+        client.set = mock.AsyncMock(side_effect=RuntimeError('valkey down'))
+        client.xadd = mock.AsyncMock()
+        db = mock.AsyncMock()
+        await score_queue._try_daily_tick(
+            client, db, datetime.date(2026, 5, 12)
+        )
+        client.xadd.assert_not_called()
+
+    async def test_run_daily_tick_honors_hour_threshold(self) -> None:
+        import datetime
+
+        client = mock.AsyncMock()
+        client.set = mock.AsyncMock(return_value=True)
+        client.xadd = mock.AsyncMock()
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[])
+        stop = asyncio.Event()
+        early = datetime.datetime(2026, 5, 12, 3, 0, tzinfo=datetime.UTC)
+
+        async def _fire_then_stop() -> None:
+            await asyncio.sleep(0.05)
+            stop.set()
+
+        # Before the threshold (3:00 < hour_utc=6) we should not call set.
+        await asyncio.gather(
+            score_queue.run_daily_tick(
+                client,
+                db,
+                hour_utc=6,
+                poll_seconds=0.01,
+                stop=stop,
+                clock=lambda: early,
+            ),
+            _fire_then_stop(),
+        )
+        client.set.assert_not_called()
+
+    async def test_run_daily_tick_fires_after_threshold(self) -> None:
+        import datetime
+
+        # Daily-tick lock returns True the first time, then None — the
+        # second iteration must observe the held lock.
+        set_calls: list[bool | None] = []
+
+        async def _fake_set(
+            key: str, *_args: object, **_kwargs: object
+        ) -> bool | None:
+            if key.startswith(score_queue.DAILY_TICK_KEY_PREFIX):
+                acquired = not set_calls
+                set_calls.append(acquired)
+                return acquired
+            return True  # debounce SET acquires
+
+        client = mock.AsyncMock()
+        client.set = mock.AsyncMock(side_effect=_fake_set)
+        client.xadd = mock.AsyncMock()
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[{'id': 'p1'}])
+        stop = asyncio.Event()
+        late = datetime.datetime(2026, 5, 12, 7, 0, tzinfo=datetime.UTC)
+
+        async def _fire_then_stop() -> None:
+            await asyncio.sleep(0.05)
+            stop.set()
+
+        await asyncio.gather(
+            score_queue.run_daily_tick(
+                client,
+                db,
+                hour_utc=6,
+                poll_seconds=0.01,
+                stop=stop,
+                clock=lambda: late,
+            ),
+            _fire_then_stop(),
+        )
+        # Project enumerated exactly once.
+        self.assertEqual(1, db.execute.await_count)
+        # xadd fired for the single project.
+        self.assertEqual(1, client.xadd.await_count)

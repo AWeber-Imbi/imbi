@@ -33,7 +33,7 @@ async def _inject_optional_client(
             typing.cast(object, request.state.lifespan_data),
         )
         client = ctx.get_state(common_valkey.valkey_lifespan)
-    except (AttributeError, ValueError, fastapi.HTTPException):
+    except AttributeError, ValueError, fastapi.HTTPException:
         client = None
     yield client
 

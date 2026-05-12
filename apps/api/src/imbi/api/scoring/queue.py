@@ -8,18 +8,24 @@ post-commit state at recompute time.
 from __future__ import annotations
 
 import asyncio
+import datetime
 import logging
 import typing
 from collections import abc
 
 from imbi_common import blueprints, clickhouse, graph, models
 from imbi_common.scoring import (
+    AgePolicy,
     AttributePolicy,
+    LinkPresencePolicy,
+    PresencePolicy,
     clear_score,
     compute_score,
     record_score_change,
 )
 from valkey import asyncio as valkey
+
+Policy = AttributePolicy | PresencePolicy | LinkPresencePolicy | AgePolicy
 
 STREAM = 'imbi:score-recompute'
 GROUP = 'score-workers'
@@ -29,6 +35,9 @@ DEBOUNCE_PREFIX = 'imbi:score-recompute:debounce'
 DEBOUNCE_SECONDS = 5
 MAX_DELIVERIES = 5
 CLAIM_IDLE_MS = 60_000
+DAILY_TICK_KEY_PREFIX = 'imbi:score-recompute:daily'
+DAILY_TICK_HOUR_UTC = 6
+DAILY_TICK_POLL_SECONDS = 3600.0
 
 LOGGER = logging.getLogger(__name__)
 
@@ -37,6 +46,7 @@ ChangeReason = typing.Literal[
     'blueprint_change',
     'policy_change',
     'bulk_rescore',
+    'scheduled_recompute',
 ]
 
 
@@ -81,14 +91,20 @@ async def ensure_group(client: valkey.Valkey) -> None:
 
 async def affected_projects(
     db: graph.Graph,
-    policy: AttributePolicy,
+    policy: Policy,
 ) -> list[str]:
-    """Project ids whose effective attribute set includes
-    policy.attribute_name. Intersected with TARGETS edges if any are set.
+    """Project ids that the policy applies to.
+
+    For attribute/presence/age policies, ``policy.attribute_name`` must
+    exist on the blueprint-extended Project model. For link_presence
+    policies, no attribute check is required — the policy applies based
+    on the project's links dict. In all cases, the result is
+    intersected with the policy's TARGETS edges when set.
     """
-    extended = await blueprints.get_model(db, models.Project)
-    if policy.attribute_name not in extended.model_fields:
-        return []
+    if not isinstance(policy, LinkPresencePolicy):
+        extended = await blueprints.get_model(db, models.Project)
+        if policy.attribute_name not in extended.model_fields:
+            return []
     if not policy.targets:
         return await all_project_ids(db)
     id_lists = await asyncio.gather(
@@ -279,3 +295,79 @@ async def consume_recompute(
             continue
         for _stream, entries in response:
             await _handle_entries(client, entries, db, ch)
+
+
+async def _enqueue_all(
+    client: valkey.Valkey,
+    db: graph.Graph,
+    reason: ChangeReason,
+) -> tuple[int, int]:
+    project_ids = await all_project_ids(db)
+    if not project_ids:
+        return 0, 0
+    results = await asyncio.gather(
+        *[enqueue_recompute(client, pid, reason) for pid in project_ids]
+    )
+    return sum(results), len(project_ids)
+
+
+async def run_daily_tick(
+    client: valkey.Valkey,
+    db: graph.Graph,
+    *,
+    hour_utc: int = DAILY_TICK_HOUR_UTC,
+    poll_seconds: float = DAILY_TICK_POLL_SECONDS,
+    stop: asyncio.Event | None = None,
+    clock: typing.Callable[[], datetime.datetime] | None = None,
+) -> None:
+    """Once per UTC day at *hour_utc*, enqueue every project.
+
+    Cross-worker single-firing is achieved via a Valkey SETNX with a
+    25h TTL keyed by the current UTC date — only the first worker to
+    cross the threshold each day performs the enqueue.
+    """
+    _now = clock or (lambda: datetime.datetime.now(datetime.UTC))
+    LOGGER.info(
+        'Daily scoring tick loop running (hour_utc=%s, poll=%.0fs)',
+        hour_utc,
+        poll_seconds,
+    )
+    while stop is None or not stop.is_set():
+        now = _now()
+        if now.hour >= hour_utc:
+            try:
+                await _try_daily_tick(client, db, now.date())
+            except Exception:
+                LOGGER.exception(
+                    'daily scoring tick iteration failed (date=%s)',
+                    now.date().isoformat(),
+                )
+        if stop is None:
+            await asyncio.sleep(poll_seconds)
+            continue
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=poll_seconds)
+        except TimeoutError:
+            continue
+
+
+async def _try_daily_tick(
+    client: valkey.Valkey,
+    db: graph.Graph,
+    date: datetime.date,
+) -> None:
+    key = f'{DAILY_TICK_KEY_PREFIX}:{date.isoformat()}'
+    try:
+        acquired = await client.set(key, b'1', ex=25 * 3600, nx=True)
+    except Exception:
+        LOGGER.exception('daily-tick lock acquisition failed')
+        return
+    if not acquired:
+        return
+    enqueued, total = await _enqueue_all(client, db, 'scheduled_recompute')
+    LOGGER.info(
+        'Daily scoring tick enqueued %s/%s projects for %s',
+        enqueued,
+        total,
+        date.isoformat(),
+    )

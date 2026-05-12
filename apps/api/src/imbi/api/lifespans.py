@@ -133,7 +133,7 @@ async def identity_refresh_hook() -> abc.AsyncGenerator[None]:
 
 @contextlib.asynccontextmanager
 async def score_worker_hook() -> abc.AsyncGenerator[None]:
-    """Run the score-recompute consumer for the API process."""
+    """Run the score-recompute consumer and the daily tick."""
     try:
         client = valkey.get_client()
     except RuntimeError:
@@ -147,17 +147,23 @@ async def score_worker_hook() -> abc.AsyncGenerator[None]:
     ch = clickhouse.client.Clickhouse.get_instance()
     stop = asyncio.Event()
     LOGGER.info('Score recompute worker starting')
-    task = asyncio.create_task(
+    consumer_task = asyncio.create_task(
         score_queue.consume_recompute(client, _graph, ch, stop=stop)
+    )
+    tick_task = asyncio.create_task(
+        score_queue.run_daily_tick(client, _graph, stop=stop)
     )
     try:
         yield None
     finally:
         stop.set()
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        except Exception:  # noqa: BLE001
-            LOGGER.warning('Score worker exited with error', exc_info=True)
+        for task in (consumer_task, tick_task):
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception:  # noqa: BLE001
+                LOGGER.warning(
+                    'Score worker task exited with error', exc_info=True
+                )

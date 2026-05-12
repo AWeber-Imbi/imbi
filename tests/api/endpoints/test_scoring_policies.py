@@ -47,8 +47,8 @@ class ScoringPolicyEndpointsTestCase(unittest.TestCase):
         self.mock_valkey.set = mock.AsyncMock(return_value=True)
         self.mock_valkey.xadd = mock.AsyncMock(return_value=b'1-0')
 
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
         self.test_app.dependency_overrides[
             scoring_di._inject_optional_client
@@ -185,8 +185,8 @@ class ScoringPolicyEndpointsTestCase(unittest.TestCase):
     def test_create_policy_with_targets(self) -> None:
         self.mock_db.execute = mock.AsyncMock(
             side_effect=[
-                [{'sp': self._policy_props()}],
-                [{'found': ['service']}],  # target validation
+                [{'found': ['service']}],  # target validation (pre-create)
+                [{'sp': self._policy_props()}],  # CREATE
                 [],  # link targets
                 [{'sp': self._policy_props(), 'targets': ['service']}],
                 [],
@@ -219,7 +219,6 @@ class ScoringPolicyEndpointsTestCase(unittest.TestCase):
     def test_create_policy_with_unknown_targets_returns_400(self) -> None:
         self.mock_db.execute = mock.AsyncMock(
             side_effect=[
-                [{'sp': self._policy_props()}],
                 [{'found': []}],  # target validation returns nothing found
             ]
         )
@@ -262,8 +261,8 @@ class ScoringPolicyEndpointsTestCase(unittest.TestCase):
         self.mock_db.execute = mock.AsyncMock(
             side_effect=[
                 [{'sp': self._policy_props(), 'targets': []}],  # load existing
+                [{'found': ['service']}],  # target validation (pre-SET)
                 [],  # SET props
-                [{'found': ['service']}],  # target validation (new)
                 [],  # clear targets
                 [],  # link new targets
                 [
@@ -297,8 +296,7 @@ class ScoringPolicyEndpointsTestCase(unittest.TestCase):
         self.mock_db.execute = mock.AsyncMock(
             side_effect=[
                 [{'sp': self._policy_props(), 'targets': []}],  # load existing
-                [],  # SET props
-                [{'found': []}],  # target validation finds nothing
+                [{'found': []}],  # target validation finds nothing (pre-SET)
             ]
         )
         with mock.patch(

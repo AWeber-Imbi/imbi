@@ -6,19 +6,27 @@ import typing
 
 import pydantic
 from imbi_common.scoring import (
+    AgePolicy,
     AttributeContribution,
     AttributePolicy,
+    LinkPresencePolicy,
+    PolicyContribution,
+    PresencePolicy,
     ScoreBreakdown,
     ScoringPolicy,
 )
 
 __all__ = [
+    'AgePolicy',
     'AttributeContribution',
     'AttributePolicy',
     'GlobalScoreEvent',
+    'LinkPresencePolicy',
     'MonthlyImprovementRow',
+    'PolicyContribution',
     'PolicyCreate',
     'PolicyUpdate',
+    'PresencePolicy',
     'RescoreRequest',
     'RescoreResponse',
     'ScoreBreakdown',
@@ -34,20 +42,33 @@ __all__ = [
 
 
 class PolicyCreate(pydantic.BaseModel):
-    """Request body for creating a scoring policy."""
+    """Request body for creating a scoring policy.
 
-    model_config = pydantic.ConfigDict(extra='forbid')
+    The shape is intentionally loose: the endpoint reshapes this into
+    the appropriate ``ScoringPolicy`` discriminated-union variant and
+    relies on the variant validator to enforce required fields per
+    category.
+    """
+
+    model_config = pydantic.ConfigDict(extra='ignore')
 
     name: str
     slug: str
     description: str | None = None
-    attribute_name: str
+    category: typing.Literal[
+        'attribute', 'presence', 'link_presence', 'age'
+    ] = 'attribute'
     weight: int = pydantic.Field(ge=0, le=100)
     enabled: bool = True
     priority: int = 0
+    targets: list[str] = pydantic.Field(default_factory=list)
+    attribute_name: str | None = None
+    link_slug: str | None = None
+    present_score: int | None = pydantic.Field(default=None, ge=0, le=100)
+    missing_score: int | None = pydantic.Field(default=None, ge=0, le=100)
     value_score_map: dict[str, int] | None = None
     range_score_map: dict[str, int] | None = None
-    targets: list[str] = pydantic.Field(default_factory=list)
+    age_score_map: dict[str, int] | None = None
 
 
 class PolicyUpdate(pydantic.BaseModel):
@@ -58,11 +79,15 @@ class PolicyUpdate(pydantic.BaseModel):
     name: str | None = None
     description: str | None = None
     attribute_name: str | None = None
+    link_slug: str | None = None
     weight: int | None = pydantic.Field(default=None, ge=0, le=100)
     enabled: bool | None = None
     priority: int | None = None
     value_score_map: dict[str, int] | None = None
     range_score_map: dict[str, int] | None = None
+    age_score_map: dict[str, int] | None = None
+    present_score: int | None = pydantic.Field(default=None, ge=0, le=100)
+    missing_score: int | None = pydantic.Field(default=None, ge=0, le=100)
     targets: list[str] | None = None
 
 
