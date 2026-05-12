@@ -155,7 +155,7 @@ export function Navigation({ currentView }: NavigationProps) {
                   <span className="truncate">{selectedOrganization.name}</span>
                 </Button>
               ) : (
-                <DropdownMenu>
+                <DropdownMenu modal={false}>
                   <DropdownMenuTrigger asChild>
                     <Button
                       className="max-w-[200px] gap-2 border-tertiary bg-primary text-primary hover:bg-secondary"
@@ -202,7 +202,7 @@ export function Navigation({ currentView }: NavigationProps) {
               ))}
 
             {/* Quick Actions Dropdown */}
-            <DropdownMenu>
+            <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <Button
                   className="gap-2 border-tertiary bg-primary text-primary hover:bg-secondary"
@@ -226,7 +226,7 @@ export function Navigation({ currentView }: NavigationProps) {
             </DropdownMenu>
 
             {/* User Profile Dropdown */}
-            <DropdownMenu>
+            <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <Button
                   className="rounded-full p-0 hover:bg-secondary"
