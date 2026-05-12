@@ -1,6 +1,5 @@
 """Smoke tests for the GitHub deployment plugins."""
 
-import datetime
 import json
 import time
 import unittest
@@ -23,6 +22,7 @@ from imbi_plugin_github.deployment import (
 def _ctx(
     options: dict[str, object] | None = None,
     environment: str | None = None,
+    environment_config: dict[str, object] | None = None,
 ) -> PluginContext:
     return PluginContext(
         project_id='p',
@@ -30,6 +30,7 @@ def _ctx(
         org_slug='octo',
         environment=environment,
         assignment_options=options or {},
+        environment_config=environment_config or {},
         actor_user_id='u-1',
         project_links={'github-repository': 'https://github.com/octo/demo'},
     )
@@ -60,6 +61,37 @@ class ManifestTestCase(unittest.TestCase):
         ):
             self.assertIsInstance(cls(), DeploymentPlugin)
             self.assertEqual(cls.manifest.plugin_type, 'deployment')
+
+    def test_all_declare_deploys_via_edge(self) -> None:
+        # Every concrete subclass needs the DEPLOYS_VIA declaration so
+        # admins can wire up per-env config from the plugin-edge UI for
+        # any GitHub flavor (.com / GHEC / GHES).
+        for cls in (
+            GitHubDeploymentPlugin,
+            GitHubEnterpriseCloudDeploymentPlugin,
+            GitHubEnterpriseServerDeploymentPlugin,
+        ):
+            edge = next(
+                (
+                    e
+                    for e in cls.manifest.edge_labels
+                    if e.name == 'DEPLOYS_VIA'
+                ),
+                None,
+            )
+            self.assertIsNotNone(
+                edge, f'{cls.__name__} missing DEPLOYS_VIA edge'
+            )
+            assert edge is not None
+            self.assertEqual(set(edge.from_labels), {'ProjectType', 'Project'})
+            self.assertEqual(edge.to_labels, ['Environment'])
+            self.assertIn('action', edge.properties)
+            self.assertEqual(edge.properties['payload'], 'dict[str, str]')
+            self.assertIn('identity_plugin_id', edge.properties)
+            # Properties from the prior workflow_dispatch design must
+            # not be carried forward.
+            self.assertNotIn('workflow', edge.properties)
+            self.assertNotIn('inputs', edge.properties)
 
     def test_owner_repo_required(self) -> None:
         plugin = GitHubDeploymentPlugin()
@@ -570,35 +602,22 @@ class CompareTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.base_sha, 'base-sha')
 
 
-def _now_iso() -> str:
-    return (
-        datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=1)
-    ).isoformat()
-
-
 class TriggerDeploymentTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
-    async def test_trigger_dispatch_default_workflow(self) -> None:
-        dispatch = respx.post(
-            'https://api.github.com/repos/octo/demo/actions/workflows/'
-            'deploy.yml/dispatches'
-        ).mock(return_value=httpx.Response(204))
-        respx.get(
-            'https://api.github.com/repos/octo/demo/actions/workflows/'
-            'deploy.yml/runs'
+    async def test_trigger_creates_deployment(self) -> None:
+        deploy = respx.post(
+            'https://api.github.com/repos/octo/demo/deployments'
         ).mock(
             return_value=httpx.Response(
-                200,
+                201,
                 json={
-                    'workflow_runs': [
-                        {
-                            'id': 999,
-                            'html_url': 'https://gh/runs/999',
-                            'created_at': _now_iso(),
-                            'head_branch': 'main',
-                            'head_sha': 'main-sha',
-                        }
-                    ]
+                    'id': 9999,
+                    'environment': 'testing',
+                    'ref': 'main',
+                    'url': (
+                        'https://api.github.com/repos/octo/demo/'
+                        'deployments/9999'
+                    ),
                 },
             )
         )
@@ -608,13 +627,18 @@ class TriggerDeploymentTestCase(unittest.IsolatedAsyncioTestCase):
             _CREDS,
             ref_or_sha='main',
         )
-        self.assertEqual(run.run_id, '999')
-        self.assertEqual(run.run_url, 'https://gh/runs/999')
+        self.assertEqual(run.run_id, '9999')
+        # No ``run_url`` until the deploy workflow posts a status with
+        # a ``log_url`` — verified separately by GetDeploymentStatus.
+        self.assertIsNone(run.run_url)
         self.assertEqual(run.status, 'queued')
-        self.assertTrue(dispatch.called)
-        body = dispatch.calls.last.request.read().decode()
-        self.assertIn('"ref":"main"', body)
-        self.assertIn('"environment":"testing"', body)
+        self.assertTrue(deploy.called)
+        body = json.loads(deploy.calls.last.request.read())
+        self.assertEqual(body['ref'], 'main')
+        self.assertEqual(body['environment'], 'testing')
+        self.assertFalse(body['auto_merge'])
+        self.assertEqual(body['required_contexts'], [])
+        self.assertEqual(body['payload'], {})
 
     @respx.mock
     async def test_trigger_requires_environment(self) -> None:
@@ -623,149 +647,54 @@ class TriggerDeploymentTestCase(unittest.IsolatedAsyncioTestCase):
             await plugin.trigger_deployment(_ctx(), _CREDS, 'main')
 
     @respx.mock
-    async def test_trigger_uses_custom_workflow_and_inputs(self) -> None:
-        dispatch = respx.post(
-            'https://api.github.com/repos/octo/demo/actions/workflows/'
-            'release.yml/dispatches'
-        ).mock(return_value=httpx.Response(204))
-        respx.get(
-            'https://api.github.com/repos/octo/demo/actions/workflows/'
-            'release.yml/runs'
-        ).mock(return_value=httpx.Response(200, json={'workflow_runs': []}))
+    async def test_trigger_uses_environment_config_payload(self) -> None:
+        # The DEPLOYS_VIA edge supplies the deployment payload via
+        # ``ctx.environment_config['payload']``.  Caller-supplied
+        # ``inputs`` are the base; env_config keys override them.
+        deploy = respx.post(
+            'https://api.github.com/repos/octo/demo/deployments'
+        ).mock(return_value=httpx.Response(201, json={'id': 1, 'url': ''}))
         plugin = GitHubDeploymentPlugin()
         ctx = _ctx(
-            options={
-                'workflow': 'release.yml',
-                'environment_input': 'env',
-                'ref_input': 'commit',
+            environment='production',
+            environment_config={
+                'payload': {
+                    'cluster': 'prod-east',
+                    'feature_flag': 'on',
+                }
             },
-            environment='staging',
         )
-        run = await plugin.trigger_deployment(
+        await plugin.trigger_deployment(
             ctx,
             _CREDS,
-            ref_or_sha='abc123',
-        )
-        self.assertEqual(run.run_id, '')
-        body = dispatch.calls.last.request.read().decode()
-        self.assertIn('"env":"staging"', body)
-        self.assertIn('"commit":"abc123"', body)
-
-    @respx.mock
-    async def test_trigger_ignores_unrelated_concurrent_run(self) -> None:
-        # Another dispatch (different branch) lands first.  We should
-        # match the run whose ``head_branch`` matches our ref, not the
-        # one that happens to be newest.
-        respx.post(
-            'https://api.github.com/repos/octo/demo/actions/workflows/'
-            'deploy.yml/dispatches'
-        ).mock(return_value=httpx.Response(204))
-        respx.get(
-            'https://api.github.com/repos/octo/demo/actions/workflows/'
-            'deploy.yml/runs'
-        ).mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    'workflow_runs': [
-                        {
-                            'id': 111,
-                            'html_url': 'https://gh/runs/111',
-                            'created_at': _now_iso(),
-                            'head_branch': 'someone-else',
-                            'head_sha': 'other-sha',
-                        },
-                        {
-                            'id': 222,
-                            'html_url': 'https://gh/runs/222',
-                            'created_at': _now_iso(),
-                            'head_branch': 'main',
-                            'head_sha': 'main-sha',
-                        },
-                    ]
-                },
-            )
-        )
-        plugin = GitHubDeploymentPlugin()
-        run = await plugin.trigger_deployment(
-            _ctx(environment='testing'),
-            _CREDS,
-            ref_or_sha='main',
-        )
-        self.assertEqual(run.run_id, '222')
-
-    @respx.mock
-    async def test_trigger_ignores_run_created_before_dispatch(self) -> None:
-        # A pre-existing run on the same branch should not be picked up.
-        old = (
-            datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=5)
-        ).isoformat()
-        respx.post(
-            'https://api.github.com/repos/octo/demo/actions/workflows/'
-            'deploy.yml/dispatches'
-        ).mock(return_value=httpx.Response(204))
-        respx.get(
-            'https://api.github.com/repos/octo/demo/actions/workflows/'
-            'deploy.yml/runs'
-        ).mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    'workflow_runs': [
-                        {
-                            'id': 1,
-                            'html_url': 'https://gh/runs/1',
-                            'created_at': old,
-                            'head_branch': 'main',
-                            'head_sha': 'main-sha',
-                        }
-                    ]
-                },
-            )
-        )
-        plugin = GitHubDeploymentPlugin()
-        run = await plugin.trigger_deployment(
-            _ctx(environment='testing'),
-            _CREDS,
-            ref_or_sha='main',
-        )
-        self.assertEqual(run.run_id, '')
-
-    @respx.mock
-    async def test_trigger_inputs_cannot_override_env_or_ref(self) -> None:
-        # Even if the caller supplies the reserved keys (or aliases of
-        # them), ``ctx.environment`` and ``ref_or_sha`` must win.
-        dispatch = respx.post(
-            'https://api.github.com/repos/octo/demo/actions/workflows/'
-            'deploy.yml/dispatches'
-        ).mock(return_value=httpx.Response(204))
-        respx.get(
-            'https://api.github.com/repos/octo/demo/actions/workflows/'
-            'deploy.yml/runs'
-        ).mock(return_value=httpx.Response(200, json={'workflow_runs': []}))
-        plugin = GitHubDeploymentPlugin()
-        await plugin.trigger_deployment(
-            _ctx(environment='production'),
-            _CREDS,
             ref_or_sha='v1.2.3',
-            inputs={
-                'environment': 'staging',  # caller try to switch env
-                'ref': 'feature/sneaky',  # caller try to switch ref
-                'extra': 'kept',  # unrelated input is preserved
-            },
+            inputs={'cluster': 'WILL-LOSE', 'extra': 'kept'},
         )
-        body = dispatch.calls.last.request.read().decode()
-        self.assertIn('"environment":"production"', body)
-        self.assertNotIn('"environment":"staging"', body)
-        # The ref input field — outer "ref" is the dispatch ref, not
-        # the input.  Verify within the ``inputs`` object.
-        self.assertIn('"extra":"kept"', body)
-        # ``inputs.ref`` must point at the deploy ref, not the
-        # caller-supplied override.
-        payload = json.loads(body)
-        self.assertEqual(payload['inputs']['ref'], 'v1.2.3')
-        self.assertEqual(payload['inputs']['environment'], 'production')
-        self.assertEqual(payload['inputs']['extra'], 'kept')
+        body = json.loads(deploy.calls.last.request.read())
+        self.assertEqual(body['ref'], 'v1.2.3')
+        self.assertEqual(body['environment'], 'production')
+        self.assertEqual(
+            body['payload'],
+            {'cluster': 'prod-east', 'feature_flag': 'on', 'extra': 'kept'},
+        )
+
+    @respx.mock
+    async def test_trigger_ignores_non_dict_env_payload(self) -> None:
+        # A malformed edge property (string instead of dict) should not
+        # crash the plugin — we drop it and fall back to caller inputs.
+        deploy = respx.post(
+            'https://api.github.com/repos/octo/demo/deployments'
+        ).mock(return_value=httpx.Response(201, json={'id': 2, 'url': ''}))
+        plugin = GitHubDeploymentPlugin()
+        ctx = _ctx(
+            environment='staging',
+            environment_config={'payload': 'not-a-dict'},
+        )
+        await plugin.trigger_deployment(
+            ctx, _CREDS, ref_or_sha='v1.0.0', inputs={'k': 'v'}
+        )
+        body = json.loads(deploy.calls.last.request.read())
+        self.assertEqual(body['payload'], {'k': 'v'})
 
 
 class ListRefsPaginationTestCase(unittest.IsolatedAsyncioTestCase):
@@ -837,40 +766,56 @@ class ListRefsPaginationTestCase(unittest.IsolatedAsyncioTestCase):
 
 class GetDeploymentStatusTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
-    async def test_status_in_progress(self) -> None:
+    async def test_status_empty_returns_queued(self) -> None:
+        # Deployment was created but no workflow has posted a status
+        # yet — Imbi treats that as still queued.
         respx.get(
-            'https://api.github.com/repos/octo/demo/actions/runs/42'
+            'https://api.github.com/repos/octo/demo/deployments/42/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        plugin = GitHubDeploymentPlugin()
+        run = await plugin.get_deployment_status(_ctx(), _CREDS, '42')
+        self.assertEqual(run.status, 'queued')
+        self.assertEqual(run.run_id, '42')
+        self.assertIsNone(run.run_url)
+        self.assertIsNone(run.completed_at)
+
+    @respx.mock
+    async def test_status_in_progress_carries_log_url(self) -> None:
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/42/statuses'
         ).mock(
             return_value=httpx.Response(
                 200,
-                json={
-                    'id': 42,
-                    'status': 'in_progress',
-                    'html_url': 'https://gh/runs/42',
-                    'run_started_at': '2026-01-01T00:00:00Z',
-                },
+                json=[
+                    {
+                        'state': 'in_progress',
+                        'created_at': '2026-01-01T00:00:00Z',
+                        'log_url': 'https://gh/runs/42',
+                    }
+                ],
             )
         )
         plugin = GitHubDeploymentPlugin()
         run = await plugin.get_deployment_status(_ctx(), _CREDS, '42')
         self.assertEqual(run.status, 'in_progress')
-        self.assertEqual(run.run_id, '42')
+        self.assertEqual(run.run_url, 'https://gh/runs/42')
         self.assertIsNone(run.completed_at)
 
     @respx.mock
-    async def test_status_success(self) -> None:
+    async def test_status_success_sets_completed_at(self) -> None:
         respx.get(
-            'https://api.github.com/repos/octo/demo/actions/runs/42'
+            'https://api.github.com/repos/octo/demo/deployments/42/statuses'
         ).mock(
             return_value=httpx.Response(
                 200,
-                json={
-                    'id': 42,
-                    'status': 'completed',
-                    'conclusion': 'success',
-                    'updated_at': '2026-01-01T01:00:00Z',
-                    'run_started_at': '2026-01-01T00:00:00Z',
-                },
+                json=[
+                    {
+                        'state': 'success',
+                        'created_at': '2026-01-01T00:00:00Z',
+                        'updated_at': '2026-01-01T01:00:00Z',
+                        'log_url': 'https://gh/runs/42',
+                    }
+                ],
             )
         )
         plugin = GitHubDeploymentPlugin()
@@ -879,23 +824,40 @@ class GetDeploymentStatusTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(run.completed_at)
 
     @respx.mock
-    async def test_status_failure(self) -> None:
+    async def test_status_picks_newest_first_entry(self) -> None:
+        # GitHub returns statuses newest-first.  Older states must not
+        # override the latest one.
         respx.get(
-            'https://api.github.com/repos/octo/demo/actions/runs/42'
+            'https://api.github.com/repos/octo/demo/deployments/42/statuses'
         ).mock(
             return_value=httpx.Response(
                 200,
-                json={
-                    'id': 42,
-                    'status': 'completed',
-                    'conclusion': 'failure',
-                    'updated_at': '2026-01-01T01:00:00Z',
-                },
+                json=[
+                    {'state': 'failure', 'updated_at': '2026-01-01T02:00:00Z'},
+                    {'state': 'in_progress'},
+                    {'state': 'pending'},
+                ],
             )
         )
         plugin = GitHubDeploymentPlugin()
         run = await plugin.get_deployment_status(_ctx(), _CREDS, '42')
         self.assertEqual(run.status, 'failure')
+
+    @respx.mock
+    async def test_status_inactive_maps_to_cancelled(self) -> None:
+        # ``inactive`` means a newer deployment for the same env
+        # superseded this one — Imbi treats it as cancelled, not failed.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/42/statuses'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[{'state': 'inactive'}],
+            )
+        )
+        plugin = GitHubDeploymentPlugin()
+        run = await plugin.get_deployment_status(_ctx(), _CREDS, '42')
+        self.assertEqual(run.status, 'cancelled')
 
 
 class CheckStatusTestCase(unittest.IsolatedAsyncioTestCase):
@@ -1045,13 +1007,10 @@ class AuthenticationFailureTestCase(unittest.IsolatedAsyncioTestCase):
             await plugin.list_refs(_ctx(), _CREDS, kind='default')
 
     @respx.mock
-    async def test_401_on_dispatch_raises_authentication_failed(
+    async def test_401_on_deployment_raises_authentication_failed(
         self,
     ) -> None:
-        respx.post(
-            'https://api.github.com/repos/octo/demo/'
-            'actions/workflows/deploy.yml/dispatches'
-        ).mock(
+        respx.post('https://api.github.com/repos/octo/demo/deployments').mock(
             return_value=httpx.Response(401, json={'message': 'token expired'})
         )
         plugin = GitHubDeploymentPlugin()
@@ -1061,3 +1020,56 @@ class AuthenticationFailureTestCase(unittest.IsolatedAsyncioTestCase):
                 _CREDS,
                 'main',
             )
+
+
+class ListWorkflowsTestCase(unittest.IsolatedAsyncioTestCase):
+    @respx.mock
+    async def test_list_workflows_parses_active_entries(self) -> None:
+        respx.get(
+            'https://api.github.com/repos/octo/demo/actions/workflows'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'total_count': 2,
+                    'workflows': [
+                        {
+                            'id': 161335,
+                            'name': 'CI',
+                            'path': '.github/workflows/ci.yml',
+                            'state': 'active',
+                        },
+                        {
+                            'id': 161336,
+                            'name': 'Deploy',
+                            'path': '.github/workflows/deploy.yml',
+                            'state': 'active',
+                        },
+                    ],
+                },
+            )
+        )
+        plugin = GitHubDeploymentPlugin()
+        workflows = await plugin.list_workflows(_ctx(), _CREDS)
+        self.assertEqual(
+            [w.path for w in workflows],
+            [
+                '.github/workflows/ci.yml',
+                '.github/workflows/deploy.yml',
+            ],
+        )
+        self.assertEqual(workflows[0].id, '161335')
+        self.assertEqual(workflows[0].name, 'CI')
+        self.assertEqual(workflows[0].state, 'active')
+
+    @respx.mock
+    async def test_list_workflows_empty_response(self) -> None:
+        respx.get(
+            'https://api.github.com/repos/octo/demo/actions/workflows'
+        ).mock(
+            return_value=httpx.Response(
+                200, json={'total_count': 0, 'workflows': []}
+            )
+        )
+        plugin = GitHubDeploymentPlugin()
+        self.assertEqual(await plugin.list_workflows(_ctx(), _CREDS), [])

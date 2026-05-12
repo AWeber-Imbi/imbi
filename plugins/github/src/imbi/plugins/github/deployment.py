@@ -7,9 +7,14 @@ Three concrete subclasses share a common base and differ only by host:
   ``*.ghe.com``.
 * :class:`GitHubEnterpriseServerDeploymentPlugin` — operator-managed GHES.
 
-Phase 1 implements ref / commit discovery, comparison, and workflow
-dispatch.  Tag and release creation arrive with the Promote tab in
-Phase 2.
+Plugins drive the GitHub Deployments API
+(``POST /repos/{owner}/{repo}/deployments``) rather than
+``workflow_dispatch`` — Imbi's ``Environment`` maps 1:1 to GitHub's
+``environment`` field, deployment protection rules apply server-side,
+and ``GET /deployments/{id}/statuses`` gives a clean status loop.
+Tag/release creation is handled separately by ``create_tag`` and
+``create_release`` and continues to feed projects whose deploys are
+triggered by ``on: release: [published]`` instead of ``on: deployment``.
 
 The plugin runs as the user via the paired ``IdentityPlugin``: callers
 materialize an :class:`~imbi_common.plugins.base.IdentityCredentials`
@@ -36,11 +41,13 @@ from imbi_common.plugins.base import (
     DeploymentPlugin,
     DeploymentRun,
     PluginContext,
+    PluginEdgeLabel,
     PluginManifest,
     PluginOption,
     Ref,
     RefInfo,
     ReleaseInfo,
+    WorkflowFile,
 )
 from imbi_common.plugins.errors import PluginAuthenticationFailed
 
@@ -48,9 +55,6 @@ from imbi_plugin_github._hosts import normalize_host, require_ghec_tenant_host
 
 LOGGER = logging.getLogger(__name__)
 
-_DEFAULT_WORKFLOW = 'deploy.yml'
-_DEFAULT_ENVIRONMENT_INPUT = 'environment'
-_DEFAULT_REF_INPUT = 'ref'
 _HTTP_TIMEOUT_SECONDS = 10.0
 # Cap pagination so a pathological repo (10k+ branches/tags) can't pin
 # us indefinitely.  100 per page * 10 pages = 1000 refs is plenty for
@@ -720,7 +724,7 @@ class _DeploymentBase(DeploymentPlugin):
                 prerelease=bool(payload.get('prerelease', prerelease)),
             )
 
-    # -- Workflow dispatch --------------------------------------------------
+    # -- Deployments --------------------------------------------------------
 
     async def trigger_deployment(
         self,
@@ -729,89 +733,94 @@ class _DeploymentBase(DeploymentPlugin):
         ref_or_sha: str,
         inputs: dict[str, str] | None = None,
     ) -> DeploymentRun:
-        options = ctx.assignment_options
-        workflow = self._option_str(options, 'workflow', _DEFAULT_WORKFLOW)
-        env_input = self._option_str(
-            options, 'environment_input', _DEFAULT_ENVIRONMENT_INPUT
-        )
-        ref_input = self._option_str(options, 'ref_input', _DEFAULT_REF_INPUT)
+        """Create a GitHub Deployment via ``POST /repos/{o}/{r}/deployments``.
+
+        Imbi's ``Environment`` maps 1:1 to GitHub's ``environment`` field,
+        so the deployment is bound to the target env server-side and any
+        environment protection rules (required reviewers, branch policies,
+        wait timers) are enforced by GitHub before the deploy workflow
+        runs.  Repos consume this via ``on: deployment`` (or
+        ``on: deployment_status``) in their workflow files.
+
+        ``auto_merge=False`` keeps GitHub from silently merging the base
+        branch into the ref before deploying — which routinely fails on
+        protected branches.  ``required_contexts=[]`` skips the default
+        gate that demands every check-run on the ref already be green;
+        promote refs are often freshly-cut tags whose CI hasn't run yet,
+        and the deploy workflow itself is what we're waiting on.
+
+        Payload precedence (highest wins): per-env edge ``payload`` from
+        ``ctx.environment_config['payload']`` over ``inputs`` from the
+        caller.  The ``ref`` and ``environment`` are not part of the
+        payload — they're top-level fields on the deployment object.
+        """
         if not ctx.environment:
             raise ValueError(
                 'trigger_deployment requires PluginContext.environment'
             )
-        # Caller-supplied inputs come first; the reserved env/ref keys
-        # are written last so the plugin's contract (deploy *this* ref
-        # to *this* environment) can't be subverted by a stray entry.
-        body_inputs: dict[str, str] = dict(inputs or {})
-        body_inputs[env_input] = ctx.environment
-        body_inputs[ref_input] = ref_or_sha
-        # Capture the dispatch instant *before* POSTing so we can
-        # correlate the resulting workflow run on the listing endpoint.
-        # GitHub records ``created_at`` with second precision, so subtract
-        # a small skew to avoid losing the run to clock drift.
-        dispatch_started = datetime.datetime.now(
-            datetime.UTC
-        ) - datetime.timedelta(seconds=2)
+        merged_payload: dict[str, typing.Any] = dict(inputs or {})
+        env_payload = ctx.environment_config.get('payload')
+        if isinstance(env_payload, dict):
+            merged_payload.update(
+                typing.cast(dict[str, typing.Any], env_payload)
+            )
         async with self._client(ctx, credentials) as client:
-            dispatch_resp = await client.post(
-                f'/actions/workflows/{workflow}/dispatches',
-                json={'ref': ref_or_sha, 'inputs': body_inputs},
+            resp = await client.post(
+                '/deployments',
+                json={
+                    'ref': ref_or_sha,
+                    'environment': ctx.environment,
+                    'auto_merge': False,
+                    'required_contexts': [],
+                    'payload': merged_payload,
+                },
             )
-            dispatch_resp.raise_for_status()
-            # GitHub returns 204 with no body — find the run we just
-            # created by listing recent runs and matching event +
-            # creation time (and ref when present) so a concurrent
-            # dispatch can't bind us to its run.
-            runs_resp = await client.get(
-                f'/actions/workflows/{workflow}/runs',
-                params={'event': 'workflow_dispatch', 'per_page': '10'},
-            )
-            run_id = ''
-            run_url: str | None = None
-            if runs_resp.status_code == 200:
-                payload = typing.cast(dict[str, typing.Any], runs_resp.json())
-                runs: list[dict[str, typing.Any]] = (
-                    payload.get('workflow_runs') or []
-                )
-                match = self._match_dispatched_run(
-                    runs, dispatch_started, ref_or_sha
-                )
-                if match is not None:
-                    run_id = str(match.get('id') or '')
-                    run_url = match.get('html_url')
+            resp.raise_for_status()
+            payload = typing.cast(dict[str, typing.Any], resp.json())
+            deployment_id = str(payload.get('id') or '')
             return DeploymentRun(
-                run_id=run_id,
-                run_url=run_url,
+                run_id=deployment_id,
+                # GitHub's ``Deployment`` object has no ``html_url`` —
+                # the human-facing URL surfaces only after the deploy
+                # workflow posts its first status with a ``log_url``
+                # (see :meth:`get_deployment_status`).  Leaving this
+                # ``None`` is honest about the state at create time.
+                run_url=None,
                 status='queued',
             )
 
-    @staticmethod
-    def _match_dispatched_run(
-        runs: list[dict[str, typing.Any]],
-        dispatch_started: datetime.datetime,
-        ref_or_sha: str,
-    ) -> dict[str, typing.Any] | None:
-        """Pick the run created by the dispatch we just issued.
+    async def list_workflows(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> list[WorkflowFile]:
+        """List ``.github/workflows/*.yml`` registered for the repo.
 
-        Only runs whose ``head_branch`` or ``head_sha`` explicitly
-        match ``ref_or_sha`` and whose ``created_at`` is at or after
-        ``dispatch_started`` are eligible.  Returns ``None`` when the
-        result is ambiguous (zero or multiple matches) — the caller
-        surfaces an empty ``run_id`` rather than binding to someone
-        else's run.
+        Used by the UI to populate a workflow dropdown when an operator
+        wires up the per-environment ``DEPLOYS_VIA`` edge.  Returns only
+        ``active`` workflows by default; callers that need disabled
+        entries can filter the result themselves.  GitHub caps the
+        ``/actions/workflows`` page at 100 — that's more than enough for
+        any real repo, so this intentionally doesn't paginate.
         """
-        candidates: list[dict[str, typing.Any]] = []
-        for run in runs:
-            created = _parse_iso(run.get('created_at'))
-            if created is None or created < dispatch_started:
-                continue
-            head_branch = run.get('head_branch')
-            head_sha = run.get('head_sha')
-            if head_branch == ref_or_sha or head_sha == ref_or_sha:
-                candidates.append(run)
-        if len(candidates) == 1:
-            return candidates[0]
-        return None
+        async with self._client(ctx, credentials) as client:
+            resp = await client.get(
+                '/actions/workflows', params={'per_page': '100'}
+            )
+            resp.raise_for_status()
+            payload = typing.cast(dict[str, typing.Any], resp.json())
+            workflows: list[dict[str, typing.Any]] = (
+                payload.get('workflows') or []
+            )
+            return [
+                WorkflowFile(
+                    id=str(w.get('id') or ''),
+                    path=str(w.get('path') or ''),
+                    name=str(w.get('name') or ''),
+                    state=str(w.get('state') or 'active'),
+                )
+                for w in workflows
+            ]
 
     async def get_check_status(
         self,
@@ -854,12 +863,28 @@ class _DeploymentBase(DeploymentPlugin):
         credentials: dict[str, str],
         run_id: str,
     ) -> DeploymentRun:
+        """Aggregate a GitHub Deployment's status history.
+
+        ``run_id`` is the GitHub deployment id returned by
+        :meth:`trigger_deployment`.  GitHub returns status updates
+        newest-first; the latest entry wins.  An empty list means the
+        deploy workflow hasn't posted anything yet, which Imbi surfaces
+        as ``'queued'``.
+
+        ``log_url`` (and the legacy ``target_url``) on the latest status
+        is what the deploy workflow set to point at its own logs (e.g.
+        the Actions run URL).  We carry that as ``run_url`` so the UI
+        can deep-link without having to walk back to the workflow run
+        through a check-suite join.
+        """
         async with self._client(ctx, credentials) as client:
-            resp = await client.get(f'/actions/runs/{run_id}')
+            resp = await client.get(f'/deployments/{run_id}/statuses')
             resp.raise_for_status()
-            payload = typing.cast(dict[str, typing.Any], resp.json())
-            status_raw = str(payload.get('status') or '')
-            conclusion = str(payload.get('conclusion') or '')
+            statuses = typing.cast(list[dict[str, typing.Any]], resp.json())
+            if not statuses:
+                return DeploymentRun(run_id=str(run_id), status='queued')
+            latest = statuses[0]
+            state = str(latest.get('state') or '').lower()
             status: typing.Literal[
                 'queued',
                 'in_progress',
@@ -868,48 +893,61 @@ class _DeploymentBase(DeploymentPlugin):
                 'cancelled',
                 'unknown',
             ]
-            if status_raw == 'queued':
+            if state in {'pending', 'queued', 'waiting'}:
                 status = 'queued'
-            elif status_raw == 'in_progress':
+            elif state == 'in_progress':
                 status = 'in_progress'
-            elif conclusion == 'success':
+            elif state == 'success':
                 status = 'success'
-            elif conclusion in {'failure', 'timed_out', 'action_required'}:
+            elif state in {'failure', 'error'}:
                 status = 'failure'
-            elif conclusion == 'cancelled':
+            elif state == 'inactive':
+                # Deployment was superseded by a newer one for the same
+                # env — Imbi treats that as cancelled rather than failed.
                 status = 'cancelled'
             else:
                 status = 'unknown'
+            log_url = latest.get('log_url') or latest.get('target_url')
+            completed = status in {'success', 'failure', 'cancelled'}
             return DeploymentRun(
-                run_id=str(payload.get('id') or run_id),
-                run_url=payload.get('html_url'),
+                run_id=str(run_id),
+                run_url=str(log_url) if log_url else None,
                 status=status,
-                started_at=_parse_iso(payload.get('run_started_at')),
-                completed_at=_parse_iso(payload.get('updated_at'))
-                if conclusion
+                started_at=_parse_iso(latest.get('created_at')),
+                completed_at=_parse_iso(latest.get('updated_at'))
+                if completed
                 else None,
             )
 
 
-_COMMON_OPTIONS: list[PluginOption] = [
-    PluginOption(
-        name='workflow',
-        label='Workflow file',
-        description='File name in .github/workflows to dispatch.',
-        type='string',
-        default=_DEFAULT_WORKFLOW,
-    ),
-    PluginOption(
-        name='environment_input',
-        label='Environment input name',
-        type='string',
-        default=_DEFAULT_ENVIRONMENT_INPUT,
-    ),
-    PluginOption(
-        name='ref_input',
-        label='Ref input name',
-        type='string',
-        default=_DEFAULT_REF_INPUT,
+_COMMON_OPTIONS: list[PluginOption] = []
+
+_COMMON_EDGE_LABELS: list[PluginEdgeLabel] = [
+    PluginEdgeLabel(
+        name='DEPLOYS_VIA',
+        # The edge can hang off the ProjectType (the usual case — every
+        # python-api project deploys to staging via release, etc.) or a
+        # specific Project (rare override slot).
+        from_labels=['ProjectType', 'Project'],
+        to_labels=['Environment'],
+        properties={
+            # 'release'    -> create_tag + create_release; no deployment
+            #                 (the repo's ``on: release: [published]``
+            #                 trigger handles it).
+            # 'deployment' -> POST /deployments only (no tag/release).
+            'action': 'str',
+            # Free-form key/value pairs forwarded as the GitHub
+            # deployment ``payload``.  The deploy workflow reads them
+            # via ``github.event.deployment.payload`` -- so this is
+            # where operators stash things like a target cluster name,
+            # a feature flag bundle, etc.  Empty by default.
+            'payload': 'dict[str, str]',
+            # Per-environment identity override.  Lets ``production``
+            # post the deployment as a different OAuth identity than
+            # ``staging`` -- handy when prod requires a service
+            # account with extra deploy scopes.
+            'identity_plugin_id': 'str',
+        },
     ),
 ]
 
@@ -931,12 +969,16 @@ class GitHubDeploymentPlugin(_DeploymentBase):
         slug='github-deployment',
         name='GitHub Deployment',
         description=(
-            'Drive github.com workflow_dispatch deployments and record '
-            'GitHub Releases on behalf of an Imbi project.'
+            'Drive github.com Deployments and record GitHub Releases '
+            'on behalf of an Imbi project.  Each promote creates a '
+            'Deployment object so GitHub environment protection rules '
+            '(required reviewers, branch policies, wait timers) apply '
+            'server-side.'
         ),
         plugin_type='deployment',
         options=_COMMON_OPTIONS,
         credentials=_COMMON_CREDENTIALS,
+        edge_labels=_COMMON_EDGE_LABELS,
     )
 
     @classmethod
@@ -949,8 +991,9 @@ class GitHubEnterpriseCloudDeploymentPlugin(_DeploymentBase):
         slug='github-deployment-ec',
         name='GitHub Enterprise Cloud Deployment',
         description=(
-            'Drive workflow_dispatch deployments against a GHEC tenant '
-            '(``*.ghe.com``).'
+            'Drive GitHub Deployments against a GHEC tenant '
+            '(``*.ghe.com``).  Repos must use ``on: deployment`` (or '
+            '``on: deployment_status``) in their deploy workflow.'
         ),
         plugin_type='deployment',
         options=[
@@ -964,6 +1007,7 @@ class GitHubEnterpriseCloudDeploymentPlugin(_DeploymentBase):
             *_COMMON_OPTIONS,
         ],
         credentials=_COMMON_CREDENTIALS,
+        edge_labels=_COMMON_EDGE_LABELS,
     )
 
     @classmethod
@@ -979,7 +1023,9 @@ class GitHubEnterpriseServerDeploymentPlugin(_DeploymentBase):
         slug='github-deployment-es',
         name='GitHub Enterprise Server Deployment',
         description=(
-            'Drive workflow_dispatch deployments against a GHES install.'
+            'Drive GitHub Deployments against a GHES install.  Repos '
+            'must use ``on: deployment`` (or ``on: deployment_status``) '
+            'in their deploy workflow.'
         ),
         plugin_type='deployment',
         options=[
@@ -992,6 +1038,7 @@ class GitHubEnterpriseServerDeploymentPlugin(_DeploymentBase):
             *_COMMON_OPTIONS,
         ],
         credentials=_COMMON_CREDENTIALS,
+        edge_labels=_COMMON_EDGE_LABELS,
     )
 
     @classmethod
