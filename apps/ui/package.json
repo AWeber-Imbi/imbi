@@ -11,6 +11,7 @@
     "format": "oxfmt 'src/**/*.{ts,tsx,css}' package.json '*.config.{js,ts}'",
     "format:check": "oxfmt --check 'src/**/*.{ts,tsx,css}' package.json '*.config.{js,ts}'",
     "lint": "oxlint .",
+    "lint:fallow": "fallow dead-code",
     "lint:fix": "oxlint --fix .",
     "prepare": "husky",
     "preview": "vite preview",
