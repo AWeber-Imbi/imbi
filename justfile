@@ -1,18 +1,18 @@
 image := "ghcr.io/aweber-imbi/imbi"
 
-[doc("Display the available commands")]
 [default]
+[doc("Display the available commands")]
 [group("Development")]
 @help:
     just --list
 
 [doc("Build the Docker image")]
-[group("Build")]
+[group("Build Docker")]
 build tag="latest":
     docker build -t {{ image }}:{{ tag }} .
 
-[doc("Build and tag as both version and latest")]
-[group("Build")]
+[doc("Build the Docker image and tag as both version and latest")]
+[group("Build Docker")]
 release tag:
     docker build -t {{ image }}:{{ tag }} -t {{ image }}:latest .
 
@@ -31,7 +31,7 @@ update-submodules:
 update-submodules-tag tag:
     #!/usr/bin/env sh
     set -e
-    for module in imbi-api imbi-assistant imbi-common imbi-gateway imbi-mcp imbi-ui; do
+    for module in imbi-api imbi-assistant imbi-common imbi-gateway imbi-mcp imbi-ui imbi-plugin-aws imbi-plugin-github imbi-plugin-logzio imbi-plugin-oidc; do
         echo "Updating $module to {{ tag }}..."
         git -C "$module" fetch --tags
         git -C "$module" checkout "{{ tag }}"
@@ -75,15 +75,15 @@ teardown: clean
 [doc("Run a single service in 'dev' mode (beta)")]
 [group("Development")]
 start-dev service: _state-caddy-url
-    docker compose build '{{service}}'
-    docker compose up --scale '{{service}}=1' --detach --wait
-    ./runtime/manage-caddy up '{{service}}'
+    docker compose build '{{ service }}'
+    docker compose up --scale '{{ service }}=1' --detach --wait
+    ./runtime/manage-caddy up '{{ service }}'
 
 [doc("Stop running service in 'dev' mode (beta)")]
 [group("Development")]
 stop-dev service: _state-caddy-url
-    docker compose up --scale '{{service}}=0' --detach --wait
-    ./runtime/manage-caddy down '{{service}}'
+    docker compose up --scale '{{ service }}=0' --detach --wait
+    ./runtime/manage-caddy down '{{ service }}'
 
 _state-caddy-url:
     #!/usr/bin/env sh
