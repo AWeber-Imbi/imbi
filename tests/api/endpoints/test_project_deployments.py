@@ -187,6 +187,16 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
                     return_value=None,
                 )
             ),
+            # Default the per-env edge to action='release' so the
+            # existing promote tests exercise the tag+release branch
+            # (matching how staging promotes work in practice).  Tests
+            # that need a different action override this on the mock.
+            '_resolve_deploys_via': self._start(
+                mock.patch(
+                    f'{_MODULE}._resolve_deploys_via',
+                    return_value={'action': 'release'},
+                )
+            ),
             'clickhouse': self._start(
                 mock.patch(
                     f'{_MODULE}.clickhouse.client.Clickhouse.get_instance',
@@ -448,8 +458,10 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         # last_tag bumped major: 6.3.0 → 7.0.0
         self.assertEqual(data['version'], 'v7.0.0')
 
-    def test_promote_happy_path(self) -> None:
-        # The append_deployment_event mock pretends a Release exists.
+    def test_promote_release_action_cuts_tag_and_release(self) -> None:
+        # ``action='release'`` -- staging-style promote: cut a tag and
+        # create a release, but DO NOT dispatch.  The repo's
+        # ``on: release: [published]`` workflow handles deployment.
         self.mocks['append_deployment_event'].return_value = mock.Mock()
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
@@ -470,16 +482,114 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         self.assertEqual(data['tag'], 'v6.4.0')
         self.assertEqual(data['release_url'], 'https://gh/releases/v6.4.0')
         self.assertTrue(data['recorded'])
-        # The Release node was upserted via two db.execute calls
-        # (CREATE-if-missing then SET).
+        self.assertIsNone(data['warning'])
         self.assertGreaterEqual(self.mock_db.execute.call_count, 2)
-        # The append_deployment_event helper saw the new tag as version.
         call = self.mocks['append_deployment_event'].call_args
         self.assertEqual(call.kwargs['version'], 'v6.4.0')
         self.assertEqual(call.kwargs['env_slug'], 'staging')
-        # Run id/url surface on the event, not in note.
+        # No dispatch happened -> no external run id/url.
+        self.assertIsNone(call.kwargs['external_run_id'])
+        self.assertIsNone(call.kwargs['external_run_url'])
+
+    def test_promote_deployment_action_dispatches_only(self) -> None:
+        # ``action='deployment'`` -- production-style promote: dispatch
+        # against an existing tag with no new tag/release.
+        self.mocks['_resolve_deploys_via'].return_value = {
+            'action': 'deployment'
+        }
+        self.mocks['append_deployment_event'].return_value = mock.Mock()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'promote',
+                    'from_environment': 'staging',
+                    'to_environment': 'production',
+                    'from_committish': '1a9c610',
+                    'tag': 'v6.4.0',
+                },
+            )
+        self.assertEqual(response.status_code, 202)
+        data = response.json()
+        self.assertEqual(data['tag'], 'v6.4.0')
+        # No release was cut -- production reuses the staging tag.
+        self.assertIsNone(data['release_url'])
+        self.assertIsNone(data['warning'])
+        # The dispatched run surfaced on the event.
+        call = self.mocks['append_deployment_event'].call_args
         self.assertEqual(call.kwargs['external_run_id'], '42')
         self.assertEqual(call.kwargs['external_run_url'], 'https://gh/runs/42')
+
+    def test_promote_with_no_edge_records_event_with_warning(self) -> None:
+        # No DEPLOYS_VIA edge configured for the env -- promote records
+        # the event but takes no remote action and surfaces a warning.
+        self.mocks['_resolve_deploys_via'].return_value = {}
+        self.mocks['append_deployment_event'].return_value = mock.Mock()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'promote',
+                    'from_environment': 'testing',
+                    'to_environment': 'staging',
+                    'from_committish': '1a9c610',
+                    'tag': 'v6.4.0',
+                },
+            )
+        self.assertEqual(response.status_code, 202)
+        data = response.json()
+        self.assertIsNotNone(data['warning'])
+        self.assertIn('No DEPLOYS_VIA edge', data['warning'])
+        self.assertTrue(data['recorded'])
+
+    def test_promote_deployment_failure_becomes_warning(self) -> None:
+        # If trigger_deployment raises, the promote still records the
+        # DeploymentEvent and surfaces the failure as a warning rather
+        # than 500ing.
+        self.mocks['_resolve_deploys_via'].return_value = {
+            'action': 'deployment'
+        }
+        self.mocks['append_deployment_event'].return_value = mock.Mock()
+
+        class _Boom(_FakeDeploymentPlugin):
+            async def trigger_deployment(  # type: ignore[override]
+                self, ctx, credentials, ref_or_sha, inputs=None
+            ):
+                raise RuntimeError('422 Unprocessable Entity')
+
+        self.mocks['resolve_plugin'].return_value = ResolvedPlugin(
+            plugin_id='p-1',
+            plugin_slug='boom',
+            entry=RegistryEntry(
+                handler_cls=_Boom,
+                manifest=_Boom.manifest,
+                package_name='x',
+                package_version='1',
+            ),
+            options={},
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'promote',
+                    'from_environment': 'staging',
+                    'to_environment': 'production',
+                    'from_committish': '1a9c610',
+                    'tag': 'v6.4.0',
+                },
+            )
+        self.assertEqual(response.status_code, 202)
+        data = response.json()
+        self.assertIsNotNone(data['warning'])
+        self.assertIn('trigger_deployment failed', data['warning'])
+        # The raw exception text (here ``"422 Unprocessable Entity"``)
+        # must NOT leak into client warnings; only the exception class
+        # is included for actionability.
+        self.assertIn('RuntimeError', data['warning'])
+        self.assertNotIn('422', data['warning'])
+        self.assertNotIn('Unprocessable', data['warning'])
+        self.assertTrue(data['recorded'])
 
     def test_promote_falls_back_when_plugin_lacks_create_tag(self) -> None:
         class _NoTag(_FakeDeploymentPlugin):

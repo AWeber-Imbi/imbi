@@ -100,6 +100,12 @@ class DeploymentTriggerResponse(pydantic.BaseModel):
     recorded: bool = False
     release_url: str | None = None
     tag: str | None = None
+    # Human-readable narrative for any non-fatal failure encountered
+    # while running the per-environment promote steps (e.g. the GitHub
+    # Deployments POST returned 422 because the repo's ``on: deployment``
+    # workflow isn't wired up yet).  The promote itself still records a
+    # DeploymentEvent; the UI surfaces this as an amber inline note.
+    warning: str | None = None
 
 
 class DraftReleaseNotesRequest(pydantic.BaseModel):
@@ -202,6 +208,15 @@ async def _resolve_and_context(
     project_slug, team_slug = await lookup_project_slugs(db, project_id)
     project_links = await lookup_project_links(db, project_id)
     project_type_slugs = await lookup_project_type_slugs(db, project_id)
+    # Per-env DEPLOYS_VIA edge properties — only meaningful when an
+    # environment is in scope.  Caller-side flows (status polls, ref
+    # listings) skip this and accept an empty dict, matching the
+    # plugin-side fallback in :class:`PluginContext`.
+    environment_config: dict[str, typing.Any] = {}
+    if environment:
+        environment_config = await _resolve_deploys_via(
+            db, project_id=project_id, env_slug=environment
+        )
     ctx = PluginContext(
         project_id=project_id,
         project_slug=project_slug,
@@ -209,6 +224,7 @@ async def _resolve_and_context(
         team_slug=team_slug,
         environment=environment,
         assignment_options=resolved.options,
+        environment_config=environment_config,
         project_links=project_links,
         project_type_slugs=project_type_slugs,
     )
@@ -239,6 +255,67 @@ async def _resolve_and_context(
                 ),
             )
     return resolved, ctx, credentials
+
+
+async def _resolve_deploys_via(
+    db: graph.Graph,
+    *,
+    project_id: str,
+    env_slug: str,
+) -> dict[str, typing.Any]:
+    """Return per-env deployment edge properties for ``(project, env)``.
+
+    Resolves the ``DEPLOYS_VIA`` edge between the project (or its
+    project type, as a fallback) and the target ``Environment``,
+    returning the edge properties as a dict (``action``, ``payload``,
+    ``identity_plugin_id``, ...).  Project-level edge takes precedence
+    over project-type edge, matching the layering pattern used for
+    ``USES_PLUGIN`` options elsewhere.
+
+    Returns an empty dict when neither anchor has an edge; callers
+    treat that as "no remote action configured for this env" and skip
+    create_tag / create_release / trigger_deployment, recording only
+    the DeploymentEvent.
+    """
+    query: typing.LiteralString = """
+    MATCH (env:Environment {{slug: {env_slug}}})
+    OPTIONAL MATCH (:Project {{id: {project_id}}})
+      -[pe:DEPLOYS_VIA]->(env)
+    OPTIONAL MATCH (:Project {{id: {project_id}}})
+      -[:TYPE]->(:ProjectType)-[pte:DEPLOYS_VIA]->(env)
+    RETURN
+      properties(pe) AS proj_props,
+      properties(pte) AS pt_props
+    """
+    rows = await db.execute(
+        query,
+        {'project_id': project_id, 'env_slug': env_slug},
+        ['proj_props', 'pt_props'],
+    )
+    if not rows:
+        return {}
+
+    def _as_dict(raw: typing.Any) -> dict[str, typing.Any]:
+        return (
+            typing.cast(dict[str, typing.Any], raw)
+            if isinstance(raw, dict)
+            else {}
+        )
+
+    proj_props = _as_dict(graph.parse_agtype(rows[0].get('proj_props')))
+    pt_props = _as_dict(graph.parse_agtype(rows[0].get('pt_props')))
+    return {**pt_props, **proj_props}
+
+
+def _promote_warning(step: str, exc: BaseException) -> str:
+    """Sanitized client-facing warning for a failed promote step.
+
+    Keeps the step name and the exception class for actionability
+    (e.g., ``RuntimeError``, ``ClientResponseError``) but withholds
+    the raw exception message, which can carry plugin internals.
+    Full detail is preserved in logs via ``LOGGER.exception``.
+    """
+    return f'{step} failed ({type(exc).__name__}); see server logs.'
 
 
 def _handler(resolved: ResolvedPlugin) -> DeploymentPlugin:
@@ -591,78 +668,139 @@ async def _handle_promote(
     )
     handler = _handler(resolved)
 
-    # 1. Cut the annotated tag at the chosen build commit.
-    tag_message = body.release_name or body.tag
-
-    async def _create_tag(c: PluginContext) -> typing.Any:
-        return await call_with_timeout(
-            handler.create_tag(
-                c,
-                _resolve_credentials(c, credentials),
-                sha=body.from_committish,
-                tag=body.tag,
-                message=tag_message,
-            )
-        )
-
-    try:
-        await call_with_identity_retry(
-            db, ctx, resolved, auth, fn=_create_tag, attached=True
-        )
-    except NotImplementedError as exc:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail=(
-                f'Plugin {resolved.plugin_slug!r} does not support '
-                'creating tags; promote is not available.'
-            ),
-        ) from exc
-
-    # 2. Create the release on the remote.
+    # Which remote steps run depends on the per-env DEPLOYS_VIA edge:
+    #
+    # * ``action='release'``    -> create_tag + create_release; skip
+    #                              trigger_deployment (the repo's
+    #                              ``on: release: [published]`` workflow
+    #                              picks the release up server-side).
+    # * ``action='deployment'`` -> skip tag/release (the tag is expected
+    #                              to exist already from a prior promote
+    #                              into the lower environment); call
+    #                              trigger_deployment.
+    # * no edge configured      -> no remote action; record only the
+    #                              DeploymentEvent + surface a warning.
+    #
+    # Failures in any remote step degrade to a warning rather than a
+    # 500 -- a flaky GitHub API or a misconfigured workflow shouldn't
+    # bury the fact that the promote was attempted in the audit log.
+    action_raw = ctx.environment_config.get('action')
+    action = action_raw if isinstance(action_raw, str) else None
+    warnings: list[str] = []
+    run = DeploymentRun(run_id='', status='queued')
     release_info = None
+    release_url: str | None = None
 
-    async def _create_release(c: PluginContext) -> typing.Any:
-        return await call_with_timeout(
-            handler.create_release(
-                c,
-                _resolve_credentials(c, credentials),
-                tag=body.tag,
-                name=body.release_name or body.tag,
-                body_markdown=body.release_notes_markdown,
-                prerelease=body.prerelease,
+    if action is None:
+        warnings.append(
+            f'No DEPLOYS_VIA edge configured for environment '
+            f'{body.to_environment!r}; promote recorded with no '
+            f'remote action.'
+        )
+    elif action not in {'release', 'deployment'}:
+        warnings.append(
+            f'Unknown DEPLOYS_VIA action {action!r} for environment '
+            f'{body.to_environment!r}; expected "release" or '
+            f'"deployment".  Promote recorded with no remote action.'
+        )
+        action = None
+
+    if action == 'release':
+        # 1. Cut the annotated tag at the chosen build commit.
+        tag_message = body.release_name or body.tag
+
+        async def _create_tag(c: PluginContext) -> typing.Any:
+            return await call_with_timeout(
+                handler.create_tag(
+                    c,
+                    _resolve_credentials(c, credentials),
+                    sha=body.from_committish,
+                    tag=body.tag,
+                    message=tag_message,
+                )
             )
-        )
 
-    try:
-        release_info = await call_with_identity_retry(
-            db, ctx, resolved, auth, fn=_create_release, attached=True
-        )
-    except NotImplementedError:
-        LOGGER.info(
-            'Plugin %r has no create_release; tag-only promote',
-            resolved.plugin_slug,
-        )
-
-    release_url = (release_info.html_url if release_info else None) or (
-        release_info.url if release_info else None
-    )
-
-    # 3. Dispatch the workflow against the new tag.  We do this before
-    #    upserting the Release node so a trigger failure doesn't leave
-    #    a Release in the graph with no associated deployment run.
-    async def _trigger(c: PluginContext) -> DeploymentRun:
-        return await call_with_timeout(
-            handler.trigger_deployment(
-                c,
-                _resolve_credentials(c, credentials),
-                ref_or_sha=body.tag,
-                inputs=None,
+        try:
+            await call_with_identity_retry(
+                db, ctx, resolved, auth, fn=_create_tag, attached=True
             )
-        )
+        except NotImplementedError as exc:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=(
+                    f'Plugin {resolved.plugin_slug!r} does not support '
+                    'creating tags; promote is not available.'
+                ),
+            ) from exc
+        except Exception as exc:
+            LOGGER.exception(
+                'create_tag failed for project=%s env=%s tag=%s',
+                project_id,
+                body.to_environment,
+                body.tag,
+            )
+            warnings.append(_promote_warning('create_tag', exc))
 
-    run = await call_with_identity_retry(
-        db, ctx, resolved, auth, fn=_trigger, attached=True
-    )
+        # 2. Create the release on the remote.
+        async def _create_release(c: PluginContext) -> typing.Any:
+            return await call_with_timeout(
+                handler.create_release(
+                    c,
+                    _resolve_credentials(c, credentials),
+                    tag=body.tag,
+                    name=body.release_name or body.tag,
+                    body_markdown=body.release_notes_markdown,
+                    prerelease=body.prerelease,
+                )
+            )
+
+        try:
+            release_info = await call_with_identity_retry(
+                db, ctx, resolved, auth, fn=_create_release, attached=True
+            )
+        except NotImplementedError:
+            LOGGER.info(
+                'Plugin %r has no create_release; tag-only promote',
+                resolved.plugin_slug,
+            )
+        except Exception as exc:
+            LOGGER.exception(
+                'create_release failed for project=%s env=%s tag=%s',
+                project_id,
+                body.to_environment,
+                body.tag,
+            )
+            warnings.append(_promote_warning('create_release', exc))
+
+        release_url = (release_info.html_url if release_info else None) or (
+            release_info.url if release_info else None
+        )
+    elif action == 'deployment':
+        # Dispatch against the existing tag.  We do this before upserting
+        # the Release node so a trigger failure doesn't leave a Release
+        # in the graph with no associated deployment run.
+        async def _trigger(c: PluginContext) -> DeploymentRun:
+            return await call_with_timeout(
+                handler.trigger_deployment(
+                    c,
+                    _resolve_credentials(c, credentials),
+                    ref_or_sha=body.tag,
+                    inputs=None,
+                )
+            )
+
+        try:
+            run = await call_with_identity_retry(
+                db, ctx, resolved, auth, fn=_trigger, attached=True
+            )
+        except Exception as exc:
+            LOGGER.exception(
+                'trigger_deployment failed for project=%s env=%s tag=%s',
+                project_id,
+                body.to_environment,
+                body.tag,
+            )
+            warnings.append(_promote_warning('trigger_deployment', exc))
 
     # 4. Upsert the Release node so future deploys of the same tag
     #    can attach a DeploymentEvent.
@@ -720,6 +858,7 @@ async def _handle_promote(
         recorded=edge is not None,
         release_url=release_url,
         tag=body.tag,
+        warning='; '.join(warnings) if warnings else None,
     )
 
 
