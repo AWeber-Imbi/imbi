@@ -67,15 +67,17 @@ export function NewProjectDialog({
   const createMutation = useMutation({
     mutationFn: (data: ProjectCreate) => createProject(orgSlug, data),
     onSuccess: (created) => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
-      if (created?.id) onProjectCreated?.(created.id)
+      queryClient.invalidateQueries({ queryKey: ['projects', orgSlug] })
+      onProjectCreated?.(created.id)
       handleClose()
     },
   })
 
   const handleNameChange = (value: string) => {
     setName(value)
-    setSlug(slugify(value))
+    if (!slug || slug === slugify(name)) {
+      setSlug(slugify(value))
+    }
   }
 
   const toggleEnv = (envSlug: string) => {
@@ -87,12 +89,13 @@ export function NewProjectDialog({
   }
 
   const handleSave = () => {
-    if (!canProceed || createMutation.isPending) return
+    if (!orgSlug || !canProceed || createMutation.isPending) return
     const projectData: ProjectCreate = {
       description: description || null,
-      environments: selectedEnvSlugs,
+      environment_slugs:
+        selectedEnvSlugs.length > 0 ? selectedEnvSlugs : undefined,
       name,
-      project_type_slug: projectTypeSlug,
+      project_type_slugs: [projectTypeSlug],
       slug,
       team_slug: teamSlug,
     }
