@@ -15,12 +15,12 @@ export function InlineSwitch({
   onCommit,
   pending = false,
   readOnly = false,
-  value,
+  value = false,
 }: InlineSwitchProps) {
-  const [checked, setChecked] = useState(value ?? false)
+  const [checked, setChecked] = useState(value)
 
   useEffect(() => {
-    setChecked(value ?? false)
+    setChecked(value)
   }, [value])
 
   return (
