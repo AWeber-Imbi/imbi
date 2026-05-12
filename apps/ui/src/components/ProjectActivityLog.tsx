@@ -145,7 +145,7 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
               </div>
 
               <div className="relative px-6">
-                <div className="absolute bottom-4 left-[26px] top-4 w-px bg-tertiary" />
+                <div className="absolute bottom-4 left-[31.5px] top-4 w-px bg-muted" />
 
                 {group.items.map((item, i) =>
                   item.kind === 'event' ? (
