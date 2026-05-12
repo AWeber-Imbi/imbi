@@ -162,8 +162,8 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         # Default: project-slug lookup returns no rows → audit writes
         # use empty project_slug. Tests that care can override.
         self.mock_db.execute.return_value = []
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
         self.plugin_id = f'p-{_short_id()}'
@@ -232,7 +232,7 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         try:
             rows: list[dict[str, typing.Any]] = await ch.query(
                 'SELECT id, project_id, project_slug, environment_slug,'
-                ' entry_type, description, recorded_by'
+                ' entry_type, description, recorded_by, plugin_slug'
                 ' FROM operations_log FINAL'
                 ' WHERE project_id = {pid:String}'
                 '   AND recorded_at >= {after:DateTime64(3)}'
@@ -477,6 +477,7 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         self.assertEqual(row['environment_slug'], 'production')
         self.assertEqual(row['entry_type'], 'Configured')
         self.assertEqual(row['recorded_by'], 'admin@example.com')
+        self.assertEqual(row['plugin_slug'], 'ssm')
         description = json.loads(row['description'])
         self.assertEqual(description['action'], 'set_value')
         self.assertEqual(description['plugin_slug'], 'ssm')

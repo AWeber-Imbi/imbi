@@ -305,6 +305,7 @@ async def _record_deployment_audit(
         description=description,
         link=run_url,
         version=version,
+        plugin_slug=plugin_slug,
     )
     row = entry.model_dump(by_alias=True, mode='python')
     row['is_deleted'] = 1 if entry.is_deleted else 0

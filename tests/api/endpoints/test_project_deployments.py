@@ -708,6 +708,7 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         self.assertEqual(row['environment_slug'], 'testing')
         self.assertEqual(row['link'], 'https://gh/runs/42')
         self.assertEqual(row['version'], 'main')
+        self.assertEqual(row['plugin_slug'], 'github-deployment')
 
     def test_promote_writes_operations_log_audit(self) -> None:
         self.mocks['append_deployment_event'].return_value = mock.Mock()
@@ -732,6 +733,7 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         self.assertEqual(row['entry_type'], 'Deployed')
         self.assertEqual(row['environment_slug'], 'staging')
         self.assertEqual(row['version'], 'v6.4.0')
+        self.assertEqual(row['plugin_slug'], 'github-deployment')
 
 
 class FallbackNotesTestCase(unittest.TestCase):

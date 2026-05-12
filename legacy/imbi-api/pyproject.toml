@@ -31,7 +31,7 @@ dependencies = [
   "fastapi",
   "filetype",
   "httpx>=0.28.1,<1",
-  "imbi-common[databases,llm,server]>=0.8.5",
+  "imbi-common[databases,llm,server]>=0.10.2",
   "jinja2",
   "jsonpatch>=1.33",
   "nanoid>=2.0.0",

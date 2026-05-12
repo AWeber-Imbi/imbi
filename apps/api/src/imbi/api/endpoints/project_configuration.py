@@ -398,6 +398,7 @@ async def _write_audit(
         environment_slug=environment_slug,
         entry_type='Configured',
         description=description,
+        plugin_slug=plugin_slug,
     )
     row = entry.model_dump(by_alias=True, mode='python')
     row['is_deleted'] = 1 if entry.is_deleted else 0
