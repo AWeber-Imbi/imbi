@@ -117,8 +117,7 @@ export function NewProjectDialog({
   return (
     <Dialog onOpenChange={(open) => !open && handleClose()} open={isOpen}>
       <DialogContent
-        aria-label="Create New Project"
-        className="max-w-2xl sm:max-w-2xl"
+        className="sm:max-w-2xl"
         style={{
           maxHeight: 'calc(100vh - var(--assistant-height, 0px) - 2rem - 10px)',
         }}
