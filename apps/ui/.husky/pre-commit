@@ -33,3 +33,11 @@ done || exit 1
 
 # Lint and format staged files
 npx lint-staged
+
+# Dead-code audit (mirrors the lint.yml CI step). Compares against
+# origin/main so we only flag new dead exports, not the existing
+# backlog. Skip silently when origin/main isn't fetched yet (fresh
+# clones); CI catches it in that case.
+if git rev-parse --verify --quiet origin/main >/dev/null; then
+  npx fallow audit --base origin/main
+fi

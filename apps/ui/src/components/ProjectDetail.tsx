@@ -1078,11 +1078,10 @@ function buildRecommendation(
   c: AttributeContribution,
   policy: ScoringPolicy,
 ): null | string {
+  if (policy.category !== 'attribute') return null
   const current = c.mapped_score
   if (policy.value_score_map) {
-    const better = Object.entries(policy.value_score_map)
-      .filter(([, score]) => score > current)
-      .sort(([, a], [, b]) => b - a)
+    const better = entriesAbove(policy.value_score_map, current)
     if (better.length === 0) return null
     const topScore = better[0][1]
     const top = better
@@ -1093,14 +1092,21 @@ function buildRecommendation(
     return `Update to ${top.slice(0, -1).join(', ')}, or ${top[top.length - 1]}`
   }
   if (policy.range_score_map) {
-    const better = Object.entries(policy.range_score_map)
-      .filter(([, score]) => score > current)
-      .sort(([, a], [, b]) => b - a)
+    const better = entriesAbove(policy.range_score_map, current)
     if (better.length === 0) return null
     const [target] = better[0]
     return `Update to reach ${target}`
   }
   return null
+}
+
+function entriesAbove(
+  map: Record<string, number>,
+  current: number,
+): [string, number][] {
+  return Object.entries(map)
+    .filter(([, score]) => score > current)
+    .sort(([, a], [, b]) => b - a)
 }
 
 function fmtAttributeValue(value: unknown): string {

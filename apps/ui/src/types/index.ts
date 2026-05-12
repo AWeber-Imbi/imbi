@@ -2,6 +2,32 @@ import type { components } from './api-generated'
 
 export type ActivityFeedEntry = OperationsLogEntry | ProjectFeedEntry
 
+export interface AgeScoringPolicy extends ScoringPolicyBase {
+  age_score_map: Record<string, number>
+  attribute_name: string
+  category: 'age'
+}
+
+export interface AgeScoringPolicyCreate extends ScoringPolicyCreateBase {
+  age_score_map: Record<string, number>
+  attribute_name: string
+  category: 'age'
+}
+
+export interface AttributeScoringPolicy extends ScoringPolicyBase {
+  attribute_name: string
+  category: 'attribute'
+  range_score_map?: null | Record<string, number>
+  value_score_map?: null | Record<string, number>
+}
+
+export interface AttributeScoringPolicyCreate extends ScoringPolicyCreateBase {
+  attribute_name: string
+  category: 'attribute'
+  range_score_map?: null | Record<string, number>
+  value_score_map?: null | Record<string, number>
+}
+
 // API Response Wrappers
 export interface CollectionResponse<T> {
   data: T[]
@@ -30,6 +56,20 @@ export interface EnvironmentCreate {
 export type LinkDefinition = Schemas['LinkDefinitionResponse']
 
 export type LinkDefinitionCreate = Schemas['LinkDefinitionCreate']
+
+export interface LinkPresenceScoringPolicy extends ScoringPolicyBase {
+  category: 'link_presence'
+  link_slug: string
+  missing_score?: null | number
+  present_score?: null | number
+}
+
+export interface LinkPresenceScoringPolicyCreate extends ScoringPolicyCreateBase {
+  category: 'link_presence'
+  link_slug: string
+  missing_score?: null | number
+  present_score?: null | number
+}
 // Activity feed projection; distinct from `OperationsLogRecord`.
 export interface OperationsLogEntry {
   change_type:
@@ -59,6 +99,20 @@ export interface OperationsLogEntry {
   ticket_slug?: null | string
   type: 'OperationsLogEntry'
   version?: null | string
+}
+
+export interface PresenceScoringPolicy extends ScoringPolicyBase {
+  attribute_name: string
+  category: 'presence'
+  missing_score?: null | number
+  present_score?: null | number
+}
+
+export interface PresenceScoringPolicyCreate extends ScoringPolicyCreateBase {
+  attribute_name: string
+  category: 'presence'
+  missing_score?: null | number
+  present_score?: null | number
 }
 
 // `Project` keeps its hand-written shape: it has UI-only convenience fields
@@ -158,33 +212,25 @@ export interface ProjectTypeCreate {
 
 export type RelationshipLink = Schemas['RelationshipLink']
 
-export interface ScoringPolicy {
-  attribute_name: string
-  category: 'attribute'
-  description?: null | string
-  enabled: boolean
-  id: string
-  name: string
-  priority: number
-  range_score_map?: null | Record<string, number>
-  slug: string
-  targets?: string[]
-  value_score_map?: null | Record<string, number>
-  weight: number
-}
+// Scoring policy types — discriminated union on `category`. See
+// imbi-common/scoring/models.py for the canonical shape.
+export type ScoringPolicy =
+  | AgeScoringPolicy
+  | AttributeScoringPolicy
+  | LinkPresenceScoringPolicy
+  | PresenceScoringPolicy
 
-export interface ScoringPolicyCreate {
-  attribute_name: string
-  description?: null | string
-  enabled: boolean
-  name: string
-  priority: number
-  range_score_map?: null | Record<string, number>
-  slug: string
-  targets: string[]
-  value_score_map?: null | Record<string, number>
-  weight: number
-}
+export type ScoringPolicyCategory =
+  | 'age'
+  | 'attribute'
+  | 'link_presence'
+  | 'presence'
+
+export type ScoringPolicyCreate =
+  | AgeScoringPolicyCreate
+  | AttributeScoringPolicyCreate
+  | LinkPresenceScoringPolicyCreate
+  | PresenceScoringPolicyCreate
 
 // `User` is the UI-side profile shape used by auth/session consumers.
 // It does not map cleanly to the backend `UserResponse` (different key set:
@@ -200,6 +246,28 @@ export interface User {
 }
 
 type Schemas = components['schemas']
+
+interface ScoringPolicyBase {
+  description?: null | string
+  enabled: boolean
+  id: string
+  name: string
+  priority: number
+  slug: string
+  targets?: string[]
+  weight: number
+}
+
+interface ScoringPolicyCreateBase {
+  category: ScoringPolicyCategory
+  description?: null | string
+  enabled: boolean
+  name: string
+  priority: number
+  slug: string
+  targets: string[]
+  weight: number
+}
 
 export const OPERATIONS_LOG_ENTRY_TYPES = [
   'Configured',

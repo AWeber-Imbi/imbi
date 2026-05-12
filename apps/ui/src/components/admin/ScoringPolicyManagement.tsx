@@ -29,14 +29,23 @@ import { useAdminCrud } from '@/hooks/useAdminCrud'
 import { useAdminNav } from '@/hooks/useAdminNav'
 import { buildDiffPatch } from '@/lib/json-patch'
 import type {
+  AttributeScoringPolicy,
   PatchOperation,
   ScoringPolicy,
+  ScoringPolicyCategory,
   ScoringPolicyCreate,
 } from '@/types'
 
 import { AdminSection } from './AdminSection'
 import { ImportScoringPolicyDialog } from './scoring-policies/ImportScoringPolicyDialog'
 import { ScoringPolicyForm } from './scoring-policies/ScoringPolicyForm'
+
+const CATEGORY_LABELS: Record<ScoringPolicyCategory, string> = {
+  age: 'Age',
+  attribute: 'Attribute',
+  link_presence: 'Link Presence',
+  presence: 'Presence',
+}
 
 export function ScoringPolicyManagement() {
   const {
@@ -90,11 +99,12 @@ export function ScoringPolicyManagement() {
   const filteredPolicies = policies.filter((p) => {
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
+      const subjectKey = policySubjectKey(p).toLowerCase()
       if (
         !p.name.toLowerCase().includes(q) &&
         !p.slug.toLowerCase().includes(q) &&
         !(p.description?.toLowerCase().includes(q) ?? false) &&
-        !p.attribute_name.toLowerCase().includes(q)
+        !subjectKey.includes(q)
       )
         return false
     }
@@ -104,22 +114,7 @@ export function ScoringPolicyManagement() {
   })
 
   const handleCopy = (policy: ScoringPolicy) => {
-    const exportObj = {
-      attribute_name: policy.attribute_name,
-      ...(policy.description ? { description: policy.description } : {}),
-      enabled: policy.enabled,
-      name: policy.name,
-      priority: policy.priority,
-      ...(policy.range_score_map
-        ? { range_score_map: policy.range_score_map }
-        : {}),
-      slug: policy.slug,
-      targets: policy.targets ?? [],
-      ...(policy.value_score_map
-        ? { value_score_map: policy.value_score_map }
-        : {}),
-      weight: policy.weight,
-    }
+    const exportObj = policyToExportPayload(policy)
     if (!navigator.clipboard?.writeText) return
     navigator.clipboard
       .writeText(JSON.stringify(exportObj, null, 2))
@@ -268,12 +263,23 @@ export function ScoringPolicyManagement() {
             },
             {
               cellAlign: 'left',
-              header: 'Attribute',
+              header: 'Category',
               headerAlign: 'left',
-              key: 'attribute',
+              key: 'category',
+              render: (p) => (
+                <span className="rounded bg-secondary px-1.5 py-0.5 text-xs text-secondary">
+                  {CATEGORY_LABELS[p.category]}
+                </span>
+              ),
+            },
+            {
+              cellAlign: 'left',
+              header: 'Subject',
+              headerAlign: 'left',
+              key: 'subject',
               render: (p) => (
                 <code className="rounded bg-secondary px-1.5 py-0.5 text-xs text-primary">
-                  {p.attribute_name}
+                  {policySubjectKey(p)}
                 </code>
               ),
             },
@@ -342,4 +348,71 @@ export function ScoringPolicyManagement() {
       />
     </>
   )
+}
+
+function attributeExport(
+  policy: AttributeScoringPolicy,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { attribute_name: policy.attribute_name }
+  if (policy.value_score_map) out.value_score_map = policy.value_score_map
+  if (policy.range_score_map) out.range_score_map = policy.range_score_map
+  return out
+}
+
+// fallow-ignore-next-line complexity
+function categorySpecificExport(
+  policy: ScoringPolicy,
+): Record<string, unknown> {
+  switch (policy.category) {
+    case 'age':
+      return {
+        age_score_map: policy.age_score_map,
+        attribute_name: policy.attribute_name,
+      }
+    case 'attribute':
+      return attributeExport(policy)
+    case 'link_presence':
+      return presenceExport({
+        missing_score: policy.missing_score,
+        present_score: policy.present_score,
+        subject: { link_slug: policy.link_slug },
+      })
+    case 'presence':
+      return presenceExport({
+        missing_score: policy.missing_score,
+        present_score: policy.present_score,
+        subject: { attribute_name: policy.attribute_name },
+      })
+  }
+}
+
+function policySubjectKey(policy: ScoringPolicy): string {
+  return policy.category === 'link_presence'
+    ? policy.link_slug
+    : policy.attribute_name
+}
+
+function policyToExportPayload(policy: ScoringPolicy): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    category: policy.category,
+    enabled: policy.enabled,
+    name: policy.name,
+    priority: policy.priority,
+    slug: policy.slug,
+    targets: policy.targets ?? [],
+    weight: policy.weight,
+  }
+  if (policy.description) base.description = policy.description
+  return { ...base, ...categorySpecificExport(policy) }
+}
+
+function presenceExport(args: {
+  missing_score?: null | number
+  present_score?: null | number
+  subject: Record<string, unknown>
+}): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...args.subject }
+  if (args.present_score != null) out.present_score = args.present_score
+  if (args.missing_score != null) out.missing_score = args.missing_score
+  return out
 }

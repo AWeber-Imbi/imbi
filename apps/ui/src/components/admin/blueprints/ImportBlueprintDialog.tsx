@@ -2,22 +2,21 @@ import { useCallback, useEffect, useState } from 'react'
 
 import Ajv from 'ajv'
 import yaml from 'js-yaml'
-import { AlertCircle, FileJson, FileText, Upload } from 'lucide-react'
+import { AlertCircle, FileJson, FileText } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { type DetectedFormat, detectFormat } from '@/lib/import-format'
 import type { BlueprintCreate, BlueprintFilter } from '@/types'
 
-const ajv = new Ajv()
+import { ImportDialogFooter } from '../import-dialog-shared'
 
-type DetectedFormat = 'json' | 'unknown' | 'yaml'
+const ajv = new Ajv()
 
 interface ImportBlueprintDialogProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -343,34 +342,15 @@ export function ImportBlueprintDialog({
           )}
         </div>
 
-        <DialogFooter>
-          <Button disabled={isLoading} onClick={handleClose} variant="outline">
-            Cancel
-          </Button>
-          <Button
-            className="bg-action text-action-foreground hover:bg-action-hover"
-            disabled={isLoading || !rawInput.trim()}
-            onClick={handleValidateAndImport}
-          >
-            <Upload className="mr-2 h-4 w-4" />
-            {isLoading ? 'Importing...' : 'Import'}
-          </Button>
-        </DialogFooter>
+        <ImportDialogFooter
+          hasInput={!!rawInput.trim()}
+          isLoading={isLoading}
+          onClose={handleClose}
+          onImport={handleValidateAndImport}
+        />
       </DialogContent>
     </Dialog>
   )
-}
-
-function detectFormat(input: string): DetectedFormat {
-  const trimmed = input.trim()
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return 'json'
-  if (
-    trimmed.includes(':') ||
-    trimmed.includes(':\n') ||
-    trimmed.startsWith('---')
-  )
-    return 'yaml'
-  return 'unknown'
 }
 
 function validateBlueprintShape(
