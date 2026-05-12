@@ -676,7 +676,11 @@ export interface OperationsLogFilters {
 
 // Raw record returned by the /operations-log/ API (distinct from the
 // activity-feed projection defined above in `OperationsLogEntry`).
-export type OperationsLogRecord = Schemas['OperationLogResponse']
+// `plugin_slug` is augmented here pending an openapi snapshot refresh against
+// the upstream `imbi-api` change — the backend already returns it.
+export type OperationsLogRecord = Schemas['OperationLogResponse'] & {
+  plugin_slug?: string
+}
 
 // Organization types
 export type Organization = Schemas['OrganizationResponse']

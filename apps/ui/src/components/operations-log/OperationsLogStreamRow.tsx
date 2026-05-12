@@ -18,6 +18,8 @@ import type { Environment, OperationsLogRecord, Project } from '@/types'
 import { OperationsLogEntryDetails } from './OperationsLogEntryDetails'
 import { absTime, cleanDescription, relTime } from './opsLogHelpers'
 import { OPS_ROW_GRID, OPS_ROW_PAD } from './opsRowLayout'
+import { parseDescription } from './parseDescription'
+import { getPluginRenderer } from './plugin-renderers'
 
 interface Props {
   entry: OperationsLogRecord
@@ -43,8 +45,20 @@ export const OperationsLogStreamRow = memo(function OperationsLogStreamRow({
   const displayName = performerDisplayNames.get(performer) ?? performer
   const isDeploy = entry.entry_type === 'Deployed'
   const isRestart = entry.entry_type === 'Restarted'
-  const Icon = ENTRY_TYPE_ICONS[entry.entry_type]
-  const desc = cleanDescription(entry.description, entry.version)
+  const parsed = parseDescription(entry)
+  const pluginRenderer =
+    parsed.kind === 'plugin' ? getPluginRenderer(entry.plugin_slug) : undefined
+  const Icon = pluginRenderer?.icon ?? ENTRY_TYPE_ICONS[entry.entry_type]
+  const desc =
+    parsed.kind === 'plugin'
+      ? (pluginRenderer?.label?.({
+          action: parsed.action,
+          entry,
+          payload: parsed.payload,
+        }) ??
+        parsed.summary ??
+        `${entry.plugin_slug}${parsed.action ? ` · ${parsed.action}` : ''}`)
+      : cleanDescription(entry.description, entry.version)
   const projectLabel = project?.name ?? entry.project_slug
   const envDisplay = environment?.name ?? entry.environment_slug
   const envColors = environment?.label_color

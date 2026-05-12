@@ -12,6 +12,13 @@ import {
 } from '@/components/ui/tooltip'
 import type { OperationsLogRecord } from '@/types'
 
+import { parseDescription } from './parseDescription'
+import {
+  GenericPluginPayload,
+  getPluginRenderer,
+  type PluginOpsLogContext,
+} from './plugin-renderers'
+
 interface Props {
   entry: OperationsLogRecord
 }
@@ -26,14 +33,26 @@ export function OperationsLogEntryDetails({ entry }: Props) {
 
   const record = data ?? entry
   const performer = record.performed_by ?? record.recorded_by
+  const parsed = parseDescription(record)
+  const pluginRenderer =
+    parsed.kind === 'plugin' ? getPluginRenderer(record.plugin_slug) : undefined
+  const pluginCtx: null | PluginOpsLogContext =
+    parsed.kind === 'plugin'
+      ? { action: parsed.action, entry: record, payload: parsed.payload }
+      : null
 
-  // Notes from the v1 migration often duplicate the description; suppress
-  // identical notes so the panel shows real long-form content only.
+  // Notes from the v1 migration often duplicate the free-text description;
+  // suppress identical notes so the panel shows real long-form content only.
+  // Plugin-emitted entries don't share that lineage, so the comparison is
+  // skipped when `description` carries a structured payload.
   const hasNotes =
-    !!record.notes && record.notes.trim() !== record.description.trim()
+    !!record.notes &&
+    (parsed.kind === 'plugin' ||
+      record.notes.trim() !== record.description.trim())
 
   const hasExtras =
     hasNotes ||
+    !!pluginCtx ||
     !!record.link ||
     !!record.ticket_slug ||
     !!record.completed_at ||
@@ -41,6 +60,18 @@ export function OperationsLogEntryDetails({ entry }: Props) {
 
   return (
     <div className="space-y-4 py-4 pl-[60px] pr-4">
+      {pluginCtx && (
+        <div>
+          <h3 className="mb-1.5 text-overline uppercase text-tertiary">
+            {pluginRenderer?.displayName ?? record.plugin_slug}
+          </h3>
+          <div className="rounded-md border border-tertiary bg-primary p-3">
+            {pluginRenderer?.details?.(pluginCtx) ?? (
+              <GenericPluginPayload {...pluginCtx} />
+            )}
+          </div>
+        </div>
+      )}
       {hasNotes && (
         <div>
           <h3 className="mb-1.5 text-overline uppercase text-tertiary">
