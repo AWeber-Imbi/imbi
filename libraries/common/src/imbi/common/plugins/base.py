@@ -80,7 +80,7 @@ class PluginManifest(pydantic.BaseModel):
     name: str
     description: str | None = None
     plugin_type: typing.Literal[
-        'configuration', 'logs', 'identity', 'deployment'
+        'configuration', 'logs', 'identity', 'deployment', 'lifecycle'
     ]
     auth_type: typing.Literal['api_token', 'oauth2', 'oidc', 'aws-iam-ic'] = (
         'api_token'
@@ -641,6 +641,59 @@ class DeploymentPlugin(abc.ABC):
         an operator configures the per-environment dispatch edge
         (e.g. ``DEPLOYS_VIA``).  Plugins without a workflow concept
         raise :class:`NotImplementedError`.
+        """
+        del ctx, credentials
+        raise NotImplementedError
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle plugin
+# ---------------------------------------------------------------------------
+
+
+class LifecycleResult(pydantic.BaseModel):
+    """Outcome of a lifecycle plugin invocation.
+
+    Returned by :class:`LifecyclePlugin` hooks so the host can record
+    per-plugin status alongside the entity state change and surface it
+    to the operator without rolling back the Imbi-side write.
+    """
+
+    status: typing.Literal['ok', 'skipped', 'failed']
+    message: str | None = None
+    artifacts: dict[str, str] = {}
+
+
+class LifecyclePlugin(abc.ABC):
+    """Plugins must not stash global state.
+
+    A new instance is created per request.  Lifecycle plugins react to
+    entity state changes (archive / unarchive today; create / delete may
+    follow).  The host invokes them after the authoritative Imbi state
+    change has succeeded so a third-party failure does not roll back
+    the operator's intent.
+    """
+
+    manifest: PluginManifest
+
+    @abc.abstractmethod
+    async def on_project_archived(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> LifecycleResult: ...
+
+    async def on_project_unarchived(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> LifecycleResult:
+        """React to a project being unarchived.
+
+        Optional — plugins without a meaningful inverse return
+        ``LifecycleResult(status='skipped')`` or raise
+        :class:`NotImplementedError`.  The default raises so the host
+        can surface an explicit warning rather than silently swallow.
         """
         del ctx, credentials
         raise NotImplementedError

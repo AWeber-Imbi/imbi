@@ -10,6 +10,7 @@ from imbi_common.plugins.base import (
     ConfigurationPlugin,
     DeploymentPlugin,
     IdentityPlugin,
+    LifecyclePlugin,
     LogsPlugin,
     PluginManifest,
 )
@@ -21,7 +22,11 @@ _ENTRY_POINT_GROUP = 'imbi.plugins'
 _SUPPORTED_API_VERSIONS: frozenset[int] = frozenset({1})
 
 PluginHandler = (
-    ConfigurationPlugin | LogsPlugin | IdentityPlugin | DeploymentPlugin
+    ConfigurationPlugin
+    | LogsPlugin
+    | IdentityPlugin
+    | DeploymentPlugin
+    | LifecyclePlugin
 )
 
 
@@ -32,6 +37,7 @@ class RegistryEntry:
         | type[LogsPlugin]
         | type[IdentityPlugin]
         | type[DeploymentPlugin]
+        | type[LifecyclePlugin]
     )
     manifest: PluginManifest
     package_name: str
@@ -82,16 +88,18 @@ def load_plugins() -> LoadResult:
                 LogsPlugin,
                 IdentityPlugin,
                 DeploymentPlugin,
+                LifecyclePlugin,
             ),
         ):
             LOGGER.error(
                 'Plugin %r does not implement ConfigurationPlugin, '
-                'LogsPlugin, IdentityPlugin, or DeploymentPlugin; skipping',
+                'LogsPlugin, IdentityPlugin, DeploymentPlugin, or '
+                'LifecyclePlugin; skipping',
                 ep.name,
             )
             errors[ep.name] = (
                 'Plugin must subclass ConfigurationPlugin, LogsPlugin, '
-                'IdentityPlugin, or DeploymentPlugin'
+                'IdentityPlugin, DeploymentPlugin, or LifecyclePlugin'
             )
             continue
 
@@ -100,6 +108,7 @@ def load_plugins() -> LoadResult:
             | type[LogsPlugin]
             | type[IdentityPlugin]
             | type[DeploymentPlugin]
+            | type[LifecyclePlugin]
         )
         if manifest.plugin_type == 'configuration':
             expected_base = ConfigurationPlugin
@@ -107,8 +116,10 @@ def load_plugins() -> LoadResult:
             expected_base = LogsPlugin
         elif manifest.plugin_type == 'identity':
             expected_base = IdentityPlugin
-        else:
+        elif manifest.plugin_type == 'deployment':
             expected_base = DeploymentPlugin
+        else:
+            expected_base = LifecyclePlugin
         if not issubclass(cls, expected_base):  # pyright: ignore[reportUnnecessaryIsInstance]
             LOGGER.error(
                 'Plugin %r manifest plugin_type=%r does not match class '

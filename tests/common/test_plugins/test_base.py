@@ -11,6 +11,8 @@ from imbi_common.plugins.base import (
     DeploymentRun,
     IdentityCredentials,
     IdentityProfile,
+    LifecyclePlugin,
+    LifecycleResult,
     LogFilter,
     LogQuery,
     PluginContext,
@@ -343,6 +345,67 @@ class DeploymentPluginDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
         plugin = _StubDeploymentPlugin()
         with self.assertRaises(NotImplementedError):
             await plugin.list_workflows(ctx, {})
+
+
+class LifecycleManifestTestCase(unittest.TestCase):
+    def test_lifecycle_plugin_type_accepted(self) -> None:
+        manifest = PluginManifest(
+            slug='gh-lifecycle',
+            name='GitHub Lifecycle',
+            plugin_type='lifecycle',
+            options=[
+                PluginOption(name='archive_target_org', label='Target org'),
+            ],
+        )
+        self.assertEqual(manifest.plugin_type, 'lifecycle')
+        self.assertEqual(manifest.options[0].name, 'archive_target_org')
+
+
+class LifecycleResultTestCase(unittest.TestCase):
+    def test_lifecycle_result_round_trip(self) -> None:
+        result = LifecycleResult(
+            status='ok',
+            message='archived',
+            artifacts={'repo_url': 'https://github.com/o/r'},
+        )
+        restored = LifecycleResult.model_validate(result.model_dump())
+        self.assertEqual(restored.status, 'ok')
+        self.assertEqual(restored.message, 'archived')
+        self.assertEqual(
+            restored.artifacts['repo_url'], 'https://github.com/o/r'
+        )
+
+    def test_lifecycle_result_defaults(self) -> None:
+        result = LifecycleResult(status='skipped')
+        self.assertIsNone(result.message)
+        self.assertEqual(result.artifacts, {})
+
+
+class _StubLifecyclePlugin(LifecyclePlugin):
+    manifest = PluginManifest(
+        slug='stub-lifecycle',
+        name='Stub Lifecycle',
+        plugin_type='lifecycle',
+    )
+
+    async def on_project_archived(  # type: ignore[override]
+        self, ctx, credentials
+    ):
+        return LifecycleResult(status='ok')
+
+
+class LifecyclePluginDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_on_project_unarchived_default_raises(self) -> None:
+        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
+        plugin = _StubLifecyclePlugin()
+        with self.assertRaises(NotImplementedError):
+            await plugin.on_project_unarchived(ctx, {})
+
+    async def test_on_project_archived_returns_result(self) -> None:
+        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
+        plugin = _StubLifecyclePlugin()
+        result = await plugin.on_project_archived(ctx, {})
+        self.assertEqual(result.status, 'ok')
 
 
 class PluginContextEnvironmentConfigTestCase(unittest.TestCase):

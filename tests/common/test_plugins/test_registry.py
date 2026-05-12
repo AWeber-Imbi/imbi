@@ -359,6 +359,71 @@ class LoadPluginsDeploymentTestCase(unittest.TestCase):
         _reset_registry()
 
 
+class LoadPluginsLifecycleTestCase(unittest.TestCase):
+    def setUp(self) -> None:
+        _reset_registry()
+
+    def test_load_lifecycle_plugin_round_trip(self) -> None:
+        manifest = base.PluginManifest(
+            slug='lifecycle',
+            name='Lifecycle Plugin',
+            plugin_type='lifecycle',
+        )
+
+        class _FakeLifecycle(base.LifecyclePlugin):
+            async def on_project_archived(  # type: ignore[override]
+                self, ctx, credentials
+            ):
+                return base.LifecycleResult(status='ok')
+
+        _FakeLifecycle.manifest = manifest  # type: ignore[attr-defined]
+
+        ep = unittest.mock.MagicMock()
+        ep.name = 'lifecycle'
+        ep.load.return_value = _FakeLifecycle
+        ep.dist.name = 'imbi-plugin-lifecycle'
+        ep.dist.version = '1.0'
+
+        with unittest.mock.patch(
+            'importlib.metadata.entry_points', return_value=[ep]
+        ):
+            result = registry.load_plugins()
+
+        self.assertIn('lifecycle', result.loaded)
+        entry = registry.get_plugin('lifecycle')
+        self.assertIs(entry.handler_cls, _FakeLifecycle)
+        self.assertEqual(entry.manifest.plugin_type, 'lifecycle')
+
+    def test_load_lifecycle_plugin_type_mismatch(self) -> None:
+        manifest = base.PluginManifest(
+            slug='mis-lifecycle',
+            name='Mismatch',
+            plugin_type='lifecycle',
+        )
+
+        class _ConfigImpl(base.ConfigurationPlugin):
+            pass
+
+        _ConfigImpl.manifest = manifest  # type: ignore[attr-defined]
+
+        ep = unittest.mock.MagicMock()
+        ep.name = 'mis-lifecycle'
+        ep.load.return_value = _ConfigImpl
+        ep.dist.name = 'pkg'
+        ep.dist.version = '1.0'
+
+        with unittest.mock.patch(
+            'importlib.metadata.entry_points', return_value=[ep]
+        ):
+            result = registry.load_plugins()
+
+        self.assertIn('mis-lifecycle', result.errors)
+        self.assertEqual(result.loaded, [])
+
+    def tearDown(self) -> None:
+        _reset_registry()
+
+
 class LoadPluginsDuplicateSlugTestCase(unittest.TestCase):
     def setUp(self) -> None:
         _reset_registry()
