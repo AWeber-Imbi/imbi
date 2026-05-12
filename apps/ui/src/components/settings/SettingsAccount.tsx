@@ -1,10 +1,10 @@
 import { useState } from 'react'
 
 import { Card } from '@/components/ui/card'
-import { InlineSwitch } from '@/components/ui/inline-edit/InlineSwitch'
 import { InlineText } from '@/components/ui/inline-edit/InlineText'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/hooks/useAuth'
 
 // NOTE: The backend currently exposes no self-update endpoint for the
@@ -59,9 +59,9 @@ export function SettingsAccount() {
                   Receive email updates about your projects
                 </p>
               </div>
-              <InlineSwitch
-                onCommit={(next) => setEmailNotifications(next)}
-                value={emailNotifications}
+              <Switch
+                checked={emailNotifications}
+                onCheckedChange={setEmailNotifications}
               />
             </div>
           </div>
