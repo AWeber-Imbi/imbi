@@ -1155,7 +1155,7 @@ function Highlight({ q, text }: { q: string; text: string }) {
   return (
     <>
       {text.slice(0, idx)}
-      <mark className="rounded-sm bg-amber-bg px-0 text-inherit">
+      <mark className="rounded-sm bg-amber-border/25 px-0 text-inherit">
         {text.slice(idx, idx + q.length)}
       </mark>
       {text.slice(idx + q.length)}
