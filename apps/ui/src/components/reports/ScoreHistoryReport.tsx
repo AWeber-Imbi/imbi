@@ -95,7 +95,7 @@ export function ScoreHistoryReport() {
   return (
     <div className="flex flex-col gap-5">
       {/* Chart card */}
-      <div className="rounded-lg border border-tertiary bg-primary p-[18px]">
+      <div className="overflow-hidden rounded-lg border border-tertiary bg-primary p-[18px]">
         <div className="mb-3.5 flex items-end justify-between gap-6">
           <div className="text-overline uppercase tracking-wide text-tertiary">
             Avg score by team
@@ -121,7 +121,7 @@ export function ScoreHistoryReport() {
       </div>
 
       {/* Feed card */}
-      <div className="rounded-lg border border-tertiary bg-primary">
+      <div className="overflow-hidden rounded-lg border border-tertiary bg-primary">
         <div className="border-b border-tertiary px-[18px] py-3.5">
           <div className="text-overline uppercase tracking-wide text-tertiary">
             Change events

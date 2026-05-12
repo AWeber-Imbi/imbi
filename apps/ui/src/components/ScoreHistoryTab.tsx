@@ -325,7 +325,7 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
       </div>
 
       {/* Change events card */}
-      <div className="rounded-lg border border-tertiary bg-primary">
+      <div className="overflow-hidden rounded-lg border border-tertiary bg-primary">
         <div className="flex items-center justify-between border-b border-tertiary px-[18px] py-3.5">
           <div>
             <div className="text-overline uppercase tracking-wide text-tertiary">
@@ -346,7 +346,7 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
             </button>
           </div>
         </div>
-        <div className="px-2 py-1">
+        <div>
           {rawLoading ? (
             <div className="py-10 text-center text-sm text-tertiary">
               Loading…
