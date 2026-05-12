@@ -266,7 +266,7 @@ export function ClientCredentialsSection({
             <DialogTitle>Client Credential Created</DialogTitle>
           </DialogHeader>
           {newlyCreatedCredential && (
-            <div className="space-y-3 py-1">
+            <div className="space-y-3 p-6">
               <p className="text-sm text-secondary">
                 Copy the secret now — it will not be shown again.
               </p>
@@ -297,7 +297,7 @@ export function ClientCredentialsSection({
           <DialogHeader>
             <DialogTitle>Create Client Credential</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="space-y-3 p-6">
             <div>
               <label
                 className="mb-1.5 block text-sm text-secondary"

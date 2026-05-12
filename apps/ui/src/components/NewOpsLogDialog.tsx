@@ -10,7 +10,15 @@ import {
 } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import {
   OPERATIONS_LOG_ENTRY_TYPES,
@@ -109,53 +117,29 @@ export function NewOpsLogDialog({
     onClose()
   }
 
-  if (!isOpen) return null
-
   return (
-    <div
-      aria-label="New Ops Log Entry"
-      aria-modal="true"
-      className="fixed inset-x-0 top-0 z-50 flex items-center justify-center"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') handleClose()
-      }}
-      role="dialog"
-      style={{
-        bottom: 'var(--assistant-height, 0px)',
-      }}
-    >
-      <button
-        aria-label="Close dialog"
-        className="absolute inset-0 bg-black/50"
-        onClick={handleClose}
-        type="button"
-      />
-      <div
-        className="relative mx-4 flex w-full max-w-2xl flex-col rounded-lg bg-white shadow-xl"
+    <Dialog onOpenChange={(open) => !open && handleClose()} open={isOpen}>
+      <DialogContent
+        className="sm:max-w-2xl"
         style={{
           maxHeight: 'calc(100vh - var(--assistant-height, 0px) - 2rem - 10px)',
         }}
       >
         {/* Header */}
-        <div className="border-b p-6">
-          <h2 className="text-lg font-semibold text-slate-900">
-            New Ops Log Entry
-          </h2>
-        </div>
+        <DialogHeader>
+          <DialogTitle>New Ops Log Entry</DialogTitle>
+        </DialogHeader>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
           <div className="space-y-6">
             {/* Project */}
             <div className="space-y-2">
-              <label
-                className="text-sm font-medium text-slate-900"
-                htmlFor="new-ops-project"
-              >
+              <label className="text-sm font-medium" htmlFor="new-ops-project">
                 Project <span className="text-red-500">*</span>
               </label>
               <select
-                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 id="new-ops-project"
                 onChange={(e) => {
                   setProjectId(e.target.value)
@@ -175,13 +159,13 @@ export function NewOpsLogDialog({
             {/* Environment */}
             <div className="space-y-2">
               <label
-                className="text-sm font-medium text-slate-900"
+                className="text-sm font-medium"
                 htmlFor="new-ops-environment"
               >
                 Environment <span className="text-red-500">*</span>
               </label>
               <select
-                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={
                   !projectId ||
                   selectedProjectLoading ||
@@ -206,7 +190,7 @@ export function NewOpsLogDialog({
                   </option>
                 ))}
               </select>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-muted-foreground">
                 The environment the operation was performed in
               </p>
             </div>
@@ -214,13 +198,13 @@ export function NewOpsLogDialog({
             {/* Entry Type */}
             <div className="space-y-2">
               <label
-                className="text-sm font-medium text-slate-900"
+                className="text-sm font-medium"
                 htmlFor="new-ops-entry-type"
               >
                 Entry Type <span className="text-red-500">*</span>
               </label>
               <select
-                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 id="new-ops-entry-type"
                 onChange={(e) =>
                   setEntryType(e.target.value as OperationsLogEntryType)
@@ -239,13 +223,13 @@ export function NewOpsLogDialog({
             {/* Description */}
             <div className="space-y-2">
               <label
-                className="text-sm font-medium text-slate-900"
+                className="text-sm font-medium"
                 htmlFor="new-ops-description"
               >
                 Description <span className="text-red-500">*</span>
               </label>
-              <textarea
-                className="min-h-[96px] w-full resize-none rounded-md border border-slate-200 px-3 py-2 text-sm"
+              <Textarea
+                className="min-h-[96px] resize-none"
                 id="new-ops-description"
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Short summary of what was done"
@@ -255,10 +239,7 @@ export function NewOpsLogDialog({
 
             {/* Version */}
             <div className="space-y-2">
-              <label
-                className="text-sm font-medium text-slate-900"
-                htmlFor="new-ops-version"
-              >
+              <label className="text-sm font-medium" htmlFor="new-ops-version">
                 Version
               </label>
               <Input
@@ -271,10 +252,7 @@ export function NewOpsLogDialog({
 
             {/* Link */}
             <div className="space-y-2">
-              <label
-                className="text-sm font-medium text-slate-900"
-                htmlFor="new-ops-link"
-              >
+              <label className="text-sm font-medium" htmlFor="new-ops-link">
                 Link
               </label>
               <Input
@@ -288,10 +266,7 @@ export function NewOpsLogDialog({
 
             {/* Ticket */}
             <div className="space-y-2">
-              <label
-                className="text-sm font-medium text-slate-900"
-                htmlFor="new-ops-ticket"
-              >
+              <label className="text-sm font-medium" htmlFor="new-ops-ticket">
                 Ticket
               </label>
               <Input
@@ -304,14 +279,11 @@ export function NewOpsLogDialog({
 
             {/* Notes */}
             <div className="space-y-2">
-              <label
-                className="text-sm font-medium text-slate-900"
-                htmlFor="new-ops-notes"
-              >
+              <label className="text-sm font-medium" htmlFor="new-ops-notes">
                 Notes
               </label>
-              <textarea
-                className="min-h-[96px] w-full resize-none rounded-md border border-slate-200 px-3 py-2 text-sm"
+              <Textarea
+                className="min-h-[96px] resize-none"
                 id="new-ops-notes"
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Optional context for future readers"
@@ -324,8 +296,8 @@ export function NewOpsLogDialog({
         {/* Error display */}
         {createMutation.error && (
           <div className="px-6 py-2">
-            <Card className="border-red-200 bg-red-50 p-3">
-              <p className="text-sm text-red-700">
+            <Card className="border-destructive/50 bg-destructive/10 p-3">
+              <p className="text-sm text-destructive">
                 Failed to create entry: {String(createMutation.error)}
               </p>
             </Card>
@@ -333,7 +305,7 @@ export function NewOpsLogDialog({
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 border-t p-6">
+        <DialogFooter>
           <Button onClick={handleClose} variant="outline">
             Cancel
           </Button>
@@ -343,8 +315,8 @@ export function NewOpsLogDialog({
           >
             {createMutation.isPending ? 'Saving...' : 'Save'}
           </Button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

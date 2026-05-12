@@ -174,7 +174,7 @@ export function ImportBlueprintDialog({
     <Dialog onOpenChange={(open) => !open && handleClose()} open={isOpen}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="text-primary">Import Blueprint</DialogTitle>
+          <DialogTitle>Import Blueprint</DialogTitle>
           <DialogDescription>
             Paste a JSON or YAML blueprint definition below. Required fields:{' '}
             <code className="rounded bg-secondary px-1 py-0.5 text-xs">
@@ -204,7 +204,7 @@ export function ImportBlueprintDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 p-6">
           {/* Format indicator */}
           {detectedFormat !== 'unknown' && rawInput.trim() && (
             <div className="flex items-center gap-1.5">

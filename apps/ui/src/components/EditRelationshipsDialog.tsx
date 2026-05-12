@@ -155,67 +155,69 @@ export function EditRelationshipsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
-          <Input
-            className="pl-9"
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search projects..."
-            ref={searchRef}
-            type="text"
-            value={search}
-          />
-        </div>
+        <div className="p-6">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+            <Input
+              className="pl-9"
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search projects..."
+              ref={searchRef}
+              type="text"
+              value={search}
+            />
+          </div>
 
-        {/* Project list */}
-        <div className="-mx-6 h-[400px] overflow-y-auto border-y px-6 py-1">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent opacity-50" />
-            </div>
-          ) : isError ? (
-            <p className="py-8 text-center text-sm text-red-600 dark:text-red-400">
-              Failed to load projects. Please try again.
-            </p>
-          ) : filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">
-              {search
-                ? 'No projects match your search'
-                : 'No projects available'}
-            </p>
-          ) : (
-            filtered.map((p) => {
-              const isChecked = selected.has(p.id)
-              const wasChecked = existingIds.has(p.id)
-              const isChanged = isChecked !== wasChecked
-              const typeLabel = (p.project_types || [])
-                .map((pt) => pt.name)
-                .join(', ')
+          {/* Project list */}
+          <div className="-mx-6 mt-4 h-[400px] overflow-y-auto border-y px-6 py-1">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent opacity-50" />
+              </div>
+            ) : isError ? (
+              <p className="py-8 text-center text-sm text-red-600 dark:text-red-400">
+                Failed to load projects. Please try again.
+              </p>
+            ) : filtered.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                {search
+                  ? 'No projects match your search'
+                  : 'No projects available'}
+              </p>
+            ) : (
+              filtered.map((p) => {
+                const isChecked = selected.has(p.id)
+                const wasChecked = existingIds.has(p.id)
+                const isChanged = isChecked !== wasChecked
+                const typeLabel = (p.project_types || [])
+                  .map((pt) => pt.name)
+                  .join(', ')
 
-              return (
-                <label
-                  className={`flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-slate-50 dark:hover:bg-slate-700 ${
-                    isChanged ? 'bg-amber-50 dark:bg-amber-900/30' : ''
-                  }`}
-                  key={p.id}
-                >
-                  <Checkbox
-                    checked={isChecked}
-                    onCheckedChange={() => toggle(p.id)}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
-                    {p.name}
-                  </span>
-                  {typeLabel && (
-                    <span className="flex-shrink-0 text-xs text-slate-400 dark:text-slate-500">
-                      {typeLabel}
+                return (
+                  <label
+                    className={`flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-slate-50 dark:hover:bg-slate-700 ${
+                      isChanged ? 'bg-amber-50 dark:bg-amber-900/30' : ''
+                    }`}
+                    key={p.id}
+                  >
+                    <Checkbox
+                      checked={isChecked}
+                      onCheckedChange={() => toggle(p.id)}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                      {p.name}
                     </span>
-                  )}
-                </label>
-              )
-            })
-          )}
+                    {typeLabel && (
+                      <span className="flex-shrink-0 text-xs text-slate-400 dark:text-slate-500">
+                        {typeLabel}
+                      </span>
+                    )}
+                  </label>
+                )
+              })
+            )}
+          </div>
         </div>
 
         {/* Summary + actions */}

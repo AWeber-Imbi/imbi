@@ -419,14 +419,13 @@ export function Dashboard({
       )}
 
       {/* Widget Selector Modal */}
-      {showWidgetSelector && (
-        <WidgetSelector
-          availableWidgets={availableWidgets}
-          onClose={() => setShowWidgetSelector(false)}
-          onToggleWidget={handleToggleWidget}
-          selectedWidgets={selectedWidgets}
-        />
-      )}
+      <WidgetSelector
+        availableWidgets={availableWidgets}
+        onOpenChange={setShowWidgetSelector}
+        onToggleWidget={handleToggleWidget}
+        open={showWidgetSelector}
+        selectedWidgets={selectedWidgets}
+      />
     </div>
   )
 }

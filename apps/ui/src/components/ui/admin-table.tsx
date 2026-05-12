@@ -156,64 +156,66 @@ export function AdminTable<T>({
               This item cannot be deleted at this time.
             </DialogDescription>
           </DialogHeader>
-          {blockedTarget &&
-            (() => {
-              const name = getDeleteLabel
-                ? getDeleteLabel(blockedTarget.row)
-                : ''
-              const { blockedBy, reason } = blockedTarget.result
-              if (blockedBy && blockedBy.length > 0) {
-                const parts = blockedBy.map((b, i) => (
-                  <span key={i}>
-                    {b.href ? (
-                      <Button
-                        className="h-auto p-0 font-medium text-primary underline underline-offset-2 hover:opacity-80"
-                        onClick={() => {
-                          setBlockedTarget(null)
-                          navigate(b.href!)
-                        }}
-                        variant="link"
-                      >
-                        {b.count} {b.label}
-                        {b.count !== 1 ? 's' : ''}
-                      </Button>
-                    ) : (
-                      <span className="font-medium">
-                        {b.count} {b.label}
-                        {b.count !== 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </span>
-                ))
-                const joined = parts.reduce<ReactNode[]>((acc, el, i) => {
-                  if (i === 0) return [el]
-                  if (i === parts.length - 1) return [...acc, ' and ', el]
-                  return [...acc, ', ', el]
-                }, [])
+          <div className="p-6">
+            {blockedTarget &&
+              (() => {
+                const name = getDeleteLabel
+                  ? getDeleteLabel(blockedTarget.row)
+                  : ''
+                const { blockedBy, reason } = blockedTarget.result
+                if (blockedBy && blockedBy.length > 0) {
+                  const parts = blockedBy.map((b, i) => (
+                    <span key={i}>
+                      {b.href ? (
+                        <Button
+                          className="h-auto p-0 font-medium text-primary underline underline-offset-2 hover:opacity-80"
+                          onClick={() => {
+                            setBlockedTarget(null)
+                            navigate(b.href!)
+                          }}
+                          variant="link"
+                        >
+                          {b.count} {b.label}
+                          {b.count !== 1 ? 's' : ''}
+                        </Button>
+                      ) : (
+                        <span className="font-medium">
+                          {b.count} {b.label}
+                          {b.count !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </span>
+                  ))
+                  const joined = parts.reduce<ReactNode[]>((acc, el, i) => {
+                    if (i === 0) return [el]
+                    if (i === parts.length - 1) return [...acc, ' and ', el]
+                    return [...acc, ', ', el]
+                  }, [])
+                  return (
+                    <p className="text-sm">
+                      <span className="font-semibold">{name}</span> cannot be
+                      deleted because it is referenced by {joined}. Remove or
+                      reassign
+                      {blockedBy.length === 1
+                        ? blockedBy[0].count === 1
+                          ? ` that ${blockedBy[0].label}`
+                          : ` those ${blockedBy[0].label}s`
+                        : 'them'}{' '}
+                      before deleting this item.
+                    </p>
+                  )
+                }
                 return (
                   <p className="text-sm">
                     <span className="font-semibold">{name}</span> cannot be
-                    deleted because it is referenced by {joined}. Remove or
-                    reassign
-                    {blockedBy.length === 1
-                      ? blockedBy[0].count === 1
-                        ? ` that ${blockedBy[0].label}`
-                        : ` those ${blockedBy[0].label}s`
-                      : 'them'}{' '}
-                    before deleting this item.
+                    deleted
+                    {reason
+                      ? `: ${reason.toLowerCase().replace(/^cannot delete the only /, 'because it is the only ')}.`
+                      : '.'}
                   </p>
                 )
-              }
-              return (
-                <p className="text-sm">
-                  <span className="font-semibold">{name}</span> cannot be
-                  deleted
-                  {reason
-                    ? `: ${reason.toLowerCase().replace(/^cannot delete the only /, 'because it is the only ')}.`
-                    : '.'}
-                </p>
-              )
-            })()}
+              })()}
+          </div>
           <DialogFooter>
             <Button onClick={() => setBlockedTarget(null)}>OK</Button>
           </DialogFooter>

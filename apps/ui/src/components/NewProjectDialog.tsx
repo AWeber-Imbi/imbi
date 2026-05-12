@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { slugify } from '@/lib/utils'
 import type { ProjectCreate } from '@/types'
@@ -116,17 +117,14 @@ export function NewProjectDialog({
   return (
     <Dialog onOpenChange={(open) => !open && handleClose()} open={isOpen}>
       <DialogContent
-        aria-label="Create New Project"
-        className="flex max-w-2xl flex-col gap-0 p-0 sm:max-w-2xl"
+        className="sm:max-w-2xl"
         style={{
           maxHeight: 'calc(100vh - var(--assistant-height, 0px) - 2rem - 10px)',
         }}
       >
         {/* Header */}
-        <DialogHeader className="border-b p-6">
-          <DialogTitle className="text-lg font-semibold text-slate-900">
-            Create New Project
-          </DialogTitle>
+        <DialogHeader>
+          <DialogTitle>Create New Project</DialogTitle>
         </DialogHeader>
 
         {/* Content */}
@@ -134,14 +132,11 @@ export function NewProjectDialog({
           <div className="space-y-6">
             {/* Team */}
             <div className="space-y-2">
-              <label
-                className="text-sm font-medium text-slate-900"
-                htmlFor="new-project-team"
-              >
+              <label className="text-sm font-medium" htmlFor="new-project-team">
                 Team <span className="text-red-500">*</span>
               </label>
               <select
-                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 id="new-project-team"
                 onChange={(e) => setTeamSlug(e.target.value)}
                 value={teamSlug}
@@ -153,21 +148,18 @@ export function NewProjectDialog({
                   </option>
                 ))}
               </select>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-muted-foreground">
                 Team that owns this project
               </p>
             </div>
 
             {/* Project Type */}
             <div className="space-y-2">
-              <label
-                className="text-sm font-medium text-slate-900"
-                htmlFor="new-project-type"
-              >
+              <label className="text-sm font-medium" htmlFor="new-project-type">
                 Project Type <span className="text-red-500">*</span>
               </label>
               <select
-                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 id="new-project-type"
                 onChange={(e) => setProjectTypeSlug(e.target.value)}
                 value={projectTypeSlug}
@@ -179,15 +171,14 @@ export function NewProjectDialog({
                   </option>
                 ))}
               </select>
-              <p className="text-sm text-slate-500">Type of the new project</p>
+              <p className="text-sm text-muted-foreground">
+                Type of the new project
+              </p>
             </div>
 
             {/* Name */}
             <div className="space-y-2">
-              <label
-                className="text-sm font-medium text-slate-900"
-                htmlFor="new-project-name"
-              >
+              <label className="text-sm font-medium" htmlFor="new-project-name">
                 Name <span className="text-red-500">*</span>
               </label>
               <Input
@@ -196,17 +187,14 @@ export function NewProjectDialog({
                 placeholder="e.g., My Service"
                 value={name}
               />
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-muted-foreground">
                 Human-readable name for this project
               </p>
             </div>
 
             {/* Slug */}
             <div className="space-y-2">
-              <label
-                className="text-sm font-medium text-slate-900"
-                htmlFor="new-project-slug"
-              >
+              <label className="text-sm font-medium" htmlFor="new-project-slug">
                 Slug <span className="text-red-500">*</span>
               </label>
               <Input
@@ -215,7 +203,7 @@ export function NewProjectDialog({
                 placeholder="e.g., my-service"
                 value={slug}
               />
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-muted-foreground">
                 URL-friendly identifier for this project
               </p>
             </div>
@@ -223,13 +211,13 @@ export function NewProjectDialog({
             {/* Description */}
             <div className="space-y-2">
               <label
-                className="text-sm font-medium text-slate-900"
+                className="text-sm font-medium"
                 htmlFor="new-project-description"
               >
                 Description
               </label>
-              <textarea
-                className="min-h-[120px] w-full resize-none rounded-md border border-slate-200 px-3 py-2 text-sm"
+              <Textarea
+                className="min-h-[120px] resize-none"
                 id="new-project-description"
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Provide a high-level purpose and context for the project"
@@ -240,25 +228,24 @@ export function NewProjectDialog({
             {/* Environments */}
             {environments.length > 0 && (
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-900">
-                  Environments
-                </label>
+                <label className="text-sm font-medium">Environments</label>
                 <div className="flex flex-wrap gap-2">
                   {environments.map((env) => (
                     <button
                       className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
                         selectedEnvSlugs.includes(env.slug)
-                          ? 'border-blue-300 bg-blue-50 text-blue-700'
-                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                          ? 'border-amber-border bg-amber-border/10 text-amber-text'
+                          : 'border-input bg-background text-muted-foreground hover:border-foreground/30'
                       }`}
                       key={env.slug}
                       onClick={() => toggleEnv(env.slug)}
+                      type="button"
                     >
                       {env.name}
                     </button>
                   ))}
                 </div>
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   The environment the project runs in
                 </p>
               </div>
@@ -269,8 +256,8 @@ export function NewProjectDialog({
         {/* Error display */}
         {createMutation.error && (
           <div className="px-6 py-2">
-            <Card className="border-red-200 bg-red-50 p-3">
-              <p className="text-sm text-red-700">
+            <Card className="border-destructive/50 bg-destructive/10 p-3">
+              <p className="text-sm text-destructive">
                 Failed to create project: {String(createMutation.error)}
               </p>
             </Card>
@@ -278,7 +265,7 @@ export function NewProjectDialog({
         )}
 
         {/* Footer */}
-        <DialogFooter className="flex items-center justify-end gap-2 border-t p-6 sm:justify-end sm:space-x-0">
+        <DialogFooter>
           <Button onClick={handleClose} variant="outline">
             Cancel
           </Button>
