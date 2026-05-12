@@ -494,181 +494,185 @@ function AuthProviderCreateDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          <div>
-            <label className="mb-1.5 block text-sm text-secondary">
-              OAuth Type <span className="text-red-500">*</span>
-            </label>
-            <select
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
-              disabled={isSaving}
-              onChange={(e) => setAppType(e.target.value as OAuthAppType)}
-              value={appType}
-            >
-              <option value="google">Google</option>
-              <option value="github">GitHub</option>
-              <option value="oidc">OpenID Connect</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm text-secondary">
-              Redirect URL
-            </label>
-            <div className="flex items-center gap-2">
-              <Input
-                className="flex-1 font-mono text-xs"
-                readOnly
-                value={callbackUrl}
-              />
-              <Button
-                aria-label="Copy redirect URL"
-                onClick={() => copyToClipboard(callbackUrl, 'Redirect URL')}
-                size="icon"
-                type="button"
-                variant="outline"
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
-            </div>
-            <p className="mt-1 text-xs text-tertiary">
-              Configure this URL in the provider&apos;s OAuth app settings.
-            </p>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm text-secondary">
-              Client ID <span className="text-red-500">*</span>
-            </label>
-            <Input
-              disabled={isSaving}
-              onChange={(e) => setClientId(e.target.value)}
-              value={clientId}
-            />
-            {errors.client_id && (
-              <div className="mt-1 text-xs text-danger">{errors.client_id}</div>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm text-secondary">
-              Client Secret <span className="text-red-500">*</span>
-            </label>
-            <Input
-              autoComplete="new-password"
-              disabled={isSaving}
-              onChange={(e) => setSecret(e.target.value)}
-              type="password"
-              value={secret}
-            />
-            {errors.client_secret && (
-              <div className="mt-1 text-xs text-danger">
-                {errors.client_secret}
-              </div>
-            )}
-          </div>
-
-          {showIssuerUrl && (
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-4 p-6">
             <div>
               <label className="mb-1.5 block text-sm text-secondary">
-                Issuer URL <span className="text-red-500">*</span>
+                OAuth Type <span className="text-red-500">*</span>
+              </label>
+              <select
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                disabled={isSaving}
+                onChange={(e) => setAppType(e.target.value as OAuthAppType)}
+                value={appType}
+              >
+                <option value="google">Google</option>
+                <option value="github">GitHub</option>
+                <option value="oidc">OpenID Connect</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm text-secondary">
+                Redirect URL
+              </label>
+              <div className="flex items-center gap-2">
+                <Input
+                  className="flex-1 font-mono text-xs"
+                  readOnly
+                  value={callbackUrl}
+                />
+                <Button
+                  aria-label="Copy redirect URL"
+                  onClick={() => copyToClipboard(callbackUrl, 'Redirect URL')}
+                  size="icon"
+                  type="button"
+                  variant="outline"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="mt-1 text-xs text-tertiary">
+                Configure this URL in the provider&apos;s OAuth app settings.
+              </p>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm text-secondary">
+                Client ID <span className="text-red-500">*</span>
               </label>
               <Input
                 disabled={isSaving}
-                onChange={(e) => setIssuerUrl(e.target.value)}
-                placeholder="https://idp.example.com/"
-                value={issuerUrl}
+                onChange={(e) => setClientId(e.target.value)}
+                value={clientId}
               />
-              {errors.issuer_url && (
+              {errors.client_id && (
                 <div className="mt-1 text-xs text-danger">
-                  {errors.issuer_url}
+                  {errors.client_id}
                 </div>
               )}
             </div>
-          )}
 
-          <div>
-            <label className="mb-1.5 block text-sm text-secondary">
-              Scopes
-            </label>
-            <Input
-              disabled={isSaving}
-              onChange={(e) => setScopes(e.target.value)}
-              placeholder="openid, email, profile (comma-separated)"
-              value={scopes}
-            />
-          </div>
-
-          {showAllowedDomains && (
             <div>
               <label className="mb-1.5 block text-sm text-secondary">
-                Allowed Email Domains
+                Client Secret <span className="text-red-500">*</span>
               </label>
-              <div
-                className={
-                  'flex flex-wrap items-center gap-2 rounded-lg border border-input bg-background p-2'
-                }
-              >
-                {allowedDomains.map((d) => (
-                  <span
-                    className={
-                      'inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-xs text-secondary'
-                    }
-                    key={d}
-                  >
-                    {d}
-                    <button
-                      aria-label={`Remove ${d}`}
-                      className="text-tertiary hover:text-primary"
-                      disabled={isSaving}
-                      onClick={() => removeDomain(d)}
-                      onMouseDown={(e) => e.preventDefault()}
-                      type="button"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
-                <input
-                  className={
-                    'min-w-[8rem] flex-1 bg-transparent px-1 py-0.5 text-sm outline-none placeholder:text-muted-foreground'
-                  }
-                  disabled={isSaving}
-                  onBlur={addDomain}
-                  onChange={(e) => setDomainDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
-                      e.preventDefault()
-                      addDomain()
-                    } else if (
-                      e.key === 'Backspace' &&
-                      !domainDraft &&
-                      allowedDomains.length > 0
-                    ) {
-                      setAllowedDomains(allowedDomains.slice(0, -1))
-                    }
-                  }}
-                  placeholder={
-                    allowedDomains.length === 0
-                      ? 'example.com (Enter to add)'
-                      : ''
-                  }
-                  value={domainDraft}
-                />
-              </div>
+              <Input
+                autoComplete="new-password"
+                disabled={isSaving}
+                onChange={(e) => setSecret(e.target.value)}
+                type="password"
+                value={secret}
+              />
+              {errors.client_secret && (
+                <div className="mt-1 text-xs text-danger">
+                  {errors.client_secret}
+                </div>
+              )}
             </div>
-          )}
 
-          <label className="flex w-full items-center gap-2 text-sm text-secondary">
-            <input
-              checked={enableIntegration}
-              className="h-4 w-4 rounded border-input"
-              disabled={isSaving}
-              onChange={(e) => setEnableIntegration(e.target.checked)}
-              type="checkbox"
-            />
-            Enable Integration
-          </label>
+            {showIssuerUrl && (
+              <div>
+                <label className="mb-1.5 block text-sm text-secondary">
+                  Issuer URL <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  disabled={isSaving}
+                  onChange={(e) => setIssuerUrl(e.target.value)}
+                  placeholder="https://idp.example.com/"
+                  value={issuerUrl}
+                />
+                {errors.issuer_url && (
+                  <div className="mt-1 text-xs text-danger">
+                    {errors.issuer_url}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div>
+              <label className="mb-1.5 block text-sm text-secondary">
+                Scopes
+              </label>
+              <Input
+                disabled={isSaving}
+                onChange={(e) => setScopes(e.target.value)}
+                placeholder="openid, email, profile (comma-separated)"
+                value={scopes}
+              />
+            </div>
+
+            {showAllowedDomains && (
+              <div>
+                <label className="mb-1.5 block text-sm text-secondary">
+                  Allowed Email Domains
+                </label>
+                <div
+                  className={
+                    'flex flex-wrap items-center gap-2 rounded-lg border border-input bg-background p-2'
+                  }
+                >
+                  {allowedDomains.map((d) => (
+                    <span
+                      className={
+                        'inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-xs text-secondary'
+                      }
+                      key={d}
+                    >
+                      {d}
+                      <button
+                        aria-label={`Remove ${d}`}
+                        className="text-tertiary hover:text-primary"
+                        disabled={isSaving}
+                        onClick={() => removeDomain(d)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        type="button"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                  <input
+                    className={
+                      'min-w-[8rem] flex-1 bg-transparent px-1 py-0.5 text-sm outline-none placeholder:text-muted-foreground'
+                    }
+                    disabled={isSaving}
+                    onBlur={addDomain}
+                    onChange={(e) => setDomainDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
+                        e.preventDefault()
+                        addDomain()
+                      } else if (
+                        e.key === 'Backspace' &&
+                        !domainDraft &&
+                        allowedDomains.length > 0
+                      ) {
+                        setAllowedDomains(allowedDomains.slice(0, -1))
+                      }
+                    }}
+                    placeholder={
+                      allowedDomains.length === 0
+                        ? 'example.com (Enter to add)'
+                        : ''
+                    }
+                    value={domainDraft}
+                  />
+                </div>
+              </div>
+            )}
+
+            <label className="flex w-full items-center gap-2 text-sm text-secondary">
+              <input
+                checked={enableIntegration}
+                className="h-4 w-4 rounded border-input"
+                disabled={isSaving}
+                onChange={(e) => setEnableIntegration(e.target.checked)}
+                type="checkbox"
+              />
+              Enable Integration
+            </label>
+          </div>
 
           <DialogFooter>
             <Button
@@ -803,212 +807,216 @@ function AuthProviderEditDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          <div>
-            <label className="mb-1.5 block text-sm text-secondary">
-              Display Name <span className="text-red-500">*</span>
-            </label>
-            <Input
-              disabled={isSaving}
-              onChange={(e) => setName(e.target.value)}
-              value={name}
-            />
-            {errors.name && (
-              <div className="mt-1 text-xs text-danger">{errors.name}</div>
-            )}
-          </div>
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-4 p-6">
+            <div>
+              <label className="mb-1.5 block text-sm text-secondary">
+                Display Name <span className="text-red-500">*</span>
+              </label>
+              <Input
+                disabled={isSaving}
+                onChange={(e) => setName(e.target.value)}
+                value={name}
+              />
+              {errors.name && (
+                <div className="mt-1 text-xs text-danger">{errors.name}</div>
+              )}
+            </div>
 
-          <div>
-            <label className="mb-1.5 block text-sm text-secondary">
-              OAuth Type <span className="text-red-500">*</span>
-            </label>
-            <select
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
-              disabled={isSaving}
-              onChange={(e) => setAppType(e.target.value as OAuthAppType)}
-              value={appType}
-            >
-              <option value="google">Google</option>
-              <option value="github">GitHub</option>
-              <option value="oidc">OpenID Connect</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm text-secondary">
-              Client ID <span className="text-red-500">*</span>
-            </label>
-            <Input
-              disabled={isSaving}
-              onChange={(e) => setClientId(e.target.value)}
-              value={clientId}
-            />
-            {errors.client_id && (
-              <div className="mt-1 text-xs text-danger">{errors.client_id}</div>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm text-secondary">
-              Client Secret
-            </label>
-            {provider.has_secret && !replaceSecret ? (
-              <div
-                className={
-                  'flex items-center justify-between rounded-lg border border-input bg-secondary px-3 py-2'
-                }
+            <div>
+              <label className="mb-1.5 block text-sm text-secondary">
+                OAuth Type <span className="text-red-500">*</span>
+              </label>
+              <select
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                disabled={isSaving}
+                onChange={(e) => setAppType(e.target.value as OAuthAppType)}
+                value={appType}
               >
-                <span className="text-sm text-secondary">
-                  Secret is set (hidden).
-                </span>
-                <Button
-                  disabled={isSaving}
-                  onClick={() => setReplaceSecret(true)}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  Replace secret
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                <Input
-                  autoComplete="new-password"
-                  disabled={isSaving}
-                  onChange={(e) => setSecret(e.target.value)}
-                  placeholder={
-                    provider.has_secret
-                      ? 'Enter a new secret (leave blank to keep current)'
-                      : ''
+                <option value="google">Google</option>
+                <option value="github">GitHub</option>
+                <option value="oidc">OpenID Connect</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm text-secondary">
+                Client ID <span className="text-red-500">*</span>
+              </label>
+              <Input
+                disabled={isSaving}
+                onChange={(e) => setClientId(e.target.value)}
+                value={clientId}
+              />
+              {errors.client_id && (
+                <div className="mt-1 text-xs text-danger">
+                  {errors.client_id}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm text-secondary">
+                Client Secret
+              </label>
+              {provider.has_secret && !replaceSecret ? (
+                <div
+                  className={
+                    'flex items-center justify-between rounded-lg border border-input bg-secondary px-3 py-2'
                   }
-                  type="password"
-                  value={secret}
-                />
-                {provider.has_secret && (
+                >
+                  <span className="text-sm text-secondary">
+                    Secret is set (hidden).
+                  </span>
                   <Button
                     disabled={isSaving}
-                    onClick={() => {
-                      setReplaceSecret(false)
-                      setSecret('')
-                    }}
+                    onClick={() => setReplaceSecret(true)}
                     size="sm"
                     type="button"
-                    variant="ghost"
+                    variant="outline"
                   >
-                    Cancel replace
+                    Replace secret
                   </Button>
-                )}
-                {errors.client_secret && (
-                  <div className="text-xs text-danger">
-                    {errors.client_secret}
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <Input
+                    autoComplete="new-password"
+                    disabled={isSaving}
+                    onChange={(e) => setSecret(e.target.value)}
+                    placeholder={
+                      provider.has_secret
+                        ? 'Enter a new secret (leave blank to keep current)'
+                        : ''
+                    }
+                    type="password"
+                    value={secret}
+                  />
+                  {provider.has_secret && (
+                    <Button
+                      disabled={isSaving}
+                      onClick={() => {
+                        setReplaceSecret(false)
+                        setSecret('')
+                      }}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      Cancel replace
+                    </Button>
+                  )}
+                  {errors.client_secret && (
+                    <div className="text-xs text-danger">
+                      {errors.client_secret}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {showIssuerUrl && (
+              <div>
+                <label className="mb-1.5 block text-sm text-secondary">
+                  Issuer URL <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  disabled={isSaving}
+                  onChange={(e) => setIssuerUrl(e.target.value)}
+                  placeholder="https://idp.example.com/"
+                  value={issuerUrl}
+                />
+                {errors.issuer_url && (
+                  <div className="mt-1 text-xs text-danger">
+                    {errors.issuer_url}
                   </div>
                 )}
               </div>
             )}
-          </div>
 
-          {showIssuerUrl && (
             <div>
               <label className="mb-1.5 block text-sm text-secondary">
-                Issuer URL <span className="text-red-500">*</span>
+                Scopes
               </label>
               <Input
                 disabled={isSaving}
-                onChange={(e) => setIssuerUrl(e.target.value)}
-                placeholder="https://idp.example.com/"
-                value={issuerUrl}
+                onChange={(e) => setScopes(e.target.value)}
+                placeholder="openid, email, profile (comma-separated)"
+                value={scopes}
               />
-              {errors.issuer_url && (
-                <div className="mt-1 text-xs text-danger">
-                  {errors.issuer_url}
-                </div>
-              )}
             </div>
-          )}
 
-          <div>
-            <label className="mb-1.5 block text-sm text-secondary">
-              Scopes
-            </label>
-            <Input
-              disabled={isSaving}
-              onChange={(e) => setScopes(e.target.value)}
-              placeholder="openid, email, profile (comma-separated)"
-              value={scopes}
-            />
-          </div>
-
-          {showAllowedDomains && (
-            <div>
-              <label className="mb-1.5 block text-sm text-secondary">
-                Allowed Email Domains
-              </label>
-              <div
-                className={
-                  'flex flex-wrap items-center gap-2 rounded-lg border border-input bg-background p-2'
-                }
-              >
-                {allowedDomains.map((d) => (
-                  <span
-                    className={
-                      'inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-xs text-secondary'
-                    }
-                    key={d}
-                  >
-                    {d}
-                    <button
-                      aria-label={`Remove ${d}`}
-                      className="text-tertiary hover:text-primary"
-                      disabled={isSaving}
-                      onClick={() => removeDomain(d)}
-                      onMouseDown={(e) => e.preventDefault()}
-                      type="button"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
-                <input
+            {showAllowedDomains && (
+              <div>
+                <label className="mb-1.5 block text-sm text-secondary">
+                  Allowed Email Domains
+                </label>
+                <div
                   className={
-                    'min-w-[8rem] flex-1 bg-transparent px-1 py-0.5 text-sm outline-none placeholder:text-muted-foreground'
+                    'flex flex-wrap items-center gap-2 rounded-lg border border-input bg-background p-2'
                   }
-                  disabled={isSaving}
-                  onBlur={addDomain}
-                  onChange={(e) => setDomainDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
-                      e.preventDefault()
-                      addDomain()
-                    } else if (
-                      e.key === 'Backspace' &&
-                      !domainDraft &&
-                      allowedDomains.length > 0
-                    ) {
-                      setAllowedDomains(allowedDomains.slice(0, -1))
+                >
+                  {allowedDomains.map((d) => (
+                    <span
+                      className={
+                        'inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-xs text-secondary'
+                      }
+                      key={d}
+                    >
+                      {d}
+                      <button
+                        aria-label={`Remove ${d}`}
+                        className="text-tertiary hover:text-primary"
+                        disabled={isSaving}
+                        onClick={() => removeDomain(d)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        type="button"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                  <input
+                    className={
+                      'min-w-[8rem] flex-1 bg-transparent px-1 py-0.5 text-sm outline-none placeholder:text-muted-foreground'
                     }
-                  }}
-                  placeholder={
-                    allowedDomains.length === 0
-                      ? 'example.com (Enter to add)'
-                      : ''
-                  }
-                  value={domainDraft}
-                />
+                    disabled={isSaving}
+                    onBlur={addDomain}
+                    onChange={(e) => setDomainDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
+                        e.preventDefault()
+                        addDomain()
+                      } else if (
+                        e.key === 'Backspace' &&
+                        !domainDraft &&
+                        allowedDomains.length > 0
+                      ) {
+                        setAllowedDomains(allowedDomains.slice(0, -1))
+                      }
+                    }}
+                    placeholder={
+                      allowedDomains.length === 0
+                        ? 'example.com (Enter to add)'
+                        : ''
+                    }
+                    value={domainDraft}
+                  />
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          <label className="flex w-full items-center gap-2 text-sm text-secondary">
-            <input
-              checked={enableIntegration}
-              className="h-4 w-4 rounded border-input"
-              disabled={isSaving}
-              onChange={(e) => setEnableIntegration(e.target.checked)}
-              type="checkbox"
-            />
-            Enable Integration
-          </label>
+            <label className="flex w-full items-center gap-2 text-sm text-secondary">
+              <input
+                checked={enableIntegration}
+                className="h-4 w-4 rounded border-input"
+                disabled={isSaving}
+                onChange={(e) => setEnableIntegration(e.target.checked)}
+                type="checkbox"
+              />
+              Enable Integration
+            </label>
+          </div>
 
           <DialogFooter>
             <Button

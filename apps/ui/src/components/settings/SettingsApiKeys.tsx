@@ -199,10 +199,7 @@ export function SettingsApiKeys() {
         }}
         open={showCreateDialog}
       >
-        <DialogContent
-          className="border-border bg-card"
-          style={{ borderWidth: '0.5px' }}
-        >
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>
               {createdKey ? 'API key created' : 'Create new API key'}
@@ -210,28 +207,29 @@ export function SettingsApiKeys() {
           </DialogHeader>
 
           {createdKey ? (
-            <div className="space-y-4">
-              <p className="text-[13.5px] text-secondary">
-                Copy your API key now. You won't be able to see it again.
-              </p>
-              <div className="flex items-center gap-2">
-                <Input
-                  className="font-mono text-[12px]"
-                  readOnly
-                  style={{ borderWidth: '0.5px' }}
-                  value={createdKey.key_secret}
-                />
-                <Button
-                  className=""
-                  onClick={() =>
-                    handleCopyKey(createdKey.key_secret, 'created')
-                  }
-                  size="icon"
-                  style={{ borderWidth: '0.5px' }}
-                  variant="outline"
-                >
-                  {copiedKeyId === 'created' ? '✓' : '⎘'}
-                </Button>
+            <>
+              <div className="space-y-4 p-6">
+                <p className="text-[13.5px] text-secondary">
+                  Copy your API key now. You won't be able to see it again.
+                </p>
+                <div className="flex items-center gap-2">
+                  <Input
+                    className="font-mono text-[12px]"
+                    readOnly
+                    style={{ borderWidth: '0.5px' }}
+                    value={createdKey.key_secret}
+                  />
+                  <Button
+                    onClick={() =>
+                      handleCopyKey(createdKey.key_secret, 'created')
+                    }
+                    size="icon"
+                    style={{ borderWidth: '0.5px' }}
+                    variant="outline"
+                  >
+                    {copiedKeyId === 'created' ? '✓' : '⎘'}
+                  </Button>
+                </div>
               </div>
               <DialogFooter>
                 <Button
@@ -243,25 +241,26 @@ export function SettingsApiKeys() {
                   Done
                 </Button>
               </DialogFooter>
-            </div>
+            </>
           ) : (
-            <div className="space-y-4">
-              <div>
-                <Label>Key name</Label>
-                <Input
-                  className="mt-2"
-                  onChange={(e) => setNewKeyName(e.target.value)}
-                  placeholder="e.g. Production API Key"
-                  style={{ borderWidth: '0.5px' }}
-                  value={newKeyName}
-                />
+            <>
+              <div className="space-y-4 p-6">
+                <div>
+                  <Label>Key name</Label>
+                  <Input
+                    className="mt-2"
+                    onChange={(e) => setNewKeyName(e.target.value)}
+                    placeholder="e.g. Production API Key"
+                    style={{ borderWidth: '0.5px' }}
+                    value={newKeyName}
+                  />
+                </div>
+                {createError && (
+                  <p className="text-[12px] text-red-600">{createError}</p>
+                )}
               </div>
-              {createError && (
-                <p className="text-[12px] text-red-600">{createError}</p>
-              )}
               <DialogFooter>
                 <Button
-                  className=""
                   onClick={() => {
                     setShowCreateDialog(false)
                     setCreateError(null)
@@ -278,7 +277,7 @@ export function SettingsApiKeys() {
                   {createMutation.isPending ? 'Creating...' : 'Create key'}
                 </Button>
               </DialogFooter>
-            </div>
+            </>
           )}
         </DialogContent>
       </Dialog>
@@ -290,14 +289,17 @@ export function SettingsApiKeys() {
         }}
         open={!!revokingKeyId}
       >
-        <DialogContent style={{ borderWidth: '0.5px' }}>
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Revoke API key</DialogTitle>
           </DialogHeader>
-          <p className="text-[13.5px] text-secondary">
-            Are you sure you want to revoke this API key? Any applications using
-            this key will lose access immediately. This action cannot be undone.
-          </p>
+          <div className="p-6">
+            <p className="text-[13.5px] text-secondary">
+              Are you sure you want to revoke this API key? Any applications
+              using this key will lose access immediately. This action cannot be
+              undone.
+            </p>
+          </div>
           <DialogFooter>
             <Button
               className=""

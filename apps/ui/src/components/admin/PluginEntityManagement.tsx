@@ -339,7 +339,7 @@ export function PluginEntityManagement({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <div className="space-y-3 p-6">
             {properties.map(({ key, prop, required }) => (
               <label className="block text-sm" key={key}>
                 <span className="text-secondary">

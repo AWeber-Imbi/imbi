@@ -22,6 +22,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -284,7 +285,7 @@ export function ProjectPluginsSection({
           <DialogHeader>
             <DialogTitle>Add Plugin Override</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 p-6">
             <div className="space-y-2">
               <Label>Tab</Label>
               <Select
@@ -352,15 +353,15 @@ export function ProjectPluginsSection({
                 Set as default for this tab
               </Label>
             </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button onClick={() => setShowAdd(false)} variant="outline">
-                Cancel
-              </Button>
-              <Button disabled={!selectedPlugin} onClick={handleAdd}>
-                Add
-              </Button>
-            </div>
           </div>
+          <DialogFooter>
+            <Button onClick={() => setShowAdd(false)} variant="outline">
+              Cancel
+            </Button>
+            <Button disabled={!selectedPlugin} onClick={handleAdd}>
+              Add
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </Card>

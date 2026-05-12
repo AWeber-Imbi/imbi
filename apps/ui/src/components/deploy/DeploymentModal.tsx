@@ -1,6 +1,10 @@
-import { GitMerge, Rocket } from 'lucide-react'
-
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import type { DeploymentRunStatus, Environment } from '@/types'
 
 import { DeployTab } from './DeployTab'
@@ -75,12 +79,13 @@ export function DeployModal({
 }: DeployModalProps) {
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="max-w-[920px] gap-0 p-0 sm:max-w-[920px]">
-        <ModalHeader
-          icon={<Rocket className="h-4 w-4" />}
-          subtitle="Roll an existing commit or tag onto an environment"
-          title={`Deploy ${projectName}`}
-        />
+      <DialogContent className="max-w-[920px] sm:max-w-[920px]">
+        <DialogHeader>
+          <DialogTitle>{`Deploy ${projectName}`}</DialogTitle>
+          <DialogDescription>
+            Roll an existing commit or tag onto an environment
+          </DialogDescription>
+        </DialogHeader>
         <div className="px-6 py-4">
           <DeployTab
             environments={environments}
@@ -111,12 +116,11 @@ export function PromoteModal({
 }: PromoteModalProps) {
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="max-w-[920px] gap-0 p-0 sm:max-w-[920px]">
-        <ModalHeader
-          icon={<GitMerge className="h-4 w-4" />}
-          subtitle={`Tag & release ${fromEnvironment} → ${toEnvironment}`}
-          title={`Promote ${projectName}`}
-        />
+      <DialogContent className="max-w-[920px] sm:max-w-[920px]">
+        <DialogHeader>
+          <DialogTitle>{`Promote ${projectName}`}</DialogTitle>
+          <DialogDescription>{`Tag & release ${fromEnvironment} → ${toEnvironment}`}</DialogDescription>
+        </DialogHeader>
         <div className="px-6 py-4">
           <PromoteTab
             environments={environments}
@@ -132,25 +136,5 @@ export function PromoteModal({
         </div>
       </DialogContent>
     </Dialog>
-  )
-}
-
-function ModalHeader({
-  icon,
-  subtitle,
-  title,
-}: {
-  icon: React.ReactNode
-  subtitle: string
-  title: string
-}) {
-  return (
-    <header className="border-b border-secondary px-6 py-4">
-      <DialogTitle className="flex items-center gap-1.5 text-sm font-medium">
-        {icon}
-        {title}
-      </DialogTitle>
-      <p className="mt-0.5 text-xs text-tertiary">{subtitle}</p>
-    </header>
   )
 }

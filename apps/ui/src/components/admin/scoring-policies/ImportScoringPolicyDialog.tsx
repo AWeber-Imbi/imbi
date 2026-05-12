@@ -158,9 +158,7 @@ export function ImportScoringPolicyDialog({
     <Dialog onOpenChange={(open) => !open && handleClose()} open={isOpen}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="text-primary">
-            Import Scoring Policy
-          </DialogTitle>
+          <DialogTitle>Import Scoring Policy</DialogTitle>
           <DialogDescription>
             Paste a JSON or YAML scoring policy definition below. Required
             fields:{' '}
@@ -184,7 +182,7 @@ export function ImportScoringPolicyDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 p-6">
           {detectedFormat !== 'unknown' && rawInput.trim() && (
             <div className="flex items-center gap-1.5">
               {formatIcon}

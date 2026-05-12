@@ -210,13 +210,15 @@ export function ApiKeysSection({
             <DialogTitle>API Key Created</DialogTitle>
           </DialogHeader>
           {newlyCreatedKey && (
-            <RevealSecret
-              label="Copy it now — it will not be shown again."
-              onCopy={() =>
-                navigator.clipboard?.writeText(newlyCreatedKey.key_secret)
-              }
-              value={newlyCreatedKey.key_secret}
-            />
+            <div className="p-6">
+              <RevealSecret
+                label="Copy it now — it will not be shown again."
+                onCopy={() =>
+                  navigator.clipboard?.writeText(newlyCreatedKey.key_secret)
+                }
+                value={newlyCreatedKey.key_secret}
+              />
+            </div>
           )}
         </DialogContent>
       </Dialog>
@@ -235,7 +237,7 @@ export function ApiKeysSection({
           <DialogHeader>
             <DialogTitle>Create API Key</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="space-y-3 p-6">
             <div>
               <label className="mb-1.5 block text-sm text-secondary">
                 Key name

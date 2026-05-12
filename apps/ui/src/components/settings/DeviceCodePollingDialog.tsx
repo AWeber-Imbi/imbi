@@ -182,7 +182,7 @@ export function DeviceCodePollingDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 p-6">
           <div className="rounded-md border bg-muted/40 p-4">
             <div className="text-xs uppercase tracking-wide text-muted-foreground">
               Verification code
@@ -232,7 +232,7 @@ export function DeviceCodePollingDialog({
           </div>
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-2">
+        <DialogFooter>
           <Button asChild disabled={status === 'success'} variant="outline">
             <a href={verificationHref} rel="noreferrer" target="_blank">
               <ExternalLink className="mr-2 h-3.5 w-3.5" />

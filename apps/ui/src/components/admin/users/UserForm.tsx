@@ -980,7 +980,7 @@ function ResetPasswordModal({
           <DialogDescription className="font-mono">{email}</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
+        <div className="space-y-3 p-6">
           <button
             className={cn(
               'grid w-full grid-cols-[18px_1fr] items-start gap-3 rounded-md border p-3 text-left transition-colors',

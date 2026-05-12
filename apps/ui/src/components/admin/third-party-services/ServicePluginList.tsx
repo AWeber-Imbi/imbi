@@ -17,6 +17,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -265,7 +266,7 @@ export function ServicePluginList({
           <DialogHeader>
             <DialogTitle>Add Plugin</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 p-6">
             {isAdminPluginsError && (
               <div className="text-sm text-destructive">
                 {extractApiErrorDetail(adminPluginsError) ??
@@ -303,18 +304,18 @@ export function ServicePluginList({
                 value={form.label}
               />
             </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button onClick={() => setShowDialog(false)} variant="outline">
-                Cancel
-              </Button>
-              <Button
-                disabled={isPending || !form.label || !form.plugin_slug}
-                onClick={handleSubmit}
-              >
-                {isPending ? 'Saving...' : 'Save'}
-              </Button>
-            </div>
           </div>
+          <DialogFooter>
+            <Button onClick={() => setShowDialog(false)} variant="outline">
+              Cancel
+            </Button>
+            <Button
+              disabled={isPending || !form.label || !form.plugin_slug}
+              onClick={handleSubmit}
+            >
+              {isPending ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
