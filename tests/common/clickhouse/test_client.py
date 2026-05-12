@@ -666,7 +666,7 @@ class EventsSchemaTestCase(unittest.TestCase):
     def test_events_engine(self) -> None:
         schemata = self._load_schemata()
         ddl = schemata['events']['query']
-        self.assertIn('ENGINE = ReplicatedMergeTree()', ddl)
+        self.assertIn('ENGINE = MergeTree()', ddl)
         self.assertNotIn('ReplacingMergeTree', ddl)
         self.assertIn('PARTITION BY toYYYYMM(recorded_at)', ddl)
         self.assertIn('ORDER BY (project_id, recorded_at)', ddl)
