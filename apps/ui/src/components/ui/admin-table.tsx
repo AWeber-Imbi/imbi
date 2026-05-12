@@ -175,12 +175,12 @@ export function AdminTable<T>({
                           }}
                           variant="link"
                         >
-                          {b.count} {b.label}
+                          {b.count.toLocaleString()} {b.label}
                           {b.count !== 1 ? 's' : ''}
                         </Button>
                       ) : (
                         <span className="font-medium">
-                          {b.count} {b.label}
+                          {b.count.toLocaleString()} {b.label}
                           {b.count !== 1 ? 's' : ''}
                         </span>
                       )}

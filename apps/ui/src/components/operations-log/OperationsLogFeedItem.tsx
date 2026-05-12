@@ -40,7 +40,7 @@ export function OperationsLogFeedItem({
         </span>
         <span className="flex-1" />
         <span className="font-mono text-[11px] text-tertiary">
-          {vi.count} {vi.count === 1 ? 'event' : 'events'}
+          {vi.count.toLocaleString()} {vi.count === 1 ? 'event' : 'events'}
         </span>
       </div>
     )

@@ -113,7 +113,7 @@ const TriggerButton = forwardRef<HTMLButtonElement, TriggerButtonProps>(
         <span className={cn(value && 'text-primary')}>{value ?? label}</span>
         {count !== undefined ? (
           <span className="ml-0.5 rounded bg-secondary px-1.5 text-[11px] tabular-nums text-tertiary">
-            {count}
+            {count.toLocaleString()}
           </span>
         ) : null}
         <ChevronDown className="h-3.5 w-3.5 text-tertiary" />
@@ -318,7 +318,9 @@ export function OperationsLogToolbar({
                     <span className="flex-1 truncate font-mono text-[13px]">
                       {slug}
                     </span>
-                    <span className="ml-3 text-xs text-tertiary">{c}</span>
+                    <span className="ml-3 text-xs text-tertiary">
+                      {c.toLocaleString()}
+                    </span>
                   </button>
                 )
               })}
@@ -424,7 +426,9 @@ function FacetDropdown({
             }}
           >
             <span className="flex-1">{o.label}</span>
-            <span className="ml-3 text-xs text-tertiary">{o.count}</span>
+            <span className="ml-3 text-xs text-tertiary">
+              {o.count.toLocaleString()}
+            </span>
           </DropdownMenuCheckboxItem>
         ))}
       </DropdownMenuContent>

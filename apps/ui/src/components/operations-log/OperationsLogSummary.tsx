@@ -137,7 +137,9 @@ export function OperationsLogSummary({
           <SkeletonBlock className="mt-0.5 h-5 w-16" />
         ) : (
           <span className="flex items-baseline gap-1.5 font-medium tabular-nums text-primary">
-            <span className="text-xl leading-none">{events}</span>
+            <span className="text-xl leading-none">
+              {events.toLocaleString()}
+            </span>
             <span className="text-[11px] uppercase tracking-wide text-tertiary">
               in {rangeLabel}
             </span>
@@ -174,12 +176,12 @@ export function OperationsLogSummary({
         ) : (
           <>
             <span className="text-xl font-medium tabular-nums leading-none text-primary">
-              {deploys}
+              {deploys.toLocaleString()}
             </span>
             <span className="text-[11.5px] text-secondary">
               {terminalEnv
-                ? `${terminalDeploys} to ${terminalEnv.name}`
-                : `${deploys} total`}
+                ? `${terminalDeploys.toLocaleString()} to ${terminalEnv.name}`
+                : `${deploys.toLocaleString()} total`}
             </span>
           </>
         )}
@@ -196,10 +198,10 @@ export function OperationsLogSummary({
         ) : (
           <>
             <span className="text-xl font-medium tabular-nums leading-none text-primary">
-              {projects}
+              {projects.toLocaleString()}
             </span>
             <span className="text-[11.5px] text-secondary">
-              across {envCount}{' '}
+              across {envCount.toLocaleString()}{' '}
               {envCount === 1 ? 'environment' : 'environments'}
             </span>
           </>
@@ -217,7 +219,7 @@ export function OperationsLogSummary({
         ) : (
           <>
             <span className="text-xl font-medium tabular-nums leading-none text-primary">
-              {people}
+              {people.toLocaleString()}
             </span>
             <span className="text-[11.5px] text-secondary">
               active in {rangeLabel}
