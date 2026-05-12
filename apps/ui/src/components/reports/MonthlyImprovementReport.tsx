@@ -160,7 +160,7 @@ export function MonthlyImprovementReport() {
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border border-tertiary bg-primary">
+      <div className="overflow-hidden rounded-lg border border-tertiary bg-primary">
         {/* Table header */}
         <div
           className="grid border-b border-tertiary bg-secondary"
@@ -193,7 +193,7 @@ export function MonthlyImprovementReport() {
           <>
             {sorted.map((row, i) => (
               <div
-                className="grid items-center border-b border-tertiary transition-colors last:border-0 hover:bg-secondary"
+                className={`grid items-center border-tertiary transition-colors last:border-0 hover:bg-secondary ${i === sorted.length - 1 ? 'border-0' : 'border-b'}`}
                 key={row.key}
                 style={COL_GRID}
               >

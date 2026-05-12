@@ -101,7 +101,7 @@ export function TeamKPIReport() {
       </div>
 
       {/* Bar chart card */}
-      <div className="rounded-lg border border-tertiary bg-primary p-[18px]">
+      <div className="overflow-hidden rounded-lg border border-tertiary bg-primary p-[18px]">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <div className="text-overline uppercase tracking-wide text-tertiary">
@@ -138,7 +138,7 @@ export function TeamKPIReport() {
       </div>
 
       {/* Table card */}
-      <div className="rounded-lg border border-tertiary bg-primary">
+      <div className="overflow-hidden rounded-lg border border-tertiary bg-primary">
         <div className="border-b border-tertiary px-[18px] py-3.5">
           <div className="text-overline uppercase tracking-wide text-tertiary">
             Team details
@@ -181,8 +181,8 @@ export function TeamKPIReport() {
             <tbody>
               {sorted.map((row, i) => (
                 <tr
-                  className={`border-b border-tertiary transition-colors hover:bg-secondary ${
-                    i === sorted.length - 1 ? 'border-0' : ''
+                  className={`border-tertiary transition-colors hover:bg-secondary ${
+                    i === sorted.length - 1 ? 'border-0' : 'border-b'
                   }`}
                   key={row.key}
                 >
