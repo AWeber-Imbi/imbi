@@ -57,10 +57,10 @@ export function ReportsPage() {
     <div className="min-h-screen bg-tertiary text-primary">
       <Navigation />
       <main
-        className="mx-auto max-w-[1400px] px-6 pt-24"
+        className="pt-16"
         style={{ paddingBottom: 'var(--assistant-height, 64px)' }}
       >
-        <div className="flex gap-6">
+        <div className="mx-auto flex max-w-[1400px] gap-6 px-6 py-7">
           {/* Left sidebar — report list */}
           <aside className="w-56 flex-shrink-0">
             <div className="rounded-lg border border-tertiary bg-primary">
@@ -69,14 +69,14 @@ export function ReportsPage() {
                   Reports
                 </div>
               </div>
-              <div className="p-1">
+              <div className="space-y-1 p-2">
                 {REPORTS.map((r) => {
                   const isActive = r.id === activeId
                   return (
                     <button
-                      className={`flex w-full items-start gap-2.5 rounded-md px-3 py-2.5 text-left transition-colors ${
+                      className={`flex w-full items-start gap-3 rounded-lg px-4 py-3 text-left transition-colors ${
                         isActive
-                          ? 'bg-amber-bg text-amber-text'
+                          ? 'bg-warning text-warning'
                           : 'text-secondary hover:bg-secondary hover:text-primary'
                       }`}
                       key={r.id}

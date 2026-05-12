@@ -130,7 +130,7 @@ export function ScoreHistoryReport() {
             Recent score recomputations across all projects, newest first.
           </div>
         </div>
-        <div className="px-2 py-1">
+        <div>
           {feedLoading ? (
             <div className="py-10 text-center text-sm text-tertiary">
               Loading…
