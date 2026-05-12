@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS events (
   attributed_to        LowCardinality(String) DEFAULT '',
   metadata             JSON,
   payload              JSON
-) ENGINE = MergeTree()
+) ENGINE = ReplicatedMergeTree()
 PARTITION BY toYYYYMM(recorded_at)
 ORDER BY (project_id, recorded_at);
 """
@@ -20,7 +20,7 @@ enabled = true
 
 [operations_log]
 query = """
-CREATE TABLE IF NOT EXISTS operations_log (
+CREATE TABLE IF NOT EXISTS operations_log ON (
     id                String,
     occurred_at       DateTime64(3, 'UTC'),
     recorded_at       DateTime64(3, 'UTC'),
@@ -38,8 +38,9 @@ CREATE TABLE IF NOT EXISTS operations_log (
     version           Nullable(String),
     _row_version      UInt64 DEFAULT 1,
     is_deleted        UInt8  DEFAULT 0,
+    plugin_slug       LowCardinality(String) DEFAULT '',
     INDEX idx_id id TYPE bloom_filter GRANULARITY 4
-) ENGINE = ReplacingMergeTree(_row_version)
+) ENGINE = ReplicatedReplacingMergeTree(_row_version)
 PARTITION BY toYYYYMM(occurred_at)
 ORDER BY (project_id, id);
 """
@@ -54,7 +55,7 @@ CREATE TABLE IF NOT EXISTS score_history (
   previous_score Float32,
   change_reason  LowCardinality(String),
   breakdown      JSON
-) ENGINE = MergeTree()
+) ENGINE = ReplicatedMergeTree()
 PARTITION BY toYear(timestamp)
 ORDER BY (project_id, timestamp);
 """
@@ -63,7 +64,7 @@ enabled = true
 [score_latest_data]
 query = """
 CREATE MATERIALIZED VIEW IF NOT EXISTS score_latest_data
-ENGINE = AggregatingMergeTree()
+ENGINE = ReplicatedAggregatingMergeTree()
 ORDER BY project_id
 AS SELECT
     project_id,
