@@ -10,6 +10,7 @@ See ``docs/deployments-plan.md`` for the full design.
 """
 
 import datetime
+import importlib.resources
 import itertools
 import json
 import logging
@@ -944,16 +945,9 @@ _PROMPT_COMMIT_CAP = 150
 _SEMVER_RE = re.compile(r'^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$')
 
 _RELEASE_NOTES_SYSTEM = (
-    'You are a release-notes editor for a software project.  Given a '
-    'list of commits between two SHAs and the previous release tag, '
-    'output a single JSON object on the form\n'
-    '  {"bump": "major"|"minor"|"patch", "version": "vX.Y.Z", '
-    '"reasoning": "<one-paragraph explanation>", "notes_markdown": '
-    '"<markdown body>"}.\n'
-    'The version must be the previous tag bumped according to your '
-    'chosen ``bump``.  The notes_markdown should group commits by '
-    'conventional-commit type (Features / Fixes / Chores / etc.) when '
-    'possible.  Do not output anything outside the JSON object.'
+    importlib.resources.files('imbi_api.prompts')
+    .joinpath('release_notes_system.md')
+    .read_text(encoding='utf-8')
 )
 
 
