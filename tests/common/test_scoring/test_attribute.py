@@ -1,3 +1,4 @@
+import datetime
 import types
 import unittest
 
@@ -108,6 +109,129 @@ class ComputeBaseScoreTests(unittest.TestCase):
         )
         score, _ = attribute.compute_base_score({'lang': 'py'}, [policy])
         self.assertEqual(100.0, score)
+
+    def test_presence_policy_present(self) -> None:
+        policy = models.PresencePolicy(
+            name='desc',
+            slug='desc',
+            attribute_name='description',
+            weight=20,
+        )
+        score, contribs = attribute.compute_base_score(
+            types.SimpleNamespace(description='a project'),
+            [policy],
+        )
+        self.assertEqual(100.0, score)
+        self.assertEqual('presence', contribs[0].category)
+        self.assertEqual('description', contribs[0].attribute_name)
+
+    def test_presence_policy_missing(self) -> None:
+        policy = models.PresencePolicy(
+            name='desc',
+            slug='desc',
+            attribute_name='description',
+            weight=20,
+        )
+        score, contribs = attribute.compute_base_score(
+            types.SimpleNamespace(description=''),
+            [policy],
+        )
+        self.assertEqual(0.0, score)
+        self.assertEqual('', contribs[0].value)
+
+    def test_link_presence_present(self) -> None:
+        policy = models.LinkPresencePolicy(
+            name='source link',
+            slug='source-link',
+            link_slug='source-code',
+            weight=20,
+        )
+        score, contribs = attribute.compute_base_score(
+            types.SimpleNamespace(
+                links={'source-code': 'https://example.com/repo'}
+            ),
+            [policy],
+        )
+        self.assertEqual(100.0, score)
+        self.assertEqual('link_presence', contribs[0].category)
+        self.assertEqual('source-code', contribs[0].link_slug)
+        self.assertEqual('https://example.com/repo', contribs[0].value)
+
+    def test_link_presence_missing(self) -> None:
+        policy = models.LinkPresencePolicy(
+            name='source link',
+            slug='source-link',
+            link_slug='source-code',
+            weight=20,
+        )
+        score, _ = attribute.compute_base_score(
+            types.SimpleNamespace(links={}),
+            [policy],
+        )
+        self.assertEqual(0.0, score)
+
+    def test_age_policy_fresh(self) -> None:
+        now = datetime.datetime.now(datetime.UTC)
+        recent = (now - datetime.timedelta(days=1)).isoformat()
+        policy = models.AgePolicy(
+            name='last commit',
+            slug='last-commit',
+            attribute_name='last_commit_at',
+            weight=10,
+            age_score_map={'>30d': 0, '<=30d': 100},
+        )
+        score, contribs = attribute.compute_base_score(
+            types.SimpleNamespace(last_commit_at=recent),
+            [policy],
+        )
+        self.assertEqual(100.0, score)
+        self.assertEqual('age', contribs[0].category)
+
+    def test_age_policy_missing_contributes_zero(self) -> None:
+        policy = models.AgePolicy(
+            name='last commit',
+            slug='last-commit',
+            attribute_name='last_commit_at',
+            weight=10,
+            age_score_map={'>30d': 0, '<=30d': 100},
+        )
+        score, _ = attribute.compute_base_score(
+            types.SimpleNamespace(last_commit_at=None),
+            [policy],
+        )
+        self.assertEqual(0.0, score)
+
+    def test_mixed_categories_weighted_average(self) -> None:
+        policies: list[attribute.Policy] = [
+            models.AttributePolicy(
+                name='lang',
+                slug='lang',
+                attribute_name='lang',
+                weight=50,
+                value_score_map={'py': 100},
+            ),
+            models.PresencePolicy(
+                name='desc',
+                slug='desc',
+                attribute_name='description',
+                weight=10,
+            ),
+            models.LinkPresencePolicy(
+                name='source',
+                slug='source',
+                link_slug='source-code',
+                weight=20,
+            ),
+        ]
+        proj = types.SimpleNamespace(
+            lang='py',
+            description='',  # missing → 0
+            links={'source-code': 'https://example.com'},
+        )
+        score, contribs = attribute.compute_base_score(proj, policies)
+        # (100*50 + 0*10 + 100*20) / 80 = 87.5
+        self.assertAlmostEqual(87.5, score, places=3)
+        self.assertEqual(3, len(contribs))
 
     def test_zero_total_weight(self) -> None:
         policy = _policy(

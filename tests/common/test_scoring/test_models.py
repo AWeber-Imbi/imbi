@@ -1,3 +1,4 @@
+import datetime
 import unittest
 
 import pydantic
@@ -116,3 +117,228 @@ class EvaluationTests(unittest.TestCase):
         )
         self.assertEqual(100.0, policy.evaluate(95))
         self.assertEqual(100.0, policy.evaluate(100))
+
+
+class IsMissingTests(unittest.TestCase):
+    def test_none_is_missing(self) -> None:
+        self.assertTrue(models.is_missing(None))
+
+    def test_empty_string_is_missing(self) -> None:
+        self.assertTrue(models.is_missing(''))
+        self.assertTrue(models.is_missing('   '))
+
+    def test_empty_collection_is_missing(self) -> None:
+        self.assertTrue(models.is_missing([]))
+        self.assertTrue(models.is_missing({}))
+        self.assertTrue(models.is_missing(()))
+        self.assertTrue(models.is_missing(set()))
+
+    def test_non_empty_is_present(self) -> None:
+        self.assertFalse(models.is_missing('x'))
+        self.assertFalse(models.is_missing([1]))
+        self.assertFalse(models.is_missing(0))
+        self.assertFalse(models.is_missing(False))
+
+
+class PresencePolicyTests(unittest.TestCase):
+    def _policy(self, **overrides: object) -> models.PresencePolicy:
+        defaults: dict[str, object] = {
+            'name': 'Has description',
+            'slug': 'has-description',
+            'attribute_name': 'description',
+            'weight': 10,
+        }
+        defaults.update(overrides)
+        return models.PresencePolicy(**defaults)  # type: ignore[arg-type]
+
+    def test_present_default(self) -> None:
+        self.assertEqual(100.0, self._policy().evaluate('a description'))
+
+    def test_missing_default(self) -> None:
+        self.assertEqual(0.0, self._policy().evaluate(None))
+        self.assertEqual(0.0, self._policy().evaluate(''))
+
+    def test_custom_scores(self) -> None:
+        policy = self._policy(present_score=75, missing_score=25)
+        self.assertEqual(75.0, policy.evaluate('x'))
+        self.assertEqual(25.0, policy.evaluate(None))
+
+
+class LinkPresencePolicyTests(unittest.TestCase):
+    def _policy(self, **overrides: object) -> models.LinkPresencePolicy:
+        defaults: dict[str, object] = {
+            'name': 'Has source link',
+            'slug': 'has-source-link',
+            'link_slug': 'source-code',
+            'weight': 10,
+        }
+        defaults.update(overrides)
+        return models.LinkPresencePolicy(**defaults)  # type: ignore[arg-type]
+
+    def test_present(self) -> None:
+        policy = self._policy()
+        self.assertEqual(
+            100.0,
+            policy.evaluate({'source-code': 'https://example.com/repo'}),
+        )
+
+    def test_missing(self) -> None:
+        policy = self._policy()
+        self.assertEqual(0.0, policy.evaluate({}))
+        self.assertEqual(0.0, policy.evaluate({'other': 'https://x'}))
+        self.assertEqual(0.0, policy.evaluate(None))
+
+    def test_empty_url_treated_as_missing(self) -> None:
+        policy = self._policy()
+        self.assertEqual(0.0, policy.evaluate({'source-code': ''}))
+
+
+class AgePolicyTests(unittest.TestCase):
+    def _policy(self, **overrides: object) -> models.AgePolicy:
+        defaults: dict[str, object] = {
+            'name': 'Oldest PR Age',
+            'slug': 'oldest-open-pr-age',
+            'attribute_name': 'oldest_open_pr',
+            'weight': 10,
+            'age_score_map': {
+                '>90d': 0,
+                '>30d': 25,
+                '>7d': 75,
+                '<=7d': 100,
+            },
+        }
+        defaults.update(overrides)
+        return models.AgePolicy(**defaults)  # type: ignore[arg-type]
+
+    def test_fresh_value_scores_high(self) -> None:
+        now = datetime.datetime(2026, 5, 12, tzinfo=datetime.UTC)
+        value = (now - datetime.timedelta(days=1)).isoformat()
+        self.assertEqual(100.0, self._policy().evaluate(value, now=now))
+
+    def test_old_value_scores_low(self) -> None:
+        now = datetime.datetime(2026, 5, 12, tzinfo=datetime.UTC)
+        value = (now - datetime.timedelta(days=120)).isoformat()
+        self.assertEqual(0.0, self._policy().evaluate(value, now=now))
+
+    def test_order_first_match_wins(self) -> None:
+        now = datetime.datetime(2026, 5, 12, tzinfo=datetime.UTC)
+        value = (now - datetime.timedelta(days=45)).isoformat()
+        # 45d matches >30d before >7d
+        self.assertEqual(25.0, self._policy().evaluate(value, now=now))
+
+    def test_missing_value_returns_none(self) -> None:
+        self.assertIsNone(self._policy().evaluate(None))
+        self.assertIsNone(self._policy().evaluate(''))
+        self.assertIsNone(self._policy().evaluate('not-a-date'))
+
+    def test_accepts_z_suffix(self) -> None:
+        now = datetime.datetime(2026, 5, 12, tzinfo=datetime.UTC)
+        value = (now - datetime.timedelta(days=2)).strftime(
+            '%Y-%m-%dT%H:%M:%SZ'
+        )
+        self.assertEqual(100.0, self._policy().evaluate(value, now=now))
+
+    def test_accepts_json_map_string(self) -> None:
+        # AGE serializes nested objects as JSON strings.
+        policy = models.AgePolicy.model_validate(
+            {
+                'name': 'PR Age',
+                'slug': 'pr-age',
+                'attribute_name': 'oldest_open_pr',
+                'weight': 10,
+                'age_score_map': '{">7d": 0, "<=7d": 100}',
+            }
+        )
+        self.assertEqual({'>7d': 0, '<=7d': 100}, policy.age_score_map)
+
+    def test_empty_map_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.AgePolicy(
+                name='x',
+                slug='x',
+                attribute_name='x',
+                weight=10,
+                age_score_map={},
+            )
+
+    def test_invalid_threshold_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.AgePolicy(
+                name='x',
+                slug='x',
+                attribute_name='x',
+                weight=10,
+                age_score_map={'30d': 0},  # missing operator
+            )
+
+    def test_supports_hours_and_weeks(self) -> None:
+        now = datetime.datetime(2026, 5, 12, tzinfo=datetime.UTC)
+        policy = models.AgePolicy(
+            name='Last sync',
+            slug='last-sync',
+            attribute_name='last_sync_at',
+            weight=10,
+            age_score_map={'>2w': 0, '>1h': 50, '<=1h': 100},
+        )
+        recent = (now - datetime.timedelta(minutes=30)).isoformat()
+        self.assertEqual(100.0, policy.evaluate(recent, now=now))
+        mid = (now - datetime.timedelta(days=3)).isoformat()
+        self.assertEqual(50.0, policy.evaluate(mid, now=now))
+        old = (now - datetime.timedelta(weeks=4)).isoformat()
+        self.assertEqual(0.0, policy.evaluate(old, now=now))
+
+
+class DiscriminatedUnionTests(unittest.TestCase):
+    def test_attribute_validates(self) -> None:
+        adapter = pydantic.TypeAdapter(models.ScoringPolicy)
+        policy = adapter.validate_python(
+            {
+                'name': 'Lang',
+                'slug': 'lang',
+                'category': 'attribute',
+                'attribute_name': 'programming_language',
+                'weight': 50,
+                'value_score_map': {'py': 100},
+            }
+        )
+        self.assertIsInstance(policy, models.AttributePolicy)
+
+    def test_presence_validates(self) -> None:
+        adapter = pydantic.TypeAdapter(models.ScoringPolicy)
+        policy = adapter.validate_python(
+            {
+                'name': 'Has desc',
+                'slug': 'has-desc',
+                'category': 'presence',
+                'attribute_name': 'description',
+                'weight': 10,
+            }
+        )
+        self.assertIsInstance(policy, models.PresencePolicy)
+
+    def test_link_presence_validates(self) -> None:
+        adapter = pydantic.TypeAdapter(models.ScoringPolicy)
+        policy = adapter.validate_python(
+            {
+                'name': 'Has source link',
+                'slug': 'has-source-link',
+                'category': 'link_presence',
+                'link_slug': 'source-code',
+                'weight': 10,
+            }
+        )
+        self.assertIsInstance(policy, models.LinkPresencePolicy)
+
+    def test_age_validates(self) -> None:
+        adapter = pydantic.TypeAdapter(models.ScoringPolicy)
+        policy = adapter.validate_python(
+            {
+                'name': 'Last commit age',
+                'slug': 'last-commit-age',
+                'category': 'age',
+                'attribute_name': 'last_commit_at',
+                'weight': 10,
+                'age_score_map': {'>30d': 0, '<=30d': 100},
+            }
+        )
+        self.assertIsInstance(policy, models.AgePolicy)

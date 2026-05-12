@@ -2,30 +2,47 @@
 
 from __future__ import annotations
 
+import datetime
 import json
+import re
 import typing
 
 import nanoid
 import pydantic
 
+_DURATION_RE = re.compile(r'^(\d+(?:\.\d+)?)\s*([smhdw])$')
+_THRESHOLD_RE = re.compile(r'^(>=|>|<=|<|==)\s*(.+)$')
+_DURATION_UNITS = {
+    's': 1.0,
+    'm': 60.0,
+    'h': 3600.0,
+    'd': 86400.0,
+    'w': 604800.0,
+}
 
-class AttributePolicy(pydantic.BaseModel):
-    """A scoring policy that maps an attribute value to 0-100."""
+
+class _PolicyBase(pydantic.BaseModel):
+    """Fields shared by every scoring policy category."""
 
     model_config = pydantic.ConfigDict(extra='ignore')
 
-    category: typing.Literal['attribute'] = 'attribute'
     id: str = pydantic.Field(default_factory=nanoid.generate)
     name: str
     slug: str
     description: str | None = None
-    attribute_name: str
     weight: int = pydantic.Field(ge=0, le=100)
     enabled: bool = True
     priority: int = 0
+    targets: list[str] = pydantic.Field(default_factory=list)
+
+
+class AttributePolicy(_PolicyBase):
+    """Map an attribute value to 0-100 via a value or range table."""
+
+    category: typing.Literal['attribute'] = 'attribute'
+    attribute_name: str
     value_score_map: dict[str, int] | None = None
     range_score_map: dict[str, int] | None = None
-    targets: list[str] = pydantic.Field(default_factory=list)
 
     # AGE serializes nested objects as JSON strings; parse them back.
     @pydantic.field_validator(
@@ -69,8 +86,124 @@ class AttributePolicy(pydantic.BaseModel):
         return None
 
 
-# Discriminated-union-ready alias; only the attribute variant exists.
-ScoringPolicy = AttributePolicy
+class PresencePolicy(_PolicyBase):
+    """Score based on whether an attribute is present (non-empty)."""
+
+    category: typing.Literal['presence'] = 'presence'
+    attribute_name: str
+    present_score: int = pydantic.Field(default=100, ge=0, le=100)
+    missing_score: int = pydantic.Field(default=0, ge=0, le=100)
+
+    def evaluate(self, value: typing.Any) -> float:
+        """Return ``present_score`` when *value* is non-empty."""
+        return float(
+            self.missing_score if is_missing(value) else self.present_score
+        )
+
+
+class LinkPresencePolicy(_PolicyBase):
+    """Score based on whether a project has a link of *link_slug*."""
+
+    category: typing.Literal['link_presence'] = 'link_presence'
+    link_slug: str
+    present_score: int = pydantic.Field(default=100, ge=0, le=100)
+    missing_score: int = pydantic.Field(default=0, ge=0, le=100)
+
+    def evaluate(self, links: typing.Any) -> float:
+        """Return ``present_score`` when *links* contains a value for the
+        configured slug."""
+        if not isinstance(links, dict):
+            return float(self.missing_score)
+        value = links.get(self.link_slug)
+        return float(
+            self.missing_score if is_missing(value) else self.present_score
+        )
+
+
+class AgePolicy(_PolicyBase):
+    """Score based on age of a datetime attribute.
+
+    ``age_score_map`` keys use the same threshold DSL the UI's
+    ``color-age`` map uses: operator (``<``, ``<=``, ``==``, ``>``,
+    ``>=``) followed by a duration with unit ``s``/``m``/``h``/``d``/``w``
+    (e.g. ``">90d"``, ``"<=7d"``). The elapsed seconds since *value*
+    is compared to each threshold in document order; **first match wins**.
+
+    Because Python preserves ``dict`` insertion order, the order keys
+    appear in ``age_score_map`` is significant — list the most specific
+    or highest-priority thresholds first. For example, to score a stale
+    item ``0`` only when older than 30 days but ``50`` between 7 and 30
+    days, put ``">30d"`` before ``">7d"``.
+    """
+
+    category: typing.Literal['age'] = 'age'
+    attribute_name: str
+    age_score_map: dict[str, int]
+
+    @pydantic.field_validator('age_score_map', mode='before')
+    @classmethod
+    def _parse_json_age_map(cls, v: object) -> object:
+        if isinstance(v, str):
+            return json.loads(v)
+        return v
+
+    @pydantic.model_validator(mode='after')
+    def _validate_age_map(self) -> typing.Self:
+        if not self.age_score_map:
+            raise ValueError('age_score_map must be non-empty')
+        for key in self.age_score_map:
+            entry = _parse_age_key(key)
+            if entry is None:
+                raise ValueError(f'invalid age threshold key: {key!r}')
+        return self
+
+    def evaluate(
+        self,
+        value: typing.Any,
+        *,
+        now: datetime.datetime | None = None,
+    ) -> float | None:
+        """Resolve the score for the configured date attribute.
+
+        Returns ``None`` when *value* is missing or unparseable so the
+        engine can treat it consistently with the other categories.
+        """
+        if value is None:
+            return None
+        parsed = _coerce_datetime(value)
+        if parsed is None:
+            return None
+        reference = (
+            now if now is not None else datetime.datetime.now(datetime.UTC)
+        )
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=datetime.UTC)
+        elapsed = (reference - parsed).total_seconds()
+        for key, score in self.age_score_map.items():
+            entry = _parse_age_key(key)
+            if entry is None:
+                continue
+            op, threshold = entry
+            if _compare(op, elapsed, threshold):
+                return float(score)
+        return None
+
+
+ScoringPolicy = typing.Annotated[
+    AttributePolicy | PresencePolicy | LinkPresencePolicy | AgePolicy,
+    pydantic.Field(discriminator='category'),
+]
+
+
+def is_missing(value: typing.Any) -> bool:
+    """Return True when *value* should be treated as absent for scoring."""
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, (list, tuple, set, dict)):
+        return len(value) == 0
+    return False
 
 
 def _parse_range(key: str) -> tuple[float, float]:
@@ -97,16 +230,77 @@ def _validate_ranges(ranges: dict[str, int]) -> None:
             )
 
 
-class AttributeContribution(pydantic.BaseModel):
+def _parse_age_key(key: str) -> tuple[str, float] | None:
+    match = _THRESHOLD_RE.match(key)
+    if not match:
+        return None
+    op = match.group(1)
+    duration_match = _DURATION_RE.match(match.group(2).strip())
+    if not duration_match:
+        return None
+    amount = float(duration_match.group(1))
+    unit = _DURATION_UNITS[duration_match.group(2)]
+    return op, amount * unit
+
+
+def _coerce_datetime(value: typing.Any) -> datetime.datetime | None:
+    if isinstance(value, datetime.datetime):
+        return value
+    if isinstance(value, datetime.date):
+        return datetime.datetime.combine(
+            value, datetime.time(0, 0), tzinfo=datetime.UTC
+        )
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        # fromisoformat handles trailing 'Z' starting in Python 3.11+ but
+        # we normalize defensively for older serializations.
+        if text.endswith('Z'):
+            text = text[:-1] + '+00:00'
+        try:
+            return datetime.datetime.fromisoformat(text)
+        except ValueError:
+            return None
+    return None
+
+
+def _compare(op: str, value: float, threshold: float) -> bool:
+    if op == '<':
+        return value < threshold
+    if op == '<=':
+        return value <= threshold
+    if op == '==':
+        return value == threshold
+    if op == '>':
+        return value > threshold
+    if op == '>=':
+        return value >= threshold
+    return False
+
+
+class PolicyContribution(pydantic.BaseModel):
+    """Per-policy contribution to a project's base score."""
+
     policy_slug: str
-    attribute_name: str
+    category: typing.Literal[
+        'attribute', 'presence', 'link_presence', 'age'
+    ] = 'attribute'
+    attribute_name: str | None = None
+    link_slug: str | None = None
     value: typing.Any | None = None
     mapped_score: float
     weight: int
     weighted_contribution: float
 
 
+# Back-compat alias for callers that imported the old name.
+AttributeContribution = PolicyContribution
+
+
 class ScoreBreakdown(pydantic.BaseModel):
+    """Result of scoring a project across all applicable policies."""
+
     base_score: float
     unfloored_total: float
-    attribute_contributions: list[AttributeContribution] = []
+    attribute_contributions: list[PolicyContribution] = []

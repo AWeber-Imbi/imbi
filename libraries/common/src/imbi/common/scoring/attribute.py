@@ -1,33 +1,37 @@
-"""Phase-1 base score: weighted average of attribute policies."""
+"""Base score: weighted average across all policy categories."""
 
 from __future__ import annotations
 
 import typing
 
 from imbi_common.scoring.models import (
-    AttributeContribution,
+    AgePolicy,
     AttributePolicy,
+    LinkPresencePolicy,
+    PolicyContribution,
+    PresencePolicy,
 )
+
+Policy = AttributePolicy | PresencePolicy | LinkPresencePolicy | AgePolicy
 
 
 def compute_base_score(
     project: typing.Any,
-    policies: list[AttributePolicy],
-) -> tuple[float, list[AttributeContribution]]:
+    policies: list[Policy],
+) -> tuple[float, list[PolicyContribution]]:
     """Compute base score and per-policy contributions.
 
-    No applicable policies → score is 100. Missing or unmapped
-    values contribute a mapped score of 0 to the weighted average.
+    No applicable policies → score is 100. Missing or unmapped values
+    contribute a mapped score of 0 to the weighted average.
     """
     if not policies:
         return 100.0, []
 
     total_weight = sum(p.weight for p in policies)
-    contributions: list[AttributeContribution] = []
+    contributions: list[PolicyContribution] = []
     weighted_sum = 0.0
     for policy in policies:
-        value = _get_value(project, policy.attribute_name)
-        mapped = policy.evaluate(value)
+        value, mapped = _evaluate(project, policy)
         score = 0.0 if mapped is None else mapped
         weighted_sum += score * policy.weight
         if total_weight > 0:
@@ -35,9 +39,11 @@ def compute_base_score(
         else:
             weighted_contribution = 0.0
         contributions.append(
-            AttributeContribution(
+            PolicyContribution(
                 policy_slug=policy.slug,
-                attribute_name=policy.attribute_name,
+                category=policy.category,
+                attribute_name=getattr(policy, 'attribute_name', None),
+                link_slug=getattr(policy, 'link_slug', None),
                 value=value,
                 mapped_score=score,
                 weight=policy.weight,
@@ -47,6 +53,24 @@ def compute_base_score(
     if total_weight == 0:
         return 0.0, contributions
     return weighted_sum / total_weight, contributions
+
+
+def _evaluate(
+    project: typing.Any, policy: Policy
+) -> tuple[typing.Any, float | None]:
+    if isinstance(policy, LinkPresencePolicy):
+        links = _get_value(project, 'links') or {}
+        if isinstance(links, dict):
+            sample = links.get(policy.link_slug)
+        else:
+            sample = None
+        return sample, policy.evaluate(links)
+    value = _get_value(project, policy.attribute_name)
+    if isinstance(policy, PresencePolicy):
+        return value, policy.evaluate(value)
+    if isinstance(policy, AgePolicy):
+        return value, policy.evaluate(value)
+    return value, policy.evaluate(value)
 
 
 def _get_value(project: typing.Any, name: str) -> typing.Any:
