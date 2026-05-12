@@ -10,6 +10,7 @@ import {
 } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Combobox } from '@/components/ui/combobox'
 import {
   Dialog,
   DialogContent,
@@ -135,19 +136,15 @@ export function NewProjectDialog({
               <label className="text-sm font-medium" htmlFor="new-project-team">
                 Team <span className="text-red-500">*</span>
               </label>
-              <select
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                id="new-project-team"
-                onChange={(e) => setTeamSlug(e.target.value)}
+              <Combobox
+                onChange={setTeamSlug}
+                options={teams.map((t) => ({
+                  label: t.name,
+                  value: t.slug,
+                }))}
+                placeholder="Select team..."
                 value={teamSlug}
-              >
-                <option value="">Select team...</option>
-                {teams.map((t) => (
-                  <option key={t.slug} value={t.slug}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
+              />
               <p className="text-sm text-muted-foreground">
                 Team that owns this project
               </p>
@@ -158,19 +155,15 @@ export function NewProjectDialog({
               <label className="text-sm font-medium" htmlFor="new-project-type">
                 Project Type <span className="text-red-500">*</span>
               </label>
-              <select
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                id="new-project-type"
-                onChange={(e) => setProjectTypeSlug(e.target.value)}
+              <Combobox
+                onChange={setProjectTypeSlug}
+                options={projectTypes.map((pt) => ({
+                  label: pt.name,
+                  value: pt.slug,
+                }))}
+                placeholder="Select project type..."
                 value={projectTypeSlug}
-              >
-                <option value="">Select project type...</option>
-                {projectTypes.map((pt) => (
-                  <option key={pt.slug} value={pt.slug}>
-                    {pt.name}
-                  </option>
-                ))}
-              </select>
+              />
               <p className="text-sm text-muted-foreground">
                 Type of the new project
               </p>

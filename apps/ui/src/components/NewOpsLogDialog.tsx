@@ -10,6 +10,7 @@ import {
 } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Combobox } from '@/components/ui/combobox'
 import {
   Dialog,
   DialogContent,
@@ -138,22 +139,18 @@ export function NewOpsLogDialog({
               <label className="text-sm font-medium" htmlFor="new-ops-project">
                 Project <span className="text-red-500">*</span>
               </label>
-              <select
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                id="new-ops-project"
-                onChange={(e) => {
-                  setProjectId(e.target.value)
+              <Combobox
+                onChange={(val) => {
+                  setProjectId(val)
                   setEnvironmentSlug('')
                 }}
+                options={projectOptions.map((p) => ({
+                  label: p.name ?? '',
+                  value: p.id,
+                }))}
+                placeholder="Select project..."
                 value={projectId}
-              >
-                <option value="">Select project...</option>
-                {projectOptions.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             {/* Environment */}
@@ -164,32 +161,28 @@ export function NewOpsLogDialog({
               >
                 Environment <span className="text-red-500">*</span>
               </label>
-              <select
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+              <Combobox
                 disabled={
                   !projectId ||
                   selectedProjectLoading ||
                   projectEnvironments.length === 0
                 }
-                id="new-ops-environment"
-                onChange={(e) => setEnvironmentSlug(e.target.value)}
-                value={environmentSlug}
-              >
-                <option value="">
-                  {projectId
+                onChange={setEnvironmentSlug}
+                options={projectEnvironments.map((env) => ({
+                  label: env.name,
+                  value: env.slug,
+                }))}
+                placeholder={
+                  projectId
                     ? selectedProjectLoading
                       ? 'Loading environments...'
                       : projectEnvironments.length === 0
                         ? 'Project has no environments'
                         : 'Select environment...'
-                    : 'Pick a project first'}
-                </option>
-                {projectEnvironments.map((env) => (
-                  <option key={env.slug} value={env.slug}>
-                    {env.name}
-                  </option>
-                ))}
-              </select>
+                    : 'Pick a project first'
+                }
+                value={environmentSlug}
+              />
               <p className="text-sm text-muted-foreground">
                 The environment the operation was performed in
               </p>
@@ -203,21 +196,15 @@ export function NewOpsLogDialog({
               >
                 Entry Type <span className="text-red-500">*</span>
               </label>
-              <select
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                id="new-ops-entry-type"
-                onChange={(e) =>
-                  setEntryType(e.target.value as OperationsLogEntryType)
-                }
+              <Combobox
+                onChange={(val) => setEntryType(val as OperationsLogEntryType)}
+                options={OPERATIONS_LOG_ENTRY_TYPES.map((t) => ({
+                  label: t,
+                  value: t,
+                }))}
+                placeholder="Select type..."
                 value={entryType}
-              >
-                <option value="">Select type...</option>
-                {OPERATIONS_LOG_ENTRY_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             {/* Description */}
