@@ -6,9 +6,6 @@ resolution-markers = [
   "python_full_version < '3.15'",
 ]
 
-[options]
-prerelease-mode = "allow"
-
 [[package]]
 name = "aioboto3"
 version = "15.5.0"
@@ -954,7 +951,7 @@ wheels = [
 
 [[package]]
 name = "imbi-api"
-version = "2.0.7"
+version = "2.1.0"
 source = { editable = "." }
 dependencies = [
   { name = "aioboto3" },
