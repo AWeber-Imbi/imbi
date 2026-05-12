@@ -901,10 +901,10 @@ async def oauth_callback(
         )
 
         # Get associated user — fetch via graph query keyed on the
-        # OAuthIdentity's oauth_app_type (stored in `provider`).
+        # OAuthIdentity's ServiceApplication slug (#255).
         user_q: typing.LiteralString = """
         MATCH (oi:OAuthIdentity {{
-            provider: {provider},
+            provider_slug: {provider_slug},
             provider_user_id: {provider_user_id}
         }})-[:OAUTH_IDENTITY]->(u:User)
         RETURN u
@@ -912,7 +912,7 @@ async def oauth_callback(
         user_records = await db.execute(
             user_q,
             {
-                'provider': oauth_identity.provider,
+                'provider_slug': oauth_identity.provider_slug,
                 'provider_user_id': profile['id'],
             },
             ['u'],
@@ -945,14 +945,14 @@ async def oauth_callback(
         # loaded via db.match the edge isn't populated.
         oauth_identity.last_used = now
         update_last_used: typing.LiteralString = (
-            'MATCH (oi:OAuthIdentity {{provider: {provider},'
+            'MATCH (oi:OAuthIdentity {{provider_slug: {provider_slug},'
             ' provider_user_id: {provider_user_id}}})'
             ' SET oi.last_used = {last_used}'
         )
         await db.execute(
             update_last_used,
             {
-                'provider': oauth_identity.provider,
+                'provider_slug': oauth_identity.provider_slug,
                 'provider_user_id': oauth_identity.provider_user_id,
                 'last_used': now.isoformat(),
             },
@@ -1150,11 +1150,13 @@ async def find_or_create_oauth_identity(
                 f' domains: ' + ', '.join(app.allowed_domains)
             )
 
-    # OAuthIdentity.provider stores the oauth_app_type, not the slug.
+    # OAuthIdentity is keyed on ``provider_slug`` (#255): two configured
+    # IdPs of the same ``oauth_app_type`` would otherwise collide on
+    # ``provider_user_id`` when their ``sub`` values overlap.
     identity_results = await db.match(
         models.OAuthIdentity,
         {
-            'provider': oauth_app_type,
+            'provider_slug': provider,
             'provider_user_id': profile['id'],
         },
     )
@@ -1175,7 +1177,7 @@ async def find_or_create_oauth_identity(
             datetime.UTC
         ) + datetime.timedelta(seconds=token_response.get('expires_in', 3600))
         update_tokens_query: typing.LiteralString = (
-            'MATCH (oi:OAuthIdentity {{provider: {provider},'
+            'MATCH (oi:OAuthIdentity {{provider_slug: {provider_slug},'
             ' provider_user_id: {provider_user_id}}})'
             ' SET oi.access_token = {access_token},'
             ' oi.refresh_token = {refresh_token},'
@@ -1184,7 +1186,7 @@ async def find_or_create_oauth_identity(
         await db.execute(
             update_tokens_query,
             {
-                'provider': oauth_app_type,
+                'provider_slug': provider,
                 'provider_user_id': profile['id'],
                 'access_token': identity.access_token,
                 'refresh_token': identity.refresh_token,
@@ -1252,14 +1254,8 @@ async def find_or_create_oauth_identity(
 
     # Create OAuth identity (Phase 5: with encrypted tokens)
     now = datetime.datetime.now(datetime.UTC)
-    # ``oauth_app_type`` is one of the legacy literals here — the
-    # identity-plugin path branched out in ``oauth_callback`` before
-    # reaching ``find_or_create_oauth_identity``.
-    legacy_provider = typing.cast(
-        typing.Literal['google', 'github', 'oidc'], oauth_app_type
-    )
     identity = models.OAuthIdentity(
-        provider=legacy_provider,
+        provider_slug=provider,
         provider_user_id=profile['id'],
         email=profile['email'],
         display_name=profile['name'],
@@ -1287,7 +1283,7 @@ async def find_or_create_oauth_identity(
     # Create relationship via Cypher
     rel_query: typing.LiteralString = """
     MATCH (oi:OAuthIdentity {{
-        provider: {provider},
+        provider_slug: {provider_slug},
         provider_user_id: {provider_user_id}
     }})
     MATCH (u:User {{email: {email}}})
@@ -1296,7 +1292,7 @@ async def find_or_create_oauth_identity(
     await db.execute(
         rel_query,
         {
-            'provider': oauth_app_type,
+            'provider_slug': provider,
             'provider_user_id': profile['id'],
             'email': user.email,
         },

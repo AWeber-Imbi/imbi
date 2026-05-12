@@ -88,9 +88,17 @@ class User(models.GraphModel):
 
 
 class OAuthIdentity(models.GraphModel):
-    """OAuth provider identity linked to a user."""
+    """OAuth provider identity linked to a user.
 
-    provider: typing.Literal['google', 'github', 'oidc']
+    Keyed by ``(provider_slug, provider_user_id)`` so two configured
+    IdPs of the same ``oauth_app_type`` (e.g. two OIDC issuers or two
+    GHE instances) cannot collide on ``provider_user_id`` when their
+    ``sub`` values happen to overlap. ``provider_slug`` is the
+    ``ServiceApplication.slug`` of the row that minted the identity.
+    See AWeber-Imbi/imbi-api#255.
+    """
+
+    provider_slug: str
     provider_user_id: str
     email: pydantic.EmailStr
     display_name: str

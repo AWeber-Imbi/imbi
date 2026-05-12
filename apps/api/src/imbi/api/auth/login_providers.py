@@ -246,6 +246,19 @@ async def get_login_app(db: graph.Graph, slug: str) -> LoginApp | None:
     records = await db.execute(_GET_QUERY, {'slug': slug}, ['app', 'service'])
     if not records:
         return None
+    if len(records) > 1:
+        # AWeber-Imbi/imbi-api#254: ServiceApplication.slug is only
+        # unique within a parent service, but login resolution keys on
+        # slug alone. The write path now blocks new collisions; this
+        # branch catches pre-existing ones. Refuse to pick one
+        # arbitrarily — that would silently route through whichever IdP
+        # the graph happened to return first.
+        LOGGER.error(
+            'Multiple login-eligible ServiceApplications share slug %r; '
+            'refusing to resolve. Reconcile the duplicates manually.',
+            slug,
+        )
+        return None
     app = graph.parse_agtype(records[0]['app'])
     svc = graph.parse_agtype(records[0].get('service'))
     if not app.get('oauth_app_type'):

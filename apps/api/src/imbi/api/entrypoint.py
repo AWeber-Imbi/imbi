@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import getpass
+import typing
 
 import nanoid
 import typer
@@ -253,6 +254,139 @@ async def _setup_async() -> None:
     finally:
         await db.close()
         await clickhouse.aclose()
+
+
+@main.command(name='migrate-oauth-identity')
+def migrate_oauth_identity() -> None:
+    """Backfill ``OAuthIdentity.provider_slug`` from the parent slug.
+
+    One-shot, idempotent migration introduced with AWeber-Imbi/imbi-api#255.
+    OAuth identities are now keyed on
+    ``(provider_slug, provider_user_id)`` instead of
+    ``(provider_type, provider_user_id)``. This walks every
+    ``OAuthIdentity`` node that still carries the legacy ``provider``
+    field and rewrites it to ``provider_slug`` by joining on the
+    ``ServiceApplication`` whose ``oauth_app_type`` matches the legacy
+    value.
+
+    Safe to re-run: rows already carrying ``provider_slug`` are left
+    untouched. The legacy unique index on ``(provider, provider_user_id)``
+    is dropped after the rewrite.
+    """
+    asyncio.run(_migrate_oauth_identity_async())
+
+
+async def _migrate_oauth_identity_async() -> None:
+    """Async body of ``migrate-oauth-identity``."""
+    db = graph.Graph()
+    try:
+        await db.open()
+    except Exception as e:
+        typer.echo(f'✗ Failed to connect to PostgreSQL: {e}', err=True)
+        raise typer.Exit(code=1) from e
+
+    try:
+        legacy_query = (
+            'MATCH (oi:OAuthIdentity) '
+            'WHERE oi.provider IS NOT NULL AND oi.provider_slug IS NULL '
+            'RETURN oi.provider AS provider, '
+            'oi.provider_user_id AS provider_user_id'
+        )
+        legacy_records = await db.execute(
+            legacy_query, columns=['provider', 'provider_user_id']
+        )
+        if not legacy_records:
+            typer.echo('No legacy OAuthIdentity rows found — nothing to do.')
+        else:
+            typer.echo(
+                f'Found {len(legacy_records)} legacy OAuthIdentity row(s)'
+            )
+            migrated, skipped = await _backfill_provider_slugs(
+                db, legacy_records
+            )
+            typer.echo(f'Migrated {migrated} row(s); skipped {skipped} row(s)')
+            if skipped:
+                typer.echo(
+                    'Skipped rows were left untouched. Re-run after '
+                    'configuring the missing ServiceApplications. The legacy '
+                    '(provider, provider_user_id) index has been preserved '
+                    'so existing OAuth logins keep working until the '
+                    'migration completes cleanly.',
+                    err=True,
+                )
+                raise typer.Exit(code=1)
+
+        # Drop the legacy unique index. ``IF EXISTS`` keeps re-runs idempotent
+        # once the new ``(provider_slug, provider_user_id)`` index has
+        # replaced it via the next initializer pass. Only reached when every
+        # legacy row migrated successfully (or there were none to begin with).
+        await db.execute(
+            'DROP INDEX IF EXISTS '
+            'imbi.oauthidentity_provider_provider_user_id_unique_idx'
+        )
+        typer.echo('✓ Migration complete')
+    finally:
+        await db.close()
+
+
+async def _backfill_provider_slugs(
+    db: graph.Graph,
+    legacy_records: list[dict[str, typing.Any]],
+) -> tuple[int, int]:
+    """Rewrite ``OAuthIdentity.provider`` to ``provider_slug``.
+
+    Returns ``(migrated, skipped)`` counts.
+    """
+    migrated = 0
+    skipped = 0
+    for record in legacy_records:
+        legacy_provider = graph.parse_agtype(record['provider'])
+        provider_user_id = graph.parse_agtype(record['provider_user_id'])
+        slug_records = await db.execute(
+            'MATCH (a:ServiceApplication) '
+            'WHERE a.oauth_app_type = {oauth_app_type} '
+            "AND a.usage IN ['login', 'both'] "
+            'RETURN a.slug AS slug',
+            {'oauth_app_type': legacy_provider},
+            ['slug'],
+        )
+        if not slug_records:
+            typer.echo(
+                f'  ! No login ServiceApplication for oauth_app_type='
+                f'{legacy_provider!r}; '
+                f'provider_user_id={provider_user_id!r} left untouched',
+                err=True,
+            )
+            skipped += 1
+            continue
+        if len(slug_records) > 1:
+            typer.echo(
+                f'  ! Multiple login ServiceApplications for oauth_app_type='
+                f'{legacy_provider!r}; '
+                f'provider_user_id={provider_user_id!r} cannot be migrated '
+                f'unambiguously',
+                err=True,
+            )
+            skipped += 1
+            continue
+        new_slug = graph.parse_agtype(slug_records[0]['slug'])
+        await db.execute(
+            'MATCH (oi:OAuthIdentity {{provider: {legacy_provider}, '
+            'provider_user_id: {provider_user_id}}}) '
+            'SET oi.provider_slug = {new_slug} '
+            'REMOVE oi.provider',
+            {
+                'legacy_provider': legacy_provider,
+                'provider_user_id': provider_user_id,
+                'new_slug': new_slug,
+            },
+        )
+        typer.echo(
+            f'  ✓ provider_user_id={provider_user_id!r}: '
+            f'{legacy_provider!r} → {new_slug!r}'
+        )
+        migrated += 1
+    return migrated, skipped
 
 
 async def _check_admin_exists(db: graph.Graph) -> bool:

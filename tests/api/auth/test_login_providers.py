@@ -148,6 +148,35 @@ class LoginProvidersRepoTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(row.oauth_app_type, 'google')
         self.assertEqual(row.token_endpoint, 'https://auth/token')
 
+    async def test_get_login_app_refuses_on_duplicate_slug(self) -> None:
+        """When two login rows share a slug, ``get_login_app`` returns None.
+
+        The write path now blocks new collisions, but pre-existing
+        duplicates can still exist in deployed instances. Picking one
+        arbitrarily would silently route through whichever IdP the
+        graph happened to return first. See AWeber-Imbi/imbi-api#254.
+        """
+        db = _FakeDB(
+            [
+                _row('google', oauth_app_type='google'),
+                _row('google', oauth_app_type='google', name='Other'),
+            ]
+        )
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            self.assertLogs(
+                'imbi_api.auth.login_providers', level='ERROR'
+            ) as logs,
+        ):
+            row = await login_providers.get_login_app(db, 'google')  # type: ignore[arg-type]
+        self.assertIsNone(row)
+        self.assertTrue(
+            any('share slug' in m for m in logs.output),
+            f'Expected duplicate-slug error in logs, got {logs.output!r}',
+        )
+
     async def test_cache_invalidation(self) -> None:
         db = _FakeDB([_row('google')])
         with mock.patch(

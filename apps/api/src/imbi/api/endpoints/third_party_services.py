@@ -570,6 +570,54 @@ async def list_service_applications(
     return apps
 
 
+async def _ensure_login_slug_unique(
+    db: graph.Graph,
+    app_slug: str,
+    *,
+    exclude_org_slug: str | None = None,
+    exclude_service_slug: str | None = None,
+    exclude_app_slug: str | None = None,
+) -> None:
+    """Reject if another login-eligible ServiceApplication shares this slug.
+
+    ``ServiceApplication.slug`` is only unique within a parent service, but
+    login providers are resolved by slug alone in the OAuth start/callback
+    flow (``auth/login_providers.get_login_app``). Two ``usage IN ('login',
+    'both')`` rows under different parents would let one tenant clobber
+    another's login route. Enforce instance-wide uniqueness on the write
+    path. See AWeber-Imbi/imbi-api#254.
+
+    The optional ``exclude_*`` triple carves out the row being written so a
+    patch on the row itself does not collide with itself.
+    """
+    query: typing.LiteralString = (
+        'MATCH (a:ServiceApplication {{slug: {app_slug}}})'
+        '      -[:REGISTERED_IN]->(s:ThirdPartyService)'
+        '      -[:BELONGS_TO]->(o:Organization)'
+        " WHERE a.usage IN ['login', 'both']"
+        ' RETURN s.slug AS svc_slug, o.slug AS org_slug'
+    )
+    records = await db.execute(
+        query, {'app_slug': app_slug}, ['svc_slug', 'org_slug']
+    )
+    for record in records:
+        svc_slug = graph.parse_agtype(record['svc_slug'])
+        org_slug = graph.parse_agtype(record['org_slug'])
+        if (
+            org_slug == exclude_org_slug
+            and svc_slug == exclude_service_slug
+            and app_slug == exclude_app_slug
+        ):
+            continue
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'A login auth provider with slug {app_slug!r} already '
+                f'exists under {org_slug!r}/{svc_slug!r}'
+            ),
+        )
+
+
 @third_party_services_router.post(
     '/{slug}/applications/',
     status_code=201,
@@ -614,6 +662,9 @@ async def create_service_application(
                 f'Application {data.slug!r} already exists in service {slug!r}'
             ),
         )
+
+    if data.usage in ('login', 'both'):
+        await _ensure_login_slug_unique(db, data.slug)
 
     # Encrypt secrets
     encryptor = encryption.TokenEncryption.get_instance()
@@ -1003,6 +1054,15 @@ async def patch_service_application(
         new_usage=validated.usage,
     )
 
+    if validated.usage in ('login', 'both'):
+        await _ensure_login_slug_unique(
+            db,
+            validated.slug,
+            exclude_org_slug=org_slug,
+            exclude_service_slug=slug,
+            exclude_app_slug=app_slug,
+        )
+
     props = validated.model_dump(mode='json')
 
     graph_props = _serialize_json_fields(props, _APP_JSON_FIELDS)
@@ -1074,7 +1134,7 @@ async def delete_service_application(
     if 'auth_providers:write' not in auth.permissions:
         try:
             existing = await _fetch_application(db, org_slug, slug, app_slug)
-        except fastapi.HTTPException, KeyError:
+        except (fastapi.HTTPException, KeyError):
             existing = None
         if existing and existing.get('usage') in ('login', 'both'):
             raise fastapi.HTTPException(

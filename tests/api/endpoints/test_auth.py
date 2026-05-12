@@ -773,7 +773,7 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
         )
 
         test_identity = models.OAuthIdentity(
-            provider='google',
+            provider_slug='google',
             provider_user_id='google-123',
             email='test@example.com',
             display_name='Test User',

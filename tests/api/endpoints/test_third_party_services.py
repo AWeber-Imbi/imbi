@@ -1098,6 +1098,69 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
         self.assertNotIn('private_key', data)
         self.assertNotIn('signing_secret', data)
 
+    def test_create_login_application_slug_collides_across_instance(
+        self,
+    ) -> None:
+        """A login app whose slug already names another login app — under a
+        different parent service — is rejected with 409.
+
+        Login providers are resolved by ``ServiceApplication.slug`` alone in
+        the OAuth start/callback flow, so cross-instance uniqueness must be
+        enforced at the write boundary. See AWeber-Imbi/imbi-api#254.
+        """
+        payload = {
+            **self.app_create_json,
+            'usage': 'login',
+            'oauth_app_type': 'google',
+        }
+        # 1) per-(org, svc) duplicate check → 0
+        # 2) cross-instance login-slug check → returns a colliding row
+        self.mock_db.execute.side_effect = [
+            [{'cnt': 0}],
+            [{'svc_slug': 'other-svc', 'org_slug': 'other-org'}],
+        ]
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.post(
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/',
+                json=payload,
+            )
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('login auth provider', response.json()['detail'])
+
+    def test_create_integration_application_skips_login_slug_check(
+        self,
+    ) -> None:
+        """An ``integration``-usage app does not run the cross-instance
+        login-slug check — that check only applies to login providers.
+        """
+        # Only the per-(org, svc) duplicate check + the create itself.
+        self.mock_db.execute.side_effect = [
+            [{'cnt': 0}],
+            [{'app': self.app_data}],
+        ]
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.post(
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/',
+                json=self.app_create_json,
+            )
+        self.assertEqual(response.status_code, 201)
+
     # -- Get application --
 
     def test_get_application(self) -> None:
@@ -1208,6 +1271,10 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
     # -- Delete application --
 
     def test_delete_application(self) -> None:
+        # Grant auth_providers:write so the handler skips the login-gate
+        # pre-fetch and hits only the delete query — keeps this fixture
+        # minimal and matches the skip-prefetch branch in the handler.
+        self.auth_context.permissions.add('auth_providers:write')
         self.mock_db.execute.return_value = [{'deleted': 1}]
         response = self.client.delete(
             '/organizations/engineering'
@@ -1218,6 +1285,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 204)
 
     def test_delete_application_not_found(self) -> None:
+        self.auth_context.permissions.add('auth_providers:write')
         self.mock_db.execute.return_value = [{'deleted': 0}]
         response = self.client.delete(
             '/organizations/engineering'
@@ -1445,6 +1513,78 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 403)
         self.assertIn('auth_providers:write', response.json()['detail'])
+
+    def test_patch_promotion_to_login_rejected_on_slug_collision(
+        self,
+    ) -> None:
+        """Promoting an integration app to a login provider while another
+        login app already owns the slug is rejected with 409.
+
+        See AWeber-Imbi/imbi-api#254 — login providers are resolved by
+        slug alone, so cross-instance uniqueness must be enforced.
+        """
+        self.auth_context.permissions.add('auth_providers:write')
+        existing = dict(self.app_data)
+        existing['usage'] = 'integration'
+        existing['oauth_app_type'] = 'google'
+        # 1) _fetch_application → returns the existing integration row
+        # 2) cross-instance login-slug check → finds a collision
+        self.mock_db.execute.side_effect = [
+            [{'app': existing}],
+            [{'svc_slug': 'other-svc', 'org_slug': 'other-org'}],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.patch(
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app',
+                json=[
+                    {'op': 'replace', 'path': '/usage', 'value': 'login'},
+                ],
+            )
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('login auth provider', response.json()['detail'])
+
+    def test_patch_login_app_self_excluded_from_collision_check(
+        self,
+    ) -> None:
+        """A PATCH on an existing login app does not collide with itself.
+
+        The cross-instance check carves out the triple (org, svc, app) of
+        the row being written, so re-saving the row succeeds.
+        """
+        self.auth_context.permissions.add('auth_providers:write')
+        existing = dict(self.app_data)
+        existing['usage'] = 'login'
+        existing['oauth_app_type'] = 'google'
+        # 1) _fetch_application → the existing login row
+        # 2) cross-instance check → returns only self (excluded)
+        # 3) update_query → returns the updated row
+        self.mock_db.execute.side_effect = [
+            [{'app': existing}],
+            [{'svc_slug': 'stripe', 'org_slug': 'engineering'}],
+            [{'app': existing}],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.patch(
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/name',
+                        'value': 'Renamed App',
+                    },
+                ],
+            )
+        self.assertEqual(response.status_code, 200)
 
     def test_patch_application_slug_conflict(self) -> None:
         """Slug rename that collides returns 409."""
