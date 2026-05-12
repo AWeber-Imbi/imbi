@@ -204,6 +204,129 @@ async def resolve_plugin(
     )
 
 
+async def resolve_all_plugins(
+    db: graph.Graph,
+    project_id: str,
+    tab: str,
+) -> list[ResolvedPlugin]:
+    """Return every plugin assigned to ``project_id`` for ``tab``.
+
+    Sibling to :func:`resolve_plugin` for fan-out call sites (e.g.
+    lifecycle hooks) that must invoke *every* assigned plugin rather
+    than a single default.  Applies the same project-over-project-type
+    merge by plugin id and the same three-tier options precedence
+    (plugin defaults < project-type edge < project edge), and resolves
+    ``identity_plugin_id`` using :func:`_select_identity_plugin_id`.
+
+    Returns an empty list when no plugins are assigned — callers that
+    expect at least one are responsible for raising.
+
+    Plugins whose slug is not in the registry are dropped silently
+    (logged at WARNING).  Rationale: a single missing/disabled plugin
+    must not block lifecycle dispatch for the others.
+    """
+    query: typing.LiteralString = """
+    MATCH (proj:Project {{id: {project_id}}})
+    OPTIONAL MATCH (proj)-[pe:USES_PLUGIN]->(p:Plugin)
+    WHERE pe.tab = {tab}
+    OPTIONAL MATCH (proj)-[:TYPE]->(pt:ProjectType)
+      -[pte:USES_PLUGIN]->(p2:Plugin)
+    WHERE pte.tab = {tab}
+    WITH
+      collect(DISTINCT {{id: p.id, slug: p.plugin_slug,
+                         edge_options: pe.options,
+                         plugin_options: p.options,
+                         identity_plugin_id: pe.identity_plugin_id,
+                         plugin_identity_plugin_id: p.identity_plugin_id,
+                         default: pe.default,
+                         src: 'project'}})
+       AS proj_plugins,
+      collect(DISTINCT {{id: p2.id, slug: p2.plugin_slug,
+                         edge_options: pte.options,
+                         plugin_options: p2.options,
+                         identity_plugin_id: pte.identity_plugin_id,
+                         plugin_identity_plugin_id: p2.identity_plugin_id,
+                         default: pte.default,
+                         src: 'project_type'}})
+       AS pt_plugins
+    RETURN proj_plugins, pt_plugins
+    """
+    records = await db.execute(
+        query,
+        {'project_id': project_id, 'tab': tab},
+        ['proj_plugins', 'pt_plugins'],
+    )
+    if not records:
+        return []
+
+    proj_plugins: list[dict[str, typing.Any]] = (
+        graph.parse_agtype(records[0]['proj_plugins']) or []
+    )
+    pt_plugins: list[dict[str, typing.Any]] = (
+        graph.parse_agtype(records[0]['pt_plugins']) or []
+    )
+
+    pt_by_id: dict[str, dict[str, typing.Any]] = {
+        p['id']: p for p in pt_plugins if p.get('id')
+    }
+    merged: dict[str, dict[str, typing.Any]] = {}
+    for p in pt_plugins:
+        if p.get('id'):
+            merged[p['id']] = p
+    for p in proj_plugins:
+        pid = p.get('id')
+        if not pid:
+            continue
+        if pid in pt_by_id:
+            merged[pid] = {
+                **p,
+                'pt_edge_options': pt_by_id[pid].get('edge_options'),
+                'pt_identity_plugin_id': pt_by_id[pid].get(
+                    'identity_plugin_id'
+                ),
+                'plugin_identity_plugin_id': p.get('plugin_identity_plugin_id')
+                or pt_by_id[pid].get('plugin_identity_plugin_id'),
+            }
+        else:
+            merged[pid] = p
+
+    resolved: list[ResolvedPlugin] = []
+    for chosen in merged.values():
+        plugin_id = chosen.get('id')
+        plugin_slug = chosen.get('slug')
+        if not plugin_id or not plugin_slug:
+            continue
+        plugin_defaults: dict[str, typing.Any] = parse_options(
+            chosen.get('plugin_options')
+        )
+        pt_edge: dict[str, typing.Any] = parse_options(
+            chosen.get('pt_edge_options')
+        )
+        overrides: dict[str, typing.Any] = parse_options(
+            chosen.get('edge_options')
+        )
+        options = {**plugin_defaults, **pt_edge, **overrides}
+        try:
+            entry = get_plugin(plugin_slug)
+        except PluginNotFoundError:
+            LOGGER.warning(
+                'Skipping unregistered plugin %r (id=%s) during fan-out',
+                plugin_slug,
+                plugin_id,
+            )
+            continue
+        resolved.append(
+            ResolvedPlugin(
+                plugin_id=plugin_id,
+                plugin_slug=plugin_slug,
+                entry=entry,
+                options=options,
+                identity_plugin_id=_select_identity_plugin_id(chosen),
+            )
+        )
+    return resolved
+
+
 def _select_identity_plugin_id(
     chosen: dict[str, typing.Any],
 ) -> str | None:

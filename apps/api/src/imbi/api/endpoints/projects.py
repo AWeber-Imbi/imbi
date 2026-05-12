@@ -21,6 +21,10 @@ from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.domain import scoring as scoring_models
 from imbi_api.graph_sql import escape_prop, props_template, set_clause
+from imbi_api.plugins.lifecycle_dispatch import (
+    LifecycleInvocation,
+    dispatch_lifecycle,
+)
 from imbi_api.relationships import build_relationships
 from imbi_api.scoring import OptionalValkeyClient
 from imbi_api.scoring import queue as score_queue
@@ -1662,6 +1666,18 @@ async def _set_archived_state(
     return ProjectResponse.model_validate(project_data)
 
 
+class ArchiveProjectResponse(ProjectResponse):
+    """Response for archive / unarchive, with per-plugin lifecycle results.
+
+    Mirrors :class:`ProjectResponse` and appends one
+    :class:`LifecycleInvocation` per assigned lifecycle plugin so the
+    UI can surface third-party outcomes (GitHub archive succeeded,
+    AWS shutdown failed, ...) without a follow-up request.
+    """
+
+    lifecycle_results: list[LifecycleInvocation] = []
+
+
 @projects_router.post('/{project_id}/archive')
 async def archive_project(
     org_slug: str,
@@ -1674,9 +1690,27 @@ async def archive_project(
             permissions.require_permission('project:write'),
         ),
     ],
-) -> ProjectResponse:
+) -> ArchiveProjectResponse:
     """Archive a project (soft-hide from default listings)."""
-    return await _set_archived_state(org_slug, project_id, True, request, db)
+    project = await _set_archived_state(
+        org_slug, project_id, True, request, db
+    )
+    # State change is already committed; never let an unexpected
+    # dispatcher failure turn a successful archive into a 500.
+    try:
+        results = await dispatch_lifecycle(
+            db, project_id, org_slug, 'archived', auth
+        )
+    except Exception:
+        LOGGER.exception(
+            'Lifecycle dispatch failed after archiving project %s',
+            project_id,
+        )
+        results = []
+    return ArchiveProjectResponse(
+        **project.model_dump(),
+        lifecycle_results=results,
+    )
 
 
 @projects_router.post('/{project_id}/unarchive')
@@ -1691,9 +1725,27 @@ async def unarchive_project(
             permissions.require_permission('project:write'),
         ),
     ],
-) -> ProjectResponse:
+) -> ArchiveProjectResponse:
     """Restore an archived project to the active state."""
-    return await _set_archived_state(org_slug, project_id, False, request, db)
+    project = await _set_archived_state(
+        org_slug, project_id, False, request, db
+    )
+    # State change is already committed; never let an unexpected
+    # dispatcher failure turn a successful unarchive into a 500.
+    try:
+        results = await dispatch_lifecycle(
+            db, project_id, org_slug, 'unarchived', auth
+        )
+    except Exception:
+        LOGGER.exception(
+            'Lifecycle dispatch failed after unarchiving project %s',
+            project_id,
+        )
+        results = []
+    return ArchiveProjectResponse(
+        **project.model_dump(),
+        lifecycle_results=results,
+    )
 
 
 @projects_router.delete('/{project_id}', status_code=204)

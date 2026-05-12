@@ -653,6 +653,161 @@ class ResolutionTestCase(unittest.TestCase):
                 )
 
 
+class ResolveAllPluginsTestCase(unittest.TestCase):
+    """Branch coverage for ``resolve_all_plugins`` (lifecycle fan-out)."""
+
+    def test_empty_when_no_records(self) -> None:
+        from imbi_api.plugins.resolution import resolve_all_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = []
+        result = asyncio.run(resolve_all_plugins(mock_db, 'p1', 'lifecycle'))
+        self.assertEqual(result, [])
+
+    def test_empty_when_no_plugins_assigned(self) -> None:
+        from imbi_api.plugins.resolution import resolve_all_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {'proj_plugins': '[]', 'pt_plugins': '[]'}
+        ]
+        result = asyncio.run(resolve_all_plugins(mock_db, 'p1', 'lifecycle'))
+        self.assertEqual(result, [])
+
+    def test_returns_all_assigned_plugins(self) -> None:
+        from imbi_api.plugins.resolution import resolve_all_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {
+                'pt_plugins': '[]',
+                'proj_plugins': json.dumps(
+                    [
+                        {
+                            'id': 'p1',
+                            'slug': 'github-lifecycle',
+                            'edge_options': '{}',
+                            'plugin_options': '{}',
+                            'default': True,
+                            'src': 'project',
+                        },
+                        {
+                            'id': 'p2',
+                            'slug': 'aws-lifecycle',
+                            'edge_options': '{}',
+                            'plugin_options': '{}',
+                            'default': False,
+                            'src': 'project',
+                        },
+                    ]
+                ),
+            }
+        ]
+        entry_a = _make_registry_entry('github-lifecycle')
+        entry_b = _make_registry_entry('aws-lifecycle')
+        entries = {'github-lifecycle': entry_a, 'aws-lifecycle': entry_b}
+        with mock.patch(
+            'imbi_api.plugins.resolution.get_plugin',
+            side_effect=lambda slug: entries[slug],
+        ):
+            result = asyncio.run(
+                resolve_all_plugins(mock_db, 'proj1', 'lifecycle')
+            )
+        self.assertEqual(len(result), 2)
+        slugs = {r.plugin_slug for r in result}
+        self.assertEqual(slugs, {'github-lifecycle', 'aws-lifecycle'})
+
+    def test_skips_unregistered_plugin(self) -> None:
+        from imbi_common.plugins.errors import PluginNotFoundError
+
+        from imbi_api.plugins.resolution import resolve_all_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {
+                'pt_plugins': '[]',
+                'proj_plugins': json.dumps(
+                    [
+                        {
+                            'id': 'p1',
+                            'slug': 'present',
+                            'edge_options': '{}',
+                            'plugin_options': '{}',
+                            'default': True,
+                            'src': 'project',
+                        },
+                        {
+                            'id': 'p2',
+                            'slug': 'gone',
+                            'edge_options': '{}',
+                            'plugin_options': '{}',
+                            'default': False,
+                            'src': 'project',
+                        },
+                    ]
+                ),
+            }
+        ]
+        entry = _make_registry_entry('present')
+
+        def _get(slug: str):
+            if slug == 'present':
+                return entry
+            raise PluginNotFoundError(slug)
+
+        with mock.patch(
+            'imbi_api.plugins.resolution.get_plugin',
+            side_effect=_get,
+        ):
+            result = asyncio.run(
+                resolve_all_plugins(mock_db, 'proj1', 'lifecycle')
+            )
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].plugin_slug, 'present')
+
+    def test_project_overrides_project_type(self) -> None:
+        from imbi_api.plugins.resolution import resolve_all_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {
+                'pt_plugins': json.dumps(
+                    [
+                        {
+                            'id': 'p1',
+                            'slug': 'github-lifecycle',
+                            'edge_options': '{"archive_target_org": "type"}',
+                            'plugin_options': '{}',
+                            'default': True,
+                            'src': 'project_type',
+                        }
+                    ]
+                ),
+                'proj_plugins': json.dumps(
+                    [
+                        {
+                            'id': 'p1',
+                            'slug': 'github-lifecycle',
+                            'edge_options': '{"archive_target_org": "proj"}',
+                            'plugin_options': '{}',
+                            'default': True,
+                            'src': 'project',
+                        }
+                    ]
+                ),
+            }
+        ]
+        entry = _make_registry_entry('github-lifecycle')
+        with mock.patch(
+            'imbi_api.plugins.resolution.get_plugin', return_value=entry
+        ):
+            result = asyncio.run(
+                resolve_all_plugins(mock_db, 'proj1', 'lifecycle')
+            )
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].options['archive_target_org'], 'proj')
+
+
 class CredentialsTestCase(unittest.TestCase):
     """Branch coverage for ``get_plugin_credentials``."""
 
