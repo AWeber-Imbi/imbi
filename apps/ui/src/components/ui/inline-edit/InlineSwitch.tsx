@@ -8,14 +8,14 @@ export interface InlineSwitchProps {
   onCommit: (next: boolean) => Promise<void> | void
   pending?: boolean
   readOnly?: boolean
-  value: boolean | null
+  value?: boolean
 }
 
 export function InlineSwitch({
   onCommit,
   pending = false,
   readOnly = false,
-  value = false,
+  value,
 }: InlineSwitchProps) {
   const [checked, setChecked] = useState(value ?? false)
 
