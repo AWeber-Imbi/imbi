@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { toast } from 'sonner'
 
@@ -18,6 +18,10 @@ export function InlineSwitch({
   value,
 }: InlineSwitchProps) {
   const [checked, setChecked] = useState(value ?? false)
+
+  useEffect(() => {
+    setChecked(value ?? false)
+  }, [value])
 
   return (
     <Switch
