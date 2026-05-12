@@ -187,6 +187,91 @@ class ValidateNoCollisionsTestCase(unittest.TestCase):
                 schemata,
             )
 
+    def test_identical_edge_labels_allowed(self) -> None:
+        """Sibling plugins may share an edge label with the same shape."""
+
+        def _shared_edge() -> PluginEdgeLabel:
+            return PluginEdgeLabel(
+                name='DEPLOYS_VIA',
+                from_labels=['ProjectType', 'Project'],
+                to_labels=['Environment'],
+                properties={'action': 'str'},
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            schemata = _write_core_schemata(pathlib.Path(tmp), ['Project'])
+            validate_no_collisions(
+                [
+                    _make_manifest('github-deployment', [], [_shared_edge()]),
+                    _make_manifest(
+                        'github-deployment-ec', [], [_shared_edge()]
+                    ),
+                    _make_manifest(
+                        'github-deployment-es', [], [_shared_edge()]
+                    ),
+                ],
+                schemata,
+            )
+
+    def test_diverging_edge_label_shape_rejected(self) -> None:
+        """Same name + different shape is still a collision."""
+        with tempfile.TemporaryDirectory() as tmp:
+            schemata = _write_core_schemata(pathlib.Path(tmp), ['Project'])
+            with self.assertRaises(PluginSchemaCollisionError):
+                validate_no_collisions(
+                    [
+                        _make_manifest(
+                            'a',
+                            [],
+                            [
+                                PluginEdgeLabel(
+                                    name='DEPLOYS_VIA',
+                                    from_labels=['Project'],
+                                    to_labels=['Environment'],
+                                    properties={'action': 'str'},
+                                )
+                            ],
+                        ),
+                        _make_manifest(
+                            'b',
+                            [],
+                            [
+                                PluginEdgeLabel(
+                                    name='DEPLOYS_VIA',
+                                    from_labels=['Project'],
+                                    to_labels=['Environment'],
+                                    # extra property → different shape
+                                    properties={
+                                        'action': 'str',
+                                        'extra': 'str',
+                                    },
+                                )
+                            ],
+                        ),
+                    ],
+                    schemata,
+                )
+
+    def test_identical_vlabels_allowed(self) -> None:
+        """Sibling plugins may share a vlabel with the same shape."""
+
+        def _shared_vlabel() -> PluginVertexLabel:
+            return PluginVertexLabel(
+                name='SharedAccount',
+                indexes=[],
+                model_ref='shared.models:SharedAccount',
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            schemata = _write_core_schemata(pathlib.Path(tmp), ['Project'])
+            validate_no_collisions(
+                [
+                    _make_manifest('a', [_shared_vlabel()]),
+                    _make_manifest('b', [_shared_vlabel()]),
+                ],
+                schemata,
+            )
+
 
 class PluginIndexValidationTestCase(unittest.TestCase):
     def test_empty_fields_rejected(self) -> None:

@@ -26,7 +26,11 @@ import psycopg
 from psycopg import sql
 
 from imbi_common import settings
-from imbi_common.plugins.base import PluginManifest
+from imbi_common.plugins.base import (
+    PluginEdgeLabel,
+    PluginManifest,
+    PluginVertexLabel,
+)
 from imbi_common.plugins.errors import PluginSchemaCollisionError
 
 LOGGER = logging.getLogger(__name__)
@@ -55,8 +59,8 @@ def validate_no_collisions(
     first collision detected.
     """
     core_names = _load_core_vlabel_names(schemata_toml_path)
-    seen: dict[str, str] = {}
-    seen_edges: dict[str, str] = {}
+    seen_vlabels: dict[str, tuple[str, PluginVertexLabel]] = {}
+    seen_edges: dict[str, tuple[str, PluginEdgeLabel]] = {}
 
     for manifest in manifests:
         for vlabel in manifest.vertex_labels:
@@ -71,36 +75,44 @@ def validate_no_collisions(
                     f'Plugin {manifest.slug!r} declares vlabel '
                     f'{vlabel.name!r} which collides with core schemata'
                 )
-            if vlabel.name in seen:
-                LOGGER.error(
-                    'Plugin %r declares vlabel %r already declared by '
-                    'plugin %r',
-                    manifest.slug,
-                    vlabel.name,
-                    seen[vlabel.name],
-                )
-                raise PluginSchemaCollisionError(
-                    f'Plugin {manifest.slug!r} declares vlabel '
-                    f'{vlabel.name!r} already declared by plugin '
-                    f'{seen[vlabel.name]!r}'
-                )
-            seen[vlabel.name] = manifest.slug
+            existing = seen_vlabels.get(vlabel.name)
+            if existing is not None:
+                owner_slug, owner_vlabel = existing
+                if owner_vlabel != vlabel:
+                    LOGGER.error(
+                        'Plugin %r declares vlabel %r with a shape that '
+                        'differs from plugin %r',
+                        manifest.slug,
+                        vlabel.name,
+                        owner_slug,
+                    )
+                    raise PluginSchemaCollisionError(
+                        f'Plugin {manifest.slug!r} declares vlabel '
+                        f'{vlabel.name!r} with a shape that differs '
+                        f'from plugin {owner_slug!r}'
+                    )
+                continue
+            seen_vlabels[vlabel.name] = (manifest.slug, vlabel)
 
         for elabel in manifest.edge_labels:
-            if elabel.name in seen_edges:
-                LOGGER.error(
-                    'Plugin %r declares edge label %r already declared '
-                    'by plugin %r',
-                    manifest.slug,
-                    elabel.name,
-                    seen_edges[elabel.name],
-                )
-                raise PluginSchemaCollisionError(
-                    f'Plugin {manifest.slug!r} declares edge label '
-                    f'{elabel.name!r} already declared by plugin '
-                    f'{seen_edges[elabel.name]!r}'
-                )
-            seen_edges[elabel.name] = manifest.slug
+            existing_edge = seen_edges.get(elabel.name)
+            if existing_edge is not None:
+                owner_slug, owner_edge = existing_edge
+                if owner_edge != elabel:
+                    LOGGER.error(
+                        'Plugin %r declares edge label %r with a shape '
+                        'that differs from plugin %r',
+                        manifest.slug,
+                        elabel.name,
+                        owner_slug,
+                    )
+                    raise PluginSchemaCollisionError(
+                        f'Plugin {manifest.slug!r} declares edge label '
+                        f'{elabel.name!r} with a shape that differs '
+                        f'from plugin {owner_slug!r}'
+                    )
+                continue
+            seen_edges[elabel.name] = (manifest.slug, elabel)
 
 
 async def apply_plugin_schemas(
