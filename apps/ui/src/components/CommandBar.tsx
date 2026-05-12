@@ -20,8 +20,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
+import { queryClient } from '@/lib/queryClient'
 import { getQueryKeysForResource } from '@/lib/queryKeys'
-import { queryClient } from '@/main'
 import { useAssistantStore } from '@/stores/assistantStore'
 
 import { ConversationHistory } from './assistant/ConversationHistory'

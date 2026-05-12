@@ -29,7 +29,7 @@ import { LoadingState } from '@/components/ui/loading-state'
 import { parseFilterFromBlueprint } from '@/lib/utils'
 import type { SchemaProperty } from '@/types'
 
-import { getTypeSwatch } from '../BlueprintManagement'
+import { getTypeSwatch } from './typeSwatch'
 
 interface BlueprintDetailProps {
   blueprintKey: { slug: string; type: string }

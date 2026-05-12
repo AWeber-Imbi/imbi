@@ -2,26 +2,6 @@ import type { components } from './api-generated'
 
 export type ActivityFeedEntry = OperationsLogEntry | ProjectFeedEntry
 
-// API Response Types
-// `ApiStatus` is the UI-facing status envelope (richer than the backend
-// `StatusResponse` — includes `started_at` and optional `system` metadata).
-export interface ApiStatus {
-  started_at: string
-  status: 'maintenance' | 'ok'
-  system?: {
-    language: {
-      implementation: string
-      name: string
-      version: string
-    }
-    os: {
-      name: string
-      version: string
-    }
-  }
-  version: string
-}
-
 // API Response Wrappers
 export interface CollectionResponse<T> {
   data: T[]
@@ -260,21 +240,12 @@ export type AdminUserCreate = Schemas['UserCreate'] & {
   organizations?: { organization_slug: string; role: string }[]
 }
 
-export type AdminUserUpdate = Schemas['UserUpdate']
-
 // API Key types
 export type ApiKey = Schemas['APIKeyResponse']
 
 export type ApiKeyCreated = Schemas['APIKeyCreateResponse']
 
 export type AuthProvider = Schemas['AuthProvider']
-
-// Auth Types
-export interface AuthState {
-  isAuthenticated: boolean
-  isLoading: boolean
-  user: null | User
-}
 
 export type Blueprint = Schemas['Blueprint-Output']
 
@@ -325,13 +296,6 @@ export interface CurrentReleaseEnvironment {
   external_run_url: null | string
   last_event_at: null | string
   release: null | Release
-}
-
-export interface DashboardStats {
-  projects_by_namespace: Record<string, number>
-  projects_by_type: Record<string, number>
-  recent_activity: ActivityFeedEntry[]
-  total_projects: number
 }
 
 export type DeploymentAction = 'deploy' | 'redeploy'
@@ -858,21 +822,6 @@ export interface PluginVertexLabel {
 export type ProjectRelationship = Schemas['ProjectRelationship']
 export type ProjectRelationshipsResponse =
   Schemas['ProjectRelationshipsResponse']
-// Project Relationships (DEPENDS_ON edges)
-export type ProjectRelationshipSummary = Schemas['ProjectRelationshipSummary']
-
-// Project EXISTS_IN types
-export type ProjectService = Schemas['ExistsInResponse']
-export type ProjectServiceCreate = Schemas['ExistsInCreate']
-export interface PromotionOption {
-  commits_pending: null | number
-  from_environment: string
-  from_sha?: null | string
-  from_version?: null | string
-  to_environment: string
-  to_sha?: null | string
-  to_version?: null | string
-}
 
 export interface Release {
   created_at: string
@@ -959,8 +908,6 @@ export type ServiceAccount = Schemas['ServiceAccountResponse']
 
 export type ServiceAccountCreate = Schemas['ServiceAccountCreate']
 
-export type ServiceAccountUpdate = Schemas['ServiceAccountUpdate']
-
 // Service Application types
 // The committed openapi.json snapshot predates the OAuth-consolidation
 // fields (`usage`, `oauth_app_type`, `issuer_url`, `allowed_domains`,
@@ -982,9 +929,6 @@ export type ServiceApplicationCreate = Schemas['ServiceApplicationCreate'] & {
 }
 
 export type ServiceApplicationSecrets = Schemas['ServiceApplicationSecrets']
-
-export type ServiceApplicationSecretsUpdate =
-  Schemas['ServiceApplicationSecretsUpdate']
 
 export type ServiceApplicationUpdate = Schemas['ServiceApplicationUpdate'] & {
   allowed_domains?: string[]
@@ -1073,22 +1017,6 @@ export interface UserResponse extends User {
   permissions?: string[]
   roles?: string[]
   updated_at?: string
-}
-
-// View Types
-export type View =
-  | 'dashboard'
-  | 'deployment-dashboard'
-  | 'operations'
-  | 'project-detail'
-  | 'projects'
-  | 'reports'
-  | 'settings'
-  | 'user-profile'
-
-export interface ViewChangeConfig {
-  filter?: Record<string, unknown>
-  view: string
 }
 
 export type Webhook = Schemas['WebhookResponse']

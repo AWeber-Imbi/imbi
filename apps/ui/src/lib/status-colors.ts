@@ -14,15 +14,3 @@ export function statusBadgeVariant(
 ): BadgeProps['variant'] {
   return (status && STATUS_VARIANTS[status]) || 'neutral'
 }
-
-/** CI roll-up status → Tailwind dot background class. */
-const CI_DOT_CLASSES: Record<string, string> = {
-  fail: 'bg-danger',
-  pass: 'bg-success',
-  unknown: 'bg-tertiary',
-  warn: 'bg-warning',
-}
-
-export function ciStatusDotClass(status: null | string | undefined): string {
-  return (status && CI_DOT_CLASSES[status]) || CI_DOT_CLASSES.unknown
-}

@@ -28,39 +28,6 @@ export interface Message {
   tool_use: null | ToolUseBlock[]
 }
 
-export interface SendMessageRequest {
-  content: string
-}
-
-export interface SSEClientActionEvent {
-  action: 'navigate_to' | 'refresh_data'
-  id: string
-  params: Record<string, string>
-}
-
-export interface SSEDoneEvent {
-  message_id: string
-  usage: TokenUsage
-}
-
-export interface SSEErrorEvent {
-  message: string
-}
-
-// SSE event payloads
-export interface SSETextEvent {
-  text: string
-}
-
-export interface SSEToolInputEvent {
-  partial_json: string
-}
-
-export interface SSEToolUseStartEvent {
-  id: string
-  name: string
-}
-
 export interface TokenUsage {
   input_tokens: number
   output_tokens: number

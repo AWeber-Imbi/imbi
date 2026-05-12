@@ -23,8 +23,21 @@
         "getScoreRollup",
         "ScoreRollupRow",
         "GlobalScoreEvent",
-        "MonthlyImprovementRow"
+        "MonthlyImprovementRow",
+        "TeamScoreSeries"
       ]
+    },
+    {
+      "file": "src/lib/icon-sets/*.ts",
+      "exports": ["iconSet"]
+    }
+  ],
+  "overrides": [
+    {
+      "files": ["src/lib/icon-sets/*.ts"],
+      "rules": {
+        "duplicate-exports": "off"
+      }
     }
   ]
 }

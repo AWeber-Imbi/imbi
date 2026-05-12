@@ -6,11 +6,6 @@ export interface DayBucket {
   key: string
   label: string
 }
-export interface DayBucketKey {
-  date: Date
-  key: string
-  label: string
-}
 
 export type FeedItem =
   | { entry: OperationsLogRecord; kind: 'single' }
@@ -31,6 +26,12 @@ export interface ReleaseStop {
 }
 
 export type TimeRange = '7d' | '24h' | '30d' | '90d' | 'all'
+
+interface DayBucketKey {
+  date: Date
+  key: string
+  label: string
+}
 
 export function absTime(iso: string): string {
   return parseUtcIso(iso).toLocaleString(undefined, {

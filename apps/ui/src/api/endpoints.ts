@@ -72,7 +72,6 @@ import type {
   ProjectRelationshipsResponse,
   ProjectType,
   ProjectTypeCreate,
-  PromotionOption,
   Role,
   RoleCreate,
   RoleDetail,
@@ -1431,21 +1430,6 @@ export const listRefCommits = async (
   return Array.isArray(response) ? response : []
 }
 
-export const resolveCommit = (
-  orgSlug: string,
-  projectId: string,
-  committish: string,
-  source?: string,
-  signal?: AbortSignal,
-): Promise<DeploymentCommit> => {
-  const search = source ? `?source=${encodeURIComponent(source)}` : ''
-  return apiClient.get<DeploymentCommit>(
-    `${deploymentsBase(orgSlug, projectId)}/commits/${encodeURIComponent(committish)}${search}`,
-    undefined,
-    signal,
-  )
-}
-
 export const compareDeploymentRefs = (
   orgSlug: string,
   projectId: string,
@@ -1515,21 +1499,6 @@ export const getDeploymentRunStatus = (
     undefined,
     signal,
   )
-}
-
-export const listPromotionOptions = async (
-  orgSlug: string,
-  projectId: string,
-  source?: string,
-  signal?: AbortSignal,
-): Promise<PromotionOption[]> => {
-  const search = source ? `?source=${encodeURIComponent(source)}` : ''
-  const response = await apiClient.get<PromotionOption[]>(
-    `${deploymentsBase(orgSlug, projectId)}/promotion-options${search}`,
-    undefined,
-    signal,
-  )
-  return Array.isArray(response) ? response : []
 }
 
 // Identity Plugins (org-scoped)

@@ -7,6 +7,7 @@ import type { DeploymentRun } from '@/types'
 
 import { DeploymentRunWatcher } from './DeploymentRunWatcher'
 
+// fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', async () => {
   const actual =
     await vi.importActual<typeof import('@/api/endpoints')>('@/api/endpoints')

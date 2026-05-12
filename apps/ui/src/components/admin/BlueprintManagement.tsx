@@ -30,7 +30,6 @@ import {
 } from '@/components/ui/tooltip'
 import { useAdminCrud } from '@/hooks/useAdminCrud'
 import { useAdminNav } from '@/hooks/useAdminNav'
-import { LABEL_SWATCHES, swatchForType } from '@/lib/chip-colors'
 import { buildDiffPatch } from '@/lib/json-patch'
 import { parseFilterFromBlueprint } from '@/lib/utils'
 import type { Blueprint, BlueprintCreate, PatchOperation } from '@/types'
@@ -39,6 +38,7 @@ import { AdminSection } from './AdminSection'
 import { BlueprintDetail } from './blueprints/BlueprintDetail'
 import { BlueprintForm } from './blueprints/BlueprintForm'
 import { ImportBlueprintDialog } from './blueprints/ImportBlueprintDialog'
+import { getTypeSwatch } from './blueprints/typeSwatch'
 
 interface BlueprintKey {
   slug: string
@@ -496,17 +496,6 @@ export function BlueprintManagement() {
       />
     </AdminSection>
   )
-}
-
-/** Pick a label palette hex for a blueprint type. Relationship is pinned to Honey. */
-export function getTypeSwatch(type: string, allTypes: string[]): string {
-  if (type === 'relationship') {
-    return (
-      LABEL_SWATCHES.find((s) => s.name === 'Honey')?.hex ??
-      LABEL_SWATCHES[2].hex
-    )
-  }
-  return swatchForType(type, allTypes)
 }
 
 /** Return the path type used in API URLs and compound keys. */

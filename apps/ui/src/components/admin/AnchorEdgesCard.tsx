@@ -26,10 +26,6 @@ import type {
   PluginEntity,
 } from '@/types'
 
-// Only ``environment`` anchors are wired up today; widen the union when
-// projects/project-types/orgs gain edge endpoints.
-export type AnchorKind = 'environment'
-
 interface AnchorEdgesCardProps {
   anchor: { orgSlug: string; slug: string }
   anchorKind: AnchorKind
@@ -38,6 +34,10 @@ interface AnchorEdgesCardProps {
   manifest: InstalledPlugin
   title?: string
 }
+
+// Only ``environment`` anchors are wired up today; widen the union when
+// projects/project-types/orgs gain edge endpoints.
+type AnchorKind = 'environment'
 
 const labelEntityName = (entity: PluginEntity): string => {
   const name = entity.name ?? entity.slug ?? entity.id

@@ -2,21 +2,13 @@ import React from 'react'
 
 import { BrowserRouter } from 'react-router-dom'
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import ReactDOM from 'react-dom/client'
+
+import { queryClient } from '@/lib/queryClient'
 
 import App from './App.tsx'
 import './index.css'
-
-export const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      retry: 1,
-      staleTime: 5 * 60 * 1000, // 5 minutes
-    },
-  },
-})
 
 // Cache the root on the container so Vite HMR re-evaluating this module
 // doesn't call createRoot() twice on the same node, which produces a
