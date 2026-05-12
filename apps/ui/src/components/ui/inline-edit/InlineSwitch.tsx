@@ -8,7 +8,7 @@ export interface InlineSwitchProps {
   onCommit: (next: boolean) => Promise<void> | void
   pending?: boolean
   readOnly?: boolean
-  value?: boolean
+  value?: boolean | null
 }
 
 export function InlineSwitch({
