@@ -12,8 +12,13 @@ import re
 import typing
 
 __all__ = [
+    'COMMITISH_RE',
+    'SEMVER_RE',
+    'SEMVER_TAG_RE',
     'VersionFormat',
     'get_version_validator',
+    'is_commitish',
+    'is_semver_tag',
     'validate_version',
 ]
 
@@ -24,7 +29,7 @@ VersionFormat = typing.Literal['semver', 'commitish']
 # regex, verbatim).  Matches MAJOR.MINOR.PATCH with optional
 # pre-release and build metadata.  Leading zeros in numeric
 # identifiers are rejected.
-_SEMVER_RE: typing.Final[re.Pattern[str]] = re.compile(
+SEMVER_RE: typing.Final[re.Pattern[str]] = re.compile(
     r'^(?P<major>0|[1-9]\d*)'
     r'\.(?P<minor>0|[1-9]\d*)'
     r'\.(?P<patch>0|[1-9]\d*)'
@@ -37,8 +42,37 @@ _SEMVER_RE: typing.Final[re.Pattern[str]] = re.compile(
     r'))?$'
 )
 
+# Same as SEMVER_RE but tolerates an optional leading ``v`` -- matches
+# typical Git tag shape (``v1.2.3``) used by GitHub Releases as well as
+# bare semver (``1.2.3``).  Use this to distinguish "already a tag" from
+# "raw commitish" when deciding whether to cut a new tag on promote.
+SEMVER_TAG_RE: typing.Final[re.Pattern[str]] = re.compile(
+    r'^v?' + SEMVER_RE.pattern.lstrip('^')
+)
+
 # 7 to 40 lowercase hex chars — matches a git short or full SHA.
-_COMMITISH_RE: typing.Final[re.Pattern[str]] = re.compile(r'^[0-9a-f]{7,40}$')
+COMMITISH_RE: typing.Final[re.Pattern[str]] = re.compile(r'^[0-9a-f]{7,40}$')
+
+# Module-internal aliases kept for backwards-compat with this module's
+# previous private names.
+_SEMVER_RE = SEMVER_RE
+_COMMITISH_RE = COMMITISH_RE
+
+
+def is_semver_tag(value: str) -> bool:
+    """Return ``True`` if ``value`` is shaped like a semver release tag.
+
+    Accepts a leading ``v`` (``v1.2.3``) as well as bare semver
+    (``1.2.3``).  Use to decide whether a promote target is "already a
+    tag" (skip ``create_tag`` + ``create_release``) versus a raw
+    committish (cut a tag and create a release).
+    """
+    return bool(SEMVER_TAG_RE.match(value))
+
+
+def is_commitish(value: str) -> bool:
+    """Return ``True`` if ``value`` looks like a git short or full SHA."""
+    return bool(COMMITISH_RE.match(value))
 
 
 def validate_version(version: str, fmt: VersionFormat) -> str:

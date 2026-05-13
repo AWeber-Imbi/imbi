@@ -222,12 +222,13 @@ class PluginContext(pydantic.BaseModel):
     # may use these as a discovery hint (e.g. trying each as a candidate
     # GitHub owner) when an explicit link or option isn't supplied.
     project_type_slugs: list[str] = []
-    # Per-environment edge properties resolved by the host from the
-    # plugin-declared ``DEPLOYS_VIA``-style edge (project edge layered
+    # Per-environment payload resolved by the host from the
+    # ``USES_PLUGIN`` edge's ``env_payloads`` map (project edge layered
     # over project-type edge, mirroring how ``assignment_options`` is
-    # merged).  Empty when no per-env edge is configured for
-    # ``environment``.  Plugin authors should treat absent keys as
-    # "fall back to plugin defaults" rather than as a hard error.
+    # merged).  Empty when no per-env payload is configured for
+    # ``environment``.  Plugins typically merge this into workflow
+    # inputs at trigger time; absent keys should fall back to plugin
+    # defaults rather than raise.
     environment_config: dict[str, typing.Any] = {}
     actor_user_id: str | None = None
     identity: IdentityCredentials | None = None
@@ -705,9 +706,9 @@ class DeploymentPlugin(abc.ABC):
         """List CI workflow files defined in the project's remote repo.
 
         Optional — used by the UI to populate a workflow dropdown when
-        an operator configures the per-environment dispatch edge
-        (e.g. ``DEPLOYS_VIA``).  Plugins without a workflow concept
-        raise :class:`NotImplementedError`.
+        an operator configures plugin assignment ``env_payloads``.
+        Plugins without a workflow concept raise
+        :class:`NotImplementedError`.
         """
         del ctx, credentials
         raise NotImplementedError

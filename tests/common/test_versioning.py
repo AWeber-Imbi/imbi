@@ -129,5 +129,46 @@ class GetVersionValidatorTestCase(unittest.TestCase):
             validator('ABC1234')
 
 
+class IsSemverTagTestCase(unittest.TestCase):
+    """Tests for ``is_semver_tag``."""
+
+    def test_bare_semver(self) -> None:
+        self.assertTrue(versioning.is_semver_tag('1.2.3'))
+
+    def test_v_prefixed_semver(self) -> None:
+        self.assertTrue(versioning.is_semver_tag('v1.2.3'))
+
+    def test_prerelease(self) -> None:
+        self.assertTrue(versioning.is_semver_tag('v1.0.0-rc.1'))
+
+    def test_sha_rejected(self) -> None:
+        self.assertFalse(versioning.is_semver_tag('abc1234'))
+
+    def test_branch_name_rejected(self) -> None:
+        self.assertFalse(versioning.is_semver_tag('main'))
+
+    def test_empty_rejected(self) -> None:
+        self.assertFalse(versioning.is_semver_tag(''))
+
+
+class IsCommitishTestCase(unittest.TestCase):
+    """Tests for ``is_commitish``."""
+
+    def test_short_sha(self) -> None:
+        self.assertTrue(versioning.is_commitish('abc1234'))
+
+    def test_long_sha(self) -> None:
+        self.assertTrue(versioning.is_commitish('a' * 40))
+
+    def test_uppercase_rejected(self) -> None:
+        self.assertFalse(versioning.is_commitish('ABC1234'))
+
+    def test_tag_rejected(self) -> None:
+        self.assertFalse(versioning.is_commitish('v1.2.3'))
+
+    def test_branch_name_rejected(self) -> None:
+        self.assertFalse(versioning.is_commitish('main'))
+
+
 if __name__ == '__main__':
     unittest.main()

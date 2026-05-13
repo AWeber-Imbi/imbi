@@ -244,6 +244,22 @@ class NodeModelTestCase(unittest.TestCase):
         self.assertEqual(env.slug, 'prod')
         self.assertEqual(env.description, 'Production environment')
         self.assertEqual(env.organization, org)
+        # Release-train defaults: deployable by default, opt-in promote.
+        self.assertTrue(env.can_deploy)
+        self.assertFalse(env.can_promote)
+
+    def test_environment_release_train_flags(self) -> None:
+        """Explicit overrides for release-train flags round-trip."""
+        org = models.Organization(name='Org', slug='org')
+        env = models.Environment(
+            name='Production',
+            slug='prod',
+            organization=org,
+            can_deploy=False,
+            can_promote=True,
+        )
+        self.assertFalse(env.can_deploy)
+        self.assertTrue(env.can_promote)
 
     def test_project_type_creation(self) -> None:
         """Test creating a ProjectType model."""

@@ -287,6 +287,16 @@ class Environment(Node):
         ),
     ]
 
+    # Surface "Deploy" on the release train when true. Defaults true so
+    # existing envs (which were all deployable before this flag landed)
+    # keep their direct-deploy affordances without an explicit migration.
+    can_deploy: bool = True
+
+    # Surface "Promote" on the release train when true. Opt-in per env
+    # so a new env doesn't accidentally accept promotes (which cut tags
+    # / create GitHub Releases) before an operator has wired one up.
+    can_promote: bool = False
+
     organization: BelongsToOrganization
 
 
