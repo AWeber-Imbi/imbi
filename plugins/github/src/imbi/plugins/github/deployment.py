@@ -41,6 +41,7 @@ from imbi_common.plugins.base import (
     DeploymentEventStatus,
     DeploymentPlugin,
     DeploymentRun,
+    OpsLogTemplate,
     PluginContext,
     PluginEdgeLabel,
     PluginManifest,
@@ -887,16 +888,18 @@ class _DeploymentBase(DeploymentPlugin):
                     'per_page': str(page_size),
                 },
             )
+            if resp.status_code == 404:
+                # Repo or environment unknown on the remote — treat as
+                # "nothing to backfill" rather than failing the resync.
+                return []
+            resp.raise_for_status()
         except httpx.HTTPError:
             LOGGER.warning(
-                'Failed to list deployments for env=%s', environment
+                'Failed to list deployments for env=%s',
+                environment,
+                exc_info=True,
             )
             return []
-        if resp.status_code == 404:
-            # Repo or environment unknown on the remote — treat as
-            # "nothing to backfill" rather than failing the resync.
-            return []
-        resp.raise_for_status()
         try:
             deployments = typing.cast(list[dict[str, typing.Any]], resp.json())
         except ValueError:
@@ -1047,6 +1050,33 @@ _COMMON_CREDENTIALS: list[CredentialField] = [
 ]
 
 
+# Templates for the operations-log JSON payload the API writes from
+# ``_record_deployment_event`` in imbi-api: ``{action, plugin_slug,
+# run_url, release_url, from_environment}``.  Row-level fields
+# ``version`` and ``environment`` (from the entry's
+# ``environment_slug``/``environment.name``) are also in scope.
+_COMMON_OPS_LOG_TEMPLATES: dict[str, OpsLogTemplate] = {
+    'deploy': OpsLogTemplate(
+        label='Deployed {{version}} to {{environment}}',
+        summary='deployed',
+    ),
+    'redeploy': OpsLogTemplate(
+        label='Re-deployed {{version}} to {{environment}}',
+        summary='re-deployed',
+    ),
+    'promote': OpsLogTemplate(
+        label=(
+            'Promoted {{version}} to {{environment}} from {{from_environment}}'
+        ),
+        summary='promoted',
+    ),
+    'resync': OpsLogTemplate(
+        label='Recorded {{version}} deploy in {{environment}}',
+        summary='recorded a deploy in',
+    ),
+}
+
+
 class GitHubDeploymentPlugin(_DeploymentBase):
     manifest = PluginManifest(
         slug='github-deployment',
@@ -1063,6 +1093,7 @@ class GitHubDeploymentPlugin(_DeploymentBase):
         options=_COMMON_OPTIONS,
         credentials=_COMMON_CREDENTIALS,
         edge_labels=_COMMON_EDGE_LABELS,
+        ops_log_templates=_COMMON_OPS_LOG_TEMPLATES,
     )
 
     @classmethod
@@ -1093,6 +1124,7 @@ class GitHubEnterpriseCloudDeploymentPlugin(_DeploymentBase):
         ],
         credentials=_COMMON_CREDENTIALS,
         edge_labels=_COMMON_EDGE_LABELS,
+        ops_log_templates=_COMMON_OPS_LOG_TEMPLATES,
     )
 
     @classmethod
@@ -1125,6 +1157,7 @@ class GitHubEnterpriseServerDeploymentPlugin(_DeploymentBase):
         ],
         credentials=_COMMON_CREDENTIALS,
         edge_labels=_COMMON_EDGE_LABELS,
+        ops_log_templates=_COMMON_OPS_LOG_TEMPLATES,
     )
 
     @classmethod
