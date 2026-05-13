@@ -654,7 +654,7 @@ async def patch_service_plugin_configuration(
 
 class _AssignmentInput(pydantic.BaseModel):
     project_type_slug: str
-    tab: typing.Literal['configuration', 'logs', 'deployment']
+    tab: typing.Literal['configuration', 'logs', 'deployment', 'lifecycle']
     default: bool = False
     options: dict[str, typing.Any] = {}
     identity_plugin_id: str | None = None
@@ -663,7 +663,7 @@ class _AssignmentInput(pydantic.BaseModel):
 class _AssignmentRow(pydantic.BaseModel):
     project_type_slug: str
     project_type_name: str
-    tab: typing.Literal['configuration', 'logs', 'deployment']
+    tab: typing.Literal['configuration', 'logs', 'deployment', 'lifecycle']
     default: bool
     options: dict[str, typing.Any]
     identity_plugin_id: str | None = None
