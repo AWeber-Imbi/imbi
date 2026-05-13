@@ -38,6 +38,7 @@ from imbi_common.plugins.base import (
     Commit,
     CompareResult,
     CredentialField,
+    DeploymentEventStatus,
     DeploymentPlugin,
     DeploymentRun,
     PluginContext,
@@ -47,6 +48,7 @@ from imbi_common.plugins.base import (
     Ref,
     RefInfo,
     ReleaseInfo,
+    RemoteDeployment,
     WorkflowFile,
 )
 from imbi_common.plugins.errors import PluginAuthenticationFailed
@@ -839,6 +841,167 @@ class _DeploymentBase(DeploymentPlugin):
                 else None,
             )
 
+    async def list_recent_deployments(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        environments: list[str],
+        limit: int = 1,
+    ) -> list[RemoteDeployment]:
+        """Return the latest ``limit`` deployments per environment.
+
+        Fans out one ``GET /deployments?environment={env}`` call per
+        requested environment in parallel, then for each returned
+        deployment fetches the latest status via ``GET
+        /deployments/{id}/statuses?per_page=1``.  Environments the
+        remote does not recognise are silently skipped so a partial
+        resync still returns the deployments that do exist (an env
+        the repo simply hasn't deployed to yet is the common case).
+
+        The host calls this from the resync flow only when webhook
+        delivery has lapsed, so we keep the fan-out modest (``limit=1``
+        is the host's default) and let the host walk further history
+        with explicit pagination if it ever needs to.
+        """
+        page_size = max(1, min(limit, 100))
+        async with self._client(ctx, credentials) as client:
+            per_env = await asyncio.gather(
+                *(
+                    self._list_deployments_for_env(client, env, page_size)
+                    for env in environments
+                )
+            )
+        return [observed for group in per_env for observed in group]
+
+    async def _list_deployments_for_env(
+        self,
+        client: httpx.AsyncClient,
+        environment: str,
+        page_size: int,
+    ) -> list[RemoteDeployment]:
+        try:
+            resp = await client.get(
+                '/deployments',
+                params={
+                    'environment': environment,
+                    'per_page': str(page_size),
+                },
+            )
+        except httpx.HTTPError:
+            LOGGER.warning(
+                'Failed to list deployments for env=%s', environment
+            )
+            return []
+        if resp.status_code == 404:
+            # Repo or environment unknown on the remote — treat as
+            # "nothing to backfill" rather than failing the resync.
+            return []
+        resp.raise_for_status()
+        try:
+            deployments = typing.cast(list[dict[str, typing.Any]], resp.json())
+        except ValueError:
+            LOGGER.warning(
+                'Failed to parse deployments payload for env=%s',
+                environment,
+            )
+            return []
+        observed: list[RemoteDeployment] = []
+        for deployment in deployments:
+            run = await self._observe_deployment(
+                client, environment, deployment
+            )
+            if run is not None:
+                observed.append(run)
+        return observed
+
+    async def _observe_deployment(
+        self,
+        client: httpx.AsyncClient,
+        environment: str,
+        deployment: dict[str, typing.Any],
+    ) -> RemoteDeployment | None:
+        deployment_id = deployment.get('id')
+        sha = deployment.get('sha')
+        if not deployment_id or not sha:
+            # GitHub always returns both, but defend the resync path
+            # against a malformed response — we'd rather skip one row
+            # than corrupt the graph by inventing identifiers.
+            return None
+        created_at = _parse_iso(deployment.get('created_at')) or (
+            datetime.datetime.now(datetime.UTC)
+        )
+        status, status_url = await self._latest_status(
+            client, str(deployment_id)
+        )
+        ref_value = deployment.get('ref')
+        description = deployment.get('description')
+        deployment_url = deployment.get('url') or deployment.get('html_url')
+        return RemoteDeployment(
+            environment=environment,
+            sha=str(sha),
+            ref=str(ref_value) if ref_value else None,
+            status=status,
+            created_at=created_at,
+            external_run_id=str(deployment_id),
+            run_url=status_url,
+            deployment_url=str(deployment_url) if deployment_url else None,
+            description=str(description) if description else None,
+        )
+
+    async def _latest_status(
+        self, client: httpx.AsyncClient, deployment_id: str
+    ) -> tuple[DeploymentEventStatus, str | None]:
+        """Return the canonical event status + workflow log URL.
+
+        Falls back to ``'pending'`` whenever the deploy workflow has
+        not yet posted a status: a freshly-created deployment with no
+        statuses is structurally identical to one whose workflow has
+        not started, and ``pending`` is the host's vocabulary for
+        both.  Network / parse errors degrade the same way so resync
+        is never blocked by a single noisy row.
+        """
+        try:
+            resp = await client.get(
+                f'/deployments/{deployment_id}/statuses',
+                params={'per_page': '1'},
+            )
+        except httpx.HTTPError:
+            return 'pending', None
+        if resp.status_code != 200:
+            return 'pending', None
+        try:
+            statuses = typing.cast(list[dict[str, typing.Any]], resp.json())
+        except ValueError:
+            return 'pending', None
+        if not statuses:
+            return 'pending', None
+        latest = statuses[0]
+        state = str(latest.get('state') or '').lower()
+        log_url = latest.get('log_url') or latest.get('target_url')
+        return _to_event_status(state), str(log_url) if log_url else None
+
+
+def _to_event_status(github_state: str) -> DeploymentEventStatus:
+    """Map a GitHub deployment-status ``state`` to the host vocabulary.
+
+    Unknown states fold to ``pending`` rather than raising so a single
+    novel value on the remote does not break resync for the whole
+    project.  ``inactive`` on GitHub means a newer deployment for the
+    same environment superseded this one, which the host models as
+    ``rolled_back`` on the ``DeploymentEvent``.
+    """
+    if github_state in {'pending', 'queued', 'waiting'}:
+        return 'pending'
+    if github_state == 'in_progress':
+        return 'in_progress'
+    if github_state == 'success':
+        return 'success'
+    if github_state in {'failure', 'error'}:
+        return 'failed'
+    if github_state == 'inactive':
+        return 'rolled_back'
+    return 'pending'
+
 
 _COMMON_OPTIONS: list[PluginOption] = []
 
@@ -896,6 +1059,7 @@ class GitHubDeploymentPlugin(_DeploymentBase):
             'server-side.'
         ),
         plugin_type='deployment',
+        supports_deployment_sync=True,
         options=_COMMON_OPTIONS,
         credentials=_COMMON_CREDENTIALS,
         edge_labels=_COMMON_EDGE_LABELS,
@@ -916,6 +1080,7 @@ class GitHubEnterpriseCloudDeploymentPlugin(_DeploymentBase):
             '``on: deployment_status``) in their deploy workflow.'
         ),
         plugin_type='deployment',
+        supports_deployment_sync=True,
         options=[
             PluginOption(
                 name='host',
@@ -948,6 +1113,7 @@ class GitHubEnterpriseServerDeploymentPlugin(_DeploymentBase):
             'in their deploy workflow.'
         ),
         plugin_type='deployment',
+        supports_deployment_sync=True,
         options=[
             PluginOption(
                 name='host',

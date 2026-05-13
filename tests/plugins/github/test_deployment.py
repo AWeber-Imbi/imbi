@@ -1,5 +1,6 @@
 """Smoke tests for the GitHub deployment plugins."""
 
+import datetime
 import json
 import time
 import unittest
@@ -61,6 +62,17 @@ class ManifestTestCase(unittest.TestCase):
         ):
             self.assertIsInstance(cls(), DeploymentPlugin)
             self.assertEqual(cls.manifest.plugin_type, 'deployment')
+
+    def test_all_advertise_supports_deployment_sync(self) -> None:
+        for cls in (
+            GitHubDeploymentPlugin,
+            GitHubEnterpriseCloudDeploymentPlugin,
+            GitHubEnterpriseServerDeploymentPlugin,
+        ):
+            self.assertTrue(
+                cls.manifest.supports_deployment_sync,
+                f'{cls.__name__} must opt in to deployment sync',
+            )
 
     def test_all_declare_deploys_via_edge(self) -> None:
         # Every concrete subclass needs the DEPLOYS_VIA declaration so
@@ -858,6 +870,257 @@ class GetDeploymentStatusTestCase(unittest.IsolatedAsyncioTestCase):
         plugin = GitHubDeploymentPlugin()
         run = await plugin.get_deployment_status(_ctx(), _CREDS, '42')
         self.assertEqual(run.status, 'cancelled')
+
+
+class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
+    @respx.mock
+    async def test_one_env_one_deployment_success(self) -> None:
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={
+                'environment': 'infrastructure-testing',
+                'per_page': '1',
+            },
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 123,
+                        'sha': '2668cd0abc',
+                        'ref': 'main',
+                        'created_at': '2026-05-13T14:00:00Z',
+                        'description': 'Deploy main',
+                        'url': 'https://api.github.com/repos/octo/demo/deployments/123',
+                    }
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/123/statuses'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'state': 'success',
+                        'log_url': 'https://gh/runs/9001',
+                        'created_at': '2026-05-13T14:01:00Z',
+                    }
+                ],
+            )
+        )
+        plugin = GitHubDeploymentPlugin()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['infrastructure-testing']
+        )
+        self.assertEqual(len(events), 1)
+        event = events[0]
+        self.assertEqual(event.environment, 'infrastructure-testing')
+        self.assertEqual(event.sha, '2668cd0abc')
+        self.assertEqual(event.ref, 'main')
+        self.assertEqual(event.status, 'success')
+        self.assertEqual(event.external_run_id, '123')
+        self.assertEqual(event.run_url, 'https://gh/runs/9001')
+        self.assertEqual(
+            event.deployment_url,
+            'https://api.github.com/repos/octo/demo/deployments/123',
+        )
+        # ``created_at`` must come from the deployment row, not the
+        # latest status row (which is one minute later above).
+        self.assertEqual(
+            event.created_at,
+            datetime.datetime(2026, 5, 13, 14, 0, tzinfo=datetime.UTC),
+        )
+
+    @respx.mock
+    async def test_multiple_envs_fan_out_in_parallel(self) -> None:
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '1'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 1,
+                        'sha': 'prodsha',
+                        'ref': 'v1.0.0',
+                        'created_at': '2026-05-13T12:00:00Z',
+                    }
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'staging', 'per_page': '1'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 2,
+                        'sha': 'stagesha',
+                        'ref': 'main',
+                        'created_at': '2026-05-13T13:00:00Z',
+                    }
+                ],
+            )
+        )
+        # Both deployments resolve to ``pending`` because no statuses
+        # have been posted yet.  The empty-statuses case must not be
+        # treated as an error.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/1/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/2/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        plugin = GitHubDeploymentPlugin()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['production', 'staging']
+        )
+        by_env = {e.environment: e for e in events}
+        self.assertEqual(by_env['production'].external_run_id, '1')
+        self.assertEqual(by_env['staging'].external_run_id, '2')
+        self.assertEqual(by_env['production'].status, 'pending')
+        self.assertEqual(by_env['staging'].status, 'pending')
+
+    @respx.mock
+    async def test_unknown_env_skipped_not_raised(self) -> None:
+        # GitHub returns 404 for an environment the repo doesn't know
+        # about; resync must keep the partial result rather than fail.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '1'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 7,
+                        'sha': 'abc',
+                        'created_at': '2026-05-13T14:00:00Z',
+                    }
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'never-deployed', 'per_page': '1'},
+        ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/7/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        plugin = GitHubDeploymentPlugin()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['production', 'never-deployed']
+        )
+        self.assertEqual([e.environment for e in events], ['production'])
+
+    @respx.mock
+    async def test_inactive_status_maps_to_rolled_back(self) -> None:
+        respx.get('https://api.github.com/repos/octo/demo/deployments').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 99,
+                        'sha': 'old',
+                        'created_at': '2026-05-01T00:00:00Z',
+                    }
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/99/statuses'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[{'state': 'inactive'}],
+            )
+        )
+        plugin = GitHubDeploymentPlugin()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['staging']
+        )
+        self.assertEqual(events[0].status, 'rolled_back')
+
+    @respx.mock
+    async def test_status_history_failure_maps_to_failed(self) -> None:
+        respx.get('https://api.github.com/repos/octo/demo/deployments').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 5,
+                        'sha': 'abc',
+                        'created_at': '2026-05-01T00:00:00Z',
+                    }
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/5/statuses'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[{'state': 'failure'}, {'state': 'in_progress'}],
+            )
+        )
+        plugin = GitHubDeploymentPlugin()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['staging']
+        )
+        self.assertEqual(events[0].status, 'failed')
+
+    @respx.mock
+    async def test_status_fetch_error_degrades_to_pending(self) -> None:
+        respx.get('https://api.github.com/repos/octo/demo/deployments').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 8,
+                        'sha': 'abc',
+                        'created_at': '2026-05-01T00:00:00Z',
+                    }
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/8/statuses'
+        ).mock(return_value=httpx.Response(500, json={'message': 'oops'}))
+        plugin = GitHubDeploymentPlugin()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['staging']
+        )
+        self.assertEqual(events[0].status, 'pending')
+        self.assertIsNone(events[0].run_url)
+
+    @respx.mock
+    async def test_deployment_missing_id_skipped(self) -> None:
+        respx.get('https://api.github.com/repos/octo/demo/deployments').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {'sha': 'abc'},  # missing id
+                    {
+                        'id': 11,
+                        'sha': 'def',
+                        'created_at': '2026-05-13T00:00:00Z',
+                    },
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/11/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        plugin = GitHubDeploymentPlugin()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['staging']
+        )
+        self.assertEqual([e.external_run_id for e in events], ['11'])
 
 
 class CheckStatusTestCase(unittest.IsolatedAsyncioTestCase):
