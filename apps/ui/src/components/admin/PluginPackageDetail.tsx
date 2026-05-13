@@ -204,7 +204,7 @@ export function PluginPackageDetail({
     <div className="space-y-6">
       <div>
         <Button onClick={onBack} variant="outline">
-          <ArrowLeft className="mr-2 h-4 w-4" />
+          <ArrowLeft className="mr-2 size-4" />
           Back
         </Button>
       </div>
@@ -235,7 +235,7 @@ export function PluginPackageDetail({
                   size="sm"
                   variant="outline"
                 >
-                  <PowerOff className="mr-1 h-3.5 w-3.5" />
+                  <PowerOff className="mr-1 size-3.5" />
                   Disable
                 </Button>
               ) : (
@@ -245,7 +245,7 @@ export function PluginPackageDetail({
                   size="sm"
                   variant="outline"
                 >
-                  <CirclePlay className="mr-1 h-3.5 w-3.5" />
+                  <CirclePlay className="mr-1 size-3.5" />
                   Enable
                 </Button>
               )}
@@ -286,13 +286,13 @@ export function PluginPackageDetail({
                     size="sm"
                     variant="ghost"
                   >
-                    <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                    <RotateCcw className="mr-1 size-3.5" />
                     Reset to manifest default
                   </Button>
                 )}
             </div>
             {plugin.widget_text_default && (
-              <p className="text-xs text-tertiary">
+              <p className="text-tertiary text-xs">
                 Default: {plugin.widget_text_default}
               </p>
             )}
@@ -327,13 +327,13 @@ export function PluginPackageDetail({
                 )
               return (
                 <div
-                  className="space-y-3 border-l-2 border-tertiary pl-4"
+                  className="border-tertiary space-y-3 border-l-2 pl-4"
                   key={vlabel.name}
                 >
                   <div className="flex items-center justify-between">
                     <div>
                       <code className="text-sm">{vlabel.name}</code>
-                      <span className="ml-2 text-xs text-tertiary">
+                      <span className="text-tertiary ml-2 text-xs">
                         ({vlabel.model_ref})
                       </span>
                     </div>
@@ -354,7 +354,7 @@ export function PluginPackageDetail({
                         placeholder={vlabel.name}
                         value={draft.display_name}
                       />
-                      <p className="mt-1 text-xs text-tertiary">
+                      <p className="text-tertiary mt-1 text-xs">
                         Page header / detail title.
                       </p>
                     </label>
@@ -373,7 +373,7 @@ export function PluginPackageDetail({
                         placeholder={draft.display_name || vlabel.name}
                         value={draft.nav_label}
                       />
-                      <p className="mt-1 text-xs text-tertiary">
+                      <p className="text-tertiary mt-1 text-xs">
                         Defaults to display name when empty.
                       </p>
                     </label>
@@ -410,7 +410,7 @@ export function PluginPackageDetail({
                         size="sm"
                         variant="ghost"
                       >
-                        <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                        <RotateCcw className="mr-1 size-3.5" />
                         Reset to manifest default
                       </Button>
                     )}

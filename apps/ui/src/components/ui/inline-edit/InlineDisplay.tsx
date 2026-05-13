@@ -28,7 +28,7 @@ export function InlineDisplay({
       className={cn(
         'group inline-flex items-center gap-1.5',
         interactive &&
-          'hover:bg-secondary/40 cursor-pointer rounded-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+          'cursor-pointer rounded-sm hover:bg-secondary/40 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring',
         className,
       )}
       onClick={interactive ? onClick : undefined}
@@ -46,14 +46,14 @@ export function InlineDisplay({
       tabIndex={interactive ? 0 : -1}
     >
       {pending ? (
-        <Loader2 className="h-3 w-3 animate-spin text-tertiary" />
+        <Loader2 className="text-tertiary size-3 animate-spin" />
       ) : interactive ? (
-        <Pencil className="h-3 w-3 text-tertiary opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+        <Pencil className="text-tertiary size-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
       ) : null}
       {hasValue ? (
         children
       ) : (
-        <span className="italic text-tertiary">{placeholder}</span>
+        <span className="text-tertiary italic">{placeholder}</span>
       )}
     </span>
   )

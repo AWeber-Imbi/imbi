@@ -39,15 +39,15 @@ export function RecentDeploymentsWidget({
   return (
     <Card className="p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg text-primary">Recent Deployments</h3>
+        <h3 className="text-primary text-lg">Recent Deployments</h3>
       </div>
 
       {isLoading ? (
-        <div className="py-8 text-center text-sm text-secondary">
+        <div className="text-secondary py-8 text-center text-sm">
           Loading deployments…
         </div>
       ) : items.length === 0 ? (
-        <div className="py-8 text-center text-sm text-secondary">
+        <div className="text-secondary py-8 text-center text-sm">
           No recent deployments.
         </div>
       ) : (
@@ -66,21 +66,21 @@ export function RecentDeploymentsWidget({
 
             return (
               <button
-                className="w-full rounded-lg border border-input bg-background p-3 text-left transition-colors hover:border-secondary"
+                className="border-input bg-background hover:border-secondary w-full rounded-lg border p-3 text-left transition-colors"
                 key={d.id}
                 onClick={() => onProjectSelect?.(d.project_id)}
                 type="button"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 flex-1 items-start gap-3">
-                    <Rocket className="mt-0.5 h-5 w-5 flex-shrink-0 text-tertiary" />
+                    <Rocket className="text-tertiary mt-0.5 size-5 shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <div className="mb-1 truncate font-medium text-primary">
+                      <div className="text-primary mb-1 truncate font-medium">
                         {projectLabel}
                       </div>
                       <div className="mb-1 flex flex-wrap items-center gap-2">
                         {d.version && (
-                          <code className="rounded bg-secondary px-2 py-0.5 text-xs text-primary">
+                          <code className="bg-secondary text-primary rounded px-2 py-0.5 text-xs">
                             {d.version}
                           </code>
                         )}
@@ -94,7 +94,7 @@ export function RecentDeploymentsWidget({
                           className="gap-1 rounded-full"
                           variant={statusVariant}
                         >
-                          <StatusIcon className="h-3 w-3" />
+                          <StatusIcon className="size-3" />
                           {statusLabel}
                         </Badge>
                       </div>
@@ -104,7 +104,7 @@ export function RecentDeploymentsWidget({
                       </div>
                     </div>
                   </div>
-                  <ChevronRight className="h-4 w-4 flex-shrink-0 text-tertiary" />
+                  <ChevronRight className="text-tertiary size-4 shrink-0" />
                 </div>
               </button>
             )

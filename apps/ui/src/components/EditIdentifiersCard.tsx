@@ -56,13 +56,13 @@ export function EditIdentifiersCard({
       hideWhenEmpty
       newKeyPlaceholder="Pick Identifier to Add"
       renderKeyLabel={(key) => (
-        <div className="w-[15%] flex-shrink-0 truncate text-sm text-secondary">
+        <div className="text-secondary w-[15%] shrink-0 truncate text-sm">
           {toLabel(key)}
         </div>
       )}
       renderSelectItem={(key) => toLabel(key)}
       renderSelectTrigger={(newKey) => (
-        <div className="flex min-w-0 items-center text-secondary">
+        <div className="text-secondary flex min-w-0 items-center">
           <span className="truncate">{toLabel(newKey)}</span>
         </div>
       )}

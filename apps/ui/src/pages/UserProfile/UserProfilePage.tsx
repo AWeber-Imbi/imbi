@@ -51,15 +51,15 @@ export function UserProfilePage() {
   })
 
   return (
-    <div className="min-h-screen bg-tertiary text-primary">
+    <div className="bg-tertiary text-primary min-h-screen">
       <Navigation currentView="users" />
       <main
-        className="px-6 pb-12 pt-20"
+        className="px-6 pt-20 pb-12"
         style={{ paddingBottom: 'var(--assistant-height, 64px)' }}
       >
         <div className="mx-auto max-w-5xl space-y-4">
           {userQuery.error && (
-            <p className="rounded-md border border-danger bg-danger p-4 text-sm text-danger">
+            <p className="border-danger bg-danger text-danger rounded-md border p-4 text-sm">
               Could not load profile: {(userQuery.error as Error).message}
             </p>
           )}

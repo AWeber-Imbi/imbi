@@ -11,7 +11,7 @@ export function GenericPluginPayload({ payload }: PluginOpsLogContext) {
   )
   if (entries.length === 0) {
     return (
-      <p className="text-sm text-tertiary">No additional payload fields.</p>
+      <p className="text-tertiary text-sm">No additional payload fields.</p>
     )
   }
   return (
@@ -48,11 +48,11 @@ function PayloadRow({
 }) {
   return (
     <>
-      <dt className="font-mono text-xs text-tertiary">{fieldKey}</dt>
-      <dd className="flex items-center gap-1.5 break-words font-mono text-xs text-primary">
+      <dt className="text-tertiary font-mono text-xs">{fieldKey}</dt>
+      <dd className="text-primary flex items-center gap-1.5 font-mono text-xs wrap-break-word">
         {mask ? (
           <>
-            <ShieldCheck className="h-3.5 w-3.5 text-tertiary" />
+            <ShieldCheck className="text-tertiary size-3.5" />
             <span>••••••</span>
           </>
         ) : (

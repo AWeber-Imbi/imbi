@@ -17,7 +17,7 @@ export function EnvironmentBadge({
 
   return (
     <span
-      className="inline-block whitespace-nowrap rounded px-2 py-1 text-xs font-medium"
+      className="inline-block rounded px-2 py-1 text-xs font-medium whitespace-nowrap"
       key={slug}
       style={
         derived

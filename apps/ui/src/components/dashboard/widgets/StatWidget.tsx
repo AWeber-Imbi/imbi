@@ -14,10 +14,10 @@ export function StatWidget({
   value,
 }: StatWidgetProps) {
   return (
-    <div className="rounded-lg border border-border bg-card p-6">
+    <div className="border-border bg-card rounded-lg border p-6">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm text-secondary">{title}</p>
+          <p className="text-secondary text-sm">{title}</p>
           {isLoading ? (
             <span
               aria-label={`Loading ${title}`}
@@ -25,9 +25,9 @@ export function StatWidget({
               role="status"
             />
           ) : isError ? (
-            <p className="mt-2 text-sm text-danger">Unavailable</p>
+            <p className="text-danger mt-2 text-sm">Unavailable</p>
           ) : (
-            <p className="mt-2 text-3xl text-primary">{value}</p>
+            <p className="text-primary mt-2 text-3xl">{value}</p>
           )}
         </div>
         <div className="text-4xl">{icon}</div>

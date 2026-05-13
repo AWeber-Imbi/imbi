@@ -116,7 +116,7 @@ export function LinkDefinitionManagement() {
 
   if (!orgSlug && !isLoading && !error) {
     return (
-      <div className="py-12 text-center text-tertiary">
+      <div className="text-tertiary py-12 text-center">
         Select an organization to manage link definitions.
       </div>
     )
@@ -170,7 +170,7 @@ export function LinkDefinitionManagement() {
               <div className="flex items-center gap-3">
                 <div
                   className={
-                    'flex size-8 flex-shrink-0 items-center justify-center rounded-lg bg-info'
+                    'bg-info flex size-8 shrink-0 items-center justify-center rounded-lg'
                   }
                 >
                   {ld.icon ? (
@@ -179,13 +179,13 @@ export function LinkDefinitionManagement() {
                       icon={ld.icon}
                     />
                   ) : (
-                    <Link2 className="h-4 w-4 text-info" />
+                    <Link2 className="text-info size-4" />
                   )}
                 </div>
                 <div>
                   <div className="text-primary">{ld.name}</div>
                   {ld.description && (
-                    <div className="text-sm text-tertiary">
+                    <div className="text-tertiary text-sm">
                       {ld.description}
                     </div>
                   )}
@@ -199,7 +199,7 @@ export function LinkDefinitionManagement() {
             headerAlign: 'center',
             key: 'slug',
             render: (ld) => (
-              <code className="rounded bg-secondary px-2 py-1 text-primary">
+              <code className="bg-secondary text-primary rounded px-2 py-1">
                 {ld.slug}
               </code>
             ),
@@ -213,7 +213,7 @@ export function LinkDefinitionManagement() {
               ld.url_template ? (
                 <code
                   className={
-                    'rounded bg-secondary px-2 py-1 text-xs text-primary'
+                    'bg-secondary text-primary rounded px-2 py-1 text-xs'
                   }
                 >
                   {ld.url_template}

@@ -83,7 +83,7 @@ export function InlineMultiSelect({
             placeholder={placeholder}
             readOnly={readOnly}
           >
-            <span className="text-sm text-primary">{currentLabels}</span>
+            <span className="text-primary text-sm">{currentLabels}</span>
           </InlineDisplay>
         </span>
       </PopoverTrigger>

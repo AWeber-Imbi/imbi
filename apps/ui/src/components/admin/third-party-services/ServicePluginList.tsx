@@ -178,7 +178,7 @@ export function ServicePluginList({
             onClick={openAdd}
             size="sm"
           >
-            <Plus className="mr-1 h-3 w-3" />
+            <Plus className="mr-1 size-3" />
             Add Plugin
           </Button>
         </CardHeader>
@@ -186,11 +186,11 @@ export function ServicePluginList({
           {isLoading ? (
             <LoadingState label="Loading..." />
           ) : isPluginsError ? (
-            <div className="py-8 text-center text-sm text-destructive">
+            <div className="text-destructive py-8 text-center text-sm">
               {extractApiErrorDetail(pluginsError) ?? 'Failed to load plugins'}
             </div>
           ) : (plugins ?? []).length === 0 ? (
-            <div className="py-8 text-center text-sm text-secondary">
+            <div className="text-secondary py-8 text-center text-sm">
               No plugins configured. Add a plugin to enable configuration or log
               access for projects using this service.
             </div>
@@ -217,11 +217,11 @@ export function ServicePluginList({
                       {plugin.label}
                     </TableCell>
                     <TableCell>
-                      <code className="rounded bg-secondary px-1.5 py-0.5 text-xs">
+                      <code className="bg-secondary rounded px-1.5 py-0.5 text-xs">
                         {plugin.plugin_slug}
                       </code>
                     </TableCell>
-                    <TableCell className="text-sm text-secondary">
+                    <TableCell className="text-secondary text-sm">
                       v{plugin.api_version}
                     </TableCell>
                     <TableCell>
@@ -230,7 +230,7 @@ export function ServicePluginList({
                           className="flex w-fit items-center gap-1"
                           variant="destructive"
                         >
-                          <AlertTriangle className="h-3 w-3" />
+                          <AlertTriangle className="size-3" />
                           Unavailable
                         </Badge>
                       ) : (
@@ -247,11 +247,11 @@ export function ServicePluginList({
                         size="icon"
                         variant="ghost"
                       >
-                        <Trash2 className="h-3 w-3 text-destructive" />
+                        <Trash2 className="text-destructive size-3" />
                       </Button>
                     </TableCell>
                     <TableCell>
-                      <ChevronRight className="h-4 w-4 text-tertiary" />
+                      <ChevronRight className="text-tertiary size-4" />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -268,7 +268,7 @@ export function ServicePluginList({
           </DialogHeader>
           <div className="space-y-4 p-6">
             {isAdminPluginsError && (
-              <div className="text-sm text-destructive">
+              <div className="text-destructive text-sm">
                 {extractApiErrorDetail(adminPluginsError) ??
                   'Failed to load installed plugins'}
               </div>

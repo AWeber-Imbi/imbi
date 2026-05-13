@@ -150,7 +150,7 @@ export function AnchorEdgesCard({
     <Card>
       <CardHeader>
         <CardTitle>{title ?? `${edge.name} → ${targetDisplay}`}</CardTitle>
-        <p className="mt-1 text-sm text-secondary">
+        <p className="text-secondary mt-1 text-sm">
           Map this {anchorKind} to a {targetDisplay} via the{' '}
           <code className="text-xs">{edge.name}</code> edge.
         </p>
@@ -160,11 +160,11 @@ export function AnchorEdgesCard({
           <div className="bg-secondary/30 rounded-md border px-4 py-3">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="font-medium text-primary">
+                <div className="text-primary font-medium">
                   {labelEntityName(current.target)}
                 </div>
                 {labelEntitySubtitle(current.target) && (
-                  <div className="font-mono text-sm text-secondary">
+                  <div className="text-secondary font-mono text-sm">
                     {labelEntitySubtitle(current.target)}
                   </div>
                 )}
@@ -175,20 +175,20 @@ export function AnchorEdgesCard({
                 size="sm"
                 variant="ghost"
               >
-                <Trash2 className="mr-1 h-3.5 w-3.5" />
+                <Trash2 className="mr-1 size-3.5" />
                 Unmap
               </Button>
             </div>
           </div>
         ) : (
-          <div className="text-sm text-secondary">
+          <div className="text-secondary text-sm">
             Not mapped to any {targetDisplay} yet.
           </div>
         )}
 
         <div className="flex items-center gap-3">
           <Input
-            className="w-[300px]"
+            className="w-75"
             onChange={(e) => setDraft(e.target.value)}
             placeholder={
               naturalKey ? `Paste ${naturalKey}` : `Paste ${targetDisplay}`

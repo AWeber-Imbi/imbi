@@ -139,10 +139,10 @@ export function MonthlyImprovementReport() {
     <div className="flex flex-col gap-5">
       {/* Month selector */}
       <div className="flex items-center gap-3">
-        <span className="text-sm text-secondary">Month</span>
+        <span className="text-secondary text-sm">Month</span>
         <div className="relative">
           <select
-            className="h-8 appearance-none rounded border border-tertiary bg-primary py-0 pl-3 pr-8 text-sm text-primary transition-colors hover:border-secondary focus:outline-none focus:ring-0"
+            className="border-tertiary bg-primary text-primary hover:border-secondary h-8 appearance-none rounded border py-0 pr-8 pl-3 text-sm transition-colors focus:ring-0 focus:outline-none"
             onChange={(e) => {
               const opt = monthOptions[Number(e.target.value)]
               if (opt) setSelected(opt)
@@ -155,50 +155,50 @@ export function MonthlyImprovementReport() {
               </option>
             ))}
           </select>
-          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-tertiary" />
+          <ChevronDown className="text-tertiary pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2" />
         </div>
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-lg border border-tertiary bg-primary">
+      <div className="border-tertiary bg-primary overflow-hidden rounded-lg border">
         {/* Table header */}
         <div
-          className="grid border-b border-tertiary bg-secondary"
+          className="border-tertiary bg-secondary grid border-b"
           style={COL_GRID}
         >
-          <div className="px-5 py-3 text-[13px] font-medium text-primary">
+          <div className="text-primary px-5 py-3 text-[13px] font-medium">
             Team
           </div>
-          <div className="px-5 py-3 text-right text-[13px] font-medium text-primary">
+          <div className="text-primary px-5 py-3 text-right text-[13px] font-medium">
             Monthly improvement
           </div>
-          <div className="px-5 py-3 text-right text-[13px] font-medium text-primary">
+          <div className="text-primary px-5 py-3 text-right text-[13px] font-medium">
             Stack health score
           </div>
         </div>
 
         {isLoading ? (
-          <div className="py-16 text-center text-sm text-tertiary">
+          <div className="text-tertiary py-16 text-center text-sm">
             Loading…
           </div>
         ) : hasError ? (
-          <div className="py-16 text-center text-sm text-danger">
+          <div className="text-danger py-16 text-center text-sm">
             Failed to load report data. Please try again.
           </div>
         ) : sorted.length === 0 ? (
-          <div className="py-16 text-center text-sm text-tertiary">
+          <div className="text-tertiary py-16 text-center text-sm">
             No score data for {selected.label}.
           </div>
         ) : (
           <>
             {sorted.map((row, i) => (
               <div
-                className={`grid items-center border-tertiary transition-colors last:border-0 hover:bg-secondary ${i === sorted.length - 1 ? 'border-0' : 'border-b'}`}
+                className={`border-tertiary hover:bg-secondary grid items-center transition-colors last:border-0 ${i === sorted.length - 1 ? 'border-0' : 'border-b'}`}
                 key={row.key}
                 style={COL_GRID}
               >
-                <div className="px-5 py-3.5 text-[13px] text-primary">
-                  <span className="mr-2 tabular-nums text-tertiary">
+                <div className="text-primary px-5 py-3.5 text-[13px]">
+                  <span className="text-tertiary mr-2 tabular-nums">
                     {i + 1}.
                   </span>
                   {row.name}
@@ -210,7 +210,7 @@ export function MonthlyImprovementReport() {
                   {row.current_avg_score != null ? (
                     <ScorePill score={row.current_avg_score} />
                   ) : (
-                    <span className="inline-flex h-6 items-center rounded px-2 font-mono text-xs font-medium tabular-nums text-tertiary">
+                    <span className="text-tertiary inline-flex h-6 items-center rounded px-2 font-mono text-xs font-medium tabular-nums">
                       —
                     </span>
                   )}
@@ -220,10 +220,10 @@ export function MonthlyImprovementReport() {
 
             {/* Org-wide summary row */}
             <div
-              className="grid items-center border-t border-tertiary bg-secondary"
+              className="border-tertiary bg-secondary grid items-center border-t"
               style={COL_GRID}
             >
-              <div className="px-5 py-4 text-[13px] font-medium uppercase tracking-wide text-primary">
+              <div className="text-primary px-5 py-4 text-[13px] font-medium tracking-wide uppercase">
                 {orgName} wide
               </div>
               <div className="px-5 py-4 text-right">
@@ -233,7 +233,7 @@ export function MonthlyImprovementReport() {
                 {orgWide.avg_score != null ? (
                   <ScorePill score={orgWide.avg_score} />
                 ) : (
-                  <span className="inline-flex h-6 items-center rounded px-2 font-mono text-xs font-medium tabular-nums text-tertiary">
+                  <span className="text-tertiary inline-flex h-6 items-center rounded px-2 font-mono text-xs font-medium tabular-nums">
                     —
                   </span>
                 )}
@@ -253,7 +253,7 @@ const COL_GRID = {
 function ImprovementPill({ value }: { value: null | number }) {
   if (value == null) {
     return (
-      <span className="inline-flex h-6 items-center rounded px-2 font-mono text-xs font-medium tabular-nums text-tertiary">
+      <span className="text-tertiary inline-flex h-6 items-center rounded px-2 font-mono text-xs font-medium tabular-nums">
         —
       </span>
     )

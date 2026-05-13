@@ -101,18 +101,18 @@ export function TeamKPIReport() {
       </div>
 
       {/* Bar chart card */}
-      <div className="overflow-hidden rounded-lg border border-tertiary bg-primary p-[18px]">
+      <div className="border-tertiary bg-primary overflow-hidden rounded-lg border p-[18px]">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <div className="text-overline uppercase tracking-wide text-tertiary">
+            <div className="text-overline text-tertiary tracking-wide uppercase">
               Avg score by team
             </div>
-            <div className="mt-0.5 text-xs text-tertiary">
+            <div className="text-tertiary mt-0.5 text-xs">
               Bar = avg across all projects · tick = best project score
             </div>
           </div>
           <button
-            className="inline-flex h-7 items-center gap-1.5 rounded border border-tertiary px-2.5 text-xs text-primary transition-colors hover:bg-secondary"
+            className="border-tertiary text-primary hover:bg-secondary inline-flex h-7 items-center gap-1.5 rounded border px-2.5 text-xs transition-colors"
             onClick={refetchAll}
           >
             <RefreshCw size={11} />
@@ -121,15 +121,15 @@ export function TeamKPIReport() {
         </div>
 
         {isLoading ? (
-          <div className="flex h-40 items-center justify-center text-sm text-tertiary">
+          <div className="text-tertiary flex h-40 items-center justify-center text-sm">
             Loading…
           </div>
         ) : hasError ? (
-          <div className="flex h-40 items-center justify-center text-sm text-danger">
+          <div className="text-danger flex h-40 items-center justify-center text-sm">
             Failed to load report data. Please try again.
           </div>
         ) : rows.length === 0 ? (
-          <div className="flex h-40 items-center justify-center text-sm text-tertiary">
+          <div className="text-tertiary flex h-40 items-center justify-center text-sm">
             No score data yet. Projects need to be scored first.
           </div>
         ) : (
@@ -138,42 +138,42 @@ export function TeamKPIReport() {
       </div>
 
       {/* Table card */}
-      <div className="overflow-hidden rounded-lg border border-tertiary bg-primary">
-        <div className="border-b border-tertiary px-[18px] py-3.5">
-          <div className="text-overline uppercase tracking-wide text-tertiary">
+      <div className="border-tertiary bg-primary overflow-hidden rounded-lg border">
+        <div className="border-tertiary border-b px-[18px] py-3.5">
+          <div className="text-overline text-tertiary tracking-wide uppercase">
             Team details
           </div>
         </div>
 
         {isLoading ? (
-          <div className="py-10 text-center text-sm text-tertiary">
+          <div className="text-tertiary py-10 text-center text-sm">
             Loading…
           </div>
         ) : hasError ? (
-          <div className="py-10 text-center text-sm text-danger">
+          <div className="text-danger py-10 text-center text-sm">
             Failed to load report data.{' '}
             <button className="underline" onClick={refetchAll}>
               Retry
             </button>
           </div>
         ) : sorted.length === 0 ? (
-          <div className="py-10 text-center text-sm text-tertiary">
+          <div className="text-tertiary py-10 text-center text-sm">
             No data available.
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-tertiary">
-                <th className="px-[18px] py-2.5 text-left text-overline font-normal uppercase tracking-wide text-tertiary">
+              <tr className="border-tertiary border-b">
+                <th className="text-overline text-tertiary px-[18px] py-2.5 text-left font-normal tracking-wide uppercase">
                   Team
                 </th>
-                <th className="px-4 py-2.5 text-right text-overline font-normal uppercase tracking-wide text-tertiary">
+                <th className="text-overline text-tertiary px-4 py-2.5 text-right font-normal tracking-wide uppercase">
                   Avg score
                 </th>
-                <th className="px-4 py-2.5 text-right text-overline font-normal uppercase tracking-wide text-tertiary">
+                <th className="text-overline text-tertiary px-4 py-2.5 text-right font-normal tracking-wide uppercase">
                   Best project
                 </th>
-                <th className="px-[18px] py-2.5 text-right text-overline font-normal uppercase tracking-wide text-tertiary">
+                <th className="text-overline text-tertiary px-[18px] py-2.5 text-right font-normal tracking-wide uppercase">
                   Last scored
                 </th>
               </tr>
@@ -181,14 +181,14 @@ export function TeamKPIReport() {
             <tbody>
               {sorted.map((row, i) => (
                 <tr
-                  className={`border-tertiary transition-colors hover:bg-secondary ${
+                  className={`border-tertiary hover:bg-secondary transition-colors ${
                     i === sorted.length - 1 ? 'border-0' : 'border-b'
                   }`}
                   key={row.key}
                 >
-                  <td className="px-[18px] py-3 font-medium text-primary">
+                  <td className="text-primary px-[18px] py-3 font-medium">
                     {row.name}
-                    <span className="ml-2 font-mono text-[11px] text-tertiary">
+                    <span className="text-tertiary ml-2 font-mono text-[11px]">
                       {row.key}
                     </span>
                   </td>
@@ -198,7 +198,7 @@ export function TeamKPIReport() {
                   <td className="px-4 py-3 text-right">
                     <ScorePill score={row.latest_score} />
                   </td>
-                  <td className="px-[18px] py-3 text-right font-mono text-xs text-tertiary">
+                  <td className="text-tertiary px-[18px] py-3 text-right font-mono text-xs">
                     {fmtRelative(row.last_updated)}
                   </td>
                 </tr>
@@ -262,12 +262,12 @@ function StatCard({
   valueColor?: string
 }) {
   return (
-    <div className="rounded-lg border border-tertiary bg-primary p-[18px]">
-      <div className="text-overline uppercase tracking-wide text-tertiary">
+    <div className="border-tertiary bg-primary rounded-lg border p-[18px]">
+      <div className="text-overline text-tertiary tracking-wide uppercase">
         {label}
       </div>
       <div
-        className="mt-2 font-mono text-[28px] tabular-nums leading-none"
+        className="mt-2 font-mono text-[28px] leading-none tabular-nums"
         style={{ color: valueColor ?? 'var(--color-text-primary)' }}
       >
         {value}

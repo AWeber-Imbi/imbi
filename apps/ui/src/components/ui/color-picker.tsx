@@ -120,16 +120,16 @@ export function ColorPicker({
   return (
     <div className="space-y-3">
       <label
-        className="mb-1.5 block text-sm text-secondary"
+        className="text-secondary mb-1.5 block text-sm"
         htmlFor="color-picker-swatches"
       >
         Label color
-        <span className="ml-1 text-xs text-tertiary">
+        <span className="text-tertiary ml-1 text-xs">
           · used on chips wherever this {objectType} appears
         </span>
       </label>
 
-      <div className="max-w-md rounded-md bg-tertiary p-3.5">
+      <div className="bg-tertiary max-w-md rounded-md p-3.5">
         {/* Swatch radio group */}
         <div
           aria-label="Label color"
@@ -144,7 +144,7 @@ export function ColorPicker({
               <button
                 aria-checked={checked}
                 aria-label={`${s.name} · ${s.hex}`}
-                className={`relative flex aspect-square items-center justify-center rounded-[10px] border-2 transition-transform hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-offset-2 ${
+                className={`focus-visible:ring-info relative flex aspect-square items-center justify-center rounded-[10px] border-2 transition-transform hover:-translate-y-px focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none ${
                   checked ? 'border-primary' : 'border-transparent'
                 }`}
                 key={s.hex}
@@ -161,7 +161,7 @@ export function ColorPicker({
                 {checked && (
                   <Check
                     aria-hidden
-                    className="h-3.5 w-3.5 text-white"
+                    className="size-3.5 text-white"
                     style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' }}
                   />
                 )}
@@ -174,7 +174,7 @@ export function ColorPicker({
         <div className="mt-1.5 grid grid-cols-8 gap-2">
           {SWATCHES.map((s) => (
             <span
-              className="text-center font-mono text-[10.5px] text-tertiary"
+              className="text-tertiary text-center font-mono text-[10.5px]"
               key={s.hex}
             >
               {s.name}
@@ -183,21 +183,21 @@ export function ColorPicker({
         </div>
 
         {/* Divider */}
-        <div className="my-4 flex items-center gap-2.5 text-[11.5px] font-medium uppercase tracking-wider text-tertiary">
-          <span aria-hidden className="h-px flex-1 bg-tertiary" />
+        <div className="text-tertiary my-4 flex items-center gap-2.5 text-[11.5px] font-medium tracking-wider uppercase">
+          <span aria-hidden className="bg-tertiary h-px flex-1" />
           or custom hex
-          <span aria-hidden className="h-px flex-1 bg-tertiary" />
+          <span aria-hidden className="bg-tertiary h-px flex-1" />
         </div>
 
         {/* Hex input group */}
-        <div className="flex items-center gap-1 rounded-md border border-tertiary bg-primary p-1 transition-colors focus-within:border-secondary">
+        <div className="border-tertiary bg-primary focus-within:border-secondary flex items-center gap-1 rounded-md border p-1 transition-colors">
           <label
             aria-label="Open OS color picker"
-            className="relative h-7 w-7 flex-shrink-0 cursor-pointer rounded-md border border-tertiary"
+            className="border-tertiary relative size-7 shrink-0 cursor-pointer rounded-md border"
             style={{ backgroundColor: pipBackground }}
           >
             <input
-              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              className="absolute inset-0 size-full cursor-pointer opacity-0"
               onChange={(e) => commit(e.target.value)}
               ref={nativeColorRef}
               type="color"
@@ -206,7 +206,7 @@ export function ColorPicker({
           </label>
           <input
             aria-label="Hex color"
-            className="flex-1 border-0 bg-transparent px-2 font-mono text-[13px] text-primary outline-none placeholder:text-tertiary"
+            className="text-primary placeholder:text-tertiary flex-1 border-0 bg-transparent px-2 font-mono text-[13px] outline-none"
             maxLength={7}
             onChange={(e) => {
               const raw = e.target.value.toUpperCase()
@@ -240,8 +240,8 @@ export function ColorPicker({
 
       {/* Preview */}
       {derived && (
-        <div className="border-t border-dashed border-tertiary pt-4">
-          <div className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-tertiary">
+        <div className="border-tertiary border-t border-dashed pt-4">
+          <div className="text-tertiary mb-2.5 text-[11px] font-semibold tracking-wider uppercase">
             Preview · this label
           </div>
           <div className="flex flex-wrap items-center gap-2.5">
@@ -266,16 +266,16 @@ export function ColorPicker({
             >
               {previewText}
             </span>
-            <span className="inline-flex items-center gap-1.5 text-[13px] text-secondary">
+            <span className="text-secondary inline-flex items-center gap-1.5 text-[13px]">
               <span
                 aria-hidden
-                className="inline-block h-2 w-2 rounded-full"
+                className="inline-block size-2 rounded-full"
                 style={{ backgroundColor: value }}
               />
               {previewText}
             </span>
           </div>
-          <p className="mt-2 text-xs text-tertiary">
+          <p className="text-tertiary mt-2 text-xs">
             Shows this label at the three sizes it appears across the product.
           </p>
         </div>

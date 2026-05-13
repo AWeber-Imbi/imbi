@@ -4,7 +4,8 @@
     "aws-svg-icons",
     "devicon",
     "eslint-plugin-perfectionist",
-    "eslint-plugin-react-refresh"
+    "eslint-plugin-react-refresh",
+    "@oxlint/plugins"
   ],
   "ignorePatterns": [
     "src/**/__mocks__/**"

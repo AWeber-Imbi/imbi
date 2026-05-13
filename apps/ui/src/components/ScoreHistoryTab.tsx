@@ -273,13 +273,13 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
   return (
     <div className="flex flex-col gap-5">
       {/* Chart card */}
-      <div className="rounded-lg border border-tertiary bg-primary p-[18px]">
+      <div className="border-tertiary bg-primary rounded-lg border p-[18px]">
         <div className="mb-3.5 flex items-end justify-between gap-6">
           <div className="flex items-baseline gap-1">
-            <div className="font-mono text-[36px] font-semibold tabular-nums leading-none text-primary">
+            <div className="text-primary font-mono text-[36px] leading-none font-semibold tabular-nums">
               {currentScore != null ? Math.round(currentScore) : '—'}
             </div>
-            <div className="text-sm text-tertiary">/ 100</div>
+            <div className="text-tertiary text-sm">/ 100</div>
           </div>
           <div className="flex gap-2">
             <Segmented
@@ -296,7 +296,7 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
         </div>
 
         {chartLoading ? (
-          <div className="flex h-40 items-center justify-center text-sm text-tertiary">
+          <div className="text-tertiary flex h-40 items-center justify-center text-sm">
             Loading…
           </div>
         ) : (
@@ -310,12 +310,12 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
         )}
 
         {/* Legend */}
-        <div className="mt-2 flex flex-wrap items-center gap-4 border-t border-tertiary pt-2.5 text-sm text-tertiary">
-          <span className="font-medium text-secondary">Annotations</span>
+        <div className="border-tertiary text-tertiary mt-2 flex flex-wrap items-center gap-4 border-t pt-2.5 text-sm">
+          <span className="text-secondary font-medium">Annotations</span>
           {Object.entries(REASON_META).map(([key, meta]) => (
             <span className="inline-flex items-center gap-1.5" key={key}>
               <span
-                className="inline-block h-2 w-2 rounded-[2px]"
+                className="inline-block size-2 rounded-xs"
                 style={{ background: meta.dot }}
               />
               {meta.label}
@@ -325,22 +325,22 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
       </div>
 
       {/* Change events card */}
-      <div className="overflow-hidden rounded-lg border border-tertiary bg-primary">
-        <div className="flex items-center justify-between border-b border-tertiary px-[18px] py-3.5">
+      <div className="border-tertiary bg-primary overflow-hidden rounded-lg border">
+        <div className="border-tertiary flex items-center justify-between border-b px-[18px] py-3.5">
           <div>
-            <div className="text-overline uppercase tracking-wide text-tertiary">
+            <div className="text-overline text-tertiary tracking-wide uppercase">
               Change events
             </div>
-            <div className="mt-0.5 text-xs text-tertiary">
+            <div className="text-tertiary mt-0.5 text-xs">
               Every recomputation that moved the score, newest first.
             </div>
           </div>
           <div className="flex gap-2">
-            <button className="inline-flex h-7 items-center gap-1.5 rounded px-2.5 text-xs text-secondary transition-colors hover:bg-secondary hover:text-primary">
+            <button className="text-secondary hover:bg-secondary hover:text-primary inline-flex h-7 items-center gap-1.5 rounded px-2.5 text-xs transition-colors">
               <Filter size={12} />
               All reasons
             </button>
-            <button className="inline-flex h-7 items-center gap-1.5 rounded border border-tertiary px-2.5 text-xs text-primary transition-colors hover:bg-secondary">
+            <button className="border-tertiary text-primary hover:bg-secondary inline-flex h-7 items-center gap-1.5 rounded border px-2.5 text-xs transition-colors">
               <Download size={12} />
               Export CSV
             </button>
@@ -348,7 +348,7 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
         </div>
         <div>
           {rawLoading ? (
-            <div className="py-10 text-center text-sm text-tertiary">
+            <div className="text-tertiary py-10 text-center text-sm">
               Loading…
             </div>
           ) : (
@@ -394,7 +394,7 @@ function EventTimeline({
 }: EventTimelineProps) {
   if (events.length === 0) {
     return (
-      <div className="py-10 text-center text-sm text-tertiary">
+      <div className="text-tertiary py-10 text-center text-sm">
         No change events for this period.
       </div>
     )
@@ -409,7 +409,7 @@ function EventTimeline({
         const correlated = eventCorrelations.get(i)
         return (
           <div
-            className={`grid items-center gap-3 border-b border-tertiary px-3 py-3.5 transition-colors duration-fast last:border-0 ${
+            className={`border-tertiary duration-fast grid items-center gap-3 border-b px-3 py-3.5 transition-colors last:border-0 ${
               isHov ? 'bg-secondary' : ''
             }`}
             key={i}
@@ -421,10 +421,10 @@ function EventTimeline({
             }}
           >
             <div>
-              <div className="text-xs font-medium text-primary">
+              <div className="text-primary text-xs font-medium">
                 {fmtRel(e.timestamp)}
               </div>
-              <div className="mt-0.5 font-mono text-[11px] text-tertiary">
+              <div className="text-tertiary mt-0.5 font-mono text-[11px]">
                 {fmtISODate(e.timestamp)}
               </div>
             </div>
@@ -433,17 +433,17 @@ function EventTimeline({
                 <ReasonChip reason={reason} />
               </div>
               {correlated ? (
-                <div className="text-[12px] text-tertiary">
-                  <span className="font-medium text-secondary">
+                <div className="text-tertiary text-[12px]">
+                  <span className="text-secondary font-medium">
                     {formatFieldKey(correlated.field)}
                   </span>
                   {correlated.old != null && String(correlated.old) !== '' && (
                     <span className="ml-1 font-mono">
-                      <span className="rounded bg-secondary px-1 py-0.5">
+                      <span className="bg-secondary rounded px-1 py-0.5">
                         {String(correlated.old)}
                       </span>
                       {' → '}
-                      <span className="rounded bg-secondary px-1 py-0.5">
+                      <span className="bg-secondary rounded px-1 py-0.5">
                         {String(correlated.new)}
                       </span>
                     </span>
@@ -452,14 +452,14 @@ function EventTimeline({
                     String(correlated.old) === '') && (
                     <span className="ml-1 font-mono">
                       {'set to '}
-                      <span className="rounded bg-secondary px-1 py-0.5">
+                      <span className="bg-secondary rounded px-1 py-0.5">
                         {String(correlated.new)}
                       </span>
                     </span>
                   )}
                 </div>
               ) : (
-                <div className="font-mono text-[12px] text-tertiary">
+                <div className="text-tertiary font-mono text-[12px]">
                   score recomputed
                 </div>
               )}
@@ -467,13 +467,13 @@ function EventTimeline({
             <div className="flex items-center justify-end gap-1.5 font-mono tabular-nums">
               {e.previous_score != null && (
                 <>
-                  <span className="text-xs text-tertiary">
+                  <span className="text-tertiary text-xs">
                     {Math.round(e.previous_score)}
                   </span>
                   <ArrowRight className="text-tertiary" size={11} />
                 </>
               )}
-              <span className="text-sm font-semibold text-primary">
+              <span className="text-primary text-sm font-semibold">
                 {Math.round(e.score)}
               </span>
             </div>
@@ -645,7 +645,7 @@ function ReasonChip({ reason }: { reason: string }) {
   }
   // Service name (sonarqube, github, etc.) → capitalise
   return (
-    <span className="inline-flex h-5 items-center rounded bg-secondary px-1.5 text-[11px] font-medium text-secondary">
+    <span className="bg-secondary text-secondary inline-flex h-5 items-center rounded px-1.5 text-[11px] font-medium">
       {reason.charAt(0).toUpperCase() + reason.slice(1)}
     </span>
   )
@@ -716,7 +716,7 @@ function ScoreChart({
 
   if (points.length === 0) {
     return (
-      <div className="flex h-40 items-center justify-center text-sm text-tertiary">
+      <div className="text-tertiary flex h-40 items-center justify-center text-sm">
         No score data for this period.
       </div>
     )
@@ -979,12 +979,12 @@ function Segmented({
   value: string
 }) {
   return (
-    <div className="inline-flex gap-0.5 rounded-md border border-tertiary bg-primary p-0.5">
+    <div className="border-tertiary bg-primary inline-flex gap-0.5 rounded-md border p-0.5">
       {items.map((it) => (
         <button
-          className={`inline-flex h-6 items-center rounded px-2.5 text-xs transition-colors duration-fast ${
+          className={`duration-fast inline-flex h-6 items-center rounded px-2.5 text-xs transition-colors ${
             value === it.key
-              ? 'bg-secondary font-medium text-primary'
+              ? 'bg-secondary text-primary font-medium'
               : 'text-secondary hover:text-primary'
           }`}
           key={it.key}

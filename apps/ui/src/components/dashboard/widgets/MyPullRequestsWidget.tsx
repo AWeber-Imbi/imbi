@@ -75,8 +75,8 @@ export function MyPullRequestsWidget({
   return (
     <Card className="p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg text-primary">My Pull Requests</h3>
-        <span className="text-sm text-secondary">
+        <h3 className="text-primary text-lg">My Pull Requests</h3>
+        <span className="text-secondary text-sm">
           {pullRequests.length} open
         </span>
       </div>
@@ -88,16 +88,16 @@ export function MyPullRequestsWidget({
 
           return (
             <div
-              className="rounded-lg border border-input bg-background p-4 transition-colors hover:border-secondary"
+              className="border-input bg-background hover:border-secondary rounded-lg border p-4 transition-colors"
               key={pr.id}
             >
               <div className="flex items-start gap-3">
-                <GitPullRequest className="mt-0.5 h-5 w-5 flex-shrink-0 text-tertiary" />
+                <GitPullRequest className="text-tertiary mt-0.5 size-5 shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <div className="mb-1 font-medium text-primary">
+                  <div className="text-primary mb-1 font-medium">
                     {pr.title}
                   </div>
-                  <div className="mb-2 text-sm text-secondary">
+                  <div className="text-secondary mb-2 text-sm">
                     {pr.repo} • {pr.branch}
                   </div>
 
@@ -113,13 +113,13 @@ export function MyPullRequestsWidget({
                           'success') as BadgeProps['variant']
                       }
                     >
-                      <StatusIcon className="h-3 w-3" />
+                      <StatusIcon className="size-3" />
                       {config.label}
                     </Badge>
 
                     {pr.comments > 0 && (
                       <span className="flex items-center gap-1 text-xs text-gray-500">
-                        <MessageSquare className="h-3 w-3" />
+                        <MessageSquare className="size-3" />
                         {pr.comments}
                       </span>
                     )}
@@ -134,7 +134,7 @@ export function MyPullRequestsWidget({
                       Reviewers:{' '}
                       {pr.reviewers.map((reviewer, idx) => (
                         <button
-                          className={`hover:text-info/80 text-info ${
+                          className={`text-info hover:text-info/80 ${
                             idx > 0 ? 'ml-1' : ''
                           }`}
                           key={idx}

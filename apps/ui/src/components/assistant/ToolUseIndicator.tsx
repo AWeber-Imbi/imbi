@@ -19,7 +19,7 @@ export function ToolUseIndicator({ toolName }: ToolUseIndicatorProps) {
 
   return (
     <div className="text-warning/70 flex items-center gap-2 py-1 pl-4 font-mono text-xs">
-      <Loader2 className="h-3 w-3 animate-spin" />
+      <Loader2 className="size-3 animate-spin" />
       <span>{friendlyName}...</span>
     </div>
   )

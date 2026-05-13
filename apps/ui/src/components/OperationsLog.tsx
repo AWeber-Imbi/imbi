@@ -61,7 +61,7 @@ const LoadingIndicator = memo(function LoadingIndicator({
   return (
     <span
       aria-label={loading ? 'Loading' : undefined}
-      className="relative inline-block h-5 w-5"
+      className="relative inline-block size-5"
       style={{
         contain: 'layout paint',
         transform: 'translateZ(0)',
@@ -71,14 +71,14 @@ const LoadingIndicator = memo(function LoadingIndicator({
       <Activity
         aria-hidden
         className={cn(
-          'absolute inset-0 h-5 w-5 text-secondary transition-opacity duration-200',
+          'absolute inset-0 size-5 text-secondary transition-opacity duration-200',
           loading && 'opacity-0',
         )}
       />
       <LoaderCircle
         aria-hidden
         className={cn(
-          'absolute inset-0 h-5 w-5 text-secondary transition-opacity duration-200',
+          'absolute inset-0 size-5 text-secondary transition-opacity duration-200',
           !loading && 'opacity-0',
         )}
         ref={spinnerRef}
@@ -486,7 +486,7 @@ export function OperationsLog({
         <main className="min-w-0">
           {showHeader && (
             <header className="mb-4 flex flex-wrap items-end justify-between gap-3">
-              <h1 className="flex items-center gap-2 text-h1 text-primary">
+              <h1 className="text-h1 text-primary flex items-center gap-2">
                 <LoadingIndicator loading={isPageLoading} />
                 Operations Log
               </h1>
@@ -538,23 +538,23 @@ export function OperationsLog({
 
             {activeChips.length > 0 && (
               <div className="mb-3 flex flex-wrap items-center gap-1.5">
-                <span className="mr-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-tertiary">
+                <span className="text-tertiary mr-1 text-[11px] font-semibold tracking-[0.06em] uppercase">
                   Filters
                 </span>
                 {activeChips.map((c) => (
                   <Button
-                    className="h-6 rounded bg-secondary px-2 text-[12px] text-secondary hover:text-primary"
+                    className="bg-secondary text-secondary hover:text-primary h-6 rounded px-2 text-[12px]"
                     key={c.key}
                     onClick={c.clear}
                     type="button"
                     variant="ghost"
                   >
                     <span className="truncate">{c.label}</span>
-                    <X className="h-3 w-3" />
+                    <X className="size-3" />
                   </Button>
                 ))}
                 <Button
-                  className="ml-1 h-auto rounded px-2 py-0.5 text-[12px] text-tertiary hover:bg-secondary hover:text-primary"
+                  className="text-tertiary hover:bg-secondary hover:text-primary ml-1 h-auto rounded px-2 py-0.5 text-[12px]"
                   onClick={() =>
                     setFilters({
                       entry_types: [],
@@ -573,7 +573,7 @@ export function OperationsLog({
             )}
 
             {isError && (
-              <div className="bg-danger/10 mb-3 rounded-md border border-danger px-3 py-2 text-sm text-danger">
+              <div className="border-danger bg-danger/10 text-danger mb-3 rounded-md border px-3 py-2 text-sm">
                 Failed to load operations log.{' '}
                 <Button
                   className="ml-2"
@@ -587,7 +587,7 @@ export function OperationsLog({
             )}
 
             {metadataError && (
-              <div className="bg-warning/10 mb-3 rounded-md border border-warning px-3 py-2 text-sm text-warning">
+              <div className="border-warning bg-warning/10 text-warning mb-3 rounded-md border px-3 py-2 text-sm">
                 Some filter metadata failed to load — projects, environments, or
                 users may show as slugs.{' '}
                 <Button
@@ -606,14 +606,14 @@ export function OperationsLog({
             {!isLoading &&
               !isError &&
               (virtualItems.length === 0 ? (
-                <div className="rounded-md border border-tertiary bg-primary px-6 py-16 text-center text-sm text-tertiary">
-                  <SearchX className="mx-auto mb-2 h-7 w-7 text-tertiary" />
+                <div className="border-tertiary bg-primary text-tertiary rounded-md border px-6 py-16 text-center text-sm">
+                  <SearchX className="text-tertiary mx-auto mb-2 size-7" />
                   No events match these filters.
                 </div>
               ) : (
                 <>
                   <div
-                    className="relative w-full overflow-hidden rounded-md border border-tertiary bg-primary"
+                    className="border-tertiary bg-primary relative w-full overflow-hidden rounded-md border"
                     style={{ height: virtualizer.getTotalSize() }}
                   >
                     {virtualizer.getVirtualItems().map((v) => {
@@ -621,7 +621,7 @@ export function OperationsLog({
                       if (!vi) return null
                       return (
                         <div
-                          className="absolute left-0 right-0 top-0"
+                          className="absolute top-0 right-0 left-0"
                           data-index={v.index}
                           key={v.key}
                           ref={virtualizer.measureElement}
@@ -639,7 +639,7 @@ export function OperationsLog({
                       )
                     })}
                   </div>
-                  <div className="py-3 text-center text-xs text-tertiary">
+                  <div className="text-tertiary py-3 text-center text-xs">
                     {isFetchingNextPage
                       ? 'Loading more…'
                       : hasNextPage

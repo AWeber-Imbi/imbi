@@ -145,7 +145,7 @@ export function NewProjectDialog({
                 placeholder="Select team..."
                 value={teamSlug}
               />
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 Team that owns this project
               </p>
             </div>
@@ -164,7 +164,7 @@ export function NewProjectDialog({
                 placeholder="Select project type..."
                 value={projectTypeSlug}
               />
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 Type of the new project
               </p>
             </div>
@@ -180,7 +180,7 @@ export function NewProjectDialog({
                 placeholder="e.g., My Service"
                 value={name}
               />
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 Human-readable name for this project
               </p>
             </div>
@@ -196,7 +196,7 @@ export function NewProjectDialog({
                 placeholder="e.g., my-service"
                 value={slug}
               />
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 URL-friendly identifier for this project
               </p>
             </div>
@@ -210,7 +210,7 @@ export function NewProjectDialog({
                 Description
               </label>
               <Textarea
-                className="min-h-[120px] resize-none"
+                className="min-h-30 resize-none"
                 id="new-project-description"
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Provide a high-level purpose and context for the project"
@@ -238,7 +238,7 @@ export function NewProjectDialog({
                     </button>
                   ))}
                 </div>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-muted-foreground text-sm">
                   The environment the project runs in
                 </p>
               </div>
@@ -250,7 +250,7 @@ export function NewProjectDialog({
         {createMutation.error && (
           <div className="px-6 py-2">
             <Card className="border-destructive/50 bg-destructive/10 p-3">
-              <p className="text-sm text-destructive">
+              <p className="text-destructive text-sm">
                 Failed to create project: {String(createMutation.error)}
               </p>
             </Card>

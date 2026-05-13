@@ -297,7 +297,7 @@ export function SettingsConnections() {
   if (pluginsQuery.isError) {
     return (
       <Card>
-        <CardContent className="py-8 text-center text-sm text-destructive">
+        <CardContent className="text-destructive py-8 text-center text-sm">
           {extractApiErrorDetail(pluginsQuery.error) ??
             'Failed to load plugins'}
         </CardContent>
@@ -308,7 +308,7 @@ export function SettingsConnections() {
   if (connectionsQuery.isError) {
     return (
       <Card>
-        <CardContent className="py-8 text-center text-sm text-destructive">
+        <CardContent className="text-destructive py-8 text-center text-sm">
           {extractApiErrorDetail(connectionsQuery.error) ??
             'Failed to load connections'}
         </CardContent>
@@ -324,11 +324,11 @@ export function SettingsConnections() {
     return (
       <Card>
         <CardContent className="py-12 text-center">
-          <Link2 className="mx-auto mb-3 h-8 w-8 text-secondary" />
-          <h2 className="mb-1 text-base font-medium text-primary">
+          <Link2 className="text-secondary mx-auto mb-3 size-8" />
+          <h2 className="text-primary mb-1 text-base font-medium">
             No identity providers
           </h2>
-          <p className="text-sm text-secondary">
+          <p className="text-secondary text-sm">
             Ask your administrator to enable an identity plugin (OIDC, GitHub,
             AWS IAM Identity Center) to connect your accounts.
           </p>
@@ -355,10 +355,10 @@ export function SettingsConnections() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-base font-medium text-primary">
+        <h2 className="text-primary text-base font-medium">
           Third-party connections
         </h2>
-        <p className="mt-1 text-sm text-secondary">
+        <p className="text-secondary mt-1 text-sm">
           Connect your account to identity providers so Imbi can run AWS,
           GitHub, and OIDC operations as you instead of a shared service
           principal.
@@ -390,7 +390,7 @@ export function SettingsConnections() {
                         {STATUS_LABEL[status]}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-sm text-secondary">
+                    <TableCell className="text-secondary text-sm">
                       {formatRelative(connection?.last_used_at ?? null)}
                     </TableCell>
                     <TableCell className="text-right">
@@ -493,9 +493,9 @@ function ConnectionActions({
         variant="outline"
       >
         {pending ? (
-          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+          <Loader2 className="mr-1 size-3 animate-spin" />
         ) : (
-          <Link2 className="mr-1 h-3 w-3" />
+          <Link2 className="mr-1 size-3" />
         )}
         Connect
       </Button>
@@ -510,7 +510,7 @@ function ConnectionActions({
           size="sm"
           variant="ghost"
         >
-          <RefreshCw className="mr-1 h-3 w-3" />
+          <RefreshCw className="mr-1 size-3" />
           Refresh
         </Button>
         <Button
@@ -519,7 +519,7 @@ function ConnectionActions({
           size="sm"
           variant="outline"
         >
-          <Unplug className="mr-1 h-3 w-3" />
+          <Unplug className="mr-1 size-3" />
           Disconnect
         </Button>
       </div>
@@ -580,9 +580,9 @@ function ProviderCell({ plugin }: { plugin: InstalledPlugin }) {
   return (
     <div className="flex items-center gap-3">
       {ResolvedIcon ? (
-        <ResolvedIcon className="h-6 w-6 flex-shrink-0 text-secondary" />
+        <ResolvedIcon className="text-secondary size-6 shrink-0" />
       ) : (
-        <Plug className="h-6 w-6 flex-shrink-0 text-tertiary" />
+        <Plug className="text-tertiary size-6 shrink-0" />
       )}
       <div className="font-medium">{plugin.name}</div>
     </div>

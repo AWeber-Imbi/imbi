@@ -127,25 +127,25 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
   return (
     <div>
       {isPending ? (
-        <div className="flex items-center justify-center py-10 text-tertiary">
-          <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+        <div className="text-tertiary flex items-center justify-center py-10">
+          <LoaderCircle className="mr-2 size-4 animate-spin" />
           <span className="text-sm">Loading activity…</span>
         </div>
       ) : merged.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 py-10 text-tertiary">
-          <History className="h-5 w-5" />
+        <div className="text-tertiary flex flex-col items-center justify-center gap-2 py-10">
+          <History className="size-5" />
           <span className="text-sm">No activity recorded yet.</span>
         </div>
       ) : (
         <div>
           {groups.map((group) => (
             <div key={group.label}>
-              <div className="px-6 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-widest text-tertiary">
+              <div className="text-tertiary px-6 pt-2 pb-1 text-[11px] font-semibold tracking-widest uppercase">
                 {group.label}
               </div>
 
               <div className="relative px-6">
-                <div className="absolute bottom-4 left-[31.5px] top-4 w-px bg-muted" />
+                <div className="bg-muted absolute top-4 bottom-4 left-[31.5px] w-px" />
 
                 {group.items.map((item, i) =>
                   item.kind === 'event' ? (
@@ -201,20 +201,20 @@ function EntryRow({
     <div className="relative flex gap-3 py-3">
       <div className="relative flex w-4 shrink-0 flex-col items-center">
         <div
-          className={`relative z-10 mt-1.5 h-2 w-2 shrink-0 rounded-full ring-2 ring-primary ${DOT_CLASS[avatarColor]}`}
+          className={`ring-primary relative z-10 mt-1.5 size-2 shrink-0 rounded-full ring-2 ${DOT_CLASS[avatarColor]}`}
         />
       </div>
       <Gravatar
-        className="h-8 w-8 shrink-0 rounded-full"
+        className="size-8 shrink-0 rounded-full"
         email={email}
         size={32}
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate font-semibold text-primary">{name}</span>
+          <span className="text-primary truncate font-semibold">{name}</span>
           <Timestamp ts={ts} />
         </div>
-        <div className="mt-0.5 text-sm text-secondary">{body}</div>
+        <div className="text-secondary mt-0.5 text-sm">{body}</div>
       </div>
     </div>
   )
@@ -352,7 +352,7 @@ function Timestamp({ ts }: { ts: Date }) {
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="shrink-0 cursor-default whitespace-nowrap font-mono text-xs text-tertiary">
+          <span className="text-tertiary shrink-0 cursor-default font-mono text-xs whitespace-nowrap">
             {formatDistanceToNow(ts, { addSuffix: true })}
           </span>
         </TooltipTrigger>
@@ -364,7 +364,7 @@ function Timestamp({ ts }: { ts: Date }) {
 
 function ValueChip({ children }: { children: React.ReactNode }) {
   return (
-    <code className="inline-rounded rounded bg-secondary px-1.5 py-0.5 font-mono text-xs text-primary">
+    <code className="bg-secondary text-primary inline rounded px-1.5 py-0.5 font-mono text-xs">
       {children}
     </code>
   )

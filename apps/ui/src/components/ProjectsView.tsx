@@ -101,13 +101,13 @@ export function ProjectsView() {
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6">
         <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-2xl font-semibold text-primary">Projects</h1>
+          <h1 className="text-primary text-2xl font-semibold">Projects</h1>
           <Button
             className="bg-action text-action-foreground hover:bg-action-hover"
             onClick={() => setNewProjectDialogOpen(true)}
             size="sm"
           >
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="mr-2 size-4" />
             New Project
           </Button>
         </div>
@@ -116,7 +116,7 @@ export function ProjectsView() {
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="relative max-w-md flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary" />
+              <Search className="text-tertiary absolute top-1/2 left-3 size-4 -translate-y-1/2" />
               <Input
                 className={`pl-9 ${''}`}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -126,7 +126,7 @@ export function ProjectsView() {
               />
             </div>
 
-            <div className="flex items-center rounded-lg border border-secondary">
+            <div className="border-secondary flex items-center rounded-lg border">
               <Button
                 aria-label="Grid view"
                 className={`rounded-r-none ${viewMode === 'grid' ? 'bg-amber-bg text-amber-text' : ''}`}
@@ -134,7 +134,7 @@ export function ProjectsView() {
                 size="sm"
                 variant="ghost"
               >
-                <Grid3x3 className="h-4 w-4" />
+                <Grid3x3 className="size-4" />
               </Button>
               <Button
                 aria-label="List view"
@@ -143,7 +143,7 @@ export function ProjectsView() {
                 size="sm"
                 variant="ghost"
               >
-                <List className="h-4 w-4" />
+                <List className="size-4" />
               </Button>
               <Button
                 aria-label="Graph view"
@@ -152,7 +152,7 @@ export function ProjectsView() {
                 size="sm"
                 variant="ghost"
               >
-                <Network className="h-4 w-4" />
+                <Network className="size-4" />
               </Button>
             </div>
           </div>
@@ -173,10 +173,10 @@ export function ProjectsView() {
               >
                 <div className="mb-3 flex items-start justify-between">
                   <div className="min-w-0 flex-1">
-                    <h3 className="mb-1 truncate font-medium text-primary">
+                    <h3 className="text-primary mb-1 truncate font-medium">
                       {project.name}
                     </h3>
-                    <p className="text-sm text-tertiary">
+                    <p className="text-tertiary text-sm">
                       {(project.project_types || [])
                         .map((pt) => pt.name)
                         .join(', ')}
@@ -192,13 +192,13 @@ export function ProjectsView() {
                 </div>
 
                 {project.description && (
-                  <p className="mb-3 line-clamp-2 text-sm text-secondary">
+                  <p className="text-secondary mb-3 line-clamp-2 text-sm">
                     {project.description}
                   </p>
                 )}
 
                 <div className="mb-3">
-                  <p className="text-xs text-tertiary">{project.team.name}</p>
+                  <p className="text-tertiary text-xs">{project.team.name}</p>
                 </div>
 
                 {project.environments && project.environments.length > 0 && (
@@ -221,62 +221,62 @@ export function ProjectsView() {
         <Card className="overflow-hidden">
           <div className="overflow-x-auto">
             <Table>
-              <TableHeader className="border-b border-tertiary bg-secondary">
+              <TableHeader className="border-tertiary bg-secondary border-b">
                 <TableRow>
                   <TableHead
                     className={
-                      'px-6 py-3 text-left text-sm font-medium text-secondary'
+                      'text-secondary px-6 py-3 text-left text-sm font-medium'
                     }
                   >
                     Project
                   </TableHead>
                   <TableHead
                     className={
-                      'px-6 py-3 text-left text-sm font-medium text-secondary'
+                      'text-secondary px-6 py-3 text-left text-sm font-medium'
                     }
                   >
                     Type
                   </TableHead>
                   <TableHead
                     className={
-                      'px-6 py-3 text-left text-sm font-medium text-secondary'
+                      'text-secondary px-6 py-3 text-left text-sm font-medium'
                     }
                   >
                     Team
                   </TableHead>
                   <TableHead
                     className={
-                      'px-6 py-3 text-left text-sm font-medium text-secondary'
+                      'text-secondary px-6 py-3 text-left text-sm font-medium'
                     }
                   >
                     Environments
                   </TableHead>
                   <TableHead
                     className={
-                      'px-6 py-3 text-left text-sm font-medium text-secondary'
+                      'text-secondary px-6 py-3 text-left text-sm font-medium'
                     }
                   >
                     Health
                   </TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody className="divide-y divide-tertiary">
+              <TableBody className="divide-tertiary divide-y">
                 {filteredProjects.map((project) => {
                   return (
                     <TableRow
-                      className="cursor-pointer transition-colors hover:bg-secondary"
+                      className="hover:bg-secondary cursor-pointer transition-colors"
                       key={`table-${project.id}`}
                       onClick={() => handleProjectSelect(project.id)}
                     >
-                      <TableCell className="px-6 py-4 font-medium text-primary">
+                      <TableCell className="text-primary px-6 py-4 font-medium">
                         {project.name}
                       </TableCell>
-                      <TableCell className="px-6 py-4 text-secondary">
+                      <TableCell className="text-secondary px-6 py-4">
                         {(project.project_types || [])
                           .map((pt) => pt.name)
                           .join(', ')}
                       </TableCell>
-                      <TableCell className="px-6 py-4 text-secondary">
+                      <TableCell className="text-secondary px-6 py-4">
                         {project.team.name}
                       </TableCell>
                       <TableCell className="px-6 py-4">

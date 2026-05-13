@@ -115,7 +115,7 @@ export function EnvironmentManagement() {
 
   if (!orgSlug && !isLoading && !error) {
     return (
-      <div className="py-12 text-center text-tertiary">
+      <div className="text-tertiary py-12 text-center">
         Select an organization to manage environments.
       </div>
     )
@@ -167,7 +167,7 @@ export function EnvironmentManagement() {
               <div className="flex items-center gap-3">
                 <div
                   className={
-                    'flex size-8 flex-shrink-0 items-center justify-center rounded-lg bg-success'
+                    'bg-success flex size-8 shrink-0 items-center justify-center rounded-lg'
                   }
                 >
                   {env.icon ? (
@@ -176,13 +176,13 @@ export function EnvironmentManagement() {
                       icon={env.icon}
                     />
                   ) : (
-                    <Globe className="h-4 w-4 text-success" />
+                    <Globe className="text-success size-4" />
                   )}
                 </div>
                 <div>
                   <div className="text-primary">{env.name}</div>
                   {env.description && (
-                    <div className="text-sm text-tertiary">
+                    <div className="text-tertiary text-sm">
                       {env.description}
                     </div>
                   )}
@@ -203,7 +203,7 @@ export function EnvironmentManagement() {
               ) : (
                 <code
                   className={
-                    'whitespace-nowrap rounded bg-secondary px-2 py-1 text-primary'
+                    'bg-secondary text-primary rounded px-2 py-1 whitespace-nowrap'
                   }
                 >
                   {env.slug}

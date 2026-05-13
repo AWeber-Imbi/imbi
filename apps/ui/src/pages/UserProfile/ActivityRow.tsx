@@ -22,18 +22,16 @@ interface ActivityRowProps {
 export function ActivityRow({ record }: ActivityRowProps) {
   const body = (
     <div className="flex items-start gap-3">
-      <span className="mt-0.5 flex-shrink-0 text-tertiary">
-        {pickIcon(record)}
-      </span>
+      <span className="text-tertiary mt-0.5 shrink-0">{pickIcon(record)}</span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-primary">{record.summary}</p>
-        <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-tertiary">
+        <p className="text-primary truncate text-sm">{record.summary}</p>
+        <p className="text-tertiary mt-0.5 flex flex-wrap items-center gap-2 text-xs">
           <span>{formatRelativeDate(record.occurred_at)}</span>
-          <span className="rounded-sm border border-tertiary px-1.5 py-0.5">
+          <span className="border-tertiary rounded-sm border px-1.5 py-0.5">
             {record.type}
           </span>
           {record.environment_slug && (
-            <span className="rounded-sm border border-tertiary px-1.5 py-0.5">
+            <span className="border-tertiary rounded-sm border px-1.5 py-0.5">
               {record.environment_slug}
             </span>
           )}
@@ -45,7 +43,7 @@ export function ActivityRow({ record }: ActivityRowProps) {
   if (record.link) {
     return (
       <Link
-        className="block rounded-sm py-2 hover:bg-secondary"
+        className="hover:bg-secondary block rounded-sm py-2"
         to={record.link}
       >
         {body}
@@ -57,20 +55,20 @@ export function ActivityRow({ record }: ActivityRowProps) {
 
 function pickIcon(record: ActivityRecord) {
   if (record.source === 'operations_log') {
-    if (record.type === 'Deployed') return <Rocket className="h-4 w-4" />
-    if (record.type === 'Rolled Back') return <RotateCcw className="h-4 w-4" />
-    return <ActivityIcon className="h-4 w-4" />
+    if (record.type === 'Deployed') return <Rocket className="size-4" />
+    if (record.type === 'Rolled Back') return <RotateCcw className="size-4" />
+    return <ActivityIcon className="size-4" />
   }
   switch (record.source) {
     case 'conversation':
-      return <MessageSquare className="h-4 w-4" />
+      return <MessageSquare className="size-4" />
     case 'document':
-      return <FileText className="h-4 w-4" />
+      return <FileText className="size-4" />
     case 'events':
-      return <Zap className="h-4 w-4" />
+      return <Zap className="size-4" />
     case 'release':
-      return <Tag className="h-4 w-4" />
+      return <Tag className="size-4" />
     case 'upload':
-      return <Paperclip className="h-4 w-4" />
+      return <Paperclip className="size-4" />
   }
 }

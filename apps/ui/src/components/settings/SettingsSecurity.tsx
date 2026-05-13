@@ -10,23 +10,23 @@ export function SettingsSecurity() {
 
   return (
     <Card className="p-8" style={{ borderWidth: '0.5px' }}>
-      <h2 className="mb-6 text-[18px] font-medium text-primary">
+      <h2 className="text-primary mb-6 text-[18px] font-medium">
         Security settings
       </h2>
 
       <div className="space-y-6">
         {/* Authentication */}
         <div>
-          <h3 className="mb-4 text-[16px] font-medium text-primary">
+          <h3 className="text-primary mb-4 text-[16px] font-medium">
             Authentication
           </h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-[13.5px] text-primary">
+                <p className="text-primary text-[13.5px]">
                   Two-factor authentication
                 </p>
-                <p className="text-[12px] text-tertiary">
+                <p className="text-tertiary text-[12px]">
                   Add an extra layer of security to your account
                 </p>
               </div>
@@ -35,10 +35,10 @@ export function SettingsSecurity() {
             <div className="bg-secondary/50 rounded-lg p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[13.5px] text-primary">
+                  <p className="text-primary text-[13.5px]">
                     Current authentication method
                   </p>
-                  <p className="mt-1 text-[12px] text-tertiary">
+                  <p className="text-tertiary mt-1 text-[12px]">
                     Google OAuth ({user?.email})
                   </p>
                 </div>
@@ -58,16 +58,16 @@ export function SettingsSecurity() {
 
         {/* Session management */}
         <div>
-          <h3 className="mb-4 text-[16px] font-medium text-primary">
+          <h3 className="text-primary mb-4 text-[16px] font-medium">
             Session management
           </h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-[13.5px] text-primary">
+                <p className="text-primary text-[13.5px]">
                   Auto-logout on inactivity
                 </p>
-                <p className="text-[12px] text-tertiary">
+                <p className="text-tertiary text-[12px]">
                   Automatically sign out after 30 minutes of inactivity
                 </p>
               </div>
@@ -87,10 +87,10 @@ export function SettingsSecurity() {
 
         {/* Access logs */}
         <div>
-          <h3 className="mb-4 text-[16px] font-medium text-primary">
+          <h3 className="text-primary mb-4 text-[16px] font-medium">
             Access logs
           </h3>
-          <p className="mb-4 text-[12px] text-tertiary">
+          <p className="text-tertiary mb-4 text-[12px]">
             View a history of access to your account
           </p>
           <Button

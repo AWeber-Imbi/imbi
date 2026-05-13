@@ -65,7 +65,7 @@ export function ProjectGraphView({ projects }: ProjectGraphViewProps) {
     return (
       <Card className={cardClass}>
         <div className="flex flex-col items-center gap-3">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-current border-t-transparent opacity-50" />
+          <div className="size-6 animate-spin rounded-full border-2 border-current border-t-transparent opacity-50" />
           <p className={`text-sm ${sub}`}>Loading relationships…</p>
         </div>
       </Card>

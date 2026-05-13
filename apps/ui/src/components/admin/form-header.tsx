@@ -28,8 +28,8 @@ export function FormHeader({
   return (
     <div className="flex items-center justify-between">
       <div>
-        <h2 className="text-base font-medium text-primary">{title}</h2>
-        {subtitle && <p className="mt-1 text-secondary">{subtitle}</p>}
+        <h2 className="text-primary text-base font-medium">{title}</h2>
+        {subtitle && <p className="text-secondary mt-1">{subtitle}</p>}
       </div>
       <div className="flex items-center gap-2">
         <Button
@@ -38,7 +38,7 @@ export function FormHeader({
           type="button"
           variant="outline"
         >
-          <X className="mr-2 h-4 w-4" />
+          <X className="mr-2 size-4" />
           Cancel
         </Button>
         <Button
@@ -47,7 +47,7 @@ export function FormHeader({
           onClick={onSave}
           type="button"
         >
-          <Save className="mr-2 h-4 w-4" />
+          <Save className="mr-2 size-4" />
           {isLoading ? 'Saving...' : isEditing ? 'Save Changes' : createLabel}
         </Button>
       </div>

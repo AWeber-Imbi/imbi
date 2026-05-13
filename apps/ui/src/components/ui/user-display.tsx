@@ -36,11 +36,7 @@ export function UserDisplay({
   const name = displayNames?.get(email) ?? email.split('@')[0] ?? email
   const body = (
     <>
-      <Gravatar
-        className="flex-shrink-0 rounded-full"
-        email={email}
-        size={size}
-      />
+      <Gravatar className="shrink-0 rounded-full" email={email} size={size} />
       {!hideName && (
         <span className={cn('truncate', textClassName)}>{name}</span>
       )}

@@ -29,7 +29,7 @@ export function StatisticsCard({ data }: StatsProps) {
   return (
     <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <Tile
-        icon={<Rocket className="h-4 w-4" />}
+        icon={<Rocket className="size-4" />}
         label="Total deployments"
         sub={
           deployments?.rolled_back
@@ -39,7 +39,7 @@ export function StatisticsCard({ data }: StatsProps) {
         value={deployments ? deployments.total.toLocaleString() : '—'}
       />
       <Tile
-        icon={<Folder className="h-4 w-4" />}
+        icon={<Folder className="size-4" />}
         label="Projects touched"
         value={
           data?.projects_touched !== undefined
@@ -48,7 +48,7 @@ export function StatisticsCard({ data }: StatsProps) {
         }
       />
       <Tile
-        icon={<CheckCircle className="h-4 w-4" />}
+        icon={<CheckCircle className="size-4" />}
         label="Success rate"
         sub={
           successDenominator > 0
@@ -63,13 +63,13 @@ export function StatisticsCard({ data }: StatsProps) {
 
 function Tile({ icon, label, sub, value }: TileProps) {
   return (
-    <Card className="rounded-md border border-tertiary p-4 shadow-none">
-      <div className="flex items-center gap-2 text-xs text-tertiary">
+    <Card className="border-tertiary rounded-md border p-4 shadow-none">
+      <div className="text-tertiary flex items-center gap-2 text-xs">
         {icon}
         <span>{label}</span>
       </div>
-      <div className="mt-2 text-2xl font-semibold text-primary">{value}</div>
-      {sub && <div className="mt-1 text-xs text-secondary">{sub}</div>}
+      <div className="text-primary mt-2 text-2xl font-semibold">{value}</div>
+      {sub && <div className="text-secondary mt-1 text-xs">{sub}</div>}
     </Card>
   )
 }

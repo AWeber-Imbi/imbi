@@ -72,28 +72,28 @@ export function ConversationHistory({
   if (!showHistory) {
     return (
       <Button
-        className="h-auto gap-1 rounded px-2 py-1 text-xs text-secondary hover:bg-secondary hover:text-primary"
+        className="text-secondary hover:bg-secondary hover:text-primary h-auto gap-1 rounded px-2 py-1 text-xs"
         onClick={() => setShowHistory(true)}
         variant="ghost"
       >
-        <MessageSquare className="h-3 w-3" />
+        <MessageSquare className="size-3" />
         History
       </Button>
     )
   }
 
   return (
-    <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
+    <div className="border-border bg-card absolute top-full right-0 left-0 z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border shadow-lg">
       <div className="p-2">
         <Button
-          className="h-auto w-full justify-start rounded px-3 py-2 text-sm text-secondary hover:bg-secondary"
+          className="text-secondary hover:bg-secondary h-auto w-full justify-start rounded px-3 py-2 text-sm"
           onClick={() => {
             onNewConversation()
             setShowHistory(false)
           }}
           variant="ghost"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="size-4" />
           New Conversation
         </Button>
         {conversations.map((conv: Conversation) => (
@@ -122,29 +122,29 @@ export function ConversationHistory({
             <div className="ml-2 flex items-center gap-1">
               <Button
                 aria-label={`Archive ${conv.title ?? 'conversation'}`}
-                className="h-auto w-auto rounded p-1 hover:bg-secondary"
+                className="hover:bg-secondary size-auto rounded p-1"
                 onClick={(e) => handleArchive(e, conv.id)}
                 size="icon"
                 variant="ghost"
               >
-                <Archive className="h-3 w-3" />
+                <Archive className="size-3" />
               </Button>
               <Button
                 aria-label={`Delete ${conv.title ?? 'conversation'}`}
-                className="h-auto w-auto rounded p-1 text-danger hover:bg-secondary"
+                className="text-danger hover:bg-secondary size-auto rounded p-1"
                 onClick={(e) => handleDelete(e, conv.id)}
                 size="icon"
                 variant="ghost"
               >
-                <Trash2 className="h-3 w-3" />
+                <Trash2 className="size-3" />
               </Button>
             </div>
           </div>
         ))}
       </div>
-      <div className="border-t border-tertiary p-1">
+      <div className="border-tertiary border-t p-1">
         <Button
-          className="h-auto w-full rounded px-3 py-1 text-xs text-tertiary hover:text-secondary"
+          className="text-tertiary hover:text-secondary h-auto w-full rounded px-3 py-1 text-xs"
           onClick={() => setShowHistory(false)}
           variant="ghost"
         >

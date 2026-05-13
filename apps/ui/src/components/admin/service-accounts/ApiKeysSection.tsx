@@ -91,7 +91,7 @@ export function ApiKeysSection({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div className="flex items-center gap-2">
-            <Key className="h-5 w-5 text-secondary" />
+            <Key className="text-secondary size-5" />
             <CardTitle>API Keys</CardTitle>
           </div>
           <Button
@@ -99,24 +99,24 @@ export function ApiKeysSection({
             size="sm"
             variant="outline"
           >
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="mr-2 size-4" />
             Create API Key
           </Button>
         </CardHeader>
         <CardContent>
           {/* Keys List */}
           {keysLoading ? (
-            <div className="py-4 text-sm text-secondary">
+            <div className="text-secondary py-4 text-sm">
               Loading API keys...
             </div>
           ) : keysError ? (
-            <div className="flex items-center gap-2 rounded-lg bg-danger p-3 text-danger">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+            <div className="bg-danger text-danger flex items-center gap-2 rounded-lg p-3">
+              <AlertCircle className="size-4 shrink-0" />
               <span className="text-sm">Failed to load API keys</span>
             </div>
           ) : apiKeys.length === 0 ? (
-            <div className="py-8 text-center text-tertiary">
-              <Key className="mx-auto mb-2 h-8 w-8 text-tertiary" />
+            <div className="text-tertiary py-8 text-center">
+              <Key className="text-tertiary mx-auto mb-2 size-8" />
               <div>No API keys created yet</div>
               <div className="mt-1 text-sm">
                 Create an API key to enable programmatic access
@@ -135,15 +135,15 @@ export function ApiKeysSection({
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-primary">
+                      <span className="text-primary text-sm font-medium">
                         {key.name}
                       </span>
-                      <code className="rounded bg-secondary px-2 py-0.5 text-xs text-secondary">
+                      <code className="bg-secondary text-secondary rounded px-2 py-0.5 text-xs">
                         {key.key_id.substring(0, 7)}...
                       </code>
                       {key.revoked && <Badge variant="danger">Revoked</Badge>}
                     </div>
-                    <div className="mt-1 text-xs text-tertiary">
+                    <div className="text-tertiary mt-1 text-xs">
                       Created {formatDate(key.created_at)}
                       {key.last_used &&
                         ` | Last used ${formatDate(key.last_used)}`}
@@ -158,12 +158,12 @@ export function ApiKeysSection({
                           <TooltipTrigger asChild>
                             <button
                               aria-label={`Rotate API key ${key.name}`}
-                              className="rounded p-1.5 text-info hover:bg-secondary"
+                              className="text-info hover:bg-secondary rounded p-1.5"
                               disabled={rotateApiKeyMutation.isPending}
                               onClick={() => onConfirmRotate(key.key_id)}
                               type="button"
                             >
-                              <RotateCw className="h-4 w-4" />
+                              <RotateCw className="size-4" />
                             </button>
                           </TooltipTrigger>
                           <TooltipContent>
@@ -176,12 +176,12 @@ export function ApiKeysSection({
                           <TooltipTrigger asChild>
                             <button
                               aria-label={`Revoke API key ${key.name}`}
-                              className="rounded p-1.5 text-danger hover:bg-secondary"
+                              className="text-danger hover:bg-secondary rounded p-1.5"
                               disabled={revokeApiKeyMutation.isPending}
                               onClick={() => onConfirmRevoke(key.key_id)}
                               type="button"
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Trash2 className="size-4" />
                             </button>
                           </TooltipTrigger>
                           <TooltipContent>
@@ -239,12 +239,12 @@ export function ApiKeysSection({
           </DialogHeader>
           <div className="space-y-3 p-6">
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Key name
               </label>
               <input
                 autoFocus
-                className="focus:ring-action w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2"
+                className="border-input bg-background text-foreground placeholder:text-muted-foreground focus:ring-action w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
                 onChange={(e) => setNewKeyName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {

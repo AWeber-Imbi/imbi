@@ -28,9 +28,9 @@ export function RecentActivity({
     return (
       <Card className="p-6">
         {!hideHeading && (
-          <h2 className="mb-6 text-xl text-primary">Recent Activity</h2>
+          <h2 className="text-primary mb-6 text-xl">Recent Activity</h2>
         )}
-        <div className="py-8 text-center text-muted-foreground">Loading...</div>
+        <div className="text-muted-foreground py-8 text-center">Loading...</div>
       </Card>
     )
   }
@@ -39,9 +39,9 @@ export function RecentActivity({
     return (
       <Card className="p-6">
         {!hideHeading && (
-          <h2 className="mb-6 text-xl text-primary">Recent Activity</h2>
+          <h2 className="text-primary mb-6 text-xl">Recent Activity</h2>
         )}
-        <div className="py-8 text-center text-muted-foreground">
+        <div className="text-muted-foreground py-8 text-center">
           No recent activity
         </div>
       </Card>
@@ -52,20 +52,20 @@ export function RecentActivity({
     <div className="max-h-[calc(100vh-380px)] space-y-4 overflow-y-auto pr-2">
       {activities.map((activity, index) => (
         <div
-          className="border-b border-tertiary pb-4 last:border-0 last:pb-0"
+          className="border-tertiary border-b pb-4 last:border-0 last:pb-0"
           key={index}
         >
           <div className="flex gap-3">
             <img
               alt={activity.display_name}
-              className="h-10 w-10 flex-shrink-0 rounded-full"
+              className="size-10 shrink-0 rounded-full"
               src={getGravatarUrl(activity.email_address)}
             />
 
             <div className="min-w-0 flex-1">
-              <p className="text-sm leading-relaxed text-secondary">
+              <p className="text-secondary text-sm leading-relaxed">
                 <Button
-                  className="h-auto p-0 font-medium text-primary transition-colors hover:text-info"
+                  className="text-primary hover:text-info h-auto p-0 font-medium transition-colors"
                   onClick={() => onUserSelect?.(activity.display_name)}
                   variant="link"
                 >
@@ -78,7 +78,7 @@ export function RecentActivity({
                     : activity.what}{' '}
                 {activity.project_name && (
                   <Button
-                    className="hover:text-info/80 h-auto p-0 font-medium text-info transition-colors"
+                    className="text-info hover:text-info/80 h-auto p-0 font-medium transition-colors"
                     onClick={() => onProjectSelect?.(activity.project_name!)}
                     variant="link"
                   >
@@ -105,7 +105,7 @@ export function RecentActivity({
                 )}
               </p>
 
-              <p className="mt-1 text-xs text-tertiary">
+              <p className="text-tertiary mt-1 text-xs">
                 {getRelativeTime(
                   activity.occurred_at ||
                     (activity.type === 'ProjectFeedEntry'
@@ -123,7 +123,7 @@ export function RecentActivity({
       {onLoadMore && (
         <div className="pt-4 text-center">
           <Button
-            className="hover:text-info/80 h-auto p-0 text-sm text-info transition-colors disabled:opacity-50"
+            className="text-info hover:text-info/80 h-auto p-0 text-sm transition-colors disabled:opacity-50"
             disabled={isLoadingMore}
             onClick={onLoadMore}
             variant="link"
@@ -138,7 +138,7 @@ export function RecentActivity({
   return (
     <Card className="p-6">
       {!hideHeading && (
-        <h2 className="mb-6 text-xl text-primary">Recent Activity</h2>
+        <h2 className="text-primary mb-6 text-xl">Recent Activity</h2>
       )}
       {activityList}
     </Card>

@@ -248,7 +248,7 @@ export function BlueprintManagement() {
     !selectedKey
   ) {
     return (
-      <div className="rounded-md border border-tertiary p-4 text-secondary">
+      <div className="border-tertiary text-secondary rounded-md border p-4">
         Invalid blueprint URL. Please reopen from the list.
       </div>
     )
@@ -294,7 +294,7 @@ export function BlueprintManagement() {
           onClick={handleOpenImport}
           variant="outline"
         >
-          <Upload className="mr-2 h-4 w-4" />
+          <Upload className="mr-2 size-4" />
           Import
         </Button>
       }
@@ -302,7 +302,7 @@ export function BlueprintManagement() {
         <>
           <select
             aria-label="Filter blueprints by type"
-            className="h-10 rounded-md border border-tertiary bg-primary px-3 py-2 text-sm text-primary"
+            className="border-tertiary bg-primary text-primary h-10 rounded-md border px-3 py-2 text-sm"
             onChange={(e) => setTypeFilter(e.target.value)}
             value={typeFilter}
           >
@@ -316,7 +316,7 @@ export function BlueprintManagement() {
           </select>
           <select
             aria-label="Filter blueprints by status"
-            className="h-10 rounded-md border border-tertiary bg-primary px-3 py-2 text-sm text-primary"
+            className="border-tertiary bg-primary text-primary h-10 rounded-md border px-3 py-2 text-sm"
             onChange={(e) => setEnabledFilter(e.target.value)}
             value={enabledFilter}
           >
@@ -353,9 +353,9 @@ export function BlueprintManagement() {
                     variant="ghost"
                   >
                     {isCopied ? (
-                      <Check className="h-4 w-4 text-success" />
+                      <Check className="text-success size-4" />
                     ) : (
-                      <Copy className="h-4 w-4" />
+                      <Copy className="size-4" />
                     )}
                   </Button>
                 </TooltipTrigger>
@@ -374,13 +374,13 @@ export function BlueprintManagement() {
             key: 'name',
             render: (bp) => (
               <div className="flex items-center gap-2.5">
-                <FileJson className="h-4 w-4 flex-shrink-0 text-amber-text-mid" />
+                <FileJson className="text-amber-text-mid size-4 shrink-0" />
                 <div>
-                  <span className="text-sm font-medium text-primary">
+                  <span className="text-primary text-sm font-medium">
                     {bp.name}
                   </span>
                   {bp.description && (
-                    <div className="mt-0.5 text-xs text-tertiary">
+                    <div className="text-tertiary mt-0.5 text-xs">
                       {bp.description}
                     </div>
                   )}
@@ -394,7 +394,7 @@ export function BlueprintManagement() {
             headerAlign: 'left',
             key: 'slug',
             render: (bp) => (
-              <span className="whitespace-nowrap font-mono text-sm text-secondary">
+              <span className="text-secondary font-mono text-sm whitespace-nowrap">
                 {bp.slug}
               </span>
             ),
@@ -419,9 +419,9 @@ export function BlueprintManagement() {
             key: 'enabled',
             render: (bp) =>
               bp.enabled ? (
-                <CheckCircle className="mx-auto h-4 w-4 text-success" />
+                <CheckCircle className="text-success mx-auto size-4" />
               ) : (
-                <XCircle className="mx-auto h-4 w-4 text-tertiary" />
+                <XCircle className="text-tertiary mx-auto size-4" />
               ),
           },
           {
@@ -431,7 +431,7 @@ export function BlueprintManagement() {
             key: 'filter',
             render: (bp) =>
               renderFilterCell(bp.filter) || (
-                <span className="text-xs text-tertiary">&mdash;</span>
+                <span className="text-tertiary text-xs">&mdash;</span>
               ),
           },
           {
@@ -440,7 +440,7 @@ export function BlueprintManagement() {
             headerAlign: 'center',
             key: 'priority',
             render: (bp) => (
-              <span className="whitespace-nowrap text-sm text-primary">
+              <span className="text-primary text-sm whitespace-nowrap">
                 {bp.priority}
               </span>
             ),
@@ -451,7 +451,7 @@ export function BlueprintManagement() {
             headerAlign: 'center',
             key: 'version',
             render: (bp) => (
-              <span className="whitespace-nowrap font-mono text-sm text-secondary">
+              <span className="text-secondary font-mono text-sm whitespace-nowrap">
                 v{bp.version}
               </span>
             ),
@@ -523,7 +523,7 @@ function renderFilterCell(filter: null | string | undefined): React.ReactNode {
       <Tooltip>
         <TooltipTrigger asChild>
           <span>
-            <Filter className="mx-auto h-4 w-4 text-warning" />
+            <Filter className="text-warning mx-auto size-4" />
           </span>
         </TooltipTrigger>
         <TooltipContent>

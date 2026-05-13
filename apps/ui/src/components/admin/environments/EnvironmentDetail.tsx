@@ -48,7 +48,7 @@ export function EnvironmentDetail({
       {/* Back button */}
       <div>
         <Button onClick={onBack} variant="outline">
-          <ArrowLeft className="mr-2 h-4 w-4" />
+          <ArrowLeft className="mr-2 size-4" />
           Back
         </Button>
       </div>
@@ -60,14 +60,14 @@ export function EnvironmentDetail({
             <div className="flex items-center gap-3">
               {environment.icon && (
                 <EntityIcon
-                  className="h-8 w-8 rounded object-cover"
+                  className="size-8 rounded object-cover"
                   icon={environment.icon}
                 />
               )}
               <CardTitle>{environment.name}</CardTitle>
             </div>
             {environment.description && (
-              <p className="mt-1 text-sm text-secondary">
+              <p className="text-secondary mt-1 text-sm">
                 {environment.description}
               </p>
             )}
@@ -76,7 +76,7 @@ export function EnvironmentDetail({
             className="bg-action text-action-foreground hover:bg-action-hover"
             onClick={onEdit}
           >
-            <Edit2 className="mr-2 h-4 w-4" />
+            <Edit2 className="mr-2 size-4" />
             Edit Environment
           </Button>
         </CardHeader>
@@ -84,32 +84,32 @@ export function EnvironmentDetail({
         <CardContent className="p-6">
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <div className="text-sm text-secondary">Slug</div>
-              <div className="mt-1 text-primary">
-                <code className="rounded bg-secondary px-2 py-1 text-sm text-primary">
+              <div className="text-secondary text-sm">Slug</div>
+              <div className="text-primary mt-1">
+                <code className="bg-secondary text-primary rounded px-2 py-1 text-sm">
                   {environment.slug}
                 </code>
               </div>
             </div>
             <div>
-              <div className="text-sm text-secondary">Organization</div>
-              <div className="mt-1 text-primary">
+              <div className="text-secondary text-sm">Organization</div>
+              <div className="text-primary mt-1">
                 {environment.organization.name}
               </div>
             </div>
             <div>
-              <div className="text-sm text-secondary">Sort Order</div>
-              <div className="mt-1 text-primary">
+              <div className="text-secondary text-sm">Sort Order</div>
+              <div className="text-primary mt-1">
                 {environment.sort_order ?? 0}
               </div>
             </div>
             <div>
-              <div className="text-sm text-secondary">Label Color</div>
+              <div className="text-secondary text-sm">Label Color</div>
               <div className="mt-1 flex items-center gap-2">
                 {environment.label_color ? (
                   <>
                     <div
-                      className="h-6 w-6 rounded border"
+                      className="size-6 rounded border"
                       style={{ backgroundColor: environment.label_color }}
                     />
                     <span className="text-primary">

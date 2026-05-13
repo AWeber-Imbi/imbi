@@ -6,7 +6,7 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 export function SettingsPage() {
   usePageTitle('Settings')
   return (
-    <div className="min-h-screen bg-tertiary text-primary">
+    <div className="bg-tertiary text-primary min-h-screen">
       <Navigation />
       <main
         className="pt-16"

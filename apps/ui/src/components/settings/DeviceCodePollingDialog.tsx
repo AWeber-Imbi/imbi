@@ -183,11 +183,11 @@ export function DeviceCodePollingDialog({
         </DialogHeader>
 
         <div className="space-y-4 p-6">
-          <div className="rounded-md border bg-muted/40 p-4">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+          <div className="bg-muted/40 rounded-md border p-4">
+            <div className="text-muted-foreground text-xs tracking-wide uppercase">
               Verification code
             </div>
-            <div className="mt-1 select-all font-mono text-2xl font-semibold tracking-widest">
+            <div className="mt-1 font-mono text-2xl font-semibold tracking-widest select-all">
               {polling.user_code}
             </div>
           </div>
@@ -195,7 +195,7 @@ export function DeviceCodePollingDialog({
           <div className="text-sm">
             <span className="text-muted-foreground">Verification URL: </span>
             <a
-              className="break-all text-info hover:underline"
+              className="text-info break-all hover:underline"
               href={verificationHref}
               rel="noreferrer"
               target="_blank"
@@ -207,7 +207,7 @@ export function DeviceCodePollingDialog({
           <div className="flex items-center gap-2 text-sm">
             {status === 'pending' && (
               <>
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <Loader2 className="text-muted-foreground size-4 animate-spin" />
                 <span className="text-muted-foreground">
                   Waiting for you to approve…
                 </span>
@@ -215,7 +215,7 @@ export function DeviceCodePollingDialog({
             )}
             {status === 'success' && (
               <>
-                <CheckCircle2 className="h-4 w-4 text-success" />
+                <CheckCircle2 className="text-success size-4" />
                 <span className="text-success">Connected.</span>
               </>
             )}
@@ -235,7 +235,7 @@ export function DeviceCodePollingDialog({
         <DialogFooter>
           <Button asChild disabled={status === 'success'} variant="outline">
             <a href={verificationHref} rel="noreferrer" target="_blank">
-              <ExternalLink className="mr-2 h-3.5 w-3.5" />
+              <ExternalLink className="mr-2 size-3.5" />
               Open {pluginLabel}
             </a>
           </Button>

@@ -107,7 +107,7 @@ export const OperationsLogStreamRow = memo(function OperationsLogStreamRow({
         />
         <span
           className={cn(
-            'flex h-[26px] w-[26px] items-center justify-center rounded-md',
+            'flex size-6.5 items-center justify-center rounded-md',
             isDeploy
               ? 'bg-success text-success'
               : isRestart
@@ -116,24 +116,24 @@ export const OperationsLogStreamRow = memo(function OperationsLogStreamRow({
           )}
           style={{ gridColumn: 2, gridRow: 1 }}
         >
-          <Icon className="h-3.5 w-3.5" />
+          <Icon className="size-3.5" />
         </span>
         <span
-          className="truncate text-sm font-medium text-primary"
+          className="text-primary truncate text-sm font-medium"
           style={{ gridColumn: 3, gridRow: 1 }}
           title={projectLabel}
         >
           {projectLabel}
         </span>
         <span
-          className="truncate font-mono text-xs text-secondary"
+          className="text-secondary truncate font-mono text-xs"
           style={{ gridColumn: 4, gridRow: 1 }}
         >
           {entry.version || '—'}
         </span>
         {desc ? null : (
           <span
-            className="min-w-0 truncate text-sm text-tertiary"
+            className="text-tertiary min-w-0 truncate text-sm"
             style={{ gridColumn: 5 }}
           >
             —
@@ -164,7 +164,7 @@ export const OperationsLogStreamRow = memo(function OperationsLogStreamRow({
           title={displayName}
         >
           <Gravatar
-            className="h-[22px] w-[22px] rounded-full"
+            className="size-[22px] rounded-full"
             email={performer}
             size={22}
           />
@@ -173,7 +173,7 @@ export const OperationsLogStreamRow = memo(function OperationsLogStreamRow({
           <Tooltip>
             <TooltipTrigger asChild>
               <span
-                className="self-center whitespace-nowrap text-right text-xs tabular-nums text-tertiary"
+                className="text-tertiary self-center text-right text-xs whitespace-nowrap tabular-nums"
                 style={{ gridColumn: 8, gridRow: '1 / -1' }}
               >
                 {relTime(entry.occurred_at)}
@@ -183,19 +183,19 @@ export const OperationsLogStreamRow = memo(function OperationsLogStreamRow({
           </Tooltip>
         </TooltipProvider>
         <span
-          className="flex items-center justify-center self-center text-tertiary"
+          className="text-tertiary flex items-center justify-center self-center"
           style={{ gridColumn: 9, gridRow: '1 / -1' }}
         >
           <ChevronDown
             className={cn(
-              'h-3.5 w-3.5 transition-transform',
+              'size-3.5 transition-transform',
               isOpen && 'rotate-180 text-primary',
             )}
           />
         </span>
         {desc ? (
           <span
-            className="min-w-0 truncate text-sm text-secondary"
+            className="text-secondary min-w-0 truncate text-sm"
             style={{ gridColumn: '3 / 6', gridRow: 2 }}
           >
             {desc}
@@ -204,7 +204,7 @@ export const OperationsLogStreamRow = memo(function OperationsLogStreamRow({
       </button>
       {isOpen ? (
         <div
-          className="border-t border-dashed border-tertiary"
+          className="border-tertiary border-t border-dashed"
           id={`ops-log-details-${id}`}
         >
           <OperationsLogEntryDetails entry={entry} />

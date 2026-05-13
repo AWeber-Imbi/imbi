@@ -84,10 +84,10 @@ export function LinkDefinitionForm({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-medium text-primary">
+          <h2 className="text-primary text-base font-medium">
             {isEditing ? 'Edit Link Definition' : 'Create Link Definition'}
           </h2>
-          <p className="mt-1 text-secondary">
+          <p className="text-secondary mt-1">
             Defines a type of project link displayed on the project details
             page.
           </p>
@@ -99,7 +99,7 @@ export function LinkDefinitionForm({
             type="button"
             variant="outline"
           >
-            <X className="mr-2 h-4 w-4" />
+            <X className="mr-2 size-4" />
             Cancel
           </Button>
           <Button
@@ -108,7 +108,7 @@ export function LinkDefinitionForm({
             onClick={handleSubmit}
             type="button"
           >
-            <Save className="mr-2 h-4 w-4" />
+            <Save className="mr-2 size-4" />
             {isLoading ? 'Saving...' : 'Save'}
           </Button>
         </div>
@@ -125,13 +125,13 @@ export function LinkDefinitionForm({
           <CardContent className="space-y-4 pt-6">
             <div>
               <label
-                className="mb-1.5 block text-sm text-secondary"
+                className="text-secondary mb-1.5 block text-sm"
                 htmlFor="link-def-org"
               >
                 Organization <span className="text-red-500">*</span>
               </label>
               <select
-                className={`w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing || isLoading || organizations.length <= 1 ? 'cursor-not-allowed opacity-60' : ''} ${
+                className={`border-input bg-background text-foreground w-full rounded-lg border px-3 py-2 text-sm ${isEditing || isLoading || organizations.length <= 1 ? 'cursor-not-allowed opacity-60' : ''} ${
                   errors.organization ? 'border-red-500' : ''
                 }`}
                 disabled={isEditing || isLoading || organizations.length <= 1}
@@ -147,8 +147,8 @@ export function LinkDefinitionForm({
                 ))}
               </select>
               {errors.organization && (
-                <div className="mt-1 flex items-center gap-1 text-xs text-danger">
-                  <AlertCircle className="h-3 w-3" />
+                <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+                  <AlertCircle className="size-3" />
                   {errors.organization}
                 </div>
               )}
@@ -159,7 +159,7 @@ export function LinkDefinitionForm({
             >
               <div>
                 <label
-                  className="mb-1.5 block text-sm text-secondary"
+                  className="text-secondary mb-1.5 block text-sm"
                   htmlFor="link-def-name"
                 >
                   Name <span className="text-red-500">*</span>
@@ -173,8 +173,8 @@ export function LinkDefinitionForm({
                   value={name}
                 />
                 {errors.name && (
-                  <div className="mt-1 flex items-center gap-1 text-xs text-danger">
-                    <AlertCircle className="h-3 w-3" />
+                  <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+                    <AlertCircle className="size-3" />
                     {errors.name}
                   </div>
                 )}
@@ -183,7 +183,7 @@ export function LinkDefinitionForm({
               {!isEditing && (
                 <div>
                   <label
-                    className="mb-1.5 block text-sm text-secondary"
+                    className="text-secondary mb-1.5 block text-sm"
                     htmlFor="link-def-slug"
                   >
                     Slug <span className="text-red-500">*</span>
@@ -197,8 +197,8 @@ export function LinkDefinitionForm({
                     value={slug}
                   />
                   {errors.slug && (
-                    <div className="mt-1 flex items-center gap-1 text-xs text-danger">
-                      <AlertCircle className="h-3 w-3" />
+                    <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+                      <AlertCircle className="size-3" />
                       {errors.slug}
                     </div>
                   )}
@@ -208,13 +208,13 @@ export function LinkDefinitionForm({
 
             <div>
               <label
-                className="mb-1.5 block text-sm text-secondary"
+                className="text-secondary mb-1.5 block text-sm"
                 htmlFor="link-def-description"
               >
                 Description
               </label>
               <textarea
-                className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground"
+                className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full resize-none rounded-lg border px-3 py-2"
                 disabled={isLoading}
                 id="link-def-description"
                 onChange={(e) => setDescription(e.target.value)}
@@ -225,12 +225,12 @@ export function LinkDefinitionForm({
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Icon
               </label>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <p className="mb-1.5 text-xs text-tertiary">Pick an icon</p>
+                  <p className="text-tertiary mb-1.5 text-xs">Pick an icon</p>
                   <IconPicker
                     onChange={handleIconChange}
                     value={
@@ -241,7 +241,7 @@ export function LinkDefinitionForm({
                   />
                 </div>
                 <div>
-                  <p className="mb-1.5 text-xs text-tertiary">
+                  <p className="text-tertiary mb-1.5 text-xs">
                     Or upload a custom image
                   </p>
                   <IconUpload
@@ -258,7 +258,7 @@ export function LinkDefinitionForm({
 
             <div>
               <label
-                className="mb-1.5 block text-sm text-secondary"
+                className="text-secondary mb-1.5 block text-sm"
                 htmlFor="link-def-url-template"
               >
                 URL Template
@@ -271,7 +271,7 @@ export function LinkDefinitionForm({
                 placeholder="e.g., https://github.com/{organization}/{project}"
                 value={urlTemplate}
               />
-              <p className="mt-1 text-xs text-tertiary">
+              <p className="text-tertiary mt-1 text-xs">
                 URL template with placeholders in curly braces
               </p>
             </div>

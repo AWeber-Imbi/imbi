@@ -72,8 +72,8 @@ export function BlueprintDetail({
 
   if (error || !blueprint) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger">
-        <AlertCircle className="h-5 w-5 flex-shrink-0" />
+      <div className="border-danger bg-danger text-danger flex items-center gap-3 rounded-lg border p-4">
+        <AlertCircle className="size-5 shrink-0" />
         <div>
           <div className="font-medium">Failed to load blueprint</div>
           <div className="mt-1 text-sm">
@@ -137,18 +137,18 @@ export function BlueprintDetail({
       {/* Back button */}
       <div>
         <Button onClick={onBack} variant="outline">
-          <ArrowLeft className="mr-2 h-4 w-4" />
+          <ArrowLeft className="mr-2 size-4" />
           Back
         </Button>
       </div>
 
       {/* Blueprint info card */}
-      <div className="rounded-lg border border-border bg-card">
+      <div className="border-border bg-card rounded-lg border">
         {/* Title row */}
-        <div className="flex items-start justify-between border-b border-tertiary px-6 py-5">
+        <div className="border-tertiary flex items-start justify-between border-b px-6 py-5">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-info p-2">
-              <FileJson className="h-6 w-6 text-info" />
+            <div className="bg-info rounded-lg p-2">
+              <FileJson className="text-info size-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -166,7 +166,7 @@ export function BlueprintDetail({
                     : blueprint.type}
                 </LabelChip>
               </div>
-              <p className="mt-1 text-secondary">
+              <p className="text-secondary mt-1">
                 {blueprint.description || 'No description'}
               </p>
             </div>
@@ -174,9 +174,9 @@ export function BlueprintDetail({
           <div className="flex items-center gap-2">
             <Button onClick={handleCopy} variant="outline">
               {copied ? (
-                <Check className="mr-2 h-4 w-4 text-green-500" />
+                <Check className="mr-2 size-4 text-green-500" />
               ) : (
-                <Copy className="mr-2 h-4 w-4" />
+                <Copy className="mr-2 size-4" />
               )}
               {copied ? 'Copied' : 'Copy'}
             </Button>
@@ -184,7 +184,7 @@ export function BlueprintDetail({
               className="bg-action text-action-foreground hover:bg-action-hover"
               onClick={onEdit}
             >
-              <Edit2 className="mr-2 h-4 w-4" />
+              <Edit2 className="mr-2 size-4" />
               Edit Blueprint
             </Button>
           </div>
@@ -193,54 +193,54 @@ export function BlueprintDetail({
         {/* Metadata row */}
         <div className="flex flex-wrap items-center gap-6 px-6 py-4">
           <div>
-            <div className="text-xs text-secondary">Slug</div>
-            <div className="font-mono text-sm text-primary">
+            <div className="text-secondary text-xs">Slug</div>
+            <div className="text-primary font-mono text-sm">
               {blueprint.slug}
             </div>
           </div>
-          <div className="h-8 border-l border-tertiary" />
+          <div className="border-tertiary h-8 border-l" />
           <div>
-            <div className="text-xs text-secondary">Enabled</div>
+            <div className="text-secondary text-xs">Enabled</div>
             <div className="flex items-center gap-1.5">
               {blueprint.enabled ? (
                 <>
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span className="text-sm text-primary">Yes</span>
+                  <CheckCircle className="size-4 text-green-500" />
+                  <span className="text-primary text-sm">Yes</span>
                 </>
               ) : (
                 <>
-                  <XCircle className="h-4 w-4 text-gray-400" />
-                  <span className="text-sm text-primary">No</span>
+                  <XCircle className="size-4 text-gray-400" />
+                  <span className="text-primary text-sm">No</span>
                 </>
               )}
             </div>
           </div>
-          <div className="h-8 border-l border-tertiary" />
+          <div className="border-tertiary h-8 border-l" />
           <div>
-            <div className="text-xs text-secondary">Priority</div>
-            <div className="text-sm text-primary">{blueprint.priority}</div>
+            <div className="text-secondary text-xs">Priority</div>
+            <div className="text-primary text-sm">{blueprint.priority}</div>
           </div>
-          <div className="h-8 border-l border-tertiary" />
+          <div className="border-tertiary h-8 border-l" />
           <div>
-            <div className="text-xs text-secondary">Version</div>
-            <div className="text-sm text-primary">v{blueprint.version}</div>
+            <div className="text-secondary text-xs">Version</div>
+            <div className="text-primary text-sm">v{blueprint.version}</div>
           </div>
-          <div className="h-8 border-l border-tertiary" />
+          <div className="border-tertiary h-8 border-l" />
           <div>
-            <div className="text-xs text-secondary">Properties</div>
-            <div className="text-sm text-primary">{properties.length}</div>
+            <div className="text-secondary text-xs">Properties</div>
+            <div className="text-primary text-sm">{properties.length}</div>
           </div>
-          <div className="h-8 border-l border-tertiary" />
+          <div className="border-tertiary h-8 border-l" />
           <div>
-            <div className="text-xs text-secondary">Filter</div>
+            <div className="text-secondary text-xs">Filter</div>
             <div className="flex items-center gap-1.5">
               {hasFilter ? (
                 <>
-                  <Filter className="h-4 w-4 text-warning" />
-                  <span className="text-sm text-primary">Active</span>
+                  <Filter className="text-warning size-4" />
+                  <span className="text-primary text-sm">Active</span>
                 </>
               ) : (
-                <span className="text-sm text-tertiary">None</span>
+                <span className="text-tertiary text-sm">None</span>
               )}
             </div>
           </div>
@@ -249,14 +249,14 @@ export function BlueprintDetail({
 
       {/* Conditional Filter detail */}
       {hasFilter && parsedFilter && (
-        <div className="rounded-lg border border-border bg-card">
-          <div className="border-b border-tertiary px-6 py-4">
+        <div className="border-border bg-card rounded-lg border">
+          <div className="border-tertiary border-b px-6 py-4">
             <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-warning" />
-              <h3 className="text-sm font-medium text-primary">
+              <Filter className="text-warning size-4" />
+              <h3 className="text-primary text-sm font-medium">
                 Conditional Filter
               </h3>
-              <span className="ml-1 text-xs text-tertiary">
+              <span className="text-tertiary ml-1 text-xs">
                 Only applies to matching entities
               </span>
             </div>
@@ -266,7 +266,7 @@ export function BlueprintDetail({
               <div>
                 <div
                   className={
-                    'mb-2 text-xs font-medium uppercase tracking-wider text-tertiary'
+                    'text-tertiary mb-2 text-xs font-medium tracking-wider uppercase'
                   }
                 >
                   Project Types
@@ -274,7 +274,7 @@ export function BlueprintDetail({
                 <div className="flex flex-wrap gap-1.5">
                   {parsedFilter.project_type.map((pt) => (
                     <Badge
-                      className="rounded-md border-info px-2.5 py-1 text-sm"
+                      className="border-info rounded-md px-2.5 py-1 text-sm"
                       key={pt}
                       variant="info"
                     >
@@ -288,7 +288,7 @@ export function BlueprintDetail({
               <div>
                 <div
                   className={
-                    'mb-2 text-xs font-medium uppercase tracking-wider text-tertiary'
+                    'text-tertiary mb-2 text-xs font-medium tracking-wider uppercase'
                   }
                 >
                   Environments
@@ -296,7 +296,7 @@ export function BlueprintDetail({
                 <div className="flex flex-wrap gap-1.5">
                   {parsedFilter.environment.map((env) => (
                     <Badge
-                      className="rounded-md border-success px-2.5 py-1 text-sm"
+                      className="border-success rounded-md px-2.5 py-1 text-sm"
                       key={env}
                       variant="success"
                     >
@@ -311,27 +311,27 @@ export function BlueprintDetail({
       )}
 
       {/* Schema Properties */}
-      <div className="rounded-lg border border-border bg-card">
-        <div className="border-b border-tertiary px-6 py-4">
-          <h3 className="text-sm font-medium text-primary">
+      <div className="border-border bg-card rounded-lg border">
+        <div className="border-tertiary border-b px-6 py-4">
+          <h3 className="text-primary text-sm font-medium">
             Schema Properties
           </h3>
         </div>
 
         {properties.length === 0 ? (
-          <div className="py-8 text-center text-tertiary">
-            <FileJson className="mx-auto mb-2 h-8 w-8 opacity-50" />
+          <div className="text-tertiary py-8 text-center">
+            <FileJson className="mx-auto mb-2 size-8 opacity-50" />
             <div>No properties defined</div>
           </div>
         ) : (
-          <div className="divide-y divide-tertiary">
+          <div className="divide-tertiary divide-y">
             {properties.map((prop) => {
               const IconComponent = TYPE_ICONS[prop.type] || Type
               return (
                 <div className="px-6 py-4" key={prop.name}>
                   <div className="flex items-center gap-3">
-                    <IconComponent className="h-4 w-4 flex-shrink-0 text-tertiary" />
-                    <code className="rounded bg-secondary px-2 py-1 text-sm font-medium text-info">
+                    <IconComponent className="text-tertiary size-4 shrink-0" />
+                    <code className="bg-secondary text-info rounded px-2 py-1 text-sm font-medium">
                       {prop.name}
                     </code>
                     <Badge variant="secondary">
@@ -342,17 +342,17 @@ export function BlueprintDetail({
                   </div>
 
                   {prop.description && (
-                    <p className="ml-7 mt-1.5 text-sm text-secondary">
+                    <p className="text-secondary mt-1.5 ml-7 text-sm">
                       {prop.description}
                     </p>
                   )}
 
                   {/* Enum values as badges */}
                   {prop.enumValues && prop.enumValues.length > 0 && (
-                    <div className="ml-7 mt-2 flex flex-wrap gap-1.5">
+                    <div className="mt-2 ml-7 flex flex-wrap gap-1.5">
                       {prop.enumValues.map((val) => (
                         <Badge
-                          className="border border-input font-mono text-secondary"
+                          className="border-input text-secondary border font-mono"
                           key={val}
                           variant="secondary"
                         >
@@ -382,23 +382,23 @@ export function BlueprintDetail({
                     const isColorType = (name: string) =>
                       name.startsWith('color-')
                     return (
-                      <div className="ml-7 mt-2 flex flex-wrap gap-4">
+                      <div className="mt-2 ml-7 flex flex-wrap gap-4">
                         {activeMaps.map(([name, map]) => (
                           <div key={name}>
-                            <span className="text-xs text-tertiary">
+                            <span className="text-tertiary text-xs">
                               {name}
                             </span>
                             <div className="mt-1 flex flex-wrap gap-1.5">
                               {Object.entries(map!).map(([key, val]) => (
                                 <Badge
-                                  className="gap-1.5 border border-input font-mono text-secondary"
+                                  className="border-input text-secondary gap-1.5 border font-mono"
                                   key={key}
                                   variant="secondary"
                                 >
                                   {isColorType(name) ? (
                                     <>
                                       <span
-                                        className="inline-block h-2 w-2 flex-shrink-0 rounded-full"
+                                        className="inline-block size-2 shrink-0 rounded-full"
                                         style={{ backgroundColor: val }}
                                       />
                                       {key}
@@ -419,47 +419,47 @@ export function BlueprintDetail({
 
                   {/* Constraints row */}
                   {hasConstraints(prop) && (
-                    <div className="ml-7 mt-2 flex flex-wrap gap-4">
+                    <div className="mt-2 ml-7 flex flex-wrap gap-4">
                       {prop.defaultValue !== undefined && (
                         <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-tertiary">Default</span>
-                          <code className="rounded bg-secondary px-1.5 py-0.5 text-xs text-primary">
+                          <span className="text-tertiary text-xs">Default</span>
+                          <code className="bg-secondary text-primary rounded px-1.5 py-0.5 text-xs">
                             {prop.defaultValue}
                           </code>
                         </div>
                       )}
                       {prop.minimum !== undefined && (
                         <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-tertiary">Min</span>
-                          <code className="rounded bg-secondary px-1.5 py-0.5 text-xs text-primary">
+                          <span className="text-tertiary text-xs">Min</span>
+                          <code className="bg-secondary text-primary rounded px-1.5 py-0.5 text-xs">
                             {prop.minimum}
                           </code>
                         </div>
                       )}
                       {prop.maximum !== undefined && (
                         <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-tertiary">Max</span>
-                          <code className="rounded bg-secondary px-1.5 py-0.5 text-xs text-primary">
+                          <span className="text-tertiary text-xs">Max</span>
+                          <code className="bg-secondary text-primary rounded px-1.5 py-0.5 text-xs">
                             {prop.maximum}
                           </code>
                         </div>
                       )}
                       {prop.minLength !== undefined && (
                         <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-tertiary">
+                          <span className="text-tertiary text-xs">
                             Min length
                           </span>
-                          <code className="rounded bg-secondary px-1.5 py-0.5 text-xs text-primary">
+                          <code className="bg-secondary text-primary rounded px-1.5 py-0.5 text-xs">
                             {prop.minLength}
                           </code>
                         </div>
                       )}
                       {prop.maxLength !== undefined && (
                         <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-tertiary">
+                          <span className="text-tertiary text-xs">
                             Max length
                           </span>
-                          <code className="rounded bg-secondary px-1.5 py-0.5 text-xs text-primary">
+                          <code className="bg-secondary text-primary rounded px-1.5 py-0.5 text-xs">
                             {prop.maxLength}
                           </code>
                         </div>
@@ -474,23 +474,23 @@ export function BlueprintDetail({
       </div>
 
       {/* Raw JSON Schema (collapsible) */}
-      <div className="rounded-lg border border-border bg-card">
+      <div className="border-border bg-card rounded-lg border">
         <button
-          className={`flex w-full items-center gap-2 px-6 py-4 text-left hover:bg-secondary ${rawSchemaOpen ? 'border-b border-tertiary' : ''}`}
+          className={`hover:bg-secondary flex w-full items-center gap-2 px-6 py-4 text-left ${rawSchemaOpen ? 'border-tertiary border-b' : ''}`}
           onClick={() => setRawSchemaOpen(!rawSchemaOpen)}
         >
           {rawSchemaOpen ? (
-            <ChevronDown className="h-4 w-4 text-tertiary" />
+            <ChevronDown className="text-tertiary size-4" />
           ) : (
-            <ChevronRight className="h-4 w-4 text-tertiary" />
+            <ChevronRight className="text-tertiary size-4" />
           )}
-          <h3 className="text-sm font-medium text-primary">Raw JSON Schema</h3>
-          <span className="text-xs text-tertiary">
+          <h3 className="text-primary text-sm font-medium">Raw JSON Schema</h3>
+          <span className="text-tertiary text-xs">
             {raw.split('\n').length} lines
           </span>
         </button>
         {rawSchemaOpen && (
-          <pre className="overflow-x-auto px-6 py-4 font-mono text-sm leading-relaxed text-primary">
+          <pre className="text-primary overflow-x-auto px-6 py-4 font-mono text-sm leading-relaxed">
             {raw}
           </pre>
         )}

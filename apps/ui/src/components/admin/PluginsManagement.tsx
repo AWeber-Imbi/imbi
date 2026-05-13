@@ -69,7 +69,7 @@ export function PluginsManagement() {
 
   return (
     <div className="space-y-6">
-      <div className="border-b border-tertiary">
+      <div className="border-tertiary border-b">
         <div className="flex gap-0">
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id
@@ -78,7 +78,7 @@ export function PluginsManagement() {
                 className={`border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
                   isActive
                     ? 'border-info text-info'
-                    : 'border-transparent text-secondary hover:text-primary'
+                    : 'text-secondary hover:text-primary border-transparent'
                 }`}
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
@@ -130,7 +130,7 @@ function DisabledList({ parentLoading, plugins }: DisabledListProps) {
     return (
       <Card>
         <CardContent className="py-12 text-center">
-          <Package className="mx-auto mb-3 h-8 w-8 text-secondary" />
+          <Package className="text-secondary mx-auto mb-3 size-8" />
           <CardTitle className="mb-1">All Plugins Enabled</CardTitle>
           <CardDescription>
             Every installed plugin is currently enabled.
@@ -165,17 +165,17 @@ function DisabledList({ parentLoading, plugins }: DisabledListProps) {
                 <TableCell>
                   <div className="font-medium">{plugin.name}</div>
                   {plugin.description && (
-                    <div className="text-xs text-secondary">
+                    <div className="text-secondary text-xs">
                       {plugin.description}
                     </div>
                   )}
                 </TableCell>
                 <TableCell>
-                  <code className="rounded bg-secondary px-1.5 py-0.5 text-xs">
+                  <code className="bg-secondary rounded px-1.5 py-0.5 text-xs">
                     {plugin.package_name}
                   </code>
                 </TableCell>
-                <TableCell className="text-sm text-secondary">
+                <TableCell className="text-secondary text-sm">
                   {plugin.package_version}
                 </TableCell>
                 <TableCell>
@@ -185,7 +185,7 @@ function DisabledList({ parentLoading, plugins }: DisabledListProps) {
                     size="sm"
                     variant="outline"
                   >
-                    <CirclePlay className="mr-1 h-3 w-3" />
+                    <CirclePlay className="mr-1 size-3" />
                     Enable
                   </Button>
                 </TableCell>
@@ -228,7 +228,7 @@ function EnabledList({ error, isError, isLoading, plugins }: EnabledListProps) {
   if (isError) {
     return (
       <Card>
-        <CardContent className="py-8 text-center text-sm text-destructive">
+        <CardContent className="text-destructive py-8 text-center text-sm">
           {extractApiErrorDetail(error) ?? 'Failed to load plugins'}
         </CardContent>
       </Card>
@@ -239,7 +239,7 @@ function EnabledList({ error, isError, isLoading, plugins }: EnabledListProps) {
     return (
       <Card>
         <CardContent className="py-12 text-center">
-          <Package className="mx-auto mb-3 h-8 w-8 text-secondary" />
+          <Package className="text-secondary mx-auto mb-3 size-8" />
           <CardTitle className="mb-1">No Enabled Plugins</CardTitle>
           <CardDescription>
             Enable a plugin from the Disabled tab to make it available for
@@ -276,7 +276,7 @@ function EnabledList({ error, isError, isLoading, plugins }: EnabledListProps) {
                 >
                   <TableCell>
                     <div className="font-medium">{plugin.name}</div>
-                    <div className="text-xs text-secondary">
+                    <div className="text-secondary text-xs">
                       {plugin.description}
                     </div>
                     {plugin.login_capable && (
@@ -291,11 +291,11 @@ function EnabledList({ error, isError, isLoading, plugins }: EnabledListProps) {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <code className="rounded bg-secondary px-1.5 py-0.5 text-xs">
+                    <code className="bg-secondary rounded px-1.5 py-0.5 text-xs">
                       {plugin.package_name}
                     </code>
                   </TableCell>
-                  <TableCell className="text-sm text-secondary">
+                  <TableCell className="text-secondary text-sm">
                     {plugin.package_version}
                   </TableCell>
                   <TableCell>
@@ -320,12 +320,12 @@ function EnabledList({ error, isError, isLoading, plugins }: EnabledListProps) {
                       size="sm"
                       variant="outline"
                     >
-                      <PowerOff className="mr-1 h-3 w-3" />
+                      <PowerOff className="mr-1 size-3" />
                       Disable
                     </Button>
                   </TableCell>
                   <TableCell>
-                    <ChevronRight className="h-4 w-4 text-tertiary" />
+                    <ChevronRight className="text-tertiary size-4" />
                   </TableCell>
                 </TableRow>
               ))}

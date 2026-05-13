@@ -232,7 +232,7 @@ export function ProjectsGraphCanvas({
         } `}
       >
         {/* Toolbar */}
-        <CardHeader className="flex-shrink-0 flex-row items-center gap-2 space-y-0 border-b border-tertiary px-4 py-3">
+        <CardHeader className="border-tertiary shrink-0 flex-row items-center gap-2 space-y-0 border-b px-4 py-3">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -241,7 +241,7 @@ export function ProjectsGraphCanvas({
                 variant="outline"
               >
                 {currentLayoutLabel}
-                <ChevronDown className="h-3 w-3" />
+                <ChevronDown className="size-3" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
@@ -266,7 +266,7 @@ export function ProjectsGraphCanvas({
               title="Zoom in"
               variant="outline"
             >
-              <ZoomIn className="h-4 w-4" />
+              <ZoomIn className="size-4" />
             </Button>
             <Button
               aria-label="Zoom out"
@@ -276,7 +276,7 @@ export function ProjectsGraphCanvas({
               title="Zoom out"
               variant="outline"
             >
-              <ZoomOut className="h-4 w-4" />
+              <ZoomOut className="size-4" />
             </Button>
             <Button
               className={btnClass}
@@ -298,7 +298,7 @@ export function ProjectsGraphCanvas({
               title="Fit to view"
               variant="outline"
             >
-              <Maximize2 className="h-4 w-4" />
+              <Maximize2 className="size-4" />
             </Button>
             <Button
               aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
@@ -309,14 +309,14 @@ export function ProjectsGraphCanvas({
               variant="outline"
             >
               {isFullscreen ? (
-                <Shrink className="h-4 w-4" />
+                <Shrink className="size-4" />
               ) : (
-                <Expand className="h-4 w-4" />
+                <Expand className="size-4" />
               )}
             </Button>
           </div>
 
-          <div className="ml-auto flex items-center gap-4 text-xs text-tertiary">
+          <div className="text-tertiary ml-auto flex items-center gap-4 text-xs">
             <span className="flex items-center gap-1">
               <span
                 className="inline-block h-0.5 w-3 rounded-l"
@@ -359,10 +359,10 @@ export function ProjectsGraphCanvas({
           className={`relative p-0 ${isFullscreen ? 'flex-1' : 'min-h-[400px] flex-1'}`}
         >
           {isRendering && nodes.length > 0 && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80">
+            <div className="bg-background/80 absolute inset-0 z-10 flex items-center justify-center">
               <div className="flex flex-col items-center gap-3">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-current border-t-transparent opacity-50" />
-                <p className="text-sm text-tertiary">Rendering graph…</p>
+                <div className="size-8 animate-spin rounded-full border-2 border-current border-t-transparent opacity-50" />
+                <p className="text-tertiary text-sm">Rendering graph…</p>
               </div>
             </div>
           )}

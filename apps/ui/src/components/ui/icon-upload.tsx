@@ -99,15 +99,15 @@ export function IconUpload({
   return (
     <div className="space-y-3">
       {isImageUrl && value && (
-        <div className="inline-flex items-center gap-3 rounded-lg border border-input bg-secondary p-3">
-          <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg bg-white">
+        <div className="border-input bg-secondary inline-flex items-center gap-3 rounded-lg border p-3">
+          <div className="flex size-12 items-center justify-center overflow-hidden rounded-lg bg-white">
             <img
               alt="Icon preview"
-              className="h-full w-full object-cover"
+              className="size-full object-cover"
               src={getThumbnailSrc(value)}
             />
           </div>
-          <div className="text-sm text-secondary">Uploaded icon</div>
+          <div className="text-secondary text-sm">Uploaded icon</div>
           <Button
             aria-label="Remove uploaded icon"
             className="text-danger hover:bg-danger"
@@ -116,7 +116,7 @@ export function IconUpload({
             type="button"
             variant="ghost"
           >
-            <X className="h-4 w-4" />
+            <X className="size-4" />
           </Button>
         </div>
       )}
@@ -139,25 +139,25 @@ export function IconUpload({
           >
             {uploadMutation.isPending ? (
               <>
-                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                <div className="mr-2 size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
                 Uploading...
               </>
             ) : (
               <>
-                <Upload className="mr-2 h-4 w-4" />
+                <Upload className="mr-2 size-4" />
                 Upload Image
               </>
             )}
           </Button>
-          <p className="mt-1.5 text-xs text-tertiary">
+          <p className="text-tertiary mt-1.5 text-xs">
             PNG, JPG, or SVG - Max {maxSizeKB}KB
           </p>
         </div>
       )}
 
       {error && (
-        <div className="flex items-start gap-2 rounded-lg border border-danger bg-danger p-3 text-danger">
-          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+        <div className="border-danger bg-danger text-danger flex items-start gap-2 rounded-lg border p-3">
+          <AlertCircle className="mt-0.5 size-4 shrink-0" />
           <div className="text-xs">{error}</div>
         </div>
       )}

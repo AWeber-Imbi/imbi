@@ -106,7 +106,7 @@ export function DeploymentRunWatcher(props: DeploymentRunWatcherProps): null {
       settledRef.current = true
       toast.success(`Deployed to ${envName}`, {
         action,
-        icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" />,
+        icon: <CheckCircle2 className="size-4 text-emerald-500" />,
         id: toastId,
       })
       onTerminal(runId)
@@ -115,7 +115,7 @@ export function DeploymentRunWatcher(props: DeploymentRunWatcherProps): null {
       const verb = data.status === 'cancelled' ? 'cancelled' : 'failed'
       toast.error(`Deployment to ${envName} ${verb}`, {
         action,
-        icon: <XCircle className="h-4 w-4 text-rose-500" />,
+        icon: <XCircle className="size-4 text-rose-500" />,
         id: toastId,
       })
       onTerminal(runId)
@@ -124,7 +124,7 @@ export function DeploymentRunWatcher(props: DeploymentRunWatcherProps): null {
       toast.loading(`Deploying to ${envName}…`, {
         action,
         description: data.status ? `status: ${data.status}` : undefined,
-        icon: <Loader2 className="h-4 w-4 animate-spin" />,
+        icon: <Loader2 className="size-4 animate-spin" />,
         id: toastId,
       })
     }
@@ -152,7 +152,7 @@ export function DeploymentRunWatcher(props: DeploymentRunWatcherProps): null {
             }
           : undefined,
       description: 'Status polling failed; check the workflow run directly.',
-      icon: <ExternalLink className="h-4 w-4" />,
+      icon: <ExternalLink className="size-4" />,
       id: toastId,
     })
     onTerminal(runId)

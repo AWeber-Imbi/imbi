@@ -107,16 +107,16 @@ const TriggerButton = forwardRef<HTMLButtonElement, TriggerButtonProps>(
         type="button"
         {...props}
       >
-        <span className="flex h-4 w-4 items-center justify-center text-tertiary">
+        <span className="text-tertiary flex size-4 items-center justify-center">
           {icon}
         </span>
         <span className={cn(value && 'text-primary')}>{value ?? label}</span>
         {count !== undefined ? (
-          <span className="ml-0.5 rounded bg-secondary px-1.5 text-[11px] tabular-nums text-tertiary">
+          <span className="bg-secondary text-tertiary ml-0.5 rounded px-1.5 text-[11px] tabular-nums">
             {count.toLocaleString()}
           </span>
         ) : null}
-        <ChevronDown className="h-3.5 w-3.5 text-tertiary" />
+        <ChevronDown className="text-tertiary size-3.5" />
       </button>
     )
   },
@@ -209,7 +209,7 @@ export function OperationsLogToolbar({
         <>
           <div
             aria-label="Time range"
-            className="inline-flex items-center rounded-md border border-tertiary bg-secondary p-0.5"
+            className="border-tertiary bg-secondary inline-flex items-center rounded-md border p-0.5"
             role="group"
           >
             {RANGES.map((r) => (
@@ -229,13 +229,13 @@ export function OperationsLogToolbar({
             ))}
           </div>
 
-          <span aria-hidden className="mx-1 h-6 w-px bg-tertiary" />
+          <span aria-hidden className="bg-tertiary mx-1 h-6 w-px" />
         </>
       )}
 
       <FacetDropdown
         allLabel="All entry types"
-        icon={<Filter className="h-3.5 w-3.5" />}
+        icon={<Filter className="size-3.5" />}
         label="Entry Type"
         onChange={(next) => onEntryTypes(next as OperationsLogEntryType[])}
         options={entryTypeOptions}
@@ -245,7 +245,7 @@ export function OperationsLogToolbar({
       <FacetDropdown
         allLabel="All environments"
         contentClassName="min-w-[220px]"
-        icon={<Layers className="h-3.5 w-3.5" />}
+        icon={<Layers className="size-3.5" />}
         label="Environment"
         onChange={onEnvironmentSlugs}
         options={environmentOptions}
@@ -263,14 +263,14 @@ export function OperationsLogToolbar({
               count={
                 projectSlugs.length > 0 ? undefined : projectEntries.length
               }
-              icon={<Box className="h-3.5 w-3.5" />}
+              icon={<Box className="size-3.5" />}
               label="Project"
               value={projectSlugs.length > 0 ? projectTriggerValue : undefined}
             />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="min-w-[260px] p-0">
-            <div className="relative border-b border-tertiary p-2">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-tertiary" />
+          <DropdownMenuContent align="start" className="min-w-65 p-0">
+            <div className="border-tertiary relative border-b p-2">
+              <Search className="text-tertiary pointer-events-none absolute top-1/2 left-4 size-3.5 -translate-y-1/2" />
               <Input
                 autoFocus
                 className="h-8 pl-7 text-sm"
@@ -292,7 +292,7 @@ export function OperationsLogToolbar({
               >
                 <Check
                   className={cn(
-                    'h-3.5 w-3.5',
+                    'size-3.5',
                     projectSlugs.length > 0 && 'invisible',
                   )}
                 />
@@ -313,19 +313,19 @@ export function OperationsLogToolbar({
                     type="button"
                   >
                     <Check
-                      className={cn('h-3.5 w-3.5', !checked && 'invisible')}
+                      className={cn('size-3.5', !checked && 'invisible')}
                     />
                     <span className="flex-1 truncate font-mono text-[13px]">
                       {slug}
                     </span>
-                    <span className="ml-3 text-xs text-tertiary">
+                    <span className="text-tertiary ml-3 text-xs">
                       {c.toLocaleString()}
                     </span>
                   </button>
                 )
               })}
               {projectEntries.length === 0 ? (
-                <div className="px-3 py-2 text-xs text-tertiary">
+                <div className="text-tertiary px-3 py-2 text-xs">
                   No projects match.
                 </div>
               ) : null}
@@ -336,7 +336,7 @@ export function OperationsLogToolbar({
 
       <div
         aria-label="View"
-        className="ml-auto inline-flex h-9 items-center rounded-md border border-tertiary bg-secondary p-1"
+        className="border-tertiary bg-secondary ml-auto inline-flex h-9 items-center rounded-md border p-1"
         role="group"
       >
         <button
@@ -349,7 +349,7 @@ export function OperationsLogToolbar({
           onClick={() => onView('stream')}
           type="button"
         >
-          <List className="h-3.5 w-3.5" /> Stream
+          <List className="size-3.5" /> Stream
         </button>
         <button
           className={cn(
@@ -361,7 +361,7 @@ export function OperationsLogToolbar({
           onClick={() => onView('grouped')}
           type="button"
         >
-          <GitBranch className="h-3.5 w-3.5" /> Releases
+          <GitBranch className="size-3.5" /> Releases
         </button>
       </div>
     </div>
@@ -404,7 +404,7 @@ function FacetDropdown({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
-        className={contentClassName ?? 'min-w-[200px]'}
+        className={contentClassName ?? 'min-w-50'}
       >
         <DropdownMenuCheckboxItem
           checked={selected.length === 0}
@@ -426,7 +426,7 @@ function FacetDropdown({
             }}
           >
             <span className="flex-1">{o.label}</span>
-            <span className="ml-3 text-xs text-tertiary">
+            <span className="text-tertiary ml-3 text-xs">
               {o.count.toLocaleString()}
             </span>
           </DropdownMenuCheckboxItem>

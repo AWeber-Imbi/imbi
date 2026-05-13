@@ -246,8 +246,8 @@ export function ScoringPolicyForm({
 
   const fieldError = (key: string) =>
     errors[key] ? (
-      <div className="mt-1 flex items-center gap-1 text-xs text-danger">
-        <AlertCircle className="h-3 w-3" />
+      <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+        <AlertCircle className="size-3" />
         {errors[key]}
       </div>
     ) : null
@@ -280,7 +280,7 @@ export function ScoringPolicyForm({
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label
-                  className="mb-1.5 block text-sm text-secondary"
+                  className="text-secondary mb-1.5 block text-sm"
                   htmlFor="sp-name"
                 >
                   Name <span className="text-danger">*</span>
@@ -297,7 +297,7 @@ export function ScoringPolicyForm({
               </div>
               <div>
                 <label
-                  className="mb-1.5 block text-sm text-secondary"
+                  className="text-secondary mb-1.5 block text-sm"
                   htmlFor="sp-slug"
                 >
                   Slug <span className="text-danger">*</span>
@@ -316,13 +316,13 @@ export function ScoringPolicyForm({
 
             <div>
               <label
-                className="mb-1.5 block text-sm text-secondary"
+                className="text-secondary mb-1.5 block text-sm"
                 htmlFor="sp-description"
               >
                 Description
               </label>
               <textarea
-                className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+                className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full resize-none rounded-lg border px-3 py-2 text-sm"
                 disabled={isLoading}
                 id="sp-description"
                 onChange={(e) => setDescription(e.target.value)}
@@ -333,7 +333,7 @@ export function ScoringPolicyForm({
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Category <span className="text-danger">*</span>
               </label>
               <div className="flex flex-wrap gap-2">
@@ -360,7 +360,7 @@ export function ScoringPolicyForm({
                   </button>
                 ))}
               </div>
-              <p className="mt-1.5 text-xs text-tertiary">
+              <p className="text-tertiary mt-1.5 text-xs">
                 {CATEGORY_DESCRIPTIONS[category]}
                 {isEditing && ' Category cannot be changed after creation.'}
               </p>
@@ -377,7 +377,7 @@ export function ScoringPolicyForm({
             {category === 'link_presence' ? (
               <div>
                 <label
-                  className="mb-1.5 block text-sm text-secondary"
+                  className="text-secondary mb-1.5 block text-sm"
                   htmlFor="sp-link-slug"
                 >
                   Required Link Type <span className="text-danger">*</span>
@@ -395,7 +395,7 @@ export function ScoringPolicyForm({
                   </SelectTrigger>
                   <SelectContent>
                     {sortedLinkDefinitions.length === 0 ? (
-                      <div className="px-2 py-1.5 text-xs text-tertiary">
+                      <div className="text-tertiary px-2 py-1.5 text-xs">
                         No link definitions configured for this organization
                       </div>
                     ) : (
@@ -407,7 +407,7 @@ export function ScoringPolicyForm({
                     )}
                   </SelectContent>
                 </Select>
-                <p className="mt-1 text-xs text-tertiary">
+                <p className="text-tertiary mt-1 text-xs">
                   The link slug the project must have to score{' '}
                   <code>present_score</code>
                 </p>
@@ -416,7 +416,7 @@ export function ScoringPolicyForm({
             ) : (
               <div>
                 <label
-                  className="mb-1.5 block text-sm text-secondary"
+                  className="text-secondary mb-1.5 block text-sm"
                   htmlFor="sp-attribute"
                 >
                   Attribute Name <span className="text-danger">*</span>
@@ -433,7 +433,7 @@ export function ScoringPolicyForm({
                   }
                   value={attributeName}
                 />
-                <p className="mt-1 text-xs text-tertiary">
+                <p className="text-tertiary mt-1 text-xs">
                   {category === 'age'
                     ? 'The datetime attribute on the project model whose age is scored'
                     : 'The blueprint attribute key this policy evaluates'}
@@ -445,7 +445,7 @@ export function ScoringPolicyForm({
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div>
                 <label
-                  className="mb-1.5 block text-sm text-secondary"
+                  className="text-secondary mb-1.5 block text-sm"
                   htmlFor="sp-weight"
                 >
                   Weight (0–100) <span className="text-danger">*</span>
@@ -465,7 +465,7 @@ export function ScoringPolicyForm({
 
               <div>
                 <label
-                  className="mb-1.5 block text-sm text-secondary"
+                  className="text-secondary mb-1.5 block text-sm"
                   htmlFor="sp-priority"
                 >
                   Priority
@@ -477,13 +477,13 @@ export function ScoringPolicyForm({
                   type="number"
                   value={priority}
                 />
-                <p className="mt-1 text-xs text-tertiary">
+                <p className="text-tertiary mt-1 text-xs">
                   Lower numbers run first
                 </p>
               </div>
 
               <div className="flex flex-col justify-center gap-1.5">
-                <label className="text-sm text-secondary">Enabled</label>
+                <label className="text-secondary text-sm">Enabled</label>
                 <Switch
                   checked={enabled}
                   disabled={isLoading}
@@ -502,7 +502,7 @@ export function ScoringPolicyForm({
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Mapping type
                 </label>
                 <div className="flex gap-3">
@@ -522,7 +522,7 @@ export function ScoringPolicyForm({
                     </button>
                   ))}
                 </div>
-                <p className="mt-1.5 text-xs text-tertiary">
+                <p className="text-tertiary mt-1.5 text-xs">
                   {attributeMapType === 'value'
                     ? 'Maps exact attribute values (strings) to scores'
                     : 'Maps numeric ranges like "0..70" to scores'}
@@ -557,7 +557,7 @@ export function ScoringPolicyForm({
               <CardTitle>Age Thresholds</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <p className="text-xs text-tertiary">
+              <p className="text-tertiary text-xs">
                 Each entry uses an operator (<code>&gt;</code>,{' '}
                 <code>&gt;=</code>, <code>&lt;</code>, <code>&lt;=</code>,{' '}
                 <code>==</code>) and a duration in <code>s</code> /{' '}
@@ -589,7 +589,7 @@ export function ScoringPolicyForm({
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label
-                    className="mb-1.5 block text-sm text-secondary"
+                    className="text-secondary mb-1.5 block text-sm"
                     htmlFor="sp-present-score"
                   >
                     Present score (0–100)
@@ -604,7 +604,7 @@ export function ScoringPolicyForm({
                     type="number"
                     value={presentScore}
                   />
-                  <p className="mt-1 text-xs text-tertiary">
+                  <p className="text-tertiary mt-1 text-xs">
                     {category === 'link_presence'
                       ? 'Score when the project has this link type'
                       : 'Score when the attribute has a non-empty value'}
@@ -613,7 +613,7 @@ export function ScoringPolicyForm({
                 </div>
                 <div>
                   <label
-                    className="mb-1.5 block text-sm text-secondary"
+                    className="text-secondary mb-1.5 block text-sm"
                     htmlFor="sp-missing-score"
                   >
                     Missing score (0–100)
@@ -628,7 +628,7 @@ export function ScoringPolicyForm({
                     type="number"
                     value={missingScore}
                   />
-                  <p className="mt-1 text-xs text-tertiary">
+                  <p className="text-tertiary mt-1 text-xs">
                     {category === 'link_presence'
                       ? 'Score when the project does not have this link type'
                       : 'Score when the attribute is null, empty, or whitespace'}
@@ -646,19 +646,19 @@ export function ScoringPolicyForm({
             <CardTitle>Target Project Types</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="mb-3 text-sm text-tertiary">
+            <p className="text-tertiary mb-3 text-sm">
               Leave all unchecked to apply this policy to every project type.
             </p>
             {ptLoading ? (
-              <p className="text-xs italic text-tertiary">
+              <p className="text-tertiary text-xs italic">
                 Loading project types...
               </p>
             ) : ptIsError ? (
-              <p className="text-xs italic text-danger">
+              <p className="text-danger text-xs italic">
                 Failed to load project types
               </p>
             ) : projectTypes.length === 0 ? (
-              <p className="text-xs italic text-tertiary">
+              <p className="text-tertiary text-xs italic">
                 No project types available
               </p>
             ) : (
@@ -678,7 +678,7 @@ export function ScoringPolicyForm({
                       }
                     />
                     <label
-                      className="cursor-pointer select-none text-sm text-secondary"
+                      className="text-secondary cursor-pointer text-sm select-none"
                       htmlFor={`target-pt-${pt.slug}`}
                     >
                       {pt.name}
@@ -715,7 +715,7 @@ function MapEditor({
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-[1fr_100px_32px] gap-2 text-xs text-tertiary">
+      <div className="text-tertiary grid grid-cols-[1fr_100px_32px] gap-2 text-xs">
         <span>{keyHeader}</span>
         <span>{scoreHeader}</span>
         <span />
@@ -747,7 +747,7 @@ function MapEditor({
             type="button"
             variant="ghost"
           >
-            <Trash2 className="h-4 w-4 text-secondary" />
+            <Trash2 className="text-secondary size-4" />
           </Button>
         </div>
       ))}
@@ -759,12 +759,12 @@ function MapEditor({
         type="button"
         variant="outline"
       >
-        <Plus className="mr-1.5 h-3.5 w-3.5" />
+        <Plus className="mr-1.5 size-3.5" />
         {addLabel}
       </Button>
       {error && (
-        <div className="mt-1 flex items-center gap-1 text-xs text-danger">
-          <AlertCircle className="h-3 w-3" />
+        <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+          <AlertCircle className="size-3" />
           {error}
         </div>
       )}

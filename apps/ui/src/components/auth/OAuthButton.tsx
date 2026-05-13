@@ -19,7 +19,7 @@ export function OAuthButton({ disabled, onClick, provider }: OAuthButtonProps) {
       onClick={onClick}
       variant="outline"
     >
-      <EntityIcon className="h-4 w-4" icon={provider.icon ?? 'key-round'} />
+      <EntityIcon className="size-4" icon={provider.icon ?? 'key-round'} />
       Login with {provider.name}
     </Button>
   )

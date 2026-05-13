@@ -22,7 +22,7 @@ export function ScoreBadge({
           : 'h-10 w-10 text-sm'
     return (
       <div
-        className={`flex flex-shrink-0 items-center justify-center font-medium text-tertiary ${rounded} ${dims}`}
+        className={`text-tertiary flex shrink-0 items-center justify-center font-medium ${rounded} ${dims}`}
       >
         —
       </div>
@@ -35,7 +35,7 @@ export function ScoreBadge({
   if (size === 'lg') {
     return (
       <div
-        className={`flex h-16 w-16 flex-shrink-0 items-center justify-center text-2xl font-medium ${rounded} ${bg} ${text}`}
+        className={`flex size-16 shrink-0 items-center justify-center text-2xl font-medium ${rounded} ${bg} ${text}`}
       >
         {display}
       </div>
@@ -45,7 +45,7 @@ export function ScoreBadge({
   if (size === 'md') {
     return (
       <div
-        className={`flex h-12 w-12 flex-shrink-0 items-center justify-center ring-4 ${rounded} ${bg} ${text} ${ring}`}
+        className={`flex size-12 shrink-0 items-center justify-center ring-4 ${rounded} ${bg} ${text} ${ring}`}
       >
         <span className="text-sm font-semibold">{display}</span>
       </div>
@@ -54,7 +54,7 @@ export function ScoreBadge({
 
   return (
     <div
-      className={`inline-flex h-10 w-10 items-center justify-center ${rounded} ${bg} ${text}`}
+      className={`inline-flex size-10 items-center justify-center ${rounded} ${bg} ${text}`}
     >
       <span className="text-sm font-semibold">{display}</span>
     </div>

@@ -89,9 +89,7 @@ const ProjectAttributeRow = memo(function ProjectAttributeRow({
     fieldValue !== null ? (
       <span className="flex items-center gap-1.5">
         {FieldIcon && (
-          <FieldIcon
-            className={`h-3.5 w-3.5 flex-shrink-0 ${textColorClass}`}
-          />
+          <FieldIcon className={`size-3.5 shrink-0 ${textColorClass}`} />
         )}
         {fieldTitle ? (
           <TooltipProvider delayDuration={200}>

@@ -200,15 +200,15 @@ export function RoleForm({
   if (isEditing && roleLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-sm text-secondary">Loading role...</div>
+        <div className="text-secondary text-sm">Loading role...</div>
       </div>
     )
   }
 
   if (isEditing && roleError) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger">
-        <AlertCircle className="h-5 w-5 flex-shrink-0" />
+      <div className="border-danger bg-danger text-danger flex items-center gap-3 rounded-lg border p-4">
+        <AlertCircle className="size-5 shrink-0" />
         <div>
           <div className="font-medium">Failed to load role</div>
           <div className="mt-1 text-sm">
@@ -226,10 +226,10 @@ export function RoleForm({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-medium text-primary">
+          <h2 className="text-primary text-base font-medium">
             {isEditing ? 'Edit Role' : 'Create New Role'}
           </h2>
-          <p className="mt-1 text-secondary">
+          <p className="text-secondary mt-1">
             {isEditing
               ? 'Update role information and permissions'
               : 'Create a new role and define its permissions'}
@@ -237,7 +237,7 @@ export function RoleForm({
         </div>
         <div className="flex items-center gap-2">
           <Button disabled={isLoading} onClick={onCancel} variant="outline">
-            <X className="mr-2 h-4 w-4" />
+            <X className="mr-2 size-4" />
             Cancel
           </Button>
           {!isSystemRole && (
@@ -249,7 +249,7 @@ export function RoleForm({
               }
               onClick={handleSave}
             >
-              <Save className="mr-2 h-4 w-4" />
+              <Save className="mr-2 size-4" />
               {isLoading
                 ? 'Saving...'
                 : isEditing
@@ -262,12 +262,12 @@ export function RoleForm({
 
       {/* System Role Warning */}
       {isSystemRole && (
-        <div className="rounded-lg border border-warning bg-warning p-4">
+        <div className="border-warning bg-warning rounded-lg border p-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 flex-shrink-0 text-warning" />
+            <AlertTriangle className="text-warning size-5 shrink-0" />
             <div>
-              <div className="font-medium text-warning">System Role</div>
-              <div className="mt-1 text-sm text-warning">
+              <div className="text-warning font-medium">System Role</div>
+              <div className="text-warning mt-1 text-sm">
                 This is a system role and cannot be modified. System roles are
                 managed automatically.
               </div>
@@ -278,12 +278,12 @@ export function RoleForm({
 
       {/* API Error Display */}
       {error && (
-        <div className="rounded-lg border border-danger bg-danger p-4">
+        <div className="border-danger bg-danger rounded-lg border p-4">
           <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 flex-shrink-0 text-danger" />
+            <AlertCircle className="text-danger size-5 shrink-0" />
             <div>
-              <div className="font-medium text-danger">Failed to save role</div>
-              <div className="mt-1 text-sm text-danger">
+              <div className="text-danger font-medium">Failed to save role</div>
+              <div className="text-danger mt-1 text-sm">
                 {error?.response?.data?.detail ||
                   error?.message ||
                   'An error occurred'}
@@ -326,7 +326,7 @@ export function RoleForm({
             {/* Slug */}
             {!isEditing && (
               <div className="col-span-2">
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Slug <span className="text-red-500">*</span>
                 </label>
                 <Input
@@ -345,7 +345,7 @@ export function RoleForm({
                   value={slug}
                 />
                 {!slugManuallyEdited && name && (
-                  <p className="mt-1 text-xs text-tertiary">
+                  <p className="text-tertiary mt-1 text-xs">
                     Auto-generated from name
                   </p>
                 )}
@@ -359,11 +359,11 @@ export function RoleForm({
 
             {/* Description */}
             <div className="col-span-2">
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Description
               </label>
               <textarea
-                className={`w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground ${isSystemRole ? 'cursor-not-allowed opacity-60' : ''}`}
+                className={`border-input bg-background text-foreground placeholder:text-muted-foreground w-full resize-none rounded-md border px-3 py-2 text-sm ${isSystemRole ? 'cursor-not-allowed opacity-60' : ''}`}
                 disabled={isLoading || isSystemRole}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Brief description of this role's purpose and scope"
@@ -374,7 +374,7 @@ export function RoleForm({
 
             {/* Priority */}
             <div className="col-span-2 sm:col-span-1">
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Priority
               </label>
               <Input
@@ -387,7 +387,7 @@ export function RoleForm({
                 type="number"
                 value={priority}
               />
-              <p className="mt-1 text-xs text-tertiary">
+              <p className="text-tertiary mt-1 text-xs">
                 Higher priority roles take precedence. System roles use
                 100-1000.
               </p>
@@ -400,13 +400,13 @@ export function RoleForm({
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle>Permissions</CardTitle>
-          <div className="text-sm text-secondary">
+          <div className="text-secondary text-sm">
             {selectedPermissions.size} selected
           </div>
         </CardHeader>
         <CardContent>
-          <div className="mb-4 flex items-start gap-2 rounded-lg bg-info p-3 text-info">
-            <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+          <div className="bg-info text-info mb-4 flex items-start gap-2 rounded-lg p-3">
+            <AlertCircle className="mt-0.5 size-4 shrink-0" />
             <div className="text-xs">
               Select the permissions this role should have. Permissions are
               grouped by resource type for easier management.
@@ -418,12 +418,12 @@ export function RoleForm({
 
           <div className="space-y-3">
             {adminSettingsLoading && (
-              <div className="py-6 text-center text-tertiary">
+              <div className="text-tertiary py-6 text-center">
                 Loading permissions...
               </div>
             )}
             {adminSettingsError && (
-              <div className="py-6 text-center text-danger">
+              <div className="text-danger py-6 text-center">
                 Failed to load permissions. Please retry.
               </div>
             )}
@@ -440,7 +440,7 @@ export function RoleForm({
 
                 return (
                   <div
-                    className="rounded-lg border border-input bg-secondary"
+                    className="border-input bg-secondary rounded-lg border"
                     key={resource}
                   >
                     {/* Group Header */}
@@ -452,14 +452,14 @@ export function RoleForm({
                             ? 'Collapse permissions group'
                             : 'Expand permissions group'
                         }
-                        className="rounded p-0.5 hover:bg-secondary"
+                        className="hover:bg-secondary rounded p-0.5"
                         onClick={() => toggleGroup(resource)}
                         type="button"
                       >
                         {isExpanded ? (
-                          <ChevronDown className="h-4 w-4 text-secondary" />
+                          <ChevronDown className="text-secondary size-4" />
                         ) : (
-                          <ChevronRight className="h-4 w-4 text-secondary" />
+                          <ChevronRight className="text-secondary size-4" />
                         )}
                       </button>
 
@@ -477,7 +477,7 @@ export function RoleForm({
                           onCheckedChange={() => toggleAllInGroup(resource)}
                         />
                         <label
-                          className="flex-1 cursor-pointer select-none text-primary"
+                          className="text-primary flex-1 cursor-pointer select-none"
                           htmlFor={`group-${resource}`}
                         >
                           {resourceLabel(resource)}
@@ -496,12 +496,12 @@ export function RoleForm({
 
                     {/* Group Permissions */}
                     {isExpanded && (
-                      <div className="space-y-2 border-t border-secondary px-3 pb-3">
+                      <div className="border-secondary space-y-2 border-t px-3 pb-3">
                         {perms
                           .sort((a, b) => a.action.localeCompare(b.action))
                           .map((perm) => (
                             <div
-                              className="flex items-start gap-3 rounded p-2.5 hover:bg-primary"
+                              className="hover:bg-primary flex items-start gap-3 rounded p-2.5"
                               key={perm.name}
                             >
                               <Checkbox
@@ -517,12 +517,12 @@ export function RoleForm({
                                 className="flex-1 cursor-pointer select-none"
                                 htmlFor={perm.name}
                               >
-                                <div className="text-sm text-primary">
-                                  <code className="rounded bg-secondary px-1.5 py-0.5 text-xs text-info">
+                                <div className="text-primary text-sm">
+                                  <code className="bg-secondary text-info rounded px-1.5 py-0.5 text-xs">
                                     {perm.action}
                                   </code>
                                 </div>
-                                <div className="mt-0.5 text-xs text-secondary">
+                                <div className="text-secondary mt-0.5 text-xs">
                                   {perm.description || perm.name}
                                 </div>
                               </label>
@@ -538,7 +538,7 @@ export function RoleForm({
               !adminSettingsError &&
               (!adminSettings?.permissions ||
                 adminSettings.permissions.length === 0) && (
-                <div className="py-8 text-center text-tertiary">
+                <div className="text-tertiary py-8 text-center">
                   <div>No permissions available</div>
                   <div className="mt-1 text-sm">
                     Permissions are configured in the backend

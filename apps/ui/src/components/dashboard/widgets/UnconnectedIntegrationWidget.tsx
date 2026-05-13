@@ -46,42 +46,42 @@ export function UnconnectedIntegrationWidget({
     `Imbi can act on your behalf in ${plugin.name} once you link your account.`
 
   return (
-    <article className="relative grid min-h-[240px] grid-cols-1 overflow-hidden rounded-2xl border border-border bg-card shadow-sm md:grid-cols-[1fr_160px] xl:grid-cols-[1fr_200px]">
+    <article className="border-border bg-card relative grid min-h-60 grid-cols-1 overflow-hidden rounded-2xl border shadow-sm md:grid-cols-[1fr_160px] xl:grid-cols-[1fr_200px]">
       <div className="flex flex-col justify-between p-6">
         <div>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-border bg-amber-bg px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-amber-text">
-            <span className="relative inline-block h-1.5 w-1.5 rounded-full bg-amber-border">
-              <span className="absolute -inset-[3px] rounded-full border-[1.5px] border-amber-border [animation:imbi-pulse-ring_2s_ease-out_infinite]" />
+          <span className="border-amber-border bg-amber-bg text-amber-text inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide">
+            <span className="bg-amber-border relative inline-block size-1.5 rounded-full">
+              <span className="border-amber-border absolute -inset-0.75 animate-[imbi-pulse-ring_2s_ease-out_infinite] rounded-full border-[1.5px]" />
             </span>
             {plugin.name} · Not connected
           </span>
 
-          <h3 className="mb-1 mt-3.5 text-[17px] font-semibold tracking-tight text-primary">
+          <h3 className="text-primary mt-3.5 mb-1 text-[17px] font-semibold tracking-tight">
             {plugin.name} isn&apos;t linked to your account
           </h3>
 
-          <p className="m-0 max-w-[38ch] text-[13px] leading-relaxed text-secondary">
+          <p className="text-secondary m-0 max-w-[38ch] text-[13px] leading-relaxed">
             {body}
           </p>
 
           <div
             aria-label="Preview of locked content"
-            className="relative mt-3.5 rounded-[10px] border border-dashed border-tertiary bg-tertiary p-2.5"
+            className="border-tertiary bg-tertiary relative mt-3.5 rounded-[10px] border border-dashed p-2.5"
           >
             <div className="flex items-center gap-2 py-1.5">
-              <span className="h-1.5 flex-[0.4] rounded-[3px] bg-gradient-to-r from-[var(--color-text-tertiary)] to-secondary [filter:blur(1.5px)]" />
-              <span className="h-1.5 flex-1 rounded-[3px] bg-gradient-to-r from-[var(--color-text-tertiary)] to-secondary [filter:blur(1.5px)]" />
+              <span className="to-secondary h-1.5 flex-[0.4] rounded-[3px] bg-linear-to-r from-(--color-text-tertiary) filter-[blur(1.5px)]" />
+              <span className="to-secondary h-1.5 flex-1 rounded-[3px] bg-linear-to-r from-(--color-text-tertiary) filter-[blur(1.5px)]" />
             </div>
-            <div className="flex items-center gap-2 border-t border-border py-1.5">
-              <span className="h-1.5 flex-[0.7] rounded-[3px] bg-gradient-to-r from-[var(--color-text-tertiary)] to-secondary [filter:blur(1.5px)]" />
-              <span className="h-1.5 flex-[0.4] rounded-[3px] bg-gradient-to-r from-[var(--color-text-tertiary)] to-secondary [filter:blur(1.5px)]" />
+            <div className="border-border flex items-center gap-2 border-t py-1.5">
+              <span className="to-secondary h-1.5 flex-[0.7] rounded-[3px] bg-linear-to-r from-(--color-text-tertiary) filter-[blur(1.5px)]" />
+              <span className="to-secondary h-1.5 flex-[0.4] rounded-[3px] bg-linear-to-r from-(--color-text-tertiary) filter-[blur(1.5px)]" />
             </div>
-            <div className="flex items-center gap-2 border-t border-border py-1.5">
-              <span className="h-1.5 flex-1 rounded-[3px] bg-gradient-to-r from-[var(--color-text-tertiary)] to-secondary [filter:blur(1.5px)]" />
-              <span className="h-1.5 flex-[0.7] rounded-[3px] bg-gradient-to-r from-[var(--color-text-tertiary)] to-secondary [filter:blur(1.5px)]" />
+            <div className="border-border flex items-center gap-2 border-t py-1.5">
+              <span className="to-secondary h-1.5 flex-1 rounded-[3px] bg-linear-to-r from-(--color-text-tertiary) filter-[blur(1.5px)]" />
+              <span className="to-secondary h-1.5 flex-[0.7] rounded-[3px] bg-linear-to-r from-(--color-text-tertiary) filter-[blur(1.5px)]" />
             </div>
-            <div className="absolute left-1/2 top-1/2 grid h-7 w-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-border bg-card text-secondary shadow-sm">
-              <Lock className="h-3.5 w-3.5" strokeWidth={1.8} />
+            <div className="border-border bg-card text-secondary absolute top-1/2 left-1/2 grid size-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border shadow-sm">
+              <Lock className="size-3.5" strokeWidth={1.8} />
             </div>
           </div>
         </div>
@@ -93,14 +93,14 @@ export function UnconnectedIntegrationWidget({
             onClick={onConnect}
           >
             {ResolvedIcon ? (
-              <ResolvedIcon className="h-3.5 w-3.5" />
+              <ResolvedIcon className="size-3.5" />
             ) : (
-              <Plug className="h-3.5 w-3.5" />
+              <Plug className="size-3.5" />
             )}
             Connect {plugin.name}
           </Button>
           <button
-            className="inline-flex items-center gap-1 text-xs font-medium text-secondary hover:text-primary"
+            className="text-secondary hover:text-primary inline-flex items-center gap-1 text-xs font-medium"
             onClick={onManage}
             type="button"
           >
@@ -111,33 +111,33 @@ export function UnconnectedIntegrationWidget({
 
       <div
         aria-hidden="true"
-        className="from-tertiary relative hidden overflow-hidden border-l border-border bg-gradient-to-b to-secondary md:block"
+        className="border-border from-tertiary to-secondary relative hidden overflow-hidden border-l bg-linear-to-b md:block"
       >
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="flex items-center gap-1.5">
-            <div className="grid h-[46px] w-[46px] place-items-center rounded-xl border border-border bg-card shadow-sm">
+            <div className="border-border bg-card grid size-11.5 place-items-center rounded-xl border shadow-sm">
               <img
                 alt="Imbi"
-                className="h-7 w-7"
+                className="size-7"
                 src={isDarkMode ? logoDark : logoLight}
               />
             </div>
-            <div className="flex gap-[5px]">
-              <i className="block h-[5px] w-[5px] rounded-full bg-[var(--color-text-tertiary)] [animation:imbi-bridge-travel_1.6s_ease-in-out_infinite]" />
-              <i className="block h-[5px] w-[5px] rounded-full bg-[var(--color-text-tertiary)] [animation-delay:0.15s] [animation:imbi-bridge-travel_1.6s_ease-in-out_infinite]" />
-              <i className="block h-[5px] w-[5px] rounded-full bg-[var(--color-text-tertiary)] [animation-delay:0.3s] [animation:imbi-bridge-travel_1.6s_ease-in-out_infinite]" />
-              <i className="block h-[5px] w-[5px] rounded-full bg-[var(--color-text-tertiary)] [animation-delay:0.45s] [animation:imbi-bridge-travel_1.6s_ease-in-out_infinite]" />
+            <div className="flex gap-1.25">
+              <i className="block size-1.25 animate-[imbi-bridge-travel_1.6s_ease-in-out_infinite] rounded-full bg-(--color-text-tertiary)" />
+              <i className="block size-1.25 animate-[imbi-bridge-travel_1.6s_ease-in-out_infinite] rounded-full bg-(--color-text-tertiary) [animation-delay:0.15s]" />
+              <i className="block size-1.25 animate-[imbi-bridge-travel_1.6s_ease-in-out_infinite] rounded-full bg-(--color-text-tertiary) [animation-delay:0.3s]" />
+              <i className="block size-1.25 animate-[imbi-bridge-travel_1.6s_ease-in-out_infinite] rounded-full bg-(--color-text-tertiary) [animation-delay:0.45s]" />
             </div>
-            <div className="grid h-[46px] w-[46px] place-items-center rounded-xl border border-border bg-card text-primary opacity-50 shadow-sm grayscale-[0.4]">
+            <div className="border-border bg-card text-primary grid size-11.5 place-items-center rounded-xl border opacity-50 shadow-sm grayscale-[0.4]">
               {ResolvedIcon ? (
-                <ResolvedIcon className="h-[22px] w-[22px]" />
+                <ResolvedIcon className="size-[22px]" />
               ) : (
-                <Plug className="h-[22px] w-[22px]" />
+                <Plug className="size-[22px]" />
               )}
             </div>
           </div>
         </div>
-        <div className="pointer-events-none absolute -bottom-3 -right-3 select-none font-mono text-[84px] font-semibold leading-none tracking-[-0.04em] text-amber-border opacity-[0.06]">
+        <div className="text-amber-border pointer-events-none absolute -right-3 -bottom-3 font-mono text-[84px] leading-none font-semibold tracking-[-0.04em] opacity-[0.06] select-none">
           {'{ }'}
         </div>
       </div>

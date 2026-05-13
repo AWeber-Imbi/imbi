@@ -273,10 +273,10 @@ export function UserForm({
               size={48}
             />
             <div className="min-w-0">
-              <h1 className="truncate text-base font-medium text-primary">
+              <h1 className="text-primary truncate text-base font-medium">
                 {user.display_name}
               </h1>
-              <p className="font-mono text-xs text-tertiary">{user.email}</p>
+              <p className="text-tertiary font-mono text-xs">{user.email}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -286,11 +286,11 @@ export function UserForm({
               type="button"
               variant="outline"
             >
-              <XIcon className="mr-2 h-4 w-4" />
+              <XIcon className="mr-2 size-4" />
               Cancel
             </Button>
             <Button disabled={isLoading} onClick={handleSave} type="button">
-              <Save className="mr-2 h-4 w-4" />
+              <Save className="mr-2 size-4" />
               {isLoading ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>
@@ -308,12 +308,12 @@ export function UserForm({
       )}
 
       {error && (
-        <div className="rounded-lg border border-danger bg-danger p-4">
+        <div className="border-danger bg-danger rounded-lg border p-4">
           <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 flex-shrink-0 text-danger" />
+            <AlertCircle className="text-danger size-5 shrink-0" />
             <div>
-              <div className="font-medium text-danger">Failed to save user</div>
-              <div className="mt-1 text-sm text-danger">
+              <div className="text-danger font-medium">Failed to save user</div>
+              <div className="text-danger mt-1 text-sm">
                 {error?.response?.data?.detail ||
                   error?.message ||
                   'An error occurred'}
@@ -385,7 +385,7 @@ export function UserForm({
                 />
               </FormField>
               {email && validateEmail(email) === '' && (
-                <p className="mt-1.5 text-xs text-tertiary">
+                <p className="text-tertiary mt-1.5 text-xs">
                   Avatar uses{' '}
                   <a
                     className="text-amber-text hover:underline"
@@ -408,10 +408,10 @@ export function UserForm({
           label="Access"
         >
           <div>
-            <div className="mb-1.5 text-sm text-secondary">Account type</div>
+            <div className="text-secondary mb-1.5 text-sm">Account type</div>
             <div
               aria-label="Account type"
-              className="inline-flex gap-1 rounded-md border border-tertiary bg-secondary p-1"
+              className="border-tertiary bg-secondary inline-flex gap-1 rounded-md border p-1"
               role="radiogroup"
             >
               <button
@@ -427,7 +427,7 @@ export function UserForm({
                 role="radio"
                 type="button"
               >
-                <User className="h-3.5 w-3.5" />
+                <User className="size-3.5" />
                 Regular user
               </button>
               <button
@@ -443,19 +443,19 @@ export function UserForm({
                 role="radio"
                 type="button"
               >
-                <Shield className="h-3.5 w-3.5" />
+                <Shield className="size-3.5" />
                 Administrator
               </button>
             </div>
             {isAdmin ? (
               <p className="mt-2 flex items-start gap-1.5 text-sm text-amber-700 dark:text-amber-400">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
                 Super-user with full system access (bypasses all permission
                 checks)
               </p>
             ) : (
-              <p className="mt-2 flex items-start gap-1.5 text-sm text-tertiary">
-                <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+              <p className="text-tertiary mt-2 flex items-start gap-1.5 text-sm">
+                <Info className="mt-0.5 size-3.5 shrink-0" />
                 Permissions come from organization roles below.
               </p>
             )}
@@ -487,8 +487,8 @@ export function UserForm({
             description="Organizations this user belongs to and the role they hold in each. Roles drive permissions."
             label="Memberships"
           >
-            <div className="overflow-hidden rounded-md border border-tertiary">
-              <div className="grid grid-cols-[1fr_180px] gap-4 border-b border-tertiary bg-secondary px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-tertiary">
+            <div className="border-tertiary overflow-hidden rounded-md border">
+              <div className="border-tertiary bg-secondary text-tertiary grid grid-cols-[1fr_180px] gap-4 border-b px-4 py-2.5 text-xs font-semibold tracking-wider uppercase">
                 <span>Organization</span>
                 <span>Role</span>
               </div>
@@ -508,7 +508,7 @@ export function UserForm({
                     <div className="flex min-w-0 items-center gap-3">
                       <input
                         checked={checked}
-                        className="size-4 rounded border-tertiary"
+                        className="border-tertiary size-4 rounded"
                         disabled={isLoading}
                         onChange={(e) => {
                           if (e.target.checked) {
@@ -530,12 +530,12 @@ export function UserForm({
                         }}
                         type="checkbox"
                       />
-                      <span className="truncate text-sm font-medium text-primary">
+                      <span className="text-primary truncate text-sm font-medium">
                         {org.name}
                       </span>
                     </div>
                     <select
-                      className="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                      className="border-input bg-background text-foreground rounded-md border px-2 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                       disabled={!checked || isLoading || rolesLoading}
                       onChange={(e) => {
                         const next = [...memberships]
@@ -572,7 +572,7 @@ export function UserForm({
                 touched={touched.organization_slug}
               >
                 <select
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                  className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
                   disabled={isLoading}
                   onChange={(e) => {
                     setOrganizationSlug(e.target.value)
@@ -595,10 +595,10 @@ export function UserForm({
                 touched={touched.role_slug}
               >
                 {rolesLoading ? (
-                  <p className="text-sm text-secondary">Loading roles...</p>
+                  <p className="text-secondary text-sm">Loading roles...</p>
                 ) : (
                   <select
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                    className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
                     disabled={isLoading}
                     onChange={(e) => {
                       setRoleSlug(e.target.value)
@@ -627,12 +627,12 @@ export function UserForm({
           >
             {isEditing && (
               <div>
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-tertiary py-3 first:pt-0">
+                <div className="border-tertiary grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b py-3 first:pt-0">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium text-primary">
+                    <div className="text-primary text-sm font-medium">
                       Password
                     </div>
-                    <p className="mt-0.5 text-sm text-secondary">
+                    <p className="text-secondary mt-0.5 text-sm">
                       Reset to issue a temporary local password the user must
                       change at next sign-in.
                     </p>
@@ -649,37 +649,37 @@ export function UserForm({
                     type="button"
                     variant="outline"
                   >
-                    <KeyRound className="mr-2 h-4 w-4" />
+                    <KeyRound className="mr-2 size-4" />
                     Reset password
                   </Button>
                 </div>
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-tertiary py-3">
+                <div className="border-tertiary grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b py-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium text-primary">
+                    <div className="text-primary text-sm font-medium">
                       Multi-factor authentication
                     </div>
-                    <p className="mt-0.5 text-sm text-secondary">
+                    <p className="text-secondary mt-0.5 text-sm">
                       Force re-enrollment of multi-factor authentication on next
                       sign-in.
                     </p>
                   </div>
                   <Button disabled size="sm" type="button" variant="outline">
-                    <ShieldAlert className="mr-2 h-4 w-4" />
+                    <ShieldAlert className="mr-2 size-4" />
                     Reset MFA
                   </Button>
                 </div>
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-3 last:pb-0">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium text-primary">
+                    <div className="text-primary text-sm font-medium">
                       Active sessions
                     </div>
-                    <p className="mt-0.5 text-sm text-secondary">
+                    <p className="text-secondary mt-0.5 text-sm">
                       Revoke all active sessions and force a fresh sign-in
                       everywhere.
                     </p>
                   </div>
                   <Button disabled size="sm" type="button" variant="outline">
-                    <LogOut className="mr-2 h-4 w-4" />
+                    <LogOut className="mr-2 size-4" />
                     Sign out everywhere
                   </Button>
                 </div>
@@ -719,15 +719,15 @@ export function UserForm({
                         value={password}
                       />
                       <button
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-tertiary hover:text-secondary"
+                        className="text-tertiary hover:text-secondary absolute top-1/2 right-3 -translate-y-1/2"
                         disabled={isLoading}
                         onClick={() => setShowPassword(!showPassword)}
                         type="button"
                       >
                         {showPassword ? (
-                          <EyeOff className="h-4 w-4" />
+                          <EyeOff className="size-4" />
                         ) : (
-                          <Eye className="h-4 w-4" />
+                          <Eye className="size-4" />
                         )}
                       </button>
                     </div>
@@ -735,7 +735,7 @@ export function UserForm({
                   {password && !validationErrors.password && (
                     <div className="mt-2">
                       <div className="mb-1 flex items-center gap-2">
-                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-secondary">
+                        <div className="bg-secondary h-2 flex-1 overflow-hidden rounded-full">
                           <div
                             className={cn(
                               'h-full transition-all',
@@ -763,7 +763,7 @@ export function UserForm({
                           {passwordStrength.label}
                         </span>
                       </div>
-                      <ul className="space-y-0.5 text-xs text-secondary">
+                      <ul className="text-secondary space-y-0.5 text-xs">
                         {[
                           {
                             label: 'At least 12 characters',
@@ -791,9 +791,9 @@ export function UserForm({
                             key={req.label}
                           >
                             {req.test ? (
-                              <Check className="h-3 w-3" />
+                              <Check className="size-3" />
                             ) : (
-                              <XIcon className="h-3 w-3" />
+                              <XIcon className="size-3" />
                             )}
                             {req.label}
                           </li>
@@ -837,8 +837,8 @@ export function UserForm({
         )}
 
         {isEditing && (
-          <div className="flex items-center gap-1.5 border-t border-tertiary bg-secondary px-6 py-3 text-xs text-tertiary">
-            <Info className="h-3 w-3" />
+          <div className="border-tertiary bg-secondary text-tertiary flex items-center gap-1.5 border-t px-6 py-3 text-xs">
+            <Info className="size-3" />
             <span>Created {formatDate(user.created_at)}</span>
             <span>·</span>
             <span>
@@ -850,13 +850,13 @@ export function UserForm({
       </Card>
 
       {isEditing && onDelete && (
-        <div className="grid grid-cols-[1fr_auto] items-center gap-4 rounded-lg border border-danger bg-card p-5">
+        <div className="border-danger bg-card grid grid-cols-[1fr_auto] items-center gap-4 rounded-lg border p-5">
           <div>
-            <div className="flex items-center gap-2 text-sm font-semibold text-danger">
-              <Trash2 className="h-4 w-4" />
+            <div className="text-danger flex items-center gap-2 text-sm font-semibold">
+              <Trash2 className="size-4" />
               Delete user
             </div>
-            <p className="mt-1 text-sm text-secondary">
+            <p className="text-secondary mt-1 text-sm">
               Removes the account and revokes all tokens. Project ownership is
               reassigned to the organization owner.
             </p>
@@ -906,12 +906,12 @@ export function UserForm({
 
 function FormSection({ children, description, label }: FormSectionProps) {
   return (
-    <div className="grid grid-cols-1 gap-6 border-t border-tertiary px-6 py-6 first:border-t-0 md:grid-cols-[200px_1fr] md:gap-8">
+    <div className="border-tertiary grid grid-cols-1 gap-6 border-t px-6 py-6 first:border-t-0 md:grid-cols-[200px_1fr] md:gap-8">
       <div>
-        <div className="text-xs font-semibold uppercase tracking-wider text-tertiary">
+        <div className="text-tertiary text-xs font-semibold tracking-wider uppercase">
           {label}
         </div>
-        <p className="mt-1.5 text-sm text-secondary">{description}</p>
+        <p className="text-secondary mt-1.5 text-sm">{description}</p>
       </div>
       <div className="min-w-0 space-y-4">{children}</div>
     </div>
@@ -922,12 +922,12 @@ function RadioDot({ active }: { active: boolean }) {
   return (
     <div
       className={cn(
-        'relative mt-0.5 size-4 flex-shrink-0 rounded-full border-[1.5px]',
+        'relative mt-0.5 size-4 shrink-0 rounded-full border-[1.5px]',
         active ? 'border-amber-border' : 'border-secondary',
       )}
     >
       {active && (
-        <div className="absolute inset-1 rounded-full bg-amber-border" />
+        <div className="bg-amber-border absolute inset-1 rounded-full" />
       )}
     </div>
   )
@@ -993,15 +993,15 @@ function ResetPasswordModal({
           >
             <RadioDot active={mode === 'auto'} />
             <div>
-              <div className="text-sm font-medium text-primary">
+              <div className="text-primary text-sm font-medium">
                 Automatically generate a password
               </div>
-              <p className="mt-0.5 text-xs text-secondary">
+              <p className="text-secondary mt-0.5 text-xs">
                 The password will be displayed below — copy it before closing.
               </p>
               {mode === 'auto' && (
                 <div className="mt-2 flex items-center gap-2">
-                  <code className="flex-1 truncate rounded border border-tertiary bg-background px-2 py-1.5 font-mono text-xs text-primary">
+                  <code className="border-tertiary bg-background text-primary flex-1 truncate rounded border px-2 py-1.5 font-mono text-xs">
                     {generated}
                   </code>
                   <Button
@@ -1014,7 +1014,7 @@ function ResetPasswordModal({
                     type="button"
                     variant="ghost"
                   >
-                    <RefreshCw className="h-3.5 w-3.5" />
+                    <RefreshCw className="size-3.5" />
                   </Button>
                   <Button
                     onClick={(e) => {
@@ -1027,9 +1027,9 @@ function ResetPasswordModal({
                     variant="ghost"
                   >
                     {copied ? (
-                      <Check className="h-3.5 w-3.5" />
+                      <Check className="size-3.5" />
                     ) : (
-                      <Copy className="h-3.5 w-3.5" />
+                      <Copy className="size-3.5" />
                     )}
                   </Button>
                 </div>
@@ -1049,10 +1049,10 @@ function ResetPasswordModal({
           >
             <RadioDot active={mode === 'create'} />
             <div>
-              <div className="text-sm font-medium text-primary">
+              <div className="text-primary text-sm font-medium">
                 Create password
               </div>
-              <p className="mt-0.5 text-xs text-secondary">
+              <p className="text-secondary mt-0.5 text-xs">
                 Set a temporary password the user must change at next sign-in.
               </p>
               {mode === 'create' && (
@@ -1091,7 +1091,7 @@ function ResetPasswordModal({
             onClick={() => onConfirm(mode === 'auto' ? generated : manual)}
             type="button"
           >
-            <KeyRound className="mr-2 h-4 w-4" />
+            <KeyRound className="mr-2 size-4" />
             Reset password
           </Button>
         </DialogFooter>
@@ -1109,15 +1109,15 @@ function ToggleRow({
   value,
 }: ToggleRowProps) {
   return (
-    <div className="grid grid-cols-[1fr_auto] items-center gap-4 border-b border-tertiary py-3 first:pt-0 last:border-b-0 last:pb-0">
+    <div className="border-tertiary grid grid-cols-[1fr_auto] items-center gap-4 border-b py-3 first:pt-0 last:border-b-0 last:pb-0">
       <div>
         <label
-          className="block cursor-pointer text-sm font-medium text-primary"
+          className="text-primary block cursor-pointer text-sm font-medium"
           htmlFor={id}
         >
           {label}
         </label>
-        <p className="mt-0.5 text-sm text-secondary">{description}</p>
+        <p className="text-secondary mt-0.5 text-sm">{description}</p>
       </div>
       <Switch
         checked={value}

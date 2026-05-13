@@ -88,7 +88,7 @@ export function TeamActivityWidget({ onViewChange }: TeamActivityWidgetProps) {
   return (
     <Card className="p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg text-primary">Team Activity</h3>
+        <h3 className="text-primary text-lg">Team Activity</h3>
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -98,7 +98,7 @@ export function TeamActivityWidget({ onViewChange }: TeamActivityWidgetProps) {
 
           return (
             <div
-              className="cursor-pointer rounded-lg border border-input bg-background p-4 text-left transition-all hover:border-secondary hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="border-input bg-background hover:border-secondary focus-visible:ring-ring cursor-pointer rounded-lg border p-4 text-left transition-all hover:shadow-sm focus:outline-none focus-visible:ring-2"
               key={team.name}
               onClick={() => handleTeamClick(team.name)}
               onKeyDown={(e) => {
@@ -112,29 +112,29 @@ export function TeamActivityWidget({ onViewChange }: TeamActivityWidgetProps) {
             >
               <div className="mb-3 flex items-start justify-between">
                 <div className="flex-1">
-                  <div className="mb-1 font-medium text-primary">
+                  <div className="text-primary mb-1 font-medium">
                     {team.name}
                   </div>
                   <div className="flex items-center gap-2 text-sm">
-                    <HealthIcon className={`h-4 w-4 ${healthColor}`} />
+                    <HealthIcon className={`size-4 ${healthColor}`} />
                     <span className={healthColor}>{team.health}%</span>
                     {team.healthTrend === 'up' ? (
-                      <TrendingUp className="h-3 w-3 text-green-500" />
+                      <TrendingUp className="size-3 text-green-500" />
                     ) : (
-                      <TrendingDown className="h-3 w-3 text-red-500" />
+                      <TrendingDown className="size-3 text-red-500" />
                     )}
                   </div>
                 </div>
-                <ChevronRight className="h-5 w-5 text-tertiary" />
+                <ChevronRight className="text-tertiary size-5" />
               </div>
 
               <div className="flex items-center gap-3">
-                <div className="text-sm text-secondary">
+                <div className="text-secondary text-sm">
                   {team.projects} projects
                 </div>
-                <div className="text-sm text-secondary">•</div>
+                <div className="text-secondary text-sm">•</div>
                 <button
-                  className="hover:text-info/80 text-sm text-info"
+                  className="text-info hover:text-info/80 text-sm"
                   onClick={(e) => handleDeploymentClick(e, team.name)}
                   type="button"
                 >

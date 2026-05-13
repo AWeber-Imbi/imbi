@@ -298,29 +298,29 @@ export function CommandBar() {
     <>
       {/* Session Panel */}
       <div
-        className={`fixed bottom-16 left-0 right-0 transition-transform duration-300 ease-out ${
+        className={`fixed right-0 bottom-16 left-0 transition-transform duration-300 ease-out ${
           isExpanded ? 'translate-y-0' : 'translate-y-full'
-        } border-t border-border bg-secondary shadow-2xl`}
+        } border-border bg-secondary border-t shadow-2xl`}
         style={{ height: `${panelHeight}px` }}
       >
         {/* Resize Handle */}
         <div
-          className="group flex h-1.5 cursor-ns-resize items-center justify-center transition-colors hover:bg-secondary"
+          className="group hover:bg-secondary flex h-1.5 cursor-ns-resize items-center justify-center transition-colors"
           onPointerDown={handleDragStart}
           onPointerMove={handleDragMove}
           onPointerUp={handleDragEnd}
         >
-          <div className="h-0.5 w-8 rounded-full bg-secondary transition-colors group-hover:bg-muted-foreground/40" />
+          <div className="bg-secondary group-hover:bg-muted-foreground/40 h-0.5 w-8 rounded-full transition-colors" />
         </div>
         {/* Panel Header */}
-        <div className="flex items-center justify-between border-b border-border bg-secondary px-4 py-2">
+        <div className="border-border bg-secondary flex items-center justify-between border-b px-4 py-2">
           <div className="flex items-center gap-2">
-            <Terminal className="h-3.5 w-3.5 text-tertiary" />
-            <span className="font-mono text-xs text-tertiary">
+            <Terminal className="text-tertiary size-3.5" />
+            <span className="text-tertiary font-mono text-xs">
               imbi-assistant
             </span>
             {messages.length > 0 && (
-              <span className="font-mono text-xs text-tertiary">
+              <span className="text-tertiary font-mono text-xs">
                 ({Math.floor(messages.length / 2) || 1} exchange
                 {Math.floor(messages.length / 2) !== 1 ? 's' : ''})
               </span>
@@ -329,7 +329,7 @@ export function CommandBar() {
           <div className="flex items-center gap-1">
             <Button
               aria-label="Help"
-              className="h-auto w-auto rounded p-1 text-tertiary hover:bg-secondary hover:text-secondary"
+              className="text-tertiary hover:bg-secondary hover:text-secondary size-auto rounded p-1"
               onClick={() => {
                 setInput('help')
                 inputRef.current?.focus()
@@ -338,7 +338,7 @@ export function CommandBar() {
               type="button"
               variant="ghost"
             >
-              <HelpCircle className="h-3.5 w-3.5" />
+              <HelpCircle className="size-3.5" />
             </Button>
             <ConversationHistory
               currentConversationId={currentConversationId}
@@ -347,7 +347,7 @@ export function CommandBar() {
             />
             {messages.length > 0 && (
               <Button
-                className="h-auto rounded px-2 py-0.5 font-mono text-xs text-tertiary hover:bg-secondary hover:text-secondary"
+                className="text-tertiary hover:bg-secondary hover:text-secondary h-auto rounded px-2 py-0.5 font-mono text-xs"
                 onClick={handleClearHistory}
                 variant="ghost"
               >
@@ -356,20 +356,20 @@ export function CommandBar() {
             )}
             <Button
               aria-label="Close assistant"
-              className="h-auto w-auto rounded p-1 text-tertiary hover:bg-secondary hover:text-secondary"
+              className="text-tertiary hover:bg-secondary hover:text-secondary size-auto rounded p-1"
               onClick={() => setExpanded(false)}
               size="icon"
               type="button"
               variant="ghost"
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="size-3.5" />
             </Button>
           </div>
         </div>
 
         {/* Session Output */}
         <div
-          className="space-y-3 overflow-y-auto bg-tertiary px-6 py-4"
+          className="bg-tertiary space-y-3 overflow-y-auto px-6 py-4"
           ref={scrollRef}
           style={{ height: 'calc(100% - 43px)' }}
         >
@@ -393,7 +393,7 @@ export function CommandBar() {
                     <SessionEntry content={streamingContent} role="assistant" />
                   )}
                   {!streamingContent && !activeToolUse && (
-                    <div className="pl-4 font-mono text-sm text-tertiary">
+                    <div className="text-tertiary pl-4 font-mono text-sm">
                       <span className="animate-pulse">...</span>
                     </div>
                   )}
@@ -405,23 +405,23 @@ export function CommandBar() {
       </div>
 
       {/* Command Input Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card">
+      <div className="border-border bg-card fixed right-0 bottom-0 left-0 z-50 border-t">
         {/* Tray Toggle */}
         <div className="flex justify-center">
           <Button
             aria-label={isExpanded ? 'Collapse assistant' : 'Expand assistant'}
-            className={`-mt-3 h-auto rounded-t-md border border-b-0 border-tertiary bg-card px-4 py-0.5 font-mono text-xs text-tertiary transition-all hover:text-secondary ${isExpanded ? 'shadow-lg' : ''}`}
+            className={`border-tertiary bg-card text-tertiary hover:text-secondary -mt-3 h-auto rounded-t-md border border-b-0 px-4 py-0.5 font-mono text-xs transition-all ${isExpanded ? 'shadow-lg' : ''}`}
             onClick={() => setExpanded(!isExpanded)}
             type="button"
             variant="ghost"
           >
             {isExpanded ? (
-              <ChevronDown className="h-3 w-3" />
+              <ChevronDown className="size-3" />
             ) : (
               <div className="flex items-center gap-1.5">
-                <ChevronUp className="h-3 w-3" />
+                <ChevronUp className="size-3" />
                 {messages.length > 0 && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                  <span className="size-1.5 rounded-full bg-blue-500" />
                 )}
               </div>
             )}
@@ -429,11 +429,11 @@ export function CommandBar() {
         </div>
 
         {/* Input */}
-        <form className="px-3 pb-1.5 pt-2" onSubmit={handleSubmit}>
-          <div className="flex items-center gap-2 rounded-md border border-tertiary bg-tertiary px-3 py-2 text-sm transition-colors focus-within:border-secondary">
-            <span className="select-none text-sm text-tertiary">&gt;</span>
+        <form className="px-3 pt-2 pb-1.5" onSubmit={handleSubmit}>
+          <div className="border-tertiary bg-tertiary focus-within:border-secondary flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors">
+            <span className="text-tertiary text-sm select-none">&gt;</span>
             <input
-              className="flex-1 bg-transparent text-sm text-primary outline-none placeholder:text-muted-foreground disabled:opacity-50"
+              className="text-primary placeholder:text-muted-foreground flex-1 bg-transparent text-sm outline-none disabled:opacity-50"
               disabled={isStreaming}
               onChange={(e) => setInput(e.target.value)}
               placeholder={
@@ -447,21 +447,21 @@ export function CommandBar() {
             />
             {input.trim() && !isStreaming && (
               <Button
-                className="h-auto w-auto rounded p-1 text-tertiary transition-colors hover:text-secondary"
+                className="text-tertiary hover:text-secondary size-auto rounded p-1 transition-colors"
                 size="icon"
                 type="submit"
                 variant="ghost"
               >
-                <Send className="h-3.5 w-3.5" />
+                <Send className="size-3.5" />
               </Button>
             )}
           </div>
           <div className="flex items-center justify-between px-1 pt-1">
-            <span className="text-[11px] text-secondary">
+            <span className="text-secondary text-[11px]">
               Press Enter to send
             </span>
-            <span className="flex items-center gap-1 text-[11px] text-secondary">
-              <Sparkles className="h-3 w-3" />
+            <span className="text-secondary flex items-center gap-1 text-[11px]">
+              <Sparkles className="size-3" />
               AI-powered
             </span>
           </div>

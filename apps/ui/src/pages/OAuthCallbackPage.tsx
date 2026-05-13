@@ -68,7 +68,7 @@ export function OAuthCallbackPage() {
     <div className="flex min-h-screen items-center justify-center">
       <div className="text-center">
         <div className="mb-2 text-lg">Completing authentication...</div>
-        <div className="text-sm text-muted-foreground">
+        <div className="text-muted-foreground text-sm">
           Please wait while we log you in.
         </div>
       </div>

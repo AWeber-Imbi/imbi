@@ -214,7 +214,7 @@ export function DeployTab({
           description: data.run.status
             ? `status: ${data.run.status}`
             : undefined,
-          icon: <Loader2 className="h-4 w-4 animate-spin" />,
+          icon: <Loader2 className="size-4 animate-spin" />,
         })
         onRunStarted({
           actionLabel: url ? 'View run' : undefined,
@@ -253,12 +253,12 @@ export function DeployTab({
     <div className="flex flex-col gap-4">
       {/* Locked target environment */}
       <section>
-        <p className="mb-2 text-xs uppercase tracking-wider text-tertiary">
+        <p className="text-tertiary mb-2 text-xs tracking-wider uppercase">
           Environment
         </p>
-        <div className="bg-action/5 rounded-md border border-action p-3">
+        <div className="border-action bg-action/5 rounded-md border p-3">
           <div className="text-sm font-medium">{env?.name ?? envSlug}</div>
-          <div className="mt-1 text-xs text-tertiary">
+          <div className="text-tertiary mt-1 text-xs">
             {current?.release ? (
               <>
                 <span className="font-mono">{current.release.version}</span>
@@ -279,9 +279,9 @@ export function DeployTab({
       </section>
 
       {/* Version picker */}
-      <section className="min-h-[180px]">
+      <section className="min-h-45">
         <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs uppercase tracking-wider text-tertiary">
+          <p className="text-tertiary text-xs tracking-wider uppercase">
             {isFirstEnv
               ? showBranchPane
                 ? activeBranch
@@ -353,7 +353,7 @@ export function DeployTab({
       ) : null}
 
       {/* Footer */}
-      <div className="bg-secondary/30 -mx-6 -mb-4 mt-2 flex items-center justify-end gap-2 border-t border-tertiary px-6 py-4">
+      <div className="border-tertiary bg-secondary/30 -mx-6 mt-2 -mb-4 flex items-center justify-end gap-2 border-t px-6 py-4">
         <Button onClick={onClose} type="button" variant="ghost">
           Cancel
         </Button>
@@ -363,9 +363,9 @@ export function DeployTab({
           type="button"
         >
           {mutation.isPending ? (
-            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+            <Loader2 className="mr-1 size-4 animate-spin" />
           ) : (
-            <Rocket className="mr-1 h-4 w-4" />
+            <Rocket className="mr-1 size-4" />
           )}
           {`${isRedeploy ? 'Redeploy' : 'Deploy'} ${
             selected?.label ?? selected?.sha.slice(0, 7) ?? ''
@@ -406,7 +406,7 @@ function BranchPicker({
       <div className="flex flex-col gap-2">
         <input
           aria-label="Filter branches"
-          className="rounded-md border border-secondary bg-transparent px-2 py-1 text-sm placeholder:text-tertiary focus:border-action focus:outline-none"
+          className="border-secondary placeholder:text-tertiary focus:border-action rounded-md border bg-transparent px-2 py-1 text-sm focus:outline-none"
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder="Filter branches…"
           type="text"
@@ -415,11 +415,11 @@ function BranchPicker({
         {branchesLoading ? (
           <LoadingState label="Loading branches…" />
         ) : branches.length === 0 ? (
-          <p className="rounded-md border border-secondary p-3 text-sm text-tertiary">
+          <p className="border-secondary text-tertiary rounded-md border p-3 text-sm">
             No branches.
           </p>
         ) : (
-          <ul className="max-h-[260px] overflow-y-auto rounded-md border border-secondary">
+          <ul className="border-secondary max-h-65 overflow-y-auto rounded-md border">
             {branches.map((b) => {
               const active = b.name === activeBranch
               return (
@@ -441,7 +441,7 @@ function BranchPicker({
                     {b.pr_number ? (
                       <Badge variant="outline">#{b.pr_number}</Badge>
                     ) : null}
-                    {active ? <Check className="text-action h-4 w-4" /> : null}
+                    {active ? <Check className="text-action size-4" /> : null}
                   </button>
                 </li>
               )
@@ -451,7 +451,7 @@ function BranchPicker({
       </div>
       <div>
         {!activeBranch ? (
-          <p className="rounded-md border border-dashed border-secondary p-3 text-sm text-tertiary">
+          <p className="border-secondary text-tertiary rounded-md border border-dashed p-3 text-sm">
             Select a branch to see commits.
           </p>
         ) : (
@@ -484,12 +484,12 @@ function CommitList({
   if (isLoading) return <LoadingState label="Loading commits…" />
   if (commits.length === 0)
     return (
-      <p className="rounded-md border border-secondary p-3 text-sm text-tertiary">
+      <p className="border-secondary text-tertiary rounded-md border p-3 text-sm">
         No commits available.
       </p>
     )
   return (
-    <ul className="max-h-[260px] overflow-y-auto rounded-md border border-secondary">
+    <ul className="border-secondary max-h-65 overflow-y-auto rounded-md border">
       {commits.map((c) => {
         const active = c.sha === selectedSha
         const isCurrent = current ? c.sha.startsWith(current) : false
@@ -510,10 +510,10 @@ function CommitList({
               <span className="min-w-0 flex-1 truncate text-sm">
                 {c.message}
               </span>
-              <span className="shrink-0 text-xs text-tertiary">{c.author}</span>
+              <span className="text-tertiary shrink-0 text-xs">{c.author}</span>
               {c.is_head ? <Badge variant="outline">HEAD</Badge> : null}
               {isCurrent ? <Badge variant="neutral">current</Badge> : null}
-              {active ? <Check className="text-action h-4 w-4" /> : null}
+              {active ? <Check className="text-action size-4" /> : null}
             </button>
             {c.url ? (
               <a
@@ -523,7 +523,7 @@ function CommitList({
                 rel="noopener"
                 target="_blank"
               >
-                <ExternalLink className="h-3.5 w-3.5" />
+                <ExternalLink className="size-3.5" />
               </a>
             ) : null}
           </li>
@@ -552,14 +552,14 @@ function DiffSummary({
   })
   if (base === head)
     return (
-      <p className="text-xs text-tertiary">
+      <p className="text-tertiary text-xs">
         Re-deploying — no commit delta to summarize.
       </p>
     )
   if (isLoading || !data) return null
   return (
-    <div className="bg-tertiary/20 rounded-md border border-secondary p-3 text-xs">
-      <div className="font-mono text-tertiary">
+    <div className="border-secondary bg-tertiary/20 rounded-md border p-3 text-xs">
+      <div className="text-tertiary font-mono">
         {base} → {head}
       </div>
       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
@@ -583,7 +583,7 @@ function PickerToggle({
 }) {
   return (
     <div
-      className="inline-flex rounded-md border border-secondary text-xs"
+      className="border-secondary inline-flex rounded-md border text-xs"
       role="group"
     >
       <button
@@ -629,12 +629,12 @@ function TagList({
 }) {
   if (tags.length === 0)
     return (
-      <p className="rounded-md border border-secondary p-3 text-sm text-tertiary">
+      <p className="border-secondary text-tertiary rounded-md border p-3 text-sm">
         No tags available.
       </p>
     )
   return (
-    <ul className="max-h-[260px] overflow-y-auto rounded-md border border-secondary">
+    <ul className="border-secondary max-h-65 overflow-y-auto rounded-md border">
       {tags.map((t) => {
         const active = t.sha === selectedSha
         const isCurrent = t.name === current
@@ -652,11 +652,11 @@ function TagList({
               type="button"
             >
               <span className="font-mono text-sm">{t.name}</span>
-              <span className="font-mono text-xs text-tertiary">
+              <span className="text-tertiary font-mono text-xs">
                 {t.sha.slice(0, 7)}
               </span>
               {isCurrent ? <Badge variant="neutral">current</Badge> : null}
-              {active ? <Check className="text-action h-4 w-4" /> : null}
+              {active ? <Check className="text-action size-4" /> : null}
             </button>
           </li>
         )

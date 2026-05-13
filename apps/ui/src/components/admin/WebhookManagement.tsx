@@ -150,7 +150,7 @@ export function WebhookManagement() {
             <CardDescription className="text-secondary">
               Total Webhooks
             </CardDescription>
-            <div className="mt-1 text-2xl text-primary">
+            <div className="text-primary mt-1 text-2xl">
               {filteredWebhooks.length}
             </div>
           </CardContent>
@@ -160,7 +160,7 @@ export function WebhookManagement() {
             <CardDescription className="text-secondary">
               With Service
             </CardDescription>
-            <div className="mt-1 text-2xl text-info">
+            <div className="text-info mt-1 text-2xl">
               {filteredWebhooks.filter((w) => w.third_party_service).length}
             </div>
           </CardContent>
@@ -189,15 +189,15 @@ export function WebhookManagement() {
               <div className="flex items-center gap-3">
                 <div
                   className={
-                    'flex size-8 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-900/30'
+                    'flex size-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-900/30'
                   }
                 >
-                  <WebhookIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                  <WebhookIcon className="size-4 text-indigo-600 dark:text-indigo-400" />
                 </div>
                 <div>
                   <div className="text-primary">{wh.name}</div>
                   {wh.description && (
-                    <div className="max-w-xs truncate text-sm text-tertiary">
+                    <div className="text-tertiary max-w-xs truncate text-sm">
                       {wh.description}
                     </div>
                   )}
@@ -213,7 +213,7 @@ export function WebhookManagement() {
             render: (wh) => (
               <code
                 className={
-                  'rounded bg-secondary px-2 py-1 text-xs text-primary'
+                  'bg-secondary text-primary rounded px-2 py-1 text-xs'
                 }
               >
                 {wh.notification_path}

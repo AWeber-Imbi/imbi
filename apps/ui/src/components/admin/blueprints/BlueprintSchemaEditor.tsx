@@ -62,10 +62,10 @@ export function BlueprintSchemaEditor({
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card p-6">
+    <div className="border-border bg-card rounded-lg border p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-medium text-primary">JSON Schema</h3>
-        <div className="flex items-center rounded-lg border border-input">
+        <h3 className="text-primary text-sm font-medium">JSON Schema</h3>
+        <div className="border-input flex items-center rounded-lg border">
           <button
             className={`flex items-center gap-1.5 rounded-l-lg px-3 py-1.5 text-sm transition-colors ${
               editorMode === 'visual'
@@ -74,7 +74,7 @@ export function BlueprintSchemaEditor({
             }`}
             onClick={() => handleEditorModeSwitch('visual')}
           >
-            <List className="h-3.5 w-3.5" />
+            <List className="size-3.5" />
             Visual
           </button>
           <button
@@ -85,7 +85,7 @@ export function BlueprintSchemaEditor({
             }`}
             onClick={() => handleEditorModeSwitch('code')}
           >
-            <Code className="h-3.5 w-3.5" />
+            <Code className="size-3.5" />
             Code
           </button>
         </div>
@@ -93,8 +93,8 @@ export function BlueprintSchemaEditor({
 
       {/* Schema Error */}
       {(schemaError || (touched.schema && validationErrors.schema)) && (
-        <div className="mb-4 flex items-start gap-2 rounded-lg bg-danger p-3 text-danger">
-          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+        <div className="bg-danger text-danger mb-4 flex items-start gap-2 rounded-lg p-3">
+          <AlertCircle className="mt-0.5 size-4 shrink-0" />
           <div className="text-xs">
             {schemaError || validationErrors.schema}
           </div>
@@ -105,7 +105,7 @@ export function BlueprintSchemaEditor({
       {editorMode === 'visual' && (
         <div className="space-y-3">
           {schemaProperties.length === 0 ? (
-            <div className="py-8 text-center text-tertiary">
+            <div className="text-tertiary py-8 text-center">
               <div>No properties defined</div>
               <div className="mt-1 text-sm">
                 Add properties to define the schema
@@ -135,7 +135,7 @@ export function BlueprintSchemaEditor({
           )}
 
           <Button className="w-full" onClick={addProperty} variant="outline">
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="mr-2 size-4" />
             Add Property
           </Button>
         </div>
@@ -144,7 +144,7 @@ export function BlueprintSchemaEditor({
       {/* Code Mode */}
       {editorMode === 'code' && (
         <textarea
-          className="w-full resize-y rounded-md border border-input bg-secondary px-4 py-3 font-mono text-sm text-primary"
+          className="border-input bg-secondary text-primary w-full resize-y rounded-md border px-4 py-3 font-mono text-sm"
           onBlur={() => syncCodeToVisual(rawSchema)}
           onChange={(e) => {
             setRawSchema(e.target.value)

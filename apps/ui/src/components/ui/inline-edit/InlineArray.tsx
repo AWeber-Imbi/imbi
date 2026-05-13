@@ -118,7 +118,7 @@ export function InlineArray({
             placeholder={placeholder}
             readOnly={readOnly}
           >
-            <span className="text-sm text-primary">{display}</span>
+            <span className="text-primary text-sm">{display}</span>
           </InlineDisplay>
         </span>
       </PopoverTrigger>
@@ -130,19 +130,19 @@ export function InlineArray({
                 <li
                   className={cn(
                     'inline-flex items-center gap-1 rounded-sm border',
-                    'bg-secondary/40 py-0.5 pl-2 pr-1 text-xs',
+                    'bg-secondary/40 py-0.5 pr-1 pl-2 text-xs',
                   )}
                   key={`${i}-${String(v)}`}
                 >
                   <span className="text-primary">{String(v)}</span>
                   <button
                     aria-label={`Remove ${String(v)}`}
-                    className="rounded p-0.5 text-tertiary hover:bg-secondary hover:text-primary"
+                    className="text-tertiary hover:bg-secondary hover:text-primary rounded p-0.5"
                     disabled={!interactive}
                     onClick={() => removeAt(i)}
                     type="button"
                   >
-                    <X className="h-3 w-3" />
+                    <X className="size-3" />
                   </button>
                 </li>
               ))}

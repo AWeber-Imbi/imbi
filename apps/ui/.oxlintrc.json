@@ -9,7 +9,7 @@
     "es2020": true
   },
   "ignorePatterns": ["dist", "src/types/api-generated.ts"],
-  "jsPlugins": ["eslint-plugin-react-refresh", "eslint-plugin-perfectionist"],
+  "jsPlugins": ["eslint-plugin-react-refresh", "eslint-plugin-perfectionist", "oxlint-tailwindcss"],
   "overrides": [
     {
       "files": ["src/test/**/*.{ts,tsx}"],
@@ -211,6 +211,22 @@
         "type": "natural",
         "order": "asc"
       }
-    ]
+    ],
+    "tailwindcss/consistent-variant-order": "warn",
+    "tailwindcss/enforce-canonical": "warn",
+    "tailwindcss/enforce-consistent-important-position": "warn",
+    "tailwindcss/enforce-consistent-variable-syntax": "warn",
+    "tailwindcss/enforce-negative-arbitrary-values": "warn",
+    "tailwindcss/enforce-shorthand": "warn",
+    "tailwindcss/enforce-sort-order": "warn",
+    "tailwindcss/no-conflicting-classes": "warn",
+    "tailwindcss/no-contradicting-variants": "warn",
+    "tailwindcss/no-dark-without-light": "warn",
+    "tailwindcss/no-deprecated-classes": "error",
+    "tailwindcss/no-duplicate-classes": "error",
+    "tailwindcss/no-hardcoded-colors": "warn",
+    "tailwindcss/no-unnecessary-arbitrary-value": "warn",
+    "tailwindcss/no-unnecessary-whitespace": "error",
+    "tailwindcss/no-unknown-classes": "error"
   }
 }

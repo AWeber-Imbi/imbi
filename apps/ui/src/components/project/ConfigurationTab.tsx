@@ -531,7 +531,7 @@ export function ConfigurationTab({
       <Card>
         <CardContent className="py-12 text-center">
           <CardTitle className="mb-2">No Configuration Plugin</CardTitle>
-          <p className="text-sm text-secondary">
+          <p className="text-secondary text-sm">
             No configuration plugin is assigned to this project. Configure
             plugins on the project type or in project settings.
           </p>
@@ -544,7 +544,7 @@ export function ConfigurationTab({
     <div className="space-y-3">
       {sources.length > 1 && (
         <div className="flex items-center gap-3">
-          <span className="text-sm text-secondary">Source:</span>
+          <span className="text-secondary text-sm">Source:</span>
           <div className="flex gap-2">
             {sources.map((s) => (
               <Button
@@ -566,20 +566,20 @@ export function ConfigurationTab({
       )}
 
       {displayPrefix && (
-        <div className="text-xs text-secondary">
+        <div className="text-secondary text-xs">
           <span className="text-tertiary">Prefix:</span>{' '}
-          <span className="font-mono text-primary">{displayPrefix}</span>
+          <span className="text-primary font-mono">{displayPrefix}</span>
         </div>
       )}
 
-      <div className="grid h-[calc(100dvh-460px)] min-h-[320px] grid-cols-[420px_1fr] overflow-hidden rounded-lg border border-primary bg-primary">
+      <div className="border-primary bg-primary grid h-[calc(100dvh-460px)] min-h-80 grid-cols-[420px_1fr] overflow-hidden rounded-lg border">
         {/* LEFT pane: filter + key list */}
-        <div className="flex min-h-0 flex-col border-r border-primary bg-secondary">
-          <div className="flex h-14 shrink-0 items-center border-b border-primary px-3.5">
+        <div className="border-primary bg-secondary flex min-h-0 flex-col border-r">
+          <div className="border-primary flex h-14 shrink-0 items-center border-b px-3.5">
             <div className="relative flex w-full items-center">
               <Search
                 aria-hidden
-                className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-tertiary"
+                className="text-tertiary pointer-events-none absolute left-3 size-3.5"
               />
               <Input
                 className="h-8 pl-9 font-mono text-xs"
@@ -594,7 +594,7 @@ export function ConfigurationTab({
           ) : loadError ? (
             <ConfigLoadError error={loadError} />
           ) : filtered.length === 0 ? (
-            <div className="px-5 py-10 text-center text-sm text-tertiary">
+            <div className="text-tertiary px-5 py-10 text-center text-sm">
               {filter
                 ? `No parameters match "${filter}"`
                 : 'No configuration keys yet.'}
@@ -614,7 +614,7 @@ export function ConfigurationTab({
         </div>
 
         {/* RIGHT pane */}
-        <div className="flex min-h-0 flex-col bg-primary">
+        <div className="bg-primary flex min-h-0 flex-col">
           {mode === 'create' ? (
             <DetailPane
               draft={draft}
@@ -752,13 +752,13 @@ function ConfigLoadError({ error }: { error: unknown }) {
     return (
       <div className="space-y-2 px-5 py-10 text-center text-sm">
         <div className="text-primary">Connect your account to continue</div>
-        <div className="text-xs text-tertiary">
+        <div className="text-tertiary text-xs">
           The configuration plugin needs an authenticated identity for your
           user.
         </div>
         {startUrl && (
           <a
-            className="inline-flex items-center text-xs font-medium text-amber-text hover:underline"
+            className="text-amber-text inline-flex items-center text-xs font-medium hover:underline"
             href={startUrl}
             rel="noreferrer"
             target="_blank"
@@ -778,7 +778,7 @@ function ConfigLoadError({ error }: { error: unknown }) {
           ? 'Configuration plugin is not available'
           : 'Failed to load configuration keys'}
       </div>
-      <div className="text-xs text-tertiary">
+      <div className="text-tertiary text-xs">
         {extractApiErrorDetail(error)}
       </div>
     </div>
@@ -831,8 +831,8 @@ function DetailPane({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Header: type segmented + saved + add */}
-      <div className="flex h-14 shrink-0 items-center gap-2 border-b border-primary px-6">
-        <div className="inline-flex rounded-md border border-secondary bg-primary p-0.5">
+      <div className="border-primary flex h-14 shrink-0 items-center gap-2 border-b px-6">
+        <div className="border-secondary bg-primary inline-flex rounded-md border p-0.5">
           {DATA_TYPES.map((t) => (
             <button
               className={cn(
@@ -851,37 +851,37 @@ function DetailPane({
               }}
               type="button"
             >
-              {t === 'secret' && <Lock className="h-2.5 w-2.5" />}
+              {t === 'secret' && <Lock className="size-2.5" />}
               {DATA_TYPE_LABELS[t]}
             </button>
           ))}
         </div>
         <div className="flex-1" />
         {savedFlash && (
-          <span className="inline-flex items-center gap-1 text-xs text-success">
-            <Check className="h-3 w-3" /> Saved
+          <span className="text-success inline-flex items-center gap-1 text-xs">
+            <Check className="size-3" /> Saved
           </span>
         )}
         {!isCreate && onAdd && (
           <Button onClick={onAdd} size="sm">
-            <Plus className="h-3 w-3" /> Add parameter
+            <Plus className="size-3" /> Add parameter
           </Button>
         )}
       </div>
 
       {/* Name */}
-      <div className="border-b border-primary px-6 py-4">
-        <div className="mb-1.5 text-overline uppercase text-tertiary">Name</div>
-        <div className="flex items-stretch overflow-hidden rounded-md border border-secondary bg-primary">
+      <div className="border-primary border-b px-6 py-4">
+        <div className="text-overline text-tertiary mb-1.5 uppercase">Name</div>
+        <div className="border-secondary bg-primary flex items-stretch overflow-hidden rounded-md border">
           {prefix && (
-            <span className="inline-flex items-center whitespace-nowrap border-r border-primary bg-secondary px-2.5 font-mono text-xs text-tertiary">
+            <span className="border-primary bg-secondary text-tertiary inline-flex items-center border-r px-2.5 font-mono text-xs whitespace-nowrap">
               {prefix}
             </span>
           )}
           {isCreate ? (
             <input
               autoFocus
-              className="h-9 flex-1 bg-transparent px-3 font-mono text-xs text-primary outline-none placeholder:text-tertiary"
+              className="text-primary placeholder:text-tertiary h-9 flex-1 bg-transparent px-3 font-mono text-xs outline-none"
               onChange={(e) =>
                 onDraftChange?.({
                   ...draft!,
@@ -892,7 +892,7 @@ function DetailPane({
               value={keyTail}
             />
           ) : (
-            <span className="flex-1 px-3 py-2 font-mono text-xs text-primary">
+            <span className="text-primary flex-1 px-3 py-2 font-mono text-xs">
               {keyTail || currentKey}
             </span>
           )}
@@ -953,7 +953,7 @@ function DetailPane({
       </div>
 
       {/* Footer */}
-      <div className="flex shrink-0 items-center gap-2 border-t border-primary px-6 py-3">
+      <div className="border-primary flex shrink-0 items-center gap-2 border-t px-6 py-3">
         {isCreate ? (
           <>
             <div className="flex-1" />
@@ -961,7 +961,7 @@ function DetailPane({
               Cancel
             </Button>
             <Button onClick={onCreate} size="sm">
-              <Plus className="h-3 w-3" /> Save
+              <Plus className="size-3" /> Save
             </Button>
           </>
         ) : (
@@ -972,11 +972,11 @@ function DetailPane({
               size="sm"
               variant="ghost"
             >
-              <Trash2 className="h-3 w-3" /> Delete parameter
+              <Trash2 className="size-3" /> Delete parameter
             </Button>
             <div className="flex-1" />
             {selected?.last_modified && (
-              <span className="text-xs text-tertiary">
+              <span className="text-tertiary text-xs">
                 Last modified{' '}
                 {new Date(selected.last_modified).toLocaleString()}
               </span>
@@ -991,12 +991,12 @@ function DetailPane({
 function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
-      <Settings2 aria-hidden className="h-7 w-7 text-tertiary" />
-      <div className="text-sm text-secondary">
+      <Settings2 aria-hidden className="text-tertiary size-7" />
+      <div className="text-secondary text-sm">
         Select a parameter to view its values.
       </div>
       <Button onClick={onAdd} size="sm" variant="outline">
-        <Plus className="h-3 w-3" /> Add parameter
+        <Plus className="size-3" /> Add parameter
       </Button>
     </div>
   )
@@ -1074,7 +1074,7 @@ function EnvRow({
     <>
       <div className="pt-2">
         <span
-          className="inline-flex h-6 items-center whitespace-nowrap rounded-md px-2 text-xs font-medium"
+          className="inline-flex h-6 items-center rounded-md px-2 text-xs font-medium whitespace-nowrap"
           style={
             chip
               ? {
@@ -1091,7 +1091,7 @@ function EnvRow({
         {dataType === 'string_list' ? (
           <textarea
             className={cn(
-              'block w-full resize-y rounded-md border bg-transparent px-3 py-2 font-mono text-xs leading-relaxed text-primary outline-none transition-colors placeholder:text-tertiary',
+              'block w-full resize-y rounded-md border bg-transparent px-3 py-2 font-mono text-xs leading-relaxed text-primary transition-colors outline-none placeholder:text-tertiary',
               focused
                 ? 'border-amber-border bg-primary ring-2 ring-amber-border/30'
                 : 'border-transparent hover:bg-tertiary',
@@ -1110,7 +1110,7 @@ function EnvRow({
         ) : (
           <input
             className={cn(
-              'block h-9 w-full rounded-md border bg-transparent px-3 font-mono text-xs text-primary outline-none transition-colors placeholder:text-tertiary',
+              'block h-9 w-full rounded-md border bg-transparent px-3 font-mono text-xs text-primary transition-colors outline-none placeholder:text-tertiary',
               focused
                 ? 'border-amber-border bg-primary ring-2 ring-amber-border/30'
                 : 'border-transparent hover:bg-tertiary',
@@ -1137,9 +1137,9 @@ function EnvRow({
             variant="ghost"
           >
             {revealed ? (
-              <EyeOff className="h-3 w-3" />
+              <EyeOff className="size-3" />
             ) : (
-              <Eye className="h-3 w-3" />
+              <Eye className="size-3" />
             )}
           </Button>
         )}
@@ -1155,7 +1155,7 @@ function Highlight({ q, text }: { q: string; text: string }) {
   return (
     <>
       {text.slice(0, idx)}
-      <mark className="rounded-sm bg-amber-border/25 px-0 text-inherit">
+      <mark className="bg-amber-border/25 rounded-sm px-0 text-inherit">
         {text.slice(idx, idx + q.length)}
       </mark>
       {text.slice(idx + q.length)}
@@ -1229,7 +1229,7 @@ function ParamList({
           >
             <span
               className={cn(
-                'flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs',
+                'flex-1 overflow-hidden font-mono text-xs text-ellipsis whitespace-nowrap',
                 isSelected ? 'text-amber-text' : 'text-primary',
                 isSelected && 'font-medium',
               )}
@@ -1240,7 +1240,7 @@ function ParamList({
                 <Highlight q={filter} text={display} />
               </span>
             </span>
-            {p.secret && <Lock aria-hidden className="h-3 w-3 text-tertiary" />}
+            {p.secret && <Lock aria-hidden className="text-tertiary size-3" />}
           </button>
         )
       })}

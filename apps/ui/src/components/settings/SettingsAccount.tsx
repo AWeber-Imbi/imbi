@@ -19,7 +19,7 @@ export function SettingsAccount() {
 
   return (
     <Card className="p-8" style={{ borderWidth: '0.5px' }}>
-      <h2 className="mb-6 text-[18px] font-medium text-primary">
+      <h2 className="text-primary mb-6 text-[18px] font-medium">
         Account settings
       </h2>
 
@@ -27,7 +27,7 @@ export function SettingsAccount() {
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div>
             <Label>Display name</Label>
-            <div className="mt-2 text-[13.5px] text-primary">
+            <div className="text-primary mt-2 text-[13.5px]">
               <InlineText
                 onCommit={(next) => setDisplayName(next ?? '')}
                 placeholder="Add display name"
@@ -37,7 +37,7 @@ export function SettingsAccount() {
           </div>
           <div>
             <Label>Email address</Label>
-            <p className="mt-2 text-[13.5px] text-tertiary">
+            <p className="text-tertiary mt-2 text-[13.5px]">
               {user?.email || '—'}
             </p>
           </div>
@@ -46,16 +46,16 @@ export function SettingsAccount() {
         <Separator />
 
         <div>
-          <h3 className="mb-4 text-[16px] font-medium text-primary">
+          <h3 className="text-primary mb-4 text-[16px] font-medium">
             Preferences
           </h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-[13.5px] text-primary">
+                <p className="text-primary text-[13.5px]">
                   Email notifications
                 </p>
-                <p className="text-[12px] text-tertiary">
+                <p className="text-tertiary text-[12px]">
                   Receive email updates about your projects
                 </p>
               </div>

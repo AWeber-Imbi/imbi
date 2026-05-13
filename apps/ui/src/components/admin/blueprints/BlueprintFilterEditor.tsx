@@ -35,11 +35,11 @@ export function BlueprintFilterEditor({
   setSelectedProjectTypes,
 }: BlueprintFilterEditorProps) {
   return (
-    <div className="rounded-lg border border-border bg-card p-6">
+    <div className="border-border bg-card rounded-lg border p-6">
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-tertiary" />
-          <h3 className="text-sm font-medium text-primary">
+          <Filter className="text-tertiary size-4" />
+          <h3 className="text-primary text-sm font-medium">
             Conditional Filter
           </h3>
         </div>
@@ -57,7 +57,7 @@ export function BlueprintFilterEditor({
             }}
           />
           <label
-            className="cursor-pointer select-none text-sm text-secondary"
+            className="text-secondary cursor-pointer text-sm select-none"
             htmlFor="filter-enabled"
           >
             Enable filter
@@ -67,26 +67,26 @@ export function BlueprintFilterEditor({
 
       {filterEnabled ? (
         <div className="space-y-5">
-          <p className="text-xs text-tertiary">
+          <p className="text-tertiary text-xs">
             Select which project types and environments this blueprint applies
             to. Leave a section unchecked to apply to all.
           </p>
 
           {/* Project Type filter */}
           <div>
-            <label className="mb-2 block text-sm font-medium text-secondary">
+            <label className="text-secondary mb-2 block text-sm font-medium">
               Project Types
             </label>
             {ptLoading ? (
-              <p className="text-xs italic text-tertiary">
+              <p className="text-tertiary text-xs italic">
                 Loading project types...
               </p>
             ) : ptIsError ? (
-              <p className="text-xs italic text-danger">
+              <p className="text-danger text-xs italic">
                 Failed to load project types
               </p>
             ) : availableProjectTypes.length === 0 ? (
-              <p className="text-xs italic text-tertiary">
+              <p className="text-tertiary text-xs italic">
                 No project types available
               </p>
             ) : (
@@ -109,7 +109,7 @@ export function BlueprintFilterEditor({
                     />
                     <label
                       className={
-                        'cursor-pointer select-none text-sm text-secondary'
+                        'text-secondary cursor-pointer text-sm select-none'
                       }
                       htmlFor={`filter-pt-${pt.slug}`}
                     >
@@ -123,19 +123,19 @@ export function BlueprintFilterEditor({
 
           {/* Environment filter */}
           <div>
-            <label className="mb-2 block text-sm font-medium text-secondary">
+            <label className="text-secondary mb-2 block text-sm font-medium">
               Environments
             </label>
             {envLoading ? (
-              <p className="text-xs italic text-tertiary">
+              <p className="text-tertiary text-xs italic">
                 Loading environments...
               </p>
             ) : envIsError ? (
-              <p className="text-xs italic text-danger">
+              <p className="text-danger text-xs italic">
                 Failed to load environments
               </p>
             ) : availableEnvironments.length === 0 ? (
-              <p className="text-xs italic text-tertiary">
+              <p className="text-tertiary text-xs italic">
                 No environments available
               </p>
             ) : (
@@ -158,7 +158,7 @@ export function BlueprintFilterEditor({
                     />
                     <label
                       className={
-                        'cursor-pointer select-none text-sm text-secondary'
+                        'text-secondary cursor-pointer text-sm select-none'
                       }
                       htmlFor={`filter-env-${env.slug}`}
                     >
@@ -171,7 +171,7 @@ export function BlueprintFilterEditor({
           </div>
         </div>
       ) : (
-        <p className="text-sm text-tertiary">
+        <p className="text-tertiary text-sm">
           No filter configured. This blueprint will apply to all entities of its
           type.
         </p>

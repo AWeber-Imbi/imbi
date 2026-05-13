@@ -117,10 +117,10 @@ export function DocumentTemplateForm({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-medium text-primary">
+          <h2 className="text-primary text-base font-medium">
             {isEditing ? 'Edit Document Template' : 'Create Document Template'}
           </h2>
-          <p className="mt-1 text-secondary">
+          <p className="text-secondary mt-1">
             Reusable document skeleton offered when authoring project documents.
           </p>
         </div>
@@ -131,7 +131,7 @@ export function DocumentTemplateForm({
             type="button"
             variant="outline"
           >
-            <X className="mr-2 h-4 w-4" />
+            <X className="mr-2 size-4" />
             Cancel
           </Button>
           <Button
@@ -140,7 +140,7 @@ export function DocumentTemplateForm({
             onClick={handleSubmit}
             type="button"
           >
-            <Save className="mr-2 h-4 w-4" />
+            <Save className="mr-2 size-4" />
             {isLoading ? 'Saving...' : 'Save'}
           </Button>
         </div>
@@ -159,7 +159,7 @@ export function DocumentTemplateForm({
             >
               <div>
                 <label
-                  className="mb-1.5 block text-sm text-secondary"
+                  className="text-secondary mb-1.5 block text-sm"
                   htmlFor="document-tpl-name"
                 >
                   Name <span className="text-red-500">*</span>
@@ -173,8 +173,8 @@ export function DocumentTemplateForm({
                   value={name}
                 />
                 {errors.name && (
-                  <div className="mt-1 flex items-center gap-1 text-xs text-danger">
-                    <AlertCircle className="h-3 w-3" />
+                  <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+                    <AlertCircle className="size-3" />
                     {errors.name}
                   </div>
                 )}
@@ -183,7 +183,7 @@ export function DocumentTemplateForm({
               {!isEditing && (
                 <div>
                   <label
-                    className="mb-1.5 block text-sm text-secondary"
+                    className="text-secondary mb-1.5 block text-sm"
                     htmlFor="document-tpl-slug"
                   >
                     Slug <span className="text-red-500">*</span>
@@ -197,8 +197,8 @@ export function DocumentTemplateForm({
                     value={slug}
                   />
                   {errors.slug && (
-                    <div className="mt-1 flex items-center gap-1 text-xs text-danger">
-                      <AlertCircle className="h-3 w-3" />
+                    <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+                      <AlertCircle className="size-3" />
                       {errors.slug}
                     </div>
                   )}
@@ -208,13 +208,13 @@ export function DocumentTemplateForm({
 
             <div>
               <label
-                className="mb-1.5 block text-sm text-secondary"
+                className="text-secondary mb-1.5 block text-sm"
                 htmlFor="document-tpl-description"
               >
                 Description
               </label>
               <textarea
-                className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground"
+                className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full resize-none rounded-lg border px-3 py-2"
                 disabled={isLoading}
                 id="document-tpl-description"
                 onChange={(e) => setDescription(e.target.value)}
@@ -225,12 +225,12 @@ export function DocumentTemplateForm({
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Icon
               </label>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <p className="mb-1.5 text-xs text-tertiary">Pick an icon</p>
+                  <p className="text-tertiary mb-1.5 text-xs">Pick an icon</p>
                   <IconPicker
                     onChange={handleIconChange}
                     value={
@@ -241,7 +241,7 @@ export function DocumentTemplateForm({
                   />
                 </div>
                 <div>
-                  <p className="mb-1.5 text-xs text-tertiary">
+                  <p className="text-tertiary mb-1.5 text-xs">
                     Or upload a custom image
                   </p>
                   <IconUpload
@@ -258,7 +258,7 @@ export function DocumentTemplateForm({
 
             <div>
               <label
-                className="mb-1.5 block text-sm text-secondary"
+                className="text-secondary mb-1.5 block text-sm"
                 htmlFor="document-tpl-title"
               >
                 Default Document Title
@@ -274,13 +274,13 @@ export function DocumentTemplateForm({
 
             <div>
               <label
-                className="mb-1.5 block text-sm text-secondary"
+                className="text-secondary mb-1.5 block text-sm"
                 htmlFor="document-tpl-content"
               >
                 Content
               </label>
               <textarea
-                className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground"
+                className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full resize-y rounded-lg border px-3 py-2 font-mono text-sm"
                 disabled={isLoading}
                 id="document-tpl-content"
                 onChange={(e) => setContent(e.target.value)}
@@ -291,10 +291,10 @@ export function DocumentTemplateForm({
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Default Tags
               </label>
-              <p className="mb-2 text-xs text-tertiary">
+              <p className="text-tertiary mb-2 text-xs">
                 Tags applied to documents created from this template.
               </p>
               {orgSlug && (
@@ -308,10 +308,10 @@ export function DocumentTemplateForm({
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Project Types
               </label>
-              <p className="mb-2 text-xs text-tertiary">
+              <p className="text-tertiary mb-2 text-xs">
                 Limit this template to specific project types. Leave empty to
                 offer it for every project type.
               </p>
@@ -321,17 +321,17 @@ export function DocumentTemplateForm({
                     const pt = projectTypes.find((p) => p.slug === ptSlug)
                     return (
                       <span
-                        className="inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-xs text-primary"
+                        className="bg-secondary text-primary inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs"
                         key={ptSlug}
                       >
                         {pt?.name ?? ptSlug}
                         <button
                           aria-label={`Remove ${pt?.name ?? ptSlug}`}
-                          className="border-0 bg-transparent p-0 text-tertiary hover:text-primary"
+                          className="text-tertiary hover:text-primary border-0 bg-transparent p-0"
                           onClick={() => toggleProjectType(ptSlug)}
                           type="button"
                         >
-                          <X className="h-3 w-3" />
+                          <X className="size-3" />
                         </button>
                       </span>
                     )
@@ -339,7 +339,7 @@ export function DocumentTemplateForm({
                 </div>
               )}
               <select
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+                className="border-input bg-background text-foreground w-full rounded-lg border px-3 py-2 text-sm"
                 disabled={isLoading || !orgSlug}
                 onChange={(e) => {
                   if (e.target.value) toggleProjectType(e.target.value)
@@ -359,7 +359,7 @@ export function DocumentTemplateForm({
 
             <div>
               <label
-                className="mb-1.5 block text-sm text-secondary"
+                className="text-secondary mb-1.5 block text-sm"
                 htmlFor="document-tpl-sort-order"
               >
                 Sort Order
@@ -373,12 +373,12 @@ export function DocumentTemplateForm({
                 type="number"
                 value={sortOrder}
               />
-              <p className="mt-1 text-xs text-tertiary">
+              <p className="text-tertiary mt-1 text-xs">
                 Lower values appear first in the template picker.
               </p>
               {errors.sort_order && (
-                <div className="mt-1 flex items-center gap-1 text-xs text-danger">
-                  <AlertCircle className="h-3 w-3" />
+                <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+                  <AlertCircle className="size-3" />
                   {errors.sort_order}
                 </div>
               )}

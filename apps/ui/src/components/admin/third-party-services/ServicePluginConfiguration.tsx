@@ -287,7 +287,7 @@ function ApplicationCard({
         <div className="grid grid-cols-[160px_1fr] items-center gap-3">
           <Label htmlFor="plugin-application">
             Application
-            <span className="ml-1 text-destructive">*</span>
+            <span className="text-destructive ml-1">*</span>
           </Label>
           {isLoading ? (
             <LoadingState label="Loading…" />
@@ -319,13 +319,13 @@ function ApplicationCard({
           )}
         </div>
         {!isLoading && sameServiceApps.length === 0 && (
-          <p className="text-xs text-secondary">
+          <p className="text-secondary text-xs">
             No OAuth2 applications are registered to this service yet. Add one
             on the Applications tab before linking it here.
           </p>
         )}
         {draft === null && initial !== null && (
-          <p className="text-xs text-destructive">
+          <p className="text-destructive text-xs">
             Saving will clear the link. The plugin will fail with
             "PluginCredentialsMissing" until another application is linked.
           </p>
@@ -420,11 +420,11 @@ function CredentialsCard({
         {isLoading ? (
           <LoadingState label="Loading…" />
         ) : isError ? (
-          <div className="text-sm text-destructive">
+          <div className="text-destructive text-sm">
             {extractApiErrorDetail(error) ?? 'Failed to load credentials'}
           </div>
         ) : config && config.fields.length === 0 ? (
-          <div className="text-sm text-secondary">
+          <div className="text-secondary text-sm">
             This plugin defines no credential fields.
           </div>
         ) : (
@@ -435,7 +435,7 @@ function CredentialsCard({
                 <Label htmlFor={`field-${field.name}`}>
                   {field.label}
                   {field.required && (
-                    <span className="ml-1 text-destructive">*</span>
+                    <span className="text-destructive ml-1">*</span>
                   )}
                 </Label>
                 <div className="flex gap-2">
@@ -469,7 +469,7 @@ function CredentialsCard({
                   )}
                 </div>
                 {field.description && (
-                  <p className="text-xs text-secondary">{field.description}</p>
+                  <p className="text-secondary text-xs">{field.description}</p>
                 )}
               </div>
             )
@@ -570,7 +570,7 @@ function DefaultOptionsCard({
                 onChange={setIdentityDraft}
                 value={identityDraft}
               />
-              <p className="text-xs text-secondary">
+              <p className="text-secondary text-xs">
                 Default identity used for plugin calls when no project-type
                 assignment names one. Per-type bindings still take precedence.
               </p>
@@ -739,11 +739,11 @@ function OptionRow({
     <div className="grid grid-cols-[160px_1fr] items-center gap-3">
       <Label className="truncate text-xs" htmlFor={id} title={label}>
         {label}
-        {opt.required && <span className="ml-1 text-destructive">*</span>}
+        {opt.required && <span className="text-destructive ml-1">*</span>}
       </Label>
       <div className="space-y-1">
         {control}
-        {description && <p className="text-xs text-secondary">{description}</p>}
+        {description && <p className="text-secondary text-xs">{description}</p>}
       </div>
     </div>
   )
@@ -930,7 +930,7 @@ function ProjectTypesCard({
                 size="sm"
                 variant="outline"
               >
-                <Plus className="mr-1 h-3 w-3" />
+                <Plus className="mr-1 size-3" />
                 Add
               </Button>
             </DropdownMenuTrigger>
@@ -949,7 +949,7 @@ function ProjectTypesCard({
       </CardHeader>
       <CardContent className="px-6 pb-6">
         {drafts.length === 0 ? (
-          <div className="rounded border border-dashed border-tertiary py-8 text-center text-sm text-secondary">
+          <div className="border-tertiary text-secondary rounded border border-dashed py-8 text-center text-sm">
             No project type assignments. Add one to surface this plugin under a
             project type&apos;s {supportedTab} tab.
           </div>
@@ -999,7 +999,7 @@ function ProjectTypesCard({
                       <TableCell className="align-middle">
                         <span className="relative inline-flex items-center">
                           <ChevronDown
-                            className={`h-3.5 w-3.5 text-tertiary transition-transform ${
+                            className={`text-tertiary size-3.5 transition-transform ${
                               isExpanded ? 'rotate-180' : ''
                             }`}
                           />
@@ -1023,7 +1023,7 @@ function ProjectTypesCard({
                           size="icon"
                           variant="ghost"
                         >
-                          <Trash2 className="h-3 w-3 text-destructive" />
+                          <Trash2 className="text-destructive size-3" />
                         </Button>
                       </TableCell>
                     </TableRow>

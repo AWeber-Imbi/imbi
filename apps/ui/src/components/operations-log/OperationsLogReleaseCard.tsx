@@ -132,27 +132,27 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
           }}
         />
         <span
-          className="flex h-[26px] w-[26px] items-center justify-center rounded-md bg-success text-success"
+          className="bg-success text-success flex size-6.5 items-center justify-center rounded-md"
           style={{ gridColumn: 2, gridRow: 1 }}
         >
-          <Rocket className="h-3.5 w-3.5" />
+          <Rocket className="size-3.5" />
         </span>
         <span
-          className="truncate text-sm font-medium text-primary"
+          className="text-primary truncate text-sm font-medium"
           style={{ gridColumn: 3, gridRow: 1 }}
           title={projectLabel}
         >
           {projectLabel}
         </span>
         <span
-          className="truncate font-mono text-xs text-secondary"
+          className="text-secondary truncate font-mono text-xs"
           style={{ gridColumn: 4, gridRow: 1 }}
         >
           {version || '—'}
         </span>
         {desc ? null : (
           <span
-            className="min-w-0 truncate text-sm text-tertiary"
+            className="text-tertiary min-w-0 truncate text-sm"
             style={{ gridColumn: 5 }}
           >
             —
@@ -170,7 +170,7 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
           title={displayName}
         >
           <Gravatar
-            className="h-[22px] w-[22px] rounded-full"
+            className="size-[22px] rounded-full"
             email={performer}
             size={22}
           />
@@ -179,7 +179,7 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
           <Tooltip>
             <TooltipTrigger asChild>
               <span
-                className="self-center whitespace-nowrap text-right text-xs tabular-nums text-tertiary"
+                className="text-tertiary self-center text-right text-xs whitespace-nowrap tabular-nums"
                 style={{ gridColumn: 8, gridRow: '1 / -1' }}
               >
                 {relTime(latest.occurred_at)}
@@ -189,19 +189,19 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
           </Tooltip>
         </TooltipProvider>
         <span
-          className="flex items-center justify-center self-center text-tertiary"
+          className="text-tertiary flex items-center justify-center self-center"
           style={{ gridColumn: 9, gridRow: '1 / -1' }}
         >
           <ChevronDown
             className={cn(
-              'h-3.5 w-3.5 transition-transform',
+              'size-3.5 transition-transform',
               isOpen && 'rotate-180 text-primary',
             )}
           />
         </span>
         {desc ? (
           <span
-            className="min-w-0 truncate text-sm text-secondary"
+            className="text-secondary min-w-0 truncate text-sm"
             style={{ gridColumn: '3 / 6', gridRow: 2 }}
           >
             {desc}
@@ -210,12 +210,12 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
       </button>
       {isOpen ? (
         <div
-          className="border-t border-dashed border-tertiary"
+          className="border-tertiary border-t border-dashed"
           id={`ops-log-details-${id}`}
         >
           <OperationsLogEntryDetails entry={latest} />
-          <div className="space-y-2 px-4 pb-4 pl-[60px]">
-            <div className="text-overline uppercase text-tertiary">
+          <div className="space-y-2 px-4 pb-4 pl-15">
+            <div className="text-overline text-tertiary uppercase">
               Promotion timeline
             </div>
             {group.stops
@@ -232,10 +232,10 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
                   : null
                 return (
                   <div
-                    className="grid grid-cols-[24px_120px_1fr_auto] items-center gap-3 rounded-md border border-tertiary bg-primary px-3 py-2 text-sm"
+                    className="border-tertiary bg-primary grid grid-cols-[24px_120px_1fr_auto] items-center gap-3 rounded-md border px-3 py-2 text-sm"
                     key={s.entry.environment_slug}
                   >
-                    <Rocket className="h-3.5 w-3.5 text-tertiary" />
+                    <Rocket className="text-tertiary size-3.5" />
                     <span
                       className="inline-flex items-center justify-center rounded border px-2 py-0.5 text-xs font-medium"
                       style={
@@ -256,7 +256,7 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
                       </div>
                       {s.entry.link ? (
                         <a
-                          className="mt-0.5 block truncate text-xs text-amber-text hover:underline"
+                          className="text-amber-text mt-0.5 block truncate text-xs hover:underline"
                           href={s.entry.link}
                           rel="noreferrer"
                           target="_blank"
@@ -266,10 +266,10 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
                       ) : null}
                     </div>
                     <div className="flex flex-col items-end gap-0.5">
-                      <span className="text-xs text-tertiary">
+                      <span className="text-tertiary text-xs">
                         {absTime(s.entry.occurred_at)}
                       </span>
-                      <span className="text-xs text-secondary">
+                      <span className="text-secondary text-xs">
                         {performerDisplayNames.get(
                           s.entry.performed_by ?? s.entry.recorded_by,
                         ) ??

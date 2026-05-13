@@ -235,7 +235,7 @@ export function Admin() {
         title={isCollapsed ? sectionDef.label : undefined}
         variant="ghost"
       >
-        <Icon className="mt-0.5 h-5 w-5 flex-shrink-0" />
+        <Icon className="mt-0.5 size-5 shrink-0" />
         {!isCollapsed && (
           <>
             <div
@@ -243,9 +243,7 @@ export function Admin() {
             >
               {sectionDef.label}
             </div>
-            {isActive && (
-              <ChevronRight className="mt-0.5 h-4 w-4 flex-shrink-0" />
-            )}
+            {isActive && <ChevronRight className="mt-0.5 size-4 shrink-0" />}
           </>
         )}
       </Button>
@@ -253,11 +251,11 @@ export function Admin() {
   }
 
   return (
-    <div className="min-h-screen bg-tertiary text-primary">
+    <div className="bg-tertiary text-primary min-h-screen">
       <div className="flex">
         {/* Side Navigation */}
         <aside
-          className={`relative flex min-h-screen flex-col border-r border-tertiary transition-all duration-300 ${
+          className={`border-tertiary relative flex min-h-screen flex-col border-r transition-all duration-300 ${
             isCollapsed ? 'w-20' : 'w-72'
           } bg-primary`}
         >
@@ -267,16 +265,16 @@ export function Admin() {
             style={{ top: '22px' }}
           >
             <Button
-              className="h-auto w-auto rounded-lg p-2 text-secondary transition-colors hover:bg-secondary hover:text-primary"
+              className="text-secondary hover:bg-secondary hover:text-primary size-auto rounded-lg p-2 transition-colors"
               onClick={() => setIsCollapsed(!isCollapsed)}
               size="icon"
               title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               variant="ghost"
             >
               {isCollapsed ? (
-                <ChevronRight className="h-5 w-5" />
+                <ChevronRight className="size-5" />
               ) : (
-                <ChevronLeft className="h-5 w-5" />
+                <ChevronLeft className="size-5" />
               )}
             </Button>
           </div>
@@ -287,8 +285,8 @@ export function Admin() {
             {/* Organization Scope Section */}
             <div style={{ paddingBottom: '2em' }}>
               {!isCollapsed && (
-                <div className="flex items-center gap-2 px-3 pb-6 pt-4 text-xs uppercase tracking-wider text-tertiary">
-                  <Building2 className="h-3 w-3" />
+                <div className="text-tertiary flex items-center gap-2 px-3 pt-4 pb-6 text-xs tracking-wider uppercase">
+                  <Building2 className="size-3" />
                   {orgName} Admin
                 </div>
               )}
@@ -299,10 +297,10 @@ export function Admin() {
             <div>
               {!isCollapsed && (
                 <div
-                  className="flex items-center gap-2 px-3 pb-3 text-xs uppercase tracking-wider text-tertiary"
+                  className="text-tertiary flex items-center gap-2 px-3 pb-3 text-xs tracking-wider uppercase"
                   style={{ paddingTop: '2em' }}
                 >
-                  <Globe className="h-3 w-3" />
+                  <Globe className="size-3" />
                   Global Admin
                 </div>
               )}
@@ -314,22 +312,22 @@ export function Admin() {
         {/* Main Content */}
         <main className="flex-1">
           {/* Section Header */}
-          <div className="border-b border-tertiary bg-primary">
+          <div className="border-tertiary bg-primary border-b">
             <div className="px-8 py-6">
               <div className="flex items-center gap-3">
                 {currentSectionData && (
-                  <currentSectionData.icon className="h-5 w-5 text-amber-text" />
+                  <currentSectionData.icon className="text-amber-text size-5" />
                 )}
                 {isSubPage ? (
                   <button
-                    className="text-xl font-semibold text-primary hover:text-amber-text"
+                    className="text-primary hover:text-amber-text text-xl font-semibold"
                     onClick={() => navigate(`/admin/${currentSection}`)}
                     type="button"
                   >
                     {currentSectionData?.label}
                   </button>
                 ) : (
-                  <h1 className="text-xl font-semibold text-primary">
+                  <h1 className="text-primary text-xl font-semibold">
                     {currentSectionData?.label}
                   </h1>
                 )}

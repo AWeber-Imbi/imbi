@@ -95,9 +95,9 @@ export function ScoreHistoryReport() {
   return (
     <div className="flex flex-col gap-5">
       {/* Chart card */}
-      <div className="overflow-hidden rounded-lg border border-tertiary bg-primary p-[18px]">
+      <div className="border-tertiary bg-primary overflow-hidden rounded-lg border p-[18px]">
         <div className="mb-3.5 flex items-end justify-between gap-6">
-          <div className="text-overline uppercase tracking-wide text-tertiary">
+          <div className="text-overline text-tertiary tracking-wide uppercase">
             Avg score by team
           </div>
           <Segmented
@@ -108,11 +108,11 @@ export function ScoreHistoryReport() {
         </div>
 
         {isLoading ? (
-          <div className="flex h-56 items-center justify-center text-sm text-tertiary">
+          <div className="text-tertiary flex h-56 items-center justify-center text-sm">
             Loading…
           </div>
         ) : series.length === 0 ? (
-          <div className="flex h-56 items-center justify-center text-sm text-tertiary">
+          <div className="text-tertiary flex h-56 items-center justify-center text-sm">
             No score data for this period.
           </div>
         ) : (
@@ -121,18 +121,18 @@ export function ScoreHistoryReport() {
       </div>
 
       {/* Feed card */}
-      <div className="overflow-hidden rounded-lg border border-tertiary bg-primary">
-        <div className="border-b border-tertiary px-[18px] py-3.5">
-          <div className="text-overline uppercase tracking-wide text-tertiary">
+      <div className="border-tertiary bg-primary overflow-hidden rounded-lg border">
+        <div className="border-tertiary border-b px-[18px] py-3.5">
+          <div className="text-overline text-tertiary tracking-wide uppercase">
             Change events
           </div>
-          <div className="mt-0.5 text-xs text-tertiary">
+          <div className="text-tertiary mt-0.5 text-xs">
             Recent score recomputations across all projects, newest first.
           </div>
         </div>
         <div>
           {feedLoading ? (
-            <div className="py-10 text-center text-sm text-tertiary">
+            <div className="text-tertiary py-10 text-center text-sm">
               Loading…
             </div>
           ) : (
@@ -213,7 +213,7 @@ function GlobalEventFeed({
 }) {
   if (events.length === 0) {
     return (
-      <div className="py-10 text-center text-sm text-tertiary">
+      <div className="text-tertiary py-10 text-center text-sm">
         No change events for this period.
       </div>
     )
@@ -227,16 +227,16 @@ function GlobalEventFeed({
         const teamName = teamBySlug.get(e.team_key)?.name ?? e.team_key
         return (
           <div
-            className="grid items-center gap-3 border-b border-tertiary px-3 py-3 transition-colors duration-fast last:border-0 hover:bg-secondary"
+            className="border-tertiary duration-fast hover:bg-secondary grid items-center gap-3 border-b px-3 py-3 transition-colors last:border-0"
             key={i}
             style={{ gridTemplateColumns: '80px 1fr auto 72px' }}
           >
             {/* Timestamp */}
             <div>
-              <div className="text-xs font-medium text-primary">
+              <div className="text-primary text-xs font-medium">
                 {fmtRel(e.timestamp)}
               </div>
-              <div className="mt-0.5 font-mono text-[11px] text-tertiary">
+              <div className="text-tertiary mt-0.5 font-mono text-[11px]">
                 {fmtISODate(e.timestamp)}
               </div>
             </div>
@@ -245,22 +245,22 @@ function GlobalEventFeed({
             <div className="min-w-0">
               <div className="mb-1 flex flex-wrap items-center gap-1.5">
                 <ReasonChip reason={reason} />
-                <span className="max-w-[200px] truncate text-[12px] font-medium text-primary">
+                <span className="text-primary max-w-50 truncate text-[12px] font-medium">
                   {e.project_name}
                 </span>
-                <span className="text-[11px] text-tertiary">{teamName}</span>
+                <span className="text-tertiary text-[11px]">{teamName}</span>
               </div>
             </div>
 
             {/* Score */}
             <div className="flex items-center justify-end gap-1.5 font-mono tabular-nums">
               {e.previous_score != null && (
-                <span className="text-xs text-tertiary">
+                <span className="text-tertiary text-xs">
                   {Math.round(e.previous_score)}
                   {' → '}
                 </span>
               )}
-              <span className="text-sm font-semibold text-primary">
+              <span className="text-primary text-sm font-semibold">
                 {Math.round(e.score)}
               </span>
             </div>
@@ -424,7 +424,7 @@ function MultiLineChart({ series }: { series: ChartSeries[] }) {
 
   if (allTimestamps.length === 0) {
     return (
-      <div className="flex h-56 items-center justify-center text-sm text-tertiary">
+      <div className="text-tertiary flex h-56 items-center justify-center text-sm">
         No score data for this period.
       </div>
     )
@@ -589,14 +589,14 @@ function MultiLineChart({ series }: { series: ChartSeries[] }) {
       </svg>
 
       {/* Legend */}
-      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-tertiary pt-3">
+      <div className="border-tertiary mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-t pt-3">
         {series.map((s) => (
           <span
             className="inline-flex items-center gap-1.5 text-xs"
             key={s.key}
           >
             <span
-              className="inline-block h-[3px] w-5 rounded-full"
+              className="inline-block h-0.75 w-5 rounded-full"
               style={{ background: s.color }}
             />
             <span className="text-secondary">{s.name}</span>
@@ -634,7 +634,7 @@ function ReasonChip({ reason }: { reason: string }) {
     )
   }
   return (
-    <span className="inline-flex h-5 items-center rounded bg-secondary px-1.5 text-[11px] font-medium text-secondary">
+    <span className="bg-secondary text-secondary inline-flex h-5 items-center rounded px-1.5 text-[11px] font-medium">
       {reason.charAt(0).toUpperCase() + reason.slice(1)}
     </span>
   )
@@ -650,12 +650,12 @@ function Segmented({
   value: string
 }) {
   return (
-    <div className="inline-flex gap-0.5 rounded-md border border-tertiary bg-primary p-0.5">
+    <div className="border-tertiary bg-primary inline-flex gap-0.5 rounded-md border p-0.5">
       {items.map((it) => (
         <button
-          className={`inline-flex h-6 items-center rounded px-2.5 text-xs transition-colors duration-fast ${
+          className={`duration-fast inline-flex h-6 items-center rounded px-2.5 text-xs transition-colors ${
             value === it.key
-              ? 'bg-secondary font-medium text-primary'
+              ? 'bg-secondary text-primary font-medium'
               : 'text-secondary hover:text-primary'
           }`}
           key={it.key}

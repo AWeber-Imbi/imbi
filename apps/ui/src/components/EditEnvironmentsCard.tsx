@@ -122,12 +122,12 @@ export function EditEnvironmentsCard({
 
   return (
     <Card className="p-6">
-      <h3 className="mb-4 text-primary">Environments</h3>
+      <h3 className="text-primary mb-4">Environments</h3>
 
-      <div className="divide-y divide-border">
+      <div className="divide-border divide-y">
         {environments.map((env) => (
           <div className="flex gap-3 py-4 first:pt-0 last:pb-0" key={env.slug}>
-            <div className="w-[15%] flex-shrink-0 pt-1">
+            <div className="w-[15%] shrink-0 pt-1">
               <EnvironmentBadge
                 label_color={env.label_color}
                 name={env.name}
@@ -136,14 +136,14 @@ export function EditEnvironmentsCard({
             </div>
             <div className="flex-1 space-y-2">
               {dynamicFields.length === 0 ? (
-                <p className="text-xs text-tertiary">
+                <p className="text-tertiary text-xs">
                   No blueprint fields for this environment.
                 </p>
               ) : (
                 dynamicFields.map((field) => (
                   <div className="flex items-center gap-3" key={field}>
                     <label
-                      className="w-20 flex-shrink-0 text-xs font-medium text-tertiary"
+                      className="text-tertiary w-20 shrink-0 text-xs font-medium"
                       htmlFor={`env-${env.slug}-${field}`}
                     >
                       {toLabel(field)}
@@ -174,16 +174,16 @@ export function EditEnvironmentsCard({
                 ))
               )}
             </div>
-            <div className="flex-shrink-0 pt-1">
+            <div className="shrink-0 pt-1">
               <Button
                 aria-label={`Remove ${env.name} environment`}
-                className="h-8 w-8 text-secondary hover:text-danger"
+                className="text-secondary hover:text-danger size-8"
                 onClick={() => requestDelete(env.slug)}
                 size="icon"
                 type="button"
                 variant="ghost"
               >
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="size-4" />
               </Button>
             </div>
           </div>
@@ -191,7 +191,7 @@ export function EditEnvironmentsCard({
 
         {unassignedEnvs.length > 0 && (
           <div className="flex items-center gap-3 pt-4">
-            <div className="w-[15%] flex-shrink-0">
+            <div className="w-[15%] shrink-0">
               <Select onValueChange={handleAdd} value="">
                 <SelectTrigger className="text-sm">
                   <SelectValue placeholder="Add environment…" />
@@ -206,7 +206,7 @@ export function EditEnvironmentsCard({
               </Select>
             </div>
             <div className="flex-1" />
-            <div aria-hidden className="h-8 w-8 flex-shrink-0" />
+            <div aria-hidden className="size-8 shrink-0" />
           </div>
         )}
       </div>

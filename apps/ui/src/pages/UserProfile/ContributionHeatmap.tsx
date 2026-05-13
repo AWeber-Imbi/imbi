@@ -54,9 +54,9 @@ export function ContributionHeatmap({ data, isLoading }: HeatmapProps) {
   const height = 7 * (CELL_SIZE + CELL_GAP)
 
   return (
-    <section className="rounded-md border border-tertiary bg-primary p-4">
+    <section className="border-tertiary bg-primary rounded-md border p-4">
       <header className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-sm font-medium text-primary">
+        <h2 className="text-primary text-sm font-medium">
           {isLoading
             ? 'Loading contributions…'
             : `${total.toLocaleString()} contributions in the last year`}
@@ -110,11 +110,11 @@ function fmtDate(d: Date): string {
 
 function Legend() {
   return (
-    <div className="flex items-center gap-1 text-xs text-tertiary">
+    <div className="text-tertiary flex items-center gap-1 text-xs">
       <span>Less</span>
       {BUCKET_COLORS.map((cls, i) => (
         <span
-          className={`inline-block h-2.5 w-2.5 rounded-sm ${cls.replace(/fill-/g, 'bg-')}`}
+          className={`inline-block size-2.5 rounded-sm ${cls.replace(/fill-/g, 'bg-')}`}
           key={i}
         />
       ))}

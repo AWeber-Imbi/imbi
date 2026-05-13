@@ -75,8 +75,8 @@ export function SettingsApiKeys() {
       <Card className="p-6" style={{ borderWidth: '0.5px' }}>
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h2 className="text-[18px] font-medium text-primary">API keys</h2>
-            <p className="mt-1 text-[12px] text-tertiary">
+            <h2 className="text-primary text-[18px] font-medium">API keys</h2>
+            <p className="text-tertiary mt-1 text-[12px]">
               Manage API keys for programmatic access
             </p>
           </div>
@@ -86,14 +86,14 @@ export function SettingsApiKeys() {
         </div>
 
         {isLoading ? (
-          <p className="text-[13.5px] text-tertiary">Loading...</p>
+          <p className="text-tertiary text-[13.5px]">Loading...</p>
         ) : listError ? (
-          <div className="bg-danger/10 rounded-lg p-4 text-[13.5px] text-danger">
+          <div className="bg-danger/10 text-danger rounded-lg p-4 text-[13.5px]">
             {extractApiErrorDetail(listError, 'Failed to load API keys')}
           </div>
         ) : activeKeys.length === 0 ? (
           <div className="bg-secondary/50 rounded-lg p-8 text-center">
-            <p className="text-[13.5px] text-tertiary">
+            <p className="text-tertiary text-[13.5px]">
               No API keys yet. Create one to get started.
             </p>
           </div>
@@ -101,16 +101,16 @@ export function SettingsApiKeys() {
           <div className="space-y-4">
             {activeKeys.map((apiKey: ApiKey) => (
               <div
-                className="bg-secondary/50 rounded-lg border-input p-4"
+                className="border-input bg-secondary/50 rounded-lg p-4"
                 key={apiKey.key_id}
                 style={{ borderStyle: 'solid', borderWidth: '0.5px' }}
               >
                 <div className="mb-3 flex items-start justify-between">
                   <div>
-                    <h3 className="text-[14px] font-medium text-primary">
+                    <h3 className="text-primary text-[14px] font-medium">
                       {apiKey.name}
                     </h3>
-                    <p className="mt-1 text-[12px] text-tertiary">
+                    <p className="text-tertiary mt-1 text-[12px]">
                       Created {formatDate(apiKey.created_at)}
                       {apiKey.last_used &&
                         ` · Last used ${formatDate(apiKey.last_used)}`}
@@ -129,7 +129,7 @@ export function SettingsApiKeys() {
                 <div className="mb-3 flex items-center gap-2">
                   <Input
                     className={
-                      'border-input bg-card font-mono text-[12px] text-secondary'
+                      'border-input bg-card text-secondary font-mono text-[12px]'
                     }
                     readOnly
                     style={{ borderWidth: '0.5px' }}
@@ -174,12 +174,12 @@ export function SettingsApiKeys() {
         style={{ borderWidth: '0.5px' }}
       >
         <div className="flex gap-3">
-          <span className="mt-0.5 flex-shrink-0 text-blue-600">ⓘ</span>
+          <span className="mt-0.5 shrink-0 text-blue-600">ⓘ</span>
           <div>
-            <h3 className="mb-1 text-[14px] font-medium text-info">
+            <h3 className="text-info mb-1 text-[14px] font-medium">
               Keep your API keys secure
             </h3>
-            <p className="text-[12px] text-info">
+            <p className="text-info text-[12px]">
               API keys grant access to your Imbi resources. Never share them or
               commit them to version control. Rotate keys regularly and revoke
               any that may have been compromised.
@@ -209,7 +209,7 @@ export function SettingsApiKeys() {
           {createdKey ? (
             <>
               <div className="space-y-4 p-6">
-                <p className="text-[13.5px] text-secondary">
+                <p className="text-secondary text-[13.5px]">
                   Copy your API key now. You won't be able to see it again.
                 </p>
                 <div className="flex items-center gap-2">
@@ -294,7 +294,7 @@ export function SettingsApiKeys() {
             <DialogTitle>Revoke API key</DialogTitle>
           </DialogHeader>
           <div className="p-6">
-            <p className="text-[13.5px] text-secondary">
+            <p className="text-secondary text-[13.5px]">
               Are you sure you want to revoke this API key? Any applications
               using this key will lose access immediately. This action cannot be
               undone.

@@ -48,8 +48,8 @@ export function Settings() {
     <div className="mx-auto max-w-[1400px] px-5 py-7">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-[22px] font-medium text-primary">Settings</h1>
-        <p className="mt-1 text-[13px] text-tertiary">
+        <h1 className="text-primary text-[22px] font-medium">Settings</h1>
+        <p className="text-tertiary mt-1 text-[13px]">
           Manage your account preferences and integrations
         </p>
       </div>
@@ -71,7 +71,7 @@ export function Settings() {
                     key={t.id}
                     onClick={() => handleTabChange(t.id)}
                   >
-                    <Icon className="h-[18px] w-[18px]" />
+                    <Icon className="size-[18px]" />
                     <span>{t.label}</span>
                   </button>
                 )

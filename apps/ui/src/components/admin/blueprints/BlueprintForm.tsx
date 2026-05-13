@@ -437,15 +437,15 @@ export function BlueprintForm({
   if (isEditing && bpLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-sm text-secondary">Loading blueprint...</div>
+        <div className="text-secondary text-sm">Loading blueprint...</div>
       </div>
     )
   }
 
   if (isEditing && bpError) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger">
-        <AlertCircle className="h-5 w-5 flex-shrink-0" />
+      <div className="border-danger bg-danger text-danger flex items-center gap-3 rounded-lg border p-4">
+        <AlertCircle className="size-5 shrink-0" />
         <div>
           <div className="font-medium">Failed to load blueprint</div>
           <div className="mt-1 text-sm">
@@ -464,7 +464,7 @@ export function BlueprintForm({
           <CardTitle>
             {isEditing ? 'Edit Blueprint' : 'Create Blueprint'}
           </CardTitle>
-          <p className="mt-1 text-secondary">
+          <p className="text-secondary mt-1">
             {isEditing
               ? 'Update blueprint configuration and schema'
               : 'Define a new metadata schema blueprint'}
@@ -472,7 +472,7 @@ export function BlueprintForm({
         </div>
         <div className="flex items-center gap-2">
           <Button disabled={isLoading} onClick={onCancel} variant="outline">
-            <X className="mr-2 h-4 w-4" />
+            <X className="mr-2 size-4" />
             Cancel
           </Button>
           <Button
@@ -480,7 +480,7 @@ export function BlueprintForm({
             disabled={isLoading}
             onClick={handleSave}
           >
-            <Save className="mr-2 h-4 w-4" />
+            <Save className="mr-2 size-4" />
             {isLoading
               ? 'Saving...'
               : isEditing
@@ -492,14 +492,14 @@ export function BlueprintForm({
 
       {/* API Error Display */}
       {error && (
-        <div className="rounded-lg border border-danger bg-danger p-4">
+        <div className="border-danger bg-danger rounded-lg border p-4">
           <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 flex-shrink-0 text-danger" />
+            <AlertCircle className="text-danger size-5 shrink-0" />
             <div>
-              <div className="font-medium text-danger">
+              <div className="text-danger font-medium">
                 Failed to save blueprint
               </div>
-              <div className="mt-1 text-sm text-danger">
+              <div className="text-danger mt-1 text-sm">
                 {(() => {
                   const detail = error?.response?.data?.detail
                   if (Array.isArray(detail)) {
@@ -529,15 +529,15 @@ export function BlueprintForm({
       )}
 
       {/* Basic Information */}
-      <div className="rounded-lg border border-border bg-card p-6">
-        <h3 className="mb-4 text-sm font-medium text-primary">
+      <div className="border-border bg-card rounded-lg border p-6">
+        <h3 className="text-primary mb-4 text-sm font-medium">
           Basic Information
         </h3>
 
         <div className="grid grid-cols-2 gap-4">
           {/* Name */}
           <div>
-            <label className="mb-1.5 block text-sm text-secondary">
+            <label className="text-secondary mb-1.5 block text-sm">
               Name <span className="text-red-500">*</span>
             </label>
             <Input
@@ -565,7 +565,7 @@ export function BlueprintForm({
           {/* Slug */}
           {!isEditing && (
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Slug
               </label>
               <Input
@@ -576,7 +576,7 @@ export function BlueprintForm({
                 value={slug}
               />
               {!slugManuallyEdited && name && (
-                <p className="mt-1 text-xs text-tertiary">
+                <p className="text-tertiary mt-1 text-xs">
                   Auto-generated from name
                 </p>
               )}
@@ -590,11 +590,11 @@ export function BlueprintForm({
 
           {/* Kind */}
           <div>
-            <label className="mb-1.5 block text-sm text-secondary">
+            <label className="text-secondary mb-1.5 block text-sm">
               Kind <span className="text-red-500">*</span>
             </label>
             <select
-              className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+              className={`border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
               disabled={isLoading || isEditing}
               onChange={(e) =>
                 setKind(e.target.value as 'node' | 'relationship')
@@ -605,7 +605,7 @@ export function BlueprintForm({
               <option value="relationship">Relationship</option>
             </select>
             {isEditing && (
-              <p className="mt-1 text-xs text-tertiary">
+              <p className="text-tertiary mt-1 text-xs">
                 Kind cannot be changed after creation
               </p>
             )}
@@ -614,11 +614,11 @@ export function BlueprintForm({
           {/* Type (node) or Source/Target/Edge (relationship) */}
           {kind === 'node' ? (
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Type <span className="text-red-500">*</span>
               </label>
               <select
-                className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                className={`border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
                 disabled={isLoading || isEditing}
                 onChange={(e) => {
                   setType(e.target.value)
@@ -642,11 +642,11 @@ export function BlueprintForm({
           ) : (
             <div className="col-span-2 grid grid-cols-[1fr_auto_1fr_auto_1fr] items-end gap-2">
               <div>
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Source <span className="text-red-500">*</span>
                 </label>
                 <select
-                  className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                  className={`border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
                   disabled={isLoading || isEditing}
                   onChange={(e) => {
                     setSource(e.target.value)
@@ -669,9 +669,9 @@ export function BlueprintForm({
                   </p>
                 )}
               </div>
-              <div className="pb-2 text-tertiary">→</div>
+              <div className="text-tertiary pb-2">→</div>
               <div>
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Relationship Type <span className="text-red-500">*</span>
                 </label>
                 {source &&
@@ -691,7 +691,7 @@ export function BlueprintForm({
                   />
                 ) : (
                   <select
-                    className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                    className={`border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
                     disabled={isLoading || isEditing || !source || !target}
                     onChange={(e) => {
                       setEdge(e.target.value)
@@ -717,13 +717,13 @@ export function BlueprintForm({
                   </p>
                 )}
               </div>
-              <div className="pb-2 text-tertiary">→</div>
+              <div className="text-tertiary pb-2">→</div>
               <div>
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Target <span className="text-red-500">*</span>
                 </label>
                 <select
-                  className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                  className={`border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
                   disabled={isLoading || isEditing}
                   onChange={(e) => {
                     setTarget(e.target.value)
@@ -751,7 +751,7 @@ export function BlueprintForm({
 
           {/* Priority */}
           <div>
-            <label className="mb-1.5 block text-sm text-secondary">
+            <label className="text-secondary mb-1.5 block text-sm">
               Priority
             </label>
             <Input
@@ -767,7 +767,7 @@ export function BlueprintForm({
               type="text"
               value={String(priority)}
             />
-            <p className="mt-1 text-xs text-tertiary">
+            <p className="text-tertiary mt-1 text-xs">
               Higher priority blueprints are applied later and can override
               lower priority ones
             </p>
@@ -775,11 +775,11 @@ export function BlueprintForm({
 
           {/* Description */}
           <div className="col-span-2">
-            <label className="mb-1.5 block text-sm text-secondary">
+            <label className="text-secondary mb-1.5 block text-sm">
               Description
             </label>
             <textarea
-              className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+              className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full resize-none rounded-md border px-3 py-2 text-sm"
               disabled={isLoading}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Brief description of what this blueprint defines"
@@ -798,13 +798,13 @@ export function BlueprintForm({
                 onCheckedChange={(checked) => setEnabled(checked === true)}
               />
               <label
-                className="cursor-pointer select-none text-sm text-secondary"
+                className="text-secondary cursor-pointer text-sm select-none"
                 htmlFor="blueprint-enabled"
               >
                 Enabled
               </label>
             </div>
-            <p className="ml-6 mt-1 text-xs text-tertiary">
+            <p className="text-tertiary mt-1 ml-6 text-xs">
               Disabled blueprints are not applied to entities
             </p>
           </div>

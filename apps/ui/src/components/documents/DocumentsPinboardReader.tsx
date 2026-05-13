@@ -98,14 +98,14 @@ export function DocumentsPinboardReader({
       />
 
       <div>
-        <div className="mb-3.5 grid items-start gap-5 [grid-template-columns:minmax(0,1fr)_260px]">
+        <div className="mb-3.5 grid grid-cols-[minmax(0,1fr)_260px] items-start gap-5">
           <div className="flex flex-wrap items-center gap-2.5">
             <button
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded border-0 bg-transparent px-1.5 py-1 text-xs text-secondary hover:bg-secondary hover:text-primary"
+              className="text-secondary hover:bg-secondary hover:text-primary inline-flex cursor-pointer items-center gap-1.5 rounded border-0 bg-transparent px-1.5 py-1 text-xs"
               onClick={onBack}
               type="button"
             >
-              <ArrowLeft className="h-3 w-3" />
+              <ArrowLeft className="size-3" />
               All documents
             </button>
             <div className="ml-auto flex items-center gap-1">
@@ -117,12 +117,12 @@ export function DocumentsPinboardReader({
               >
                 {pinned ? (
                   <>
-                    <PinOff className="h-3 w-3" />
+                    <PinOff className="size-3" />
                     Unpin
                   </>
                 ) : (
                   <>
-                    <Pin className="h-3 w-3" />
+                    <Pin className="size-3" />
                     Pin
                   </>
                 )}
@@ -134,7 +134,7 @@ export function DocumentsPinboardReader({
                 size="sm"
                 variant="ghost"
               >
-                <Pencil className="h-3 w-3" />
+                <Pencil className="size-3" />
                 Edit
               </Button>
               <Button
@@ -144,20 +144,20 @@ export function DocumentsPinboardReader({
                 title="Delete document"
                 variant="ghost"
               >
-                <Trash2 className="h-3 w-3" />
+                <Trash2 className="size-3" />
               </Button>
             </div>
           </div>
         </div>
 
-        <div className="grid items-start gap-5 [grid-template-columns:minmax(0,1fr)_260px]">
-          <article className="rounded-lg border border-tertiary bg-primary px-8 py-7">
-            <h1 className="m-0 text-[26px] font-medium leading-[1.2] tracking-[-0.015em] text-primary">
+        <div className="grid grid-cols-[minmax(0,1fr)_260px] items-start gap-5">
+          <article className="border-tertiary bg-primary rounded-lg border px-8 py-7">
+            <h1 className="text-primary m-0 text-[26px] leading-[1.2] font-medium tracking-[-0.015em]">
               {title}
             </h1>
 
             <div className="mt-3.5 flex flex-wrap items-center gap-2.5">
-              <div className="inline-flex items-center gap-2 text-[12.5px] text-tertiary">
+              <div className="text-tertiary inline-flex items-center gap-2 text-[12.5px]">
                 <UserDisplay
                   className="text-secondary"
                   displayNames={displayNames}
@@ -168,7 +168,7 @@ export function DocumentsPinboardReader({
                 <span className="text-tertiary">·</span>
                 <span>Updated {formatUpdated(document)}</span>
               </div>
-              <div className="h-3.5 w-px bg-tertiary" />
+              <div className="bg-tertiary h-3.5 w-px" />
               <div className="flex flex-wrap gap-1">
                 {document.tags.map((t) => (
                   <DocumentTagChip key={t.slug} tag={t} />
@@ -204,8 +204,8 @@ export function DocumentsPinboardReader({
               </Markdown>
             </div>
 
-            <div className="mt-7 flex flex-wrap items-center gap-2.5 border-t border-tertiary pt-4 text-[11.5px] text-tertiary">
-              <Clock className="h-3 w-3" />
+            <div className="border-tertiary text-tertiary mt-7 flex flex-wrap items-center gap-2.5 border-t pt-4 text-[11.5px]">
+              <Clock className="size-3" />
               <span>Created {formatFull(document.created_at)}</span>
               {document.updated_at && (
                 <>
@@ -219,10 +219,10 @@ export function DocumentsPinboardReader({
           <div className="sticky top-5 flex flex-col gap-4">
             {headings.length > 0 && (
               <div>
-                <div className="mb-2 text-overline uppercase text-tertiary">
+                <div className="text-overline text-tertiary mb-2 uppercase">
                   On this page
                 </div>
-                <div className="flex flex-col gap-0.5 border-l border-tertiary">
+                <div className="border-tertiary flex flex-col gap-0.5 border-l">
                   {headings.map((h, i) => {
                     const isActive = h.slug === activeSlug
                     return (
@@ -230,8 +230,8 @@ export function DocumentsPinboardReader({
                         className={cn(
                           '-ml-px border-l-2 text-[12.5px] no-underline transition-colors',
                           h.level === 3
-                            ? 'py-0.5 pl-5 pr-2'
-                            : 'py-0.5 pl-3 pr-2',
+                            ? 'py-0.5 pr-2 pl-5'
+                            : 'py-0.5 pr-2 pl-3',
                           isActive
                             ? 'border-action font-medium text-primary'
                             : cn(
@@ -254,21 +254,21 @@ export function DocumentsPinboardReader({
 
             {related.length > 0 && (
               <div>
-                <div className="mb-2 text-overline uppercase text-tertiary">
+                <div className="text-overline text-tertiary mb-2 uppercase">
                   Related documents
                 </div>
                 <div className="flex flex-col gap-2">
                   {related.map((r) => (
                     <button
-                      className="block cursor-pointer rounded-lg border border-tertiary bg-primary p-2 text-left hover:border-secondary"
+                      className="border-tertiary bg-primary hover:border-secondary block cursor-pointer rounded-lg border p-2 text-left"
                       key={r.id}
                       onClick={() => onOpen(r.id)}
                       type="button"
                     >
-                      <div className="line-clamp-2 text-[12.5px] font-medium leading-[1.35] text-primary">
+                      <div className="text-primary line-clamp-2 text-[12.5px] leading-[1.35] font-medium">
                         {documentTitle(r)}
                       </div>
-                      <div className="mt-1 flex items-center gap-1.5 text-[11px] text-tertiary">
+                      <div className="text-tertiary mt-1 flex items-center gap-1.5 text-[11px]">
                         <UserDisplay
                           displayNames={displayNames}
                           email={r.created_by}

@@ -153,20 +153,20 @@ export function ThirdPartyServiceManagement() {
       key: 'service',
       render: (svc) => (
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-purple-50 dark:bg-purple-900/30">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-purple-50 dark:bg-purple-900/30">
             {svc.icon ? (
               <EntityIcon
-                className="h-5 w-5 rounded object-cover"
+                className="size-5 rounded object-cover"
                 icon={svc.icon}
               />
             ) : (
-              <Cloud className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              <Cloud className="size-4 text-purple-600 dark:text-purple-400" />
             )}
           </div>
           <div>
             <div className="text-primary">{svc.name}</div>
             {svc.description && (
-              <div className="max-w-xs truncate text-sm text-tertiary">
+              <div className="text-tertiary max-w-xs truncate text-sm">
                 {svc.description}
               </div>
             )}
@@ -180,7 +180,7 @@ export function ThirdPartyServiceManagement() {
       headerAlign: 'left',
       key: 'vendor',
       render: (svc) => (
-        <span className="text-sm text-muted-foreground">{svc.vendor}</span>
+        <span className="text-muted-foreground text-sm">{svc.vendor}</span>
       ),
     },
     {
@@ -231,7 +231,7 @@ export function ThirdPartyServiceManagement() {
             <CardDescription className="text-secondary">
               Total Services
             </CardDescription>
-            <div className="mt-1 text-2xl text-primary">
+            <div className="text-primary mt-1 text-2xl">
               {filteredServices.length}
             </div>
           </CardContent>
@@ -239,7 +239,7 @@ export function ThirdPartyServiceManagement() {
         <Card>
           <CardContent className="p-4">
             <CardDescription className="text-secondary">Active</CardDescription>
-            <div className="mt-1 text-2xl text-success">
+            <div className="text-success mt-1 text-2xl">
               {statusCounts.active}
             </div>
           </CardContent>
@@ -249,7 +249,7 @@ export function ThirdPartyServiceManagement() {
             <CardDescription className="text-secondary">
               Evaluating
             </CardDescription>
-            <div className="mt-1 text-2xl text-info">
+            <div className="text-info mt-1 text-2xl">
               {statusCounts.evaluating}
             </div>
           </CardContent>
@@ -259,7 +259,7 @@ export function ThirdPartyServiceManagement() {
             <CardDescription className="text-secondary">
               Deprecated
             </CardDescription>
-            <div className="mt-1 text-2xl text-warning">
+            <div className="text-warning mt-1 text-2xl">
               {statusCounts.deprecated}
             </div>
           </CardContent>

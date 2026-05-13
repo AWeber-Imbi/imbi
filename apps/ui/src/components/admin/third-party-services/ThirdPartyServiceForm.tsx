@@ -181,14 +181,14 @@ export function ThirdPartyServiceForm({
 
       {/* API Error */}
       {error && (
-        <div className="rounded-lg border border-danger bg-danger p-4">
+        <div className="border-danger bg-danger rounded-lg border p-4">
           <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 flex-shrink-0 text-danger" />
+            <AlertCircle className="text-danger size-5 shrink-0" />
             <div>
-              <div className="font-medium text-danger">
+              <div className="text-danger font-medium">
                 Failed to save service
               </div>
-              <div className="mt-1 text-sm text-danger">
+              <div className="text-danger mt-1 text-sm">
                 {error?.response?.data?.detail ||
                   error?.message ||
                   'An error occurred'}
@@ -205,14 +205,14 @@ export function ThirdPartyServiceForm({
         onSubmit={handleSubmit}
       >
         {/* Basic Information */}
-        <div className="rounded-lg border border-border bg-card p-6">
-          <h3 className="mb-4 text-sm font-medium text-primary">
+        <div className="border-border bg-card rounded-lg border p-6">
+          <h3 className="text-primary mb-4 text-sm font-medium">
             Service Information
           </h3>
 
           <div className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Managing Team
               </label>
               <select
@@ -234,7 +234,7 @@ export function ThirdPartyServiceForm({
               className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
             >
               <div>
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Service Name <span className="text-danger">*</span>
                 </label>
                 <Input
@@ -247,10 +247,10 @@ export function ThirdPartyServiceForm({
                 {errors.name && (
                   <div
                     className={
-                      'mt-1 flex items-center gap-1 text-xs text-danger'
+                      'text-danger mt-1 flex items-center gap-1 text-xs'
                     }
                   >
-                    <AlertCircle className="h-3 w-3" />
+                    <AlertCircle className="size-3" />
                     {errors.name}
                   </div>
                 )}
@@ -258,7 +258,7 @@ export function ThirdPartyServiceForm({
 
               {!isEditing && (
                 <div>
-                  <label className="mb-1.5 block text-sm text-secondary">
+                  <label className="text-secondary mb-1.5 block text-sm">
                     Slug <span className="text-danger">*</span>
                   </label>
                   <Input
@@ -271,10 +271,10 @@ export function ThirdPartyServiceForm({
                   {errors.slug && (
                     <div
                       className={
-                        'mt-1 flex items-center gap-1 text-xs text-danger'
+                        'text-danger mt-1 flex items-center gap-1 text-xs'
                       }
                     >
-                      <AlertCircle className="h-3 w-3" />
+                      <AlertCircle className="size-3" />
                       {errors.slug}
                     </div>
                   )}
@@ -284,7 +284,7 @@ export function ThirdPartyServiceForm({
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Vendor <span className="text-danger">*</span>
                 </label>
                 <Input
@@ -297,17 +297,17 @@ export function ThirdPartyServiceForm({
                 {errors.vendor && (
                   <div
                     className={
-                      'mt-1 flex items-center gap-1 text-xs text-danger'
+                      'text-danger mt-1 flex items-center gap-1 text-xs'
                     }
                   >
-                    <AlertCircle className="h-3 w-3" />
+                    <AlertCircle className="size-3" />
                     {errors.vendor}
                   </div>
                 )}
               </div>
 
               <div>
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Category
                 </label>
                 <Input
@@ -322,7 +322,7 @@ export function ThirdPartyServiceForm({
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Service URL
                 </label>
                 <Input
@@ -335,17 +335,17 @@ export function ThirdPartyServiceForm({
                 {errors.service_url && (
                   <div
                     className={
-                      'mt-1 flex items-center gap-1 text-xs text-danger'
+                      'text-danger mt-1 flex items-center gap-1 text-xs'
                     }
                   >
-                    <AlertCircle className="h-3 w-3" />
+                    <AlertCircle className="size-3" />
                     {errors.service_url}
                   </div>
                 )}
               </div>
 
               <div>
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Status
                 </label>
                 <select
@@ -372,11 +372,11 @@ export function ThirdPartyServiceForm({
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Description
               </label>
               <textarea
-                className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground"
+                className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full resize-none rounded-lg border px-3 py-2"
                 disabled={isLoading}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Brief description of this service and how it is used"
@@ -386,12 +386,12 @@ export function ThirdPartyServiceForm({
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Icon
               </label>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <p className="mb-1.5 text-xs text-tertiary">Pick an icon</p>
+                  <p className="text-tertiary mb-1.5 text-xs">Pick an icon</p>
                   <IconPicker
                     onChange={handleIconChange}
                     value={
@@ -402,7 +402,7 @@ export function ThirdPartyServiceForm({
                   />
                 </div>
                 <div>
-                  <p className="mb-1.5 text-xs text-tertiary">
+                  <p className="text-tertiary mb-1.5 text-xs">
                     Or upload a custom image
                   </p>
                   <IconUpload
@@ -420,17 +420,17 @@ export function ThirdPartyServiceForm({
         </div>
 
         {/* OAuth 2.0 Configuration */}
-        <div className="rounded-lg border border-border bg-card p-6">
-          <h3 className="mb-4 text-sm font-medium text-primary">
+        <div className="border-border bg-card rounded-lg border p-6">
+          <h3 className="text-primary mb-4 text-sm font-medium">
             OAuth 2.0 Configuration
           </h3>
-          <p className="mb-4 text-sm text-secondary">
+          <p className="text-secondary mb-4 text-sm">
             Optional OAuth 2.0 endpoints and settings for this service.
           </p>
 
           <div className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 API Endpoint
               </label>
               <Input
@@ -441,8 +441,8 @@ export function ThirdPartyServiceForm({
                 value={apiEndpoint}
               />
               {errors.api_endpoint && (
-                <div className="mt-1 flex items-center gap-1 text-xs text-danger">
-                  <AlertCircle className="h-3 w-3" />
+                <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+                  <AlertCircle className="size-3" />
                   {errors.api_endpoint}
                 </div>
               )}
@@ -450,7 +450,7 @@ export function ThirdPartyServiceForm({
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Authorization Endpoint
                 </label>
                 <Input
@@ -463,15 +463,15 @@ export function ThirdPartyServiceForm({
                   value={authorizationEndpoint}
                 />
                 {errors.authorization_endpoint && (
-                  <div className="mt-1 flex items-center gap-1 text-xs text-danger">
-                    <AlertCircle className="h-3 w-3" />
+                  <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+                    <AlertCircle className="size-3" />
                     {errors.authorization_endpoint}
                   </div>
                 )}
               </div>
 
               <div>
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Token Endpoint
                 </label>
                 <Input
@@ -482,8 +482,8 @@ export function ThirdPartyServiceForm({
                   value={tokenEndpoint}
                 />
                 {errors.token_endpoint && (
-                  <div className="mt-1 flex items-center gap-1 text-xs text-danger">
-                    <AlertCircle className="h-3 w-3" />
+                  <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+                    <AlertCircle className="size-3" />
                     {errors.token_endpoint}
                   </div>
                 )}
@@ -492,7 +492,7 @@ export function ThirdPartyServiceForm({
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Revoke Endpoint
                 </label>
                 <Input
@@ -503,15 +503,15 @@ export function ThirdPartyServiceForm({
                   value={revokeEndpoint}
                 />
                 {errors.revoke_endpoint && (
-                  <div className="mt-1 flex items-center gap-1 text-xs text-danger">
-                    <AlertCircle className="h-3 w-3" />
+                  <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+                    <AlertCircle className="size-3" />
                     {errors.revoke_endpoint}
                   </div>
                 )}
               </div>
 
               <div className="flex flex-col justify-center">
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Use PKCE
                 </label>
                 <Select
@@ -536,9 +536,9 @@ export function ThirdPartyServiceForm({
         </div>
 
         {/* Links */}
-        <div className="rounded-lg border border-border bg-card p-6">
-          <h3 className="mb-4 text-sm font-medium text-primary">Links</h3>
-          <p className="mb-4 text-sm text-secondary">
+        <div className="border-border bg-card rounded-lg border p-6">
+          <h3 className="text-primary mb-4 text-sm font-medium">Links</h3>
+          <p className="text-secondary mb-4 text-sm">
             Named links to documentation, API references, status pages, etc.
           </p>
           <KeyValueEditor
@@ -551,9 +551,9 @@ export function ThirdPartyServiceForm({
         </div>
 
         {/* Identifiers */}
-        <div className="rounded-lg border border-border bg-card p-6">
-          <h3 className="mb-4 text-sm font-medium text-primary">Identifiers</h3>
-          <p className="mb-4 text-sm text-secondary">
+        <div className="border-border bg-card rounded-lg border p-6">
+          <h3 className="text-primary mb-4 text-sm font-medium">Identifiers</h3>
+          <p className="text-secondary mb-4 text-sm">
             External IDs such as account ID, org ID, or API key names.
           </p>
           <KeyValueEditor

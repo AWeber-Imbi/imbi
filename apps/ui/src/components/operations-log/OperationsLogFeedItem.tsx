@@ -28,18 +28,18 @@ export function OperationsLogFeedItem({
 }: Props) {
   if (vi.kind === 'header') {
     return (
-      <div className="flex items-center gap-2.5 border-b border-tertiary bg-secondary px-3 py-1.5">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-tertiary">
+      <div className="border-tertiary bg-secondary flex items-center gap-2.5 border-b px-3 py-1.5">
+        <span className="text-tertiary text-[11px] font-semibold tracking-[0.06em] uppercase">
           {vi.label}
         </span>
-        <span className="font-mono text-[11px] text-tertiary">
+        <span className="text-tertiary font-mono text-[11px]">
           {vi.date.toLocaleDateString(undefined, {
             day: 'numeric',
             month: 'short',
           })}
         </span>
         <span className="flex-1" />
-        <span className="font-mono text-[11px] text-tertiary">
+        <span className="text-tertiary font-mono text-[11px]">
           {vi.count.toLocaleString()} {vi.count === 1 ? 'event' : 'events'}
         </span>
       </div>

@@ -28,22 +28,22 @@ export function BlueprintUiMapEditor({
   return (
     <div key={mapType}>
       <div className="mb-1 flex items-center justify-between">
-        <label className="text-xs text-secondary">{mapLabel}</label>
+        <label className="text-secondary text-xs">{mapLabel}</label>
         <button
           className={
-            'hover:text-info/80 flex items-center gap-1 text-xs text-info'
+            'text-info hover:text-info/80 flex items-center gap-1 text-xs'
           }
           onClick={() => {
             setEntries([...entries, ['', defaultVal]])
           }}
           type="button"
         >
-          <Plus className="h-3 w-3" />
+          <Plus className="size-3" />
           Add entry
         </button>
       </div>
       {entries.length === 0 ? (
-        <p className="text-xs italic text-tertiary">
+        <p className="text-tertiary text-xs italic">
           No {mapLabel.toLowerCase()} entries
         </p>
       ) : (
@@ -64,7 +64,7 @@ export function BlueprintUiMapEditor({
               />
               {isColor ? (
                 <select
-                  className="rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground"
+                  className="border-input bg-background text-foreground rounded-md border px-2 py-1.5 text-xs"
                   onChange={(e) => {
                     const next = entries.map((row, i): [string, string] =>
                       i === idx ? [row[0], e.target.value] : row,
@@ -97,7 +97,7 @@ export function BlueprintUiMapEditor({
                 />
               )}
               <button
-                className={'flex-shrink-0 text-tertiary hover:text-danger'}
+                className={'text-tertiary hover:text-danger shrink-0'}
                 onClick={() => {
                   const next = entries.filter((_, i) => i !== idx)
                   setEntries(next)
@@ -105,7 +105,7 @@ export function BlueprintUiMapEditor({
                 }}
                 type="button"
               >
-                <X className="h-3.5 w-3.5" />
+                <X className="size-3.5" />
               </button>
             </div>
           ))}

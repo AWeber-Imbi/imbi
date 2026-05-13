@@ -71,9 +71,9 @@ export function LocalLoginForm({
       {displayError && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3">
           <div className="flex">
-            <div className="flex-shrink-0">
+            <div className="shrink-0">
               <svg
-                className="h-5 w-5 text-red-400"
+                className="size-5 text-red-400"
                 fill="currentColor"
                 viewBox="0 0 20 20"
               >
@@ -135,7 +135,7 @@ export function LocalLoginForm({
       </div>
 
       <Button
-        className="w-full bg-action text-action-foreground hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
+        className="bg-action text-action-foreground hover:bg-action-hover w-full disabled:cursor-not-allowed disabled:opacity-50"
         disabled={!canSubmit}
         type="submit"
       >

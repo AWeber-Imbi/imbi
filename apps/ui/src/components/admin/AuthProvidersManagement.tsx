@@ -214,11 +214,11 @@ export function AuthProvidersManagement() {
       {!canWrite && (
         <div
           className={
-            'flex items-start gap-3 rounded-lg border border-info bg-info p-4'
+            'border-info bg-info flex items-start gap-3 rounded-lg border p-4'
           }
         >
-          <Power className="mt-0.5 h-5 w-5 flex-shrink-0 text-info" />
-          <p className="text-sm text-info">
+          <Power className="text-info mt-0.5 size-5 shrink-0" />
+          <p className="text-info text-sm">
             You don't have permission to modify auth providers. Contact an
             administrator to add or change providers.
           </p>
@@ -233,24 +233,24 @@ export function AuthProvidersManagement() {
             }
           >
             <div className="flex items-center gap-2">
-              <Lock className="h-5 w-5 text-secondary" />
+              <Lock className="text-secondary size-5" />
               <CardTitle>Local Authentication</CardTitle>
             </div>
             {localAuthQuery.data?.enabled ? (
-              <CheckCircle className="h-5 w-5 flex-shrink-0 text-status-review-dot" />
+              <CheckCircle className="text-status-review-dot size-5 shrink-0" />
             ) : (
-              <AlertCircle className="h-5 w-5 flex-shrink-0 text-tertiary" />
+              <AlertCircle className="text-tertiary size-5 shrink-0" />
             )}
           </CardHeader>
           <CardContent className="flex flex-1 flex-col space-y-3">
-            <p className="text-xs text-tertiary">
+            <p className="text-tertiary text-xs">
               Allow users to sign in with an email address and password stored
               in Imbi.
             </p>
-            <div className="mt-auto flex items-center justify-between rounded-lg border border-input p-3">
+            <div className="border-input mt-auto flex items-center justify-between rounded-lg border p-3">
               <div>
-                <div className="text-sm text-primary">Enabled</div>
-                <div className="text-xs text-tertiary">
+                <div className="text-primary text-sm">Enabled</div>
+                <div className="text-tertiary text-xs">
                   When disabled, the email/password form is hidden on the login
                   page.
                 </div>
@@ -285,31 +285,31 @@ export function AuthProvidersManagement() {
                   <CardTitle>{provider.name}</CardTitle>
                 </div>
                 {isActive ? (
-                  <CheckCircle className="h-5 w-5 flex-shrink-0 text-status-review-dot" />
+                  <CheckCircle className="text-status-review-dot size-5 shrink-0" />
                 ) : (
-                  <AlertCircle className="h-5 w-5 flex-shrink-0 text-tertiary" />
+                  <AlertCircle className="text-tertiary size-5 shrink-0" />
                 )}
               </CardHeader>
               <CardContent className="space-y-3">
-                <p className="text-xs text-tertiary">{typeDesc}</p>
+                <p className="text-tertiary text-xs">{typeDesc}</p>
                 <div>
-                  <div className="mb-1 text-xs text-tertiary">
+                  <div className="text-tertiary mb-1 text-xs">
                     Authorized redirect URI
                   </div>
                   <div
                     className={
-                      'flex items-center gap-1 rounded-md border border-input bg-secondary px-2 py-1'
+                      'border-input bg-secondary flex items-center gap-1 rounded-md border px-2 py-1'
                     }
                   >
                     <code
-                      className="flex-1 truncate text-xs text-secondary"
+                      className="text-secondary flex-1 truncate text-xs"
                       title={provider.callback_url}
                     >
                       {provider.callback_url}
                     </code>
                     <Button
                       aria-label="Copy redirect URI"
-                      className="h-6 w-6 flex-shrink-0"
+                      className="size-6 shrink-0"
                       onClick={() =>
                         copyToClipboard(provider.callback_url, 'Redirect URI')
                       }
@@ -317,7 +317,7 @@ export function AuthProvidersManagement() {
                       type="button"
                       variant="ghost"
                     >
-                      <Copy className="h-3 w-3" />
+                      <Copy className="size-3" />
                     </Button>
                   </div>
                 </div>
@@ -328,7 +328,7 @@ export function AuthProvidersManagement() {
                       size="sm"
                       variant="outline"
                     >
-                      <Settings className="mr-1 h-4 w-4" />
+                      <Settings className="mr-1 size-4" />
                       Edit
                     </Button>
                     <Button
@@ -336,7 +336,7 @@ export function AuthProvidersManagement() {
                       size="sm"
                       variant="ghost"
                     >
-                      <Trash2 className="mr-1 h-4 w-4" />
+                      <Trash2 className="mr-1 size-4" />
                       Delete
                     </Button>
                   </div>
@@ -353,7 +353,7 @@ export function AuthProvidersManagement() {
             role="button"
             tabIndex={0}
           >
-            <CardContent className="flex h-full w-full items-center justify-center p-6">
+            <CardContent className="flex size-full items-center justify-center p-6">
               <Button
                 onClick={() => setCreating(true)}
                 type="button"
@@ -497,11 +497,11 @@ function AuthProviderCreateDialog({
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 p-6">
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 OAuth Type <span className="text-red-500">*</span>
               </label>
               <select
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
                 disabled={isSaving}
                 onChange={(e) => setAppType(e.target.value as OAuthAppType)}
                 value={appType}
@@ -513,7 +513,7 @@ function AuthProviderCreateDialog({
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Redirect URL
               </label>
               <div className="flex items-center gap-2">
@@ -529,16 +529,16 @@ function AuthProviderCreateDialog({
                   type="button"
                   variant="outline"
                 >
-                  <Copy className="h-4 w-4" />
+                  <Copy className="size-4" />
                 </Button>
               </div>
-              <p className="mt-1 text-xs text-tertiary">
+              <p className="text-tertiary mt-1 text-xs">
                 Configure this URL in the provider&apos;s OAuth app settings.
               </p>
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Client ID <span className="text-red-500">*</span>
               </label>
               <Input
@@ -547,14 +547,14 @@ function AuthProviderCreateDialog({
                 value={clientId}
               />
               {errors.client_id && (
-                <div className="mt-1 text-xs text-danger">
+                <div className="text-danger mt-1 text-xs">
                   {errors.client_id}
                 </div>
               )}
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Client Secret <span className="text-red-500">*</span>
               </label>
               <Input
@@ -565,7 +565,7 @@ function AuthProviderCreateDialog({
                 value={secret}
               />
               {errors.client_secret && (
-                <div className="mt-1 text-xs text-danger">
+                <div className="text-danger mt-1 text-xs">
                   {errors.client_secret}
                 </div>
               )}
@@ -573,7 +573,7 @@ function AuthProviderCreateDialog({
 
             {showIssuerUrl && (
               <div>
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Issuer URL <span className="text-red-500">*</span>
                 </label>
                 <Input
@@ -583,7 +583,7 @@ function AuthProviderCreateDialog({
                   value={issuerUrl}
                 />
                 {errors.issuer_url && (
-                  <div className="mt-1 text-xs text-danger">
+                  <div className="text-danger mt-1 text-xs">
                     {errors.issuer_url}
                   </div>
                 )}
@@ -591,7 +591,7 @@ function AuthProviderCreateDialog({
             )}
 
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Scopes
               </label>
               <Input
@@ -604,18 +604,18 @@ function AuthProviderCreateDialog({
 
             {showAllowedDomains && (
               <div>
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Allowed Email Domains
                 </label>
                 <div
                   className={
-                    'flex flex-wrap items-center gap-2 rounded-lg border border-input bg-background p-2'
+                    'border-input bg-background flex flex-wrap items-center gap-2 rounded-lg border p-2'
                   }
                 >
                   {allowedDomains.map((d) => (
                     <span
                       className={
-                        'inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-xs text-secondary'
+                        'bg-secondary text-secondary inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs'
                       }
                       key={d}
                     >
@@ -628,13 +628,13 @@ function AuthProviderCreateDialog({
                         onMouseDown={(e) => e.preventDefault()}
                         type="button"
                       >
-                        <X className="h-3 w-3" />
+                        <X className="size-3" />
                       </button>
                     </span>
                   ))}
                   <input
                     className={
-                      'min-w-[8rem] flex-1 bg-transparent px-1 py-0.5 text-sm outline-none placeholder:text-muted-foreground'
+                      'placeholder:text-muted-foreground min-w-32 flex-1 bg-transparent px-1 py-0.5 text-sm outline-none'
                     }
                     disabled={isSaving}
                     onBlur={addDomain}
@@ -662,10 +662,10 @@ function AuthProviderCreateDialog({
               </div>
             )}
 
-            <label className="flex w-full items-center gap-2 text-sm text-secondary">
+            <label className="text-secondary flex w-full items-center gap-2 text-sm">
               <input
                 checked={enableIntegration}
-                className="h-4 w-4 rounded border-input"
+                className="border-input size-4 rounded"
                 disabled={isSaving}
                 onChange={(e) => setEnableIntegration(e.target.checked)}
                 type="checkbox"
@@ -810,7 +810,7 @@ function AuthProviderEditDialog({
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 p-6">
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Display Name <span className="text-red-500">*</span>
               </label>
               <Input
@@ -819,16 +819,16 @@ function AuthProviderEditDialog({
                 value={name}
               />
               {errors.name && (
-                <div className="mt-1 text-xs text-danger">{errors.name}</div>
+                <div className="text-danger mt-1 text-xs">{errors.name}</div>
               )}
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 OAuth Type <span className="text-red-500">*</span>
               </label>
               <select
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
                 disabled={isSaving}
                 onChange={(e) => setAppType(e.target.value as OAuthAppType)}
                 value={appType}
@@ -840,7 +840,7 @@ function AuthProviderEditDialog({
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Client ID <span className="text-red-500">*</span>
               </label>
               <Input
@@ -849,23 +849,23 @@ function AuthProviderEditDialog({
                 value={clientId}
               />
               {errors.client_id && (
-                <div className="mt-1 text-xs text-danger">
+                <div className="text-danger mt-1 text-xs">
                   {errors.client_id}
                 </div>
               )}
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Client Secret
               </label>
               {provider.has_secret && !replaceSecret ? (
                 <div
                   className={
-                    'flex items-center justify-between rounded-lg border border-input bg-secondary px-3 py-2'
+                    'border-input bg-secondary flex items-center justify-between rounded-lg border px-3 py-2'
                   }
                 >
-                  <span className="text-sm text-secondary">
+                  <span className="text-secondary text-sm">
                     Secret is set (hidden).
                   </span>
                   <Button
@@ -907,7 +907,7 @@ function AuthProviderEditDialog({
                     </Button>
                   )}
                   {errors.client_secret && (
-                    <div className="text-xs text-danger">
+                    <div className="text-danger text-xs">
                       {errors.client_secret}
                     </div>
                   )}
@@ -917,7 +917,7 @@ function AuthProviderEditDialog({
 
             {showIssuerUrl && (
               <div>
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Issuer URL <span className="text-red-500">*</span>
                 </label>
                 <Input
@@ -927,7 +927,7 @@ function AuthProviderEditDialog({
                   value={issuerUrl}
                 />
                 {errors.issuer_url && (
-                  <div className="mt-1 text-xs text-danger">
+                  <div className="text-danger mt-1 text-xs">
                     {errors.issuer_url}
                   </div>
                 )}
@@ -935,7 +935,7 @@ function AuthProviderEditDialog({
             )}
 
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Scopes
               </label>
               <Input
@@ -948,18 +948,18 @@ function AuthProviderEditDialog({
 
             {showAllowedDomains && (
               <div>
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Allowed Email Domains
                 </label>
                 <div
                   className={
-                    'flex flex-wrap items-center gap-2 rounded-lg border border-input bg-background p-2'
+                    'border-input bg-background flex flex-wrap items-center gap-2 rounded-lg border p-2'
                   }
                 >
                   {allowedDomains.map((d) => (
                     <span
                       className={
-                        'inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-xs text-secondary'
+                        'bg-secondary text-secondary inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs'
                       }
                       key={d}
                     >
@@ -972,13 +972,13 @@ function AuthProviderEditDialog({
                         onMouseDown={(e) => e.preventDefault()}
                         type="button"
                       >
-                        <X className="h-3 w-3" />
+                        <X className="size-3" />
                       </button>
                     </span>
                   ))}
                   <input
                     className={
-                      'min-w-[8rem] flex-1 bg-transparent px-1 py-0.5 text-sm outline-none placeholder:text-muted-foreground'
+                      'placeholder:text-muted-foreground min-w-32 flex-1 bg-transparent px-1 py-0.5 text-sm outline-none'
                     }
                     disabled={isSaving}
                     onBlur={addDomain}
@@ -1006,10 +1006,10 @@ function AuthProviderEditDialog({
               </div>
             )}
 
-            <label className="flex w-full items-center gap-2 text-sm text-secondary">
+            <label className="text-secondary flex w-full items-center gap-2 text-sm">
               <input
                 checked={enableIntegration}
-                className="h-4 w-4 rounded border-input"
+                className="border-input size-4 rounded"
                 disabled={isSaving}
                 onChange={(e) => setEnableIntegration(e.target.checked)}
                 type="checkbox"

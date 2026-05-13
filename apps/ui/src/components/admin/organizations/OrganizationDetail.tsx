@@ -22,7 +22,7 @@ export function OrganizationDetail({
       {/* Back button */}
       <div>
         <Button onClick={onBack} variant="outline">
-          <ArrowLeft className="mr-2 h-4 w-4" />
+          <ArrowLeft className="mr-2 size-4" />
           Back
         </Button>
       </div>
@@ -33,15 +33,15 @@ export function OrganizationDetail({
           <div className="flex items-center gap-3">
             {organization.icon ? (
               <EntityIcon
-                className="h-8 w-8 rounded object-cover"
+                className="size-8 rounded object-cover"
                 icon={organization.icon}
               />
             ) : (
-              <Building2 className="h-6 w-6 text-secondary" />
+              <Building2 className="text-secondary size-6" />
             )}
             <div>
               <CardTitle>{organization.name}</CardTitle>
-              <p className="mt-1 text-sm text-secondary">
+              <p className="text-secondary mt-1 text-sm">
                 {organization.description || 'No description provided'}
               </p>
             </div>
@@ -50,7 +50,7 @@ export function OrganizationDetail({
             className="bg-action text-action-foreground hover:bg-action-hover"
             onClick={onEdit}
           >
-            <Edit2 className="mr-2 h-4 w-4" />
+            <Edit2 className="mr-2 size-4" />
             Edit Organization
           </Button>
         </CardHeader>
@@ -58,14 +58,14 @@ export function OrganizationDetail({
         <CardContent className="p-6">
           <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
             <div>
-              <div className="mb-1 text-sm text-secondary">Slug</div>
-              <code className="rounded bg-secondary px-2 py-1 text-sm text-primary">
+              <div className="text-secondary mb-1 text-sm">Slug</div>
+              <code className="bg-secondary text-primary rounded px-2 py-1 text-sm">
                 {organization.slug}
               </code>
             </div>
 
             <div>
-              <div className="mb-1 text-sm text-secondary">Created</div>
+              <div className="text-secondary mb-1 text-sm">Created</div>
               <div className="text-primary">
                 {formatDate(organization.created_at)}
               </div>
@@ -73,7 +73,7 @@ export function OrganizationDetail({
 
             {organization.updated_at && (
               <div>
-                <div className="mb-1 text-sm text-secondary">Last Modified</div>
+                <div className="text-secondary mb-1 text-sm">Last Modified</div>
                 <div className="text-primary">
                   {formatDate(organization.updated_at)}
                 </div>

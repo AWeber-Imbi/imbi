@@ -10,21 +10,21 @@ function details({ payload }: PluginOpsLogContext) {
     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
       {key && (
         <>
-          <dt className="text-overline uppercase text-tertiary">Key</dt>
-          <dd className="break-all font-mono text-xs text-primary">{key}</dd>
+          <dt className="text-overline text-tertiary uppercase">Key</dt>
+          <dd className="text-primary font-mono text-xs break-all">{key}</dd>
         </>
       )}
       {dataType && (
         <>
-          <dt className="text-overline uppercase text-tertiary">Data type</dt>
-          <dd className="font-mono text-xs text-primary">{dataType}</dd>
+          <dt className="text-overline text-tertiary uppercase">Data type</dt>
+          <dd className="text-primary font-mono text-xs">{dataType}</dd>
         </>
       )}
-      <dt className="text-overline uppercase text-tertiary">Secret</dt>
-      <dd className="flex items-center gap-1.5 text-xs text-primary">
+      <dt className="text-overline text-tertiary uppercase">Secret</dt>
+      <dd className="text-primary flex items-center gap-1.5 text-xs">
         {isSecret ? (
           <>
-            <ShieldCheck className="h-3.5 w-3.5 text-amber-text" />
+            <ShieldCheck className="text-amber-text size-3.5" />
             <span>Yes</span>
           </>
         ) : (

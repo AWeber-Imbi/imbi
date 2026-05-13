@@ -152,13 +152,13 @@ export function EnvironmentForm({
           <CardContent className="space-y-4 pt-6">
             <div>
               <label
-                className="mb-1.5 block text-sm text-secondary"
+                className="text-secondary mb-1.5 block text-sm"
                 htmlFor="environment-org"
               >
                 Organization <span className="text-red-500">*</span>
               </label>
               <select
-                className={`w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing || isLoading || organizations.length <= 1 ? 'cursor-not-allowed opacity-60' : ''} ${
+                className={`border-input bg-background text-foreground w-full rounded-lg border px-3 py-2 text-sm ${isEditing || isLoading || organizations.length <= 1 ? 'cursor-not-allowed opacity-60' : ''} ${
                   errors.organization ? 'border-red-500' : ''
                 }`}
                 disabled={isEditing || isLoading || organizations.length <= 1}
@@ -174,8 +174,8 @@ export function EnvironmentForm({
                 ))}
               </select>
               {errors.organization && (
-                <div className="mt-1 flex items-center gap-1 text-xs text-danger">
-                  <AlertCircle className="h-3 w-3" />
+                <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+                  <AlertCircle className="size-3" />
                   {errors.organization}
                 </div>
               )}
@@ -186,7 +186,7 @@ export function EnvironmentForm({
             >
               <div>
                 <label
-                  className="mb-1.5 block text-sm text-secondary"
+                  className="text-secondary mb-1.5 block text-sm"
                   htmlFor="environment-name"
                 >
                   Environment Name <span className="text-red-500">*</span>
@@ -200,8 +200,8 @@ export function EnvironmentForm({
                   value={name}
                 />
                 {errors.name && (
-                  <div className="mt-1 flex items-center gap-1 text-xs text-danger">
-                    <AlertCircle className="h-3 w-3" />
+                  <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+                    <AlertCircle className="size-3" />
                     {errors.name}
                   </div>
                 )}
@@ -210,7 +210,7 @@ export function EnvironmentForm({
               {!isEditing && (
                 <div>
                   <label
-                    className="mb-1.5 block text-sm text-secondary"
+                    className="text-secondary mb-1.5 block text-sm"
                     htmlFor="environment-slug"
                   >
                     Slug <span className="text-red-500">*</span>
@@ -224,8 +224,8 @@ export function EnvironmentForm({
                     value={slug}
                   />
                   {errors.slug && (
-                    <div className="mt-1 flex items-center gap-1 text-xs text-danger">
-                      <AlertCircle className="h-3 w-3" />
+                    <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+                      <AlertCircle className="size-3" />
                       {errors.slug}
                     </div>
                   )}
@@ -235,7 +235,7 @@ export function EnvironmentForm({
 
             <div>
               <label
-                className="mb-1.5 block text-sm text-secondary"
+                className="text-secondary mb-1.5 block text-sm"
                 htmlFor="environment-sort-order"
               >
                 Sort Order
@@ -249,20 +249,20 @@ export function EnvironmentForm({
                 type="number"
                 value={sortOrder}
               />
-              <p className="mt-1 text-xs text-tertiary">
+              <p className="text-tertiary mt-1 text-xs">
                 Controls display order (lower numbers appear first)
               </p>
             </div>
 
             <div>
               <label
-                className="mb-1.5 block text-sm text-secondary"
+                className="text-secondary mb-1.5 block text-sm"
                 htmlFor="environment-description"
               >
                 Description
               </label>
               <textarea
-                className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground"
+                className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full resize-none rounded-lg border px-3 py-2"
                 disabled={isLoading}
                 id="environment-description"
                 onChange={(e) => setDescription(e.target.value)}
@@ -273,12 +273,12 @@ export function EnvironmentForm({
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Icon
               </label>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <p className="mb-1.5 text-xs text-tertiary">Pick an icon</p>
+                  <p className="text-tertiary mb-1.5 text-xs">Pick an icon</p>
                   <IconPicker
                     onChange={handleIconChange}
                     value={
@@ -289,7 +289,7 @@ export function EnvironmentForm({
                   />
                 </div>
                 <div>
-                  <p className="mb-1.5 text-xs text-tertiary">
+                  <p className="text-tertiary mb-1.5 text-xs">
                     Or upload a custom image
                   </p>
                   <IconUpload

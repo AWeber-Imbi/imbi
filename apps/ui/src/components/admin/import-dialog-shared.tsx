@@ -26,7 +26,7 @@ export function ImportDialogFooter({
         disabled={isLoading || !hasInput}
         onClick={onImport}
       >
-        <Upload className="mr-2 h-4 w-4" />
+        <Upload className="mr-2 size-4" />
         {isLoading ? 'Importing...' : 'Import'}
       </Button>
     </DialogFooter>

@@ -37,7 +37,7 @@ export function AvatarUpload({
   }
 
   return (
-    <div className="relative flex-shrink-0">
+    <div className="relative shrink-0">
       {/* Hidden file input */}
       <input
         accept="image/*"
@@ -49,7 +49,7 @@ export function AvatarUpload({
 
       {/* Avatar circle */}
       <button
-        className="group relative h-14 w-14 overflow-hidden rounded-full border border-tertiary bg-secondary transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
+        className="group border-tertiary bg-secondary relative size-14 overflow-hidden rounded-full border transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
         disabled={isLoading}
         onClick={() => fileInputRef.current?.click()}
         title="Upload avatar"
@@ -58,11 +58,11 @@ export function AvatarUpload({
         {avatarUrl ? (
           <img
             alt={displayName}
-            className="h-full w-full object-cover"
+            className="size-full object-cover"
             src={avatarUrl}
           />
         ) : (
-          <span className="flex h-full w-full items-center justify-center font-mono text-sm font-medium text-secondary">
+          <span className="text-secondary flex size-full items-center justify-center font-mono text-sm font-medium">
             {initials || '?'}
           </span>
         )}
@@ -70,14 +70,14 @@ export function AvatarUpload({
         {/* Hover overlay */}
         {!isLoading && (
           <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-            <Camera className="h-5 w-5 text-white" />
+            <Camera className="size-5 text-white" />
           </span>
         )}
 
         {/* Loading spinner */}
         {isLoading && (
           <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40">
-            <Loader2 className="h-5 w-5 animate-spin text-white" />
+            <Loader2 className="size-5 animate-spin text-white" />
           </span>
         )}
       </button>
@@ -85,7 +85,7 @@ export function AvatarUpload({
       {/* Remove button — only shown when avatar is set and not loading */}
       {avatarUrl && !isLoading && (
         <button
-          className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border border-tertiary bg-primary text-tertiary transition-colors hover:bg-danger hover:text-danger"
+          className="border-tertiary bg-primary text-tertiary hover:bg-danger hover:text-danger absolute -top-1 -right-1 flex size-5 items-center justify-center rounded-full border transition-colors"
           onClick={(e) => {
             e.stopPropagation()
             onRemove()
@@ -93,7 +93,7 @@ export function AvatarUpload({
           title="Remove avatar"
           type="button"
         >
-          <X className="h-3 w-3" />
+          <X className="size-3" />
         </button>
       )}
     </div>

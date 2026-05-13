@@ -29,7 +29,7 @@ export function LabelChip({
   return (
     <span
       className={cn(
-        'inline-flex items-center whitespace-nowrap rounded-sm border px-2 py-0.5 text-xs font-medium',
+        'inline-flex items-center rounded-sm border px-2 py-0.5 text-xs font-medium whitespace-nowrap',
         className,
       )}
       style={

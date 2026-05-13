@@ -112,7 +112,7 @@ export function EditableKeyValueMap({
 
   return (
     <Card className="p-6">
-      <h3 className="mb-4 text-primary">{title}</h3>
+      <h3 className="text-primary mb-4">{title}</h3>
 
       <div className="space-y-3">
         {visibleKeys.map((key) => (
@@ -140,13 +140,13 @@ export function EditableKeyValueMap({
             </div>
             <Button
               aria-label={getRemoveAriaLabel(key)}
-              className="h-8 w-8 flex-shrink-0 text-secondary hover:text-danger"
+              className="text-secondary hover:text-danger size-8 shrink-0"
               onClick={() => requestDelete(key)}
               size="icon"
               type="button"
               variant="ghost"
             >
-              <Trash2 className="h-4 w-4" />
+              <Trash2 className="size-4" />
             </Button>
           </div>
         ))}
@@ -160,7 +160,7 @@ export function EditableKeyValueMap({
             >
               <SelectTrigger
                 aria-label={newKeySelectAriaLabel ?? newKeyPlaceholder}
-                className="w-[15%] flex-shrink-0 text-sm"
+                className="w-[15%] shrink-0 text-sm"
               >
                 {newKey ? (
                   renderSelectTrigger(newKey)
@@ -193,7 +193,7 @@ export function EditableKeyValueMap({
               type={valueInputType}
               value={newValue ?? ''}
             />
-            <div aria-hidden className="h-8 w-8 flex-shrink-0" />
+            <div aria-hidden className="size-8 shrink-0" />
           </div>
         )}
       </div>

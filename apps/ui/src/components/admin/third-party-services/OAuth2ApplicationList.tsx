@@ -193,15 +193,15 @@ export function OAuth2ApplicationList({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="text-sm text-secondary">Loading applications...</div>
+        <div className="text-secondary text-sm">Loading applications...</div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger">
-        <AlertCircle className="h-5 w-5 flex-shrink-0" />
+      <div className="border-danger bg-danger text-danger flex items-center gap-3 rounded-lg border p-4">
+        <AlertCircle className="size-5 shrink-0" />
         <div>
           <div className="font-medium">Failed to load applications</div>
           <div className="mt-1 text-sm">
@@ -216,7 +216,7 @@ export function OAuth2ApplicationList({
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="text-sm text-secondary">
+        <div className="text-secondary text-sm">
           {applications.length} application
           {applications.length !== 1 ? 's' : ''}
         </div>
@@ -228,43 +228,43 @@ export function OAuth2ApplicationList({
           }}
           size="sm"
         >
-          <Plus className="mr-2 h-4 w-4" />
+          <Plus className="mr-2 size-4" />
           Add Application
         </Button>
       </div>
 
       {/* Table */}
       {applications.length === 0 ? (
-        <div className="py-8 text-center text-tertiary">
-          <Key className="mx-auto mb-2 h-8 w-8 opacity-50" />
+        <div className="text-tertiary py-8 text-center">
+          <Key className="mx-auto mb-2 size-8 opacity-50" />
           <div>No applications registered</div>
           <div className="mt-1 text-sm">
             Add an OAuth2 application to get started
           </div>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border bg-card">
+        <div className="border-border bg-card overflow-hidden rounded-lg border">
           <Table>
-            <TableHeader className="border-b border-tertiary bg-secondary">
+            <TableHeader className="border-tertiary bg-secondary border-b">
               <TableRow>
-                <TableHead className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
+                <TableHead className="text-tertiary px-6 py-3 text-left text-xs tracking-wider uppercase">
                   Application
                 </TableHead>
-                <TableHead className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
+                <TableHead className="text-tertiary px-6 py-3 text-left text-xs tracking-wider uppercase">
                   Type
                 </TableHead>
-                <TableHead className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
+                <TableHead className="text-tertiary px-6 py-3 text-left text-xs tracking-wider uppercase">
                   Client ID
                 </TableHead>
-                <TableHead className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
+                <TableHead className="text-tertiary px-6 py-3 text-left text-xs tracking-wider uppercase">
                   Status
                 </TableHead>
-                <TableHead className="px-6 py-3 text-right text-xs uppercase tracking-wider text-tertiary">
+                <TableHead className="text-tertiary px-6 py-3 text-right text-xs tracking-wider uppercase">
                   Actions
                 </TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody className="divide-y divide-tertiary">
+            <TableBody className="divide-tertiary divide-y">
               {applications.map((app) => {
                 const statusVariant = statusBadgeVariant(app.status)
                 const isGlobal = app.is_global === true
@@ -279,7 +279,7 @@ export function OAuth2ApplicationList({
                     }}
                   >
                     <TableCell className="px-6 py-4">
-                      <div className="flex items-center gap-2 font-medium text-primary">
+                      <div className="text-primary flex items-center gap-2 font-medium">
                         {app.name}
                         {isGlobal && (
                           <TooltipProvider delayDuration={200}>
@@ -289,7 +289,7 @@ export function OAuth2ApplicationList({
                                   className="inline-flex items-center gap-1"
                                   variant="info"
                                 >
-                                  <Globe className="h-3 w-3" />
+                                  <Globe className="size-3" />
                                   global
                                 </Badge>
                               </TooltipTrigger>
@@ -300,14 +300,14 @@ export function OAuth2ApplicationList({
                           </TooltipProvider>
                         )}
                       </div>
-                      <div className="text-sm text-tertiary">{app.slug}</div>
+                      <div className="text-tertiary text-sm">{app.slug}</div>
                     </TableCell>
                     <TableCell className="px-6 py-4">
-                      <code className="rounded bg-secondary px-2 py-1 text-xs text-primary">
+                      <code className="bg-secondary text-primary rounded px-2 py-1 text-xs">
                         {app.app_type}
                       </code>
                     </TableCell>
-                    <TableCell className="px-6 py-4 font-mono text-sm text-secondary">
+                    <TableCell className="text-secondary px-6 py-4 font-mono text-sm">
                       {app.client_id}
                     </TableCell>
                     <TableCell className="px-6 py-4">
@@ -325,12 +325,12 @@ export function OAuth2ApplicationList({
                               <TooltipTrigger asChild>
                                 <a
                                   aria-label={`Open ${app.name} application`}
-                                  className="inline-flex items-center rounded p-1.5 text-info hover:bg-info"
+                                  className="text-info hover:bg-info inline-flex items-center rounded p-1.5"
                                   href={app.application_url}
                                   rel="noopener noreferrer"
                                   target="_blank"
                                 >
-                                  <ExternalLink className="h-4 w-4" />
+                                  <ExternalLink className="size-4" />
                                 </a>
                               </TooltipTrigger>
                               <TooltipContent>
@@ -351,7 +351,7 @@ export function OAuth2ApplicationList({
                                     size="sm"
                                     variant="ghost"
                                   >
-                                    <Trash2 className="h-4 w-4" />
+                                    <Trash2 className="size-4" />
                                   </Button>
                                 </span>
                               </TooltipTrigger>
@@ -369,7 +369,7 @@ export function OAuth2ApplicationList({
                             size="sm"
                             variant="ghost"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="size-4" />
                           </Button>
                         )}
                       </div>

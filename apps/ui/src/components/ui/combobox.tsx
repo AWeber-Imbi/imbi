@@ -47,7 +47,7 @@ export function Combobox({
         <button
           aria-expanded={open}
           className={cn(
-            'flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+            'flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-none',
             !selectedLabel && 'text-muted-foreground',
             disabled && 'cursor-not-allowed opacity-50',
           )}
@@ -56,7 +56,7 @@ export function Combobox({
           type="button"
         >
           <span className="truncate">{selectedLabel ?? placeholder}</span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -79,7 +79,7 @@ export function Combobox({
                 >
                   <Check
                     className={cn(
-                      'h-4 w-4',
+                      'size-4',
                       value === option.value ? 'opacity-100' : 'opacity-0',
                     )}
                   />

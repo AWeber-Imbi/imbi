@@ -16,11 +16,11 @@ export function ErrorBanner({ error, message, title }: ErrorBannerProps) {
       aria-atomic="true"
       aria-live="assertive"
       className={
-        'flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger'
+        'border-danger bg-danger text-danger flex items-center gap-3 rounded-lg border p-4'
       }
       role="alert"
     >
-      <AlertCircle className="h-5 w-5 flex-shrink-0" />
+      <AlertCircle className="size-5 shrink-0" />
       <div>
         <div className="font-medium">{title}</div>
         <div className="mt-1 text-sm">{resolvedMessage}</div>

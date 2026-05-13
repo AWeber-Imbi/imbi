@@ -24,13 +24,13 @@ export function FormField({
 }: FormFieldProps) {
   return (
     <div>
-      <label className="mb-1.5 block text-sm text-secondary" htmlFor={htmlFor}>
+      <label className="text-secondary mb-1.5 block text-sm" htmlFor={htmlFor}>
         {label}
         {required && <span className="text-red-500"> *</span>}
       </label>
       {children}
       {description && (
-        <p className="mt-1 text-sm text-secondary">{description}</p>
+        <p className="text-secondary mt-1 text-sm">{description}</p>
       )}
       {touched && error && <p className="mt-1 text-sm text-red-600">{error}</p>}
     </div>

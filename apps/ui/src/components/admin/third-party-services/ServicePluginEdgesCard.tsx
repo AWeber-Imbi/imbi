@@ -184,10 +184,10 @@ function EnvironmentEdgeTable({
   return (
     <div className="space-y-2">
       <div className="flex items-baseline gap-3">
-        <h3 className="text-sm font-medium text-primary">
+        <h3 className="text-primary text-sm font-medium">
           Environment → {targetDisplay}
         </h3>
-        <code className="text-xs text-tertiary">{edge.name}</code>
+        <code className="text-tertiary text-xs">{edge.name}</code>
       </div>
       <div className="rounded-md border">
         <Table>
@@ -202,7 +202,7 @@ function EnvironmentEdgeTable({
             {environments.length === 0 ? (
               <TableRow>
                 <TableCell
-                  className="py-6 text-center text-sm text-secondary"
+                  className="text-secondary py-6 text-center text-sm"
                   colSpan={3}
                 >
                   No environments in this organization yet.
@@ -223,8 +223,8 @@ function EnvironmentEdgeTable({
                 return (
                   <TableRow key={env.slug}>
                     <TableCell>
-                      <div className="font-medium text-primary">{env.name}</div>
-                      <code className="text-xs text-tertiary">{env.slug}</code>
+                      <div className="text-primary font-medium">{env.name}</div>
+                      <code className="text-tertiary text-xs">{env.slug}</code>
                     </TableCell>
                     <TableCell>
                       <Input

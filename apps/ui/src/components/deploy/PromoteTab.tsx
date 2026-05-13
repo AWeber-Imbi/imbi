@@ -180,7 +180,7 @@ export function PromoteTab({
             description: data.run.status
               ? `status: ${data.run.status}`
               : undefined,
-            icon: <Loader2 className="h-4 w-4 animate-spin" />,
+            icon: <Loader2 className="size-4 animate-spin" />,
           },
         )
         onRunStarted({
@@ -228,7 +228,7 @@ export function PromoteTab({
 
   return (
     <div className="flex flex-col gap-4">
-      <header className="bg-tertiary/20 rounded-md border border-secondary px-3 py-2 text-xs">
+      <header className="border-secondary bg-tertiary/20 rounded-md border px-3 py-2 text-xs">
         <span className="text-tertiary">Promoting </span>
         <span className="font-medium">{fromEnvironment}</span>
         <span className="text-tertiary"> → </span>
@@ -245,24 +245,24 @@ export function PromoteTab({
 
       {/* Step 1 — pick the build */}
       <section>
-        <p className="mb-2 text-xs uppercase tracking-wider text-tertiary">
+        <p className="text-tertiary mb-2 text-xs tracking-wider uppercase">
           Step 1 — Build to promote
         </p>
         {compareEnabled && compareLoading ? (
           <LoadingState label="Loading commits…" />
         ) : !compareEnabled ? (
-          <p className="rounded-md border border-secondary p-3 text-sm text-tertiary">
+          <p className="border-secondary text-tertiary rounded-md border p-3 text-sm">
             {!lastTag
               ? 'No prior release to compare against.'
               : 'No commit delta to compare for this selection.'}
           </p>
         ) : commits.length === 0 ? (
-          <p className="rounded-md border border-secondary p-3 text-sm text-tertiary">
+          <p className="border-secondary text-tertiary rounded-md border p-3 text-sm">
             No new commits between <span className="font-mono">{lastTag}</span>{' '}
             and <span className="font-mono">{fromEnvironment}</span>.
           </p>
         ) : (
-          <ul className="max-h-[200px] overflow-y-auto rounded-md border border-secondary">
+          <ul className="border-secondary max-h-50 overflow-y-auto rounded-md border">
             {[...commits].reverse().map((c, idx) => {
               const tipIndex = idx === 0 ? 'tip' : `−${idx}`
               const active = c.sha === selectedSha
@@ -296,15 +296,15 @@ export function PromoteTab({
 
       {/* Step 2 — version + notes */}
       <section>
-        <p className="mb-2 text-xs uppercase tracking-wider text-tertiary">
+        <p className="text-tertiary mb-2 text-xs tracking-wider uppercase">
           Step 2 — Tag & release notes
         </p>
         <div className="grid grid-cols-[160px_160px_1fr] gap-3">
-          <label className="flex flex-col gap-1 text-xs text-tertiary">
+          <label className="text-tertiary flex flex-col gap-1 text-xs">
             Current
             <Input className="font-mono" disabled value={lastTag ?? ''} />
           </label>
-          <label className="flex flex-col gap-1 text-xs text-tertiary">
+          <label className="text-tertiary flex flex-col gap-1 text-xs">
             New tag
             <Input
               aria-invalid={!tagValid && tag.length > 0}
@@ -319,8 +319,8 @@ export function PromoteTab({
           </label>
           <div className="flex flex-col gap-1 text-xs">
             <span className="text-tertiary">AI suggestion</span>
-            <div className="bg-accent/10 flex min-h-[40px] items-start gap-2 rounded-md border border-accent p-2 text-accent">
-              <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <div className="border-accent bg-accent/10 text-accent flex min-h-10 items-start gap-2 rounded-md border p-2">
+              <Sparkles className="mt-0.5 size-3.5 shrink-0" />
               {draftMutation.isPending && !draft ? (
                 <span className="text-tertiary">drafting…</span>
               ) : draft ? (
@@ -342,7 +342,7 @@ export function PromoteTab({
         </div>
 
         <div className="mt-3 flex items-center justify-between">
-          <span className="text-xs text-tertiary">
+          <span className="text-tertiary text-xs">
             {compare?.commits?.length ?? 0} commits considered
           </span>
           <Button
@@ -366,7 +366,7 @@ export function PromoteTab({
           >
             <RefreshCw
               className={cn(
-                'mr-1 h-3.5 w-3.5',
+                'mr-1 size-3.5',
                 draftMutation.isPending && 'animate-spin',
               )}
             />
@@ -375,7 +375,7 @@ export function PromoteTab({
         </div>
 
         <Textarea
-          className="mt-2 min-h-[160px] font-mono text-xs"
+          className="mt-2 min-h-40 font-mono text-xs"
           onChange={(e) => {
             setNotes(e.target.value)
             setNotesDirty(true)
@@ -386,13 +386,13 @@ export function PromoteTab({
       </section>
 
       {/* Footer */}
-      <p className="text-xs text-tertiary">
+      <p className="text-tertiary text-xs">
         On promote, a release{' '}
         <span className="font-mono">{tag || 'vX.Y.Z'}</span> will be created at{' '}
         <span className="font-mono">{selectedSha?.slice(0, 7) ?? '—'}</span> and
         rolled out to {toEnvironment}.
       </p>
-      <div className="bg-secondary/30 -mx-6 -mb-4 mt-2 flex items-center justify-end gap-2 border-t border-tertiary px-6 py-4">
+      <div className="border-tertiary bg-secondary/30 -mx-6 mt-2 -mb-4 flex items-center justify-end gap-2 border-t px-6 py-4">
         <Button onClick={onClose} type="button" variant="ghost">
           Cancel
         </Button>
@@ -402,9 +402,9 @@ export function PromoteTab({
           type="button"
         >
           {promoteMutation.isPending ? (
-            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+            <Loader2 className="mr-1 size-4 animate-spin" />
           ) : (
-            <Rocket className="mr-1 h-4 w-4" />
+            <Rocket className="mr-1 size-4" />
           )}
           {`Tag ${tag || 'vX.Y.Z'} & deploy to ${toEnvironment}`}
         </Button>

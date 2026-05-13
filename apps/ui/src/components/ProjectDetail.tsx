@@ -597,12 +597,12 @@ export function ProjectDetail({
   ]
 
   return (
-    <div className="mx-auto max-w-[1600px] px-6 py-8">
+    <div className="max-w-project-detail mx-auto px-6 py-8">
       {/* Project Header */}
       <div className="mb-6">
         <div className="flex items-start justify-between">
           <div className="min-w-0 flex-1">
-            <div className="-ml-[18px] mb-1 flex items-center gap-3">
+            <div className="mb-1 ml-[-18px] flex items-center gap-3">
               <InlineText
                 className="text-[1.75rem]"
                 onCommit={handleCommitName}
@@ -611,7 +611,7 @@ export function ProjectDetail({
                 value={project.name}
               />
               {project.archived && (
-                <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium tracking-wide text-amber-800 uppercase dark:bg-amber-950 dark:text-amber-200">
                   Archived
                 </span>
               )}
@@ -669,7 +669,7 @@ export function ProjectDetail({
                   return (
                     <span className="contents" key={env.slug}>
                       {idx > 0 && (
-                        <ArrowRight className="h-4 w-4 text-tertiary" />
+                        <ArrowRight className="text-tertiary size-4" />
                       )}
                       {canTriggerDeployments ? (
                         <TooltipProvider delayDuration={200}>
@@ -681,7 +681,7 @@ export function ProjectDetail({
                                     ? `Promote ${previousSlug} to ${env.name}`
                                     : `Deploy to ${env.name}`
                                 }
-                                className="cursor-pointer rounded-md transition hover:shadow-md hover:ring-1 hover:ring-ring hover:ring-offset-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                className="hover:ring-ring focus-visible:ring-ring cursor-pointer rounded-md transition hover:shadow-md hover:ring-1 hover:ring-offset-1 focus:outline-none focus-visible:ring-2"
                                 onClick={handleClick}
                                 type="button"
                               >
@@ -701,8 +701,8 @@ export function ProjectDetail({
                 })}
             </div>
             {deploymentPlugin && (
-              <div className="flex items-center gap-1.5 text-xs italic text-tertiary">
-                <Info className="h-3.5 w-3.5" />
+              <div className="text-tertiary flex items-center gap-1.5 text-xs italic">
+                <Info className="size-3.5" />
                 <span>
                   {deploymentReadiness === 'connected'
                     ? 'Click on an environment to deploy to it'
@@ -717,7 +717,7 @@ export function ProjectDetail({
           </div>
         </div>
 
-        <div className="-ml-[18px] mt-3 text-secondary">
+        <div className="text-secondary mt-3 ml-[-18px]">
           <InlineTextarea
             onCommit={handleCommitDescription}
             pending={pendingPath === '/description'}
@@ -733,16 +733,16 @@ export function ProjectDetail({
             {externalLinks.map(
               ({ Icon, key, label: linkLabel, url }, index) => (
                 <span className="flex items-center gap-1.5" key={key}>
-                  {index > 0 && <span className="mr-1.5 text-tertiary">|</span>}
+                  {index > 0 && <span className="text-tertiary mr-1.5">|</span>}
                   <a
                     className={
-                      'flex items-center gap-1.5 text-sm text-warning hover:underline'
+                      'text-warning flex items-center gap-1.5 text-sm hover:underline'
                     }
                     href={url}
                     rel="noopener noreferrer"
                     target="_blank"
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="size-4" />
                     <span>{linkLabel}</span>
                   </a>
                 </span>
@@ -765,7 +765,7 @@ export function ProjectDetail({
                       className="ml-auto"
                       value={tab.id}
                     >
-                      <SettingsIcon className="h-4 w-4" />
+                      <SettingsIcon className="size-4" />
                     </TabsTrigger>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -900,15 +900,15 @@ export function ProjectDetail({
                 </CardContent>
                 {scoreBreakdown &&
                   scoreBreakdown.attribute_contributions.length > 0 && (
-                    <CardFooter className="flex-col items-start gap-0 border-t border-tertiary p-0">
+                    <CardFooter className="border-tertiary flex-col items-start gap-0 border-t p-0">
                       <button
-                        className="flex w-full items-center justify-between px-6 py-3 text-xs font-medium text-tertiary hover:text-primary"
+                        className="text-tertiary hover:text-primary flex w-full items-center justify-between px-6 py-3 text-xs font-medium"
                         onClick={() => setBreakdownOpen((o) => !o)}
                         type="button"
                       >
                         Score breakdown
                         <ChevronDown
-                          className={`h-3.5 w-3.5 transition-transform ${breakdownOpen ? 'rotate-180' : ''}`}
+                          className={`size-3.5 transition-transform ${breakdownOpen ? 'rotate-180' : ''}`}
                         />
                       </button>
                       {breakdownOpen && (
@@ -924,8 +924,8 @@ export function ProjectDetail({
               <Card className="flex flex-col" style={{ maxHeight: '600px' }}>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>Recent activity</CardTitle>
-                  <button className="inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs text-secondary transition-colors hover:bg-secondary hover:text-primary">
-                    <Filter className="h-3 w-3" />
+                  <button className="text-secondary hover:bg-secondary hover:text-primary inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors">
+                    <Filter className="size-3" />
                     Filter
                   </button>
                 </CardHeader>
@@ -1131,11 +1131,11 @@ function PlaceholderTab({ name }: { name: string }) {
 
 function renderCiDot(status: 'fail' | 'pass' | 'warn' | null): React.ReactNode {
   if (status === 'pass')
-    return <CheckCircle2 aria-label="CI passing" className="h-3.5 w-3.5" />
+    return <CheckCircle2 aria-label="CI passing" className="size-3.5" />
   if (status === 'fail')
-    return <XCircle aria-label="CI failing" className="h-3.5 w-3.5" />
+    return <XCircle aria-label="CI failing" className="size-3.5" />
   if (status === 'warn')
-    return <AlertCircle aria-label="CI warning" className="h-3.5 w-3.5" />
+    return <AlertCircle aria-label="CI warning" className="size-3.5" />
   return null
 }
 
@@ -1176,12 +1176,12 @@ function ScoreBreakdownDetail({
 
   return (
     <div className="flex w-full flex-col gap-5 px-6 pb-4">
-      <p className="text-[11px] text-tertiary">
+      <p className="text-tertiary text-[11px]">
         {contributions.length} policies
       </p>
       {improve.length > 0 && (
         <section>
-          <div className="mb-2.5 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-tertiary">
+          <div className="text-tertiary mb-2.5 flex items-center justify-between text-[11px] font-semibold tracking-wider uppercase">
             <span>To improve</span>
             <span className="font-mono">{improve.length}</span>
           </div>
@@ -1196,20 +1196,20 @@ function ScoreBreakdownDetail({
                 : null
               return (
                 <div
-                  className="rounded-md border border-tertiary bg-primary p-3.5"
+                  className="border-tertiary bg-primary rounded-md border p-3.5"
                   key={c.policy_slug}
                 >
                   <div className="flex items-baseline justify-between gap-2">
                     <div className="flex min-w-0 items-baseline gap-1.5">
-                      <span className="text-[14px] font-semibold text-primary">
+                      <span className="text-primary text-[14px] font-semibold">
                         {policyName}
                       </span>
-                      <span className="font-mono text-[11px] text-tertiary">
+                      <span className="text-tertiary font-mono text-[11px]">
                         w{c.weight}
                       </span>
                     </div>
                     <div className="shrink-0 font-mono text-[13px] tabular-nums">
-                      <span className="font-semibold text-primary">
+                      <span className="text-primary font-semibold">
                         {Math.round(c.weighted_contribution)}
                       </span>
                       <span className="text-tertiary">
@@ -1218,25 +1218,25 @@ function ScoreBreakdownDetail({
                       </span>
                     </div>
                   </div>
-                  <p className="mb-2.5 mt-1 text-[13px] text-secondary">
+                  <p className="text-secondary mt-1 mb-2.5 text-[13px]">
                     Currently{' '}
-                    <span className="font-medium text-amber-text">
+                    <span className="text-amber-text font-medium">
                       {c.value != null ? fmtAttributeValue(c.value) : 'Not set'}
                     </span>
                   </p>
-                  <div className="relative h-1.5 rounded-full bg-secondary">
+                  <div className="bg-secondary relative h-1.5 rounded-full">
                     {fillPct > 0 && (
                       <div
-                        className="absolute inset-y-0 left-0 rounded-full bg-action"
+                        className="bg-action absolute inset-y-0 left-0 rounded-full"
                         style={{ width: `${fillPct}%` }}
                       />
                     )}
                   </div>
-                  <div className="mt-2 flex items-center gap-1.5 text-[12.5px] text-secondary">
-                    <TrendingDown className="h-3 w-3 shrink-0 text-tertiary" />
+                  <div className="text-secondary mt-2 flex items-center gap-1.5 text-[12.5px]">
+                    <TrendingDown className="text-tertiary size-3 shrink-0" />
                     <span>
                       Losing{' '}
-                      <span className="font-mono font-medium text-danger">
+                      <span className="text-danger font-mono font-medium">
                         {lost} pts
                       </span>
                       {recommendation ? ` · ${recommendation}` : ''}
@@ -1250,30 +1250,30 @@ function ScoreBreakdownDetail({
       )}
       {perfect.length > 0 && (
         <section>
-          <div className="mb-2.5 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-tertiary">
+          <div className="text-tertiary mb-2.5 flex items-center justify-between text-[11px] font-semibold tracking-wider uppercase">
             <span>At maximum</span>
             <span className="font-mono">{perfect.length}</span>
           </div>
-          <div className="overflow-hidden rounded-md border border-tertiary">
+          <div className="border-tertiary overflow-hidden rounded-md border">
             {perfect.map(({ contribution: c, maxPts }, idx) => {
               const policyName = formatFieldKey(c.attribute_name)
               return (
                 <div
-                  className={`grid grid-cols-[auto_1fr_auto] items-center gap-2.5 bg-primary px-3 py-2.5 ${
-                    idx > 0 ? 'border-t border-tertiary' : ''
+                  className={`bg-primary grid grid-cols-[auto_1fr_auto] items-center gap-2.5 px-3 py-2.5 ${
+                    idx > 0 ? 'border-tertiary border-t' : ''
                   }`}
                   key={c.policy_slug}
                 >
-                  <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-success text-success">
-                    <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                  <span className="bg-success text-success inline-flex size-4 items-center justify-center rounded-full">
+                    <Check className="size-2.5" strokeWidth={3} />
                   </span>
-                  <span className="text-[13.5px] font-medium text-primary">
+                  <span className="text-primary text-[13.5px] font-medium">
                     {policyName}
-                    <span className="ml-1.5 font-normal text-tertiary">
+                    <span className="text-tertiary ml-1.5 font-normal">
                       {c.value != null ? fmtAttributeValue(c.value) : 'Not set'}
                     </span>
                   </span>
-                  <span className="font-mono text-[12px] tabular-nums text-tertiary">
+                  <span className="text-tertiary font-mono text-[12px] tabular-nums">
                     {Math.round(c.weighted_contribution)}/{Math.round(maxPts)}
                   </span>
                 </div>
@@ -1316,7 +1316,7 @@ function ScoreTrendPill({
   }
 
   return (
-    <p className="font-mono text-xs text-tertiary">
+    <p className="text-tertiary font-mono text-xs">
       {delta > 0 ? '+' : ''}
       {Math.round(delta)} pts / {trendLabel}
     </p>

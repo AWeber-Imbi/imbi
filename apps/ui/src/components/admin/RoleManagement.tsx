@@ -198,8 +198,8 @@ export function RoleManagement() {
             key: 'name',
             render: (role) => (
               <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4 flex-shrink-0 text-info" />
-                <span className="text-sm font-medium text-primary">
+                <Shield className="text-info size-4 shrink-0" />
+                <span className="text-primary text-sm font-medium">
                   {role.name}
                 </span>
               </div>
@@ -211,7 +211,7 @@ export function RoleManagement() {
             headerAlign: 'center',
             key: 'slug',
             render: (role) => (
-              <span className="font-mono text-sm text-secondary">
+              <span className="text-secondary font-mono text-sm">
                 {role.slug}
               </span>
             ),
@@ -222,7 +222,7 @@ export function RoleManagement() {
             headerAlign: 'left',
             key: 'description',
             render: (role) => (
-              <span className="text-sm text-secondary">
+              <span className="text-secondary text-sm">
                 {role.description || '-'}
               </span>
             ),
@@ -235,7 +235,7 @@ export function RoleManagement() {
             render: (role) =>
               isSystemRole(role) ? (
                 <Badge className="gap-1" variant="warning">
-                  <Lock className="h-3 w-3" />
+                  <Lock className="size-3" />
                   System
                 </Badge>
               ) : (

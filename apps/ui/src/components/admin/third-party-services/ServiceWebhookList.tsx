@@ -207,15 +207,15 @@ export function ServiceWebhookList({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="text-sm text-secondary">Loading webhooks...</div>
+        <div className="text-secondary text-sm">Loading webhooks...</div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger">
-        <AlertCircle className="h-5 w-5 flex-shrink-0" />
+      <div className="border-danger bg-danger text-danger flex items-center gap-3 rounded-lg border p-4">
+        <AlertCircle className="size-5 shrink-0" />
         <div>
           <div className="font-medium">Failed to load webhooks</div>
           <div className="mt-1 text-sm">
@@ -231,13 +231,13 @@ export function ServiceWebhookList({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className="text-sm text-secondary">
+          <div className="text-secondary text-sm">
             {filteredWebhooks.length} webhook
             {filteredWebhooks.length !== 1 ? 's' : ''}
           </div>
           {webhooks.length > 0 && (
             <div className="relative max-w-xs">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary" />
+              <Search className="text-tertiary absolute top-1/2 left-3 size-4 -translate-y-1/2" />
               <Input
                 className="pl-10"
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -255,15 +255,15 @@ export function ServiceWebhookList({
           }}
           size="sm"
         >
-          <Plus className="mr-2 h-4 w-4" />
+          <Plus className="mr-2 size-4" />
           New Webhook
         </Button>
       </div>
 
       {/* Table */}
       {filteredWebhooks.length === 0 ? (
-        <div className="py-8 text-center text-tertiary">
-          <Webhook className="mx-auto mb-2 h-8 w-8 opacity-50" />
+        <div className="text-tertiary py-8 text-center">
+          <Webhook className="mx-auto mb-2 size-8 opacity-50" />
           <div>
             {searchQuery
               ? 'No webhooks found matching your search.'
@@ -276,25 +276,25 @@ export function ServiceWebhookList({
           </div>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border bg-card">
+        <div className="border-border bg-card overflow-hidden rounded-lg border">
           <Table>
-            <TableHeader className="border-b border-tertiary">
+            <TableHeader className="border-tertiary border-b">
               <TableRow>
-                <TableHead className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
+                <TableHead className="text-tertiary px-6 py-3 text-left text-xs tracking-wider uppercase">
                   Webhook
                 </TableHead>
-                <TableHead className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
+                <TableHead className="text-tertiary px-6 py-3 text-left text-xs tracking-wider uppercase">
                   Path
                 </TableHead>
-                <TableHead className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
+                <TableHead className="text-tertiary px-6 py-3 text-left text-xs tracking-wider uppercase">
                   Rules
                 </TableHead>
-                <TableHead className="px-6 py-3 text-right text-xs uppercase tracking-wider text-tertiary">
+                <TableHead className="text-tertiary px-6 py-3 text-right text-xs tracking-wider uppercase">
                   Actions
                 </TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody className="divide-y divide-tertiary">
+            <TableBody className="divide-tertiary divide-y">
               {filteredWebhooks.map((wh) => (
                 <TableRow
                   aria-label={`View webhook ${wh.name}`}
@@ -316,10 +316,10 @@ export function ServiceWebhookList({
                 >
                   <TableCell className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-900/30">
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-900/30">
                         <Webhook
                           className={
-                            'h-4 w-4 text-indigo-600 dark:text-indigo-400'
+                            'size-4 text-indigo-600 dark:text-indigo-400'
                           }
                         />
                       </div>
@@ -328,7 +328,7 @@ export function ServiceWebhookList({
                         {wh.description && (
                           <div
                             className={
-                              'max-w-xs truncate text-sm text-tertiary'
+                              'text-tertiary max-w-xs truncate text-sm'
                             }
                           >
                             {wh.description}
@@ -338,11 +338,11 @@ export function ServiceWebhookList({
                     </div>
                   </TableCell>
                   <TableCell className="px-6 py-4">
-                    <code className="rounded bg-secondary px-2 py-1 text-xs text-primary">
+                    <code className="bg-secondary text-primary rounded px-2 py-1 text-xs">
                       {wh.notification_path}
                     </code>
                   </TableCell>
-                  <TableCell className="px-6 py-4 text-sm text-secondary">
+                  <TableCell className="text-secondary px-6 py-4 text-sm">
                     {wh.rules.length}
                   </TableCell>
                   <TableCell
@@ -359,7 +359,7 @@ export function ServiceWebhookList({
                         size="sm"
                         variant="ghost"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="size-4" />
                       </Button>
                     </div>
                   </TableCell>

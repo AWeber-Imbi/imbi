@@ -118,7 +118,7 @@ export function OrganizationManagement() {
     !selectedOrg
   ) {
     return (
-      <div className="rounded-lg border border-tertiary p-4 text-secondary">
+      <div className="border-tertiary text-secondary rounded-lg border p-4">
         Organization not found. It may have been deleted.
       </div>
     )
@@ -170,7 +170,7 @@ export function OrganizationManagement() {
               <div className="flex items-center gap-3">
                 <div
                   className={
-                    'flex size-8 flex-shrink-0 items-center justify-center rounded-lg bg-info'
+                    'bg-info flex size-8 shrink-0 items-center justify-center rounded-lg'
                   }
                 >
                   {org.icon ? (
@@ -179,13 +179,13 @@ export function OrganizationManagement() {
                       icon={org.icon}
                     />
                   ) : (
-                    <Building2 className="h-4 w-4 text-info" />
+                    <Building2 className="text-info size-4" />
                   )}
                 </div>
                 <div>
                   <div className="text-primary">{org.name}</div>
                   {org.description && (
-                    <div className="text-sm text-tertiary">
+                    <div className="text-tertiary text-sm">
                       {org.description}
                     </div>
                   )}
@@ -199,7 +199,7 @@ export function OrganizationManagement() {
             headerAlign: 'center',
             key: 'slug',
             render: (org) => (
-              <code className="rounded bg-secondary px-2 py-1 text-primary">
+              <code className="bg-secondary text-primary rounded px-2 py-1">
                 {org.slug}
               </code>
             ),

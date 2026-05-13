@@ -34,17 +34,17 @@ export class ErrorBoundary extends Component<
         return this.props.fallback(error, this.reset)
       }
       return (
-        <div className="flex min-h-screen items-center justify-center bg-secondary p-4">
+        <div className="bg-secondary flex min-h-screen items-center justify-center p-4">
           <div
             aria-live="assertive"
-            className="w-full max-w-md rounded-lg border bg-primary p-6 text-primary shadow-sm"
+            className="bg-primary text-primary w-full max-w-md rounded-lg border p-6 shadow-sm"
             role="alert"
           >
             <div className="flex items-center gap-3">
-              <AlertCircle className="h-6 w-6 flex-shrink-0 text-danger" />
+              <AlertCircle className="text-danger size-6 shrink-0" />
               <h1 className="text-lg font-semibold">Something went wrong</h1>
             </div>
-            <p className="mt-3 text-sm text-secondary">
+            <p className="text-secondary mt-3 text-sm">
               An unexpected error occurred. Please try again.
             </p>
             <div className="mt-6 flex flex-wrap gap-2">

@@ -128,24 +128,24 @@ export function OperationsLogSummary({
     : stats.terminalDeploys
 
   return (
-    <div className="mb-4 grid grid-cols-2 overflow-hidden rounded-md border border-tertiary bg-primary md:grid-cols-4">
-      <div className="flex flex-col gap-1 border-b border-r border-tertiary p-3 md:border-b-0">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-tertiary">
+    <div className="border-tertiary bg-primary mb-4 grid grid-cols-2 overflow-hidden rounded-md border md:grid-cols-4">
+      <div className="border-tertiary flex flex-col gap-1 border-r border-b p-3 md:border-b-0">
+        <span className="text-tertiary text-[11px] font-semibold tracking-[0.04em] uppercase">
           Events
         </span>
         {loading ? (
           <SkeletonBlock className="mt-0.5 h-5 w-16" />
         ) : (
-          <span className="flex items-baseline gap-1.5 font-medium tabular-nums text-primary">
+          <span className="text-primary flex items-baseline gap-1.5 font-medium tabular-nums">
             <span className="text-xl leading-none">
               {events.toLocaleString()}
             </span>
-            <span className="text-[11px] uppercase tracking-wide text-tertiary">
+            <span className="text-tertiary text-[11px] tracking-wide uppercase">
               in {rangeLabel}
             </span>
           </span>
         )}
-        <div aria-hidden="true" className="mt-1 flex h-4 items-end gap-[2px]">
+        <div aria-hidden="true" className="mt-1 flex h-4 items-end gap-0.5">
           {loading
             ? Array.from({ length: BARS }).map((_, i) => (
                 <span
@@ -155,7 +155,7 @@ export function OperationsLogSummary({
               ))
             : buckets.map((v, i) => (
                 <span
-                  className="flex-1 rounded-[1px] bg-amber-bg"
+                  className="bg-amber-bg flex-1 rounded-[1px]"
                   key={i}
                   style={{
                     height: v === 0 ? '0%' : `${Math.max(8, (v / max) * 100)}%`,
@@ -164,8 +164,8 @@ export function OperationsLogSummary({
               ))}
         </div>
       </div>
-      <div className="flex flex-col gap-1 border-b border-tertiary p-3 md:border-b-0 md:border-r">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-tertiary">
+      <div className="border-tertiary flex flex-col gap-1 border-b p-3 md:border-r md:border-b-0">
+        <span className="text-tertiary text-[11px] font-semibold tracking-[0.04em] uppercase">
           Deploys
         </span>
         {loading ? (
@@ -175,10 +175,10 @@ export function OperationsLogSummary({
           </>
         ) : (
           <>
-            <span className="text-xl font-medium tabular-nums leading-none text-primary">
+            <span className="text-primary text-xl leading-none font-medium tabular-nums">
               {deploys.toLocaleString()}
             </span>
-            <span className="text-[11.5px] text-secondary">
+            <span className="text-secondary text-[11.5px]">
               {terminalEnv
                 ? `${terminalDeploys.toLocaleString()} to ${terminalEnv.name}`
                 : `${deploys.toLocaleString()} total`}
@@ -186,8 +186,8 @@ export function OperationsLogSummary({
           </>
         )}
       </div>
-      <div className="flex flex-col gap-1 border-r border-tertiary p-3">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-tertiary">
+      <div className="border-tertiary flex flex-col gap-1 border-r p-3">
+        <span className="text-tertiary text-[11px] font-semibold tracking-[0.04em] uppercase">
           Projects touched
         </span>
         {loading ? (
@@ -197,10 +197,10 @@ export function OperationsLogSummary({
           </>
         ) : (
           <>
-            <span className="text-xl font-medium tabular-nums leading-none text-primary">
+            <span className="text-primary text-xl leading-none font-medium tabular-nums">
               {projects.toLocaleString()}
             </span>
-            <span className="text-[11.5px] text-secondary">
+            <span className="text-secondary text-[11.5px]">
               across {envCount.toLocaleString()}{' '}
               {envCount === 1 ? 'environment' : 'environments'}
             </span>
@@ -208,7 +208,7 @@ export function OperationsLogSummary({
         )}
       </div>
       <div className="flex flex-col gap-1 p-3">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-tertiary">
+        <span className="text-tertiary text-[11px] font-semibold tracking-[0.04em] uppercase">
           Team members
         </span>
         {loading ? (
@@ -218,10 +218,10 @@ export function OperationsLogSummary({
           </>
         ) : (
           <>
-            <span className="text-xl font-medium tabular-nums leading-none text-primary">
+            <span className="text-primary text-xl leading-none font-medium tabular-nums">
               {people.toLocaleString()}
             </span>
-            <span className="text-[11.5px] text-secondary">
+            <span className="text-secondary text-[11.5px]">
               active in {rangeLabel}
             </span>
           </>

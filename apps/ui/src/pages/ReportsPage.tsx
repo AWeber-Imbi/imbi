@@ -54,7 +54,7 @@ export function ReportsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-tertiary text-primary">
+    <div className="bg-tertiary text-primary min-h-screen">
       <Navigation />
       <main
         className="pt-16"
@@ -62,10 +62,10 @@ export function ReportsPage() {
       >
         <div className="mx-auto flex max-w-[1400px] gap-6 px-6 py-7">
           {/* Left sidebar — report list */}
-          <aside className="w-56 flex-shrink-0">
-            <div className="rounded-lg border border-tertiary bg-primary">
-              <div className="border-b border-tertiary px-4 py-3">
-                <div className="text-overline uppercase tracking-wide text-tertiary">
+          <aside className="w-56 shrink-0">
+            <div className="border-tertiary bg-primary rounded-lg border">
+              <div className="border-tertiary border-b px-4 py-3">
+                <div className="text-overline text-tertiary tracking-wide uppercase">
                   Reports
                 </div>
               </div>
@@ -83,11 +83,11 @@ export function ReportsPage() {
                       onClick={() => selectReport(r.id)}
                     >
                       {r.id === 'team-kpi' ? (
-                        <BarChart3 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                        <BarChart3 className="mt-0.5 size-3.5 shrink-0" />
                       ) : r.id === 'score-history' ? (
-                        <GitCommitHorizontal className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                        <GitCommitHorizontal className="mt-0.5 size-3.5 shrink-0" />
                       ) : (
-                        <TrendingUp className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                        <TrendingUp className="mt-0.5 size-3.5 shrink-0" />
                       )}
                       <div>
                         <div className="text-[13px] font-medium">{r.label}</div>
@@ -105,10 +105,10 @@ export function ReportsPage() {
           {/* Main content */}
           <div className="min-w-0 flex-1">
             <div className="mb-5 flex items-baseline gap-3">
-              <h1 className="text-[18px] font-medium text-primary">
+              <h1 className="text-primary text-[18px] font-medium">
                 {active.label}
               </h1>
-              <span className="text-sm text-tertiary">{active.subtitle}</span>
+              <span className="text-tertiary text-sm">{active.subtitle}</span>
             </div>
             {activeId === 'team-kpi' && <TeamKPIReport />}
             {activeId === 'monthly-improvement' && <MonthlyImprovementReport />}

@@ -94,18 +94,18 @@ export function Navigation({ currentView }: NavigationProps) {
 
   return (
     <>
-      <nav className="fixed left-0 right-0 top-0 z-50 border-b border-tertiary bg-primary transition-colors">
+      <nav className="border-tertiary bg-primary fixed top-0 right-0 left-0 z-50 border-b transition-colors">
         <div className="flex h-16 items-center justify-between px-6">
           {/* Logo and Brand */}
           <div className="flex items-center gap-8">
             <Button
-              className="h-auto rounded-lg px-2 py-1.5 transition-all hover:bg-secondary"
+              className="hover:bg-secondary h-auto rounded-lg px-2 py-1.5 transition-all"
               onClick={() => navigate('/dashboard')}
               variant="ghost"
             >
               <img
                 alt="Imbi"
-                className="h-8 w-8"
+                className="size-8"
                 src={isDarkMode ? logoDark : logoLight}
               />
               <span className="text-primary" style={{ fontWeight: 800 }}>
@@ -129,7 +129,7 @@ export function Navigation({ currentView }: NavigationProps) {
                     onClick={() => navigate(item.path)}
                     variant="ghost"
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="size-4" />
                     <span>{item.label}</span>
                   </Button>
                 )
@@ -144,12 +144,12 @@ export function Navigation({ currentView }: NavigationProps) {
               selectedOrganization &&
               (organizations.length === 1 ? (
                 <Button
-                  className="pointer-events-none max-w-[200px] cursor-default gap-2 border-tertiary bg-primary text-primary"
+                  className="border-tertiary bg-primary text-primary pointer-events-none max-w-50 cursor-default gap-2"
                   size="sm"
                   variant="outline"
                 >
                   <OrgIcon
-                    className="h-4 w-4 flex-shrink-0 rounded object-cover"
+                    className="size-4 shrink-0 rounded object-cover"
                     org={selectedOrganization}
                   />
                   <span className="truncate">{selectedOrganization.name}</span>
@@ -158,18 +158,18 @@ export function Navigation({ currentView }: NavigationProps) {
                 <DropdownMenu modal={false}>
                   <DropdownMenuTrigger asChild>
                     <Button
-                      className="max-w-[200px] gap-2 border-tertiary bg-primary text-primary hover:bg-secondary"
+                      className="border-tertiary bg-primary text-primary hover:bg-secondary max-w-50 gap-2"
                       size="sm"
                       variant="outline"
                     >
                       <OrgIcon
-                        className="h-4 w-4 flex-shrink-0 rounded object-cover"
+                        className="size-4 shrink-0 rounded object-cover"
                         org={selectedOrganization}
                       />
                       <span className="truncate">
                         {selectedOrganization.name}
                       </span>
-                      <ChevronDown className="h-3 w-3 flex-shrink-0" />
+                      <ChevronDown className="size-3 shrink-0" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">
@@ -185,12 +185,12 @@ export function Navigation({ currentView }: NavigationProps) {
                       >
                         <div className="flex items-center gap-2">
                           <OrgIcon
-                            className="h-4 w-4 flex-shrink-0 rounded object-cover"
+                            className="size-4 shrink-0 rounded object-cover"
                             org={org}
                           />
                           <div className="flex flex-col">
                             <span>{org.name}</span>
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-muted-foreground text-xs">
                               {org.slug}
                             </span>
                           </div>
@@ -205,21 +205,21 @@ export function Navigation({ currentView }: NavigationProps) {
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <Button
-                  className="gap-2 border-tertiary bg-primary text-primary hover:bg-secondary"
+                  className="border-tertiary bg-primary text-primary hover:bg-secondary gap-2"
                   size="sm"
                   variant="outline"
                 >
-                  <Plus className="h-4 w-4" />
-                  <ChevronDown className="h-3 w-3" />
+                  <Plus className="size-4" />
+                  <ChevronDown className="size-3" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuItem onClick={() => setNewOpsEntryOpen(true)}>
-                  <Activity className="mr-2 h-4 w-4" />
+                  <Activity className="mr-2 size-4" />
                   <span>New Ops Log Entry</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setNewProjectOpen(true)}>
-                  <FolderKanban className="mr-2 h-4 w-4" />
+                  <FolderKanban className="mr-2 size-4" />
                   <span>New Project</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -229,19 +229,19 @@ export function Navigation({ currentView }: NavigationProps) {
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <Button
-                  className="rounded-full p-0 hover:bg-secondary"
+                  className="hover:bg-secondary rounded-full p-0"
                   size="icon"
                   variant="ghost"
                 >
                   {user?.email ? (
                     <Gravatar
                       alt={user?.display_name || user?.username || 'User'}
-                      className="h-8 w-8 rounded-full"
+                      className="size-8 rounded-full"
                       email={user.email}
                       size={32}
                     />
                   ) : (
-                    <User className="h-4 w-4" />
+                    <User className="size-4" />
                   )}
                 </Button>
               </DropdownMenuTrigger>
@@ -259,16 +259,16 @@ export function Navigation({ currentView }: NavigationProps) {
                     navigate(`/users/${encodeURIComponent(user.email)}`)
                   }
                 >
-                  <UserCircle className="mr-2 h-4 w-4" />
+                  <UserCircle className="mr-2 size-4" />
                   <span>Profile</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/settings')}>
-                  <Settings className="mr-2 h-4 w-4" />
+                  <Settings className="mr-2 size-4" />
                   <span>Settings</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={logout}>
-                  <LogOut className="mr-2 h-4 w-4" />
+                  <LogOut className="mr-2 size-4" />
                   <span>Sign Out</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -276,15 +276,15 @@ export function Navigation({ currentView }: NavigationProps) {
 
             {/* Theme Toggle */}
             <Button
-              className="rounded-full text-secondary hover:bg-secondary"
+              className="text-secondary hover:bg-secondary rounded-full"
               onClick={toggleTheme}
               size="icon"
               variant="ghost"
             >
               {isDarkMode ? (
-                <Sun className="h-4 w-4" />
+                <Sun className="size-4" />
               ) : (
-                <Moon className="h-4 w-4" />
+                <Moon className="size-4" />
               )}
             </Button>
           </div>

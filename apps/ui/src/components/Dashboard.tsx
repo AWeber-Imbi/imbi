@@ -321,8 +321,8 @@ export function Dashboard({
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-semibold text-primary">Dashboard</h1>
-          <p className="mt-1 text-secondary">
+          <h1 className="text-primary text-3xl font-semibold">Dashboard</h1>
+          <p className="text-secondary mt-1">
             Welcome back! Here's what's happening across your projects.
           </p>
         </div>
@@ -331,7 +331,7 @@ export function Dashboard({
           onClick={() => setShowWidgetSelector(true)}
           variant="outline"
         >
-          <Settings className="h-4 w-4" />
+          <Settings className="size-4" />
           Customize
         </Button>
       </div>
@@ -358,12 +358,12 @@ export function Dashboard({
 
       {/* Widgets */}
       {selectedWidgets.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card p-12 text-center">
-          <div className="mb-4 text-6xl text-secondary">📊</div>
-          <h3 className="mb-2 text-xl font-medium text-primary">
+        <div className="border-border bg-card rounded-lg border p-12 text-center">
+          <div className="text-secondary mb-4 text-6xl">📊</div>
+          <h3 className="text-primary mb-2 text-xl font-medium">
             No Widgets Selected
           </h3>
-          <p className="mx-auto mb-4 max-w-md text-secondary">
+          <p className="text-secondary mx-auto mb-4 max-w-md">
             Customize your dashboard by selecting widgets to display
           </p>
           <Button
@@ -456,9 +456,9 @@ function SortableWidget({ children, id }: SortableWidgetProps) {
       <div
         {...attributes}
         {...listeners}
-        className="bg-secondary/80 absolute left-2 top-2 z-20 cursor-grab rounded p-1 text-tertiary opacity-0 transition-opacity hover:text-primary active:cursor-grabbing group-hover:opacity-100"
+        className="bg-secondary/80 text-tertiary hover:text-primary absolute top-2 left-2 z-20 cursor-grab rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
       >
-        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+        <svg className="size-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
         </svg>
       </div>

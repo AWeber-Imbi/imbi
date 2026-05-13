@@ -182,7 +182,7 @@ export function ScoringPolicyManagement() {
         headerActions={
           <>
             <Button onClick={handleOpenImport} variant="outline">
-              <Upload className="mr-2 h-4 w-4" />
+              <Upload className="mr-2 size-4" />
               Import
             </Button>
             <Button
@@ -191,7 +191,7 @@ export function ScoringPolicyManagement() {
               variant="outline"
             >
               <RefreshCw
-                className={`mr-2 h-4 w-4 ${rescoreMutation.isPending ? 'animate-spin' : ''}`}
+                className={`mr-2 size-4 ${rescoreMutation.isPending ? 'animate-spin' : ''}`}
               />
               {rescoreResult !== null
                 ? `Enqueued ${rescoreResult}`
@@ -201,7 +201,7 @@ export function ScoringPolicyManagement() {
         }
         headerExtras={
           <select
-            className="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+            className="border-input bg-background text-foreground rounded-lg border px-3 py-2 text-sm"
             onChange={(e) => setEnabledFilter(e.target.value)}
             value={enabledFilter}
           >
@@ -232,9 +232,9 @@ export function ScoringPolicyManagement() {
                     variant="ghost"
                   >
                     {copiedSlug === p.slug ? (
-                      <Check className="h-4 w-4 text-green-500" />
+                      <Check className="size-4 text-green-500" />
                     ) : (
-                      <Copy className="h-4 w-4 text-secondary" />
+                      <Copy className="text-secondary size-4" />
                     )}
                   </Button>
                 </TooltipTrigger>
@@ -252,9 +252,9 @@ export function ScoringPolicyManagement() {
               key: 'name',
               render: (p) => (
                 <div>
-                  <div className="font-medium text-primary">{p.name}</div>
+                  <div className="text-primary font-medium">{p.name}</div>
                   {p.description && (
-                    <div className="mt-0.5 text-xs text-tertiary">
+                    <div className="text-tertiary mt-0.5 text-xs">
                       {p.description}
                     </div>
                   )}
@@ -267,7 +267,7 @@ export function ScoringPolicyManagement() {
               headerAlign: 'left',
               key: 'category',
               render: (p) => (
-                <span className="rounded bg-secondary px-1.5 py-0.5 text-xs text-secondary">
+                <span className="bg-secondary text-secondary rounded px-1.5 py-0.5 text-xs">
                   {CATEGORY_LABELS[p.category]}
                 </span>
               ),
@@ -278,7 +278,7 @@ export function ScoringPolicyManagement() {
               headerAlign: 'left',
               key: 'subject',
               render: (p) => (
-                <code className="rounded bg-secondary px-1.5 py-0.5 text-xs text-primary">
+                <code className="bg-secondary text-primary rounded px-1.5 py-0.5 text-xs">
                   {policySubjectKey(p)}
                 </code>
               ),
@@ -305,7 +305,7 @@ export function ScoringPolicyManagement() {
               headerAlign: 'left',
               key: 'targets',
               render: (p) => (
-                <span className="text-xs text-tertiary">
+                <span className="text-tertiary text-xs">
                   {(p.targets ?? []).length === 0
                     ? 'All types'
                     : (p.targets ?? []).join(', ')}
@@ -319,9 +319,9 @@ export function ScoringPolicyManagement() {
               key: 'enabled',
               render: (p) =>
                 p.enabled ? (
-                  <CheckCircle className="mx-auto h-4 w-4 text-success" />
+                  <CheckCircle className="text-success mx-auto size-4" />
                 ) : (
-                  <XCircle className="mx-auto h-4 w-4 text-tertiary" />
+                  <XCircle className="text-tertiary mx-auto size-4" />
                 ),
             },
           ]}

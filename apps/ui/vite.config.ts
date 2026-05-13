@@ -1,3 +1,4 @@
+import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { defineConfig, type Plugin, type ViteDevServer } from 'vite'
@@ -37,7 +38,7 @@ export default defineConfig({
   esbuild: {
     drop: ['console'],
   },
-  plugins: [react(), requestLogger()],
+  plugins: [tailwindcss(), react(), requestLogger()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

@@ -164,9 +164,9 @@ export function ImportBlueprintDialog({
 
   const formatIcon =
     detectedFormat === 'json' ? (
-      <FileJson className="h-3.5 w-3.5" />
+      <FileJson className="size-3.5" />
     ) : detectedFormat === 'yaml' ? (
-      <FileText className="h-3.5 w-3.5" />
+      <FileText className="size-3.5" />
     ) : null
 
   return (
@@ -176,27 +176,27 @@ export function ImportBlueprintDialog({
           <DialogTitle>Import Blueprint</DialogTitle>
           <DialogDescription>
             Paste a JSON or YAML blueprint definition below. Required fields:{' '}
-            <code className="rounded bg-secondary px-1 py-0.5 text-xs">
+            <code className="bg-secondary rounded px-1 py-0.5 text-xs">
               name
             </code>
             ,{' '}
-            <code className="rounded bg-secondary px-1 py-0.5 text-xs">
+            <code className="bg-secondary rounded px-1 py-0.5 text-xs">
               json_schema
             </code>
             , and either{' '}
-            <code className="rounded bg-secondary px-1 py-0.5 text-xs">
+            <code className="bg-secondary rounded px-1 py-0.5 text-xs">
               type
             </code>{' '}
             (node) or{' '}
-            <code className="rounded bg-secondary px-1 py-0.5 text-xs">
+            <code className="bg-secondary rounded px-1 py-0.5 text-xs">
               source
             </code>
             /
-            <code className="rounded bg-secondary px-1 py-0.5 text-xs">
+            <code className="bg-secondary rounded px-1 py-0.5 text-xs">
               target
             </code>
             /
-            <code className="rounded bg-secondary px-1 py-0.5 text-xs">
+            <code className="bg-secondary rounded px-1 py-0.5 text-xs">
               edge
             </code>{' '}
             (relationship)
@@ -208,12 +208,12 @@ export function ImportBlueprintDialog({
           {detectedFormat !== 'unknown' && rawInput.trim() && (
             <div className="flex items-center gap-1.5">
               {formatIcon}
-              <span className="text-xs text-tertiary">
+              <span className="text-tertiary text-xs">
                 Detected format: {detectedFormat.toUpperCase()}
               </span>
               {parsedPreview && (
                 <span className="ml-2 inline-flex items-center gap-1 text-xs text-green-600">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-500" />
+                  <span className="inline-block size-1.5 rounded-full bg-green-500" />
                   Valid
                 </span>
               )}
@@ -222,7 +222,7 @@ export function ImportBlueprintDialog({
 
           {/* Input area */}
           <textarea
-            className={`w-full resize-y rounded-md border border-input bg-secondary px-4 py-3 font-mono text-sm leading-relaxed text-primary placeholder:text-muted-foreground ${error ? 'border-danger' : ''}`}
+            className={`border-input bg-secondary text-primary placeholder:text-muted-foreground w-full resize-y rounded-md border px-4 py-3 font-mono text-sm leading-relaxed ${error ? 'border-danger' : ''}`}
             onChange={(e) => handleInputChange(e.target.value)}
             placeholder={`{
   "name": "AWS Metadata",
@@ -246,16 +246,16 @@ export function ImportBlueprintDialog({
 
           {/* Validation error display */}
           {error && (
-            <div className="flex items-start gap-2.5 rounded-lg border border-danger bg-danger px-3 py-2.5 text-danger">
-              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <div className="border-danger bg-danger text-danger flex items-start gap-2.5 rounded-lg border px-3 py-2.5">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" />
               <span className="text-sm">{error}</span>
             </div>
           )}
 
           {/* API error display */}
           {apiError && !error && (
-            <div className="flex items-start gap-2.5 rounded-lg border border-danger bg-danger px-3 py-2.5 text-danger">
-              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <div className="border-danger bg-danger text-danger flex items-start gap-2.5 rounded-lg border px-3 py-2.5">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" />
               <div className="text-sm">
                 <div className="font-medium">Failed to import blueprint</div>
                 <div className="mt-1">
@@ -270,8 +270,8 @@ export function ImportBlueprintDialog({
 
           {/* Preview */}
           {parsedPreview && (
-            <div className="rounded-lg border border-input bg-secondary px-3 py-2.5">
-              <div className="mb-1.5 text-xs font-medium text-tertiary">
+            <div className="border-input bg-secondary rounded-lg border px-3 py-2.5">
+              <div className="text-tertiary mb-1.5 text-xs font-medium">
                 Preview
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
@@ -294,7 +294,7 @@ export function ImportBlueprintDialog({
                 {parsedPreview.slug && (
                   <div>
                     <span className="text-tertiary">Slug: </span>
-                    <span className="font-mono text-primary">
+                    <span className="text-primary font-mono">
                       {parsedPreview.slug}
                     </span>
                   </div>

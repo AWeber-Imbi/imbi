@@ -248,13 +248,13 @@ export function PluginEntityManagement({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-medium text-primary">{displayName}</h2>
+          <h2 className="text-primary text-base font-medium">{displayName}</h2>
           {headerSubtitle && (
-            <p className="mt-1 text-sm text-secondary">{headerSubtitle}</p>
+            <p className="text-secondary mt-1 text-sm">{headerSubtitle}</p>
           )}
         </div>
         <Button onClick={() => setCreating(true)}>
-          <Plus className="mr-2 h-4 w-4" />
+          <Plus className="mr-2 size-4" />
           Add {displayName}
         </Button>
       </div>
@@ -276,7 +276,7 @@ export function PluginEntityManagement({
               {entities.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    className="py-8 text-center text-sm text-secondary"
+                    className="text-secondary py-8 text-center text-sm"
                     colSpan={headerProps.length + 1}
                   >
                     No {label} records yet.
@@ -298,7 +298,7 @@ export function PluginEntityManagement({
                           size="sm"
                           variant="ghost"
                         >
-                          <Pencil className="h-3.5 w-3.5" />
+                          <Pencil className="size-3.5" />
                         </Button>
                         <Button
                           aria-label={`Delete ${label}`}
@@ -306,7 +306,7 @@ export function PluginEntityManagement({
                           size="sm"
                           variant="ghost"
                         >
-                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          <Trash2 className="text-destructive size-3.5" />
                         </Button>
                       </div>
                     </TableCell>
@@ -353,7 +353,7 @@ export function PluginEntityManagement({
                   value={form[key] ?? ''}
                 />
                 {prop.description && (
-                  <p className="mt-1 text-xs text-tertiary">
+                  <p className="text-tertiary mt-1 text-xs">
                     {prop.description}
                   </p>
                 )}

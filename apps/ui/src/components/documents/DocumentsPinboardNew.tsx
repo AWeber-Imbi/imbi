@@ -125,42 +125,42 @@ export function DocumentsPinboardNew({
         {/* Toolbar */}
         <div className="mb-3.5 flex flex-wrap items-center gap-2.5">
           <button
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded border-0 bg-transparent px-1.5 py-1 text-xs text-secondary hover:bg-secondary hover:text-primary"
+            className="text-secondary hover:bg-secondary hover:text-primary inline-flex cursor-pointer items-center gap-1.5 rounded border-0 bg-transparent px-1.5 py-1 text-xs"
             onClick={onDiscard}
             type="button"
           >
-            <ArrowLeft className="h-3 w-3" />
+            <ArrowLeft className="size-3" />
             All documents
           </button>
           <span className="text-tertiary">/</span>
-          <span className="text-xs font-medium text-primary">
+          <span className="text-primary text-xs font-medium">
             {isEditing ? 'Edit document' : 'New document'}
           </span>
 
-          <div className="ml-auto inline-flex gap-0.5 rounded-md border border-secondary bg-primary p-0.5">
+          <div className="border-secondary bg-primary ml-auto inline-flex gap-0.5 rounded-md border p-0.5">
             <ModeButton
               active={mode === 'split'}
-              icon={<Columns2 className="h-3 w-3" />}
+              icon={<Columns2 className="size-3" />}
               onClick={() => setMode('split')}
             >
               Split
             </ModeButton>
             <ModeButton
               active={mode === 'write'}
-              icon={<PencilLine className="h-3 w-3" />}
+              icon={<PencilLine className="size-3" />}
               onClick={() => setMode('write')}
             >
               Write
             </ModeButton>
             <ModeButton
               active={mode === 'preview'}
-              icon={<Eye className="h-3 w-3" />}
+              icon={<Eye className="size-3" />}
               onClick={() => setMode('preview')}
             >
               Preview
             </ModeButton>
           </div>
-          <div className="h-5 w-px bg-tertiary" />
+          <div className="bg-tertiary h-5 w-px" />
           <Button onClick={onDiscard} size="sm" variant="ghost">
             Discard
           </Button>
@@ -170,17 +170,17 @@ export function DocumentsPinboardNew({
             onClick={handleSave}
             size="sm"
           >
-            <Check className="h-3 w-3" />
+            <Check className="size-3" />
             {saving ? 'Saving…' : 'Save'}
           </Button>
         </div>
 
-        <article className="overflow-hidden rounded-lg border border-tertiary bg-primary">
+        <article className="border-tertiary bg-primary overflow-hidden rounded-lg border">
           {/* Title + tag picker */}
           <div className="px-7 pt-6">
             <div className="flex items-start gap-4">
               <input
-                className="flex-1 border-0 bg-transparent p-0 text-[26px] font-medium leading-[1.2] tracking-[-0.015em] text-primary outline-none placeholder:text-tertiary"
+                className="text-primary placeholder:text-tertiary flex-1 border-0 bg-transparent p-0 text-[26px] leading-[1.2] font-medium tracking-[-0.015em] outline-none"
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Title"
                 ref={titleRef}
@@ -198,14 +198,14 @@ export function DocumentsPinboardNew({
           {/* Editor panes */}
           <div
             className={cn(
-              'mt-5 grid min-h-[560px] border-t border-tertiary',
+              'mt-5 grid min-h-140 border-t border-tertiary',
               mode === 'split' ? 'grid-cols-2' : 'grid-cols-1',
             )}
           >
             {showEditor && (
               <textarea
                 className={cn(
-                  'min-h-[560px] w-full resize-none border-0 bg-primary px-7 py-5 font-mono text-[13px] leading-[1.65] text-primary outline-none placeholder:text-tertiary',
+                  'min-h-140 w-full resize-none border-0 bg-primary px-7 py-5 font-mono text-[13px] leading-[1.65] text-primary outline-none placeholder:text-tertiary',
                   mode === 'split' && 'border-r border-tertiary',
                 )}
                 onChange={(e) => setContent(e.target.value)}
@@ -216,11 +216,11 @@ export function DocumentsPinboardNew({
             )}
             {showPreview && (
               <div className="flex flex-col">
-                <div className="flex items-center gap-1.5 border-b border-tertiary bg-primary px-5 py-2 text-overline uppercase text-tertiary">
-                  <Eye className="h-3 w-3" />
+                <div className="border-tertiary bg-primary text-overline text-tertiary flex items-center gap-1.5 border-b px-5 py-2 uppercase">
+                  <Eye className="size-3" />
                   Preview
                 </div>
-                <div className="flex-1 bg-primary px-7 py-5">
+                <div className="bg-primary flex-1 px-7 py-5">
                   <PreviewPane content={content} />
                 </div>
               </div>
@@ -263,7 +263,7 @@ function ModeButton({
 function PreviewPane({ content }: { content: string }) {
   if (!content.trim()) {
     return (
-      <div className="text-sm italic text-tertiary">
+      <div className="text-tertiary text-sm italic">
         Preview updates as you type.
       </div>
     )

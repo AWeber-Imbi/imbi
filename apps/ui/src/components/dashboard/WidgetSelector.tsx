@@ -64,7 +64,7 @@ export function WidgetSelector({
         <div className="max-h-[60vh] overflow-y-auto p-6">
           {Object.entries(groupedWidgets).map(([category, widgets]) => (
             <div className="mb-6 last:mb-0" key={category}>
-              <h3 className="mb-3 text-sm uppercase tracking-wider text-tertiary">
+              <h3 className="text-tertiary mb-3 text-sm tracking-wider uppercase">
                 {categories[category as keyof typeof categories]}
               </h3>
               <div className="space-y-2">
@@ -82,9 +82,7 @@ export function WidgetSelector({
                       onClick={() => onToggleWidget(widget.id)}
                       type="button"
                     >
-                      <div className="flex-shrink-0 text-2xl">
-                        {widget.icon}
-                      </div>
+                      <div className="shrink-0 text-2xl">{widget.icon}</div>
                       <div className="flex-1 text-left">
                         <div
                           className={`font-medium ${isSelected ? 'text-primary' : ''}`}
@@ -100,13 +98,13 @@ export function WidgetSelector({
                         </div>
                       </div>
                       <div
-                        className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border-2 ${
+                        className={`flex size-5 shrink-0 items-center justify-center rounded border-2 ${
                           isSelected ? 'border-info bg-info' : 'border-input'
                         }`}
                       >
                         {isSelected && (
                           <svg
-                            className="h-3 w-3 text-white"
+                            className="size-3 text-white"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -129,7 +127,7 @@ export function WidgetSelector({
         </div>
 
         <DialogFooter className="justify-between">
-          <div className="text-sm text-secondary">
+          <div className="text-secondary text-sm">
             {selectedWidgets.length} widget
             {selectedWidgets.length !== 1 ? 's' : ''} selected
           </div>

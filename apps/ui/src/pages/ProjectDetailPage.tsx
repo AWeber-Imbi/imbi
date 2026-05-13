@@ -34,7 +34,7 @@ export function ProjectDetailPage() {
   usePageTitle(project?.name ?? 'Project')
 
   return (
-    <div className="min-h-screen bg-tertiary text-primary">
+    <div className="bg-tertiary text-primary min-h-screen">
       <Navigation currentView="projects" />
       <main
         className="pt-16"

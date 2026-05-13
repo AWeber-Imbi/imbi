@@ -145,11 +145,11 @@ export function ApplicationSecretsPanel({
   const is403 = error && (error as ApiError)?.response?.status === 403
 
   return (
-    <div className="rounded-lg border border-border bg-card p-6">
+    <div className="border-border bg-card rounded-lg border p-6">
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Shield className="h-5 w-5 text-warning" />
-          <h3 className="text-base font-medium text-primary">Secrets</h3>
+          <Shield className="text-warning size-5" />
+          <h3 className="text-primary text-base font-medium">Secrets</h3>
         </div>
         <div className="flex items-center gap-2">
           {revealed && !editing && (
@@ -159,12 +159,12 @@ export function ApplicationSecretsPanel({
           )}
           {revealed ? (
             <Button onClick={handleHide} size="sm" variant="outline">
-              <EyeOff className="mr-1 h-4 w-4" />
+              <EyeOff className="mr-1 size-4" />
               Hide
             </Button>
           ) : (
             <Button onClick={handleReveal} size="sm" variant="outline">
-              <Eye className="mr-1 h-4 w-4" />
+              <Eye className="mr-1 size-4" />
               Reveal Secrets
             </Button>
           )}
@@ -172,26 +172,26 @@ export function ApplicationSecretsPanel({
       </div>
 
       {!revealed && (
-        <p className="text-sm text-tertiary">
+        <p className="text-tertiary text-sm">
           Secrets are hidden. Click &ldquo;Reveal Secrets&rdquo; to view or
           update them. Admin privileges required.
         </p>
       )}
 
       {revealed && isLoading && (
-        <div className="text-sm text-secondary">Loading secrets...</div>
+        <div className="text-secondary text-sm">Loading secrets...</div>
       )}
 
       {revealed && is403 && (
-        <div className="flex items-center gap-3 rounded-lg border border-warning bg-warning p-4 text-warning">
-          <AlertCircle className="h-5 w-5 flex-shrink-0" />
+        <div className="border-warning bg-warning text-warning flex items-center gap-3 rounded-lg border p-4">
+          <AlertCircle className="size-5 shrink-0" />
           <div className="text-sm">Admin access required to view secrets.</div>
         </div>
       )}
 
       {revealed && error && !is403 && (
-        <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger">
-          <AlertCircle className="h-5 w-5 flex-shrink-0" />
+        <div className="border-danger bg-danger text-danger flex items-center gap-3 rounded-lg border p-4">
+          <AlertCircle className="size-5 shrink-0" />
           <div className="text-sm">
             {error instanceof Error ? error.message : 'Failed to load secrets'}
           </div>
@@ -207,13 +207,13 @@ export function ApplicationSecretsPanel({
             if (value == null && field !== 'client_secret') return null
             return (
               <div key={field}>
-                <div className="mb-1 text-sm text-secondary">
+                <div className="text-secondary mb-1 text-sm">
                   {FIELD_LABELS[field]}
                 </div>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 break-all rounded bg-secondary px-3 py-2 font-mono text-sm text-primary">
+                  <code className="bg-secondary text-primary flex-1 rounded px-3 py-2 font-mono text-sm break-all">
                     {field === 'private_key' ? (
-                      <pre className="whitespace-pre-wrap text-xs">{value}</pre>
+                      <pre className="text-xs whitespace-pre-wrap">{value}</pre>
                     ) : (
                       value
                     )}
@@ -230,9 +230,9 @@ export function ApplicationSecretsPanel({
                             variant="ghost"
                           >
                             {copiedField === field ? (
-                              <Check className="h-4 w-4 text-green-500" />
+                              <Check className="size-4 text-green-500" />
                             ) : (
-                              <Copy className="h-4 w-4" />
+                              <Copy className="size-4" />
                             )}
                           </Button>
                         </TooltipTrigger>
@@ -251,14 +251,14 @@ export function ApplicationSecretsPanel({
 
       {revealed && editing && (
         <div className="space-y-4">
-          <p className="text-sm text-tertiary">
+          <p className="text-tertiary text-sm">
             Only fill in the secrets you want to change. Empty fields will be
             left unchanged.
           </p>
 
           {updateMutation.error && (
-            <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-3 text-danger">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+            <div className="border-danger bg-danger text-danger flex items-center gap-3 rounded-lg border p-3">
+              <AlertCircle className="size-4 shrink-0" />
               <div className="text-sm">
                 {updateMutation.error instanceof Error
                   ? updateMutation.error.message
@@ -269,12 +269,12 @@ export function ApplicationSecretsPanel({
 
           {visibleFields.map((field) => (
             <div key={field}>
-              <label className="mb-1 block text-sm font-medium text-secondary">
+              <label className="text-secondary mb-1 block text-sm font-medium">
                 {FIELD_LABELS[field]}
               </label>
               {field === 'private_key' ? (
                 <textarea
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm text-foreground"
+                  className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 font-mono text-sm"
                   onChange={(e) =>
                     setEditValues({ ...editValues, [field]: e.target.value })
                   }
@@ -305,7 +305,7 @@ export function ApplicationSecretsPanel({
               }
               onClick={handleSave}
             >
-              <Save className="mr-1 h-4 w-4" />
+              <Save className="mr-1 size-4" />
               {updateMutation.isPending ? 'Saving...' : 'Save Secrets'}
             </Button>
             <Button

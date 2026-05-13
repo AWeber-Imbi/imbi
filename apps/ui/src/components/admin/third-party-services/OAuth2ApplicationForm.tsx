@@ -208,8 +208,8 @@ export function OAuth2ApplicationForm({
 
       {/* Error display */}
       {(validationError || error) && (
-        <div className="flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger">
-          <AlertCircle className="h-5 w-5 flex-shrink-0" />
+        <div className="border-danger bg-danger text-danger flex items-center gap-3 rounded-lg border p-4">
+          <AlertCircle className="size-5 shrink-0" />
           <div className="text-sm">
             {validationError ||
               (error instanceof Error ? error.message : 'An error occurred')}
@@ -218,7 +218,7 @@ export function OAuth2ApplicationForm({
       )}
 
       {/* Form */}
-      <div className="space-y-4 rounded-lg border border-border bg-card p-6">
+      <div className="border-border bg-card space-y-4 rounded-lg border p-6">
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className={labelClass}>Name *</label>
@@ -276,7 +276,7 @@ export function OAuth2ApplicationForm({
           <div>
             <label className={labelClass}>Application Type *</label>
             <select
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+              className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
               disabled={isEdit}
               onChange={(e) => setAppType(e.target.value)}
               value={appType}
@@ -291,7 +291,7 @@ export function OAuth2ApplicationForm({
           <div>
             <label className={labelClass}>Status</label>
             <select
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+              className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
               onChange={(e) =>
                 setStatus(e.target.value as 'active' | 'inactive' | 'revoked')
               }
@@ -307,7 +307,7 @@ export function OAuth2ApplicationForm({
         {isEdit && canManageAuthProviders && initialUsage === 'integration' && (
           <div>
             <label className={labelClass}>Usage</label>
-            <div className="inline-flex rounded-md border border-input">
+            <div className="border-input inline-flex rounded-md border">
               <button
                 className={`px-3 py-1.5 text-sm ${usage === 'integration' ? 'bg-amber-bg text-amber-text' : 'text-secondary'}`}
                 onClick={() => setUsage('integration')}
@@ -323,7 +323,7 @@ export function OAuth2ApplicationForm({
                 Both
               </button>
             </div>
-            <p className="mt-1 text-xs text-tertiary">
+            <p className="text-tertiary mt-1 text-xs">
               Promote to "Both" to also expose this application as a login
               provider. Demoting "Both" → "Login" must be done from the Auth
               Providers screen.
@@ -334,7 +334,7 @@ export function OAuth2ApplicationForm({
         {isEdit && initialUsage === 'both' && (
           <div>
             <label className={labelClass}>Usage</label>
-            <p className="text-sm text-secondary">
+            <p className="text-secondary text-sm">
               Integration + Login. Demote from the Auth Providers screen to drop
               the login face.
             </p>
@@ -364,8 +364,8 @@ export function OAuth2ApplicationForm({
         {/* Secret fields (create mode only) */}
         {!isEdit && (
           <>
-            <div className="border-t border-secondary pt-4">
-              <h4 className="mb-3 text-sm font-medium text-secondary">
+            <div className="border-secondary border-t pt-4">
+              <h4 className="text-secondary mb-3 text-sm font-medium">
                 Secrets
               </h4>
             </div>
@@ -398,7 +398,7 @@ export function OAuth2ApplicationForm({
               <div>
                 <label className={labelClass}>Private Key (PEM)</label>
                 <textarea
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm text-foreground"
+                  className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 font-mono text-sm"
                   onChange={(e) => setPrivateKey(e.target.value)}
                   placeholder={'-----BEGIN RSA PRIVATE KEY-----\n...'}
                   rows={4}
@@ -423,8 +423,8 @@ export function OAuth2ApplicationForm({
         )}
 
         {isEdit && (
-          <div className="border-t border-secondary pt-4">
-            <p className="text-sm text-tertiary">
+          <div className="border-secondary border-t pt-4">
+            <p className="text-tertiary text-sm">
               Secrets are managed separately below via the Secrets panel.
             </p>
           </div>

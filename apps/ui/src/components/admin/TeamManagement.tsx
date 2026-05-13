@@ -116,7 +116,7 @@ export function TeamManagement() {
 
   if (!orgSlug && !isLoading && !error) {
     return (
-      <div className="py-12 text-center text-tertiary">
+      <div className="text-tertiary py-12 text-center">
         Select an organization to manage teams.
       </div>
     )
@@ -163,7 +163,7 @@ export function TeamManagement() {
             <CardDescription className="text-secondary">
               Total Teams
             </CardDescription>
-            <div className="mt-1 text-2xl text-primary">
+            <div className="text-primary mt-1 text-2xl">
               {filteredTeams.length}
             </div>
           </CardContent>
@@ -173,7 +173,7 @@ export function TeamManagement() {
             <CardDescription className="text-secondary">
               Total Projects
             </CardDescription>
-            <div className="mt-1 text-2xl text-primary">
+            <div className="text-primary mt-1 text-2xl">
               {filteredTeams.reduce(
                 (sum, t) => sum + (t.relationships?.projects?.count ?? 0),
                 0,
@@ -186,7 +186,7 @@ export function TeamManagement() {
             <CardDescription className="text-secondary">
               Total Members
             </CardDescription>
-            <div className="mt-1 text-2xl text-primary">
+            <div className="text-primary mt-1 text-2xl">
               {filteredTeams.reduce(
                 (sum, t) => sum + (t.relationships?.members?.count ?? 0),
                 0,
@@ -206,20 +206,20 @@ export function TeamManagement() {
             key: 'name',
             render: (team) => (
               <div className="flex items-center gap-3">
-                <div className="flex size-8 flex-shrink-0 items-center justify-center rounded-lg bg-info">
+                <div className="bg-info flex size-8 shrink-0 items-center justify-center rounded-lg">
                   {team.icon ? (
                     <EntityIcon
                       className="size-5 rounded object-cover"
                       icon={team.icon}
                     />
                   ) : (
-                    <Users className="h-4 w-4 text-info" />
+                    <Users className="text-info size-4" />
                   )}
                 </div>
                 <div>
                   <div className="text-primary">{team.name}</div>
                   {team.description && (
-                    <div className="text-sm text-tertiary">
+                    <div className="text-tertiary text-sm">
                       {team.description}
                     </div>
                   )}
@@ -233,7 +233,7 @@ export function TeamManagement() {
             headerAlign: 'center',
             key: 'slug',
             render: (team) => (
-              <code className="rounded bg-secondary px-2 py-1 text-primary">
+              <code className="bg-secondary text-primary rounded px-2 py-1">
                 {team.slug}
               </code>
             ),

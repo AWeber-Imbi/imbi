@@ -37,16 +37,16 @@ export function RecentActivity({ email }: RecentActivityProps) {
   const records = data?.pages.flatMap((p) => p.data.data) ?? []
 
   return (
-    <section className="rounded-md border border-tertiary bg-primary p-4">
-      <h2 className="mb-3 text-sm font-medium text-primary">Recent activity</h2>
-      {isLoading && <p className="text-xs text-tertiary">Loading…</p>}
+    <section className="border-tertiary bg-primary rounded-md border p-4">
+      <h2 className="text-primary mb-3 text-sm font-medium">Recent activity</h2>
+      {isLoading && <p className="text-tertiary text-xs">Loading…</p>}
       {error && (
-        <p className="text-xs text-danger">Failed to load activity feed.</p>
+        <p className="text-danger text-xs">Failed to load activity feed.</p>
       )}
       {!isLoading && !error && records.length === 0 && (
-        <p className="text-xs text-tertiary">No recent activity.</p>
+        <p className="text-tertiary text-xs">No recent activity.</p>
       )}
-      <ul className="divide-y divide-tertiary">
+      <ul className="divide-tertiary divide-y">
         {records.map((record) => (
           <li key={`${record.source}-${record.id}`}>
             <ActivityRow record={record} />

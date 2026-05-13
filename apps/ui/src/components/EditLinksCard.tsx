@@ -71,8 +71,8 @@ export function EditLinksCard({
         const def = defBySlug.get(slug)!
         const Icon = getIcon(def.icon)
         return (
-          <div className="flex w-[15%] flex-shrink-0 items-center gap-2 text-secondary">
-            <Icon className="h-4 w-4 flex-shrink-0" />
+          <div className="text-secondary flex w-[15%] shrink-0 items-center gap-2">
+            <Icon className="size-4 shrink-0" />
             <span className="truncate text-sm">{def.name}</span>
           </div>
         )
@@ -82,7 +82,7 @@ export function EditLinksCard({
         const Icon = getIcon(def.icon)
         return (
           <span className="flex items-center gap-2">
-            <Icon className="h-4 w-4" />
+            <Icon className="size-4" />
             {def.name}
           </span>
         )
@@ -92,8 +92,8 @@ export function EditLinksCard({
         if (!def) return null
         const Icon = getIcon(def.icon)
         return (
-          <div className="flex min-w-0 items-center gap-2 text-secondary">
-            <Icon className="h-4 w-4 flex-shrink-0" />
+          <div className="text-secondary flex min-w-0 items-center gap-2">
+            <Icon className="size-4 shrink-0" />
             <span className="truncate">{def.name}</span>
           </div>
         )

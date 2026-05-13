@@ -611,11 +611,11 @@ export function LogsTab({
 
   if (sources.length === 0 && assignments !== undefined) {
     return (
-      <div className="rounded-lg border bg-primary px-6 py-12 text-center">
-        <div className="mb-2 text-sm font-medium text-primary">
+      <div className="bg-primary rounded-lg border px-6 py-12 text-center">
+        <div className="text-primary mb-2 text-sm font-medium">
           No logs plugin configured
         </div>
-        <p className="text-xs text-tertiary">
+        <p className="text-tertiary text-xs">
           Assign a logs plugin to this project type or in project settings.
         </p>
       </div>
@@ -627,7 +627,7 @@ export function LogsTab({
       {/* Source picker */}
       {sources.length > 1 && (
         <div className="flex items-center gap-2">
-          <span className="text-xs text-tertiary">Source:</span>
+          <span className="text-tertiary text-xs">Source:</span>
           {sources.map((s) => (
             <button
               className={`rounded border px-2.5 py-1 text-xs transition-colors ${
@@ -645,12 +645,12 @@ export function LogsTab({
       )}
 
       {/* Query bar */}
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-tertiary px-3 py-2.5">
+      <div className="bg-tertiary flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2.5">
         {/* Search box */}
-        <div className="focus-within:ring-action/20 flex min-w-64 flex-1 items-center gap-2 rounded border bg-primary px-2.5 py-1.5 focus-within:border-action focus-within:ring-1">
+        <div className="bg-primary focus-within:border-action focus-within:ring-action/20 flex min-w-64 flex-1 items-center gap-2 rounded border px-2.5 py-1.5 focus-within:ring-1">
           <Search className="text-tertiary" size={13} />
           <input
-            className="placeholder-tertiary flex-1 bg-transparent font-mono text-xs text-primary outline-none"
+            className="text-primary placeholder:text-tertiary flex-1 bg-transparent font-mono text-xs outline-none"
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') handleSearch()
@@ -669,12 +669,12 @@ export function LogsTab({
         </div>
 
         {/* Range presets */}
-        <div className="flex items-center gap-px rounded border bg-primary p-0.5">
+        <div className="bg-primary flex items-center gap-px rounded border p-0.5">
           {RANGES.map((r) => (
             <button
               className={`rounded px-2.5 py-1 font-mono text-xs transition-colors ${
                 range === r.key && !customStart
-                  ? 'border bg-secondary font-medium text-primary shadow-sm'
+                  ? 'bg-secondary text-primary border font-medium shadow-sm'
                   : 'text-secondary hover:text-primary'
               }`}
               key={r.key}
@@ -692,7 +692,7 @@ export function LogsTab({
         {/* Date picker */}
         <div className="relative">
           <button
-            className={`flex items-center gap-1.5 rounded border bg-primary px-2.5 py-1.5 font-mono text-xs text-primary transition-colors hover:border-primary ${datePickerOpen ? 'ring-action/20 border-action ring-1' : ''}`}
+            className={`bg-primary text-primary hover:border-primary flex items-center gap-1.5 rounded border px-2.5 py-1.5 font-mono text-xs transition-colors ${datePickerOpen ? 'ring-action/20 border-action ring-1' : ''}`}
             onClick={() => setDatePickerOpen(!datePickerOpen)}
           >
             <Calendar className="text-tertiary" size={12} />
@@ -704,19 +704,19 @@ export function LogsTab({
               : fmtRangeLabel(datetimes.start, datetimes.end)}
           </button>
           {datePickerOpen && (
-            <div className="absolute left-0 top-full z-30 mt-1 min-w-72 rounded-lg border bg-primary p-3 shadow-lg">
-              <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-tertiary">
+            <div className="bg-primary absolute top-full left-0 z-30 mt-1 min-w-72 rounded-lg border p-3 shadow-lg">
+              <div className="text-tertiary mb-2 text-[10px] font-semibold tracking-wide uppercase">
                 Custom range
               </div>
               <div className="mb-3 flex gap-2">
                 <input
-                  className="flex-1 rounded border bg-tertiary px-2 py-1 font-mono text-xs text-primary outline-none focus:border-action"
+                  className="bg-tertiary text-primary focus:border-action flex-1 rounded border px-2 py-1 font-mono text-xs outline-none"
                   onChange={(e) => setStartInput(e.target.value)}
                   type="datetime-local"
                   value={startInput}
                 />
                 <input
-                  className="flex-1 rounded border bg-tertiary px-2 py-1 font-mono text-xs text-primary outline-none focus:border-action"
+                  className="bg-tertiary text-primary focus:border-action flex-1 rounded border px-2 py-1 font-mono text-xs outline-none"
                   onChange={(e) => setEndInput(e.target.value)}
                   type="datetime-local"
                   value={endInput}
@@ -724,13 +724,13 @@ export function LogsTab({
               </div>
               <div className="flex justify-end gap-2 border-t pt-2">
                 <button
-                  className="text-xs text-tertiary hover:text-secondary"
+                  className="text-tertiary hover:text-secondary text-xs"
                   onClick={() => setDatePickerOpen(false)}
                 >
                   Cancel
                 </button>
                 <button
-                  className="rounded bg-action px-2.5 py-1 text-xs font-medium text-action-foreground"
+                  className="bg-action text-action-foreground rounded px-2.5 py-1 text-xs font-medium"
                   onClick={() => {
                     if (startInput && endInput) {
                       setCustomStart(new Date(startInput))
@@ -747,7 +747,7 @@ export function LogsTab({
         </div>
 
         {/* Visual gap between date and env groups */}
-        <div aria-hidden className="ml-3 h-5 w-px bg-tertiary opacity-50" />
+        <div aria-hidden className="bg-tertiary ml-3 h-5 w-px opacity-50" />
 
         {/* Env toggles — same pattern as the level toggles below, ordered
             by sort_order and colored from each Environment's label_color. */}
@@ -790,7 +790,7 @@ export function LogsTab({
         </div>
 
         {/* Visual gap between env and severity groups */}
-        <div aria-hidden className="ml-3 h-5 w-px bg-tertiary opacity-50" />
+        <div aria-hidden className="bg-tertiary ml-3 h-5 w-px opacity-50" />
 
         {/* Level toggles */}
         <div className="flex items-center gap-1">
@@ -816,13 +816,13 @@ export function LogsTab({
         </div>
 
         {/* Visual gap between level toggles and the action icons */}
-        <div aria-hidden className="ml-3 h-5 w-px bg-tertiary opacity-50" />
+        <div aria-hidden className="bg-tertiary ml-3 h-5 w-px opacity-50" />
 
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                className="flex items-center gap-1.5 rounded border bg-primary px-2.5 py-1.5 text-xs text-secondary hover:border-primary hover:text-primary"
+                className="bg-primary text-secondary hover:border-primary hover:text-primary flex items-center gap-1.5 rounded border px-2.5 py-1.5 text-xs"
                 disabled={isFetching}
                 onClick={() => void refetch()}
               >
@@ -837,7 +837,7 @@ export function LogsTab({
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                className="rounded border bg-primary p-1.5 text-secondary hover:border-primary hover:text-primary"
+                className="bg-primary text-secondary hover:border-primary hover:text-primary rounded border p-1.5"
                 onClick={() => {
                   void navigator.clipboard
                     .writeText(window.location.href)
@@ -853,7 +853,7 @@ export function LogsTab({
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button className="rounded border bg-primary p-1.5 text-secondary hover:border-primary hover:text-primary">
+              <button className="bg-primary text-secondary hover:border-primary hover:text-primary rounded border p-1.5">
                 <Download size={12} />
               </button>
             </TooltipTrigger>
@@ -867,7 +867,7 @@ export function LogsTab({
         <div className="flex flex-wrap gap-1.5">
           {fieldFilters.map((f, i) => (
             <span
-              className="flex items-center gap-1 rounded-full border bg-tertiary px-2 py-0.5 font-mono text-[11px] text-secondary"
+              className="bg-tertiary text-secondary flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[11px]"
               key={i}
             >
               {f}
@@ -882,7 +882,7 @@ export function LogsTab({
             </span>
           ))}
           <button
-            className="text-[11px] text-tertiary hover:text-secondary"
+            className="text-tertiary hover:text-secondary text-[11px]"
             onClick={() => setFieldFilters([])}
           >
             Clear all
@@ -906,9 +906,9 @@ export function LogsTab({
       )}
 
       {/* Log table */}
-      <div className="overflow-hidden rounded-lg border bg-primary">
+      <div className="bg-primary overflow-hidden rounded-lg border">
         <div
-          className="grid gap-2.5 border-b bg-secondary px-3 py-2 font-mono text-[11px] uppercase tracking-widest text-tertiary"
+          className="bg-secondary text-tertiary grid gap-2.5 border-b px-3 py-2 font-mono text-[11px] tracking-widest uppercase"
           style={{ gridTemplateColumns: '16px 164px 96px 58px minmax(0,1fr)' }}
         >
           <div />
@@ -940,16 +940,16 @@ export function LogsTab({
             <LoadingState label="Loading logs…" />
           ) : logError && displayEntries.length === 0 ? (
             <div className="py-10 text-center">
-              <div className="mb-1 text-sm font-medium text-danger">
+              <div className="text-danger mb-1 text-sm font-medium">
                 Failed to load logs
               </div>
-              <div className="mb-4 font-mono text-xs text-tertiary">
+              <div className="text-tertiary mb-4 font-mono text-xs">
                 {logError instanceof Error
                   ? logError.message
                   : 'An unexpected error occurred'}
               </div>
               <button
-                className="rounded border px-3 py-1.5 text-xs text-secondary hover:border-primary hover:text-primary"
+                className="text-secondary hover:border-primary hover:text-primary rounded border px-3 py-1.5 text-xs"
                 onClick={() => void refetch()}
               >
                 Try again
@@ -957,10 +957,10 @@ export function LogsTab({
             </div>
           ) : displayEntries.length === 0 ? (
             <div className="py-10 text-center">
-              <div className="mb-1 text-sm font-medium text-secondary">
+              <div className="text-secondary mb-1 text-sm font-medium">
                 No matching log entries
               </div>
-              <div className="text-xs text-tertiary">
+              <div className="text-tertiary text-xs">
                 Try widening the time range or removing filters.
               </div>
             </div>
@@ -995,7 +995,7 @@ export function LogsTab({
           )}
         </div>
 
-        <div className="flex items-center justify-between border-t bg-secondary px-3 py-2 font-mono text-[11px] text-tertiary">
+        <div className="bg-secondary text-tertiary flex items-center justify-between border-t px-3 py-2 font-mono text-[11px]">
           <span>
             {filteredEntries.length.toLocaleString()} entries
             {logResult?.total != null &&
@@ -1084,7 +1084,7 @@ function HighlightedText({ query, text }: { query: string; text: string }) {
     }
     if (idx > i) parts.push(text.slice(i, idx))
     parts.push(
-      <mark className="rounded-sm bg-warning px-px text-primary" key={idx}>
+      <mark className="bg-warning text-primary rounded-sm px-px" key={idx}>
         {text.slice(idx, idx + term.length)}
       </mark>,
     )
@@ -1161,15 +1161,15 @@ function Histogram({
       : 0
 
   return (
-    <div className="rounded-md border bg-tertiary p-3">
+    <div className="bg-tertiary rounded-md border p-3">
       <div className="mb-2 flex items-baseline justify-between">
         <div className="flex items-baseline gap-2">
-          <span className="font-mono text-sm font-medium text-primary">
+          <span className="text-primary font-mono text-sm font-medium">
             {(total ?? 0).toLocaleString()}
           </span>
-          <span className="text-xs text-tertiary">events</span>
+          <span className="text-tertiary text-xs">events</span>
         </div>
-        <div className="font-mono text-xs text-tertiary">
+        <div className="text-tertiary font-mono text-xs">
           {intervalSec > 0 ? `events / ${fmtBucketInterval(intervalSec)}` : ''}
         </div>
       </div>
@@ -1245,7 +1245,7 @@ function Histogram({
           const label = fmtAxisLabel(ms)
           return (
             <span
-              className={`absolute top-1 font-mono text-[10px] leading-tight text-tertiary ${
+              className={`text-tertiary absolute top-1 font-mono text-[10px] leading-tight ${
                 pos === 0
                   ? '-translate-x-0'
                   : pos === axisIndices.length - 1
@@ -1304,7 +1304,7 @@ function JsonPretty({ value }: { value: unknown }) {
   }
   if (last < json.length) tokens.push(json.slice(last))
   return (
-    <pre className="overflow-x-auto rounded bg-secondary p-3 font-mono text-xs leading-relaxed text-primary">
+    <pre className="bg-secondary text-primary overflow-x-auto rounded p-3 font-mono text-xs leading-relaxed">
       {tokens}
     </pre>
   )
@@ -1364,7 +1364,7 @@ function LogRow({
 
   return (
     <div
-      className={`border-b border-tertiary last:border-0 ${expanded ? 'bg-secondary' : 'hover:bg-tertiary'} cursor-pointer`}
+      className={`border-tertiary border-b last:border-0 ${expanded ? 'bg-secondary' : 'hover:bg-tertiary'} cursor-pointer`}
       onClick={onToggle}
       ref={rowRef}
     >
@@ -1373,10 +1373,10 @@ function LogRow({
         style={{ gridTemplateColumns: '16px 164px 96px 58px minmax(0,1fr)' }}
       >
         <ChevronRight
-          className={`mt-0.5 text-tertiary transition-transform duration-100 ${expanded ? 'rotate-90 text-primary' : ''}`}
+          className={`text-tertiary mt-0.5 transition-transform duration-100 ${expanded ? 'text-primary rotate-90' : ''}`}
           size={12}
         />
-        <div className="font-mono text-xs tabular-nums text-secondary">
+        <div className="text-secondary font-mono text-xs tabular-nums">
           {t.date} {t.hms}
           <span className="text-tertiary">.{t.ms}</span>
         </div>
@@ -1387,7 +1387,7 @@ function LogRow({
             const c = envChipColors[slug]
             return (
               <span
-                className="inline-flex h-5 max-w-full items-center overflow-hidden text-ellipsis whitespace-nowrap rounded px-1.5 font-mono text-[10px] font-medium"
+                className="inline-flex h-5 max-w-full items-center overflow-hidden rounded px-1.5 font-mono text-[10px] font-medium text-ellipsis whitespace-nowrap"
                 style={
                   c
                     ? {
@@ -1407,19 +1407,19 @@ function LogRow({
           <SevBadge level={entry.level} />
         </div>
         <div
-          className={`min-w-0 font-mono text-xs text-primary ${wrap ? 'break-all' : 'overflow-hidden text-ellipsis whitespace-nowrap'}`}
+          className={`text-primary min-w-0 font-mono text-xs ${wrap ? 'break-all' : 'overflow-hidden text-ellipsis whitespace-nowrap'}`}
         >
-          {source && <span className="mr-2 text-tertiary">{source}</span>}
+          {source && <span className="text-tertiary mr-2">{source}</span>}
           <HighlightedText query={query} text={entry.message} />
         </div>
       </div>
 
       {expanded && (
         <div
-          className="border-t border-tertiary bg-primary px-3 pb-3 pt-2"
+          className="border-tertiary bg-primary border-t px-3 pt-2 pb-3"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="mb-3 flex items-center border-b border-tertiary">
+          <div className="border-tertiary mb-3 flex items-center border-b">
             {(
               [
                 { id: 'table', label: 'Table' },
@@ -1428,9 +1428,9 @@ function LogRow({
               ] as { id: DetailTab; label: string }[]
             ).map((tab) => (
               <button
-                className={`border-0 bg-transparent pb-2 pr-4 pt-1 text-xs ${
+                className={`border-0 bg-transparent pt-1 pr-4 pb-2 text-xs ${
                   detailTab === tab.id
-                    ? 'font-medium text-primary'
+                    ? 'text-primary font-medium'
                     : 'text-tertiary hover:text-secondary'
                 }`}
                 key={tab.id}
@@ -1449,7 +1449,7 @@ function LogRow({
             ))}
             <div className="flex-1" />
             <button
-              className="flex items-center gap-1 pb-2 pt-1 text-xs text-tertiary hover:text-secondary"
+              className="text-tertiary hover:text-secondary flex items-center gap-1 pt-1 pb-2 text-xs"
               onClick={() =>
                 navigator.clipboard.writeText(
                   `${entry.timestamp} ${source} ${entry.message}`,
@@ -1479,26 +1479,26 @@ function LogRow({
               ].map(([k, v], rowIdx) => (
                 <Fragment key={`row-${rowIdx}`}>
                   <div
-                    className="pr-4 font-mono text-[11px] text-tertiary"
+                    className="text-tertiary pr-4 font-mono text-[11px]"
                     style={{ paddingBottom: '3px', paddingTop: '3px' }}
                   >
                     {k}
                   </div>
                   <div
-                    className="group flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-primary"
+                    className="group text-primary flex min-w-0 items-center gap-1.5 font-mono text-[11px]"
                     style={{ paddingBottom: '3px', paddingTop: '3px' }}
                   >
                     <span className="min-w-0 break-all">{v}</span>
                     <span className="flex gap-0.5 opacity-0 group-hover:opacity-100">
                       <button
-                        className="rounded border border-secondary px-1 py-px font-mono text-[10px] text-secondary hover:border-action hover:text-primary"
+                        className="border-secondary text-secondary hover:border-action hover:text-primary rounded border px-1 py-px font-mono text-[10px]"
                         onClick={() => onAddFilter(k as string, v as string)}
                         title="Filter for value"
                       >
                         +
                       </button>
                       <button
-                        className="rounded border border-secondary px-1 py-px font-mono text-[10px] text-secondary hover:border-danger hover:text-danger"
+                        className="border-secondary text-secondary hover:border-danger hover:text-danger rounded border px-1 py-px font-mono text-[10px]"
                         onClick={() =>
                           onAddFilter(`-${k as string}`, v as string)
                         }
@@ -1507,7 +1507,7 @@ function LogRow({
                         −
                       </button>
                       <button
-                        className="rounded border border-secondary px-1 py-px font-mono text-[10px] text-secondary hover:text-primary"
+                        className="border-secondary text-secondary hover:text-primary rounded border px-1 py-px font-mono text-[10px]"
                         onClick={() =>
                           navigator.clipboard.writeText(v as string)
                         }
@@ -1536,8 +1536,8 @@ function LogRow({
           )}
 
           {detailTab === 'stack' && exception && (
-            <div className="rounded bg-secondary p-3 font-mono text-xs leading-relaxed">
-              <div className="mb-2 font-semibold text-danger">
+            <div className="bg-secondary rounded p-3 font-mono text-xs leading-relaxed">
+              <div className="text-danger mb-2 font-semibold">
                 {exception.type}: {exception.message}
               </div>
               {exception.stack.map((line, lineIdx) => (
@@ -1587,7 +1587,7 @@ function SevBadge({ level }: { level: null | string }) {
           : 'bg-info text-info'
   return (
     <span
-      className={`inline-flex h-5 max-w-full items-center overflow-hidden text-ellipsis whitespace-nowrap rounded px-1.5 font-mono text-[10px] font-medium ${cls}`}
+      className={`inline-flex h-5 max-w-full items-center overflow-hidden rounded px-1.5 font-mono text-[10px] font-medium text-ellipsis whitespace-nowrap ${cls}`}
     >
       {lv === 'WARNING' ? 'WARN' : lv === 'FATAL' ? 'ERROR' : lv}
     </span>

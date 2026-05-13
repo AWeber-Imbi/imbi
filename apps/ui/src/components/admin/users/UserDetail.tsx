@@ -134,7 +134,7 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
       {/* Back button */}
       <div>
         <Button onClick={onBack} variant="outline">
-          <ArrowLeft className="mr-2 h-4 w-4" />
+          <ArrowLeft className="mr-2 size-4" />
           Back
         </Button>
       </div>
@@ -145,26 +145,26 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
           <div className="flex items-center gap-3">
             <Gravatar
               alt={user.display_name}
-              className="h-12 w-12 rounded-full"
+              className="size-12 rounded-full"
               email={user.email}
               size={48}
             />
             <div>
               <CardTitle>{user.display_name}</CardTitle>
-              <p className="mt-1 text-secondary">{user.email}</p>
+              <p className="text-secondary mt-1">{user.email}</p>
             </div>
           </div>
           <Button
             className="bg-action text-action-foreground hover:bg-action-hover"
             onClick={onEdit}
           >
-            <Edit2 className="mr-2 h-4 w-4" />
+            <Edit2 className="mr-2 size-4" />
             Edit User
           </Button>
         </CardHeader>
 
         {/* Account Status */}
-        <div className="border-b border-tertiary px-6 py-5">
+        <div className="border-tertiary border-b px-6 py-5">
           <div className="flex items-center gap-6">
             <div
               className={`flex items-center gap-2 rounded px-3 py-1.5 ${
@@ -173,12 +173,12 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
                   : 'bg-secondary text-secondary'
               }`}
             >
-              <Power className="h-4 w-4" />
+              <Power className="size-4" />
               {user.is_active ? 'Active' : 'Inactive'}
             </div>
             {user.is_admin && (
-              <div className="flex items-center gap-2 rounded bg-danger px-3 py-1.5 text-danger">
-                <Shield className="h-4 w-4" />
+              <div className="bg-danger text-danger flex items-center gap-2 rounded px-3 py-1.5">
+                <Shield className="size-4" />
                 Administrator
               </div>
             )}
@@ -196,10 +196,10 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
             <div>
               <div
                 className={
-                  'mb-1 flex items-center gap-2 text-sm text-secondary'
+                  'text-secondary mb-1 flex items-center gap-2 text-sm'
                 }
               >
-                <Mail className="h-4 w-4" />
+                <Mail className="size-4" />
                 Email
               </div>
               <div className="text-primary">{user.email}</div>
@@ -208,10 +208,10 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
             <div>
               <div
                 className={
-                  'mb-1 flex items-center gap-2 text-sm text-secondary'
+                  'text-secondary mb-1 flex items-center gap-2 text-sm'
                 }
               >
-                <User className="h-4 w-4" />
+                <User className="size-4" />
                 Display Name
               </div>
               <div className="text-primary">{user.display_name}</div>
@@ -220,10 +220,10 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
             <div>
               <div
                 className={
-                  'mb-1 flex items-center gap-2 text-sm text-secondary'
+                  'text-secondary mb-1 flex items-center gap-2 text-sm'
                 }
               >
-                <Calendar className="h-4 w-4" />
+                <Calendar className="size-4" />
                 Created
               </div>
               <div className="text-primary">{formatDate(user.created_at)}</div>
@@ -232,10 +232,10 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
             <div>
               <div
                 className={
-                  'mb-1 flex items-center gap-2 text-sm text-secondary'
+                  'text-secondary mb-1 flex items-center gap-2 text-sm'
                 }
               >
-                <Clock className="h-4 w-4" />
+                <Clock className="size-4" />
                 Last Login
               </div>
               <div className="text-primary">{formatDate(user.last_login)}</div>
@@ -248,7 +248,7 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div className="flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-secondary" />
+            <Building2 className="text-secondary size-5" />
             <CardTitle>Organization Memberships</CardTitle>
           </div>
           {availableOrgs.length > 0 && (
@@ -258,7 +258,7 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
               size="sm"
               variant="outline"
             >
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="mr-2 size-4" />
               Add to Organization
             </Button>
           )}
@@ -266,14 +266,14 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
         <CardContent>
           {/* Add to Organization Form */}
           {showAddOrg && (
-            <div className="mb-4 rounded-lg border border-input bg-secondary p-4">
+            <div className="border-input bg-secondary mb-4 rounded-lg border p-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1.5 block text-sm text-secondary">
+                  <label className="text-secondary mb-1.5 block text-sm">
                     Organization
                   </label>
                   <select
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                    className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
                     onChange={(e) => setNewOrgSlug(e.target.value)}
                     value={newOrgSlug}
                   >
@@ -286,11 +286,11 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm text-secondary">
+                  <label className="text-secondary mb-1.5 block text-sm">
                     Role
                   </label>
                   <select
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                    className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
                     onChange={(e) => setNewRoleSlug(e.target.value)}
                     value={newRoleSlug}
                   >
@@ -339,20 +339,20 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
             <div className="space-y-2">
               {(user.organizations ?? []).map((membership: OrgMembership) => (
                 <div
-                  className="flex items-center justify-between rounded-lg border border-input bg-secondary p-3"
+                  className="border-input bg-secondary flex items-center justify-between rounded-lg border p-3"
                   key={membership.organization_slug}
                 >
                   <div className="flex-1">
-                    <div className="text-sm font-medium text-primary">
+                    <div className="text-primary text-sm font-medium">
                       {membership.organization_name}
                     </div>
-                    <div className="text-xs text-tertiary">
+                    <div className="text-tertiary text-xs">
                       {membership.organization_slug}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <select
-                      className="rounded border border-input bg-background px-2 py-1 text-xs text-foreground"
+                      className="border-input bg-background text-foreground rounded border px-2 py-1 text-xs"
                       disabled={updateRoleMutation.isPending}
                       onChange={(e) =>
                         updateRoleMutation.mutate({
@@ -372,7 +372,7 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
-                            className="rounded p-1.5 text-danger hover:bg-secondary"
+                            className="text-danger hover:bg-secondary rounded p-1.5"
                             disabled={removeOrgMutation.isPending}
                             onClick={() =>
                               setConfirm({
@@ -382,7 +382,7 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
                               })
                             }
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="size-4" />
                           </button>
                         </TooltipTrigger>
                         <TooltipContent>
@@ -395,8 +395,8 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
               ))}
             </div>
           ) : (
-            <div className="py-8 text-center text-tertiary">
-              <Building2 className="mx-auto mb-2 h-8 w-8 text-tertiary" />
+            <div className="text-tertiary py-8 text-center">
+              <Building2 className="text-tertiary mx-auto mb-2 size-8" />
               <div>Not a member of any organization</div>
               <div className="mt-1 text-sm">
                 This user has no permissions until added to an organization
@@ -412,7 +412,7 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
           <CardTitle>Active Sessions</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="py-8 text-center text-tertiary">
+          <div className="text-tertiary py-8 text-center">
             <div>0 active sessions</div>
             <div className="mt-1 text-sm">
               No JWT tokens currently active for this user

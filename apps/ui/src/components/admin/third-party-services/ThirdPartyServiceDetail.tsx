@@ -66,14 +66,14 @@ export function ThirdPartyServiceDetail({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Button onClick={onBack} variant="outline">
-                <ArrowLeft className="mr-2 h-4 w-4" />
+                <ArrowLeft className="mr-2 size-4" />
                 Back
               </Button>
               <div>
                 <div className="flex items-center gap-3">
                   {service.icon && (
                     <EntityIcon
-                      className="h-8 w-8 rounded object-cover"
+                      className="size-8 rounded object-cover"
                       icon={service.icon}
                     />
                   )}
@@ -81,7 +81,7 @@ export function ThirdPartyServiceDetail({
                   <Badge variant={statusVariant}>{service.status}</Badge>
                 </div>
                 {service.description && (
-                  <p className="mt-1 text-sm text-secondary">
+                  <p className="text-secondary mt-1 text-sm">
                     {service.description}
                   </p>
                 )}
@@ -92,14 +92,14 @@ export function ThirdPartyServiceDetail({
                 className="bg-action text-action-foreground hover:bg-action-hover"
                 onClick={onEdit}
               >
-                <Edit2 className="mr-2 h-4 w-4" />
+                <Edit2 className="mr-2 size-4" />
                 Edit Service
               </Button>
             )}
           </div>
 
           {/* Tabs */}
-          <div className="border-b border-tertiary">
+          <div className="border-tertiary border-b">
             <div className="flex gap-0">
               {tabs.map((tab) => {
                 const Icon = tab.icon
@@ -109,7 +109,7 @@ export function ThirdPartyServiceDetail({
                     className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
                       isActive
                         ? 'border-info text-info'
-                        : 'border-transparent text-secondary hover:text-primary'
+                        : 'text-secondary hover:text-primary border-transparent'
                     }`}
                     key={tab.id}
                     onClick={() => {
@@ -117,7 +117,7 @@ export function ThirdPartyServiceDetail({
                       setActiveTab(tab.id)
                     }}
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="size-4" />
                     {tab.label}
                   </button>
                 )
@@ -135,54 +135,54 @@ export function ThirdPartyServiceDetail({
             <CardContent className="p-6">
               <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <div className="text-sm text-secondary">Slug</div>
-                  <div className="mt-1 text-primary">
-                    <code className="rounded bg-secondary px-2 py-1 text-sm text-primary">
+                  <div className="text-secondary text-sm">Slug</div>
+                  <div className="text-primary mt-1">
+                    <code className="bg-secondary text-primary rounded px-2 py-1 text-sm">
                       {service.slug}
                     </code>
                   </div>
                 </div>
                 <div>
-                  <div className="text-sm text-secondary">Vendor</div>
-                  <div className="mt-1 text-primary">{service.vendor}</div>
+                  <div className="text-secondary text-sm">Vendor</div>
+                  <div className="text-primary mt-1">{service.vendor}</div>
                 </div>
                 <div>
-                  <div className="text-sm text-secondary">Organization</div>
-                  <div className="mt-1 text-primary">
+                  <div className="text-secondary text-sm">Organization</div>
+                  <div className="text-primary mt-1">
                     {(service.organization?.name as string | undefined) || (
                       <span className="text-tertiary">Not assigned</span>
                     )}
                   </div>
                 </div>
                 <div>
-                  <div className="text-sm text-secondary">Managing Team</div>
-                  <div className="mt-1 text-primary">
+                  <div className="text-secondary text-sm">Managing Team</div>
+                  <div className="text-primary mt-1">
                     {(service.team?.name as string | undefined) || (
                       <span className="text-tertiary">Not assigned</span>
                     )}
                   </div>
                 </div>
                 <div>
-                  <div className="text-sm text-secondary">Category</div>
-                  <div className="mt-1 text-primary">
+                  <div className="text-secondary text-sm">Category</div>
+                  <div className="text-primary mt-1">
                     {service.category || (
                       <span className="text-tertiary">Not set</span>
                     )}
                   </div>
                 </div>
                 <div>
-                  <div className="text-sm text-secondary">Service URL</div>
+                  <div className="text-secondary text-sm">Service URL</div>
                   <div className="mt-1">
                     {service.service_url ? (
                       isSafeUrl(service.service_url) ? (
                         <a
-                          className="hover:text-info/80 inline-flex items-center gap-1 text-sm text-info"
+                          className="text-info hover:text-info/80 inline-flex items-center gap-1 text-sm"
                           href={service.service_url}
                           rel="noopener noreferrer"
                           target="_blank"
                         >
                           {service.service_url}
-                          <ExternalLink className="h-3 w-3" />
+                          <ExternalLink className="size-3" />
                         </a>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-sm">
@@ -201,24 +201,24 @@ export function ThirdPartyServiceDetail({
           {/* OAuth 2.0 Configuration */}
           {hasOAuthConfig && (
             <Card>
-              <CardHeader className="px-6 pb-0 pt-5">
+              <CardHeader className="px-6 pt-5 pb-0">
                 <CardTitle>OAuth 2.0 Configuration</CardTitle>
               </CardHeader>
               <CardContent className="p-6">
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                   {service.api_endpoint && (
                     <div>
-                      <div className="text-sm text-secondary">API Endpoint</div>
+                      <div className="text-secondary text-sm">API Endpoint</div>
                       <div className="mt-1">
                         {isSafeUrl(service.api_endpoint) ? (
                           <a
-                            className="hover:text-info/80 inline-flex items-center gap-1 text-sm text-info"
+                            className="text-info hover:text-info/80 inline-flex items-center gap-1 text-sm"
                             href={service.api_endpoint}
                             rel="noopener noreferrer"
                             target="_blank"
                           >
                             {service.api_endpoint}
-                            <ExternalLink className="h-3 w-3" />
+                            <ExternalLink className="size-3" />
                           </a>
                         ) : (
                           <span className="inline-flex items-center gap-1 text-sm">
@@ -230,19 +230,19 @@ export function ThirdPartyServiceDetail({
                   )}
                   {service.authorization_endpoint && (
                     <div>
-                      <div className="text-sm text-secondary">
+                      <div className="text-secondary text-sm">
                         Authorization Endpoint
                       </div>
                       <div className="mt-1">
                         {isSafeUrl(service.authorization_endpoint) ? (
                           <a
-                            className="hover:text-info/80 inline-flex items-center gap-1 text-sm text-info"
+                            className="text-info hover:text-info/80 inline-flex items-center gap-1 text-sm"
                             href={service.authorization_endpoint}
                             rel="noopener noreferrer"
                             target="_blank"
                           >
                             {service.authorization_endpoint}
-                            <ExternalLink className="h-3 w-3" />
+                            <ExternalLink className="size-3" />
                           </a>
                         ) : (
                           <span className="inline-flex items-center gap-1 text-sm">
@@ -254,19 +254,19 @@ export function ThirdPartyServiceDetail({
                   )}
                   {service.token_endpoint && (
                     <div>
-                      <div className="text-sm text-secondary">
+                      <div className="text-secondary text-sm">
                         Token Endpoint
                       </div>
                       <div className="mt-1">
                         {isSafeUrl(service.token_endpoint) ? (
                           <a
-                            className="hover:text-info/80 inline-flex items-center gap-1 text-sm text-info"
+                            className="text-info hover:text-info/80 inline-flex items-center gap-1 text-sm"
                             href={service.token_endpoint}
                             rel="noopener noreferrer"
                             target="_blank"
                           >
                             {service.token_endpoint}
-                            <ExternalLink className="h-3 w-3" />
+                            <ExternalLink className="size-3" />
                           </a>
                         ) : (
                           <span className="inline-flex items-center gap-1 text-sm">
@@ -278,19 +278,19 @@ export function ThirdPartyServiceDetail({
                   )}
                   {service.revoke_endpoint && (
                     <div>
-                      <div className="text-sm text-secondary">
+                      <div className="text-secondary text-sm">
                         Revoke Endpoint
                       </div>
                       <div className="mt-1">
                         {isSafeUrl(service.revoke_endpoint) ? (
                           <a
-                            className="hover:text-info/80 inline-flex items-center gap-1 text-sm text-info"
+                            className="text-info hover:text-info/80 inline-flex items-center gap-1 text-sm"
                             href={service.revoke_endpoint}
                             rel="noopener noreferrer"
                             target="_blank"
                           >
                             {service.revoke_endpoint}
-                            <ExternalLink className="h-3 w-3" />
+                            <ExternalLink className="size-3" />
                           </a>
                         ) : (
                           <span className="inline-flex items-center gap-1 text-sm">
@@ -302,8 +302,8 @@ export function ThirdPartyServiceDetail({
                   )}
                   {service.use_pkce != null && (
                     <div>
-                      <div className="text-sm text-secondary">Use PKCE</div>
-                      <div className="mt-1 text-primary">
+                      <div className="text-secondary text-sm">Use PKCE</div>
+                      <div className="text-primary mt-1">
                         {service.use_pkce ? 'Yes' : 'No'}
                       </div>
                     </div>
@@ -316,24 +316,24 @@ export function ThirdPartyServiceDetail({
           {/* Links */}
           {linkEntries.length > 0 && (
             <Card>
-              <CardHeader className="px-6 pb-0 pt-5">
+              <CardHeader className="px-6 pt-5 pb-0">
                 <CardTitle>Links</CardTitle>
               </CardHeader>
               <CardContent className="p-6">
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   {linkEntries.map(([label, url]) => (
                     <div key={label}>
-                      <div className="text-sm text-secondary">{label}</div>
+                      <div className="text-secondary text-sm">{label}</div>
                       <div className="mt-1">
                         {isSafeUrl(String(url)) ? (
                           <a
-                            className="hover:text-info/80 inline-flex items-center gap-1 text-sm text-info"
+                            className="text-info hover:text-info/80 inline-flex items-center gap-1 text-sm"
                             href={String(url)}
                             rel="noopener noreferrer"
                             target="_blank"
                           >
                             {String(url)}
-                            <ExternalLink className="h-3 w-3" />
+                            <ExternalLink className="size-3" />
                           </a>
                         ) : (
                           <span className="inline-flex items-center gap-1 text-sm">
@@ -351,16 +351,16 @@ export function ThirdPartyServiceDetail({
           {/* Identifiers */}
           {identifierEntries.length > 0 && (
             <Card>
-              <CardHeader className="px-6 pb-0 pt-5">
+              <CardHeader className="px-6 pt-5 pb-0">
                 <CardTitle>Identifiers</CardTitle>
               </CardHeader>
               <CardContent className="p-6">
                 <div className="grid grid-cols-2 gap-4">
                   {identifierEntries.map(([label, val]) => (
                     <div key={label}>
-                      <div className="text-sm text-secondary">{label}</div>
-                      <div className="mt-1 text-primary">
-                        <code className="rounded bg-secondary px-2 py-1 text-sm text-primary">
+                      <div className="text-secondary text-sm">{label}</div>
+                      <div className="text-primary mt-1">
+                        <code className="bg-secondary text-primary rounded px-2 py-1 text-sm">
                           {String(val)}
                         </code>
                       </div>

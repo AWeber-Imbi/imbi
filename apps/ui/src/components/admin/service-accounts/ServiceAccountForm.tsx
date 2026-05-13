@@ -206,14 +206,14 @@ export function ServiceAccountForm({
   )
 
   const errorBanner = error && (
-    <div className="rounded-lg border border-danger bg-danger p-4">
+    <div className="border-danger bg-danger rounded-lg border p-4">
       <div className="flex items-start gap-3">
-        <AlertCircle className="h-5 w-5 flex-shrink-0 text-danger" />
+        <AlertCircle className="text-danger size-5 shrink-0" />
         <div>
-          <div className="font-medium text-danger">
+          <div className="text-danger font-medium">
             Failed to save service account
           </div>
-          <div className="mt-1 text-sm text-danger">
+          <div className="text-danger mt-1 text-sm">
             {error?.response?.data?.detail ||
               error?.message ||
               'An error occurred'}
@@ -292,7 +292,7 @@ export function ServiceAccountForm({
           <div className="grid grid-cols-2 gap-4">
             {/* Display Name */}
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Display Name <span className="text-red-500">*</span>
               </label>
               <Input
@@ -319,7 +319,7 @@ export function ServiceAccountForm({
 
             {/* Slug */}
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Slug <span className="text-red-500">*</span>
               </label>
               <Input
@@ -334,7 +334,7 @@ export function ServiceAccountForm({
                 placeholder="my-service-account"
                 value={slug}
               />
-              <p className="mt-1 text-xs text-tertiary">
+              <p className="text-tertiary mt-1 text-xs">
                 Lowercase letters, numbers, and hyphens only.
               </p>
               {touched.slug && validationErrors.slug && (
@@ -347,14 +347,14 @@ export function ServiceAccountForm({
 
           {/* Description */}
           <div>
-            <label className="mb-1.5 flex items-center justify-between text-sm text-secondary">
+            <label className="text-secondary mb-1.5 flex items-center justify-between text-sm">
               <span>Description</span>
-              <span className="text-xs text-tertiary">
+              <span className="text-tertiary text-xs">
                 {description.length}/500
               </span>
             </label>
             <textarea
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full rounded-md border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 focus:outline-none"
               disabled={isLoading}
               maxLength={500}
               onChange={(e) => setDescription(e.target.value)}
@@ -378,18 +378,18 @@ export function ServiceAccountForm({
       {/* Organization Membership (creation only) */}
       <Card>
         <CardContent className="space-y-4 pt-6">
-          <p className="mb-4 text-sm text-secondary">
+          <p className="text-secondary mb-4 text-sm">
             Service accounts must belong to at least one organization with a
             role to have any permissions.
           </p>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Organization <span className="text-red-500">*</span>
               </label>
               <select
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 disabled={isLoading || organizations.length === 1}
                 onChange={(e) => {
                   setOrganizationSlug(e.target.value)
@@ -415,18 +415,18 @@ export function ServiceAccountForm({
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 Role <span className="text-red-500">*</span>
               </label>
               {rolesLoading ? (
-                <p className="text-sm text-secondary">Loading roles...</p>
+                <p className="text-secondary text-sm">Loading roles...</p>
               ) : rolesError ? (
-                <p className="text-sm text-danger">
+                <p className="text-danger text-sm">
                   Failed to load roles. Please refresh and try again.
                 </p>
               ) : (
                 <select
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   disabled={isLoading}
                   onChange={(e) => {
                     setRoleSlug(e.target.value)
@@ -463,14 +463,14 @@ function ActiveToggleRow({
   value,
 }: ActiveToggleRowProps) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-tertiary bg-secondary px-3 py-2.5">
+    <div className="border-tertiary bg-secondary flex items-center gap-3 rounded-lg border px-3 py-2.5">
       <div className="flex-1">
-        <div className="text-sm font-medium text-primary">{label}</div>
-        <div className="text-xs text-tertiary">{description}</div>
+        <div className="text-primary text-sm font-medium">{label}</div>
+        <div className="text-tertiary text-xs">{description}</div>
       </div>
       <button
         aria-checked={value}
-        className={`focus-visible:ring-action relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+        className={`focus-visible:ring-action relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
           value
             ? 'bg-[var(--color-border-success)]'
             : 'bg-[var(--color-border-primary)]'
@@ -481,7 +481,7 @@ function ActiveToggleRow({
         type="button"
       >
         <span
-          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-150 ease-in-out ${
+          className={`pointer-events-none inline-block size-4 transform rounded-full bg-white shadow transition duration-150 ease-in-out ${
             value ? 'translate-x-4' : 'translate-x-0'
           }`}
         />
@@ -498,24 +498,24 @@ function DangerZoneCard({
   onDelete: () => void
 }) {
   return (
-    <Card className="from-danger/30 border-danger bg-gradient-to-b to-transparent">
+    <Card className="border-danger from-danger/30 bg-linear-to-b to-transparent">
       <CardContent className="pt-6">
         <div className="mb-4 flex items-center gap-2">
-          <AlertCircle className="h-4 w-4 text-danger" />
-          <h3 className="text-sm font-semibold text-danger">Danger zone</h3>
+          <AlertCircle className="text-danger size-4" />
+          <h3 className="text-danger text-sm font-semibold">Danger zone</h3>
         </div>
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-medium text-primary">
+            <div className="text-primary text-sm font-medium">
               Delete service account
             </div>
-            <div className="text-xs text-tertiary">
+            <div className="text-tertiary text-xs">
               Permanently remove this account and revoke all credentials. This
               cannot be undone.
             </div>
           </div>
           <Button
-            className="ml-6 flex-shrink-0"
+            className="ml-6 shrink-0"
             onClick={() => {
               if (
                 confirm(
@@ -528,7 +528,7 @@ function DangerZoneCard({
             size="sm"
             variant="outline"
           >
-            <Trash2 className="mr-2 h-3.5 w-3.5 text-danger" />
+            <Trash2 className="text-danger mr-2 size-3.5" />
             <span className="text-danger">Delete account</span>
           </Button>
         </div>
@@ -659,7 +659,7 @@ function IdentityCardEdit({
         {/* Display name + slug in one row */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1.5 block text-sm text-secondary">
+            <label className="text-secondary mb-1.5 block text-sm">
               Display name <span className="text-red-500">*</span>
             </label>
             <Input
@@ -676,14 +676,14 @@ function IdentityCardEdit({
             )}
           </div>
           <div>
-            <label className="mb-1.5 flex items-center justify-between text-sm text-secondary">
+            <label className="text-secondary mb-1.5 flex items-center justify-between text-sm">
               <span>Slug</span>
-              <span className="text-xs text-tertiary">
+              <span className="text-tertiary text-xs">
                 URL identifier · read-only
               </span>
             </label>
             <Input
-              className="font-mono text-tertiary"
+              className="text-tertiary font-mono"
               disabled
               value={account.slug}
             />
@@ -692,14 +692,14 @@ function IdentityCardEdit({
 
         {/* Description */}
         <div>
-          <label className="mb-1.5 flex items-center justify-between text-sm text-secondary">
+          <label className="text-secondary mb-1.5 flex items-center justify-between text-sm">
             <span>Description</span>
-            <span className="text-xs text-tertiary">
+            <span className="text-tertiary text-xs">
               {description.length}/500
             </span>
           </label>
           <textarea
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full rounded-md border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 focus:outline-none"
             disabled={isLoading}
             maxLength={500}
             onChange={(e) => onDescriptionChange(e.target.value)}
@@ -711,7 +711,7 @@ function IdentityCardEdit({
 
         {/* Avatar */}
         <div>
-          <label className="mb-1.5 block text-sm text-secondary">Avatar</label>
+          <label className="text-secondary mb-1.5 block text-sm">Avatar</label>
           <div className="flex items-center gap-3">
             <AvatarUpload
               avatarUrl={account.avatar_url}
@@ -721,7 +721,7 @@ function IdentityCardEdit({
               onRemove={() => removeAvatarMutation.mutate()}
               onUpload={(file) => uploadAvatarMutation.mutate(file)}
             />
-            <span className="text-xs text-tertiary">
+            <span className="text-tertiary text-xs">
               PNG or SVG · max 256 KB
             </span>
           </div>

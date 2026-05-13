@@ -78,13 +78,13 @@ export function OperationsLogEntryDetails({ entry }: Props) {
     record.recorded_by !== performer
 
   return (
-    <div className="space-y-4 py-4 pl-[60px] pr-4">
+    <div className="space-y-4 py-4 pr-4 pl-15">
       {pluginCtx && (
         <div>
-          <h3 className="mb-1.5 text-overline uppercase text-tertiary">
+          <h3 className="text-overline text-tertiary mb-1.5 uppercase">
             {pluginRenderer?.displayName ?? record.plugin_slug}
           </h3>
-          <div className="rounded-md border border-tertiary bg-primary p-3">
+          <div className="border-tertiary bg-primary rounded-md border p-3">
             {pluginRenderer?.details?.(pluginCtx) ?? (
               <GenericPluginPayload {...pluginCtx} />
             )}
@@ -93,10 +93,10 @@ export function OperationsLogEntryDetails({ entry }: Props) {
       )}
       {hasNotes && (
         <div>
-          <h3 className="mb-1.5 text-overline uppercase text-tertiary">
+          <h3 className="text-overline text-tertiary mb-1.5 uppercase">
             Notes
           </h3>
-          <div className="prose prose-sm dark:prose-invert max-w-none rounded-md border border-tertiary bg-primary p-3 text-primary [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+          <div className="document-markdown border-tertiary bg-primary text-primary max-w-none rounded-md border p-3 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
             <Markdown remarkPlugins={[remarkGfm]}>{record.notes}</Markdown>
           </div>
         </div>
@@ -104,14 +104,14 @@ export function OperationsLogEntryDetails({ entry }: Props) {
 
       {record.link && (
         <div>
-          <h3 className="mb-1.5 text-overline uppercase text-tertiary">Link</h3>
+          <h3 className="text-overline text-tertiary mb-1.5 uppercase">Link</h3>
           <a
-            className="inline-flex items-center gap-1.5 break-all text-sm text-amber-text hover:underline"
+            className="text-amber-text inline-flex items-center gap-1.5 text-sm break-all hover:underline"
             href={record.link}
             rel="noreferrer"
             target="_blank"
           >
-            <ExternalLink className="h-3.5 w-3.5 flex-shrink-0" />
+            <ExternalLink className="size-3.5 shrink-0" />
             {record.link}
           </a>
         </div>
@@ -149,7 +149,7 @@ export function OperationsLogEntryDetails({ entry }: Props) {
       </div>
 
       {!hasExtras && (
-        <p className="text-sm text-tertiary">
+        <p className="text-tertiary text-sm">
           No additional notes, link, or ticket for this entry.
         </p>
       )}
@@ -160,7 +160,7 @@ export function OperationsLogEntryDetails({ entry }: Props) {
           size="sm"
           variant="outline"
         >
-          <Copy className="mr-1.5 h-3.5 w-3.5" />
+          <Copy className="mr-1.5 size-3.5" />
           Duplicate
         </Button>
       </div>
@@ -196,7 +196,7 @@ function MetaChip({
 }) {
   return (
     <span className="inline-flex items-baseline gap-1.5" title={title}>
-      <span className="text-overline uppercase text-tertiary">{label}</span>
+      <span className="text-overline text-tertiary uppercase">{label}</span>
       <span className="text-primary">{children}</span>
     </span>
   )

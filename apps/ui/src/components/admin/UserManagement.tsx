@@ -190,7 +190,7 @@ export function UserManagement() {
     }
     if (!selectedUser) {
       return (
-        <div className="rounded-lg border border-tertiary p-4 text-secondary">
+        <div className="border-tertiary text-secondary rounded-lg border p-4">
           User not found. They may have been removed.
         </div>
       )
@@ -230,7 +230,7 @@ export function UserManagement() {
         <>
           <select
             aria-label="Filter users by type"
-            className="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+            className="border-input bg-background text-foreground rounded-lg border px-3 py-2 text-sm"
             onChange={(e) => setUserFilter(e.target.value as UserFilter)}
             value={userFilter}
           >
@@ -240,7 +240,7 @@ export function UserManagement() {
           </select>
           <select
             aria-label="Filter users by status"
-            className="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+            className="border-input bg-background text-foreground rounded-lg border px-3 py-2 text-sm"
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
             value={statusFilter}
           >
@@ -272,7 +272,7 @@ export function UserManagement() {
                   email={user.email}
                   size={32}
                 />
-                <div className="text-sm font-medium text-primary">
+                <div className="text-primary text-sm font-medium">
                   {user.display_name}
                 </div>
               </div>
@@ -284,7 +284,7 @@ export function UserManagement() {
             headerAlign: 'left',
             key: 'email',
             render: (user) => (
-              <span className="text-sm text-secondary">{user.email}</span>
+              <span className="text-secondary text-sm">{user.email}</span>
             ),
           },
           {
@@ -295,7 +295,7 @@ export function UserManagement() {
             render: (user) =>
               user.is_admin ? (
                 <Badge className="gap-1" variant="danger">
-                  <Crown className="h-3 w-3" />
+                  <Crown className="size-3" />
                   Admin
                 </Badge>
               ) : (
@@ -320,7 +320,7 @@ export function UserManagement() {
                   handleToggleActive(user)
                 }}
               >
-                <Power className="h-3 w-3" />
+                <Power className="size-3" />
                 {user.is_active ? 'Active' : 'Inactive'}
               </button>
             ),
@@ -331,7 +331,7 @@ export function UserManagement() {
             headerAlign: 'left',
             key: 'last_login',
             render: (user) => (
-              <span className="text-xs text-secondary">
+              <span className="text-secondary text-xs">
                 {formatDate(user.last_login)}
               </span>
             ),

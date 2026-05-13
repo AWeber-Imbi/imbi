@@ -96,42 +96,42 @@ export function IconPicker({ onChange, value }: IconPickerProps) {
     <div className="relative" ref={containerRef}>
       {/* Current value display */}
       {value ? (
-        <div className="flex items-center gap-3 rounded-lg border border-input bg-background p-2.5">
+        <div className="border-input bg-background flex items-center gap-3 rounded-lg border p-2.5">
           <button
-            className="flex flex-1 items-center gap-3 text-left text-sm text-primary"
+            className="text-primary flex flex-1 items-center gap-3 text-left text-sm"
             onClick={() => setOpen(!open)}
             type="button"
           >
-            {SelectedIcon && <SelectedIcon className="h-5 w-5 flex-shrink-0" />}
-            <code className="rounded bg-secondary px-1.5 py-0.5 text-xs">
+            {SelectedIcon && <SelectedIcon className="size-5 shrink-0" />}
+            <code className="bg-secondary rounded px-1.5 py-0.5 text-xs">
               {value}
             </code>
           </button>
           <Button
             aria-label="Remove icon"
-            className="h-7 w-7 p-0 text-tertiary hover:text-danger"
+            className="text-tertiary hover:text-danger size-7 p-0"
             onClick={handleClear}
             size="sm"
             type="button"
             variant="ghost"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="size-3.5" />
           </Button>
         </div>
       ) : (
         <button
-          className="flex w-full items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm text-tertiary hover:border-secondary"
+          className="border-input bg-background text-tertiary hover:border-secondary flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm"
           onClick={() => setOpen(!open)}
           type="button"
         >
-          <Search className="h-4 w-4" />
+          <Search className="size-4" />
           Pick an icon...
         </button>
       )}
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-card shadow-lg">
+        <div className="border-border bg-card absolute z-50 mt-1 w-full rounded-lg border shadow-lg">
           <div className="p-2">
             <div className="mb-2 flex flex-wrap gap-1">
               {setMetas.map((set) => (
@@ -152,7 +152,7 @@ export function IconPicker({ onChange, value }: IconPickerProps) {
               ))}
             </div>
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary" />
+              <Search className="text-tertiary absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
               <Input
                 autoFocus
                 className={`pl-9 ${''}`}
@@ -164,11 +164,11 @@ export function IconPicker({ onChange, value }: IconPickerProps) {
           </div>
           <div className="max-h-64 overflow-y-auto px-2 pb-2">
             {!currentSet ? (
-              <div className="py-6 text-center text-sm text-tertiary">
+              <div className="text-tertiary py-6 text-center text-sm">
                 Loading icons…
               </div>
             ) : filtered.length === 0 ? (
-              <div className="py-6 text-center text-sm text-tertiary">
+              <div className="text-tertiary py-6 text-center text-sm">
                 No icons found
               </div>
             ) : (
@@ -187,19 +187,19 @@ export function IconPicker({ onChange, value }: IconPickerProps) {
                         <button
                           className={`flex h-10 w-full items-center justify-center rounded-md transition-colors ${
                             isSelected
-                              ? 'bg-info ring-1 ring-info'
+                              ? 'bg-info ring-info ring-1'
                               : 'hover:bg-secondary'
                           }`}
                           onClick={() => handleSelect(icon.value)}
                           type="button"
                         >
-                          <Icon className="h-5 w-5 text-secondary" />
+                          <Icon className="text-secondary size-5" />
                         </button>
                       </HoverCardTrigger>
                       <HoverCardContent className="w-auto p-4" side="top">
                         <div className="flex flex-col items-center gap-3">
-                          <Icon className="h-20 w-20 text-primary" />
-                          <span className="max-w-[180px] break-all text-center text-sm text-muted-foreground">
+                          <Icon className="text-primary size-20" />
+                          <span className="text-muted-foreground max-w-45 text-center text-sm break-all">
                             {icon.label}
                           </span>
                         </div>
@@ -210,7 +210,7 @@ export function IconPicker({ onChange, value }: IconPickerProps) {
               </div>
             )}
             {filtered.length === MAX_RESULTS && (
-              <p className="mt-2 text-center text-xs text-tertiary">
+              <p className="text-tertiary mt-2 text-center text-xs">
                 Type to narrow results
               </p>
             )}

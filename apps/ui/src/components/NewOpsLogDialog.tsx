@@ -212,7 +212,7 @@ export function NewOpsLogDialog({
                 }
                 value={environmentSlug}
               />
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 The environment the operation was performed in
               </p>
             </div>
@@ -245,7 +245,7 @@ export function NewOpsLogDialog({
                 Description <span className="text-red-500">*</span>
               </label>
               <Textarea
-                className="min-h-[96px] resize-none"
+                className="min-h-24 resize-none"
                 id="new-ops-description"
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Short summary of what was done"
@@ -299,7 +299,7 @@ export function NewOpsLogDialog({
                 Notes
               </label>
               <Textarea
-                className="min-h-[96px] resize-none"
+                className="min-h-24 resize-none"
                 id="new-ops-notes"
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Optional context for future readers"
@@ -313,7 +313,7 @@ export function NewOpsLogDialog({
         {createMutation.error && (
           <div className="px-6 py-2">
             <Card className="border-destructive/50 bg-destructive/10 p-3">
-              <p className="text-sm text-destructive">
+              <p className="text-destructive text-sm">
                 Failed to create entry: {String(createMutation.error)}
               </p>
             </Card>

@@ -199,13 +199,13 @@ export function ProjectPluginsSection({
       <CardContent className="space-y-4 p-6 pt-0">
         {inherited.length > 0 && (
           <div>
-            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-secondary">
+            <p className="text-secondary mb-2 text-xs font-medium tracking-wider uppercase">
               Inherited from project type
             </p>
             <div className="flex flex-wrap gap-2">
               {inherited.map((a) => (
                 <div
-                  className="flex items-center gap-1.5 rounded border border-tertiary bg-secondary px-2 py-1 text-xs"
+                  className="border-tertiary bg-secondary flex items-center gap-1.5 rounded border px-2 py-1 text-xs"
                   key={a.plugin_id}
                 >
                   <span className="text-primary">{a.label}</span>
@@ -219,7 +219,7 @@ export function ProjectPluginsSection({
 
         <div>
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-medium uppercase tracking-wider text-secondary">
+            <p className="text-secondary text-xs font-medium tracking-wider uppercase">
               Project overrides
             </p>
             <div className="flex gap-2">
@@ -233,14 +233,14 @@ export function ProjectPluginsSection({
                 </Button>
               )}
               <Button onClick={openAdd} size="sm" variant="outline">
-                <Plus className="mr-1 h-3 w-3" />
+                <Plus className="mr-1 size-3" />
                 Add Override
               </Button>
             </div>
           </div>
 
           {drafts.length === 0 ? (
-            <p className="text-sm text-secondary">
+            <p className="text-secondary text-sm">
               No project-level overrides. Using project type defaults.
             </p>
           ) : (
@@ -260,7 +260,7 @@ export function ProjectPluginsSection({
                     <TableCell>
                       <Badge variant="secondary">{draft.tab}</Badge>
                     </TableCell>
-                    <TableCell className="text-sm text-secondary">
+                    <TableCell className="text-secondary text-sm">
                       {draft.default ? 'Yes' : 'No'}
                     </TableCell>
                     <TableCell>
@@ -269,7 +269,7 @@ export function ProjectPluginsSection({
                         size="icon"
                         variant="ghost"
                       >
-                        <Trash2 className="h-3 w-3 text-destructive" />
+                        <Trash2 className="text-destructive size-3" />
                       </Button>
                     </TableCell>
                   </TableRow>

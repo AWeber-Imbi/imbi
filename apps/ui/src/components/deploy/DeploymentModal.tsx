@@ -79,7 +79,7 @@ export function DeployModal({
 }: DeployModalProps) {
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="max-w-[920px] sm:max-w-[920px]">
+      <DialogContent className="max-w-230 sm:max-w-230">
         <DialogHeader>
           <DialogTitle>{`Deploy ${projectName}`}</DialogTitle>
           <DialogDescription>
@@ -116,7 +116,7 @@ export function PromoteModal({
 }: PromoteModalProps) {
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="max-w-[920px] sm:max-w-[920px]">
+      <DialogContent className="max-w-230 sm:max-w-230">
         <DialogHeader>
           <DialogTitle>{`Promote ${projectName}`}</DialogTitle>
           <DialogDescription>{`Tag & release ${fromEnvironment} → ${toEnvironment}`}</DialogDescription>

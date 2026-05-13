@@ -118,7 +118,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
       {linkDefsLoading && (
         <Card>
           <CardContent>
-            <p className="text-sm text-tertiary">Loading link definitions...</p>
+            <p className="text-tertiary text-sm">Loading link definitions...</p>
           </CardContent>
         </Card>
       )}
@@ -236,7 +236,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
             This action will <strong>permanently delete</strong>{' '}
             <code
               className={
-                'rounded bg-secondary px-1.5 py-0.5 font-mono text-sm text-primary'
+                'bg-secondary text-primary rounded px-1.5 py-0.5 font-mono text-sm'
               }
             >
               {project.slug}
@@ -258,11 +258,11 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
             </Button>
           ) : (
             <div className="space-y-3">
-              <p className="text-sm text-secondary">
+              <p className="text-secondary text-sm">
                 Type{' '}
                 <code
                   className={
-                    'rounded bg-secondary px-1.5 py-0.5 font-mono text-sm text-primary'
+                    'bg-secondary text-primary rounded px-1.5 py-0.5 font-mono text-sm'
                   }
                 >
                   {project.slug}

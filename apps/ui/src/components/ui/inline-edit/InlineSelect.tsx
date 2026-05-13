@@ -71,7 +71,7 @@ export function InlineSelect({
       }}
       value={value ?? undefined}
     >
-      <SelectTrigger className="h-7 w-auto min-w-[8rem] gap-2 py-1">
+      <SelectTrigger className="h-7 w-auto min-w-32 gap-2 py-1">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

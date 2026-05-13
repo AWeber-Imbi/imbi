@@ -47,7 +47,7 @@ export function BlueprintSchemaPropertyRow({
   updateProperty,
 }: BlueprintSchemaPropertyRowProps) {
   return (
-    <div className="rounded-lg border border-input bg-secondary">
+    <div className="border-input bg-secondary rounded-lg border">
       {/* Property Row */}
       <div className="flex items-center gap-3 p-3">
         <div className="flex flex-col gap-0.5">
@@ -66,7 +66,7 @@ export function BlueprintSchemaPropertyRow({
                     onClick={() => moveProperty(index, 'up')}
                     type="button"
                   >
-                    <ChevronUp className="h-3 w-3" />
+                    <ChevronUp className="size-3" />
                   </button>
                 </span>
               </TooltipTrigger>
@@ -90,7 +90,7 @@ export function BlueprintSchemaPropertyRow({
                     onClick={() => moveProperty(index, 'down')}
                     type="button"
                   >
-                    <ChevronDown className="h-3 w-3" />
+                    <ChevronDown className="size-3" />
                   </button>
                 </span>
               </TooltipTrigger>
@@ -113,7 +113,7 @@ export function BlueprintSchemaPropertyRow({
         />
 
         <select
-          className="w-28 rounded-md border border-input bg-background px-2 py-2 text-sm text-foreground"
+          className="border-input bg-background text-foreground w-28 rounded-md border px-2 py-2 text-sm"
           onChange={(e) =>
             updateProperty(prop.id, {
               type: e.target.value as SchemaProperty['type'],
@@ -139,7 +139,7 @@ export function BlueprintSchemaPropertyRow({
             }
           />
           <label
-            className={'cursor-pointer select-none text-xs text-secondary'}
+            className={'text-secondary cursor-pointer text-xs select-none'}
             htmlFor={`req-${prop.id}`}
           >
             Required
@@ -157,7 +157,7 @@ export function BlueprintSchemaPropertyRow({
             }
           />
           <label
-            className={'cursor-pointer select-none text-xs text-secondary'}
+            className={'text-secondary cursor-pointer text-xs select-none'}
             htmlFor={`editable-${prop.id}`}
           >
             Editable
@@ -173,14 +173,14 @@ export function BlueprintSchemaPropertyRow({
                     ? 'Collapse advanced options'
                     : 'Expand advanced options'
                 }
-                className="rounded p-1.5 text-xs text-secondary hover:bg-secondary"
+                className="text-secondary hover:bg-secondary rounded p-1.5 text-xs"
                 onClick={() => toggleExpandProp(prop.id)}
                 type="button"
               >
                 {isExpanded ? (
-                  <ChevronUp className="h-3.5 w-3.5" />
+                  <ChevronUp className="size-3.5" />
                 ) : (
-                  <ChevronDown className="h-3.5 w-3.5" />
+                  <ChevronDown className="size-3.5" />
                 )}
               </button>
             </TooltipTrigger>
@@ -195,11 +195,11 @@ export function BlueprintSchemaPropertyRow({
             <TooltipTrigger asChild>
               <button
                 aria-label="Remove property"
-                className="rounded p-1.5 text-danger hover:bg-danger"
+                className="text-danger hover:bg-danger rounded p-1.5"
                 onClick={() => removeProperty(prop.id)}
                 type="button"
               >
-                <Trash2 className="h-3.5 w-3.5" />
+                <Trash2 className="size-3.5" />
               </button>
             </TooltipTrigger>
             <TooltipContent>
@@ -211,10 +211,10 @@ export function BlueprintSchemaPropertyRow({
 
       {/* Advanced Options */}
       {isExpanded && (
-        <div className="space-y-3 border-t border-secondary px-3 pb-3 pt-2">
+        <div className="border-secondary space-y-3 border-t px-3 pt-2 pb-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs text-secondary">
+              <label className="text-secondary mb-1 block text-xs">
                 Description
               </label>
               <Input
@@ -229,7 +229,7 @@ export function BlueprintSchemaPropertyRow({
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-secondary">
+              <label className="text-secondary mb-1 block text-xs">
                 Default Value
               </label>
               <Input
@@ -248,11 +248,11 @@ export function BlueprintSchemaPropertyRow({
           {prop.type === 'string' && (
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="mb-1 block text-xs text-secondary">
+                <label className="text-secondary mb-1 block text-xs">
                   Format
                 </label>
                 <select
-                  className="w-full rounded-md border border-input bg-background px-2 py-2 text-sm text-foreground"
+                  className="border-input bg-background text-foreground w-full rounded-md border px-2 py-2 text-sm"
                   onChange={(e) =>
                     updateProperty(prop.id, {
                       format: e.target.value || undefined,
@@ -268,7 +268,7 @@ export function BlueprintSchemaPropertyRow({
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs text-secondary">
+                <label className="text-secondary mb-1 block text-xs">
                   Min Length
                 </label>
                 <Input
@@ -285,7 +285,7 @@ export function BlueprintSchemaPropertyRow({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-secondary">
+                <label className="text-secondary mb-1 block text-xs">
                   Max Length
                 </label>
                 <Input
@@ -307,11 +307,11 @@ export function BlueprintSchemaPropertyRow({
           {prop.type === 'array' && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-xs text-secondary">
+                <label className="text-secondary mb-1 block text-xs">
                   Items Type
                 </label>
                 <select
-                  className="w-full rounded-md border border-input bg-background px-2 py-2 text-sm text-foreground"
+                  className="border-input bg-background text-foreground w-full rounded-md border px-2 py-2 text-sm"
                   onChange={(e) =>
                     updateProperty(prop.id, {
                       itemsType: e.target.value as SchemaProperty['itemsType'],
@@ -327,7 +327,7 @@ export function BlueprintSchemaPropertyRow({
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs text-secondary">
+                <label className="text-secondary mb-1 block text-xs">
                   Items Enum (comma-separated)
                 </label>
                 <Input
@@ -371,7 +371,7 @@ export function BlueprintSchemaPropertyRow({
           {(prop.type === 'integer' || prop.type === 'number') && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-xs text-secondary">
+                <label className="text-secondary mb-1 block text-xs">
                   Minimum
                 </label>
                 <Input
@@ -388,7 +388,7 @@ export function BlueprintSchemaPropertyRow({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-secondary">
+                <label className="text-secondary mb-1 block text-xs">
                   Maximum
                 </label>
                 <Input
@@ -408,7 +408,7 @@ export function BlueprintSchemaPropertyRow({
           )}
 
           <div>
-            <label className="mb-1 block text-xs text-secondary">
+            <label className="text-secondary mb-1 block text-xs">
               Enum Values (comma-separated)
             </label>
             <Input

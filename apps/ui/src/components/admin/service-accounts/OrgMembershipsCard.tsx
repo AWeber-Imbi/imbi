@@ -63,7 +63,7 @@ export function OrgMembershipsCard({
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
         <div className="flex items-center gap-2">
-          <Building2 className="h-5 w-5 text-secondary" />
+          <Building2 className="text-secondary size-5" />
           <CardTitle>Organization Memberships</CardTitle>
         </div>
         {availableOrgs.length > 0 && (
@@ -73,7 +73,7 @@ export function OrgMembershipsCard({
             size="sm"
             variant="outline"
           >
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="mr-2 size-4" />
             Add to Organization
           </Button>
         )}
@@ -81,14 +81,14 @@ export function OrgMembershipsCard({
       <CardContent>
         {/* Add to Organization Form */}
         {showAddOrg && (
-          <div className="mb-4 rounded-lg border border-input bg-secondary p-4">
+          <div className="border-input bg-secondary mb-4 rounded-lg border p-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Organization
                 </label>
                 <select
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                  className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
                   onChange={(e) => setNewOrgSlug(e.target.value)}
                   value={newOrgSlug}
                 >
@@ -101,16 +101,16 @@ export function OrgMembershipsCard({
                 </select>
               </div>
               <div>
-                <label className="mb-1.5 block text-sm text-secondary">
+                <label className="text-secondary mb-1.5 block text-sm">
                   Role
                 </label>
                 {rolesLoading ? (
-                  <p className="text-sm text-secondary">Loading roles...</p>
+                  <p className="text-secondary text-sm">Loading roles...</p>
                 ) : rolesError ? (
-                  <p className="text-sm text-danger">Failed to load roles</p>
+                  <p className="text-danger text-sm">Failed to load roles</p>
                 ) : (
                   <select
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                    className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
                     onChange={(e) => setNewRoleSlug(e.target.value)}
                     value={newRoleSlug}
                   >
@@ -169,30 +169,30 @@ export function OrgMembershipsCard({
           <div className="space-y-2">
             {(account.organizations ?? []).map((membership: OrgMembership) => (
               <div
-                className="flex items-center justify-between rounded-lg border border-input bg-secondary p-3"
+                className="border-input bg-secondary flex items-center justify-between rounded-lg border p-3"
                 key={membership.organization_slug}
               >
                 <div className="flex-1">
-                  <div className="text-sm font-medium text-primary">
+                  <div className="text-primary text-sm font-medium">
                     {membership.organization_name}
                   </div>
-                  <div className="text-xs text-tertiary">
+                  <div className="text-tertiary text-xs">
                     {membership.organization_slug}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {rolesLoading ? (
-                    <span className="text-xs text-secondary">
+                    <span className="text-secondary text-xs">
                       Loading roles...
                     </span>
                   ) : rolesError ? (
-                    <span className="text-xs text-danger">
+                    <span className="text-danger text-xs">
                       Roles unavailable
                     </span>
                   ) : (
                     <select
                       aria-label={`Role for ${membership.organization_name}`}
-                      className="rounded border border-input bg-background px-2 py-1 text-xs text-foreground"
+                      className="border-input bg-background text-foreground rounded border px-2 py-1 text-xs"
                       disabled={updateOrgRoleMutation.isPending}
                       onChange={(e) =>
                         updateOrgRoleMutation.mutate({
@@ -214,7 +214,7 @@ export function OrgMembershipsCard({
                       <TooltipTrigger asChild>
                         <button
                           aria-label={`Remove from ${membership.organization_name}`}
-                          className="rounded p-1.5 text-danger hover:bg-secondary"
+                          className="text-danger hover:bg-secondary rounded p-1.5"
                           disabled={removeOrgMutation.isPending}
                           onClick={() =>
                             onConfirmRemove(
@@ -224,7 +224,7 @@ export function OrgMembershipsCard({
                           }
                           type="button"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="size-4" />
                         </button>
                       </TooltipTrigger>
                       <TooltipContent>
@@ -237,8 +237,8 @@ export function OrgMembershipsCard({
             ))}
           </div>
         ) : (
-          <div className="py-8 text-center text-tertiary">
-            <Building2 className="mx-auto mb-2 h-8 w-8 text-tertiary" />
+          <div className="text-tertiary py-8 text-center">
+            <Building2 className="text-tertiary mx-auto mb-2 size-8" />
             <div>Not a member of any organization</div>
             <div className="mt-1 text-sm">
               This service account has no permissions until added to an

@@ -158,7 +158,7 @@ export function EditRelationshipsDialog({
         <div className="p-6">
           {/* Search */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+            <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
             <Input
               className="pl-9"
               onChange={(e) => setSearch(e.target.value)}
@@ -170,10 +170,10 @@ export function EditRelationshipsDialog({
           </div>
 
           {/* Project list */}
-          <div className="-mx-6 mt-4 h-[400px] overflow-y-auto border-y px-6 py-1">
+          <div className="-mx-6 mt-4 h-100 overflow-y-auto border-y px-6 py-1">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent opacity-50" />
+                <div className="size-5 animate-spin rounded-full border-2 border-current border-t-transparent opacity-50" />
               </div>
             ) : isError ? (
               <p className="py-8 text-center text-sm text-red-600 dark:text-red-400">
@@ -196,7 +196,7 @@ export function EditRelationshipsDialog({
 
                 return (
                   <label
-                    className={`flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-slate-50 dark:hover:bg-slate-700 ${
+                    className={`flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-slate-50 hover:dark:bg-slate-700 ${
                       isChanged ? 'bg-amber-50 dark:bg-amber-900/30' : ''
                     }`}
                     key={p.id}
@@ -209,7 +209,7 @@ export function EditRelationshipsDialog({
                       {p.name}
                     </span>
                     {typeLabel && (
-                      <span className="flex-shrink-0 text-xs text-slate-400 dark:text-slate-500">
+                      <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
                         {typeLabel}
                       </span>
                     )}

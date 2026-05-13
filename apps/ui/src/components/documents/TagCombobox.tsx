@@ -146,9 +146,9 @@ export function TagCombobox({
           'flex flex-wrap items-center gap-1 rounded-lg border bg-primary transition-colors',
           isFull
             ? 'w-full px-3 py-2 text-sm'
-            : 'min-w-[260px] max-w-[380px] px-2 py-1 text-xs',
+            : 'max-w-95 min-w-65 px-2 py-1 text-xs',
           open
-            ? 'ring-action/20 border-action ring-2'
+            ? 'border-action ring-2 ring-action/20'
             : 'border-secondary hover:border-primary',
         )}
         onClick={() => {
@@ -157,10 +157,7 @@ export function TagCombobox({
         }}
       >
         <TagIcon
-          className={cn(
-            'flex-shrink-0 text-tertiary',
-            isFull ? 'h-4 w-4' : 'h-3 w-3',
-          )}
+          className={cn('shrink-0 text-tertiary', isFull ? 'size-4' : 'size-3')}
         />
         {selected.map((t) => (
           <span
@@ -171,11 +168,11 @@ export function TagCombobox({
             <DocumentTagChip size="sm" tag={t} />
             <button
               aria-label={`Remove tag ${t.name}`}
-              className="rounded border-0 bg-transparent p-0 text-tertiary hover:text-primary"
+              className="text-tertiary hover:text-primary rounded border-0 bg-transparent p-0"
               onClick={() => removeTag(t.slug)}
               type="button"
             >
-              <X className="h-2.5 w-2.5" />
+              <X className="size-2.5" />
             </button>
           </span>
         ))}
@@ -203,7 +200,7 @@ export function TagCombobox({
         >
           {matches.length > 0 && (
             <div>
-              <div className="px-2 py-1 text-overline uppercase text-tertiary">
+              <div className="text-overline text-tertiary px-2 py-1 uppercase">
                 Existing tags
               </div>
               {matches.map((t, i) => {
@@ -223,9 +220,9 @@ export function TagCombobox({
                     type="button"
                   >
                     <DocumentTagChip size="sm" tag={t} />
-                    <span className="ml-auto text-[11px] text-tertiary">
+                    <span className="text-tertiary ml-auto text-[11px]">
                       {isActive && (
-                        <CornerDownLeft className="h-3 w-3 text-tertiary" />
+                        <CornerDownLeft className="text-tertiary size-3" />
                       )}
                     </span>
                   </button>
@@ -235,7 +232,7 @@ export function TagCombobox({
           )}
           {canCreate && (
             <>
-              {matches.length > 0 && <div className="my-1 h-px bg-secondary" />}
+              {matches.length > 0 && <div className="bg-secondary my-1 h-px" />}
               <button
                 className={cn(
                   'flex w-full items-center gap-2 rounded border-0 px-2 py-1.5 text-left text-xs text-secondary',
@@ -252,15 +249,15 @@ export function TagCombobox({
                 onMouseEnter={() => setActiveIdx(matches.length)}
                 type="button"
               >
-                <Plus className="h-3 w-3 text-tertiary" />
+                <Plus className="text-tertiary size-3" />
                 Create{' '}
-                <span className="font-medium text-primary">“{query}”</span>
-                <span className="ml-auto text-[11px] text-tertiary">Enter</span>
+                <span className="text-primary font-medium">“{query}”</span>
+                <span className="text-tertiary ml-auto text-[11px]">Enter</span>
               </button>
             </>
           )}
           {matches.length === 0 && !canCreate && (
-            <div className="px-3 py-2 text-xs text-tertiary">
+            <div className="text-tertiary px-3 py-2 text-xs">
               {allTags.length === 0
                 ? 'No tags yet — type to create one.'
                 : 'No matches.'}

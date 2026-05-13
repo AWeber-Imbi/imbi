@@ -38,15 +38,15 @@ export function ProjectEnvironmentsCard({
                 className={`flex items-center border-b py-2 ${divider} last:border-0`}
                 key={env.slug}
               >
-                <div className="w-32 flex-shrink-0">
+                <div className="w-32 shrink-0">
                   <EnvironmentBadge
                     label_color={env.label_color}
                     name={env.name}
                     slug={env.slug}
                   />
                 </div>
-                <div className="w-28 flex-shrink-0 text-right">
-                  <span className="font-mono text-sm text-tertiary">
+                <div className="w-28 shrink-0 text-right">
+                  <span className="text-tertiary font-mono text-sm">
                     {deployment?.version ?? ''}
                   </span>
                 </div>
@@ -54,14 +54,14 @@ export function ProjectEnvironmentsCard({
                   {url ? (
                     <a
                       className={
-                        'inline-flex items-center gap-1.5 whitespace-nowrap text-sm text-warning hover:underline'
+                        'text-warning inline-flex items-center gap-1.5 text-sm whitespace-nowrap hover:underline'
                       }
                       href={url}
                       rel="noopener noreferrer"
                       target="_blank"
                     >
                       {url}
-                      <ExternalLink className="h-3 w-3 text-warning" />
+                      <ExternalLink className="text-warning size-3" />
                     </a>
                   ) : (
                     <span className={`text-sm ${muted}`}>&mdash;</span>

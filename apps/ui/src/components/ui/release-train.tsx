@@ -101,7 +101,7 @@ export function ReleaseTrain({
             ) : null}
             <span
               className={cn(
-                'inline-flex items-center whitespace-nowrap border font-medium',
+                'inline-flex items-center border font-medium whitespace-nowrap',
                 s.chip,
                 !done &&
                   'border-dashed border-tertiary text-tertiary opacity-60',

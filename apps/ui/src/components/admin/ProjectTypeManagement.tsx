@@ -113,7 +113,7 @@ export function ProjectTypeManagement() {
 
   if (!orgSlug && !isLoading && !error) {
     return (
-      <div className="py-12 text-center text-tertiary">
+      <div className="text-tertiary py-12 text-center">
         Select an organization to manage project types.
       </div>
     )
@@ -155,7 +155,7 @@ export function ProjectTypeManagement() {
               <div className="flex items-center gap-3">
                 <div
                   className={
-                    'flex size-8 flex-shrink-0 items-center justify-center rounded-lg bg-purple-50 dark:bg-purple-900/30'
+                    'flex size-8 shrink-0 items-center justify-center rounded-lg bg-purple-50 dark:bg-purple-900/30'
                   }
                 >
                   {pt.icon ? (
@@ -164,13 +164,13 @@ export function ProjectTypeManagement() {
                       icon={pt.icon}
                     />
                   ) : (
-                    <Layers className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    <Layers className="size-4 text-purple-600 dark:text-purple-400" />
                   )}
                 </div>
                 <div>
                   <div className="text-primary">{pt.name}</div>
                   {pt.description && (
-                    <div className="text-sm text-tertiary">
+                    <div className="text-tertiary text-sm">
                       {pt.description}
                     </div>
                   )}
@@ -184,7 +184,7 @@ export function ProjectTypeManagement() {
             headerAlign: 'center',
             key: 'slug',
             render: (pt) => (
-              <code className="rounded bg-secondary px-2 py-1 text-primary">
+              <code className="bg-secondary text-primary rounded px-2 py-1">
                 {pt.slug}
               </code>
             ),

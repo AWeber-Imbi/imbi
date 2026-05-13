@@ -142,7 +142,7 @@ export function ClientCredentialsSection({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-secondary" />
+            <Shield className="text-secondary size-5" />
             <CardTitle>Client Credentials</CardTitle>
           </div>
           <Button
@@ -150,24 +150,24 @@ export function ClientCredentialsSection({
             size="sm"
             variant="outline"
           >
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="mr-2 size-4" />
             Create Credential
           </Button>
         </CardHeader>
         <CardContent>
           {/* Credentials List */}
           {credentialsLoading ? (
-            <div className="py-4 text-sm text-secondary">
+            <div className="text-secondary py-4 text-sm">
               Loading client credentials...
             </div>
           ) : credentialsError ? (
-            <div className="flex items-center gap-2 rounded-lg bg-danger p-3 text-danger">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+            <div className="bg-danger text-danger flex items-center gap-2 rounded-lg p-3">
+              <AlertCircle className="size-4 shrink-0" />
               <span className="text-sm">Failed to load client credentials</span>
             </div>
           ) : credentials.length === 0 ? (
-            <div className="py-8 text-center text-tertiary">
-              <Shield className="mx-auto mb-2 h-8 w-8 text-tertiary" />
+            <div className="text-tertiary py-8 text-center">
+              <Shield className="text-tertiary mx-auto mb-2 size-8" />
               <div>No client credentials created yet</div>
               <div className="mt-1 text-sm">
                 Create a credential for OAuth2 client_credentials flow
@@ -186,20 +186,20 @@ export function ClientCredentialsSection({
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-primary">
+                      <span className="text-primary text-sm font-medium">
                         {cred.name}
                       </span>
-                      <code className="rounded bg-secondary px-2 py-0.5 text-xs text-secondary">
+                      <code className="bg-secondary text-secondary rounded px-2 py-0.5 text-xs">
                         {truncateClientId(cred.client_id)}
                       </code>
                       {cred.revoked && <Badge variant="danger">Revoked</Badge>}
                       {cred.scopes.length > 0 && cred.scopes[0] !== '*' && (
-                        <span className="text-xs text-tertiary">
+                        <span className="text-tertiary text-xs">
                           {cred.scopes.join(', ')}
                         </span>
                       )}
                     </div>
-                    <div className="mt-1 text-xs text-tertiary">
+                    <div className="text-tertiary mt-1 text-xs">
                       Created {formatDate(cred.created_at)}
                       {cred.last_used &&
                         ` | Last used ${formatDate(cred.last_used)}`}
@@ -214,12 +214,12 @@ export function ClientCredentialsSection({
                           <TooltipTrigger asChild>
                             <button
                               aria-label={`Rotate credential ${cred.name}`}
-                              className="rounded p-1.5 text-info hover:bg-secondary"
+                              className="text-info hover:bg-secondary rounded p-1.5"
                               disabled={rotateCredentialMutation.isPending}
                               onClick={() => onConfirmRotate(cred.client_id)}
                               type="button"
                             >
-                              <RotateCw className="h-4 w-4" />
+                              <RotateCw className="size-4" />
                             </button>
                           </TooltipTrigger>
                           <TooltipContent>
@@ -232,12 +232,12 @@ export function ClientCredentialsSection({
                           <TooltipTrigger asChild>
                             <button
                               aria-label={`Revoke credential ${cred.name}`}
-                              className="rounded p-1.5 text-danger hover:bg-secondary"
+                              className="text-danger hover:bg-secondary rounded p-1.5"
                               disabled={revokeCredentialMutation.isPending}
                               onClick={() => onConfirmRevoke(cred.client_id)}
                               type="button"
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Trash2 className="size-4" />
                             </button>
                           </TooltipTrigger>
                           <TooltipContent>
@@ -267,7 +267,7 @@ export function ClientCredentialsSection({
           </DialogHeader>
           {newlyCreatedCredential && (
             <div className="space-y-3 p-6">
-              <p className="text-sm text-secondary">
+              <p className="text-secondary text-sm">
                 Copy the secret now — it will not be shown again.
               </p>
               <RevealSecretRow
@@ -300,7 +300,7 @@ export function ClientCredentialsSection({
           <div className="space-y-3 p-6">
             <div>
               <label
-                className="mb-1.5 block text-sm text-secondary"
+                className="text-secondary mb-1.5 block text-sm"
                 htmlFor="credential-name"
               >
                 Name <span className="text-red-500">*</span>
@@ -315,7 +315,7 @@ export function ClientCredentialsSection({
             </div>
             <div>
               <label
-                className="mb-1.5 block text-sm text-secondary"
+                className="text-secondary mb-1.5 block text-sm"
                 htmlFor="credential-description"
               >
                 Description
@@ -329,11 +329,11 @@ export function ClientCredentialsSection({
             </div>
             <div>
               <label
-                className="mb-1.5 block text-sm text-secondary"
+                className="text-secondary mb-1.5 block text-sm"
                 htmlFor="credential-scopes"
               >
                 Scopes{' '}
-                <span className="text-xs text-tertiary">(comma-separated)</span>
+                <span className="text-tertiary text-xs">(comma-separated)</span>
               </label>
               <Input
                 id="credential-scopes"
@@ -344,11 +344,11 @@ export function ClientCredentialsSection({
             </div>
             <div>
               <label
-                className="mb-1.5 block text-sm text-secondary"
+                className="text-secondary mb-1.5 block text-sm"
                 htmlFor="credential-expires-days"
               >
                 Expires in (days){' '}
-                <span className="text-xs text-tertiary">
+                <span className="text-tertiary text-xs">
                   (leave empty for no expiration)
                 </span>
               </label>

@@ -37,11 +37,11 @@ export function DocumentsFilterRail({
       aria-disabled={disabled || undefined}
       className={cn(
         'sticky top-5 self-start',
-        disabled && 'pointer-events-none select-none opacity-50',
+        disabled && 'pointer-events-none opacity-50 select-none',
       )}
     >
       <div className="relative mb-3">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-tertiary" />
+        <Search className="text-tertiary pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
         <Input
           className="h-8 pl-8 text-xs"
           disabled={disabled}
@@ -53,13 +53,13 @@ export function DocumentsFilterRail({
       </div>
 
       {activeCount > 0 && (
-        <div className="mb-3 flex items-center justify-between gap-2 rounded-md border border-warning bg-warning px-2.5 py-1.5">
-          <span className="text-[11.5px] text-warning">
+        <div className="border-warning bg-warning mb-3 flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5">
+          <span className="text-warning text-[11.5px]">
             {activeCount} filter{activeCount > 1 ? 's' : ''} · {totalFiltered}{' '}
             documents
           </span>
           <button
-            className="cursor-pointer border-0 bg-transparent p-0 text-[11.5px] text-warning hover:underline"
+            className="text-warning cursor-pointer border-0 bg-transparent p-0 text-[11.5px] hover:underline"
             onClick={onClear}
             type="button"
           >
@@ -70,7 +70,7 @@ export function DocumentsFilterRail({
 
       {tags.length > 0 && (
         <div>
-          <div className="mb-1.5 text-overline uppercase text-tertiary">
+          <div className="text-overline text-tertiary mb-1.5 uppercase">
             Tags
           </div>
           <div className="flex flex-col gap-0.5">
@@ -120,7 +120,7 @@ function TagButton({
     >
       <span
         aria-hidden
-        className="flex-shrink-0 rounded-sm"
+        className="shrink-0 rounded-sm"
         style={{
           backgroundColor: `${hex}55`,
           border: `0.5px solid ${hex}`,
@@ -136,7 +136,7 @@ function TagButton({
       >
         {tag.name}
       </span>
-      <span className="font-mono text-[11px] text-tertiary">{count}</span>
+      <span className="text-tertiary font-mono text-[11px]">{count}</span>
     </button>
   )
 }

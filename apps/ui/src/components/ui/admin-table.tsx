@@ -168,7 +168,7 @@ export function AdminTable<T>({
                     <span key={i}>
                       {b.href ? (
                         <Button
-                          className="h-auto p-0 font-medium text-primary underline underline-offset-2 hover:opacity-80"
+                          className="text-primary h-auto p-0 font-medium underline underline-offset-2 hover:opacity-80"
                           onClick={() => {
                             setBlockedTarget(null)
                             navigate(b.href!)
@@ -275,7 +275,7 @@ export function AdminTable<T>({
               {rows.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    className="py-12 text-center text-muted-foreground"
+                    className="text-muted-foreground py-12 text-center"
                     colSpan={columns.length + (showActions ? 1 : 0)}
                   >
                     {emptyMessage}
@@ -352,7 +352,7 @@ export function AdminTable<T>({
                                         size="sm"
                                         variant="ghost"
                                       >
-                                        <Trash2 className="h-4 w-4" />
+                                        <Trash2 className="size-4" />
                                       </Button>
                                     </span>
                                   </TooltipTrigger>

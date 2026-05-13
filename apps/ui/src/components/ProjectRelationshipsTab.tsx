@@ -141,7 +141,7 @@ export function ProjectRelationshipsTab({
         </Card>
       ) : (
         <div
-          className="grid min-h-[24rem] grid-cols-1 gap-6 lg:grid-cols-[400px_1fr]"
+          className="grid min-h-96 grid-cols-1 gap-6 lg:grid-cols-[400px_1fr]"
           style={{
             height: 'calc(100vh - 22rem - var(--assistant-height, 4rem))',
           }}
@@ -192,9 +192,7 @@ function ProjectRelationshipsSidebar({
     'border border-input text-secondary hover:border-secondary'
 
   return (
-    <Card
-      className={`h-full min-h-0 w-full flex-shrink-0 overflow-y-auto ${''}`}
-    >
+    <Card className={`size-full min-h-0 shrink-0 overflow-y-auto ${''}`}>
       <CardHeader className="p-4 pb-2">
         <div className="flex items-center justify-between">
           <div className="flex flex-wrap gap-1.5">
@@ -222,7 +220,7 @@ function ProjectRelationshipsSidebar({
         {outboundVisible && (
           <div className="mb-4">
             <h4
-              className={`mb-2 text-[10px] font-medium uppercase tracking-[0.12em] ${sectionLabel}`}
+              className={`mb-2 text-[10px] font-medium tracking-[0.12em] uppercase ${sectionLabel}`}
             >
               Uses
             </h4>
@@ -242,7 +240,7 @@ function ProjectRelationshipsSidebar({
         {inboundVisible && (
           <div>
             <h4
-              className={`mb-2 text-[10px] font-medium uppercase tracking-[0.12em] ${sectionLabel}`}
+              className={`mb-2 text-[10px] font-medium tracking-[0.12em] uppercase ${sectionLabel}`}
             >
               Used by
             </h4>
@@ -269,13 +267,13 @@ function SidebarProjectRow({ rel }: { rel: ProjectRelationship }) {
   return (
     <li className="flex items-center gap-2 py-1">
       <Link
-        className="truncate text-sm text-warning hover:underline"
+        className="text-warning truncate text-sm hover:underline"
         to={`/projects/${rel.project.id}`}
       >
         {rel.project.name}
       </Link>
       {typeSlug && (
-        <span className={`flex-shrink-0 text-[10px] ${muted}`}>{typeSlug}</span>
+        <span className={`shrink-0 text-[10px] ${muted}`}>{typeSlug}</span>
       )}
     </li>
   )

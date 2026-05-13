@@ -118,7 +118,7 @@ export function DocumentTemplateManagement() {
 
   if (!orgSlug && !isLoading && !error) {
     return (
-      <div className="py-12 text-center text-tertiary">
+      <div className="text-tertiary py-12 text-center">
         Select an organization to manage document templates.
       </div>
     )
@@ -126,7 +126,7 @@ export function DocumentTemplateManagement() {
 
   if (viewMode === 'edit' && !selectedDocumentTemplate) {
     return (
-      <div className="py-12 text-center text-tertiary">
+      <div className="text-tertiary py-12 text-center">
         {isLoading
           ? 'Loading document template...'
           : 'Document template not found.'}
@@ -180,20 +180,20 @@ export function DocumentTemplateManagement() {
             key: 'name',
             render: (nt) => (
               <div className="flex items-center gap-3">
-                <div className="flex size-8 flex-shrink-0 items-center justify-center rounded-lg bg-info">
+                <div className="bg-info flex size-8 shrink-0 items-center justify-center rounded-lg">
                   {nt.icon ? (
                     <EntityIcon
                       className="size-5 object-cover"
                       icon={nt.icon}
                     />
                   ) : (
-                    <StickyNote className="h-4 w-4 text-info" />
+                    <StickyNote className="text-info size-4" />
                   )}
                 </div>
                 <div>
                   <div className="text-primary">{nt.name}</div>
                   {nt.description && (
-                    <div className="text-sm text-tertiary">
+                    <div className="text-tertiary text-sm">
                       {nt.description}
                     </div>
                   )}
@@ -207,7 +207,7 @@ export function DocumentTemplateManagement() {
             headerAlign: 'center',
             key: 'slug',
             render: (nt) => (
-              <code className="rounded bg-secondary px-2 py-1 text-primary">
+              <code className="bg-secondary text-primary rounded px-2 py-1">
                 {nt.slug}
               </code>
             ),

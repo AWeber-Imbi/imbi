@@ -50,8 +50,8 @@ export function DynamicDetailFields({
 
         return (
           <div key={key}>
-            <div className="text-sm text-secondary">{label}</div>
-            <div className="mt-1 text-primary">
+            <div className="text-secondary text-sm">{label}</div>
+            <div className="text-primary mt-1">
               {typeof value === 'boolean'
                 ? value
                   ? 'Yes'
@@ -88,7 +88,7 @@ export function DynamicFormFields({
         if (field.enum) {
           return (
             <div key={key}>
-              <label className="mb-1.5 block text-sm text-secondary">
+              <label className="text-secondary mb-1.5 block text-sm">
                 {label}
                 {isRequired && <span className="text-red-500"> *</span>}
               </label>
@@ -116,13 +116,13 @@ export function DynamicFormFields({
                 </SelectContent>
               </Select>
               {field.description && (
-                <p className="mt-1 text-xs text-tertiary">
+                <p className="text-tertiary mt-1 text-xs">
                   {field.description}
                 </p>
               )}
               {fieldError && (
-                <div className="mt-1 flex items-center gap-1 text-xs text-danger">
-                  <AlertCircle className="h-3 w-3" />
+                <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+                  <AlertCircle className="size-3" />
                   {fieldError}
                 </div>
               )}
@@ -142,13 +142,13 @@ export function DynamicFormFields({
                 type="checkbox"
               />
               <label
-                className="text-sm text-secondary"
+                className="text-secondary text-sm"
                 htmlFor={`dynamic-${key}`}
               >
                 {label}
               </label>
               {field.description && (
-                <span className="text-xs text-tertiary">
+                <span className="text-tertiary text-xs">
                   — {field.description}
                 </span>
               )}
@@ -158,7 +158,7 @@ export function DynamicFormFields({
 
         return (
           <div key={key}>
-            <label className="mb-1.5 block text-sm text-secondary">
+            <label className="text-secondary mb-1.5 block text-sm">
               {label}
               {isRequired && <span className="text-red-500"> *</span>}
             </label>
@@ -182,11 +182,11 @@ export function DynamicFormFields({
               value={value}
             />
             {field.description && (
-              <p className="mt-1 text-xs text-tertiary">{field.description}</p>
+              <p className="text-tertiary mt-1 text-xs">{field.description}</p>
             )}
             {fieldError && (
-              <div className="mt-1 flex items-center gap-1 text-xs text-danger">
-                <AlertCircle className="h-3 w-3" />
+              <div className="text-danger mt-1 flex items-center gap-1 text-xs">
+                <AlertCircle className="size-3" />
                 {fieldError}
               </div>
             )}

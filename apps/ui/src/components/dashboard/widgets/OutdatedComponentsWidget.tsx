@@ -76,9 +76,9 @@ export function OutdatedComponentsWidget({
   return (
     <Card className="p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg text-primary">Outdated Components</h3>
-        <span className="flex items-center gap-1 text-sm text-warning">
-          <AlertTriangle className="h-4 w-4" />
+        <h3 className="text-primary text-lg">Outdated Components</h3>
+        <span className="text-warning flex items-center gap-1 text-sm">
+          <AlertTriangle className="size-4" />
           {outdatedComponents.length} need updates
         </span>
       </div>
@@ -89,15 +89,15 @@ export function OutdatedComponentsWidget({
 
           return (
             <div
-              className="rounded-lg border border-input bg-background p-4 transition-colors hover:border-secondary"
+              className="border-input bg-background hover:border-secondary rounded-lg border p-4 transition-colors"
               key={item.projectId}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
-                  <Package className="mt-0.5 h-5 w-5 flex-shrink-0 text-tertiary" />
+                  <Package className="text-tertiary mt-0.5 size-5 shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="mb-1 flex items-center gap-2">
-                      <code className="text-sm font-medium text-primary">
+                      <code className="text-primary text-sm font-medium">
                         {item.component}
                       </code>
                       <Badge className="rounded-full" variant={config.variant}>
@@ -106,14 +106,14 @@ export function OutdatedComponentsWidget({
                     </div>
 
                     <button
-                      className="mb-2 text-sm text-info hover:underline"
+                      className="text-info mb-2 text-sm hover:underline"
                       onClick={() => onProjectSelect?.(item.projectId)}
                       type="button"
                     >
                       {item.project}
                     </button>
 
-                    <div className="flex items-center gap-3 text-xs text-secondary">
+                    <div className="text-secondary flex items-center gap-3 text-xs">
                       <span className="font-mono">
                         {item.currentVersion} → {item.latestVersion}
                       </span>
@@ -130,11 +130,11 @@ export function OutdatedComponentsWidget({
 
                 <button
                   aria-label={`View update details for ${item.component}`}
-                  className="flex-shrink-0 rounded p-2 text-secondary transition-colors hover:bg-secondary hover:text-primary"
+                  className="text-secondary hover:bg-secondary hover:text-primary shrink-0 rounded p-2 transition-colors"
                   onClick={() => onProjectSelect?.(item.projectId)}
                   type="button"
                 >
-                  <TrendingUp className="h-4 w-4" />
+                  <TrendingUp className="size-4" />
                 </button>
               </div>
             </div>
@@ -142,14 +142,14 @@ export function OutdatedComponentsWidget({
         })}
       </div>
 
-      <div className="mt-4 border-t border-tertiary pt-4">
+      <div className="border-tertiary mt-4 border-t pt-4">
         <button
-          className="hover:text-info/80 flex items-center gap-1 text-sm text-info"
+          className="text-info hover:text-info/80 flex items-center gap-1 text-sm"
           onClick={() => onProjectSelect?.('outdated-components')}
           type="button"
         >
           View all outdated components
-          <ExternalLink className="h-3 w-3" />
+          <ExternalLink className="size-3" />
         </button>
       </div>
     </Card>

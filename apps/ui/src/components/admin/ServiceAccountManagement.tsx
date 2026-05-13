@@ -147,7 +147,7 @@ export function ServiceAccountManagement() {
       errorTitle="Failed to load service accounts"
       headerExtras={
         <select
-          className="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+          className="border-input bg-background text-foreground rounded-lg border px-3 py-2 text-sm"
           onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
           value={statusFilter}
         >
@@ -178,14 +178,14 @@ export function ServiceAccountManagement() {
                     'flex size-8 items-center justify-center rounded-full bg-purple-100 dark:bg-purple-900/30'
                   }
                 >
-                  <Bot className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                  <Bot className="size-4 text-purple-600 dark:text-purple-400" />
                 </div>
                 <div>
-                  <div className="text-sm font-medium text-primary">
+                  <div className="text-primary text-sm font-medium">
                     {account.display_name}
                   </div>
                   {account.description && (
-                    <div className="text-xs text-tertiary">
+                    <div className="text-tertiary text-xs">
                       {account.description}
                     </div>
                   )}
@@ -201,7 +201,7 @@ export function ServiceAccountManagement() {
             render: (account) => (
               <code
                 className={
-                  'rounded bg-secondary px-2 py-0.5 text-xs text-secondary'
+                  'bg-secondary text-secondary rounded px-2 py-0.5 text-xs'
                 }
               >
                 {account.slug}
@@ -218,7 +218,7 @@ export function ServiceAccountManagement() {
                 className="gap-1.5"
                 variant={account.is_active ? 'success' : 'neutral'}
               >
-                <Power className="h-3 w-3" />
+                <Power className="size-3" />
                 {account.is_active ? 'Active' : 'Inactive'}
               </Badge>
             ),
@@ -229,7 +229,7 @@ export function ServiceAccountManagement() {
             headerAlign: 'left',
             key: 'last_auth',
             render: (account) => (
-              <span className="text-xs text-secondary">
+              <span className="text-secondary text-xs">
                 {formatDate(account.last_authenticated)}
               </span>
             ),
@@ -250,7 +250,7 @@ export function ServiceAccountManagement() {
 
       {/* Summary */}
       {filteredAccounts.length > 0 && (
-        <div className="text-sm text-secondary">
+        <div className="text-secondary text-sm">
           Showing {filteredAccounts.length} of {serviceAccounts.length} service
           account(s)
         </div>
