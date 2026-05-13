@@ -160,6 +160,9 @@ def _serialize(
         'requires_identity': entry.manifest.requires_identity,
         'docs_url': getattr(entry.manifest, 'docs_url', None),
         'supported_tabs': [entry.manifest.plugin_type],
+        'supports_deployment_sync': bool(
+            getattr(entry.manifest, 'supports_deployment_sync', False)
+        ),
         'options': [o.model_dump() for o in entry.manifest.options],
         'credentials': [c.model_dump() for c in entry.manifest.credentials],
         'vertex_labels': [
@@ -190,6 +193,7 @@ def _placeholder(package_name: str) -> dict[str, typing.Any]:
         'requires_identity': False,
         'docs_url': None,
         'supported_tabs': [],
+        'supports_deployment_sync': False,
         'options': [],
         'credentials': [],
         'vertex_labels': [],

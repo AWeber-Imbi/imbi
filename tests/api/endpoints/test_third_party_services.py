@@ -498,6 +498,138 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
+    # -- Resync (TPS-wide) --
+
+    def _resync_url(self) -> str:
+        return (
+            '/organizations/engineering/third-party-services/'
+            'github-enterprise-cloud/deployments/resync'
+        )
+
+    def test_resync_iterates_projects_and_aggregates(self) -> None:
+        # First execute() returns the list of project ids; the rest is
+        # delegated to the patched ``resync_for_project``.
+        self.mock_db.execute.return_value = [
+            {'project_ids': ['proj-a', 'proj-b']}
+        ]
+        from imbi_api.endpoints.project_deployments import (
+            ResyncProjectError,
+            ResyncSummary,
+        )
+
+        responses = {
+            'proj-a': ResyncSummary(
+                projects=1,
+                observed=2,
+                releases_created=2,
+                events_recorded=2,
+            ),
+            'proj-b': ResyncSummary(
+                projects=1,
+                observed=1,
+                releases_updated=1,
+                events_recorded=1,
+                errors=[
+                    ResyncProjectError(
+                        project_id='proj-b',
+                        environment='production',
+                        detail='Could not attach event',
+                    )
+                ],
+            ),
+        }
+
+        async def _stub(_db, *, org_slug, project_id, auth, source=None):
+            return responses[project_id]
+
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi_api.endpoints.third_party_services.resync_for_project',
+                side_effect=_stub,
+            ) as patched,
+        ):
+            response = self.client.post(self._resync_url())
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(data['projects'], 2)
+        self.assertEqual(data['observed'], 3)
+        self.assertEqual(data['releases_created'], 2)
+        self.assertEqual(data['releases_updated'], 1)
+        self.assertEqual(data['events_recorded'], 3)
+        self.assertEqual(len(data['errors']), 1)
+        self.assertEqual(data['errors'][0]['project_id'], 'proj-b')
+        self.assertEqual(patched.await_count, 2)
+
+    def test_resync_empty_project_list_returns_zero(self) -> None:
+        self.mock_db.execute.return_value = [{'project_ids': []}]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.post(self._resync_url())
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(data['projects'], 0)
+        self.assertEqual(data['observed'], 0)
+        self.assertEqual(data['errors'], [])
+
+    def test_resync_per_project_http_exception_recorded_as_error(
+        self,
+    ) -> None:
+        self.mock_db.execute.return_value = [
+            {'project_ids': ['proj-a', 'proj-b']}
+        ]
+        from imbi_api.endpoints.project_deployments import ResyncSummary
+
+        async def _stub(_db, *, org_slug, project_id, auth, source=None):
+            if project_id == 'proj-a':
+                import fastapi
+
+                raise fastapi.HTTPException(
+                    status_code=400, detail='no support'
+                )
+            return ResyncSummary(projects=1, observed=1, events_recorded=1)
+
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi_api.endpoints.third_party_services.resync_for_project',
+                side_effect=_stub,
+            ),
+        ):
+            response = self.client.post(self._resync_url())
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(data['projects'], 1)
+        self.assertEqual(len(data['errors']), 1)
+        self.assertEqual(data['errors'][0]['project_id'], 'proj-a')
+        self.assertIn('HTTP 400', data['errors'][0]['detail'])
+
+    def test_resync_requires_update_permission(self) -> None:
+        from imbi_api.auth import permissions
+
+        non_admin = models.User(
+            email='dev@example.com',
+            display_name='Dev',
+            password_hash='$argon2id$hashed',
+            is_active=True,
+            is_admin=False,
+            is_service_account=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.auth_context = permissions.AuthContext(
+            user=non_admin,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions={'third_party_service:read'},
+        )
+        response = self.client.post(self._resync_url())
+        self.assertEqual(response.status_code, 403)
+
 
 class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
     """Test cases for list_service_webhooks endpoint."""

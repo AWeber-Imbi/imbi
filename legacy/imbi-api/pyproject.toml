@@ -222,6 +222,13 @@ plugins = [
   "imbi-plugin-oidc>=1.0.0",
 ]
 
+# Track imbi-common's ``main`` directly until a release with
+# ``DeploymentPlugin.list_recent_deployments`` + ``RemoteDeployment`` +
+# ``supports_deployment_sync`` is cut.  Drop this block (and bump the
+# ``imbi-common`` floor on the dep above) once that release ships.
+[tool.uv.sources]
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }
+
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true

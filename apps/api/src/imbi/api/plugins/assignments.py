@@ -107,9 +107,12 @@ def build_assignment_response(
 ) -> models.PluginAssignmentResponse:
     """Build a PluginAssignmentResponse from parsed plugin/edge dicts."""
     supports_histogram = False
+    supports_deployment_sync = False
     try:
-        supports_histogram = bool(
-            get_plugin(plugin['plugin_slug']).manifest.supports_histogram
+        manifest = get_plugin(plugin['plugin_slug']).manifest
+        supports_histogram = bool(manifest.supports_histogram)
+        supports_deployment_sync = bool(
+            getattr(manifest, 'supports_deployment_sync', False)
         )
     except PluginNotFoundError:
         pass
@@ -125,4 +128,5 @@ def build_assignment_response(
             edge.get('identity_plugin_id')
         ),
         supports_histogram=supports_histogram,
+        supports_deployment_sync=supports_deployment_sync,
     )

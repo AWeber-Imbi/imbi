@@ -1,5 +1,6 @@
 """Third-party service management endpoints."""
 
+import asyncio
 import collections.abc
 import json
 import logging
@@ -15,9 +16,21 @@ from imbi_common.auth import encryption
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.domain import models
+from imbi_api.endpoints.project_deployments import (
+    ResyncProjectError,
+    ResyncSummary,
+    resync_for_project,
+)
 from imbi_api.graph_sql import props_template, set_clause
 
 LOGGER = logging.getLogger(__name__)
+
+#: Cap on concurrent per-project resync calls when fanning out from a
+#: TPS-wide trigger.  Keeps a single admin click from saturating the
+#: remote (GitHub's per-org secondary rate limit is the binding
+#: constraint) while still finishing in reasonable wall-clock for an
+#: org with O(100) projects.
+_TPS_RESYNC_CONCURRENCY = 5
 
 
 _SERVICE_JSON_FIELDS: dict[str, list[str] | dict[str, typing.Any]] = {
@@ -440,6 +453,143 @@ async def delete_third_party_service(
             status_code=404,
             detail=(f'Third-party service with slug {slug!r} not found'),
         )
+
+
+# --- Deployment resync endpoints ---
+
+
+async def _projects_using_tps_for_deployment(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    slug: str,
+) -> list[str]:
+    """Return project ids whose deployment plugin is owned by this TPS.
+
+    Walks both project-level and project-type-level ``USES_PLUGIN``
+    edges with ``tab='deployment'`` whose target ``Plugin`` is owned
+    (via ``HAS_PLUGIN``) by the named ThirdPartyService.  Returns a
+    de-duplicated, deterministic list so the resync fan-out is stable
+    across calls.
+    """
+    # Scope both Project branches to the requested organization via the
+    # OWNED_BY -> BELONGS_TO path so a TPS-wide resync triggered against
+    # one org can't sweep in projects in another org that happen to use
+    # the same plugin node.
+    query: typing.LiteralString = """
+    MATCH (tps:ThirdPartyService {{slug: {slug}}})
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    MATCH (tps)-[:HAS_PLUGIN]->(plugin:Plugin)
+    OPTIONAL MATCH (p:Project)-[upe:USES_PLUGIN]->(plugin),
+                   (p)-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->(o)
+    WHERE upe.tab = 'deployment'
+    OPTIONAL MATCH (p2:Project)-[:TYPE]
+        ->(:ProjectType)-[upte:USES_PLUGIN]->(plugin),
+                   (p2)-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->(o)
+    WHERE upte.tab = 'deployment'
+    WITH collect(DISTINCT p.id) AS direct_ids,
+         collect(DISTINCT p2.id) AS typed_ids
+    RETURN direct_ids + typed_ids AS project_ids
+    """
+    rows = await db.execute(
+        query,
+        {'slug': slug, 'org_slug': org_slug},
+        ['project_ids'],
+    )
+    if not rows:
+        return []
+    raw: typing.Any = graph.parse_agtype(rows[0].get('project_ids'))
+    parsed: list[typing.Any] = (
+        list(typing.cast(collections.abc.Iterable[typing.Any], raw))
+        if isinstance(raw, list)
+        else []
+    )
+    return sorted({str(pid) for pid in parsed if pid})
+
+
+def _accumulate(into: ResyncSummary, summary: ResyncSummary) -> None:
+    """Sum counts from a per-project run into the aggregate response."""
+    into.projects += summary.projects
+    into.observed += summary.observed
+    into.releases_created += summary.releases_created
+    into.releases_updated += summary.releases_updated
+    into.events_recorded += summary.events_recorded
+    into.events_skipped += summary.events_skipped
+    into.errors.extend(summary.errors)
+
+
+@third_party_services_router.post('/{slug}/deployments/resync')
+async def resync_service_deployments(
+    org_slug: str,
+    slug: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('third_party_service:update'),
+        ),
+    ],
+) -> ResyncSummary:
+    """Resync deployments for every project using this TPS's plugin.
+
+    Iterates the projects that resolve to a deployment plugin owned by
+    the named ThirdPartyService and runs the per-project resync flow
+    on each with bounded concurrency.  Surfaces aggregate counts plus
+    a per-project error list rather than failing the call on the first
+    bad project -- the operator-facing UI renders the warnings inline
+    so partial recovery is visible.
+    """
+    project_ids = await _projects_using_tps_for_deployment(
+        db, org_slug=org_slug, slug=slug
+    )
+    aggregate = ResyncSummary()
+    if not project_ids:
+        return aggregate
+    semaphore = asyncio.Semaphore(_TPS_RESYNC_CONCURRENCY)
+
+    async def _run(project_id: str) -> ResyncSummary:
+        async with semaphore:
+            try:
+                return await resync_for_project(
+                    db,
+                    org_slug=org_slug,
+                    project_id=project_id,
+                    auth=auth,
+                )
+            except fastapi.HTTPException as exc:
+                # A 400 from the project-level endpoint (e.g. plugin
+                # opts out of sync mid-flight) becomes a row in the
+                # aggregate errors list rather than failing the whole
+                # batch -- one project misconfiguration should not
+                # block recovery for the rest of the org.
+                LOGGER.warning(
+                    'Resync HTTPException for project=%s: %s',
+                    project_id,
+                    exc.detail,
+                )
+                summary = ResyncSummary()
+                summary.errors.append(
+                    ResyncProjectError(
+                        project_id=project_id,
+                        detail=f'HTTP {exc.status_code}: {exc.detail}',
+                    )
+                )
+                return summary
+            except Exception as exc:
+                LOGGER.exception('Resync failed for project=%s', project_id)
+                summary = ResyncSummary()
+                summary.errors.append(
+                    ResyncProjectError(
+                        project_id=project_id,
+                        detail=f'{type(exc).__name__}: {exc}',
+                    )
+                )
+                return summary
+
+    results = await asyncio.gather(*(_run(pid) for pid in project_ids))
+    for result in results:
+        _accumulate(aggregate, result)
+    return aggregate
 
 
 # --- Service Webhook endpoints ---
@@ -1134,7 +1284,7 @@ async def delete_service_application(
     if 'auth_providers:write' not in auth.permissions:
         try:
             existing = await _fetch_application(db, org_slug, slug, app_slug)
-        except (fastapi.HTTPException, KeyError):
+        except fastapi.HTTPException, KeyError:
             existing = None
         if existing and existing.get('usage') in ('login', 'both'):
             raise fastapi.HTTPException(

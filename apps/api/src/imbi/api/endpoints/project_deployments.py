@@ -29,6 +29,7 @@ from imbi_common.plugins.base import (
     DeploymentRun,
     PluginContext,
     Ref,
+    RemoteDeployment,
 )
 from imbi_common.plugins.errors import PluginCredentialsMissing
 
@@ -38,7 +39,11 @@ from imbi_api.endpoints._helpers import (
     lookup_project_slugs,
     lookup_project_type_slugs,
 )
-from imbi_api.endpoints.releases import append_deployment_event
+from imbi_api.endpoints.releases import (
+    AppendOutcome,
+    ReleaseEnvironmentEdgeResponse,
+    append_deployment_event,
+)
 from imbi_api.identity.host_integration import (
     attach_identity,
     call_with_identity_retry,
@@ -138,6 +143,34 @@ class DraftReleaseNotesResponse(pydantic.BaseModel):
     notes_markdown: str
     degraded: bool = False
     commits_considered: int = 0
+
+
+class ResyncProjectError(pydantic.BaseModel):
+    """One non-fatal failure encountered during a resync."""
+
+    project_id: str | None = None
+    environment: str | None = None
+    detail: str
+
+
+class ResyncSummary(pydantic.BaseModel):
+    """Aggregate counts returned by a resync run.
+
+    ``observed`` is the number of remote deployments the plugin returned;
+    ``releases_created`` / ``releases_updated`` count distinct
+    ``Release`` nodes affected; ``events_recorded`` counts the
+    ``DeploymentEvent`` rows actually appended (dedupe-suppressed rows
+    do not count); ``events_skipped`` counts rows the dedupe path
+    short-circuited.
+    """
+
+    projects: int = 0
+    observed: int = 0
+    releases_created: int = 0
+    releases_updated: int = 0
+    events_recorded: int = 0
+    events_skipped: int = 0
+    errors: list[ResyncProjectError] = []
 
 
 class PromotionOption(pydantic.BaseModel):
@@ -395,6 +428,271 @@ async def _record_deployment_audit(
 
 
 # ---------------------------------------------------------------------------
+# Resync helpers
+# ---------------------------------------------------------------------------
+
+
+_SEMVER_REF_RE = re.compile(r'^v?\d+\.\d+\.\d+(?:[-+].*)?$')
+
+
+def _resync_version(observed: RemoteDeployment) -> str:
+    """Pick the ``Release.version`` to record for an observed deployment.
+
+    Mirrors the CEL expression the gateway uses on
+    ``imbi_gateway.actions.create_release``:
+    semver-shaped ``ref`` wins, otherwise the first 7 chars of the
+    commit SHA.  Keeping the rules aligned means a project whose
+    webhooks recover later sees the same ``version`` strings the
+    gateway would have created, so the badge does not flip.
+    """
+    if observed.ref and _SEMVER_REF_RE.match(observed.ref):
+        return observed.ref
+    return observed.sha[:7]
+
+
+async def _load_resync_environments(
+    db: graph.Graph,
+    *,
+    project_id: str,
+) -> list[str]:
+    """Return the environment slugs the project is wired up to deploy to.
+
+    Source of truth is the project's ``DEPLOYED_IN`` edges (the same
+    ones the promotion-options endpoint walks).  Order by ``sort_order``
+    so the plugin sees the project's preferred order when it fans out.
+    """
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})-[:DEPLOYED_IN]->(e:Environment)
+    RETURN e.slug AS slug, e.sort_order AS sort_order
+    """
+    rows = await db.execute(
+        query,
+        {'project_id': project_id},
+        ['slug', 'sort_order'],
+    )
+
+    def _order(row: dict[str, typing.Any]) -> tuple[int, str]:
+        order = graph.parse_agtype(row.get('sort_order'))
+        slug = str(graph.parse_agtype(row.get('slug')) or '')
+        # ``sort_order`` is nullable on Environment; rows missing it
+        # sort after the ones that do, then break ties on slug so the
+        # ordering is deterministic even with NULLs.
+        order_int = int(order) if isinstance(order, int | float) else 1_000_000
+        return order_int, slug
+
+    return [
+        str(graph.parse_agtype(row.get('slug')))
+        for row in sorted(rows, key=_order)
+        if graph.parse_agtype(row.get('slug'))
+    ]
+
+
+async def _release_exists(
+    db: graph.Graph,
+    *,
+    project_id: str,
+    version: str,
+) -> bool:
+    """Cheap existence probe for ``project -[:HAS_RELEASE]-> Release``."""
+    query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})
+        -[:HAS_RELEASE]->(r:Release {{version: {version}}})
+    RETURN r.id AS rid
+    LIMIT 1
+    """
+    rows = await db.execute(
+        query,
+        {'project_id': project_id, 'version': version},
+        ['rid'],
+    )
+    return bool(rows)
+
+
+async def resync_for_project(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    auth: permissions.AuthContext,
+    source: str | None = None,
+) -> ResyncSummary:
+    """Resync remote deployments for a single project.
+
+    Resolves the project's deployment plugin, asks it for the most
+    recent deployment per environment, upserts ``Release`` nodes for
+    any observed versions that are missing, appends ``DeploymentEvent``
+    rows on the ``DEPLOYED_TO`` edge (dedup'd by ``external_run_id``),
+    and writes a single audit row per environment.  Returns counts +
+    a per-environment error list so the host can surface partial
+    results rather than failing the whole call on one bad env.
+    """
+    summary = ResyncSummary(projects=1)
+    resolved, ctx, credentials = await _resolve_and_context(
+        db, org_slug, project_id, auth, source=source
+    )
+    if not getattr(resolved.entry.manifest, 'supports_deployment_sync', False):
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                f'Plugin {resolved.plugin_slug!r} does not support '
+                'deployment resync.'
+            ),
+        )
+    environments = await _load_resync_environments(db, project_id=project_id)
+    if not environments:
+        return summary
+    handler = _handler(resolved)
+
+    async def _fetch(c: PluginContext) -> list[RemoteDeployment]:
+        return await call_with_timeout(
+            handler.list_recent_deployments(
+                c,
+                _resolve_credentials(c, credentials),
+                environments=environments,
+                limit=1,
+            )
+        )
+
+    try:
+        observations = await call_with_identity_retry(
+            db, ctx, resolved, auth, fn=_fetch, attached=True
+        )
+    except NotImplementedError as exc:
+        # Manifest advertised sync but the implementation didn't.
+        # Surface as a 400 so the operator notices rather than logging
+        # silently and reporting an empty resync.
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                f'Plugin {resolved.plugin_slug!r} advertises '
+                'supports_deployment_sync but did not implement '
+                'list_recent_deployments.'
+            ),
+        ) from exc
+    summary.observed = len(observations)
+    # Track versions we've already touched so ``releases_created`` /
+    # ``releases_updated`` are counted once per distinct ``version`` --
+    # the same tag promoted across multiple environments is one
+    # Release node, not N.
+    seen_versions: set[str] = set()
+    for observed in observations:
+        try:
+            await _apply_remote_deployment(
+                db,
+                org_slug=org_slug,
+                project_id=project_id,
+                project_slug=ctx.project_slug,
+                plugin_slug=resolved.plugin_slug,
+                recorded_by=auth.principal_name,
+                observed=observed,
+                summary=summary,
+                seen_versions=seen_versions,
+            )
+        except Exception as exc:
+            LOGGER.exception(
+                'Resync apply failed for project=%s env=%s',
+                project_id,
+                observed.environment,
+            )
+            summary.errors.append(
+                ResyncProjectError(
+                    project_id=project_id,
+                    environment=observed.environment,
+                    detail=f'{type(exc).__name__}: {exc}',
+                )
+            )
+    return summary
+
+
+async def _apply_remote_deployment(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    project_slug: str,
+    plugin_slug: str,
+    recorded_by: str,
+    observed: RemoteDeployment,
+    summary: ResyncSummary,
+    seen_versions: set[str],
+) -> None:
+    """Persist one observed remote deployment + audit row.
+
+    ``seen_versions`` is mutated to track which ``version`` strings
+    have already been counted against ``releases_created`` /
+    ``releases_updated`` during this resync, so a tag promoted across
+    multiple environments is counted as one Release node, not N.
+    """
+    version = _resync_version(observed)
+    title = observed.description or observed.ref or version
+    first_time_this_resync = version not in seen_versions
+    existed = await _release_exists(db, project_id=project_id, version=version)
+    await _upsert_release_node(
+        db,
+        project_id=project_id,
+        version=version,
+        title=title,
+        notes_markdown=observed.description or '',
+        release_url=observed.deployment_url,
+        created_by=recorded_by,
+    )
+    if first_time_this_resync:
+        seen_versions.add(version)
+        if existed:
+            summary.releases_updated += 1
+        else:
+            summary.releases_created += 1
+    result = await append_deployment_event(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        version=version,
+        env_slug=observed.environment,
+        status=observed.status,
+        note=f'resync via {plugin_slug}',
+        external_run_id=observed.external_run_id,
+        external_run_url=observed.run_url,
+        timestamp=observed.created_at,
+    )
+    if result is None:
+        # Either the Release upsert didn't take or the env slug isn't
+        # wired up in this org -- record as an error so the operator
+        # has a thread to pull rather than a silently swallowed row.
+        summary.errors.append(
+            ResyncProjectError(
+                project_id=project_id,
+                environment=observed.environment,
+                detail=(
+                    f'Could not attach DeploymentEvent for version '
+                    f'{version!r} -- release or environment not found.'
+                ),
+            )
+        )
+        return
+    _edge, outcome = result
+    # Outcome comes straight from ``append_deployment_event``: a real
+    # write (``appended`` / ``updated``) bumps ``events_recorded``; a
+    # ``noop`` (dedupe matched an identical row) bumps
+    # ``events_skipped`` so a replay against an idle remote doesn't
+    # masquerade as fresh activity.
+    if outcome == 'noop':
+        summary.events_skipped += 1
+    else:
+        summary.events_recorded += 1
+    await _record_deployment_audit(
+        project_id=project_id,
+        project_slug=project_slug,
+        environment_slug=observed.environment,
+        recorded_by=recorded_by,
+        action='resync',
+        version=version,
+        plugin_slug=plugin_slug,
+        run_url=observed.run_url,
+        release_url=observed.deployment_url,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
@@ -533,6 +831,40 @@ async def trigger_deployment(
     )
 
 
+@project_deployments_router.post('/resync')
+async def resync_project_deployments(
+    org_slug: str,
+    project_id: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:write'),
+        ),
+    ],
+    source: str | None = None,
+) -> ResyncSummary:
+    """Backfill Release nodes + DEPLOYED_TO edges from the remote.
+
+    Asks the project's deployment plugin for the most recent
+    deployment per environment, upserts any missing ``Release`` nodes,
+    and dedup-appends ``DeploymentEvent`` rows so the badges advance
+    even when the gateway webhook flow has lapsed.  Records one
+    audit row per environment with ``action='resync'``.
+
+    Surfaces 400 when the project's deployment plugin does not
+    advertise ``supports_deployment_sync`` -- callers should hide the
+    button using the plugin manifest flag.
+    """
+    return await resync_for_project(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        auth=auth,
+        source=source,
+    )
+
+
 @project_deployments_router.get('/runs/{run_id}')
 async def get_deployment_run(
     org_slug: str,
@@ -616,9 +948,9 @@ async def _handle_deploy(
     )
     note = f'via {resolved.plugin_slug}'
     recorded_version: str | None = None
-    edge = None
+    result: tuple[ReleaseEnvironmentEdgeResponse, AppendOutcome] | None = None
     for candidate in filter(None, (body.ref_label, body.committish)):
-        edge = await append_deployment_event(
+        result = await append_deployment_event(
             db,
             org_slug=org_slug,
             project_id=project_id,
@@ -629,7 +961,7 @@ async def _handle_deploy(
             external_run_id=str(run.run_id) if run.run_id else None,
             external_run_url=run.run_url,
         )
-        if edge is not None:
+        if result is not None:
             recorded_version = candidate
             break
     await _record_deployment_audit(
@@ -646,7 +978,7 @@ async def _handle_deploy(
         run=run,
         plugin_id=resolved.plugin_id,
         plugin_slug=resolved.plugin_slug,
-        recorded=edge is not None,
+        recorded=result is not None,
     )
 
 
@@ -817,7 +1149,7 @@ async def _handle_promote(
 
     # 5. Record the deployment event.
     note = f'via {resolved.plugin_slug}'
-    edge = await append_deployment_event(
+    promote_result = await append_deployment_event(
         db,
         org_slug=org_slug,
         project_id=project_id,
@@ -856,7 +1188,7 @@ async def _handle_promote(
         run=run,
         plugin_id=resolved.plugin_id,
         plugin_slug=resolved.plugin_slug,
-        recorded=edge is not None,
+        recorded=promote_result is not None,
         release_url=release_url,
         tag=body.tag,
         warning='; '.join(warnings) if warnings else None,

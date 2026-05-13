@@ -798,6 +798,14 @@ def _edge_to_response(
     )
 
 
+#: Outcome reported by :func:`append_deployment_event`.  Lets callers
+#: distinguish a brand-new row (``appended``) from a dedupe path that
+#: refreshed an existing row in place (``updated``) versus a no-op
+#: replay (``noop``).  The resync flow uses this to keep its summary
+#: counters honest; the deploy/promote flows ignore it.
+AppendOutcome = typing.Literal['appended', 'updated', 'noop']
+
+
 async def append_deployment_event(
     db: graph.Graph,
     *,
@@ -811,13 +819,31 @@ async def append_deployment_event(
     note: str | None = None,
     external_run_id: str | None = None,
     external_run_url: str | None = None,
-) -> ReleaseEnvironmentEdgeResponse | None:
+    timestamp: datetime.datetime | None = None,
+) -> tuple[ReleaseEnvironmentEdgeResponse, AppendOutcome] | None:
     """Append a ``DeploymentEvent`` to ``Release -[:DEPLOYED_TO]-> Env``.
 
-    Returns the resulting edge, or ``None`` when the named ``Release``
-    or ``Environment`` cannot be found — callers that auto-record from
-    a deploy of a SHA (which has no ``Release`` node) treat ``None`` as
-    "skip persistence, deploy still succeeded".
+    Returns a ``(edge, outcome)`` tuple, or ``None`` when the named
+    ``Release`` or ``Environment`` cannot be found — callers that
+    auto-record from a deploy of a SHA (which has no ``Release`` node)
+    treat ``None`` as "skip persistence, deploy still succeeded".
+
+    ``outcome`` is one of ``'appended'`` (new row), ``'updated'``
+    (dedupe path refreshed an existing row in place), or ``'noop'``
+    (dedupe path matched an identical existing row and made no write).
+
+    Deduplicates on ``external_run_id``: when the caller supplies one
+    and the most recent existing event already carries the same id,
+    the row is treated as a status update -- if ``status`` changed
+    the existing event is updated in-place, otherwise the call is a
+    no-op.  This lets resync re-replay the remote's recent history
+    without doubling up rows on the edge, while still letting an
+    in-flight workflow advance from ``in_progress`` -> ``success``.
+    Callers that omit ``external_run_id`` keep the previous append-
+    only semantics so the deploy / promote flows are unchanged.
+
+    ``timestamp`` lets the resync flow record the remote's deployment
+    creation time rather than ``now()``; defaults to now when omitted.
     """
     release = await _fetch_release(db, org_slug, project_id, version)
     if release is None:
@@ -827,55 +853,136 @@ async def append_deployment_event(
     )
     if env is None:
         return None
+    if external_run_id and existing:
+        # Walk newest-first so the "most recent event for this run"
+        # wins when older entries with the same id exist (rare; only
+        # possible if a caller appended duplicates before the dedupe
+        # landed).  Comparing by status keeps the no-op fast path
+        # cheap when resync re-runs against an idle remote.
+        for idx in range(len(existing) - 1, -1, -1):
+            candidate = existing[idx]
+            if candidate.external_run_id == external_run_id:
+                if (
+                    candidate.status == status
+                    and candidate.note == note
+                    and candidate.external_run_url == external_run_url
+                ):
+                    return _edge_to_response(env, existing), 'noop'
+                refreshed = candidate.model_copy(
+                    update={
+                        'status': status,
+                        'note': note,
+                        'external_run_url': external_run_url,
+                        'timestamp': timestamp
+                        or datetime.datetime.now(datetime.UTC),
+                    }
+                )
+                updated_list = [
+                    *existing[:idx],
+                    refreshed,
+                    *existing[idx + 1 :],
+                ]
+                updated_edge = await _set_deployments(
+                    db,
+                    project_id=project_id,
+                    version=version,
+                    env_slug=env_slug,
+                    deployments=updated_list,
+                    env=env,
+                )
+                return updated_edge, 'updated'
     event = models.DeploymentEvent(
-        timestamp=datetime.datetime.now(datetime.UTC),
+        timestamp=timestamp or datetime.datetime.now(datetime.UTC),
         status=status,
         note=note,
         external_run_id=external_run_id,
         external_run_url=external_run_url,
     )
     deployments = [*existing, event]
-    serialized = json.dumps(
-        [e.model_dump(mode='json') for e in deployments],
-    )
     if existing:
-        set_query: typing.LiteralString = """
-        MATCH (:Project {{id: {project_id}}})
-              -[:HAS_RELEASE]->(r:Release {{version: {version}}})
-        MATCH (r)-[d:DEPLOYED_TO]->(:Environment {{slug: {env_slug}}})
-        SET d.deployments = {deployments}
-        RETURN d.deployments AS deployments
-        """
-        await db.execute(
-            set_query,
-            {
-                'project_id': project_id,
-                'version': version,
-                'env_slug': env_slug,
-                'deployments': serialized,
-            },
-            ['deployments'],
+        appended_edge = await _set_deployments(
+            db,
+            project_id=project_id,
+            version=version,
+            env_slug=env_slug,
+            deployments=deployments,
+            env=env,
         )
-    else:
-        create_query: typing.LiteralString = """
-        MATCH (:Project {{id: {project_id}}})
-              -[:HAS_RELEASE]->(r:Release {{version: {version}}})
-        MATCH (e:Environment {{slug: {env_slug}}})
-              -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-        CREATE (r)-[d:DEPLOYED_TO {{deployments: {deployments}}}]->(e)
-        RETURN d.deployments AS deployments
-        """
-        await db.execute(
-            create_query,
-            {
-                'project_id': project_id,
-                'version': version,
-                'env_slug': env_slug,
-                'org_slug': org_slug,
-                'deployments': serialized,
-            },
-            ['deployments'],
-        )
+        return appended_edge, 'appended'
+    created_edge = await _create_deployments_edge(
+        db,
+        project_id=project_id,
+        version=version,
+        env_slug=env_slug,
+        org_slug=org_slug,
+        deployments=deployments,
+        env=env,
+    )
+    return created_edge, 'appended'
+
+
+async def _set_deployments(
+    db: graph.Graph,
+    *,
+    project_id: str,
+    version: str,
+    env_slug: str,
+    deployments: list[models.DeploymentEvent],
+    env: dict[str, typing.Any],
+) -> ReleaseEnvironmentEdgeResponse:
+    """Overwrite ``deployments`` on an existing ``DEPLOYED_TO`` edge."""
+    serialized = json.dumps([e.model_dump(mode='json') for e in deployments])
+    set_query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})
+          -[:HAS_RELEASE]->(r:Release {{version: {version}}})
+    MATCH (r)-[d:DEPLOYED_TO]->(:Environment {{slug: {env_slug}}})
+    SET d.deployments = {deployments}
+    RETURN d.deployments AS deployments
+    """
+    await db.execute(
+        set_query,
+        {
+            'project_id': project_id,
+            'version': version,
+            'env_slug': env_slug,
+            'deployments': serialized,
+        },
+        ['deployments'],
+    )
+    return _edge_to_response(env, deployments)
+
+
+async def _create_deployments_edge(
+    db: graph.Graph,
+    *,
+    project_id: str,
+    version: str,
+    env_slug: str,
+    org_slug: str,
+    deployments: list[models.DeploymentEvent],
+    env: dict[str, typing.Any],
+) -> ReleaseEnvironmentEdgeResponse:
+    """Create the first ``DEPLOYED_TO`` edge for ``(release, env)``."""
+    serialized = json.dumps([e.model_dump(mode='json') for e in deployments])
+    create_query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})
+          -[:HAS_RELEASE]->(r:Release {{version: {version}}})
+    MATCH (e:Environment {{slug: {env_slug}}})
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    CREATE (r)-[d:DEPLOYED_TO {{deployments: {deployments}}}]->(e)
+    RETURN d.deployments AS deployments
+    """
+    await db.execute(
+        create_query,
+        {
+            'project_id': project_id,
+            'version': version,
+            'env_slug': env_slug,
+            'org_slug': org_slug,
+            'deployments': serialized,
+        },
+        ['deployments'],
+    )
     return _edge_to_response(env, deployments)
 
 

@@ -881,6 +881,11 @@ class PluginAssignmentResponse(pydantic.BaseModel):
     # (e.g. the histogram strip on the Logs tab) for plugins whose
     # underlying API does not support them.
     supports_histogram: bool = False
+    # Set on deployment plugins that implement
+    # ``list_recent_deployments`` -- gates the "Resync deployments"
+    # card on the project settings page (and the admin TPS page) so
+    # the UI doesn't surface a button that the API will 400 on.
+    supports_deployment_sync: bool = False
 
 
 # -- Configuration / Logs response models ---------------------------------

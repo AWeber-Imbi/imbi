@@ -17,6 +17,7 @@ from imbi_common.plugins.base import (
     Ref,
     RefInfo,
     ReleaseInfo,
+    RemoteDeployment,
 )
 from imbi_common.plugins.registry import RegistryEntry
 
@@ -32,6 +33,7 @@ class _FakeDeploymentPlugin(DeploymentPlugin):
         slug='github-deployment',
         name='GitHub Deployment',
         plugin_type='deployment',
+        supports_deployment_sync=True,
     )
 
     async def list_refs(  # type: ignore[override]
@@ -95,6 +97,23 @@ class _FakeDeploymentPlugin(DeploymentPlugin):
             url=f'https://api.gh/releases/{tag}',
             prerelease=prerelease,
         )
+
+    async def list_recent_deployments(  # type: ignore[override]
+        self, ctx, credentials, environments, limit=1
+    ):
+        # Override per-test by setting ``_recent`` on the instance.
+        return getattr(self, '_recent', [])
+
+
+class _FakeNoSyncDeploymentPlugin(_FakeDeploymentPlugin):
+    """Deployment plugin that opts *out* of resync."""
+
+    manifest = PluginManifest(
+        slug='no-sync-deployment',
+        name='No-Sync Deployment',
+        plugin_type='deployment',
+        supports_deployment_sync=False,
+    )
 
 
 def _entry() -> RegistryEntry:
@@ -844,6 +863,224 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         self.assertEqual(row['environment_slug'], 'staging')
         self.assertEqual(row['version'], 'v6.4.0')
         self.assertEqual(row['plugin_slug'], 'github-deployment')
+
+
+class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
+    """End-to-end coverage for the per-project resync endpoint."""
+
+    def _arm(
+        self,
+        recent: list[RemoteDeployment],
+        *,
+        environments: list[str] | None = None,
+        release_exists: bool = False,
+        edge_status: typing.Literal['append', 'dedupe', 'missing'] = 'append',
+    ) -> None:
+        self._FakeDeploymentPlugin_recent = recent  # for visibility
+        # The endpoint instantiates a new plugin per call so we patch the
+        # handler factory directly to inject the prepared rows.
+        plugin = _FakeDeploymentPlugin()
+        plugin._recent = recent  # type: ignore[attr-defined]
+        self.mocks['handler'] = self._start(
+            mock.patch(
+                f'{_MODULE}._handler',
+                return_value=plugin,
+            )
+        )
+        self.mocks['load_envs'] = self._start(
+            mock.patch(
+                f'{_MODULE}._load_resync_environments',
+                return_value=environments
+                if environments is not None
+                else [o.environment for o in recent],
+            )
+        )
+        self.mocks['release_exists'] = self._start(
+            mock.patch(
+                f'{_MODULE}._release_exists',
+                return_value=release_exists,
+            )
+        )
+        self.mocks['upsert_release_node'] = self._start(
+            mock.patch(
+                f'{_MODULE}._upsert_release_node',
+                return_value=None,
+            )
+        )
+        if edge_status == 'missing':
+            self.mocks['append_deployment_event'].return_value = None
+        else:
+            outcome = 'noop' if edge_status == 'dedupe' else 'appended'
+            edge = mock.Mock(
+                deployments=[
+                    mock.Mock(external_run_id=o.external_run_id)
+                    for o in recent
+                ]
+            )
+            self.mocks['append_deployment_event'].return_value = (
+                edge,
+                outcome,
+            )
+
+    def _observed(
+        self,
+        *,
+        environment: str = 'infrastructure-testing',
+        ref: str | None = 'main',
+        sha: str = '2668cd0abcdef',
+        status: str = 'success',
+        external_run_id: str = '12345',
+    ) -> RemoteDeployment:
+        return RemoteDeployment(
+            environment=environment,
+            sha=sha,
+            ref=ref,
+            status=typing.cast(typing.Any, status),
+            created_at=datetime.datetime(
+                2026, 5, 13, 14, 0, tzinfo=datetime.UTC
+            ),
+            external_run_id=external_run_id,
+            run_url='https://gh/runs/12345',
+            deployment_url=(
+                'https://api.github.com/repos/octo/demo/deployments/12345'
+            ),
+            description='Bump foo',
+        )
+
+    def test_resync_persists_release_and_event_for_sha(self) -> None:
+        observed = self._observed()
+        self._arm([observed], release_exists=False)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/resync'
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(data['projects'], 1)
+        self.assertEqual(data['observed'], 1)
+        self.assertEqual(data['releases_created'], 1)
+        self.assertEqual(data['releases_updated'], 0)
+        self.assertEqual(data['events_recorded'], 1)
+        self.assertEqual(data['errors'], [])
+        # Sha-style ref derives version from sha prefix (matches the
+        # gateway's create_release CEL expression).
+        upsert_call = self.mocks['upsert_release_node'].call_args
+        self.assertEqual(upsert_call.kwargs['version'], '2668cd0')
+        append_call = self.mocks['append_deployment_event'].call_args
+        self.assertEqual(append_call.kwargs['version'], '2668cd0')
+        self.assertEqual(
+            append_call.kwargs['env_slug'], 'infrastructure-testing'
+        )
+        self.assertEqual(append_call.kwargs['external_run_id'], '12345')
+        self.assertEqual(append_call.kwargs['timestamp'], observed.created_at)
+
+    def test_resync_uses_semver_ref_as_version(self) -> None:
+        self._arm(
+            [self._observed(ref='v1.2.3', sha='deadbeefcafebabe')],
+            release_exists=True,
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/resync'
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(data['releases_created'], 0)
+        self.assertEqual(data['releases_updated'], 1)
+        upsert_call = self.mocks['upsert_release_node'].call_args
+        self.assertEqual(upsert_call.kwargs['version'], 'v1.2.3')
+
+    def test_resync_400_when_plugin_opts_out(self) -> None:
+        # Override the resolved plugin to advertise the no-sync flavor.
+        self.mocks['resolve_plugin'].return_value = ResolvedPlugin(
+            plugin_id='p-1',
+            plugin_slug='no-sync-deployment',
+            entry=RegistryEntry(
+                handler_cls=_FakeNoSyncDeploymentPlugin,
+                manifest=_FakeNoSyncDeploymentPlugin.manifest,
+                package_name='imbi-plugin-test',
+                package_version='0.1.0',
+            ),
+            options={'owner': 'octo', 'repo': 'demo'},
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/resync'
+            )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('does not support', response.json()['detail'])
+
+    def test_resync_no_environments_returns_zero(self) -> None:
+        self._arm([], environments=[])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/resync'
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['observed'], 0)
+        self.mocks['upsert_release_node'].assert_not_called()
+        self.mocks['append_deployment_event'].assert_not_called()
+
+    def test_resync_records_missing_edge_as_error(self) -> None:
+        self._arm([self._observed()], edge_status='missing')
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/resync'
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(len(data['errors']), 1)
+        self.assertEqual(
+            data['errors'][0]['environment'], 'infrastructure-testing'
+        )
+        self.assertEqual(data['events_recorded'], 0)
+
+    def test_resync_writes_audit_per_environment(self) -> None:
+        self._arm([self._observed()])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/resync'
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        ch = self.mocks['clickhouse'].return_value
+        ch.insert.assert_awaited_once()
+        args, _kwargs = ch.insert.call_args
+        cols = args[2]
+        row = dict(zip(cols, args[1][0], strict=False))
+        self.assertEqual(row['entry_type'], 'Deployed')
+        self.assertEqual(row['environment_slug'], 'infrastructure-testing')
+        self.assertEqual(row['version'], '2668cd0')
+        description = row['description']
+        if isinstance(description, str):
+            import json as _json
+
+            self.assertEqual(_json.loads(description)['action'], 'resync')
+
+    def test_resync_requires_write_permission(self) -> None:
+        non_admin = models.User(
+            email='dev@example.com',
+            display_name='Dev',
+            is_active=True,
+            is_admin=False,
+            password_hash=password.hash_password('testpassword123'),
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.auth_context = permissions.AuthContext(
+            user=non_admin,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions={'project:deployment:read'},
+        )
+
+        async def _ctx() -> permissions.AuthContext:
+            return self.auth_context
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = _ctx
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/resync'
+            )
+        self.assertEqual(response.status_code, 403)
 
 
 class FallbackNotesTestCase(unittest.TestCase):
