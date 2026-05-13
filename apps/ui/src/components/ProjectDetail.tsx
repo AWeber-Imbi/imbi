@@ -12,9 +12,9 @@ import {
   ChevronDown,
   Filter,
   Info,
+  Rocket,
   Settings2 as SettingsIcon,
   TrendingDown,
-  XCircle,
 } from 'lucide-react'
 
 import {
@@ -74,7 +74,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import { formatFieldKey } from '@/lib/project-field-formatting'
-import { sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
+import { cn, sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
 import type { Project, ScoringPolicy } from '@/types'
 
 interface ProjectDetailProps {
@@ -129,11 +129,14 @@ export function ProjectDetail({
     [project.environments],
   )
 
-  const { data: currentReleases = [] } = useQuery({
+  const { data: currentReleases = [], isPending: releasesPending } = useQuery({
     enabled: !!orgSlug && !!project.id,
     queryFn: ({ signal }) => listCurrentReleases(orgSlug, project.id, signal),
     queryKey: ['currentReleases', orgSlug, project.id],
   })
+  // While the releases query is in-flight, chips render a fuzzy
+  // placeholder for the version slot so versions don't pop in.
+  const releasesLoading = releasesPending && !!orgSlug && !!project.id
 
   const deploymentStatus: Record<
     string,
@@ -211,20 +214,23 @@ export function ProjectDetail({
           ? deploymentStatus[fromSlug]?.version
           : undefined
         // Wait for the releases query (drives ``deploymentStatus``) to
-        // settle before deciding the upstream is empty.
-        if (currentReleases.length === 0) return
+        // settle before deciding the upstream is empty. Use the
+        // query's pending flag, not array length — a project with
+        // genuinely zero releases would otherwise stay stuck here
+        // without redirecting.
+        if (releasesPending) return
         if (!fromVersion) {
           navigate(`/projects/${project.id}`, { replace: true })
         }
       }
     }
   }, [
-    currentReleases,
     deploymentStatus,
     initialSubId,
     initialTab,
     navigate,
     project.id,
+    releasesPending,
     sortedEnvironments,
   ])
 
@@ -645,9 +651,28 @@ export function ProjectDetail({
                   const tooltipText = isPromoteSlot
                     ? 'Promote'
                     : 'Deploy / Redeploy'
-                  const versionSuffix = deployment
-                    ? `: ${deployment.version}`
-                    : ''
+                  const versionSlot =
+                    deployment || releasesLoading ? (
+                      <span className="inline-grid items-center transition-discrete">
+                        <span
+                          aria-hidden
+                          className={cn(
+                            'col-start-1 row-start-1 transition-opacity duration-500 ease-out',
+                            deployment ? 'opacity-0' : 'opacity-100',
+                          )}
+                        >
+                          <span className="inline-block h-3 w-14 animate-pulse rounded bg-current/25 align-middle blur-[2px]" />
+                        </span>
+                        <span
+                          className={cn(
+                            'col-start-1 row-start-1 transition-opacity duration-500 ease-out',
+                            deployment ? 'opacity-100' : 'opacity-0',
+                          )}
+                        >
+                          {deployment ? `: ${deployment.version}` : ' '}
+                        </span>
+                      </span>
+                    ) : null
                   const chipBody = color ? (
                     <LabelChip
                       className="rounded-md px-3 py-1.5 text-sm"
@@ -655,14 +680,14 @@ export function ProjectDetail({
                     >
                       <span className="inline-flex items-center gap-1.5">
                         {env.name}
-                        {versionSuffix}
+                        {versionSlot}
                         {ciDot}
                       </span>
                     </LabelChip>
                   ) : (
                     <span className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium">
                       {env.name}
-                      {versionSuffix}
+                      {versionSlot}
                       {ciDot}
                     </span>
                   )
@@ -1133,7 +1158,7 @@ function renderCiDot(status: 'fail' | 'pass' | 'warn' | null): React.ReactNode {
   if (status === 'pass')
     return <CheckCircle2 aria-label="CI passing" className="size-3.5" />
   if (status === 'fail')
-    return <XCircle aria-label="CI failing" className="size-3.5" />
+    return <Rocket aria-label="CI failing" className="size-3.5" />
   if (status === 'warn')
     return <AlertCircle aria-label="CI warning" className="size-3.5" />
   return null
