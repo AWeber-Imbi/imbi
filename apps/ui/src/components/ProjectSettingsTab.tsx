@@ -10,6 +10,7 @@ import {
   deleteProject,
   listEnvironments,
   listLinkDefinitions,
+  listProjectPlugins,
   patchProject,
   rescoreProject,
   unarchiveProject,
@@ -30,6 +31,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
+import { useProjectDeploymentResync } from '@/hooks/useDeploymentResync'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { sortEnvironments } from '@/lib/utils'
@@ -91,6 +93,27 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
       scheduleScoreRefresh()
     },
   })
+
+  const { data: projectPlugins = [] } = useQuery({
+    enabled: !!orgSlug && !!project.id,
+    queryFn: ({ signal }) => listProjectPlugins(orgSlug, project.id, signal),
+    queryKey: ['projectPlugins', orgSlug, project.id],
+  })
+
+  // Pick the project's deployment plugin (project-level or inherited)
+  // and only render the resync card when its manifest opts in. Multiple
+  // deployment assignments are rare; we resync the default one and
+  // expose ``source`` via the existing endpoint flag if needed later.
+  const deploymentPlugin = useMemo(() => {
+    const candidates = projectPlugins.filter(
+      (assignment) =>
+        assignment.tab === 'deployment' &&
+        assignment.supports_deployment_sync === true,
+    )
+    return candidates.find((assignment) => assignment.default) ?? candidates[0]
+  }, [projectPlugins])
+
+  const resyncMutation = useProjectDeploymentResync(orgSlug, project.id)
 
   const {
     data: linkDefs = [],
@@ -161,6 +184,30 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
       />
 
       <ProjectPluginsSection orgSlug={orgSlug} projectId={project.id} />
+
+      {deploymentPlugin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Resync deployments</CardTitle>
+            <CardDescription className="text-secondary">
+              Fetch the latest deployment for each environment from{' '}
+              <strong>{deploymentPlugin.label}</strong> and backfill releases
+              and deployment history. Useful when webhook delivery has lapsed or
+              the badge appears stale.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              disabled={resyncMutation.isPending}
+              onClick={() => resyncMutation.mutate()}
+              size="sm"
+              variant="outline"
+            >
+              {resyncMutation.isPending ? 'Resyncing...' : 'Resync Deployments'}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {isAdmin && (
         <Card>

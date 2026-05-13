@@ -50,6 +50,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { useServiceDeploymentResync } from '@/hooks/useDeploymentResync'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
 import type {
@@ -189,8 +190,92 @@ export function ServicePluginConfiguration({
           {manifest && (
             <ServicePluginEdgesCard manifest={manifest} orgSlug={orgSlug} />
           )}
+          {manifest?.supports_deployment_sync === true && (
+            <ResyncCard orgSlug={orgSlug} serviceSlug={serviceSlug} />
+          )}
         </>
       )}
+    </div>
+  )
+}
+
+// --------------------------- Resync ------------------------------------
+
+function ResyncCard({
+  orgSlug,
+  serviceSlug,
+}: {
+  orgSlug: string
+  serviceSlug: string
+}) {
+  const [showConfirm, setShowConfirm] = useState(false)
+  const resync = useServiceDeploymentResync(orgSlug, serviceSlug)
+  const onConfirm = () => {
+    resync.mutate(undefined, { onSettled: () => setShowConfirm(false) })
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Resync deployments for all projects</CardTitle>
+        <CardDescription>
+          Backfill <strong>Release</strong> nodes and deployment history for
+          every project that uses this plugin. Runs the per-project resync
+          against the remote with bounded concurrency. Use this when webhook
+          delivery has lapsed across the fleet and badges are stale.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {showConfirm ? (
+          <ResyncConfirm
+            isPending={resync.isPending}
+            onCancel={() => setShowConfirm(false)}
+            onConfirm={onConfirm}
+          />
+        ) : (
+          <Button
+            disabled={resync.isPending}
+            onClick={() => setShowConfirm(true)}
+            size="sm"
+            variant="outline"
+          >
+            Resync All Projects
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ResyncConfirm({
+  isPending,
+  onCancel,
+  onConfirm,
+}: {
+  isPending: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="space-y-3">
+      <p className="text-secondary text-sm">This may take a while. Continue?</p>
+      <div className="flex gap-2">
+        <Button
+          disabled={isPending}
+          onClick={onConfirm}
+          size="sm"
+          variant="outline"
+        >
+          {isPending ? 'Resyncing...' : 'Confirm Resync'}
+        </Button>
+        <Button
+          disabled={isPending}
+          onClick={onCancel}
+          size="sm"
+          variant="outline"
+        >
+          Cancel
+        </Button>
+      </div>
     </div>
   )
 }

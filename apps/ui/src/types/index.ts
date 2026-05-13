@@ -601,6 +601,7 @@ export interface InstalledPlugin {
   requires_identity?: boolean
   slug: string
   supported_tabs: PluginTab[]
+  supports_deployment_sync?: boolean
   vertex_labels?: PluginVertexLabel[]
   // Body copy shown on the dashboard "unconnected integration" widget.
   // Resolved server-side (override > manifest > null).  ``_default`` is
@@ -766,6 +767,7 @@ export interface PluginAssignmentResponse {
   plugin_id: string
   plugin_slug: string
   source: 'merged' | 'project' | 'project_type'
+  supports_deployment_sync?: boolean
   supports_histogram?: boolean
   tab: PluginTab
 }

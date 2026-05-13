@@ -1501,6 +1501,43 @@ export const getDeploymentRunStatus = (
   )
 }
 
+// Deployment resync
+
+export interface DeploymentResyncError {
+  detail: string
+  environment?: null | string
+  project_id?: null | string
+}
+
+export interface DeploymentResyncSummary {
+  errors: DeploymentResyncError[]
+  events_recorded: number
+  events_skipped: number
+  observed: number
+  projects: number
+  releases_created: number
+  releases_updated: number
+}
+
+export const resyncProjectDeployments = (
+  orgSlug: string,
+  projectId: string,
+  source?: string,
+): Promise<DeploymentResyncSummary> => {
+  const search = source ? `?source=${encodeURIComponent(source)}` : ''
+  return apiClient.post<DeploymentResyncSummary>(
+    `${deploymentsBase(orgSlug, projectId)}/resync${search}`,
+  )
+}
+
+export const resyncServiceDeployments = (
+  orgSlug: string,
+  serviceSlug: string,
+): Promise<DeploymentResyncSummary> =>
+  apiClient.post<DeploymentResyncSummary>(
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/deployments/resync`,
+  )
+
 // Identity Plugins (org-scoped)
 export interface IdentityPluginRef {
   label: string
