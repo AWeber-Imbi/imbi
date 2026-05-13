@@ -64,10 +64,11 @@ export function OperationsLogEntryDetails({ entry }: Props) {
   // suppress identical notes so the panel shows real long-form content only.
   // Plugin-emitted entries don't share that lineage, so the comparison is
   // skipped when `description` carries a structured payload.
+  const sanitizedNotes = record.notes ? cleanNotes(record.notes) : ''
   const hasNotes =
-    !!record.notes &&
+    !!sanitizedNotes &&
     (parsed.kind === 'plugin' ||
-      record.notes.trim() !== record.description.trim())
+      sanitizedNotes.trim() !== record.description.trim())
 
   const hasExtras =
     hasNotes ||
@@ -97,7 +98,7 @@ export function OperationsLogEntryDetails({ entry }: Props) {
             Notes
           </h3>
           <div className="document-markdown border-tertiary bg-primary text-primary max-w-none rounded-md border p-3 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-            <Markdown remarkPlugins={[remarkGfm]}>{record.notes}</Markdown>
+            <Markdown remarkPlugins={[remarkGfm]}>{sanitizedNotes}</Markdown>
           </div>
         </div>
       )}
@@ -172,6 +173,13 @@ export function OperationsLogEntryDetails({ entry }: Props) {
       />
     </div>
   )
+}
+
+function cleanNotes(notes: string): string {
+  return notes
+    .replace(/\\n/g, '\n')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .trim()
 }
 
 function formatAbsolute(iso: string): string {
