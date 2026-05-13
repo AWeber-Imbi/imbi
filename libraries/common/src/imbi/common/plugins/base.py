@@ -75,6 +75,21 @@ class PluginEdgeLabel(pydantic.BaseModel):
     properties: dict[str, str] = {}
 
 
+class OpsLogTemplate(pydantic.BaseModel):
+    """Plugin-supplied formatter for an operations-log entry.
+
+    Keyed off the ``action`` value the API writes into the ops-log
+    ``description`` payload (e.g. ``promote`` / ``deploy`` for
+    deployment plugins, ``set_value`` / ``delete_key`` for config
+    plugins).  The UI substitutes ``{{name}}`` placeholders against
+    the payload merged with row-level fields (``version``,
+    ``environment``, ``project``, ``performer``).
+    """
+
+    label: str
+    summary: str | None = None
+
+
 class PluginManifest(pydantic.BaseModel):
     slug: str
     name: str
@@ -116,6 +131,11 @@ class PluginManifest(pydantic.BaseModel):
     # run as @you.").  When ``None`` the widget falls back to the
     # plugin's ``description``.
     widget_text: str | None = None
+    # Mustache-style templates the UI uses to render operations-log
+    # entries tagged with this plugin's slug.  Keyed by the ``action``
+    # value the API writes into the description JSON.  The empty-string
+    # key acts as a fallback when no action is present.
+    ops_log_templates: dict[str, OpsLogTemplate] = {}
 
 
 class IdentityProfile(pydantic.BaseModel):

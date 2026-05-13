@@ -16,6 +16,7 @@ from imbi_common.plugins.base import (
     LifecycleResult,
     LogFilter,
     LogQuery,
+    OpsLogTemplate,
     PluginContext,
     PluginEdgeLabel,
     PluginIndex,
@@ -373,6 +374,38 @@ class ManifestDeploymentSyncFlagTestCase(unittest.TestCase):
         )
         restored = PluginManifest.model_validate(manifest.model_dump())
         self.assertTrue(restored.supports_deployment_sync)
+
+
+class ManifestOpsLogTemplatesTestCase(unittest.TestCase):
+    def test_ops_log_templates_defaults_empty(self) -> None:
+        manifest = PluginManifest(
+            slug='gh-deploy',
+            name='GitHub Deployment',
+            plugin_type='deployment',
+        )
+        self.assertEqual(manifest.ops_log_templates, {})
+
+    def test_ops_log_templates_round_trip(self) -> None:
+        manifest = PluginManifest(
+            slug='gh-deploy',
+            name='GitHub Deployment',
+            plugin_type='deployment',
+            ops_log_templates={
+                'deploy': OpsLogTemplate(
+                    label='{{performer}} deployed {{version}}',
+                    summary='Deploy event',
+                )
+            },
+        )
+        restored = PluginManifest.model_validate(manifest.model_dump())
+        self.assertEqual(
+            restored.ops_log_templates['deploy'].label,
+            '{{performer}} deployed {{version}}',
+        )
+        self.assertEqual(
+            restored.ops_log_templates['deploy'].summary,
+            'Deploy event',
+        )
 
 
 class RemoteDeploymentTestCase(unittest.TestCase):
