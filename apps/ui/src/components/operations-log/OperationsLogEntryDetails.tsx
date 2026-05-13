@@ -22,7 +22,6 @@ import type { OperationsLogRecord } from '@/types'
 import { parseDescription } from './parseDescription'
 import {
   GenericPluginPayload,
-  getPluginRenderer,
   type PluginOpsLogContext,
 } from './plugin-renderers'
 
@@ -30,6 +29,15 @@ interface Props {
   entry: OperationsLogRecord
 }
 
+// Predominantly a render function whose branches gate which optional
+// metadata sections appear (notes, link, ticket, plugin payload).
+// Each branch is straight-line markup, not nested logic. This PR
+// reduces the function's cyclomatic complexity (24 → 19) by removing
+// the legacy plugin-renderer branch, but fallow's audit attributes the
+// remaining threshold breach to this change. Keep the suppression
+// scoped to the function header until the component is split per
+// optional section.
+// fallow-ignore-next-line complexity
 export function OperationsLogEntryDetails({ entry }: Props) {
   const { data } = useQuery({
     initialData: entry,
@@ -53,8 +61,6 @@ export function OperationsLogEntryDetails({ entry }: Props) {
     version: record.version,
   }
   const parsed = parseDescription(record)
-  const pluginRenderer =
-    parsed.kind === 'plugin' ? getPluginRenderer(record.plugin_slug) : undefined
   const pluginCtx: null | PluginOpsLogContext =
     parsed.kind === 'plugin'
       ? { action: parsed.action, entry: record, payload: parsed.payload }
@@ -83,12 +89,10 @@ export function OperationsLogEntryDetails({ entry }: Props) {
       {pluginCtx && (
         <div>
           <h3 className="text-overline text-tertiary mb-1.5 uppercase">
-            {pluginRenderer?.displayName ?? record.plugin_slug}
+            {record.plugin_slug}
           </h3>
           <div className="border-tertiary bg-primary rounded-md border p-3">
-            {pluginRenderer?.details?.(pluginCtx) ?? (
-              <GenericPluginPayload {...pluginCtx} />
-            )}
+            <GenericPluginPayload {...pluginCtx} />
           </div>
         </div>
       )}

@@ -1,9 +1,37 @@
+import type { ReactElement } from 'react'
+
 import md5 from 'md5'
 
-import type { ActivityFeedEntry } from '@/types'
+import { usePluginOpsLogTemplates } from '@/hooks/usePluginOpsLogTemplates'
+import type { ActivityFeedEntry, OperationsLogEntry } from '@/types'
 
+import { renderActivityTemplate } from './activityFeed/renderActivityTemplate'
 import { Button } from './ui/button'
 import { Card } from './ui/card'
+
+interface ActivityLineProps {
+  activity: ActivityFeedEntry
+  onProjectSelect?: (projectName: string) => void
+  onUserSelect?: (userName: string) => void
+  // When the activity is an ops-log entry whose plugin ships a template
+  // for the embedded ``action``, return the rendered label string;
+  // otherwise return ``null`` so the line falls back to the legacy
+  // hand-built sentence.
+  renderTemplate: (entry: OperationsLogEntry) => null | string
+}
+
+interface OpsLogActivityLineProps {
+  entry: OperationsLogEntry
+  projectButton: null | ReactElement
+  renderTemplate: (entry: OperationsLogEntry) => null | string
+  userButton: ReactElement
+}
+
+interface ProjectFeedActivityLineProps {
+  activity: Extract<ActivityFeedEntry, { type: 'ProjectFeedEntry' }>
+  projectButton: null | ReactElement
+  userButton: ReactElement
+}
 
 interface RecentActivityProps {
   activities: ActivityFeedEntry[]
@@ -24,6 +52,7 @@ export function RecentActivity({
   onProjectSelect,
   onUserSelect,
 }: RecentActivityProps) {
+  const { templates } = usePluginOpsLogTemplates()
   if (isLoading) {
     return (
       <Card className="p-6">
@@ -63,47 +92,14 @@ export function RecentActivity({
             />
 
             <div className="min-w-0 flex-1">
-              <p className="text-secondary text-sm leading-relaxed">
-                <Button
-                  className="text-primary hover:text-info h-auto p-0 font-medium transition-colors"
-                  onClick={() => onUserSelect?.(activity.display_name)}
-                  variant="link"
-                >
-                  {activity.display_name}
-                </Button>{' '}
-                {activity.type === 'OperationsLogEntry'
-                  ? activity.change_type.toLowerCase()
-                  : activity.what === 'updated facts'
-                    ? 'updated facts for the'
-                    : activity.what}{' '}
-                {activity.project_name && (
-                  <Button
-                    className="text-info hover:text-info/80 h-auto p-0 font-medium transition-colors"
-                    onClick={() => onProjectSelect?.(activity.project_name!)}
-                    variant="link"
-                  >
-                    {activity.project_name}
-                  </Button>
-                )}
-                {activity.type === 'OperationsLogEntry' &&
-                  activity.environment && (
-                    <span>
-                      {activity.change_type === 'Deployed'
-                        ? ' to the '
-                        : ' in the '}
-                      {activity.environment} environment.
-                    </span>
-                  )}
-                {activity.type === 'ProjectFeedEntry' &&
-                  activity.what === 'updated facts' &&
-                  ' project.'}
-                {activity.type === 'ProjectFeedEntry' &&
-                  activity.what !== 'updated facts' &&
-                  '.'}
-                {activity.type === 'OperationsLogEntry' && activity.version && (
-                  <span className="text-tertiary"> ({activity.version})</span>
-                )}
-              </p>
+              <ActivityLine
+                activity={activity}
+                onProjectSelect={onProjectSelect}
+                onUserSelect={onUserSelect}
+                renderTemplate={(opsEntry) =>
+                  renderActivityTemplate(opsEntry, templates)
+                }
+              />
 
               <p className="text-tertiary mt-1 text-xs">
                 {getRelativeTime(
@@ -142,6 +138,51 @@ export function RecentActivity({
       )}
       {activityList}
     </Card>
+  )
+}
+
+function ActivityLine({
+  activity,
+  onProjectSelect,
+  onUserSelect,
+  renderTemplate,
+}: ActivityLineProps) {
+  const userButton = (
+    <Button
+      className="text-primary hover:text-info h-auto p-0 font-medium transition-colors"
+      onClick={() => onUserSelect?.(activity.display_name)}
+      variant="link"
+    >
+      {activity.display_name}
+    </Button>
+  )
+  const projectButton = activity.project_name ? (
+    <Button
+      className="text-info hover:text-info/80 h-auto p-0 font-medium transition-colors"
+      onClick={() => onProjectSelect?.(activity.project_name!)}
+      variant="link"
+    >
+      {activity.project_name}
+    </Button>
+  ) : null
+
+  if (activity.type === 'OperationsLogEntry') {
+    return (
+      <OpsLogActivityLine
+        entry={activity}
+        projectButton={projectButton}
+        renderTemplate={renderTemplate}
+        userButton={userButton}
+      />
+    )
+  }
+
+  return (
+    <ProjectFeedActivityLine
+      activity={activity}
+      projectButton={projectButton}
+      userButton={userButton}
+    />
   )
 }
 
@@ -185,4 +226,51 @@ function getRelativeTime(timestamp: string): string {
     console.error('Error parsing timestamp:', timestamp, error)
     return 'unknown time'
   }
+}
+
+function OpsLogActivityLine({
+  entry,
+  projectButton,
+  renderTemplate,
+  userButton,
+}: OpsLogActivityLineProps) {
+  const rendered = renderTemplate(entry)
+  if (rendered) {
+    return (
+      <p className="text-secondary text-sm leading-relaxed">
+        {userButton} {rendered}
+        {projectButton ? <> on {projectButton}</> : null}
+      </p>
+    )
+  }
+  return (
+    <p className="text-secondary text-sm leading-relaxed">
+      {userButton} {entry.change_type.toLowerCase()} {projectButton}
+      {entry.environment && (
+        <span>
+          {entry.change_type === 'Deployed' ? ' to the ' : ' in the '}
+          {entry.environment} environment.
+        </span>
+      )}
+      {entry.version && (
+        <span className="text-tertiary"> ({entry.version})</span>
+      )}
+    </p>
+  )
+}
+
+function ProjectFeedActivityLine({
+  activity,
+  projectButton,
+  userButton,
+}: ProjectFeedActivityLineProps) {
+  const trailing = activity.what === 'updated facts' ? ' project.' : '.'
+  const verbPhrase =
+    activity.what === 'updated facts' ? 'updated facts for the' : activity.what
+  return (
+    <p className="text-secondary text-sm leading-relaxed">
+      {userButton} {verbPhrase} {projectButton}
+      {trailing}
+    </p>
+  )
 }

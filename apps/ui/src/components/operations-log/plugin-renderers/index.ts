@@ -1,19 +1,8 @@
-import { awsSsmRenderer } from './aws-ssm'
-import type { PluginOpsLogRenderer } from './types'
-
-// Maps `plugin_slug` from the ops log entry to its renderer. Unregistered
-// slugs fall back to the generic key/value payload renderer; the entry still
-// renders, just without plugin-specific polish.
-const RENDERERS: Record<string, PluginOpsLogRenderer> = {
-  'aws-ssm': awsSsmRenderer,
-}
-
-export function getPluginRenderer(
-  pluginSlug: string | undefined,
-): PluginOpsLogRenderer | undefined {
-  if (!pluginSlug) return undefined
-  return RENDERERS[pluginSlug]
-}
-
+// Plugin-specific renderers used to live here as hand-written React
+// components keyed by ``plugin_slug``. They have been replaced by
+// plugin-supplied templates fetched from the API (see
+// ``usePluginOpsLogTemplates`` + ``renderOpsLogTemplate``); the generic
+// key/value payload view stays here as the details-panel fallback for
+// entries the plugin has not customized.
 export { GenericPluginPayload } from './generic'
-export type { PluginOpsLogContext, PluginOpsLogRenderer } from './types'
+export type { PluginOpsLogContext } from './types'

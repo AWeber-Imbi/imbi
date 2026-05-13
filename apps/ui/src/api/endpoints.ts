@@ -428,6 +428,32 @@ export interface OperationsLogCreate {
 export const createOperationsLogEntry = (body: OperationsLogCreate) =>
   apiClient.post<OperationsLogRecord>('/operations-log/', body)
 
+export interface OpsLogTemplate {
+  label: string
+  summary?: null | string
+}
+
+export interface PluginOpsLogTemplates {
+  name: string
+  slug: string
+  templates: Record<string, OpsLogTemplate>
+}
+
+interface PluginOpsLogTemplatesEnvelope {
+  plugins: PluginOpsLogTemplates[]
+}
+
+export const listPluginOpsLogTemplates = async (
+  signal?: AbortSignal,
+): Promise<PluginOpsLogTemplates[]> => {
+  const data = await apiClient.get<PluginOpsLogTemplatesEnvelope>(
+    '/operations-log/plugin-templates',
+    undefined,
+    signal,
+  )
+  return Array.isArray(data?.plugins) ? data.plugins : []
+}
+
 // Events
 export interface EventRecord {
   attributed_to: string

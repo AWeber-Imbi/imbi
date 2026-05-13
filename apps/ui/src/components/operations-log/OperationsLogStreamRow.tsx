@@ -10,6 +10,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useTheme } from '@/contexts/ThemeContext'
+import { usePluginOpsLogTemplates } from '@/hooks/usePluginOpsLogTemplates'
 import { deriveChipColors } from '@/lib/chip-colors'
 import { ENTRY_TYPE_ICONS } from '@/lib/ops-log-icons'
 import { cn } from '@/lib/utils'
@@ -19,7 +20,7 @@ import { OperationsLogEntryDetails } from './OperationsLogEntryDetails'
 import { absTime, cleanDescription, relTime } from './opsLogHelpers'
 import { OPS_ROW_GRID, OPS_ROW_PAD } from './opsRowLayout'
 import { parseDescription } from './parseDescription'
-import { getPluginRenderer } from './plugin-renderers'
+import { renderOpsLogLabel } from './renderOpsLogTemplate'
 
 interface Props {
   entry: OperationsLogRecord
@@ -41,26 +42,36 @@ export const OperationsLogStreamRow = memo(function OperationsLogStreamRow({
   project,
 }: Props) {
   const { isDarkMode } = useTheme()
+  const { templates } = usePluginOpsLogTemplates()
   const performer = entry.performed_by ?? entry.recorded_by
   const displayName = performerDisplayNames.get(performer) ?? performer
   const isDeploy = entry.entry_type === 'Deployed'
   const isRestart = entry.entry_type === 'Restarted'
   const parsed = parseDescription(entry)
-  const pluginRenderer =
-    parsed.kind === 'plugin' ? getPluginRenderer(entry.plugin_slug) : undefined
-  const Icon = pluginRenderer?.icon ?? ENTRY_TYPE_ICONS[entry.entry_type]
-  const desc =
-    parsed.kind === 'plugin'
-      ? (pluginRenderer?.label?.({
-          action: parsed.action,
-          entry,
-          payload: parsed.payload,
-        }) ??
-        parsed.summary ??
-        `${entry.plugin_slug}${parsed.action ? ` · ${parsed.action}` : ''}`)
-      : cleanDescription(entry.description, entry.version)
-  const projectLabel = project?.name ?? entry.project_slug
   const envDisplay = environment?.name ?? entry.environment_slug
+  const projectLabel = project?.name ?? entry.project_slug
+  const Icon = ENTRY_TYPE_ICONS[entry.entry_type]
+  let desc: string
+  if (parsed.kind === 'plugin') {
+    const template = templates.get(entry.plugin_slug ?? '', parsed.action)
+    if (template) {
+      desc = renderOpsLogLabel(template, {
+        display: {
+          environment: envDisplay,
+          performer: displayName,
+          project: projectLabel,
+        },
+        entry,
+        payload: parsed.payload,
+      })
+    } else {
+      desc =
+        parsed.summary ??
+        `${entry.plugin_slug ?? ''}${parsed.action ? ` · ${parsed.action}` : ''}`
+    }
+  } else {
+    desc = cleanDescription(entry.description, entry.version)
+  }
   const envColors = environment?.label_color
     ? deriveChipColors(environment.label_color, isDarkMode)
     : null
