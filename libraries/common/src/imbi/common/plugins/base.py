@@ -93,6 +93,12 @@ class PluginManifest(pydantic.BaseModel):
     api_version: int = 1
     cacheable: bool = True
     supports_histogram: bool = False
+    # Deployment plugins that can enumerate recent deployments from the
+    # remote (see :meth:`DeploymentPlugin.list_recent_deployments`) set
+    # this to ``True``.  The UI uses it to decide whether to show the
+    # "Resync deployments" controls on project settings and admin TPS
+    # pages; non-deployment plugins should leave it ``False``.
+    supports_deployment_sync: bool = False
     login_capable: bool = False
     requires_identity: bool = False
     default_scopes: list[str] = []
@@ -524,6 +530,42 @@ class DeploymentRun(pydantic.BaseModel):
     completed_at: datetime.datetime | None = None
 
 
+#: Status values used on persisted ``DeploymentEvent`` rows.  This is
+#: the host's canonical vocabulary -- plugins normalize their remote's
+#: native states to one of these before returning a
+#: :class:`RemoteDeployment`.
+DeploymentEventStatus = typing.Literal[
+    'pending', 'in_progress', 'success', 'failed', 'rolled_back'
+]
+
+
+class RemoteDeployment(pydantic.BaseModel):
+    """A deployment observed on the remote for resync.
+
+    Returned by :meth:`DeploymentPlugin.list_recent_deployments` so the
+    host can backfill ``Release`` nodes and ``DEPLOYED_TO`` edges when
+    webhook delivery has lapsed or when bringing a project online for
+    the first time.  ``environment`` is the remote's environment name as
+    reported (callers map it to the project's local environment slug).
+    ``sha`` is the commit the deployment was created against;
+    ``ref`` is the human-facing label the deploy was triggered with
+    (branch / tag / SHA prefix) and may be ``None`` for older deploys.
+    ``external_run_id`` MUST be a stable identifier (e.g. the GitHub
+    deployment id) so the host can dedupe re-runs of resync without
+    appending duplicate events.
+    """
+
+    environment: str
+    sha: str
+    ref: str | None = None
+    status: DeploymentEventStatus
+    created_at: datetime.datetime
+    external_run_id: str
+    run_url: str | None = None
+    deployment_url: str | None = None
+    description: str | None = None
+
+
 class DeploymentPlugin(abc.ABC):
     """Plugins must not stash global state.
 
@@ -648,6 +690,32 @@ class DeploymentPlugin(abc.ABC):
         raise :class:`NotImplementedError`.
         """
         del ctx, credentials
+        raise NotImplementedError
+
+    async def list_recent_deployments(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        environments: list[str],
+        limit: int = 1,
+    ) -> list[RemoteDeployment]:
+        """Return the most recent ``limit`` deployments per environment.
+
+        Optional -- powers the deployment resync flow that backfills
+        ``Release`` nodes and ``DEPLOYED_TO`` edges when webhook
+        delivery has lapsed.  Plugins that advertise
+        ``supports_deployment_sync=True`` MUST implement this; others
+        raise :class:`NotImplementedError` (the host treats that as
+        "skip resync for this plugin").
+
+        ``environments`` is the remote-facing list of environment names
+        the host wants populated, in the project's preferred order.
+        Plugins should ignore environments their remote does not know
+        about (rather than raising) so a partial resync still succeeds.
+        Returned events MUST carry a stable ``external_run_id`` so the
+        host can dedupe.
+        """
+        del ctx, credentials, environments, limit
         raise NotImplementedError
 
 

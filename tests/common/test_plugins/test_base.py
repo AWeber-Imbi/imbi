@@ -26,6 +26,7 @@ from imbi_common.plugins.base import (
     Ref,
     RefInfo,
     ReleaseInfo,
+    RemoteDeployment,
     WorkflowFile,
 )
 
@@ -346,6 +347,66 @@ class DeploymentPluginDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
         plugin = _StubDeploymentPlugin()
         with self.assertRaises(NotImplementedError):
             await plugin.list_workflows(ctx, {})
+
+    async def test_list_recent_deployments_default_raises(self) -> None:
+        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
+        plugin = _StubDeploymentPlugin()
+        with self.assertRaises(NotImplementedError):
+            await plugin.list_recent_deployments(ctx, {}, ['production'])
+
+
+class ManifestDeploymentSyncFlagTestCase(unittest.TestCase):
+    def test_supports_deployment_sync_defaults_false(self) -> None:
+        manifest = PluginManifest(
+            slug='gh-deploy',
+            name='GitHub Deployment',
+            plugin_type='deployment',
+        )
+        self.assertFalse(manifest.supports_deployment_sync)
+
+    def test_supports_deployment_sync_round_trip(self) -> None:
+        manifest = PluginManifest(
+            slug='gh-deploy',
+            name='GitHub Deployment',
+            plugin_type='deployment',
+            supports_deployment_sync=True,
+        )
+        restored = PluginManifest.model_validate(manifest.model_dump())
+        self.assertTrue(restored.supports_deployment_sync)
+
+
+class RemoteDeploymentTestCase(unittest.TestCase):
+    def test_round_trip(self) -> None:
+        observed = RemoteDeployment(
+            environment='production',
+            sha='abc1234deadbeef',
+            ref='v1.0.0',
+            status='success',
+            created_at=datetime.datetime(
+                2026, 5, 13, 14, 0, tzinfo=datetime.UTC
+            ),
+            external_run_id='123456789',
+            run_url='https://github.com/o/r/actions/runs/42',
+            deployment_url='https://github.com/o/r/deployments/123456789',
+            description='Bump foo to 1.2.3',
+        )
+        restored = RemoteDeployment.model_validate(observed.model_dump())
+        self.assertEqual(restored.external_run_id, '123456789')
+        self.assertEqual(restored.status, 'success')
+        self.assertEqual(restored.environment, 'production')
+
+    def test_minimal_fields(self) -> None:
+        observed = RemoteDeployment(
+            environment='staging',
+            sha='abc1234',
+            status='in_progress',
+            created_at=datetime.datetime(
+                2026, 5, 13, 14, 0, tzinfo=datetime.UTC
+            ),
+            external_run_id='99',
+        )
+        self.assertIsNone(observed.ref)
+        self.assertIsNone(observed.run_url)
 
 
 class LifecycleManifestTestCase(unittest.TestCase):
