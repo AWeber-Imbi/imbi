@@ -2,9 +2,8 @@
 
 Base classes, registry, errors, and template helpers for the Imbi
 plugin system. Plugin authors should pair this reference with the
-[Authoring Plugins](../guides/plugins.md) guide, which explains the two
-plugin variations (`configuration` and `logs`) and the contract each
-must satisfy.
+[Authoring Plugins](../guides/plugins.md) guide, which explains the
+plugin variations and the contract each must satisfy.
 
 ## Manifest and Context
 
@@ -49,6 +48,32 @@ store. Implementations subclass `LogsPlugin` and declare
 ::: imbi_common.plugins.LogResult
 
 ::: imbi_common.plugins.LogHistogramBucket
+
+## Webhook Action Plugins
+
+The `webhook` variation reacts to inbound webhook payloads routed by a
+host such as `imbi-gateway`. Implementations subclass
+`WebhookActionPlugin` and declare `plugin_type='webhook'` in their
+manifest. The host parses the `WebhookRule.handler` field as
+`"<plugin_slug>:<action_name>"`, fetches per-instance credentials via
+`get_plugin_credentials` (see below),
+and dispatches by calling `run_action`.
+
+::: imbi_common.plugins.WebhookActionPlugin
+
+## Credential Resolution
+
+Helpers for hosts that need to fetch decrypted plugin credentials out
+of the graph. Routing depends on `manifest.auth_type`: `api_token` and
+`aws-iam-ic` read the Fernet-encrypted `Plugin.plugin_configuration`
+blob directly, while `oauth2` and `oidc` walk
+`Plugin -[:USES_APPLICATION]-> ServiceApplication`.
+
+::: imbi_common.plugins.get_plugin_credentials
+
+::: imbi_common.plugins.get_plugin_configuration_keys
+
+::: imbi_common.plugins.patch_plugin_configuration
 
 ## Registry
 

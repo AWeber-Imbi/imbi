@@ -1,6 +1,7 @@
 import datetime
 import unittest
 
+import imbi_common.plugins.base as plugin_base
 from imbi_common.plugins.base import (
     AuthorizationRequest,
     Commit,
@@ -428,3 +429,62 @@ class PluginContextEnvironmentConfigTestCase(unittest.TestCase):
         restored = PluginContext.model_validate(ctx.model_dump())
         self.assertEqual(restored.environment_config['action'], 'dispatch')
         self.assertEqual(restored.environment_config['inputs'], {'foo': 'bar'})
+
+
+class PluginManifestWebhookTypeTestCase(unittest.TestCase):
+    def test_webhook_plugin_type_accepted(self) -> None:
+        manifest = plugin_base.PluginManifest(
+            slug='wh',
+            name='Webhook plugin',
+            plugin_type='webhook',
+        )
+        self.assertEqual(manifest.plugin_type, 'webhook')
+
+    def test_webhook_plugin_type_with_credentials(self) -> None:
+        manifest = plugin_base.PluginManifest(
+            slug='wh',
+            name='Webhook plugin',
+            plugin_type='webhook',
+            credentials=[
+                plugin_base.CredentialField(
+                    name='api_token', label='API Token'
+                ),
+            ],
+        )
+        self.assertEqual(len(manifest.credentials), 1)
+        self.assertEqual(manifest.credentials[0].name, 'api_token')
+
+
+class WebhookActionPluginTestCase(unittest.TestCase):
+    def test_subclass_must_implement_run_action(self) -> None:
+        class _IncompleteWebhook(plugin_base.WebhookActionPlugin):
+            pass
+
+        with self.assertRaises(TypeError):
+            _IncompleteWebhook()  # type: ignore[abstract]
+
+    def test_concrete_subclass_instantiates(self) -> None:
+        class _FakeWebhook(plugin_base.WebhookActionPlugin):
+            async def run_action(  # type: ignore[override]
+                self,
+                ctx,
+                credentials,
+                external_identifier,
+                action,
+                action_config,
+                payload,
+            ):
+                _ = (
+                    ctx,
+                    credentials,
+                    external_identifier,
+                    action,
+                    action_config,
+                    payload,
+                )
+
+        _FakeWebhook.manifest = plugin_base.PluginManifest(
+            slug='wh', name='Webhook plugin', plugin_type='webhook'
+        )
+        instance = _FakeWebhook()
+        self.assertEqual(instance.manifest.slug, 'wh')

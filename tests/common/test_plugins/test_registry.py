@@ -424,6 +424,87 @@ class LoadPluginsLifecycleTestCase(unittest.TestCase):
         _reset_registry()
 
 
+class LoadPluginsWebhookTestCase(unittest.TestCase):
+    def setUp(self) -> None:
+        _reset_registry()
+
+    def test_load_webhook_plugin_round_trip(self) -> None:
+        manifest = base.PluginManifest(
+            slug='hook',
+            name='Hook Plugin',
+            plugin_type='webhook',
+            credentials=[
+                base.CredentialField(name='api_token', label='API Token')
+            ],
+        )
+
+        class _FakeWebhook(base.WebhookActionPlugin):
+            async def run_action(  # type: ignore[override]
+                self,
+                ctx,
+                credentials,
+                external_identifier,
+                action,
+                action_config,
+                payload,
+            ):
+                _ = (
+                    ctx,
+                    credentials,
+                    external_identifier,
+                    action,
+                    action_config,
+                    payload,
+                )
+
+        _FakeWebhook.manifest = manifest  # type: ignore[attr-defined]
+
+        ep = unittest.mock.MagicMock()
+        ep.name = 'hook'
+        ep.load.return_value = _FakeWebhook
+        ep.dist.name = 'imbi-plugin-hook'
+        ep.dist.version = '1.0'
+
+        with unittest.mock.patch(
+            'importlib.metadata.entry_points', return_value=[ep]
+        ):
+            result = registry.load_plugins()
+
+        self.assertIn('hook', result.loaded)
+        entry = registry.get_plugin('hook')
+        self.assertIs(entry.handler_cls, _FakeWebhook)
+        self.assertEqual(entry.manifest.plugin_type, 'webhook')
+
+    def test_load_webhook_plugin_type_mismatch(self) -> None:
+        manifest = base.PluginManifest(
+            slug='mis-hook',
+            name='Mismatch',
+            plugin_type='webhook',
+        )
+
+        class _ConfigImpl(base.ConfigurationPlugin):
+            pass
+
+        _ConfigImpl.manifest = manifest  # type: ignore[attr-defined]
+
+        ep = unittest.mock.MagicMock()
+        ep.name = 'mis-hook'
+        ep.load.return_value = _ConfigImpl
+        ep.dist.name = 'pkg'
+        ep.dist.version = '1.0'
+
+        with unittest.mock.patch(
+            'importlib.metadata.entry_points', return_value=[ep]
+        ):
+            result = registry.load_plugins()
+
+        self.assertIn('mis-hook', result.errors)
+        self.assertEqual(result.loaded, [])
+
+    def tearDown(self) -> None:
+        _reset_registry()
+
+
 class LoadPluginsDuplicateSlugTestCase(unittest.TestCase):
     def setUp(self) -> None:
         _reset_registry()

@@ -7,22 +7,32 @@ service (`imbi-api`) discovers, validates, and instantiates plugins at
 runtime; plugins themselves carry no global state and receive everything
 they need — context, credentials, and options — on every call.
 
-This guide walks through the two plugin variations supported by the v1
+This guide walks through the plugin variations supported by the v1
 API and the contract each must satisfy.
 
 ## Plugin Variations
 
-`PluginManifest.plugin_type` selects the variation. Two values are
-defined today:
+`PluginManifest.plugin_type` selects the variation. The contract for a
+plugin is defined by the abstract base class it inherits from:
 
-| `plugin_type`   | Base class             | Purpose                                                                                       |
-| --------------- | ---------------------- | --------------------------------------------------------------------------------------------- |
-| `configuration` | `ConfigurationPlugin`  | List, read, write, and delete typed configuration keys for a project (e.g. feature flags, secrets) |
-| `logs`          | `LogsPlugin`           | Search log entries and describe the available query schema for a project                      |
+| `plugin_type`   | Base class             | Purpose                                                                                                |
+| --------------- | ---------------------- | ------------------------------------------------------------------------------------------------------ |
+| `configuration` | `ConfigurationPlugin`  | List, read, write, and delete typed configuration keys for a project (e.g. feature flags, secrets)     |
+| `logs`          | `LogsPlugin`           | Search log entries and describe the available query schema for a project                               |
+| `identity`      | `IdentityPlugin`       | Map external identity subjects (GitHub usernames, OIDC ``sub``) to Imbi users                          |
+| `deployment`    | `DeploymentPlugin`     | Dispatch a deployment workflow and report back its status to the host                                  |
+| `lifecycle`     | `LifecyclePlugin`      | React to project state transitions (archive / unarchive) by performing third-party side effects        |
+| `webhook`       | `WebhookActionPlugin`  | Run a named action in response to an inbound webhook payload routed by a host such as ``imbi-gateway`` |
 
 The class hierarchy and `plugin_type` must agree — a class that subclasses
 `ConfigurationPlugin` declared with `plugin_type='logs'` is rejected at
 load time, and vice versa.
+
+This guide covers Configuration, Logs, and Webhook plugins in detail.
+Identity, Deployment, and Lifecycle plugins follow the same conventions
+(per-request instances, manifest-driven credentials, no global state);
+their method contracts are documented inline in
+[the API reference](../api/plugins.md).
 
 ## Anatomy of a Plugin Package
 
@@ -264,6 +274,98 @@ Method contracts:
 the upstream provider's query language; raise a domain-appropriate
 exception if a filter cannot be satisfied so the host can surface a
 clear error.
+
+## Variation 3: Webhook Action Plugins
+
+`WebhookActionPlugin` is the abstract base for plugins that react to
+inbound webhook payloads. The host (typically `imbi-gateway`) is
+responsible for receiving the webhook, resolving the matching
+project(s) from the payload, and routing each match to a plugin
+action. A plugin exposes one or more named actions; the rule wiring
+selects which one runs.
+
+```python
+from imbi_common.plugins import (
+    PluginContext,
+    PluginManifest,
+    CredentialField,
+    WebhookActionPlugin,
+)
+
+
+class SonarqubePlugin(WebhookActionPlugin):
+    manifest = PluginManifest(
+        slug='sonarqube',
+        name='SonarQube',
+        plugin_type='webhook',
+        credentials=[
+            CredentialField(name='api_token', label='SonarQube API Token'),
+        ],
+    )
+
+    async def run_action(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        external_identifier: str,
+        action: str,
+        action_config: str,
+        payload: object,
+    ) -> None:
+        if action == 'update_project_from_webhook':
+            await update_project_from_webhook(
+                ctx=ctx,
+                credentials=credentials,
+                external_identifier=external_identifier,
+                action_config=action_config,
+            )
+            return
+        raise ValueError(f'Unknown action: {action!r}')
+```
+
+How the arguments flow in from the host:
+
+- **`ctx`** — a regular `PluginContext` carrying the resolved project's
+  identity (`org_slug`, `project_id`, `project_slug`, `team_slug`,
+  ...) plus any `assignment_options` the host wants to share. The
+  gateway, for example, stashes `service_slug` and `service_endpoint`
+  from the matched `ThirdPartyService` so plugins can reach the
+  upstream API.
+- **`credentials`** — decrypted plugin credentials keyed by the
+  manifest's `CredentialField.name`. Plugins that declare no
+  credentials always receive `{}`; plugins with credentials are
+  skipped (warning logged) when no `Plugin` node is attached to the
+  matched third-party service.
+- **`external_identifier`** — the value the host extracted from the
+  payload using the webhook's
+  `IMPLEMENTED_BY.identifier_selector` (for example a SonarQube
+  `/project/key` JSON pointer). Plugins use this to address the
+  upstream system.
+- **`action`** — the action name parsed from the rule's `handler`
+  field after the `:` separator. A rule whose handler is
+  `sonarqube:update_project_from_webhook` dispatches with
+  `action='update_project_from_webhook'`. Dispatch on this value;
+  raise `ValueError` for unknown actions so the host can surface the
+  problem.
+- **`action_config`** — opaque per-rule configuration shipped as a
+  JSON string. Operators set this on the rule when wiring the
+  webhook; the plugin is responsible for parsing and validating
+  it (Pydantic models work well here).
+- **`payload`** — the raw inbound webhook body. Most plugins do not
+  consume it directly — the host already used it to resolve the
+  project and `external_identifier` — but it is forwarded verbatim
+  for cases that need to.
+
+Rules of thumb:
+
+- Keep one action per public verb (`update_project_from_webhook`,
+  `notify_release`, ...) rather than overloading a single action with
+  branching config. Action names become part of the operator-facing
+  rule string and benefit from being self-describing.
+- Treat the host's "best effort" guarantee seriously: a `run_action`
+  call may run after a related `events`-table insert has failed, and
+  the host will not retry on its own. Make actions idempotent so
+  manual rerun is safe.
 
 ## Search Templates
 

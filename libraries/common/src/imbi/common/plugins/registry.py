@@ -13,6 +13,7 @@ from imbi_common.plugins.base import (
     LifecyclePlugin,
     LogsPlugin,
     PluginManifest,
+    WebhookActionPlugin,
 )
 from imbi_common.plugins.errors import PluginNotFoundError
 
@@ -27,6 +28,7 @@ PluginHandler = (
     | IdentityPlugin
     | DeploymentPlugin
     | LifecyclePlugin
+    | WebhookActionPlugin
 )
 
 
@@ -38,6 +40,7 @@ class RegistryEntry:
         | type[IdentityPlugin]
         | type[DeploymentPlugin]
         | type[LifecyclePlugin]
+        | type[WebhookActionPlugin]
     )
     manifest: PluginManifest
     package_name: str
@@ -89,17 +92,19 @@ def load_plugins() -> LoadResult:
                 IdentityPlugin,
                 DeploymentPlugin,
                 LifecyclePlugin,
+                WebhookActionPlugin,
             ),
         ):
             LOGGER.error(
                 'Plugin %r does not implement ConfigurationPlugin, '
-                'LogsPlugin, IdentityPlugin, DeploymentPlugin, or '
-                'LifecyclePlugin; skipping',
+                'LogsPlugin, IdentityPlugin, DeploymentPlugin, '
+                'LifecyclePlugin, or WebhookActionPlugin; skipping',
                 ep.name,
             )
             errors[ep.name] = (
                 'Plugin must subclass ConfigurationPlugin, LogsPlugin, '
-                'IdentityPlugin, DeploymentPlugin, or LifecyclePlugin'
+                'IdentityPlugin, DeploymentPlugin, LifecyclePlugin, or '
+                'WebhookActionPlugin'
             )
             continue
 
@@ -109,6 +114,7 @@ def load_plugins() -> LoadResult:
             | type[IdentityPlugin]
             | type[DeploymentPlugin]
             | type[LifecyclePlugin]
+            | type[WebhookActionPlugin]
         )
         if manifest.plugin_type == 'configuration':
             expected_base = ConfigurationPlugin
@@ -118,8 +124,10 @@ def load_plugins() -> LoadResult:
             expected_base = IdentityPlugin
         elif manifest.plugin_type == 'deployment':
             expected_base = DeploymentPlugin
-        else:
+        elif manifest.plugin_type == 'lifecycle':
             expected_base = LifecyclePlugin
+        else:
+            expected_base = WebhookActionPlugin
         if not issubclass(cls, expected_base):  # pyright: ignore[reportUnnecessaryIsInstance]
             LOGGER.error(
                 'Plugin %r manifest plugin_type=%r does not match class '

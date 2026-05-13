@@ -80,7 +80,12 @@ class PluginManifest(pydantic.BaseModel):
     name: str
     description: str | None = None
     plugin_type: typing.Literal[
-        'configuration', 'logs', 'identity', 'deployment', 'lifecycle'
+        'configuration',
+        'logs',
+        'identity',
+        'deployment',
+        'lifecycle',
+        'webhook',
     ]
     auth_type: typing.Literal['api_token', 'oauth2', 'oidc', 'aws-iam-ic'] = (
         'api_token'
@@ -697,3 +702,53 @@ class LifecyclePlugin(abc.ABC):
         """
         del ctx, credentials
         raise NotImplementedError
+
+
+# ---------------------------------------------------------------------------
+# Webhook action plugin
+# ---------------------------------------------------------------------------
+
+
+class WebhookActionPlugin(abc.ABC):
+    """Base class for webhook-action plugins.
+
+    Webhook action plugins declare a manifest (slug, credentials,
+    optional configuration options) so operators can install and
+    configure them like any other plugin.  The host (``imbi-gateway``)
+    parses ``WebhookRule.handler`` as ``"<plugin_slug>:<action>"``,
+    looks the plugin up in the registry, fetches the decrypted
+    per-instance credentials, builds a :class:`PluginContext`, and
+    calls :meth:`run_action`.
+
+    Implementations dispatch on the ``action`` parameter; each named
+    action is one branch of webhook behaviour (e.g. a SonarQube
+    plugin might expose ``'update_project_from_webhook'``).
+    """
+
+    manifest: PluginManifest
+
+    @abc.abstractmethod
+    async def run_action(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        external_identifier: str,
+        action: str,
+        action_config: str,
+        payload: object,
+    ) -> None:
+        """Run the named webhook action.
+
+        Arguments:
+            ctx: standard plugin context (org/project/team slugs, etc.).
+            credentials: decrypted plugin credentials keyed by manifest
+                ``CredentialField.name``.
+            external_identifier: the value the gateway resolved out of
+                the inbound payload via ``IMPLEMENTED_BY.identifier_selector``
+                (e.g. a SonarQube ``/project/key``).
+            action: the action name parsed from ``WebhookRule.handler``
+                after the ``:`` separator.
+            action_config: opaque per-rule JSON config; the implementation
+                is responsible for validation.
+            payload: the raw webhook body.
+        """

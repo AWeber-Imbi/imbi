@@ -24,6 +24,12 @@ from imbi_common.plugins.base import (
     PluginOption,
     PluginVertexLabel,
     PollingDescriptor,
+    WebhookActionPlugin,
+)
+from imbi_common.plugins.credentials import (
+    get_plugin_configuration_keys,
+    get_plugin_credentials,
+    patch_plugin_configuration,
 )
 from imbi_common.plugins.errors import (
     CursorExpiredError,
@@ -79,11 +85,15 @@ __all__ = [
     'PluginVertexLabel',
     'PollingDescriptor',
     'RegistryEntry',
+    'WebhookActionPlugin',
     'apply_plugin_schemas',
     'expand_template',
     'get_plugin',
+    'get_plugin_configuration_keys',
+    'get_plugin_credentials',
     'list_plugins',
     'load_plugins',
+    'patch_plugin_configuration',
     'reload_plugins',
     'validate_no_collisions',
     'validate_template',
