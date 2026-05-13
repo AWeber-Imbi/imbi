@@ -16,6 +16,12 @@ import {
   Settings2,
   Trash2,
 } from 'lucide-react'
+import {
+  Group,
+  Panel,
+  Separator,
+  useDefaultLayout,
+} from 'react-resizable-panels'
 import { toast } from 'sonner'
 
 import { ApiError } from '@/api/client'
@@ -149,6 +155,12 @@ export function ConfigurationTab({
     data_type: 'string',
     key: '',
     values: {},
+  })
+
+  const { defaultLayout, onLayoutChanged } = useDefaultLayout({
+    id: 'imbi:config-tab:split',
+    panelIds: ['list', 'detail'],
+    storage: typeof window === 'undefined' ? undefined : window.localStorage,
   })
 
   const flashTimer = useRef<null | ReturnType<typeof setTimeout>>(null)
@@ -572,9 +584,20 @@ export function ConfigurationTab({
         </div>
       )}
 
-      <div className="border-primary bg-primary grid h-[calc(100dvh-460px)] min-h-80 grid-cols-[420px_1fr] overflow-hidden rounded-lg border">
+      <Group
+        className="border-primary bg-primary h-[calc(100dvh-460px)] min-h-80 overflow-hidden rounded-lg border"
+        defaultLayout={defaultLayout}
+        onLayoutChanged={onLayoutChanged}
+        orientation="horizontal"
+      >
         {/* LEFT pane: filter + key list */}
-        <div className="border-primary bg-secondary flex min-h-0 flex-col border-r">
+        <Panel
+          className="border-primary bg-secondary flex min-h-0 flex-col"
+          defaultSize={28}
+          id="list"
+          maxSize={55}
+          minSize={18}
+        >
           <div className="border-primary flex h-14 shrink-0 items-center border-b px-3.5">
             <div className="relative flex w-full items-center">
               <Search
@@ -611,10 +634,16 @@ export function ConfigurationTab({
               selectedKey={mode === 'create' ? null : selectedKey}
             />
           )}
-        </div>
+        </Panel>
+
+        <Separator className="bg-primary hover:bg-amber-border focus-visible:bg-amber-border w-px transition-colors outline-none" />
 
         {/* RIGHT pane */}
-        <div className="bg-primary flex min-h-0 flex-col">
+        <Panel
+          className="bg-primary flex min-h-0 flex-col"
+          id="detail"
+          minSize={30}
+        >
           {mode === 'create' ? (
             <DetailPane
               draft={draft}
@@ -649,8 +678,8 @@ export function ConfigurationTab({
           ) : (
             <EmptyState onAdd={() => setMode('create')} />
           )}
-        </div>
-      </div>
+        </Panel>
+      </Group>
 
       <ConfirmDialog
         description={`Delete key "${confirmDelete ?? ''}" from every environment? This cannot be undone.`}
