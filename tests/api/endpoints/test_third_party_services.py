@@ -575,6 +575,15 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         self.assertEqual(data['observed'], 0)
         self.assertEqual(data['errors'], [])
 
+    def test_resync_unknown_tps_returns_404(self) -> None:
+        # First execute() is the existence check; an empty list means
+        # the TPS does not exist and the endpoint should 404 rather
+        # than return a misleading empty ResyncSummary.
+        self.mock_db.execute.return_value = []
+        response = self.client.post(self._resync_url())
+        self.assertEqual(response.status_code, 404, response.text)
+        self.assertIn('not found', response.json()['detail'])
+
     def test_resync_per_project_http_exception_recorded_as_error(
         self,
     ) -> None:

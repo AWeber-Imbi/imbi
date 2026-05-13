@@ -939,7 +939,7 @@ async def _set_deployments(
     SET d.deployments = {deployments}
     RETURN d.deployments AS deployments
     """
-    await db.execute(
+    rows = await db.execute(
         set_query,
         {
             'project_id': project_id,
@@ -949,6 +949,17 @@ async def _set_deployments(
         },
         ['deployments'],
     )
+    if not rows:
+        # The release or DEPLOYED_TO edge vanished between the read
+        # phase and this write -- raise rather than silently report
+        # success and skew resync counters.
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'Release {version!r} or its deployment to '
+                f'environment {env_slug!r} no longer exists'
+            ),
+        )
     return _edge_to_response(env, deployments)
 
 
@@ -972,7 +983,7 @@ async def _create_deployments_edge(
     CREATE (r)-[d:DEPLOYED_TO {{deployments: {deployments}}}]->(e)
     RETURN d.deployments AS deployments
     """
-    await db.execute(
+    rows = await db.execute(
         create_query,
         {
             'project_id': project_id,
@@ -983,6 +994,17 @@ async def _create_deployments_edge(
         },
         ['deployments'],
     )
+    if not rows:
+        # Either the release or the (env, org) pair disappeared
+        # between the read and this write; surface the failure rather
+        # than silently report 'appended' with no persisted edge.
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'Release {version!r} or environment {env_slug!r} in '
+                f'organization {org_slug!r} no longer exists'
+            ),
+        )
     return _edge_to_response(env, deployments)
 
 

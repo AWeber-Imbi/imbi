@@ -173,6 +173,10 @@ def _serialize(
         'widget_text': _resolve_widget_text(widget_default, widget_override),
         'widget_text_default': widget_default,
         'widget_text_override': widget_override,
+        'ops_log_templates': {
+            action: tpl.model_dump()
+            for action, tpl in entry.manifest.ops_log_templates.items()
+        },
     }
 
 
@@ -201,6 +205,7 @@ def _placeholder(package_name: str) -> dict[str, typing.Any]:
         'widget_text': None,
         'widget_text_default': None,
         'widget_text_override': None,
+        'ops_log_templates': {},
     }
 
 

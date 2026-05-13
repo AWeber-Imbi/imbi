@@ -24,6 +24,8 @@ import fastapi.responses
 import nanoid
 import pydantic
 from imbi_common import clickhouse, models
+from imbi_common.plugins import OpsLogTemplate
+from imbi_common.plugins.registry import list_plugins
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
@@ -117,7 +119,7 @@ def _decode_cursor(
     padding = '=' * (-len(cursor) % 4)
     try:
         raw = base64.urlsafe_b64decode(cursor + padding).decode('utf-8')
-    except (ValueError, UnicodeDecodeError):
+    except ValueError, UnicodeDecodeError:
         return None
     if '|' not in raw:
         return None
@@ -457,6 +459,50 @@ async def _list_impl(
     )
     response.headers['Link'] = _build_link_header(request, next_cursor)
     return response
+
+
+class PluginOpsLogTemplate(pydantic.BaseModel):
+    """One plugin's set of ops-log templates as exposed to the UI."""
+
+    slug: str
+    name: str
+    templates: dict[str, OpsLogTemplate] = {}
+
+
+class PluginOpsLogTemplatesResponse(pydantic.BaseModel):
+    plugins: list[PluginOpsLogTemplate]
+
+
+@operations_log_router.get(
+    '/plugin-templates',
+    response_model=PluginOpsLogTemplatesResponse,
+)
+async def list_plugin_ops_log_templates(
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('operations_log:read'),
+        ),
+    ],
+) -> PluginOpsLogTemplatesResponse:
+    """Return every registered plugin's ops-log render templates.
+
+    The UI fetches this once per session and applies templates by
+    ``(plugin_slug, action)`` to format rows in the operations log
+    and recent-activity views.  Plugins without ``ops_log_templates``
+    declared simply emit an empty ``templates`` dict.
+    """
+    _ = auth
+    return PluginOpsLogTemplatesResponse(
+        plugins=[
+            PluginOpsLogTemplate(
+                slug=entry.manifest.slug,
+                name=entry.manifest.name,
+                templates=dict(entry.manifest.ops_log_templates or {}),
+            )
+            for entry in list_plugins()
+        ]
+    )
 
 
 @operations_log_router.get(

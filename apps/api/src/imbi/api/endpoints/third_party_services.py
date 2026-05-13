@@ -458,6 +458,24 @@ async def delete_third_party_service(
 # --- Deployment resync endpoints ---
 
 
+async def _tps_exists(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    slug: str,
+) -> bool:
+    """Return ``True`` if a TPS with ``slug`` exists in ``org_slug``."""
+    query: typing.LiteralString = """
+    MATCH (tps:ThirdPartyService {{slug: {slug}}})
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    RETURN 1 AS found LIMIT 1
+    """
+    rows = await db.execute(
+        query, {'slug': slug, 'org_slug': org_slug}, ['found']
+    )
+    return bool(rows)
+
+
 async def _projects_using_tps_for_deployment(
     db: graph.Graph,
     *,
@@ -471,7 +489,15 @@ async def _projects_using_tps_for_deployment(
     (via ``HAS_PLUGIN``) by the named ThirdPartyService.  Returns a
     de-duplicated, deterministic list so the resync fan-out is stable
     across calls.
+
+    Raises ``HTTPException(404)`` when the TPS does not exist so the
+    caller doesn't conflate "unknown service" with "no projects".
     """
+    if not await _tps_exists(db, org_slug=org_slug, slug=slug):
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Third-party service with slug {slug!r} not found',
+        )
     # Scope both Project branches to the requested organization via the
     # OWNED_BY -> BELONGS_TO path so a TPS-wide resync triggered against
     # one org can't sweep in projects in another org that happen to use

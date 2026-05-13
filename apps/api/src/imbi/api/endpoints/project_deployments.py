@@ -594,11 +594,17 @@ async def resync_for_project(
                 project_id,
                 observed.environment,
             )
+            # Keep the full traceback in logs (above) but only return
+            # the exception class to clients so plugin internals and
+            # database error text aren't leaked through the API.
             summary.errors.append(
                 ResyncProjectError(
                     project_id=project_id,
                     environment=observed.environment,
-                    detail=f'{type(exc).__name__}: {exc}',
+                    detail=(
+                        f'Resync apply failed ({type(exc).__name__}); '
+                        'see server logs.'
+                    ),
                 )
             )
     return summary
