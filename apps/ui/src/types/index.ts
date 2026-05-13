@@ -859,7 +859,7 @@ export interface PluginResponse {
   status: 'active' | 'unavailable'
   used_as_login?: boolean
 }
-export type PluginTab = 'configuration' | 'deployment' | 'logs'
+export type PluginTab = 'configuration' | 'deployment' | 'lifecycle' | 'logs'
 
 export interface PluginUpdate {
   // Pass an explicit empty string to clear; omitting the field leaves
