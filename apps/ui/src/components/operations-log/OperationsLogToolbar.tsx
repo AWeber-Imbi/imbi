@@ -254,6 +254,7 @@ export function OperationsLogToolbar({
 
       {hideProjectFilter ? null : (
         <DropdownMenu
+          modal={false}
           onOpenChange={(open) => {
             if (!open) setProjectQuery('')
           }}
@@ -390,7 +391,7 @@ function FacetDropdown({
       ? (options.find((o) => o.key === selected[0])?.label ?? selected[0])
       : undefined
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <TriggerButton
           icon={icon}
