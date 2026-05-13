@@ -12,6 +12,7 @@ from imbi_common.plugins.base import (
     ConfigurationPlugin,
     ConfigValue,
     DataType,
+    OpsLogTemplate,
     PluginContext,
     PluginManifest,
     PluginOption,
@@ -149,6 +150,19 @@ class SsmPlugin(ConfigurationPlugin):
             DataType(name='string_list', label='String List'),
             DataType(name='secret', label='Secret', secret=True),
         ],
+        # The API writes ``{action, plugin_slug, key, data_type, secret}``
+        # to operations_log.description for every set/delete in
+        # ``project_configuration._write_audit``.
+        ops_log_templates={
+            'set_value': OpsLogTemplate(
+                label='Set parameter "{{key}}"',
+                summary='set parameter',
+            ),
+            'delete_key': OpsLogTemplate(
+                label='Deleted parameter "{{key}}"',
+                summary='deleted parameter',
+            ),
+        },
     )
 
     async def list_keys(

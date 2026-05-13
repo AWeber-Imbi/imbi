@@ -643,8 +643,8 @@ wheels = [
 
 [[package]]
 name = "imbi-common"
-version = "0.8.3"
-source = { registry = "https://pypi.org/simple" }
+version = "2.2.0"
+source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main#d882d975e4c13a34af2036c50e2bd2aa0a7800f3" }
 dependencies = [
   { name = "cryptography" },
   { name = "jsonschema-models" },
@@ -656,10 +656,6 @@ dependencies = [
   { name = "pyjwt" },
   { name = "python-slugify" },
   { name = "typer" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/9c/5e/4bd8ffe146a88d245ee7254d7fd1fca10e55fb5f3fc45a206260f882a39f/imbi_common-0.8.3.tar.gz", hash = "sha256:d3ee611a5b1996ede7d266a693a4f359c7ac6600dc2f2dc1912380ea26f3bc10", size = 245708, upload-time = "2026-05-09T23:30:20.319Z" }
-wheels = [
-  { url = "https://files.pythonhosted.org/packages/de/6b/38e785ec18ef80d6644fffe7648de5038e52ab1e806eff1ded19a47ecf00/imbi_common-0.8.3-py3-none-any.whl", hash = "sha256:c4ad388799422dc5f4f8e1d47ba4492ad7b3fefd2a293ea59187a151e53873ba", size = 71657, upload-time = "2026-05-09T23:30:18.522Z" },
 ]
 
 [package.optional-dependencies]
@@ -677,7 +673,7 @@ server = [
 
 [[package]]
 name = "imbi-plugin-aws"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
   { name = "httpx" },
@@ -706,7 +702,7 @@ dist = [
 [package.metadata]
 requires-dist = [
   { name = "httpx", specifier = ">=0.27,<1" },
-  { name = "imbi-common", specifier = ">=0.8.3" },
+  { name = "imbi-common", git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main" },
   { name = "pydantic", specifier = ">=2" },
 ]
 
@@ -715,7 +711,7 @@ dev = [
   { name = "basedpyright" },
   { name = "coverage", extras = ["toml"] },
   { name = "httpcore" },
-  { name = "imbi-common", extras = ["server", "databases"] },
+  { name = "imbi-common", extras = ["server", "databases"], git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main" },
   { name = "pre-commit" },
   { name = "pytest" },
   { name = "pytest-asyncio" },
