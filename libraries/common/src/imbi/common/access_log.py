@@ -12,6 +12,13 @@ line. JWTs are decoded and signature-verified; valid tokens log the
 local part of the ``sub`` claim (or the full subject if it is not an
 email). API keys (``ik_<id>_<secret>``) log the ``ik_<id>`` prefix
 only. Anything else logs ``-``.
+
+Downstream handlers can attach extra context to a request's log line
+by populating ``request.state.imbi_common_access_log`` (equivalently
+``scope['state']['imbi_common_access_log']``) with a mapping. Each
+entry is rendered as ``key:value`` in a space-separated list wrapped
+in parentheses after the status code, e.g.
+``... 200 (event_type:x selected:False)``.
 """
 
 import logging
@@ -104,8 +111,18 @@ class AccessLogMiddleware:
                 principal = _principal_from_scope(scope)
             except Exception:  # noqa: BLE001 - defensive: never fail logging
                 principal = '-'
+        suffix = ''
+        state = scope.get('state')
+        if isinstance(state, abc.Mapping):
+            context = state.get('imbi_common_access_log')
+            if isinstance(context, abc.Mapping) and context:
+                rendered = ' '.join(
+                    f'{_sanitize_log_field(k)}:{_sanitize_log_field(v)}'
+                    for k, v in context.items()
+                )
+                suffix = f' ({rendered})'
         self.logger.info(
-            '%s:%s - %s "%s %s HTTP/%s" %d',
+            '%s:%s - %s "%s %s HTTP/%s" %d%s',
             client[0],
             client[1],
             principal,
@@ -113,6 +130,7 @@ class AccessLogMiddleware:
             full_path,
             scope.get('http_version', '1.1'),
             status,
+            suffix,
         )
 
 
@@ -159,3 +177,13 @@ def _principal_from_scope(scope: Scope) -> str:
         return '-'
     local, sep, _ = subject.partition('@')
     return local if sep else subject
+
+
+def _sanitize_log_field(value: object) -> str:
+    """Render ``value`` for the access-log suffix.
+
+    Control characters (``\\r``, ``\\n``) are escaped to literal
+    backslash sequences so handler-supplied context cannot forge new
+    log lines via embedded newlines.
+    """
+    return str(value).replace('\r', r'\r').replace('\n', r'\n')

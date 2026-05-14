@@ -50,6 +50,7 @@ just test tests/path/to/test_file.py::TestClass::test_method
 | `auth/encryption.py` | Fernet symmetric encryption for sensitive tokens via `TokenEncryption` singleton; module-level `encrypt_token`/`decrypt_token` helpers                                                                      |
 | `server.py`          | Typer/uvicorn `serve()` command and `bind_entrypoint()` helper for building service CLIs                                                                                                                    |
 | `logging.py`         | Logging configuration loader using `log-config.toml`                                                                                                                                                        |
+| `access_log.py`      | `AccessLogMiddleware` ASGI middleware emitting NCSA-style access logs on `imbi_common.access`; honors `quiet_paths`, extracts the principal from `Authorization`, and appends `(k:v ...)` context from `request.state.imbi_common_access_log` |
 | `helpers.py`         | Small utility functions                                                                                                                                                                                     |
 
 ### Key patterns
@@ -73,3 +74,14 @@ just test tests/path/to/test_file.py::TestClass::test_method
 - Type checking: strict (basedpyright + mypy)
 - Test coverage minimum: 90%
 - `ruff` rules include bandit (`S`), but `S` rules are disabled in test files
+
+## Documentation
+
+This is a published library — any change that consumers can observe (new public API, new middleware option, new scope/state key, changed log format, settings prefix, etc.) is user-visible and must be reflected in `docs/` in the same change. Specifically:
+
+- Update the relevant page under `docs/api/` (e.g. `docs/api/logging.md` for logging/access-log changes, `docs/api/auth.md` for auth, etc.). Add a new page and wire it into `mkdocs.yml` only when no existing page fits.
+- Update the `Module map` table above when adding, removing, or materially repurposing a module.
+- Include a short code example for any new public hook or extension point.
+- Run `just docs` if you want to preview, but don't commit the generated `site/` directory.
+
+If a change is purely internal (refactor, test-only, private helper rename) it doesn't need a docs update — but call that out explicitly in the change summary so reviewers don't have to guess.

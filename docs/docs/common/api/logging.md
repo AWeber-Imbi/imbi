@@ -56,8 +56,59 @@ When `dev=True` is passed to `configure_logging()`, all loggers under the
 `imbi` namespace are automatically set to DEBUG level. This is useful for
 local development.
 
+## Access Log Middleware
+
+`imbi_common.access_log.AccessLogMiddleware` is an ASGI middleware that
+replaces uvicorn's built-in access log. It emits one record per HTTP
+request on the `imbi_common.access` logger, in NCSA-style format with
+the authenticated principal in the `authuser` slot.
+
+```python
+from fastapi import FastAPI
+from imbi_common.access_log import AccessLogMiddleware
+
+app = FastAPI()
+app.add_middleware(
+    AccessLogMiddleware,
+    quiet_paths={'/status', '/health'},
+)
+```
+
+### Attaching per-request context
+
+Handlers and downstream middleware can attach extra context to the
+access-log line by writing a mapping to
+`request.state.imbi_common_access_log`. Each entry is rendered as
+`key:value` in a space-separated list wrapped in parentheses after the
+status code:
+
+```python
+from fastapi import Request
+
+@app.post('/events')
+async def record_event(request: Request, event: Event) -> None:
+    request.state.imbi_common_access_log = {
+        'event_type': event.kind,
+        'selected': event.selected,
+    }
+    ...
+```
+
+Produces a log line like:
+
+```text
+... "POST /events HTTP/1.1" 200 (event_type:whatever selected:False)
+```
+
+The suffix is omitted entirely when the mapping is missing or empty,
+so existing log lines are unchanged for requests that don't opt in.
+The `imbi_common_access_log` name is namespaced to avoid collisions
+with other middleware that shares `request.state`.
+
 ## API Reference
 
 ::: imbi_common.logging.get_log_config
 
 ::: imbi_common.logging.configure_logging
+
+::: imbi_common.access_log.AccessLogMiddleware

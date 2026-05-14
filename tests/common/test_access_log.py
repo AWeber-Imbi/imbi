@@ -165,6 +165,121 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
                 _noop_send,
             )
 
+    async def test_access_log_context_appended(self) -> None:
+        class ContextApp:
+            async def __call__(
+                self,
+                scope: abc.MutableMapping[str, typing.Any],
+                _receive: abc.Callable[[], abc.Awaitable[typing.Any]],
+                send: abc.Callable[
+                    [abc.MutableMapping[str, typing.Any]],
+                    abc.Awaitable[None],
+                ],
+            ) -> None:
+                scope.setdefault('state', {})['imbi_common_access_log'] = {
+                    'event_type': 'whatever',
+                    'selected': False,
+                }
+                await send(
+                    {
+                        'type': 'http.response.start',
+                        'status': 200,
+                        'headers': [],
+                    }
+                )
+                await send({'type': 'http.response.body', 'body': b''})
+
+        middleware = access_log.AccessLogMiddleware(ContextApp())
+        scope = _http_scope()
+        scope['state'] = {}
+        with self.assertLogs('imbi_common.access', level=logging.INFO) as cm:
+            await middleware(scope, _noop_receive, _noop_send)
+        self.assertIn(
+            ' 200 (event_type:whatever selected:False)',
+            cm.records[0].getMessage(),
+        )
+
+    async def test_empty_access_log_context_omits_suffix(self) -> None:
+        class ContextApp:
+            async def __call__(
+                self,
+                scope: abc.MutableMapping[str, typing.Any],
+                _receive: abc.Callable[[], abc.Awaitable[typing.Any]],
+                send: abc.Callable[
+                    [abc.MutableMapping[str, typing.Any]],
+                    abc.Awaitable[None],
+                ],
+            ) -> None:
+                scope.setdefault('state', {})['imbi_common_access_log'] = {}
+                await send(
+                    {
+                        'type': 'http.response.start',
+                        'status': 200,
+                        'headers': [],
+                    }
+                )
+                await send({'type': 'http.response.body', 'body': b''})
+
+        middleware = access_log.AccessLogMiddleware(ContextApp())
+        scope = _http_scope()
+        scope['state'] = {}
+        with self.assertLogs('imbi_common.access', level=logging.INFO) as cm:
+            await middleware(scope, _noop_receive, _noop_send)
+        message = cm.records[0].getMessage()
+        self.assertTrue(message.endswith('200'), message)
+
+    async def test_missing_state_omits_suffix(self) -> None:
+        """Pure-ASGI scopes without ``state`` should still log cleanly."""
+        app = _RecordingApp(status=200)
+        middleware = access_log.AccessLogMiddleware(app)
+        with self.assertLogs('imbi_common.access', level=logging.INFO) as cm:
+            await middleware(_http_scope(), _noop_receive, _noop_send)
+        message = cm.records[0].getMessage()
+        self.assertTrue(message.endswith('200'), message)
+
+    async def test_non_mapping_state_omits_suffix(self) -> None:
+        """A ``state`` value that isn't a mapping must not raise."""
+        app = _RecordingApp(status=200)
+        middleware = access_log.AccessLogMiddleware(app)
+        scope = _http_scope()
+        scope['state'] = 'unexpected'
+        with self.assertLogs('imbi_common.access', level=logging.INFO) as cm:
+            await middleware(scope, _noop_receive, _noop_send)
+        message = cm.records[0].getMessage()
+        self.assertTrue(message.endswith('200'), message)
+
+    async def test_non_mapping_access_log_value_omits_suffix(self) -> None:
+        """A non-mapping ``imbi_common_access_log`` must not raise."""
+        app = _RecordingApp(status=200)
+        middleware = access_log.AccessLogMiddleware(app)
+        scope = _http_scope()
+        scope['state'] = {'imbi_common_access_log': ['not', 'a', 'mapping']}
+        with self.assertLogs('imbi_common.access', level=logging.INFO) as cm:
+            await middleware(scope, _noop_receive, _noop_send)
+        message = cm.records[0].getMessage()
+        self.assertTrue(message.endswith('200'), message)
+
+    async def test_access_log_context_escapes_control_characters(
+        self,
+    ) -> None:
+        """Newlines in context values must be escaped to prevent forging."""
+        app = _RecordingApp(status=200)
+        middleware = access_log.AccessLogMiddleware(app)
+        scope = _http_scope()
+        scope['state'] = {
+            'imbi_common_access_log': {
+                'note': 'line1\nline2',
+                'cr\rkey': 'value\r',
+            }
+        }
+        with self.assertLogs('imbi_common.access', level=logging.INFO) as cm:
+            await middleware(scope, _noop_receive, _noop_send)
+        message = cm.records[0].getMessage()
+        self.assertNotIn('\n', message)
+        self.assertNotIn('\r', message)
+        self.assertIn(r'note:line1\nline2', message)
+        self.assertIn(r'cr\rkey:value\r', message)
+
     async def test_custom_logger(self) -> None:
         app = _RecordingApp(status=200)
         custom = logging.getLogger('imbi_common.access.custom_test')
