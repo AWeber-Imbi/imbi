@@ -319,6 +319,7 @@ class Graph:
         *,
         model_name: str = 'text',
         node_label: str | None = None,
+        attribute: str | None = None,
         limit: int = 10,
         distance_threshold: float | None = None,
     ) -> list[SearchResult]:
@@ -366,6 +367,11 @@ class Graph:
             query_sql += sql.SQL(
                 ' AND node_label = {label}',
             ).format(label=sql.Placeholder('label'))
+        if attribute is not None:
+            params['attribute'] = attribute
+            query_sql += sql.SQL(
+                ' AND attribute = {attribute}',
+            ).format(attribute=sql.Placeholder('attribute'))
         if distance_threshold is not None:
             params['threshold'] = distance_threshold
             query_sql += sql.SQL(
