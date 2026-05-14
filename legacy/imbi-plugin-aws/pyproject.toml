@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27,<1",
-  "imbi-common>=0.8.3",
+  "imbi-common>=2.3.0",
   "pydantic>=2",
 ]
 
@@ -116,13 +116,6 @@ max-complexity = 15
 
 [tool.uv]
 default-groups = ["dev"]
-
-# Track imbi-common's ``main`` directly until a release with the
-# ``ops_log_templates`` field on ``PluginManifest`` is cut.  Drop this
-# block (and bump the ``imbi-common`` floor above) once that release
-# ships.
-[tool.uv.sources]
-imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
