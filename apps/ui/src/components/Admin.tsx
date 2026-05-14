@@ -148,7 +148,8 @@ export function Admin() {
       scope: 'org',
     },
     {
-      description: 'Define attribute-based project scoring policies',
+      description:
+        'Define attribute, presence, link, and age-based scoring policies',
       icon: Target,
       id: 'scoring-policies',
       label: 'Scoring Policies',

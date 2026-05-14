@@ -42,11 +42,13 @@ const CATEGORY_LABELS: Record<ScoringPolicyCategory, string> = {
 }
 
 const CATEGORY_DESCRIPTIONS: Record<ScoringPolicyCategory, string> = {
-  age: 'Score a datetime attribute by how recently it changed.',
-  attribute: 'Map a specific attribute value to a score.',
+  age: 'Score by how recently a datetime attribute changed, using the same threshold DSL as blueprint age maps (e.g. >30d, <=7d). Recomputed daily.',
+  attribute:
+    'Map a specific attribute value or numeric range to a score (e.g. test-coverage tiers).',
   link_presence:
-    'Score whether the project has a link of a specific link type.',
-  presence: 'Score whether an attribute has a non-empty value.',
+    'Penalize projects that do not have a link of a specific type (e.g. missing source-code link).',
+  presence:
+    'Penalize projects whose attribute is null, empty, or whitespace (e.g. empty description).',
 }
 
 interface MapEditorProps {
@@ -271,6 +273,45 @@ export function ScoringPolicyForm({
       )}
 
       <form className="space-y-6" onSubmit={handleSubmit}>
+        {/* Category — primary decision, shown first */}
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Policy Type <span className="text-danger">*</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  'attribute',
+                  'presence',
+                  'link_presence',
+                  'age',
+                ] as ScoringPolicyCategory[]
+              ).map((c) => (
+                <button
+                  className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${
+                    category === c
+                      ? 'border-amber-text bg-amber-bg text-amber-text'
+                      : 'border-input text-secondary hover:bg-secondary'
+                  }`}
+                  disabled={isEditing || isLoading}
+                  key={c}
+                  onClick={() => setCategory(c)}
+                  type="button"
+                >
+                  {CATEGORY_LABELS[c]}
+                </button>
+              ))}
+            </div>
+            <p className="text-tertiary text-xs">
+              {CATEGORY_DESCRIPTIONS[category]}
+              {isEditing && ' Category cannot be changed after creation.'}
+            </p>
+          </CardContent>
+        </Card>
+
         {/* Identity */}
         <Card>
           <CardHeader>
@@ -330,40 +371,6 @@ export function ScoringPolicyForm({
                 rows={2}
                 value={description}
               />
-            </div>
-
-            <div>
-              <label className="text-secondary mb-1.5 block text-sm">
-                Category <span className="text-danger">*</span>
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {(
-                  [
-                    'attribute',
-                    'presence',
-                    'link_presence',
-                    'age',
-                  ] as ScoringPolicyCategory[]
-                ).map((c) => (
-                  <button
-                    className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${
-                      category === c
-                        ? 'border-amber-text bg-amber-bg text-amber-text'
-                        : 'border-input text-secondary hover:bg-secondary'
-                    }`}
-                    disabled={isEditing || isLoading}
-                    key={c}
-                    onClick={() => setCategory(c)}
-                    type="button"
-                  >
-                    {CATEGORY_LABELS[c]}
-                  </button>
-                ))}
-              </div>
-              <p className="text-tertiary mt-1.5 text-xs">
-                {CATEGORY_DESCRIPTIONS[category]}
-                {isEditing && ' Category cannot be changed after creation.'}
-              </p>
             </div>
           </CardContent>
         </Card>
