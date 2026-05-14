@@ -19,6 +19,7 @@ const WORD_OVERRIDES: Record<string, string> = {
   ci: 'CI',
   github: 'GitHub',
   gitlab: 'GitLab',
+  openapi: 'OpenAPI',
   sonarqube: 'SonarQube',
 }
 

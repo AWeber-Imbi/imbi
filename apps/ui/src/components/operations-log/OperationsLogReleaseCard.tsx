@@ -14,19 +14,15 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useTheme } from '@/contexts/ThemeContext'
+import { usePluginOpsLogTemplates } from '@/hooks/usePluginOpsLogTemplates'
 import { deriveChipColors } from '@/lib/chip-colors'
 import { cn } from '@/lib/utils'
 import type { Environment, Project } from '@/types'
 
 import { OperationsLogEntryDetails } from './OperationsLogEntryDetails'
-import {
-  absTime,
-  cleanDescription,
-  cleanName,
-  type ReleaseGroup,
-  relTime,
-} from './opsLogHelpers'
+import { absTime, cleanName, type ReleaseGroup, relTime } from './opsLogHelpers'
 import { OPS_ROW_GRID, OPS_ROW_PAD } from './opsRowLayout'
+import { renderEntryLabel } from './renderEntryLabel'
 
 interface Props {
   environmentsBySlug: Map<string, Environment>
@@ -48,11 +44,17 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
   project,
 }: Props) {
   const { isDarkMode } = useTheme()
+  const { templates } = usePluginOpsLogTemplates()
   const latest = group.latestEntry
   const performer = latest.performed_by ?? latest.recorded_by
   const displayName = performerDisplayNames.get(performer) ?? performer
   const version = group.stops[0]?.entry.version ?? latest.version ?? ''
-  const desc = cleanDescription(group.description, version)
+  const desc = renderEntryLabel(latest, {
+    environment: environmentsBySlug.get(latest.environment_slug),
+    performerDisplayName: displayName,
+    project,
+    templates,
+  })
   const projectLabel = project?.name ?? group.project_slug
 
   // Pipeline = this project's own environments, unioned with any

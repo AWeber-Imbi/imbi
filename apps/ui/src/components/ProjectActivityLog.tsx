@@ -11,6 +11,7 @@ import {
   listProjectEvents,
 } from '@/api/endpoints'
 import type { EventRecord } from '@/api/endpoints'
+import { renderEntryLabel } from '@/components/operations-log/renderEntryLabel'
 import { EnvironmentBadge } from '@/components/ui/environment-badge'
 import { Gravatar } from '@/components/ui/gravatar'
 import {
@@ -19,6 +20,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { usePluginOpsLogTemplates } from '@/hooks/usePluginOpsLogTemplates'
+import type { PluginOpsLogTemplateMap } from '@/hooks/usePluginOpsLogTemplates'
 import { formatFieldKey } from '@/lib/project-field-formatting'
 import type { Environment, OperationsLogRecord } from '@/types'
 
@@ -48,7 +51,15 @@ const DOT_CLASS = {
   warning: 'bg-[#ef9f27]',
 }
 
+interface KeyChange {
+  key: string
+  kind: 'added' | 'changed' | 'removed'
+  newValue?: string
+  oldValue?: string
+}
+
 export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
+  const { templates } = usePluginOpsLogTemplates()
   const { data: eventsPage, isPending: eventsPending } = useQuery({
     enabled: Boolean(orgSlug) && Boolean(projectId),
     queryFn: ({ signal }) =>
@@ -160,6 +171,7 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
                       envMap={envMap}
                       item={item}
                       key={`ops-${item.data.id}-${i}`}
+                      templates={templates}
                     />
                   ),
                 )}
@@ -182,6 +194,32 @@ function dayLabel(d: Date): string {
   return d
     .toLocaleDateString('en-US', { day: 'numeric', month: 'short' })
     .toUpperCase()
+}
+
+// fallow-ignore-next-line complexity
+function diffObjects(
+  oldObj: Record<string, unknown>,
+  newObj: Record<string, unknown>,
+): KeyChange[] {
+  const keys = new Set([...Object.keys(oldObj), ...Object.keys(newObj)])
+  const changes: KeyChange[] = []
+  for (const key of keys) {
+    const hasOld = key in oldObj
+    const hasNew = key in newObj
+    if (!hasOld && hasNew) {
+      changes.push({ key, kind: 'added', newValue: formatValue(newObj[key]) })
+    } else if (hasOld && !hasNew) {
+      changes.push({ key, kind: 'removed', oldValue: formatValue(oldObj[key]) })
+    } else if (formatValue(oldObj[key]) !== formatValue(newObj[key])) {
+      changes.push({
+        key,
+        kind: 'changed',
+        newValue: formatValue(newObj[key]),
+        oldValue: formatValue(oldObj[key]),
+      })
+    }
+  }
+  return changes.sort((a, b) => a.key.localeCompare(b.key))
 }
 
 function EntryRow({
@@ -248,31 +286,9 @@ function EventEntry({
     entry.type === 'project-change' &&
     isProjectChangePayload(entry.payload)
   ) {
-    const field = formatFieldKey(entry.payload.field)
-    const oldStr = formatValue(entry.payload.old)
-    const newStr = formatValue(entry.payload.new)
-    body = (
-      <span>
-        changed {field}
-        {oldStr ? (
-          <>
-            {' '}
-            <ValueChip>{oldStr}</ValueChip>
-            {' → '}
-            <ValueChip>{newStr}</ValueChip>
-          </>
-        ) : (
-          <>
-            {' to '}
-            <ValueChip>{newStr}</ValueChip>
-          </>
-        )}
-      </span>
-    )
+    body = renderProjectChangeBody(entry.payload)
   } else {
-    body = (
-      <span className="text-tertiary">{entry.type.replace(/-/g, ' ')}</span>
-    )
+    body = renderGenericEventBody(entry)
   }
 
   return (
@@ -301,38 +317,88 @@ function getDisplayName(
   return displayNames.get(email) ?? email.split('@')[0] ?? email
 }
 
+function humanizeEventType(type: string): string {
+  return type.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.getPrototypeOf(value) === Object.prototype
+  )
+}
+
 function isProjectChangePayload(
   payload: Record<string, unknown>,
 ): payload is ProjectChangePayload {
   return typeof payload.field === 'string'
 }
 
+// fallow-ignore-next-line complexity
+function KeyChangeItem({ change }: { change: KeyChange }) {
+  return (
+    <li className="text-secondary text-xs">
+      <span className="text-tertiary">{change.kind}</span>{' '}
+      <ValueChip>{change.key}</ValueChip>
+      {change.kind === 'changed' && (
+        <>
+          {': '}
+          <ValueChip>{change.oldValue}</ValueChip>
+          {' → '}
+          <ValueChip>{change.newValue}</ValueChip>
+        </>
+      )}
+      {change.kind === 'added' && change.newValue !== '' && (
+        <>
+          {': '}
+          <ValueChip>{change.newValue}</ValueChip>
+        </>
+      )}
+      {change.kind === 'removed' && change.oldValue !== '' && (
+        <>
+          {': '}
+          <ValueChip>{change.oldValue}</ValueChip>
+        </>
+      )}
+    </li>
+  )
+}
+
+// fallow-ignore-next-line complexity
 function OpsEntry({
   displayNames,
   envMap,
   item,
+  templates,
 }: {
   displayNames: Map<string, string>
   envMap: Map<string, Environment>
   item: ActivityItem & { kind: 'ops' }
+  templates: PluginOpsLogTemplateMap
 }) {
   const op = item.data
   const actor = op.performed_by ?? op.recorded_by
   const name = getDisplayName(actor, displayNames)
   const color: AvatarColor =
     op.entry_type === 'Deployed' ? 'warning' : 'neutral'
+  const env = envMap.get(op.environment_slug)
+  const label = renderEntryLabel(op, {
+    environment: env,
+    performerDisplayName: name,
+    templates,
+  })
 
   const body = (
     <span>
-      {op.entry_type.toLowerCase()}
-      {op.version && (
+      {label || op.entry_type.toLowerCase()}
+      {env && (
         <>
-          {' '}
-          <ValueChip>{op.version}</ValueChip>
+          {' on '}
+          <EnvChip env={env} />
         </>
       )}
-      {' to '}
-      <EnvChip env={envMap.get(op.environment_slug)} />
     </span>
   )
 
@@ -344,6 +410,65 @@ function OpsEntry({
       name={name}
       ts={item.ts}
     />
+  )
+}
+
+function renderGenericEventBody(entry: EventRecord): React.ReactNode {
+  const label = humanizeEventType(entry.type)
+  return (
+    <span>
+      <span className="text-secondary">{label}</span>
+      {entry.third_party_service && (
+        <span className="text-tertiary"> via {entry.third_party_service}</span>
+      )}
+    </span>
+  )
+}
+
+// fallow-ignore-next-line complexity
+function renderProjectChangeBody(
+  payload: ProjectChangePayload,
+): React.ReactNode {
+  const field = formatFieldKey(payload.field)
+  const oldIsObj = isPlainObject(payload.old)
+  const newIsObj = isPlainObject(payload.new)
+  if (oldIsObj || newIsObj) {
+    const changes = diffObjects(
+      oldIsObj ? (payload.old as Record<string, unknown>) : {},
+      newIsObj ? (payload.new as Record<string, unknown>) : {},
+    )
+    if (changes.length > 0) {
+      return (
+        <span>
+          changed {field}
+          <ul className="mt-1 space-y-0.5">
+            {changes.map((c) => (
+              <KeyChangeItem change={c} key={c.key} />
+            ))}
+          </ul>
+        </span>
+      )
+    }
+  }
+  const oldStr = formatValue(payload.old)
+  const newStr = formatValue(payload.new)
+  return (
+    <span>
+      changed {field}
+      {oldStr ? (
+        <>
+          {' '}
+          <ValueChip>{oldStr}</ValueChip>
+          {' → '}
+          <ValueChip>{newStr}</ValueChip>
+        </>
+      ) : (
+        <>
+          {' to '}
+          <ValueChip>{newStr}</ValueChip>
+        </>
+      )}
+    </span>
   )
 }
 
