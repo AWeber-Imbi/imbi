@@ -193,12 +193,16 @@ async def process_notification(
                 edge_plugin_slug=sel.get('identity_plugin_slug'),
                 candidate_plugin_slugs=plugin_slugs,
             )
+            event_type = _resolve_event_type(
+                sel.get('event_type_selector'), body, request.headers
+            )
+            _set_access_log_context(request, user_id=user_id, event=event_type)
             await _record_events(
                 records,
                 webhook_id=webhook_id,
                 service_slug=service['slug'],
                 user_id=user_id,
-                event_type_selector=sel.get('event_type_selector'),
+                event_type=event_type,
                 headers=request.headers,
                 body=body,
             )
@@ -306,6 +310,24 @@ async def _resolve_user_id(
     return next(iter(matches), None)
 
 
+def _set_access_log_context(
+    request: fastapi.Request, *, user_id: str | None, event: str
+) -> None:
+    updates: dict[str, str] = {}
+    if user_id:
+        updates['user_id'] = user_id
+    if event:
+        updates['event'] = event
+    if not updates:
+        return
+    existing: object = getattr(request.state, 'imbi_common_access_log', None)
+    if isinstance(existing, dict):
+        context = typing.cast('dict[str, str]', existing)
+        context.update(updates)
+    else:
+        request.state.imbi_common_access_log = updates
+
+
 async def _extract_json_body(request: fastapi.Request) -> object:
     try:
         return await request.json()
@@ -362,7 +384,7 @@ async def _record_events(  # noqa: PLR0913 - all inputs are required event field
     webhook_id: str,
     service_slug: str,
     user_id: str | None,
-    event_type_selector: str | None,
+    event_type: str,
     headers: abc.Mapping[str, str],
     body: object,
 ) -> None:
@@ -373,7 +395,6 @@ async def _record_events(  # noqa: PLR0913 - all inputs are required event field
     """
     if not records:
         return
-    event_type = _resolve_event_type(event_type_selector, body, headers)
     metadata: dict[str, typing.Any] = {
         'webhook_id': webhook_id,
         'headers': _safe_headers(headers),

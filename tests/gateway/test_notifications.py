@@ -2,6 +2,7 @@ import typing
 import unittest.mock
 
 import celpy
+import fastapi
 import httpx
 import nanoid
 import pydantic
@@ -742,6 +743,74 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual(204, response.status_code)
         mock_insert.assert_not_awaited()
 
+    async def test_access_log_context_includes_user_id_and_event(self) -> None:
+        await self._add_rule(filter_expression='true')
+        await self._set_implemented_by(
+            user_subject_selector='/sender/id',
+            identity_plugin_slug='github',
+            event_type_selector='x-github-event',
+        )
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(return_value='alice@example.com'),
+            ),
+            unittest.mock.patch.object(
+                clickhouse, 'insert', new=unittest.mock.AsyncMock()
+            ),
+            self.assertLogs('imbi_common.access', level='INFO') as cm,
+        ):
+            response = await self._post(
+                self.webhook_id,
+                body,
+                headers={'X-GitHub-Event': 'pull_request'},
+            )
+        self.assertEqual(202, response.status_code)
+        access_line = cm.records[0].getMessage()
+        self.assertIn('user_id:alice@example.com', access_line)
+        self.assertIn('event:pull_request', access_line)
+
+    async def test_access_log_context_omitted_when_no_user_or_event(
+        self,
+    ) -> None:
+        await self._add_rule(filter_expression='true')
+        body = {'repo': {'id': self.ext_id}}
+        with (
+            unittest.mock.patch.object(
+                clickhouse, 'insert', new=unittest.mock.AsyncMock()
+            ),
+            self.assertLogs('imbi_common.access', level='INFO') as cm,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        access_line = cm.records[0].getMessage()
+        self.assertNotIn('user_id:', access_line)
+        self.assertNotIn('event:', access_line)
+        self.assertNotIn('(', access_line)
+
+    async def test_access_log_context_includes_only_event_when_no_user(
+        self,
+    ) -> None:
+        await self._add_rule(filter_expression='true')
+        await self._set_implemented_by(event_type_selector='x-github-event')
+        body = {'repo': {'id': self.ext_id}}
+        with (
+            unittest.mock.patch.object(
+                clickhouse, 'insert', new=unittest.mock.AsyncMock()
+            ),
+            self.assertLogs('imbi_common.access', level='INFO') as cm,
+        ):
+            response = await self._post(
+                self.webhook_id, body, headers={'X-GitHub-Event': 'ping'}
+            )
+        self.assertEqual(202, response.status_code)
+        access_line = cm.records[0].getMessage()
+        self.assertNotIn('user_id:', access_line)
+        self.assertIn('event:ping', access_line)
+
     async def test_event_insert_failure_does_not_block_handlers(self) -> None:
         """ClickHouse failures are best-effort; handler runs anyway."""
         await self._add_rule(filter_expression='true')
@@ -763,6 +832,58 @@ class ProcessNotificationTests(helpers.TestCase):
                 for line in cm.output
             )
         )
+
+
+_set_access_log_context = (
+    notifications._set_access_log_context  # pyright: ignore[reportPrivateUsage]
+)
+
+
+class SetAccessLogContextUnitTests(helpers.TestCase):
+    """Unit tests for the `_set_access_log_context` helper."""
+
+    def _make_request(
+        self, initial: dict[str, str] | None = None
+    ) -> fastapi.Request:
+        scope: dict[str, typing.Any] = {'type': 'http', 'state': {}}
+        if initial is not None:
+            scope['state']['imbi_common_access_log'] = initial
+        return fastapi.Request(scope)
+
+    def test_sets_both_values_when_state_is_empty(self) -> None:
+        request = self._make_request()
+        _set_access_log_context(request, user_id='alice', event='ping')
+        self.assertEqual(
+            {'user_id': 'alice', 'event': 'ping'},
+            request.state.imbi_common_access_log,
+        )
+
+    def test_merges_with_existing_context(self) -> None:
+        request = self._make_request({'request_id': 'r-1'})
+        _set_access_log_context(request, user_id='alice', event='ping')
+        self.assertEqual(
+            {'request_id': 'r-1', 'user_id': 'alice', 'event': 'ping'},
+            request.state.imbi_common_access_log,
+        )
+
+    def test_existing_key_is_overwritten(self) -> None:
+        request = self._make_request({'event': 'stale'})
+        _set_access_log_context(request, user_id=None, event='fresh')
+        self.assertEqual(
+            {'event': 'fresh'}, request.state.imbi_common_access_log
+        )
+
+    def test_no_updates_leaves_state_untouched(self) -> None:
+        request = self._make_request({'request_id': 'r-1'})
+        _set_access_log_context(request, user_id=None, event='')
+        self.assertEqual(
+            {'request_id': 'r-1'}, request.state.imbi_common_access_log
+        )
+
+    def test_skips_empty_user_and_event(self) -> None:
+        request = self._make_request()
+        _set_access_log_context(request, user_id=None, event='')
+        self.assertFalse(hasattr(request.state, 'imbi_common_access_log'))
 
 
 _resolve_event_type = (
