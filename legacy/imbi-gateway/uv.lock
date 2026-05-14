@@ -2,6 +2,9 @@ version = 1
 revision = 3
 requires-python = ">=3.14"
 
+[manifest]
+overrides = [{ name = "clickhouse-connect", extras = ["async"], specifier = "==0.12rc1" }]
+
 [[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
@@ -640,10 +643,11 @@ wheels = [
 
 [[package]]
 name = "imbi-common"
-version = "0.8.5"
+version = "2.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
+    { name = "httpx" },
     { name = "jsonschema-models" },
     { name = "markdown-it-py" },
     { name = "nanoid" },
@@ -654,9 +658,9 @@ dependencies = [
     { name = "python-slugify" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/43/1b/38e8b30ad0653f3cb8c2a73e48ddf0cbd81362d36fe6eef8c61dfd8e32d5/imbi_common-0.8.5.tar.gz", hash = "sha256:e3dff51d5d2fe01b66072e3c34317db04844a406a3745d4481bc2083b15a594a", size = 248174, upload-time = "2026-05-11T20:01:06.769Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/20/90/0e613931f0309a08ba07ace0d567d3fcf69c60bc0bc908d216e58c2f2c85/imbi_common-2.4.0.tar.gz", hash = "sha256:eefb7c53256cfbad45881d00dc60479d05488f2e94aa63a17625f693edae6992", size = 269729, upload-time = "2026-05-14T21:33:28.946Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/07/90/a95857698075fd59d5195d2de58910ddb9ce5802b29aec25a7dc585b9ac4/imbi_common-0.8.5-py3-none-any.whl", hash = "sha256:fc07e909369a6754e103a876252f0bc5696652c38e982227f7e38ab0f9a4f4fe", size = 73294, upload-time = "2026-05-11T20:01:05.51Z" },
+    { url = "https://files.pythonhosted.org/packages/27/94/c56575ae624db3cef3e0d5b65dc33dfea3d29d12514c68ebe2f8c3bf2f2f/imbi_common-2.4.0-py3-none-any.whl", hash = "sha256:f43c927f677e565c0c8cbe04f4d06cf6c1b57eb5bd36b6428d9a96917b1c4f20", size = 86575, upload-time = "2026-05-14T21:33:27.334Z" },
 ]
 
 [package.optional-dependencies]
@@ -674,7 +678,7 @@ server = [
 
 [[package]]
 name = "imbi-gateway"
-version = "1.0.2"
+version = "1.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "cel-python" },
@@ -705,7 +709,7 @@ requires-dist = [
     { name = "cel-python", specifier = ">=0.5.0" },
     { name = "fastapi", specifier = ">=0.135.1" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "imbi-common", extras = ["databases", "server"], specifier = ">=0.8.5" },
+    { name = "imbi-common", extras = ["databases", "server"], specifier = "~=2.4" },
     { name = "jsonpointer", specifier = ">=3.1.1" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = "~=3.3.2" },
     { name = "pydantic", specifier = "~=2.12" },
@@ -1715,11 +1719,11 @@ wheels = [
 
 [[package]]
 name = "urllib3"
-version = "2.6.3"
+version = "2.7.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c7/24/5f1b3bdffd70275f6661c76461e25f024d5a38a46f04aaca912426a2b1d3/urllib3-2.6.3.tar.gz", hash = "sha256:1b62b6884944a57dbe321509ab94fd4d3b307075e0c2eae991ac71ee15ad38ed", size = 435556, upload-time = "2026-01-07T16:24:43.925Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/53/0c/06f8b233b8fd13b9e5ee11424ef85419ba0d8ba0b3138bf360be2ff56953/urllib3-2.7.0.tar.gz", hash = "sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c", size = 433602, upload-time = "2026-05-07T16:13:18.596Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/39/08/aaaad47bc4e9dc8c725e68f9d04865dbcb2052843ff09c97b08904852d84/urllib3-2.6.3-py3-none-any.whl", hash = "sha256:bf272323e553dfb2e87d9bfd225ca7b0f467b919d7bbd355436d3fd37cb0acd4", size = 131584, upload-time = "2026-01-07T16:24:42.685Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl", hash = "sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897", size = 131087, upload-time = "2026-05-07T16:13:17.151Z" },
 ]
 
 [[package]]
