@@ -25,6 +25,40 @@ class ResolvedPlugin(typing.NamedTuple):
     entry: RegistryEntry
     options: dict[str, typing.Any]
     identity_plugin_id: str | None = None
+    # Per-env payload dict keyed by env slug; values are merged into
+    # GitHub Deployment ``payload`` (workflow inputs) at trigger time.
+    # Lives on the USES_PLUGIN edge so plugin-specific behaviour stays
+    # with the plugin assignment.  Two-tier merge (project edge wins per
+    # env slug over project-type edge).  ``None`` is treated as "no
+    # per-env payloads" by call sites; the default is None rather than
+    # {} so the NamedTuple does not carry a shared mutable default.
+    env_payloads: dict[str, dict[str, typing.Any]] | None = None
+
+
+def _merge_env_payloads(
+    pt_raw: typing.Any,
+    project_raw: typing.Any,
+) -> dict[str, dict[str, typing.Any]]:
+    """Two-tier merge of ``env_payloads`` from project-type + project edges.
+
+    Each tier is a ``{env_slug: {...payload}}`` dict (stored JSON-encoded
+    on the AGE edge).  For each env slug present in either tier we
+    shallow-merge the two payload dicts, with the project-edge value
+    winning per key, matching the precedence the rest of the resolver
+    uses for ``options``.
+    """
+    pt = parse_options(pt_raw)
+    project = parse_options(project_raw)
+    merged: dict[str, dict[str, typing.Any]] = {}
+    for slug, payload in pt.items():
+        if isinstance(payload, dict):
+            merged[slug] = dict(payload)  # pyright: ignore[reportUnknownArgumentType]
+    for slug, payload in project.items():
+        if not isinstance(payload, dict):
+            continue
+        existing = merged.get(slug, {})
+        merged[slug] = {**existing, **payload}  # pyright: ignore[reportUnknownArgumentType]
+    return merged
 
 
 async def resolve_plugin(
@@ -62,6 +96,7 @@ async def resolve_plugin(
     WITH
       collect(DISTINCT {{id: p.id, slug: p.plugin_slug,
                          edge_options: pe.options,
+                         edge_env_payloads: pe.env_payloads,
                          plugin_options: p.options,
                          identity_plugin_id: pe.identity_plugin_id,
                          plugin_identity_plugin_id: p.identity_plugin_id,
@@ -70,6 +105,7 @@ async def resolve_plugin(
        AS proj_plugins,
       collect(DISTINCT {{id: p2.id, slug: p2.plugin_slug,
                          edge_options: pte.options,
+                         edge_env_payloads: pte.env_payloads,
                          plugin_options: p2.options,
                          identity_plugin_id: pte.identity_plugin_id,
                          plugin_identity_plugin_id: p2.identity_plugin_id,
@@ -119,6 +155,7 @@ async def resolve_plugin(
             merged[pid] = {
                 **p,
                 'pt_edge_options': pt_by_id[pid].get('edge_options'),
+                'pt_edge_env_payloads': pt_by_id[pid].get('edge_env_payloads'),
                 'pt_identity_plugin_id': pt_by_id[pid].get(
                     'identity_plugin_id'
                 ),
@@ -194,6 +231,10 @@ async def resolve_plugin(
         raise PluginUnavailableError(plugin_slug) from exc
 
     identity_plugin_id = _select_identity_plugin_id(chosen)
+    env_payloads = _merge_env_payloads(
+        chosen.get('pt_edge_env_payloads'),
+        chosen.get('edge_env_payloads'),
+    )
 
     return ResolvedPlugin(
         plugin_id=plugin_id,
@@ -201,6 +242,7 @@ async def resolve_plugin(
         entry=entry,
         options=options,
         identity_plugin_id=identity_plugin_id,
+        env_payloads=env_payloads,
     )
 
 
@@ -235,6 +277,7 @@ async def resolve_all_plugins(
     WITH
       collect(DISTINCT {{id: p.id, slug: p.plugin_slug,
                          edge_options: pe.options,
+                         edge_env_payloads: pe.env_payloads,
                          plugin_options: p.options,
                          identity_plugin_id: pe.identity_plugin_id,
                          plugin_identity_plugin_id: p.identity_plugin_id,
@@ -243,6 +286,7 @@ async def resolve_all_plugins(
        AS proj_plugins,
       collect(DISTINCT {{id: p2.id, slug: p2.plugin_slug,
                          edge_options: pte.options,
+                         edge_env_payloads: pte.env_payloads,
                          plugin_options: p2.options,
                          identity_plugin_id: pte.identity_plugin_id,
                          plugin_identity_plugin_id: p2.identity_plugin_id,
@@ -281,6 +325,7 @@ async def resolve_all_plugins(
             merged[pid] = {
                 **p,
                 'pt_edge_options': pt_by_id[pid].get('edge_options'),
+                'pt_edge_env_payloads': pt_by_id[pid].get('edge_env_payloads'),
                 'pt_identity_plugin_id': pt_by_id[pid].get(
                     'identity_plugin_id'
                 ),
@@ -322,6 +367,10 @@ async def resolve_all_plugins(
                 entry=entry,
                 options=options,
                 identity_plugin_id=_select_identity_plugin_id(chosen),
+                env_payloads=_merge_env_payloads(
+                    chosen.get('pt_edge_env_payloads'),
+                    chosen.get('edge_env_payloads'),
+                ),
             )
         )
     return resolved

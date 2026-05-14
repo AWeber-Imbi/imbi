@@ -174,6 +174,8 @@ async def list_environments(
         org = graph.parse_agtype(record['o'])
         env['organization'] = org
         env.setdefault('sort_order', 0)
+        env.setdefault('can_deploy', True)
+        env.setdefault('can_promote', False)
         pc = graph.parse_agtype(record['project_count'])
         env['relationships'] = _environment_relationships(
             request, org_slug, env['slug'], pc or 0
@@ -231,6 +233,8 @@ async def get_environment(
     org = graph.parse_agtype(records[0]['o'])
     env['organization'] = org
     env.setdefault('sort_order', 0)
+    env.setdefault('can_deploy', True)
+    env.setdefault('can_promote', False)
     pc = graph.parse_agtype(records[0]['project_count'])
     env['relationships'] = _environment_relationships(
         request, org_slug, env['slug'], pc or 0
@@ -333,6 +337,8 @@ async def _persist_environment(
     org = graph.parse_agtype(updated[0]['o'])
     env['organization'] = org
     env.setdefault('sort_order', 0)
+    env.setdefault('can_deploy', True)
+    env.setdefault('can_promote', False)
     pc = graph.parse_agtype(updated[0]['project_count'])
     env['relationships'] = _environment_relationships(
         request, org_slug, env['slug'], pc or 0

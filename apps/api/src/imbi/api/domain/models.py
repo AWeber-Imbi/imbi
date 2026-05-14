@@ -862,6 +862,13 @@ class PluginAssignmentCreate(pydantic.BaseModel):
     default: bool = False
     options: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
     identity_plugin_id: str | None = None
+    # Per-env workflow-input overrides keyed by env slug.  Merged into
+    # the deploy / promote dispatch payload at trigger time.  Sibling
+    # to ``options`` (which is plugin-level) because the axis is the
+    # *environment* being deployed into, not the plugin's own config.
+    env_payloads: dict[str, dict[str, typing.Any]] = pydantic.Field(
+        default_factory=dict,
+    )
 
 
 class PluginAssignmentResponse(pydantic.BaseModel):
@@ -877,6 +884,9 @@ class PluginAssignmentResponse(pydantic.BaseModel):
         'project_type'
     )
     identity_plugin_id: str | None = None
+    env_payloads: dict[str, dict[str, typing.Any]] = pydantic.Field(
+        default_factory=dict,
+    )
     # Pulled from the plugin manifest so the UI can hide affordances
     # (e.g. the histogram strip on the Logs tab) for plugins whose
     # underlying API does not support them.

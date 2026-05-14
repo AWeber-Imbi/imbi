@@ -23,7 +23,10 @@ from imbi_common.plugins.registry import RegistryEntry
 
 from imbi_api import app, models
 from imbi_api.auth import password, permissions
-from imbi_api.endpoints.project_deployments import DraftReleaseNotes
+from imbi_api.endpoints.project_deployments import (
+    DraftReleaseNotes,
+    _EnvFlags,
+)
 from imbi_api.llm.dependencies import _get_anthropic_client
 from imbi_api.plugins.resolution import ResolvedPlugin
 
@@ -206,14 +209,16 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
                     return_value=None,
                 )
             ),
-            # Default the per-env edge to action='release' so the
-            # existing promote tests exercise the tag+release branch
-            # (matching how staging promotes work in practice).  Tests
-            # that need a different action override this on the mock.
-            '_resolve_deploys_via': self._start(
+            # Default env flags: deploy + promote both allowed.  Tests
+            # exercising the 400 guardrails override this on the mock.
+            '_load_env_flags': self._start(
                 mock.patch(
-                    f'{_MODULE}._resolve_deploys_via',
-                    return_value={'action': 'release'},
+                    f'{_MODULE}._load_env_flags',
+                    return_value=_EnvFlags(
+                        found=True,
+                        can_deploy=True,
+                        can_promote=True,
+                    ),
                 )
             ),
             'clickhouse': self._start(
@@ -477,9 +482,9 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         # last_tag bumped major: 6.3.0 → 7.0.0
         self.assertEqual(data['version'], 'v7.0.0')
 
-    def test_promote_release_action_cuts_tag_and_release(self) -> None:
-        # ``action='release'`` -- staging-style promote: cut a tag and
-        # create a release, but DO NOT dispatch.  The repo's
+    def test_promote_sha_ref_cuts_tag_and_release(self) -> None:
+        # Promote target is a git SHA -- the handler should cut a tag
+        # and create a release, but NOT dispatch.  The repo's
         # ``on: release: [published]`` workflow handles deployment.
         self.mocks['append_deployment_event'].return_value = mock.Mock()
         with testclient.TestClient(self.test_app) as client:
@@ -490,7 +495,7 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
                     'from_environment': 'testing',
                     'to_environment': 'staging',
                     'from_committish': '1a9c610',
-                    'tag': 'v6.4.0',
+                    'tag': '1a9c610abcdef',
                     'release_name': 'v6.4.0',
                     'release_notes_markdown': '## Highlights\n- foo',
                     'prerelease': False,
@@ -498,24 +503,21 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 202)
         data = response.json()
-        self.assertEqual(data['tag'], 'v6.4.0')
-        self.assertEqual(data['release_url'], 'https://gh/releases/v6.4.0')
+        self.assertEqual(data['tag'], '1a9c610abcdef')
+        self.assertEqual(
+            data['release_url'], 'https://gh/releases/1a9c610abcdef'
+        )
         self.assertTrue(data['recorded'])
         self.assertIsNone(data['warning'])
-        self.assertGreaterEqual(self.mock_db.execute.call_count, 2)
         call = self.mocks['append_deployment_event'].call_args
-        self.assertEqual(call.kwargs['version'], 'v6.4.0')
         self.assertEqual(call.kwargs['env_slug'], 'staging')
         # No dispatch happened -> no external run id/url.
         self.assertIsNone(call.kwargs['external_run_id'])
         self.assertIsNone(call.kwargs['external_run_url'])
 
-    def test_promote_deployment_action_dispatches_only(self) -> None:
-        # ``action='deployment'`` -- production-style promote: dispatch
-        # against an existing tag with no new tag/release.
-        self.mocks['_resolve_deploys_via'].return_value = {
-            'action': 'deployment'
-        }
+    def test_promote_semver_tag_dispatches_only(self) -> None:
+        # Promote target is a semver tag -- the handler should dispatch
+        # against the existing tag with no new tag/release.
         self.mocks['append_deployment_event'].return_value = mock.Mock()
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
@@ -539,11 +541,27 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         self.assertEqual(call.kwargs['external_run_id'], '42')
         self.assertEqual(call.kwargs['external_run_url'], 'https://gh/runs/42')
 
-    def test_promote_with_no_edge_records_event_with_warning(self) -> None:
-        # No DEPLOYS_VIA edge configured for the env -- promote records
-        # the event but takes no remote action and surfaces a warning.
-        self.mocks['_resolve_deploys_via'].return_value = {}
-        self.mocks['append_deployment_event'].return_value = mock.Mock()
+    def test_promote_400_on_non_semver_non_sha_ref(self) -> None:
+        # A branch-shaped ref like ``main`` is neither a tag nor a SHA;
+        # the handler must refuse rather than silently cut a tag.
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'promote',
+                    'from_environment': 'testing',
+                    'to_environment': 'staging',
+                    'from_committish': '1a9c610',
+                    'tag': 'main',
+                },
+            )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('neither a semver tag', response.json()['detail'])
+
+    def test_promote_400_when_can_promote_false(self) -> None:
+        self.mocks['_load_env_flags'].return_value = _EnvFlags(
+            found=True, can_deploy=True, can_promote=False
+        )
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
                 '/organizations/myorg/projects/proj1/deployments',
@@ -555,19 +573,90 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
                     'tag': 'v6.4.0',
                 },
             )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('can_promote=false', response.json()['detail'])
+
+    def test_deploy_400_when_can_deploy_false(self) -> None:
+        self.mocks['_load_env_flags'].return_value = _EnvFlags(
+            found=True, can_deploy=False, can_promote=True
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'deploy',
+                    'environment': 'production',
+                    'committish': 'v1.2.3',
+                },
+            )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('can_deploy=false', response.json()['detail'])
+
+    def test_promote_404_when_env_not_found(self) -> None:
+        self.mocks['_load_env_flags'].return_value = _EnvFlags(
+            found=False, can_deploy=True, can_promote=False
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'promote',
+                    'from_environment': 'testing',
+                    'to_environment': 'ghost',
+                    'from_committish': '1a9c610',
+                    'tag': 'v6.4.0',
+                },
+            )
+        self.assertEqual(response.status_code, 404)
+
+    def test_deploy_env_payloads_flow_into_trigger_inputs(self) -> None:
+        # ``env_payloads`` on the resolved plugin is merged into the
+        # ``inputs`` passed to ``trigger_deployment`` (caller-supplied
+        # ``body.inputs`` still wins on key collisions).
+        captured: dict[str, typing.Any] = {}
+
+        class _Capturing(_FakeDeploymentPlugin):
+            async def trigger_deployment(  # type: ignore[override]
+                self, ctx, credentials, ref_or_sha, inputs=None
+            ):
+                captured['inputs'] = inputs
+                return await super().trigger_deployment(
+                    ctx, credentials, ref_or_sha, inputs
+                )
+
+        self.mocks['resolve_plugin'].return_value = ResolvedPlugin(
+            plugin_id='p-1',
+            plugin_slug='github-deployment',
+            entry=RegistryEntry(
+                handler_cls=_Capturing,
+                manifest=_Capturing.manifest,
+                package_name='x',
+                package_version='1',
+            ),
+            options={'owner': 'octo', 'repo': 'demo'},
+            env_payloads={
+                'testing': {'environment': 'testing', 'tier': 'low'},
+            },
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'deploy',
+                    'environment': 'testing',
+                    'committish': 'main',
+                    'inputs': {'tier': 'override'},
+                },
+            )
         self.assertEqual(response.status_code, 202)
-        data = response.json()
-        self.assertIsNotNone(data['warning'])
-        self.assertIn('No DEPLOYS_VIA edge', data['warning'])
-        self.assertTrue(data['recorded'])
+        self.assertEqual(captured['inputs']['environment'], 'testing')
+        # Caller override beats env_payloads on shared keys.
+        self.assertEqual(captured['inputs']['tier'], 'override')
 
     def test_promote_deployment_failure_becomes_warning(self) -> None:
         # If trigger_deployment raises, the promote still records the
         # DeploymentEvent and surfaces the failure as a warning rather
         # than 500ing.
-        self.mocks['_resolve_deploys_via'].return_value = {
-            'action': 'deployment'
-        }
         self.mocks['append_deployment_event'].return_value = mock.Mock()
 
         class _Boom(_FakeDeploymentPlugin):
@@ -628,6 +717,8 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
             ),
             options={},
         )
+        # Use a SHA tag so the ref-shape inference picks the
+        # ``create_tag`` branch (semver refs would skip create_tag).
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
                 '/organizations/myorg/projects/proj1/deployments',
@@ -636,7 +727,7 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
                     'from_environment': 'testing',
                     'to_environment': 'staging',
                     'from_committish': '1a9c610',
-                    'tag': 'v1.2.3',
+                    'tag': '1a9c610',
                 },
             )
         self.assertEqual(response.status_code, 400)

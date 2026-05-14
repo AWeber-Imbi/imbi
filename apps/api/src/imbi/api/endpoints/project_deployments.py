@@ -20,7 +20,7 @@ import typing
 import fastapi
 import nanoid
 import pydantic
-from imbi_common import clickhouse, graph
+from imbi_common import clickhouse, graph, versioning
 from imbi_common import models as common_models
 from imbi_common.plugins.base import (
     Commit,
@@ -242,15 +242,15 @@ async def _resolve_and_context(
     project_slug, team_slug = await lookup_project_slugs(db, project_id)
     project_links = await lookup_project_links(db, project_id)
     project_type_slugs = await lookup_project_type_slugs(db, project_id)
-    # Per-env DEPLOYS_VIA edge properties — only meaningful when an
-    # environment is in scope.  Caller-side flows (status polls, ref
-    # listings) skip this and accept an empty dict, matching the
-    # plugin-side fallback in :class:`PluginContext`.
+    # Per-env payload pulled off the USES_PLUGIN edge (plan: release-train
+    # env flags).  The env_payloads dict is keyed by env slug and the
+    # value is shallow-merged into GitHub Deployment ``payload`` (workflow
+    # inputs) at trigger time.  Empty dict when there is no env in scope
+    # or no per-env payload is configured -- plugin authors should treat
+    # absent keys as "no extra inputs".
     environment_config: dict[str, typing.Any] = {}
-    if environment:
-        environment_config = await _resolve_deploys_via(
-            db, project_id=project_id, env_slug=environment
-        )
+    if environment and resolved.env_payloads:
+        environment_config = dict(resolved.env_payloads.get(environment, {}))
     ctx = PluginContext(
         project_id=project_id,
         project_slug=project_slug,
@@ -291,54 +291,54 @@ async def _resolve_and_context(
     return resolved, ctx, credentials
 
 
-async def _resolve_deploys_via(
+class _EnvFlags(typing.NamedTuple):
+    """Release-train flags resolved from an ``Environment`` node.
+
+    ``found`` is ``False`` when the environment slug doesn't match any
+    node in the graph; callers raise 404 in that case rather than
+    accidentally treating the env as deploy-and-promote-disabled.
+    """
+
+    found: bool
+    can_deploy: bool
+    can_promote: bool
+
+
+async def _load_env_flags(
     db: graph.Graph,
     *,
-    project_id: str,
+    org_slug: str,
     env_slug: str,
-) -> dict[str, typing.Any]:
-    """Return per-env deployment edge properties for ``(project, env)``.
+) -> _EnvFlags:
+    """Fetch ``can_deploy`` / ``can_promote`` for one env slug.
 
-    Resolves the ``DEPLOYS_VIA`` edge between the project (or its
-    project type, as a fallback) and the target ``Environment``,
-    returning the edge properties as a dict (``action``, ``payload``,
-    ``identity_plugin_id``, ...).  Project-level edge takes precedence
-    over project-type edge, matching the layering pattern used for
-    ``USES_PLUGIN`` options elsewhere.
+    Scoped to the organization so multi-org data with overlapping
+    environment slugs (e.g. ``prod`` in two orgs) never reads flags
+    from the wrong org.
 
-    Returns an empty dict when neither anchor has an edge; callers
-    treat that as "no remote action configured for this env" and skip
-    create_tag / create_release / trigger_deployment, recording only
-    the DeploymentEvent.
+    Defaults conservative-but-permissive when the stored node predates
+    the env-flag migration: ``can_deploy=True`` (no surprise lockouts)
+    and ``can_promote=False`` (opt-in, matching the model default).
     """
     query: typing.LiteralString = """
-    MATCH (env:Environment {{slug: {env_slug}}})
-    OPTIONAL MATCH (:Project {{id: {project_id}}})
-      -[pe:DEPLOYS_VIA]->(env)
-    OPTIONAL MATCH (:Project {{id: {project_id}}})
-      -[:TYPE]->(:ProjectType)-[pte:DEPLOYS_VIA]->(env)
-    RETURN
-      properties(pe) AS proj_props,
-      properties(pte) AS pt_props
+    MATCH (e:Environment {{slug: {env_slug}}})
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    RETURN e.can_deploy AS can_deploy, e.can_promote AS can_promote
     """
     rows = await db.execute(
         query,
-        {'project_id': project_id, 'env_slug': env_slug},
-        ['proj_props', 'pt_props'],
+        {'env_slug': env_slug, 'org_slug': org_slug},
+        ['can_deploy', 'can_promote'],
     )
     if not rows:
-        return {}
-
-    def _as_dict(raw: typing.Any) -> dict[str, typing.Any]:
-        return (
-            typing.cast(dict[str, typing.Any], raw)
-            if isinstance(raw, dict)
-            else {}
-        )
-
-    proj_props = _as_dict(graph.parse_agtype(rows[0].get('proj_props')))
-    pt_props = _as_dict(graph.parse_agtype(rows[0].get('pt_props')))
-    return {**pt_props, **proj_props}
+        return _EnvFlags(found=False, can_deploy=True, can_promote=False)
+    can_deploy = graph.parse_agtype(rows[0].get('can_deploy'))
+    can_promote = graph.parse_agtype(rows[0].get('can_promote'))
+    return _EnvFlags(
+        found=True,
+        can_deploy=True if can_deploy is None else bool(can_deploy),
+        can_promote=False if can_promote is None else bool(can_promote),
+    )
 
 
 def _promote_warning(step: str, exc: BaseException) -> str:
@@ -918,6 +918,25 @@ async def _handle_deploy(
     *,
     source: str | None,
 ) -> DeploymentTriggerResponse:
+    env_flags = await _load_env_flags(
+        db,
+        org_slug=org_slug,
+        env_slug=body.environment,
+    )
+    if not env_flags.found:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Environment {body.environment!r} not found',
+        )
+    if not env_flags.can_deploy:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                f'Environment {body.environment!r} has can_deploy=false; '
+                'direct deploys are disabled.  Use promote, or enable '
+                "this env's can_deploy flag."
+            ),
+        )
     resolved, ctx, credentials = await _resolve_and_context(
         db,
         org_slug,
@@ -928,13 +947,32 @@ async def _handle_deploy(
     )
     handler = _handler(resolved)
 
+    # Merge env_payloads (from USES_PLUGIN edge) under the caller's
+    # explicit ``body.inputs`` so a manual input override always wins.
+    # Coerce to strings: the plugin interface (``trigger_deployment``)
+    # types ``inputs`` as ``dict[str, str]`` because GitHub's workflow
+    # ``inputs`` map only accepts strings.  env_payloads carry richer
+    # JSON-shaped values per the plan; we stringify scalars here and
+    # JSON-encode anything else so they still round-trip into the
+    # workflow.
+    merged_inputs: dict[str, str] | None
+    if ctx.environment_config or body.inputs:
+        merged_inputs = {
+            key: value if isinstance(value, str) else json.dumps(value)
+            for key, value in ctx.environment_config.items()
+        }
+        if body.inputs:
+            merged_inputs.update(body.inputs)
+    else:
+        merged_inputs = None
+
     async def _trigger(c: PluginContext) -> DeploymentRun:
         return await call_with_timeout(
             handler.trigger_deployment(
                 c,
                 _resolve_credentials(c, credentials),
                 ref_or_sha=body.committish,
-                inputs=body.inputs,
+                inputs=merged_inputs,
             )
         )
 
@@ -988,6 +1026,94 @@ async def _handle_deploy(
     )
 
 
+async def _promote_cut_release(
+    db: graph.Graph,
+    *,
+    ctx: PluginContext,
+    resolved: ResolvedPlugin,
+    handler: DeploymentPlugin,
+    credentials: dict[str, str],
+    auth: permissions.AuthContext,
+    body: PromoteActionRequest,
+    warnings: list[str],
+    project_id: str,
+) -> typing.Any:
+    """Cut a tag + create a release at ``body.from_committish``.
+
+    The repo's ``on: release: [published]`` workflow handles the
+    deploy, so we don't dispatch from here.  Failures degrade to a
+    warning appended to ``warnings`` rather than raising -- a flaky
+    GitHub API shouldn't bury the audit trail.  Returns the
+    plugin-returned ReleaseInfo on success (or ``None`` when the
+    plugin has no ``create_release``).
+    """
+    tag_message = body.release_name or body.tag
+
+    async def _create_tag(c: PluginContext) -> typing.Any:
+        return await call_with_timeout(
+            handler.create_tag(
+                c,
+                _resolve_credentials(c, credentials),
+                sha=body.from_committish,
+                tag=body.tag,
+                message=tag_message,
+            )
+        )
+
+    try:
+        await call_with_identity_retry(
+            db, ctx, resolved, auth, fn=_create_tag, attached=True
+        )
+    except NotImplementedError as exc:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                f'Plugin {resolved.plugin_slug!r} does not support '
+                'creating tags; promote is not available.'
+            ),
+        ) from exc
+    except Exception as exc:
+        LOGGER.exception(
+            'create_tag failed for project=%s env=%s tag=%s',
+            project_id,
+            body.to_environment,
+            body.tag,
+        )
+        warnings.append(_promote_warning('create_tag', exc))
+
+    async def _create_release(c: PluginContext) -> typing.Any:
+        return await call_with_timeout(
+            handler.create_release(
+                c,
+                _resolve_credentials(c, credentials),
+                tag=body.tag,
+                name=body.release_name or body.tag,
+                body_markdown=body.release_notes_markdown,
+                prerelease=body.prerelease,
+            )
+        )
+
+    try:
+        return await call_with_identity_retry(
+            db, ctx, resolved, auth, fn=_create_release, attached=True
+        )
+    except NotImplementedError:
+        LOGGER.info(
+            'Plugin %r has no create_release; tag-only promote',
+            resolved.plugin_slug,
+        )
+        return None
+    except Exception as exc:
+        LOGGER.exception(
+            'create_release failed for project=%s env=%s tag=%s',
+            project_id,
+            body.to_environment,
+            body.tag,
+        )
+        warnings.append(_promote_warning('create_release', exc))
+        return None
+
+
 async def _handle_promote(
     db: graph.Graph,
     org_slug: str,
@@ -997,6 +1123,53 @@ async def _handle_promote(
     *,
     source: str | None,
 ) -> DeploymentTriggerResponse:
+    env_flags = await _load_env_flags(
+        db,
+        org_slug=org_slug,
+        env_slug=body.to_environment,
+    )
+    if not env_flags.found:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Environment {body.to_environment!r} not found',
+        )
+    if not env_flags.can_promote:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                f'Environment {body.to_environment!r} has '
+                'can_promote=false; promotion into this env is disabled.  '
+                "Enable the env's can_promote flag to allow promotes."
+            ),
+        )
+
+    # Infer promote behaviour from the ref shape of ``body.tag``:
+    #
+    # * Semver-shaped (``1.2.3`` / ``v1.2.3``)  -> already a tag.  Skip
+    #   ``create_tag`` + ``create_release``; call ``trigger_deployment``
+    #   so the repo's ``on: deployment`` workflow fires.  This is the
+    #   "promote to prod from a stage release tag" path.
+    # * Git short/full SHA                       -> cut a tag at the SHA,
+    #   create a GitHub Release; the repo's ``on: release`` workflow
+    #   handles the deploy server-side.  This is the "first promote off
+    #   a build commit" path.
+    # * Anything else (e.g. ``main``)            -> 400.  We refuse to
+    #   silently cut a tag named after a branch; a typo at the API
+    #   boundary should fail loudly rather than mint ``refs/tags/main``.
+    if versioning.is_semver_tag(body.tag):
+        action: typing.Literal['release', 'deployment'] | None = 'deployment'
+    elif versioning.is_commitish(body.tag):
+        action = 'release'
+    else:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                f'Promote target {body.tag!r} is neither a semver tag '
+                '(e.g. "v1.2.3") nor a git SHA (7-40 hex chars); refusing '
+                'to cut a tag at an ambiguous ref.'
+            ),
+        )
+
     resolved, ctx, credentials = await _resolve_and_context(
         db,
         org_slug,
@@ -1007,110 +1180,23 @@ async def _handle_promote(
     )
     handler = _handler(resolved)
 
-    # Which remote steps run depends on the per-env DEPLOYS_VIA edge:
-    #
-    # * ``action='release'``    -> create_tag + create_release; skip
-    #                              trigger_deployment (the repo's
-    #                              ``on: release: [published]`` workflow
-    #                              picks the release up server-side).
-    # * ``action='deployment'`` -> skip tag/release (the tag is expected
-    #                              to exist already from a prior promote
-    #                              into the lower environment); call
-    #                              trigger_deployment.
-    # * no edge configured      -> no remote action; record only the
-    #                              DeploymentEvent + surface a warning.
-    #
-    # Failures in any remote step degrade to a warning rather than a
-    # 500 -- a flaky GitHub API or a misconfigured workflow shouldn't
-    # bury the fact that the promote was attempted in the audit log.
-    action_raw = ctx.environment_config.get('action')
-    action = action_raw if isinstance(action_raw, str) else None
     warnings: list[str] = []
     run = DeploymentRun(run_id='', status='queued')
     release_info = None
     release_url: str | None = None
 
-    if action is None:
-        warnings.append(
-            f'No DEPLOYS_VIA edge configured for environment '
-            f'{body.to_environment!r}; promote recorded with no '
-            f'remote action.'
-        )
-    elif action not in {'release', 'deployment'}:
-        warnings.append(
-            f'Unknown DEPLOYS_VIA action {action!r} for environment '
-            f'{body.to_environment!r}; expected "release" or '
-            f'"deployment".  Promote recorded with no remote action.'
-        )
-        action = None
-
     if action == 'release':
-        # 1. Cut the annotated tag at the chosen build commit.
-        tag_message = body.release_name or body.tag
-
-        async def _create_tag(c: PluginContext) -> typing.Any:
-            return await call_with_timeout(
-                handler.create_tag(
-                    c,
-                    _resolve_credentials(c, credentials),
-                    sha=body.from_committish,
-                    tag=body.tag,
-                    message=tag_message,
-                )
-            )
-
-        try:
-            await call_with_identity_retry(
-                db, ctx, resolved, auth, fn=_create_tag, attached=True
-            )
-        except NotImplementedError as exc:
-            raise fastapi.HTTPException(
-                status_code=400,
-                detail=(
-                    f'Plugin {resolved.plugin_slug!r} does not support '
-                    'creating tags; promote is not available.'
-                ),
-            ) from exc
-        except Exception as exc:
-            LOGGER.exception(
-                'create_tag failed for project=%s env=%s tag=%s',
-                project_id,
-                body.to_environment,
-                body.tag,
-            )
-            warnings.append(_promote_warning('create_tag', exc))
-
-        # 2. Create the release on the remote.
-        async def _create_release(c: PluginContext) -> typing.Any:
-            return await call_with_timeout(
-                handler.create_release(
-                    c,
-                    _resolve_credentials(c, credentials),
-                    tag=body.tag,
-                    name=body.release_name or body.tag,
-                    body_markdown=body.release_notes_markdown,
-                    prerelease=body.prerelease,
-                )
-            )
-
-        try:
-            release_info = await call_with_identity_retry(
-                db, ctx, resolved, auth, fn=_create_release, attached=True
-            )
-        except NotImplementedError:
-            LOGGER.info(
-                'Plugin %r has no create_release; tag-only promote',
-                resolved.plugin_slug,
-            )
-        except Exception as exc:
-            LOGGER.exception(
-                'create_release failed for project=%s env=%s tag=%s',
-                project_id,
-                body.to_environment,
-                body.tag,
-            )
-            warnings.append(_promote_warning('create_release', exc))
-
+        release_info = await _promote_cut_release(
+            db,
+            ctx=ctx,
+            resolved=resolved,
+            handler=handler,
+            credentials=credentials,
+            auth=auth,
+            body=body,
+            warnings=warnings,
+            project_id=project_id,
+        )
         release_url = (release_info.html_url if release_info else None) or (
             release_info.url if release_info else None
         )
@@ -1118,13 +1204,22 @@ async def _handle_promote(
         # Dispatch against the existing tag.  We do this before upserting
         # the Release node so a trigger failure doesn't leave a Release
         # in the graph with no associated deployment run.
+        promote_inputs: dict[str, str] | None
+        if ctx.environment_config:
+            promote_inputs = {
+                key: value if isinstance(value, str) else json.dumps(value)
+                for key, value in ctx.environment_config.items()
+            }
+        else:
+            promote_inputs = None
+
         async def _trigger(c: PluginContext) -> DeploymentRun:
             return await call_with_timeout(
                 handler.trigger_deployment(
                     c,
                     _resolve_credentials(c, credentials),
                     ref_or_sha=body.tag,
-                    inputs=None,
+                    inputs=promote_inputs,
                 )
             )
 

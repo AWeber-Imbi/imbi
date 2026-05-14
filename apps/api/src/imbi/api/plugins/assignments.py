@@ -17,6 +17,7 @@ class PluginAssignmentRow(typing.TypedDict):
     default: bool
     options: dict[str, typing.Any]
     identity_plugin_id: typing.NotRequired[str | None]
+    env_payloads: typing.NotRequired[dict[str, dict[str, typing.Any]]]
 
 
 def validate_one_default_per_tab(
@@ -127,6 +128,25 @@ def build_assignment_response(
         identity_plugin_id=coerce_identity_plugin_id(
             edge.get('identity_plugin_id')
         ),
+        env_payloads=_parse_env_payloads(edge.get('env_payloads')),
         supports_histogram=supports_histogram,
         supports_deployment_sync=supports_deployment_sync,
     )
+
+
+def _parse_env_payloads(
+    raw: typing.Any,
+) -> dict[str, dict[str, typing.Any]]:
+    """Parse a USES_PLUGIN edge ``env_payloads`` value to a dict.
+
+    Stored JSON-encoded on the AGE edge (the underlying property store
+    can't hold nested property maps).  Returns an empty dict when
+    missing, malformed, or shaped wrong -- malformed env_payloads
+    should not bring down deployment dispatch.
+    """
+    parsed = parse_options(raw)
+    return {
+        slug: payload
+        for slug, payload in parsed.items()
+        if isinstance(payload, dict)
+    }

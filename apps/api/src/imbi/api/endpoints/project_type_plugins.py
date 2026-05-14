@@ -79,6 +79,7 @@ async def replace_project_type_plugins(
             default=a.default,
             options=a.options,
             identity_plugin_id=a.identity_plugin_id,
+            env_payloads=a.env_payloads,
         )
         for a in assignments
     ]
@@ -148,6 +149,9 @@ async def replace_project_type_plugins(
         identity_id = row.get('identity_plugin_id')
         if identity_id:
             edge_props['identity_plugin_id'] = identity_id
+        env_payloads = row.get('env_payloads')
+        if env_payloads:
+            edge_props['env_payloads'] = json.dumps(env_payloads)
         merge_query: str = (
             'MATCH (pt:ProjectType {{slug: {pt_slug}}})'
             ' -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})'
