@@ -100,14 +100,10 @@ export function DocumentsPinboardReader({
       <div>
         <div className="mb-3.5 grid grid-cols-[minmax(0,1fr)_260px] items-start gap-5">
           <div className="flex flex-wrap items-center gap-2.5">
-            <button
-              className="text-secondary hover:bg-secondary hover:text-primary inline-flex cursor-pointer items-center gap-1.5 rounded border-0 bg-transparent px-1.5 py-1 text-xs"
-              onClick={onBack}
-              type="button"
-            >
+            <Button onClick={onBack} size="sm" variant="ghost">
               <ArrowLeft className="size-3" />
               All documents
-            </button>
+            </Button>
             <div className="ml-auto flex items-center gap-1">
               <Button
                 className="gap-1.5"

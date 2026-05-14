@@ -1,5 +1,6 @@
 import { Search } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { TagRef } from '@/types'
@@ -58,13 +59,14 @@ export function DocumentsFilterRail({
             {activeCount} filter{activeCount > 1 ? 's' : ''} · {totalFiltered}{' '}
             documents
           </span>
-          <button
-            className="text-warning cursor-pointer border-0 bg-transparent p-0 text-[11.5px] hover:underline"
+          <Button
+            className="text-warning text-[11.5px]"
             onClick={onClear}
-            type="button"
+            size="sm"
+            variant="link"
           >
             Clear
-          </button>
+          </Button>
         </div>
       )}
 

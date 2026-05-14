@@ -124,14 +124,10 @@ export function DocumentsPinboardNew({
       <div>
         {/* Toolbar */}
         <div className="mb-3.5 flex flex-wrap items-center gap-2.5">
-          <button
-            className="text-secondary hover:bg-secondary hover:text-primary inline-flex cursor-pointer items-center gap-1.5 rounded border-0 bg-transparent px-1.5 py-1 text-xs"
-            onClick={onDiscard}
-            type="button"
-          >
+          <Button onClick={onDiscard} size="sm" variant="ghost">
             <ArrowLeft className="size-3" />
             All documents
-          </button>
+          </Button>
           <span className="text-tertiary">/</span>
           <span className="text-primary text-xs font-medium">
             {isEditing ? 'Edit document' : 'New document'}
