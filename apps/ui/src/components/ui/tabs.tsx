@@ -31,7 +31,10 @@ const TabsTrigger = React.forwardRef<
       'hover:text-foreground',
       'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none',
       'disabled:pointer-events-none disabled:opacity-50',
-      'data-[state=active]:border-amber-500 data-[state=active]:text-amber-600',
+      // aria-selected, not data-state — TooltipTrigger (asChild) clobbers
+      // data-state with its own "open"/"closed" via Slot. aria-selected is
+      // set by Radix Tabs and isn't touched by the tooltip primitive.
+      'aria-selected:border-amber-500 aria-selected:text-amber-600',
       className,
     )}
     ref={ref}
