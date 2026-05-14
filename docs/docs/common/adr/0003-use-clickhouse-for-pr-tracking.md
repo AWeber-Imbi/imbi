@@ -14,7 +14,7 @@ We will get this data from the GitHub API and from the Imbi GitHub app webhooks 
 
 ## Decision
 
-We will use ClickHouse as the primary database for storing and querying PR data. Instead of creating functions to maintain the data in the database, we will use a materialized view that populates the table as a Replacing Merge tree, keyed on Project ID and PR status.
+We will use ClickHouse as the primary database for storing and querying PR data. Instead of creating functions to maintain the data in the database, we will use a materialized view that populates the table as a Replacing Merge tree, keyed on Project ID and PR number. PR status will be stored as a regular column (updated via replacement) rather than part of the sorting key.
 
 Pull requests, merge requests, and other SCM terminology differences are normalized to _pull requests_ regardless of the source. Pull requests abbreviations follow the GitHub practice of `#{id}`.
 
