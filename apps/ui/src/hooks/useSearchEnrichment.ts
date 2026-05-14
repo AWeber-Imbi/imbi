@@ -12,6 +12,7 @@ import type { SearchResult } from '@/api/search'
 
 export interface EnrichedInfo {
   breadcrumb?: string
+  description?: null | string
   name?: string
 }
 
@@ -82,6 +83,7 @@ export function useSearchEnrichment(
       const p = q.data
       map.set(p.id, {
         breadcrumb: projectBreadcrumb(p),
+        description: p.description,
         name: p.name,
       })
     }
@@ -132,5 +134,5 @@ function projectBreadcrumb(p: {
   team: { name: string }
 }): string {
   const ptName = p.project_types?.[0]?.name ?? p.project_type?.name
-  return ptName ? `${ptName} › ${p.team.name}` : p.team.name
+  return ptName ?? p.team.name
 }
