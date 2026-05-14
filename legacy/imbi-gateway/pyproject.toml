@@ -1,6 +1,6 @@
 [project]
 name = "imbi-gateway"
-version = "1.0.2"
+version = "1.1.0"
 description = "Imbi webhook receiver"
 readme = "README.md"
 requires-python = ">=3.14"
