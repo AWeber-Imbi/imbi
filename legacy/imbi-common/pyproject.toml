@@ -20,6 +20,7 @@ classifiers = [
 ]
 dependencies = [
   "cryptography>=42.0.4",
+  "httpx>=0.28.1,<1",
   "jsonschema-models",
   "markdown-it-py>=3.0",
   "nanoid>=2.0.0",

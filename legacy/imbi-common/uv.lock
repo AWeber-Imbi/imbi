@@ -727,6 +727,7 @@ version = "2.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
+    { name = "httpx" },
     { name = "jsonschema-models" },
     { name = "markdown-it-py" },
     { name = "nanoid" },
@@ -789,6 +790,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=42.0.4" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.115.0" },
     { name = "fastembed", marker = "extra == 'databases'", specifier = ">=0.6" },
+    { name = "httpx", specifier = ">=0.28.1,<1" },
     { name = "jsonschema-models" },
     { name = "markdown-it-py", specifier = ">=3.0" },
     { name = "nanoid", specifier = ">=2.0.0" },

@@ -39,6 +39,7 @@ nav:
       - Configuration: configuration.md
   - API Reference:
       - Settings: api/settings.md
+      - Imbi API Client: api/api-client.md
       - Graph (Apache AGE): api/graph.md
       - ClickHouse Client: api/clickhouse.md
       - Valkey Client: api/valkey.md
