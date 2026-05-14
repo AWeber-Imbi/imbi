@@ -158,7 +158,9 @@ export function ConfigurationTab({
   })
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
-    id: 'imbi:config-tab:split',
+    // v2 key — the prior id stored layouts whose sizes were interpreted as
+    // pixels by react-resizable-panels v4, locking the list pane to ~28px.
+    id: 'imbi:config-tab:split:v2',
     panelIds: ['list', 'detail'],
     storage: typeof window === 'undefined' ? undefined : window.localStorage,
   })
@@ -593,10 +595,10 @@ export function ConfigurationTab({
         {/* LEFT pane: filter + key list */}
         <Panel
           className="border-primary bg-secondary flex min-h-0 flex-col"
-          defaultSize={28}
+          defaultSize="28%"
           id="list"
-          maxSize={55}
-          minSize={18}
+          maxSize="55%"
+          minSize="18%"
         >
           <div className="border-primary flex h-14 shrink-0 items-center border-b px-3.5">
             <div className="relative flex w-full items-center">
@@ -636,13 +638,13 @@ export function ConfigurationTab({
           )}
         </Panel>
 
-        <Separator className="bg-primary hover:bg-amber-border focus-visible:bg-amber-border w-px transition-colors outline-none" />
+        <Separator className="hover:after:bg-amber-border focus-visible:after:bg-amber-border relative w-1.5 cursor-col-resize bg-transparent outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-(--ds-border-primary) after:transition-colors" />
 
         {/* RIGHT pane */}
         <Panel
           className="bg-primary flex min-h-0 flex-col"
           id="detail"
-          minSize={30}
+          minSize="30%"
         >
           {mode === 'create' ? (
             <DetailPane
@@ -1244,7 +1246,7 @@ function ParamList({
         return (
           <button
             className={cn(
-              'flex w-full items-center gap-2.5 border-b border-primary px-3.5 py-2.5 text-left transition-colors',
+              'flex w-full items-center gap-2.5 border-b border-primary px-3.5 py-2.5 text-left transition-colors last:border-b-0',
               isSelected ? 'bg-amber-bg' : 'hover:bg-tertiary',
             )}
             key={p.key}
