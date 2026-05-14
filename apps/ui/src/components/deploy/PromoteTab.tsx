@@ -108,12 +108,21 @@ export function PromoteTab({
   })
   const [draft, setDraft] = useState<DraftReleaseNotesResponse | null>(null)
 
-  // Auto-draft on first open when we have a base + head.
+  // Skip the AI draft when there's nothing to release. We can't rely on
+  // ``lastTag !== selectedSha`` because the tag and the upstream SHA can be
+  // different strings that point at the same commit; trust the compare
+  // result instead — if the API returned zero commits, there's no diff to
+  // summarize and the model call would burn tokens for nothing.
+  const hasDiff = !!lastTag && !!selectedSha && commits.length > 0
+  // Auto-draft on first open when we have a base + head and a non-empty diff.
   useEffect(() => {
-    if (!open || draft || !lastTag || !selectedSha) return
-    draftMutation.mutate({ headSha: selectedSha }, { onSuccess: setDraft })
+    if (!open || draft || !hasDiff) return
+    draftMutation.mutate(
+      { headSha: selectedSha as string },
+      { onSuccess: setDraft },
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, lastTag, selectedSha])
+  }, [open, hasDiff, selectedSha])
 
   const [tag, setTag] = useState<string>('')
   const [notes, setNotes] = useState<string>('')
@@ -332,6 +341,11 @@ export function PromoteTab({
                     <span className="text-tertiary"> (AI unavailable)</span>
                   ) : null}
                 </span>
+              ) : compareEnabled && !compareLoading && commits.length === 0 ? (
+                <span className="text-tertiary">
+                  No commits between the last tag and the upstream — nothing new
+                  to release.
+                </span>
               ) : (
                 <span className="text-tertiary">
                   No draft yet — pick a build above.
@@ -346,11 +360,11 @@ export function PromoteTab({
             {compare?.commits?.length ?? 0} commits considered
           </span>
           <Button
-            disabled={!selectedSha || draftMutation.isPending}
+            disabled={!hasDiff || draftMutation.isPending}
             onClick={() => {
-              if (!selectedSha) return
+              if (!hasDiff) return
               draftMutation.mutate(
-                { headSha: selectedSha },
+                { headSha: selectedSha as string },
                 {
                   onSuccess: (data) => {
                     setDraft(data)

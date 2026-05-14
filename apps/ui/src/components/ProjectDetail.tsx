@@ -5,14 +5,11 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import {
-  AlertCircle,
   ArrowRight,
   Check,
-  CheckCircle2,
   ChevronDown,
   Filter,
   Info,
-  Rocket,
   Settings2 as SettingsIcon,
   TrendingDown,
 } from 'lucide-react'
@@ -35,8 +32,7 @@ import {
 } from '@/api/endpoints'
 import {
   type DeploymentRunStarted,
-  DeployModal,
-  PromoteModal,
+  ReleaseModal,
 } from '@/components/deploy/DeploymentModal'
 import { DeploymentRunWatcher } from '@/components/deploy/DeploymentRunWatcher'
 import { ProjectDocumentsTab } from '@/components/documents/ProjectDocumentsTab'
@@ -74,7 +70,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import { formatFieldKey } from '@/lib/project-field-formatting'
-import { cn, sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
+import { sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
 import type { Project, ScoringPolicy } from '@/types'
 
 interface ProjectDetailProps {
@@ -634,9 +630,6 @@ export function ProjectDetail({
                 sortedEnvironments.map((env, idx) => {
                   const deployment = deploymentStatus[env.slug]
                   const color = env.label_color
-                  const ciDot = deployment
-                    ? renderCiDot(deployment.ciStatus)
-                    : null
                   // Release-train action selection is driven by per-env
                   // flags (``can_deploy`` / ``can_promote``).  Defaults
                   // match the backend model: deployable, opt-in promote.
@@ -661,29 +654,17 @@ export function ProjectDetail({
                       : () => openDeploy(env.slug)
                   const tooltipText = isPromoteSlot
                     ? 'Promote'
-                    : 'Deploy / Redeploy'
-                  const versionSlot =
-                    deployment || releasesLoading ? (
-                      <span className="inline-grid items-center transition-discrete">
-                        <span
-                          aria-hidden
-                          className={cn(
-                            'col-start-1 row-start-1 transition-opacity duration-500 ease-out',
-                            deployment ? 'opacity-0' : 'opacity-100',
-                          )}
-                        >
-                          <span className="inline-block h-3 w-14 animate-pulse rounded bg-current/25 align-middle blur-[2px]" />
-                        </span>
-                        <span
-                          className={cn(
-                            'col-start-1 row-start-1 transition-opacity duration-500 ease-out',
-                            deployment ? 'opacity-100' : 'opacity-0',
-                          )}
-                        >
-                          {deployment ? `: ${deployment.version}` : ' '}
-                        </span>
-                      </span>
-                    ) : null
+                    : canPromote
+                      ? 'Deploy / Promote'
+                      : 'Deploy'
+                  const versionSlot = deployment ? (
+                    <span className="font-mono">{deployment.version}</span>
+                  ) : releasesLoading ? (
+                    <span
+                      aria-hidden
+                      className="inline-block h-3 w-14 animate-pulse rounded bg-current/25 align-middle blur-[2px]"
+                    />
+                  ) : null
                   const chipBody = color ? (
                     <LabelChip
                       className="rounded-md px-3 py-1.5 text-sm"
@@ -692,14 +673,12 @@ export function ProjectDetail({
                       <span className="inline-flex items-center gap-1.5">
                         {env.name}
                         {versionSlot}
-                        {ciDot}
                       </span>
                     </LabelChip>
                   ) : (
                     <span className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium">
                       {env.name}
                       {versionSlot}
-                      {ciDot}
                     </span>
                   )
                   return (
@@ -1041,53 +1020,53 @@ export function ProjectDetail({
           <ProjectSettingsTab project={project} />
         </TabsContent>
       </Tabs>
-      <DeployModal
-        environments={sortedEnvironments}
-        initialEnvSlug={isDeployModal ? initialSubId : undefined}
-        onOpenChange={(open) => {
-          if (!open) closeModal()
-        }}
-        onRunStarted={handleRunStarted}
-        open={isDeployModal}
-        orgSlug={orgSlug}
-        projectId={project.id}
-        projectName={project.name}
-      />
-      {(() => {
-        if (!isPromoteModal) return null
-        const toIdx = sortedEnvironments.findIndex(
-          (e) => e.slug === initialSubId,
-        )
-        // Promote requires a previous env in the pipeline to act as the
-        // source AND a deployed version on that upstream env (else
-        // ``fromCommittish`` would be undefined and the API can't
-        // resolve the source). ``idx <= 0`` means the URL points at the
-        // entry-point env (or an unknown one); the redirect effect
-        // above will already navigate away — render nothing here so we
-        // never mount PromoteModal in an impossible state.
-        if (toIdx <= 0) return null
-        const fromSlug = sortedEnvironments[toIdx - 1]?.slug
-        const fromVersion = fromSlug
-          ? deploymentStatus[fromSlug]?.version
-          : undefined
-        if (!fromSlug || !fromVersion) return null
-        return (
-          <PromoteModal
-            environments={sortedEnvironments}
-            fromCommittish={fromVersion}
-            fromEnvironment={fromSlug}
-            onOpenChange={(open) => {
-              if (!open) closeModal()
-            }}
-            onRunStarted={handleRunStarted}
-            open={isPromoteModal}
-            orgSlug={orgSlug}
-            projectId={project.id}
-            projectName={project.name}
-            toEnvironment={initialSubId as string}
-          />
-        )
-      })()}
+      {
+        // fallow-ignore-next-line complexity
+        (() => {
+          if (!isDeployModal && !isPromoteModal) return null
+          if (!initialSubId) return null
+          const targetIdx = sortedEnvironments.findIndex(
+            (e) => e.slug === initialSubId,
+          )
+          if (targetIdx < 0) return null
+          const targetEnv = sortedEnvironments[targetIdx]
+          const canDeploy = targetEnv?.can_deploy ?? true
+          const canPromote = targetEnv?.can_promote ?? false
+          // Promote needs an upstream env with a deployed version. When the
+          // user lands on /promote/<env> we already short-circuit in the
+          // redirect effect above if that's missing — but the modal can
+          // still open for /deploy/<env> on an env that *also* supports
+          // promote, so we resolve the source here when possible and just
+          // omit the Promote tab when prerequisites are unmet.
+          const fromSlug =
+            targetIdx > 0 ? sortedEnvironments[targetIdx - 1]?.slug : undefined
+          const fromVersion = fromSlug
+            ? deploymentStatus[fromSlug]?.version
+            : undefined
+          const promoteAvailable =
+            canPromote && !!fromSlug && !!fromVersion && targetIdx > 0
+          if (!canDeploy && !promoteAvailable) return null
+          return (
+            <ReleaseModal
+              canDeploy={canDeploy}
+              canPromote={promoteAvailable}
+              environments={sortedEnvironments}
+              fromCommittish={fromVersion}
+              fromEnvironment={fromSlug}
+              initialAction={isPromoteModal ? 'promote' : 'deploy'}
+              initialEnvSlug={initialSubId}
+              onOpenChange={(open) => {
+                if (!open) closeModal()
+              }}
+              onRunStarted={handleRunStarted}
+              open={isDeployModal || isPromoteModal}
+              orgSlug={orgSlug}
+              projectId={project.id}
+              projectName={project.name}
+            />
+          )
+        })()
+      }
       {activeRuns.map((run) => (
         // Bind each watcher to the org/project that triggered the run
         // so polling stays correct if the user navigates to another
@@ -1163,16 +1142,6 @@ function PlaceholderTab({ name }: { name: string }) {
       </CardContent>
     </Card>
   )
-}
-
-function renderCiDot(status: 'fail' | 'pass' | 'warn' | null): React.ReactNode {
-  if (status === 'pass')
-    return <CheckCircle2 aria-label="CI passing" className="size-3.5" />
-  if (status === 'fail')
-    return <Rocket aria-label="CI failing" className="size-3.5" />
-  if (status === 'warn')
-    return <AlertCircle aria-label="CI warning" className="size-3.5" />
-  return null
 }
 
 function ScoreBreakdownDetail({
