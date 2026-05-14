@@ -966,12 +966,14 @@ async def _handle_deploy(
     else:
         merged_inputs = None
 
+    ref = body.ref_label or body.committish
+
     async def _trigger(c: PluginContext) -> DeploymentRun:
         return await call_with_timeout(
             handler.trigger_deployment(
                 c,
                 _resolve_credentials(c, credentials),
-                ref_or_sha=body.committish,
+                ref_or_sha=ref,
                 inputs=merged_inputs,
             )
         )
@@ -984,7 +986,7 @@ async def _handle_deploy(
         'action=%s actor=%s run_id=%s',
         project_id,
         body.environment,
-        body.committish,
+        ref,
         resolved.plugin_slug,
         body.action,
         ctx.actor_user_id,

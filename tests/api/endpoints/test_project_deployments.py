@@ -339,6 +339,85 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         # external_run_url field now.
         self.assertNotIn('https://gh/runs/42', call.kwargs['note'] or '')
 
+    def test_trigger_deploy_uses_ref_label_as_ref_when_set(self) -> None:
+        # When the user selects a tag, the frontend sends committish=SHA
+        # and ref_label=tag_name.  trigger_deployment must receive the tag
+        # name as ref_or_sha so GitHub Actions dispatches against the tag,
+        # not an anonymous SHA.
+        captured: dict[str, typing.Any] = {}
+
+        class _Capturing(_FakeDeploymentPlugin):
+            async def trigger_deployment(  # type: ignore[override]
+                self, ctx, credentials, ref_or_sha, inputs=None
+            ):
+                captured['ref_or_sha'] = ref_or_sha
+                return await super().trigger_deployment(
+                    ctx, credentials, ref_or_sha, inputs
+                )
+
+        self.mocks['resolve_plugin'].return_value = ResolvedPlugin(
+            plugin_id='p-1',
+            plugin_slug='github-deployment',
+            entry=RegistryEntry(
+                handler_cls=_Capturing,
+                manifest=_Capturing.manifest,
+                package_name='x',
+                package_version='1',
+            ),
+            options={'owner': 'octo', 'repo': 'demo'},
+            env_payloads={},
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'deploy',
+                    'environment': 'staging',
+                    'committish': 'abc1234def5678',
+                    'ref_label': 'v2.3.1',
+                },
+            )
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(captured['ref_or_sha'], 'v2.3.1')
+
+    def test_trigger_deploy_uses_committish_when_ref_label_absent(
+        self,
+    ) -> None:
+        captured: dict[str, typing.Any] = {}
+
+        class _Capturing(_FakeDeploymentPlugin):
+            async def trigger_deployment(  # type: ignore[override]
+                self, ctx, credentials, ref_or_sha, inputs=None
+            ):
+                captured['ref_or_sha'] = ref_or_sha
+                return await super().trigger_deployment(
+                    ctx, credentials, ref_or_sha, inputs
+                )
+
+        self.mocks['resolve_plugin'].return_value = ResolvedPlugin(
+            plugin_id='p-1',
+            plugin_slug='github-deployment',
+            entry=RegistryEntry(
+                handler_cls=_Capturing,
+                manifest=_Capturing.manifest,
+                package_name='x',
+                package_version='1',
+            ),
+            options={'owner': 'octo', 'repo': 'demo'},
+            env_payloads={},
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'deploy',
+                    'environment': 'staging',
+                    'committish': 'abc1234def5678',
+                },
+            )
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(captured['ref_or_sha'], 'abc1234def5678')
+
     def test_trigger_redeploy(self) -> None:
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
