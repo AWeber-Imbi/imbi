@@ -6,6 +6,9 @@ resolution-markers = [
   "python_full_version < '3.15'",
 ]
 
+[options]
+prerelease-mode = "allow"
+
 [[package]]
 name = "aioboto3"
 version = "15.5.0"
@@ -152,7 +155,7 @@ wheels = [
 
 [[package]]
 name = "anthropic"
-version = "0.101.0"
+version = "0.102.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
   { name = "anyio" },
@@ -164,9 +167,9 @@ dependencies = [
   { name = "sniffio" },
   { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b5/cb/9d0123243e749ac3a579972b2c398971bce1dc57bcc4efb08066df610360/anthropic-0.101.0.tar.gz", hash = "sha256:1116a6a87c55757e0fbe3e1ba40804fbd04de7963601a6dd6b539a889f18de3e", size = 758603, upload-time = "2026-05-11T15:46:33.944Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b9/47/cb2a71f70431fb09af4db83e3ea89eb2dd8e0e348d27af53ed32e6c599dd/anthropic-0.102.0.tar.gz", hash = "sha256:96f747cad11886c4ae12d4080131b94eebd68b202bd2190fe27959031bb1fa9c", size = 763697, upload-time = "2026-05-13T18:12:41.624Z" }
 wheels = [
-  { url = "https://files.pythonhosted.org/packages/f1/b2/74ff06762d005ecf1658929a292df0acb786d025f6a6c54fcb30e2dc7761/anthropic-0.101.0-py3-none-any.whl", hash = "sha256:cc3cc6576989471e2aa9132258034ad0ff0d8fe500b04ac499e4e46ed68c5ed0", size = 753594, upload-time = "2026-05-11T15:46:32.216Z" },
+  { url = "https://files.pythonhosted.org/packages/87/75/0f6c603594876413bc858a00e7cc0d80a0cc14edf5c7b959a3ea6ec45e44/anthropic-0.102.0-py3-none-any.whl", hash = "sha256:ab96540bbd4b0f36564252d955a86f8abbe4f00944a24bc9931acc9b139bab6f", size = 763070, upload-time = "2026-05-13T18:12:43.474Z" },
 ]
 
 [[package]]
@@ -942,16 +945,16 @@ wheels = [
 
 [[package]]
 name = "idna"
-version = "3.14"
+version = "3.15"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/05/b1/efac073e0c297ecf2fb33c346989a529d4e19164f1759102dee5953ee17e/idna-3.14.tar.gz", hash = "sha256:466d810d7a2cc1022bea9b037c39728d51ae7dad40d480fc9b7d7ecf98ba8ee3", size = 198272, upload-time = "2026-05-10T20:32:15.935Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/77/7b3966d0b9d1d31a36ddf1746926a11dface89a83409bf1483f0237aa758/idna-3.15.tar.gz", hash = "sha256:ca962446ea538f7092a95e057da437618e886f4d349216d2b1e294abfdb65fdc", size = 199245, upload-time = "2026-05-12T22:45:57.011Z" }
 wheels = [
-  { url = "https://files.pythonhosted.org/packages/6c/3c/3f62dee257eb3d6b2c1ef2a09d36d9793c7111156a73b5654d2c2305e5ce/idna-3.14-py3-none-any.whl", hash = "sha256:e677eaf072e290f7b725f9acf0b3a2bd55f9fd6f7c70abe5f0e34823d0accf69", size = 72184, upload-time = "2026-05-10T20:32:14.295Z" },
+  { url = "https://files.pythonhosted.org/packages/d2/23/408243171aa9aaba178d3e2559159c24c1171a641aa83b67bdd3394ead8e/idna-3.15-py3-none-any.whl", hash = "sha256:048adeaf8c2d788c40fee287673ccaa74c24ffd8dcf09ffa555a2fbb59f10ac8", size = 72340, upload-time = "2026-05-12T22:45:55.733Z" },
 ]
 
 [[package]]
 name = "imbi-api"
-version = "2.3.0"
+version = "2.3.1"
 source = { editable = "." }
 dependencies = [
   { name = "aioboto3" },
@@ -1025,7 +1028,7 @@ requires-dist = [
   { name = "fastapi" },
   { name = "filetype" },
   { name = "httpx", specifier = ">=0.28.1,<1" },
-  { name = "imbi-common", extras = ["databases", "llm", "server"], editable = "../imbi-common" },
+  { name = "imbi-common", extras = ["databases", "llm", "server"], specifier = ">=2.3.0" },
   { name = "jinja2" },
   { name = "jsonpatch", specifier = ">=1.33" },
   { name = "nanoid", specifier = ">=2.0.0" },
@@ -1078,7 +1081,7 @@ plugins = [
 [[package]]
 name = "imbi-common"
 version = "2.3.0"
-source = { editable = "../imbi-common" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
   { name = "cryptography" },
   { name = "jsonschema-models" },
@@ -1090,6 +1093,10 @@ dependencies = [
   { name = "pyjwt" },
   { name = "python-slugify" },
   { name = "typer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/82/ae/cbd0fcb9849d223c1a7ff99b04c3cb250770000206f38a77bbe1a6078fa0/imbi_common-2.3.0.tar.gz", hash = "sha256:db992d57b2cdf06c2024fbf9ec6c0fc231fd3796a7f1fe209d10771d3e1e1050", size = 266530, upload-time = "2026-05-13T22:42:15.429Z" }
+wheels = [
+  { url = "https://files.pythonhosted.org/packages/81/5a/3150e7fd54cbe2acff01dee1ebd1a1d494523d94619ed9989b04bef47885/imbi_common-2.3.0-py3-none-any.whl", hash = "sha256:eca5c4c219bd1405adbd1dca9d0f18e3a70f42c4982a4843a907723da2945216", size = 82885, upload-time = "2026-05-13T22:42:14.089Z" },
 ]
 
 [package.optional-dependencies]
@@ -1108,57 +1115,6 @@ server = [
   { name = "uvicorn", extra = ["standard"] },
 ]
 
-[package.metadata]
-requires-dist = [
-  { name = "anthropic", marker = "extra == 'llm'", specifier = ">=0.40" },
-  { name = "clickhouse-connect", extras = ["async"], marker = "extra == 'databases'", specifier = "==0.12rc1" },
-  { name = "cryptography", specifier = ">=42.0.4" },
-  { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.115.0" },
-  { name = "fastembed", marker = "extra == 'databases'", specifier = ">=0.6" },
-  { name = "jsonschema-models" },
-  { name = "markdown-it-py", specifier = ">=3.0" },
-  { name = "nanoid", specifier = ">=2.0.0" },
-  { name = "orjson" },
-  { name = "pgvector", marker = "extra == 'databases'", specifier = ">=0.3" },
-  { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'databases'", specifier = ">=3.3" },
-  { name = "pydantic", extras = ["email"], specifier = ">=2.0" },
-  { name = "pydantic-settings" },
-  { name = "pyjwt", specifier = ">=2.10.1" },
-  { name = "python-slugify" },
-  { name = "typer", specifier = ">=0.21.1" },
-  { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.40.0" },
-  { name = "valkey", marker = "extra == 'databases'", specifier = ">=6" },
-]
-provides-extras = ["databases", "llm", "server"]
-
-[package.metadata.requires-dev]
-dev = [
-  { name = "basedpyright" },
-  { name = "build" },
-  { name = "click", specifier = "~=8.2.1" },
-  { name = "coverage", extras = ["toml"] },
-  { name = "httpx", specifier = ">=0.28.1,<1" },
-  { name = "mypy", specifier = "~=1.19.1" },
-  { name = "pre-commit" },
-  { name = "pytest" },
-  { name = "ruff", specifier = "~=0.14.6" },
-  { name = "sentry-sdk", specifier = ">=2.48.0" },
-  { name = "tomli-w", specifier = "~=1.2" },
-  { name = "uvicorn", extras = ["standard"], specifier = ">=0.40.0" },
-]
-dist = [
-  { name = "build" },
-  { name = "twine" },
-  { name = "wheel" },
-]
-docs = [
-  { name = "griffe-pydantic" },
-  { name = "mkdocs", specifier = ">=1.5,<2" },
-  { name = "mkdocs-material", specifier = ">9.5,<10" },
-  { name = "mkdocstrings", extras = ["python"] },
-  { name = "mkdocstrings-python-xref", specifier = ">=1.6,<2" },
-]
-
 [[package]]
 name = "imbi-plugin-aws"
 version = "1.0.0"
@@ -1175,30 +1131,30 @@ wheels = [
 
 [[package]]
 name = "imbi-plugin-github"
-version = "1.0.0"
+version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
   { name = "httpx" },
   { name = "imbi-common" },
   { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/68/d7/a4fdedc585789569bd7301cd75654fa121c15dc967f72fe2bf1511ce8e2f/imbi_plugin_github-1.0.0.tar.gz", hash = "sha256:448dfd9e0fb2f5810cd7d26028c6bf48ad6303df96c27ab5a28dea61e3f22b8c", size = 114790, upload-time = "2026-05-11T00:34:24.565Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e7/4a/482e95c3a5fa4cc58717675e8be87617052d7f1de7935b667f8c37109eec/imbi_plugin_github-1.1.0.tar.gz", hash = "sha256:01980c80172ddb341a23a87d1e15f992244fe9c4720681c6dfb0aeeae4e9c1b8", size = 121307, upload-time = "2026-05-12T18:14:23.912Z" }
 wheels = [
-  { url = "https://files.pythonhosted.org/packages/b2/55/1b22c731b5a56b6e611ad9141c09c3d5e2a76384b4ce76efbbbb326a5236/imbi_plugin_github-1.0.0-py3-none-any.whl", hash = "sha256:3850f221b2a78c4059563efe3acfe73489f6a585316042c05bf66b60d8396144", size = 18026, upload-time = "2026-05-11T00:34:23.087Z" },
+  { url = "https://files.pythonhosted.org/packages/18/34/fa135aa8e49e0858e170fcf600baa4f612846e8023666ea2d7d3c387655a/imbi_plugin_github-1.1.0-py3-none-any.whl", hash = "sha256:64fb1e063db32ae6a377db2f17ff93b3f2a7faf00c0633cde4ae11a4dd912d42", size = 24057, upload-time = "2026-05-12T18:14:22.149Z" },
 ]
 
 [[package]]
 name = "imbi-plugin-logzio"
-version = "1.0.0"
+version = "1.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
   { name = "httpx" },
   { name = "imbi-common" },
   { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e7/e2/d02c669826ab86b1e40022ec98a3093ea3b03b5a4fa2228db1b98577cd1a/imbi_plugin_logzio-1.0.0.tar.gz", hash = "sha256:02946fbc0023c399519ce2457fa873268a943afcd5a0c5af9951323389449303", size = 109157, upload-time = "2026-05-11T00:26:57.564Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1b/81/f9719ff5c02823e9d159bcba2d5dcf54e53ee9e67a3b7a2601bc9cce205f/imbi_plugin_logzio-1.0.1.tar.gz", hash = "sha256:a57398bebcffcd08a817bc5b1e07ca2b70a824fef975f49591262d38ad4e9251", size = 109174, upload-time = "2026-05-12T18:21:18.547Z" }
 wheels = [
-  { url = "https://files.pythonhosted.org/packages/d8/d6/3d486ebb188eb277e522e9b9dcb6974e0f5dfedab8d1eb9718a0868d40fc/imbi_plugin_logzio-1.0.0-py3-none-any.whl", hash = "sha256:6e5ef7f2faac7bdc407d63be719dec63a4e684d60feff1fc09f8a60fae120bd1", size = 11967, upload-time = "2026-05-11T00:26:56.117Z" },
+  { url = "https://files.pythonhosted.org/packages/97/92/99cc8929f9395c70ecef349de26c28032e6828aaef3c84002b3afeb0d998/imbi_plugin_logzio-1.0.1-py3-none-any.whl", hash = "sha256:f4b1808b6ef27b77a6b8266e8e39c2f8f1895f81b8e9b4ed599afd0b8f961cdc", size = 11966, upload-time = "2026-05-12T18:21:17.373Z" },
 ]
 
 [[package]]
@@ -2329,15 +2285,15 @@ wheels = [
 
 [[package]]
 name = "pymdown-extensions"
-version = "10.21.2"
+version = "10.21.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
   { name = "markdown" },
   { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/df/08/f1c908c581fd11913da4711ea7ba32c0eee40b0190000996bb863b0c9349/pymdown_extensions-10.21.2.tar.gz", hash = "sha256:c3f55a5b8a1d0edf6699e35dcbea71d978d34ff3fa79f3d807b8a5b3fa90fbdc", size = 853922, upload-time = "2026-03-29T15:01:55.233Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9e/26/d1015444da4d952a1ca487a236b522eb979766f0295a0bd0c5fc089989a9/pymdown_extensions-10.21.3.tar.gz", hash = "sha256:72cfcf55f07aea0d4af2c4f11dd4e52466ddfb1bb819673146398e0bd3a77354", size = 854140, upload-time = "2026-05-13T12:57:32.267Z" }
 wheels = [
-  { url = "https://files.pythonhosted.org/packages/f7/27/a2fc51a4a122dfd1015e921ae9d22fee3d20b0b8080d9a704578bf9deece/pymdown_extensions-10.21.2-py3-none-any.whl", hash = "sha256:5c0fd2a2bea14eb39af8ff284f1066d898ab2187d81b889b75d46d4348c01638", size = 268901, upload-time = "2026-03-29T15:01:53.244Z" },
+  { url = "https://files.pythonhosted.org/packages/7e/85/545a951eecc270fcd688288c600017e2050a1aacb56c711d208586d3e470/pymdown_extensions-10.21.3-py3-none-any.whl", hash = "sha256:d7a5d08014fc571e80ca21dd6f854e31f94c489800350564d55d15b3c41e76b6", size = 269002, upload-time = "2026-05-13T12:57:30.296Z" },
 ]
 
 [[package]]
@@ -2402,15 +2358,15 @@ wheels = [
 
 [[package]]
 name = "python-discovery"
-version = "1.3.0"
+version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
   { name = "filelock" },
   { name = "platformdirs" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ae/e0/cc5a8653e9a24f6cf84768f05064aa8ed5a83dcefd5e2a043db14a1c5f44/python_discovery-1.3.0.tar.gz", hash = "sha256:d098f1e86be5d45fe4d14bf1029294aabbd332f4321179dec85e76cddce834b0", size = 63925, upload-time = "2026-05-05T14:38:39.769Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/48/60/e88788207d81e46362cfbef0d4aaf4c0f49efc3c12d4c3fa3f542c34ebec/python_discovery-1.3.1.tar.gz", hash = "sha256:62f6db28064c9613e7ca76cb3f00c38c839a07c31c00dfe7ed0986493d2150a6", size = 68011, upload-time = "2026-05-12T20:53:36.336Z" }
 wheels = [
-  { url = "https://files.pythonhosted.org/packages/30/d4/24d543ab8b8158b7f5a97113c831205f5c900c92c8762b1e7f44b7ea0405/python_discovery-1.3.0-py3-none-any.whl", hash = "sha256:441d9ced3dfce36e113beb35ca302c71c7ef06f3c0f9c227a0b9bb3bd49b9e9f", size = 33124, upload-time = "2026-05-05T14:38:38.539Z" },
+  { url = "https://files.pythonhosted.org/packages/b7/6f/a05a317a66fee0aad270011461f1a63a453ed12471249f172f7d2e2bc7b4/python_discovery-1.3.1-py3-none-any.whl", hash = "sha256:ed188687ebb3b82c01a17cd5ac62fc94d9f6487a7f1a0f9dfe89753fec91039c", size = 33185, upload-time = "2026-05-12T20:53:34.969Z" },
 ]
 
 [[package]]
@@ -2504,7 +2460,7 @@ wheels = [
 
 [[package]]
 name = "requests"
-version = "2.34.0"
+version = "2.34.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
   { name = "certifi" },
@@ -2512,9 +2468,9 @@ dependencies = [
   { name = "idna" },
   { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/43/b8/7a707d60fea4c49094e40262cc0e2ca6c768cca21587e34d3f705afec47e/requests-2.34.0.tar.gz", hash = "sha256:7d62fe92f50eb82c529b0916bb445afa1531a566fc8f35ffdc64446e771b856a", size = 142436, upload-time = "2026-05-11T19:29:51.717Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/24/36/7180e7f077c38108945dbbdf60fe04db681c3feb6e96419f8c6dc8723741/requests-2.34.1.tar.gz", hash = "sha256:0fc5669f2b69704449fe1552360bd2a73a54512dfd03e65529157f1513322beb", size = 142783, upload-time = "2026-05-13T19:20:24.662Z" }
 wheels = [
-  { url = "https://files.pythonhosted.org/packages/ef/e6/e300fce5fe83c30520607a015dabd985df3251e188d234bfe9492e17a389/requests-2.34.0-py3-none-any.whl", hash = "sha256:917520a21b767485ce7c588f4ebb917c436b24a31231b44228715eaeb5a52c60", size = 73021, upload-time = "2026-05-11T19:29:49.923Z" },
+  { url = "https://files.pythonhosted.org/packages/15/5a/4a949d170476de3c04ac036b5466422fbcbf348a917d8042eedf2cac7d1b/requests-2.34.1-py3-none-any.whl", hash = "sha256:bf38a3ff993960d3dd819c08862c40b3c703306eb7c744fcd9f4ddbb95b548f0", size = 73085, upload-time = "2026-05-13T19:20:22.827Z" },
 ]
 
 [[package]]
@@ -2789,7 +2745,7 @@ wheels = [
 
 [[package]]
 name = "virtualenv"
-version = "21.3.2"
+version = "21.3.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
   { name = "distlib" },
@@ -2797,9 +2753,9 @@ dependencies = [
   { name = "platformdirs" },
   { name = "python-discovery" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/69/e1/665267cea4767debd19f584667a9197c2098b5e7f67a502da9f3a086ab37/virtualenv-21.3.2.tar.gz", hash = "sha256:3ecda97894a6fc1c53106356f488690e5c86278c1f693f3fc0805ac85a513686", size = 7613810, upload-time = "2026-05-12T14:44:18.01Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/15/ba/1f6e8c957e4932be060dcdc482d339c12e0216351478add3645cdaa53c05/virtualenv-21.3.3.tar.gz", hash = "sha256:f5bda277e553b1c2b3c1a8debfc30496e1288cc93ce6b7b71b3280047e317328", size = 7613784, upload-time = "2026-05-13T18:01:30.19Z" }
 wheels = [
-  { url = "https://files.pythonhosted.org/packages/20/5b/885f479093f6627669d39b57bc3d4e674da532e1a4b247d473a61d8d2118/virtualenv-21.3.2-py3-none-any.whl", hash = "sha256:c58ea748fa50bb2a4367da5ba3d30b02458ed40b4ea888faad94021f3309f764", size = 7594558, upload-time = "2026-05-12T14:44:15.193Z" },
+  { url = "https://files.pythonhosted.org/packages/f4/34/a9dbe051de88a63eb7408ea66630bac38e72f7f6077d4be58737106860d9/virtualenv-21.3.3-py3-none-any.whl", hash = "sha256:7d5987d8369e098e41406efb780a3d4ca79280097293899e351a6407ee153ab3", size = 7594554, upload-time = "2026-05-13T18:01:27.815Z" },
 ]
 
 [[package]]
