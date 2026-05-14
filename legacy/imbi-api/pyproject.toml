@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "imbi-api"
-version = "2.3.0"
+version = "2.3.1"
 description = "Imbi is a DevOps Service Management Platform designed to provide an efficient way to manage a large environment that contains many services and applications."
 readme = "README.md"
 requires-python = ">=3.14"
