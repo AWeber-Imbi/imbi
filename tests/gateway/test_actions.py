@@ -30,7 +30,7 @@ class UpdateProjectTests(helpers.TestCase):
         mock_patch.assert_called_once_with(
             'myorg',
             'proj-1',
-            [{'op': 'replace', 'path': '/name', 'value': 'my-repo'}],
+            [{'op': 'add', 'path': '/name', 'value': 'my-repo'}],
         )
 
     async def test_multiple_rules_produce_multiple_operations(self) -> None:
@@ -51,8 +51,8 @@ class UpdateProjectTests(helpers.TestCase):
             'org',
             'proj',
             [
-                {'op': 'replace', 'path': '/x', 'value': 1},
-                {'op': 'replace', 'path': '/y', 'value': 2},
+                {'op': 'add', 'path': '/x', 'value': 1},
+                {'op': 'add', 'path': '/y', 'value': 2},
             ],
         )
 

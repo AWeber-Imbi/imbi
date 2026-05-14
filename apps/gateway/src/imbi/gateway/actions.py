@@ -227,7 +227,7 @@ async def update_project(
     LOGGER.info('%r', updates)
     patch = [
         {
-            'op': 'replace',
+            'op': 'add',
             'path': str(update.path),
             'value': update.from_.resolve(body),
         }
