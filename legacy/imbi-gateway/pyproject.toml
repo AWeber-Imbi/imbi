@@ -10,7 +10,7 @@ dependencies = [
   "cel-python>=0.5.0",
   "fastapi>=0.135.1",
   "httpx>=0.28.1",
-  "imbi-common[databases,server]~=2.3",
+  "imbi-common[databases,server]~=2.4",
   "jsonpointer>=3.1.1",
   "psycopg[binary,pool]~=3.3.2",
   "pydantic~=2.12",
@@ -120,6 +120,11 @@ flake8-type-checking = { runtime-evaluated-base-classes = [
   "pydantic_settings.BaseSettings",
 ] }
 isort = { split-on-trailing-comma = false }
+
+[tool.uv]
+override-dependencies = [
+  "clickhouse-connect[async]==0.12rc1",  # until imbi-common sorts this
+]
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"

@@ -2,6 +2,9 @@ version = 1
 revision = 3
 requires-python = ">=3.14"
 
+[manifest]
+overrides = [{ name = "clickhouse-connect", extras = ["async"], specifier = "==0.12rc1" }]
+
 [[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
@@ -640,10 +643,11 @@ wheels = [
 
 [[package]]
 name = "imbi-common"
-version = "2.3.0"
+version = "2.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
+    { name = "httpx" },
     { name = "jsonschema-models" },
     { name = "markdown-it-py" },
     { name = "nanoid" },
@@ -654,9 +658,9 @@ dependencies = [
     { name = "python-slugify" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/82/ae/cbd0fcb9849d223c1a7ff99b04c3cb250770000206f38a77bbe1a6078fa0/imbi_common-2.3.0.tar.gz", hash = "sha256:db992d57b2cdf06c2024fbf9ec6c0fc231fd3796a7f1fe209d10771d3e1e1050", size = 266530, upload-time = "2026-05-13T22:42:15.429Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/20/90/0e613931f0309a08ba07ace0d567d3fcf69c60bc0bc908d216e58c2f2c85/imbi_common-2.4.0.tar.gz", hash = "sha256:eefb7c53256cfbad45881d00dc60479d05488f2e94aa63a17625f693edae6992", size = 269729, upload-time = "2026-05-14T21:33:28.946Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/81/5a/3150e7fd54cbe2acff01dee1ebd1a1d494523d94619ed9989b04bef47885/imbi_common-2.3.0-py3-none-any.whl", hash = "sha256:eca5c4c219bd1405adbd1dca9d0f18e3a70f42c4982a4843a907723da2945216", size = 82885, upload-time = "2026-05-13T22:42:14.089Z" },
+    { url = "https://files.pythonhosted.org/packages/27/94/c56575ae624db3cef3e0d5b65dc33dfea3d29d12514c68ebe2f8c3bf2f2f/imbi_common-2.4.0-py3-none-any.whl", hash = "sha256:f43c927f677e565c0c8cbe04f4d06cf6c1b57eb5bd36b6428d9a96917b1c4f20", size = 86575, upload-time = "2026-05-14T21:33:27.334Z" },
 ]
 
 [package.optional-dependencies]
@@ -705,7 +709,7 @@ requires-dist = [
     { name = "cel-python", specifier = ">=0.5.0" },
     { name = "fastapi", specifier = ">=0.135.1" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "imbi-common", extras = ["databases", "server"], specifier = "~=2.3" },
+    { name = "imbi-common", extras = ["databases", "server"], specifier = "~=2.4" },
     { name = "jsonpointer", specifier = ">=3.1.1" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = "~=3.3.2" },
     { name = "pydantic", specifier = "~=2.12" },
