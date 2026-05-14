@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useQuery } from '@tanstack/react-query'
 import { Grid3x3, List, Network, Plus, Search } from 'lucide-react'
+import { matchSorter } from 'match-sorter'
 
 import { getProjects } from '@/api/endpoints'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -74,16 +75,13 @@ export function ProjectsView() {
   const filteredProjects = useMemo(() => {
     const all = projects || []
     if (!searchQuery) return all
-    const query = searchQuery.toLowerCase()
-    return all.filter((p) => {
-      return (
-        p.name.toLowerCase().includes(query) ||
-        p.description?.toLowerCase().includes(query) ||
-        p.team.name.toLowerCase().includes(query) ||
-        (p.project_types || []).some((pt) =>
-          pt.name.toLowerCase().includes(query),
-        )
-      )
+    return matchSorter(all, searchQuery, {
+      keys: [
+        'name',
+        'description',
+        'team.name',
+        { key: (p) => (p.project_types || []).map((pt) => pt.name) },
+      ],
     })
   }, [projects, searchQuery])
 
