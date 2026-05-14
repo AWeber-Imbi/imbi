@@ -11,7 +11,10 @@ import {
 } from '@/api/search'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useTheme } from '@/contexts/ThemeContext'
-import { useSearchEnrichment } from '@/hooks/useSearchEnrichment'
+import {
+  type EnrichedInfo,
+  useSearchEnrichment,
+} from '@/hooks/useSearchEnrichment'
 import { deriveChipColors } from '@/lib/chip-colors'
 
 interface SearchResultsPanelProps {
@@ -138,7 +141,7 @@ const CONFIDENCE_STYLES: Record<
 }
 
 interface ResultCardProps {
-  enrichment: Map<string, { breadcrumb?: string; name?: string }>
+  enrichment: Map<string, EnrichedInfo>
   nameByNodeId: Map<string, string>
   onNavigate: (path: string) => void
   query: string
