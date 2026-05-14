@@ -342,7 +342,7 @@ class Graph:
         vec = sql.Placeholder('vec')
         dims = embeddings.get_dimensions(model_name)
         distance = sql.SQL(
-            '(embedding::vector({dims})) <=> {vec}',
+            '(embedding::vector({dims})) <=> ({vec}::vector({dims}))',
         ).format(
             dims=sql.Literal(dims),
             vec=vec,
