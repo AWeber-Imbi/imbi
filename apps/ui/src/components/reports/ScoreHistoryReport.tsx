@@ -148,15 +148,15 @@ function DeltaBadge({ delta }: { delta: number }) {
   const positive = delta > 0
   const zero = delta === 0
   const bg = zero
-    ? 'var(--color-background-secondary)'
+    ? 'var(--background-color-secondary)'
     : positive
-      ? 'var(--color-background-success)'
-      : 'var(--color-background-danger)'
+      ? 'var(--background-color-success)'
+      : 'var(--background-color-danger)'
   const color = zero
-    ? 'var(--color-text-secondary)'
+    ? 'var(--text-color-secondary)'
     : positive
-      ? 'var(--color-text-success)'
-      : 'var(--color-text-danger)'
+      ? 'var(--text-color-success)'
+      : 'var(--text-color-danger)'
   return (
     <span
       className="inline-flex h-6 items-center rounded px-2 font-mono text-xs font-medium tabular-nums"
@@ -453,7 +453,7 @@ function MultiLineChart({ series }: { series: ChartSeries[] }) {
         {yTicks.map((t) => (
           <g key={t}>
             <line
-              stroke="var(--color-border-tertiary)"
+              stroke="var(--border-color-tertiary)"
               strokeWidth="1"
               x1={padL}
               x2={W - padR}
@@ -461,7 +461,7 @@ function MultiLineChart({ series }: { series: ChartSeries[] }) {
               y2={yFor(t)}
             />
             <text
-              fill="var(--color-text-tertiary)"
+              fill="var(--text-color-tertiary)"
               fontFamily="var(--font-sans)"
               fontSize="11"
               textAnchor="end"
@@ -476,7 +476,7 @@ function MultiLineChart({ series }: { series: ChartSeries[] }) {
         {/* x-axis labels */}
         {xTickIndices.map((i) => (
           <text
-            fill="var(--color-text-tertiary)"
+            fill="var(--text-color-tertiary)"
             fontFamily="var(--font-sans)"
             fontSize="11"
             key={i}
@@ -503,7 +503,7 @@ function MultiLineChart({ series }: { series: ChartSeries[] }) {
         {hoveredX != null && (
           <line
             pointerEvents="none"
-            stroke="var(--color-border-secondary)"
+            stroke="var(--border-color-secondary)"
             strokeWidth="1"
             x1={hoveredX}
             x2={hoveredX}
@@ -520,7 +520,7 @@ function MultiLineChart({ series }: { series: ChartSeries[] }) {
               <circle
                 cx={hoveredX!}
                 cy={yFor(v.score)}
-                fill="var(--color-background-primary)"
+                fill="var(--background-color-primary)"
                 key={v.name}
                 pointerEvents="none"
                 r={4}
@@ -534,17 +534,17 @@ function MultiLineChart({ series }: { series: ChartSeries[] }) {
         {hoveredTs != null && hoveredScores.length > 0 && (
           <g pointerEvents="none">
             <rect
-              fill="var(--color-background-primary)"
+              fill="var(--background-color-primary)"
               filter="drop-shadow(0 4px 10px rgba(26,26,24,0.10))"
               height={tipH}
               rx="6"
-              stroke="var(--color-border-secondary)"
+              stroke="var(--border-color-secondary)"
               width={tipW}
               x={tipX}
               y={tipY}
             />
             <text
-              fill="var(--color-text-tertiary)"
+              fill="var(--text-color-tertiary)"
               fontFamily="var(--font-sans)"
               fontSize="10"
               fontWeight="500"
@@ -563,7 +563,7 @@ function MultiLineChart({ series }: { series: ChartSeries[] }) {
                   r={3.5}
                 />
                 <text
-                  fill="var(--color-text-secondary)"
+                  fill="var(--text-color-secondary)"
                   fontFamily="var(--font-sans)"
                   fontSize="11"
                   x={tipX + tipPad + 14}
@@ -572,7 +572,7 @@ function MultiLineChart({ series }: { series: ChartSeries[] }) {
                   {hs.name.length > 16 ? hs.name.slice(0, 15) + '…' : hs.name}
                 </text>
                 <text
-                  fill="var(--color-text-primary)"
+                  fill="var(--text-color-primary)"
                   fontFamily="var(--font-mono)"
                   fontSize="11"
                   fontWeight="600"

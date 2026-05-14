@@ -262,15 +262,15 @@ function ImprovementPill({ value }: { value: null | number }) {
   const positive = value > 0
   const zero = value === 0
   const bg = zero
-    ? 'var(--color-background-secondary)'
+    ? 'var(--background-color-secondary)'
     : positive
-      ? 'var(--color-background-success)'
-      : 'var(--color-background-danger)'
+      ? 'var(--background-color-success)'
+      : 'var(--background-color-danger)'
   const color = zero
-    ? 'var(--color-text-secondary)'
+    ? 'var(--text-color-secondary)'
     : positive
-      ? 'var(--color-text-success)'
-      : 'var(--color-text-danger)'
+      ? 'var(--text-color-success)'
+      : 'var(--text-color-danger)'
 
   return (
     <span
@@ -284,15 +284,15 @@ function ImprovementPill({ value }: { value: null | number }) {
 }
 
 function scoreBgColor(score: number): string {
-  if (score >= 85) return 'var(--color-background-success)'
-  if (score >= 70) return 'var(--color-background-warning)'
-  return 'var(--color-background-danger)'
+  if (score >= 85) return 'var(--background-color-success)'
+  if (score >= 70) return 'var(--background-color-warning)'
+  return 'var(--background-color-danger)'
 }
 
 function scoreColor(score: number): string {
-  if (score >= 85) return 'var(--color-text-success)'
-  if (score >= 70) return 'var(--color-text-warning)'
-  return 'var(--color-text-danger)'
+  if (score >= 85) return 'var(--text-color-success)'
+  if (score >= 70) return 'var(--text-color-warning)'
+  return 'var(--text-color-danger)'
 }
 
 function ScorePill({ score }: { score: number }) {

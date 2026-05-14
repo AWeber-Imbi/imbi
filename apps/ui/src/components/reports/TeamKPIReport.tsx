@@ -227,15 +227,15 @@ function fmtScore(n: number): string {
 }
 
 function scoreBgColor(score: number): string {
-  if (score >= 85) return 'var(--color-background-success)'
-  if (score >= 70) return 'var(--color-background-warning)'
-  return 'var(--color-background-danger)'
+  if (score >= 85) return 'var(--background-color-success)'
+  if (score >= 70) return 'var(--background-color-warning)'
+  return 'var(--background-color-danger)'
 }
 
 function scoreColor(score: number): string {
-  if (score >= 85) return 'var(--color-text-success)'
-  if (score >= 70) return 'var(--color-text-warning)'
-  return 'var(--color-text-danger)'
+  if (score >= 85) return 'var(--text-color-success)'
+  if (score >= 70) return 'var(--text-color-warning)'
+  return 'var(--text-color-danger)'
 }
 
 function ScorePill({ score }: { score: number }) {
@@ -268,7 +268,7 @@ function StatCard({
       </div>
       <div
         className="mt-2 font-mono text-[28px] leading-none tabular-nums"
-        style={{ color: valueColor ?? 'var(--color-text-primary)' }}
+        style={{ color: valueColor ?? 'var(--text-color-primary)' }}
       >
         {value}
       </div>
@@ -319,7 +319,7 @@ function TeamBarChart({ rows }: BarChartProps) {
         {xTicks.map((t) => (
           <g key={t}>
             <line
-              stroke="var(--color-border-tertiary)"
+              stroke="var(--border-color-tertiary)"
               strokeWidth="1"
               x1={PAD_LEFT + xFor(t)}
               x2={PAD_LEFT + xFor(t)}
@@ -327,7 +327,7 @@ function TeamBarChart({ rows }: BarChartProps) {
               y2={H - PAD_BOTTOM}
             />
             <text
-              fill="var(--color-text-tertiary)"
+              fill="var(--text-color-tertiary)"
               fontFamily="var(--font-sans)"
               fontSize="10"
               textAnchor="middle"
@@ -348,7 +348,7 @@ function TeamBarChart({ rows }: BarChartProps) {
             <g key={row.key}>
               {/* Team label */}
               <text
-                fill="var(--color-text-primary)"
+                fill="var(--text-color-primary)"
                 fontFamily="var(--font-sans)"
                 fontSize="12"
                 textAnchor="end"
@@ -360,7 +360,7 @@ function TeamBarChart({ rows }: BarChartProps) {
 
               {/* Avg score bar background */}
               <rect
-                fill="var(--color-background-secondary)"
+                fill="var(--background-color-secondary)"
                 height={BAR_H}
                 rx="3"
                 width={innerW}

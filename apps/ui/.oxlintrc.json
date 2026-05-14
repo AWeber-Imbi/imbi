@@ -9,12 +9,43 @@
     "es2020": true
   },
   "ignorePatterns": ["dist", "src/types/api-generated.ts"],
-  "jsPlugins": ["eslint-plugin-react-refresh", "eslint-plugin-perfectionist", "oxlint-tailwindcss"],
+  "settings": {
+    "cssVars": {
+      "cssFile": "src/index.css",
+      "ignorePrefixes": ["--radix-", "--assistant-", "--tw-"]
+    }
+  },
+  "jsPlugins": ["eslint-plugin-react-refresh", "eslint-plugin-perfectionist", "oxlint-tailwindcss", "./tools/oxlint-plugin-css-vars.ts"],
   "overrides": [
     {
       "files": ["src/test/**/*.{ts,tsx}"],
       "rules": {
         "react-refresh/only-export-components": "off"
+      }
+    },
+    {
+      "files": ["tools/**/*.ts"],
+      "rules": {
+        "css-vars/no-unknown-css-var": "off",
+        "react/exhaustive-deps": "off",
+        "react/rules-of-hooks": "off",
+        "react-refresh/only-export-components": "off",
+        "tailwindcss/consistent-variant-order": "off",
+        "tailwindcss/enforce-canonical": "off",
+        "tailwindcss/enforce-consistent-important-position": "off",
+        "tailwindcss/enforce-consistent-variable-syntax": "off",
+        "tailwindcss/enforce-negative-arbitrary-values": "off",
+        "tailwindcss/enforce-shorthand": "off",
+        "tailwindcss/enforce-sort-order": "off",
+        "tailwindcss/no-conflicting-classes": "off",
+        "tailwindcss/no-contradicting-variants": "off",
+        "tailwindcss/no-dark-without-light": "off",
+        "tailwindcss/no-deprecated-classes": "off",
+        "tailwindcss/no-duplicate-classes": "off",
+        "tailwindcss/no-hardcoded-colors": "off",
+        "tailwindcss/no-unnecessary-arbitrary-value": "off",
+        "tailwindcss/no-unnecessary-whitespace": "off",
+        "tailwindcss/no-unknown-classes": "off"
       }
     }
   ],
@@ -227,6 +258,7 @@
     "tailwindcss/no-hardcoded-colors": "warn",
     "tailwindcss/no-unnecessary-arbitrary-value": "warn",
     "tailwindcss/no-unnecessary-whitespace": "error",
-    "tailwindcss/no-unknown-classes": "error"
+    "tailwindcss/no-unknown-classes": "error",
+    "css-vars/no-unknown-css-var": "error"
   }
 }

@@ -131,10 +131,10 @@ function normaliseLevel(raw: string): 'DEBUG' | 'ERROR' | 'INFO' | 'WARN' {
 
 // Severity colours — use theme tokens so they adapt to dark mode.
 const SEV_BAR_COLORS: Record<string, string> = {
-  DEBUG: 'var(--color-text-tertiary)',
-  ERROR: 'var(--color-text-danger)',
-  INFO: 'var(--color-text-info)',
-  WARN: 'var(--color-action-bg)',
+  DEBUG: 'var(--text-color-tertiary)',
+  ERROR: 'var(--text-color-danger)',
+  INFO: 'var(--text-color-info)',
+  WARN: 'var(--background-color-action)',
 }
 
 const CONTAINER_H_DEFAULT = 600 // px — initial scroll-container height
@@ -1208,7 +1208,7 @@ function Histogram({
               {sum === 0 ? (
                 <div
                   style={{
-                    background: 'var(--color-background-secondary)',
+                    background: 'var(--background-color-secondary)',
                     flex: 1,
                   }}
                 />
@@ -1438,7 +1438,8 @@ function LogRow({
                 style={
                   detailTab === tab.id
                     ? {
-                        borderBottom: '2px solid var(--color-action-bg)',
+                        borderBottom:
+                          '2px solid var(--background-color-action)',
                         marginBottom: '-1px',
                       }
                     : {}

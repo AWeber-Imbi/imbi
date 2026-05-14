@@ -1253,7 +1253,7 @@ function ParamList({
             onClick={() => onSelect(p.key)}
             style={{
               borderLeft: isSelected
-                ? '2px solid var(--color-action-bg)'
+                ? '2px solid var(--background-color-action)'
                 : '2px solid transparent',
             }}
             type="button"

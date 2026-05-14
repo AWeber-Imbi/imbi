@@ -596,15 +596,15 @@ function DeltaBadge({ delta }: { delta: number }) {
   const positive = delta > 0
   const zero = delta === 0
   const bg = zero
-    ? 'var(--color-background-secondary)'
+    ? 'var(--background-color-secondary)'
     : positive
-      ? 'var(--color-background-success)'
-      : 'var(--color-background-danger)'
+      ? 'var(--background-color-success)'
+      : 'var(--background-color-danger)'
   const color = zero
-    ? 'var(--color-text-secondary)'
+    ? 'var(--text-color-secondary)'
     : positive
-      ? 'var(--color-text-success)'
-      : 'var(--color-text-danger)'
+      ? 'var(--text-color-success)'
+      : 'var(--text-color-danger)'
   return (
     <span
       className="inline-flex h-6 items-center rounded px-2 font-mono text-xs font-medium tabular-nums"
@@ -733,12 +733,12 @@ function ScoreChart({
           <linearGradient id="sh-area-grad" x1="0" x2="0" y1="0" y2="1">
             <stop
               offset="0%"
-              stopColor="var(--color-action-bg)"
+              stopColor="var(--background-color-action)"
               stopOpacity="0.18"
             />
             <stop
               offset="100%"
-              stopColor="var(--color-action-bg)"
+              stopColor="var(--background-color-action)"
               stopOpacity="0"
             />
           </linearGradient>
@@ -748,7 +748,7 @@ function ScoreChart({
         {yTicks.map((t) => (
           <g key={t}>
             <line
-              stroke="var(--color-border-tertiary)"
+              stroke="var(--border-color-tertiary)"
               strokeWidth="1"
               x1={padL}
               x2={W - padR}
@@ -756,7 +756,7 @@ function ScoreChart({
               y2={yFor(t)}
             />
             <text
-              fill="var(--color-text-tertiary)"
+              fill="var(--text-color-tertiary)"
               fontFamily="var(--font-sans)"
               fontSize="11"
               textAnchor="end"
@@ -771,7 +771,7 @@ function ScoreChart({
         {/* x-axis labels */}
         {xTickIndices.map((i) => (
           <text
-            fill="var(--color-text-tertiary)"
+            fill="var(--text-color-tertiary)"
             fontFamily="var(--font-sans)"
             fontSize="11"
             key={i}
@@ -788,7 +788,7 @@ function ScoreChart({
         <path
           d={pathD}
           fill="none"
-          stroke="var(--color-action-bg)"
+          stroke="var(--background-color-action)"
           strokeWidth="1"
         />
 
@@ -826,7 +826,7 @@ function ScoreChart({
               <circle
                 cx={x}
                 cy={y}
-                fill="var(--color-background-primary)"
+                fill="var(--background-color-primary)"
                 r={isHov ? 5 : 3.5}
                 stroke={meta.dot}
                 strokeWidth="1.5"
@@ -863,11 +863,11 @@ function ScoreChart({
             return (
               <g style={{ pointerEvents: 'none' }}>
                 <rect
-                  fill="var(--color-background-primary)"
+                  fill="var(--background-color-primary)"
                   filter="drop-shadow(0 4px 10px rgba(26,26,24,0.10))"
                   height={tipH}
                   rx="8"
-                  stroke="var(--color-border-secondary)"
+                  stroke="var(--border-color-secondary)"
                   width={tipW}
                   x={tx}
                   y={ty}
@@ -887,7 +887,7 @@ function ScoreChart({
                 {hasDetail ? (
                   <>
                     <text
-                      fill="var(--color-text-secondary)"
+                      fill="var(--text-color-secondary)"
                       fontFamily="var(--font-sans)"
                       fontSize="10"
                       x={tx + 12}
@@ -899,7 +899,7 @@ function ScoreChart({
                         : `  → ${String(correlated.new)}`}
                     </text>
                     <text
-                      fill="var(--color-text-primary)"
+                      fill="var(--text-color-primary)"
                       fontFamily="var(--font-sans)"
                       fontSize="12.5"
                       fontWeight="600"
@@ -914,8 +914,8 @@ function ScoreChart({
                       <text
                         fill={
                           delta >= 0
-                            ? 'var(--color-text-success)'
-                            : 'var(--color-text-danger)'
+                            ? 'var(--text-color-success)'
+                            : 'var(--text-color-danger)'
                         }
                         fontFamily="var(--font-sans)"
                         fontSize="11"
@@ -930,7 +930,7 @@ function ScoreChart({
                 ) : (
                   <>
                     <text
-                      fill="var(--color-text-primary)"
+                      fill="var(--text-color-primary)"
                       fontFamily="var(--font-sans)"
                       fontSize="12.5"
                       fontWeight="600"
@@ -945,8 +945,8 @@ function ScoreChart({
                       <text
                         fill={
                           delta >= 0
-                            ? 'var(--color-text-success)'
-                            : 'var(--color-text-danger)'
+                            ? 'var(--text-color-success)'
+                            : 'var(--text-color-danger)'
                         }
                         fontFamily="var(--font-sans)"
                         fontSize="11"
