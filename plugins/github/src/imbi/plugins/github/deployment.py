@@ -1042,7 +1042,7 @@ _COMMON_OPS_LOG_TEMPLATES: dict[str, OpsLogTemplate] = {
     ),
     'promote': OpsLogTemplate(
         label=(
-            'Promoted {{version}} to {{environment}} from {{from_environment}}'
+            'Promoted {{from_environment}} to {{environment}} as {{version}}.'
         ),
         summary='promoted',
     ),
