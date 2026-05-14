@@ -714,7 +714,9 @@ class ProcessNotificationTests(helpers.TestCase):
                 ev.metadata['headers'].get('x-github-event'),
             )
 
-    async def test_no_event_when_filter_does_not_match(self) -> None:
+    async def test_event_recorded_when_filter_does_not_match(self) -> None:
+        """Events are recorded for every webhook delivery with a matching
+        project, even when no filter matches and no handler runs."""
         await self._add_rule(filter_expression='false')
         body = {'repo': {'id': self.ext_id}}
         with unittest.mock.patch.object(
@@ -722,7 +724,13 @@ class ProcessNotificationTests(helpers.TestCase):
         ) as mock_insert:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(204, response.status_code)
-        mock_insert.assert_not_awaited()
+        self.assertEqual([], HANDLER_CALLS)
+        mock_insert.assert_awaited_once()
+        assert mock_insert.await_args is not None  # noqa: S101 - test narrowing
+        table_arg, events_arg = mock_insert.await_args.args
+        self.assertEqual('events', table_arg)
+        self.assertEqual(1, len(events_arg))
+        self.assertEqual(self.proj_id, events_arg[0].project_id)
 
     async def test_no_event_when_no_project_matches(self) -> None:
         await self._add_rule(filter_expression='true')

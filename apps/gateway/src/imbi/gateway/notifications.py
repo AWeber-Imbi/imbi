@@ -165,13 +165,9 @@ async def process_notification(
                 )
                 return
 
-            # 2. validate each filter
-            filter_results = [rule.evaluate_condition(body) for rule in rules]
-            if not any(filter_results):
-                LOGGER.debug('Ignoring notification: no filter matches')
-                return
-
-            # 3. execute each enabled handler for each matching project
+            # Look up matching projects before evaluating filters so we
+            # always record an events row per project, even when no
+            # filter matches and no handler will run.
             # TODO(daves) - this should probably be an imbi-api request
             records = await db.execute(
                 'MATCH (p:Project)'
@@ -191,37 +187,32 @@ async def process_notification(
                 )
                 return
 
-            handlers = [
-                rule
-                for rule, enabled in zip(rules, filter_results, strict=True)
-                if enabled
-            ]
             user_id = await _resolve_user_id(
                 body=body,
                 user_subject_selector=sel.get('user_subject_selector'),
                 edge_plugin_slug=sel.get('identity_plugin_slug'),
                 candidate_plugin_slugs=plugin_slugs,
             )
-            event_type = _resolve_event_type(
-                sel.get('event_type_selector'), body, request.headers
+            await _record_events(
+                records,
+                webhook_id=webhook_id,
+                service_slug=service['slug'],
+                user_id=user_id,
+                event_type_selector=sel.get('event_type_selector'),
+                headers=request.headers,
+                body=body,
             )
-            metadata: dict[str, typing.Any] = {
-                'webhook_id': webhook_id,
-                'headers': _safe_headers(request.headers),
-            }
-            payload = _payload_dict(body)
-            events = [
-                models.Event(
-                    project_id=graph.parse_agtype(record['project_id']),
-                    type=event_type,
-                    third_party_service=service['slug'],
-                    attributed_to=user_id or '',
-                    metadata=metadata,
-                    payload=payload,
-                )
-                for record in records
+
+            filter_results = [rule.evaluate_condition(body) for rule in rules]
+            if not any(filter_results):
+                LOGGER.debug('Ignoring notification: no filter matches')
+                return
+
+            handlers = [
+                rule
+                for rule, enabled in zip(rules, filter_results, strict=True)
+                if enabled
             ]
-            await _record_events(events)
             for record in records:
                 await _run_handlers(
                     org['slug'],
@@ -365,14 +356,40 @@ def _resolve_event_type(
     return selector
 
 
-async def _record_events(events: list[models.Event]) -> None:
+async def _record_events(  # noqa: PLR0913 - all inputs are required event fields
+    records: abc.Sequence[abc.Mapping[str, typing.Any]],
+    *,
+    webhook_id: str,
+    service_slug: str,
+    user_id: str | None,
+    event_type_selector: str | None,
+    headers: abc.Mapping[str, str],
+    body: object,
+) -> None:
     """Insert one ``events`` row per matched project into ClickHouse.
 
     Best-effort — failures are logged and swallowed so handlers run
     regardless of analytics insert health.
     """
-    if not events:
+    if not records:
         return
+    event_type = _resolve_event_type(event_type_selector, body, headers)
+    metadata: dict[str, typing.Any] = {
+        'webhook_id': webhook_id,
+        'headers': _safe_headers(headers),
+    }
+    payload = _payload_dict(body)
+    events = [
+        models.Event(
+            project_id=graph.parse_agtype(record['project_id']),
+            type=event_type,
+            third_party_service=service_slug,
+            attributed_to=user_id or '',
+            metadata=metadata,
+            payload=payload,
+        )
+        for record in records
+    ]
     try:
         await clickhouse.insert(
             'events', typing.cast('list[pydantic.BaseModel]', events)
