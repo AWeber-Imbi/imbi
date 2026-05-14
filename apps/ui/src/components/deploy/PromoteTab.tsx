@@ -208,11 +208,11 @@ export function PromoteTab({
             : undefined,
         )
       }
-      // The orchestrator's per-env switch may emit a non-fatal
-      // warning (e.g. the deployment POST failed but the tag +
-      // release still cut, or no DEPLOYS_VIA edge is configured).
-      // Surface it as an amber toast so the operator knows the
-      // promote recorded but didn't drive a remote action through.
+      // The promote handler may emit a non-fatal warning (e.g. the
+      // GitHub Deployments POST failed but the tag + release still
+      // cut).  Surface it as an amber toast so the operator knows
+      // the promote recorded but didn't drive a remote action
+      // through.
       if (data.warning) {
         toast.warning(`Promote to ${toEnvName} recorded with a warning`, {
           description: data.warning,

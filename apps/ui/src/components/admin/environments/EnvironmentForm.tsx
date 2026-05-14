@@ -15,6 +15,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { ENVIRONMENT_BASE_FIELDS_SET } from '@/lib/constants'
@@ -27,6 +28,14 @@ interface EnvironmentFormProps {
   isLoading?: boolean
   onCancel: () => void
   onSave: (orgSlug: string, env: EnvironmentCreate) => void
+}
+
+interface ReleaseTrainSwitchesProps {
+  canDeploy: boolean
+  canPromote: boolean
+  isLoading: boolean
+  onChangeCanDeploy: (next: boolean) => void
+  onChangeCanPromote: (next: boolean) => void
 }
 
 export function EnvironmentForm({
@@ -43,6 +52,10 @@ export function EnvironmentForm({
   const [slug, setSlug] = useState(environment?.slug || '')
   const [sortOrder, setSortOrder] = useState(
     String(environment?.sort_order ?? 0),
+  )
+  const [canDeploy, setCanDeploy] = useState(environment?.can_deploy ?? true)
+  const [canPromote, setCanPromote] = useState(
+    environment?.can_promote ?? false,
   )
   const [description, setDescription] = useState(environment?.description || '')
   const [icon, setIcon] = useState(environment?.icon || '')
@@ -89,6 +102,8 @@ export function EnvironmentForm({
     if (!validate()) return
 
     onSave(orgSlug, {
+      can_deploy: canDeploy,
+      can_promote: canPromote,
       description: description.trim() || null,
       icon: icon.trim() || null,
       label_color: /^#[0-9A-Fa-f]{6}$/.test(labelColor)
@@ -311,6 +326,14 @@ export function EnvironmentForm({
               value={labelColor}
             />
 
+            <ReleaseTrainSwitches
+              canDeploy={canDeploy}
+              canPromote={canPromote}
+              isLoading={isLoading}
+              onChangeCanDeploy={setCanDeploy}
+              onChangeCanPromote={setCanPromote}
+            />
+
             {/* Dynamic Blueprint Fields */}
             {envSchema && (
               <DynamicFormFields
@@ -324,6 +347,70 @@ export function EnvironmentForm({
           </CardContent>
         </Card>
       </form>
+    </div>
+  )
+}
+
+// Release-train flags: drive Deploy / Promote button visibility on a
+// project's release train header.  Defaults mirror the backend model
+// (deployable, opt-in promote).  Extracted from the main form body to
+// keep ``EnvironmentForm``'s render small enough to satisfy the
+// complexity audit and to make this group easy to share if another
+// surface needs it later.
+function ReleaseTrainSwitches({
+  canDeploy,
+  canPromote,
+  isLoading,
+  onChangeCanDeploy,
+  onChangeCanPromote,
+}: ReleaseTrainSwitchesProps) {
+  return (
+    <div>
+      <p className="text-secondary mb-1.5 block text-sm">Release Train</p>
+      <div className="border-input space-y-3 rounded-lg border p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <label
+              className="text-foreground text-sm font-medium"
+              htmlFor="environment-can-deploy"
+            >
+              Allow direct deploy
+            </label>
+            <p className="text-tertiary text-xs">
+              Show the &quot;Deploy&quot; button on the release train so
+              operators can roll an explicit commit or tag into this
+              environment.
+            </p>
+          </div>
+          <Switch
+            checked={canDeploy}
+            disabled={isLoading}
+            id="environment-can-deploy"
+            onCheckedChange={onChangeCanDeploy}
+          />
+        </div>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <label
+              className="text-foreground text-sm font-medium"
+              htmlFor="environment-can-promote"
+            >
+              Allow promote
+            </label>
+            <p className="text-tertiary text-xs">
+              Show the &quot;Promote&quot; button on the release train. Promotes
+              cut a tag / GitHub Release when the source build is at a SHA, or
+              trigger a Deployment when the source is already a semver tag.
+            </p>
+          </div>
+          <Switch
+            checked={canPromote}
+            disabled={isLoading}
+            id="environment-can-promote"
+            onCheckedChange={onChangeCanPromote}
+          />
+        </div>
+      </div>
     </div>
   )
 }

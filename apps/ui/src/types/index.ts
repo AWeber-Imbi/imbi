@@ -36,7 +36,12 @@ export interface CollectionResponse<T> {
 // `Environment` tracks the full response shape (with relationships).
 // Add a UI-only `url` passthrough — it's surfaced in ProjectEnvironmentsCard
 // but not part of the Environment schema itself.
+// `can_deploy` / `can_promote` are sourced from the backend env model
+// (defaults: true / false respectively). Kept optional here so older
+// snapshots still type-check until the generated schema is refreshed.
 export type Environment = Schemas['EnvironmentResponse'] & {
+  can_deploy?: boolean
+  can_promote?: boolean
   url?: null | string
 }
 
@@ -45,6 +50,8 @@ export type Environment = Schemas['EnvironmentResponse'] & {
 // `string|null`, which the UI create form doesn't do.
 export interface EnvironmentCreate {
   [key: string]: unknown
+  can_deploy?: boolean
+  can_promote?: boolean
   description?: null | string
   icon?: null | string
   label_color?: null | string

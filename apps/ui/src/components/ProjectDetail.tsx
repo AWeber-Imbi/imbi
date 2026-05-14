@@ -205,7 +205,8 @@ export function ProjectDetail({
         return
       }
       if (initialTab === 'promote') {
-        if (idx <= 0) {
+        const targetEnv = sortedEnvironments[idx]
+        if (idx <= 0 || !(targetEnv?.can_promote ?? false)) {
           navigate(`/projects/${project.id}`, { replace: true })
           return
         }
@@ -629,25 +630,35 @@ export function ProjectDetail({
           <div className="flex flex-col items-end gap-2">
             <div className="flex items-center gap-2">
               {sortedEnvironments.length > 0 &&
+                // fallow-ignore-next-line complexity
                 sortedEnvironments.map((env, idx) => {
                   const deployment = deploymentStatus[env.slug]
                   const color = env.label_color
                   const ciDot = deployment
                     ? renderCiDot(deployment.ciStatus)
                     : null
-                  // Release-train conventions, by position only — no
-                  // hardcoded env names:
-                  //   idx 0   — entry point, Deploy a chosen commit
-                  //   idx 1   — Promote (tag + release the idx-0 build)
-                  //   idx 2+  — Deploy: re-roll whatever was tagged at
-                  //             idx 1 to a downstream env
-                  const isPromoteSlot = idx === 1
+                  // Release-train action selection is driven by per-env
+                  // flags (``can_deploy`` / ``can_promote``).  Defaults
+                  // match the backend model: deployable, opt-in promote.
+                  // When both flags are true, deploy wins (re-rolling an
+                  // env is the more common interactive op).  When both
+                  // are false, the chip renders without a click target.
+                  const canDeploy = env.can_deploy ?? true
+                  const canPromote = env.can_promote ?? false
+                  const isPromoteSlot = canPromote && !canDeploy
+                  // Promote needs an upstream env to source the build
+                  // from; fall back to the immediately preceding env in
+                  // the sorted train (mirrors the old idx-based UX).
                   const previousSlug = isPromoteSlot
-                    ? sortedEnvironments[0]?.slug
+                    ? sortedEnvironments[idx - 1]?.slug
                     : undefined
-                  const handleClick = isPromoteSlot
-                    ? () => openPromote(previousSlug as string, env.slug)
-                    : () => openDeploy(env.slug)
+                  const isInteractive =
+                    canDeploy || (isPromoteSlot && previousSlug)
+                  const handleClick = !isInteractive
+                    ? undefined
+                    : isPromoteSlot
+                      ? () => openPromote(previousSlug as string, env.slug)
+                      : () => openDeploy(env.slug)
                   const tooltipText = isPromoteSlot
                     ? 'Promote'
                     : 'Deploy / Redeploy'
@@ -696,7 +707,7 @@ export function ProjectDetail({
                       {idx > 0 && (
                         <ArrowRight className="text-tertiary size-4" />
                       )}
-                      {canTriggerDeployments ? (
+                      {canTriggerDeployments && isInteractive ? (
                         <TooltipProvider delayDuration={200}>
                           <Tooltip>
                             <TooltipTrigger asChild>
