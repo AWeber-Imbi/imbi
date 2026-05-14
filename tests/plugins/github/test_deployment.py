@@ -74,36 +74,19 @@ class ManifestTestCase(unittest.TestCase):
                 f'{cls.__name__} must opt in to deployment sync',
             )
 
-    def test_all_declare_deploys_via_edge(self) -> None:
-        # Every concrete subclass needs the DEPLOYS_VIA declaration so
-        # admins can wire up per-env config from the plugin-edge UI for
-        # any GitHub flavor (.com / GHEC / GHES).
+    def test_no_legacy_deploys_via_edge_declared(self) -> None:
+        # Promote behaviour is inferred from the ref shape and per-env
+        # payloads ride on the USES_PLUGIN edge (``env_payloads``).  No
+        # plugin should declare a leftover ``DEPLOYS_VIA`` edge.
         for cls in (
             GitHubDeploymentPlugin,
             GitHubEnterpriseCloudDeploymentPlugin,
             GitHubEnterpriseServerDeploymentPlugin,
         ):
-            edge = next(
-                (
-                    e
-                    for e in cls.manifest.edge_labels
-                    if e.name == 'DEPLOYS_VIA'
-                ),
-                None,
+            self.assertFalse(
+                any(e.name == 'DEPLOYS_VIA' for e in cls.manifest.edge_labels),
+                f'{cls.__name__} still declares DEPLOYS_VIA',
             )
-            self.assertIsNotNone(
-                edge, f'{cls.__name__} missing DEPLOYS_VIA edge'
-            )
-            assert edge is not None
-            self.assertEqual(set(edge.from_labels), {'ProjectType', 'Project'})
-            self.assertEqual(edge.to_labels, ['Environment'])
-            self.assertIn('action', edge.properties)
-            self.assertEqual(edge.properties['payload'], 'dict[str, str]')
-            self.assertIn('identity_plugin_id', edge.properties)
-            # Properties from the prior workflow_dispatch design must
-            # not be carried forward.
-            self.assertNotIn('workflow', edge.properties)
-            self.assertNotIn('inputs', edge.properties)
 
     def test_owner_repo_required(self) -> None:
         plugin = GitHubDeploymentPlugin()
@@ -660,9 +643,10 @@ class TriggerDeploymentTestCase(unittest.IsolatedAsyncioTestCase):
 
     @respx.mock
     async def test_trigger_uses_environment_config_payload(self) -> None:
-        # The DEPLOYS_VIA edge supplies the deployment payload via
-        # ``ctx.environment_config['payload']``.  Caller-supplied
-        # ``inputs`` are the base; env_config keys override them.
+        # ``ctx.environment_config`` carries the per-env payload dict
+        # (``env_payloads[env_slug]`` from the USES_PLUGIN edge,
+        # resolved by the host).  Caller-supplied ``inputs`` layer on
+        # top, so a manual override wins on shared keys.
         deploy = respx.post(
             'https://api.github.com/repos/octo/demo/deployments'
         ).mock(return_value=httpx.Response(201, json={'id': 1, 'url': ''}))
@@ -670,43 +654,23 @@ class TriggerDeploymentTestCase(unittest.IsolatedAsyncioTestCase):
         ctx = _ctx(
             environment='production',
             environment_config={
-                'payload': {
-                    'cluster': 'prod-east',
-                    'feature_flag': 'on',
-                }
+                'cluster': 'prod-east',
+                'feature_flag': 'on',
             },
         )
         await plugin.trigger_deployment(
             ctx,
             _CREDS,
             ref_or_sha='v1.2.3',
-            inputs={'cluster': 'WILL-LOSE', 'extra': 'kept'},
+            inputs={'cluster': 'override', 'extra': 'kept'},
         )
         body = json.loads(deploy.calls.last.request.read())
         self.assertEqual(body['ref'], 'v1.2.3')
         self.assertEqual(body['environment'], 'production')
         self.assertEqual(
             body['payload'],
-            {'cluster': 'prod-east', 'feature_flag': 'on', 'extra': 'kept'},
+            {'cluster': 'override', 'feature_flag': 'on', 'extra': 'kept'},
         )
-
-    @respx.mock
-    async def test_trigger_ignores_non_dict_env_payload(self) -> None:
-        # A malformed edge property (string instead of dict) should not
-        # crash the plugin — we drop it and fall back to caller inputs.
-        deploy = respx.post(
-            'https://api.github.com/repos/octo/demo/deployments'
-        ).mock(return_value=httpx.Response(201, json={'id': 2, 'url': ''}))
-        plugin = GitHubDeploymentPlugin()
-        ctx = _ctx(
-            environment='staging',
-            environment_config={'payload': 'not-a-dict'},
-        )
-        await plugin.trigger_deployment(
-            ctx, _CREDS, ref_or_sha='v1.0.0', inputs={'k': 'v'}
-        )
-        body = json.loads(deploy.calls.last.request.read())
-        self.assertEqual(body['payload'], {'k': 'v'})
 
 
 class ListRefsPaginationTestCase(unittest.IsolatedAsyncioTestCase):

@@ -672,8 +672,9 @@ class _DeploymentBase(DeploymentPlugin):
         promote refs are often freshly-cut tags whose CI hasn't run yet,
         and the deploy workflow itself is what we're waiting on.
 
-        Payload precedence (highest wins): per-env edge ``payload`` from
-        ``ctx.environment_config['payload']`` over ``inputs`` from the
+        Payload precedence (lowest → highest): plugin assignment
+        ``env_payloads[env_slug]`` (carried by the host on
+        ``ctx.environment_config``) below the ``inputs`` map from the
         caller.  The ``ref`` and ``environment`` are not part of the
         payload — they're top-level fields on the deployment object.
         """
@@ -681,12 +682,9 @@ class _DeploymentBase(DeploymentPlugin):
             raise ValueError(
                 'trigger_deployment requires PluginContext.environment'
             )
-        merged_payload: dict[str, typing.Any] = dict(inputs or {})
-        env_payload = ctx.environment_config.get('payload')
-        if isinstance(env_payload, dict):
-            merged_payload.update(
-                typing.cast(dict[str, typing.Any], env_payload)
-            )
+        merged_payload: dict[str, typing.Any] = dict(ctx.environment_config)
+        if inputs:
+            merged_payload.update(inputs)
         async with self._client(ctx, credentials) as client:
             resp = await client.post(
                 '/deployments',
@@ -720,7 +718,7 @@ class _DeploymentBase(DeploymentPlugin):
         """List ``.github/workflows/*.yml`` registered for the repo.
 
         Used by the UI to populate a workflow dropdown when an operator
-        wires up the per-environment ``DEPLOYS_VIA`` edge.  Returns only
+        configures plugin assignment ``env_payloads``.  Returns only
         ``active`` workflows by default; callers that need disabled
         entries can filter the result themselves.  GitHub caps the
         ``/actions/workflows`` page at 100 — that's more than enough for
@@ -1008,34 +1006,12 @@ def _to_event_status(github_state: str) -> DeploymentEventStatus:
 
 _COMMON_OPTIONS: list[PluginOption] = []
 
-_COMMON_EDGE_LABELS: list[PluginEdgeLabel] = [
-    PluginEdgeLabel(
-        name='DEPLOYS_VIA',
-        # The edge can hang off the ProjectType (the usual case — every
-        # python-api project deploys to staging via release, etc.) or a
-        # specific Project (rare override slot).
-        from_labels=['ProjectType', 'Project'],
-        to_labels=['Environment'],
-        properties={
-            # 'release'    -> create_tag + create_release; no deployment
-            #                 (the repo's ``on: release: [published]``
-            #                 trigger handles it).
-            # 'deployment' -> POST /deployments only (no tag/release).
-            'action': 'str',
-            # Free-form key/value pairs forwarded as the GitHub
-            # deployment ``payload``.  The deploy workflow reads them
-            # via ``github.event.deployment.payload`` -- so this is
-            # where operators stash things like a target cluster name,
-            # a feature flag bundle, etc.  Empty by default.
-            'payload': 'dict[str, str]',
-            # Per-environment identity override.  Lets ``production``
-            # post the deployment as a different OAuth identity than
-            # ``staging`` -- handy when prod requires a service
-            # account with extra deploy scopes.
-            'identity_plugin_id': 'str',
-        },
-    ),
-]
+# Promote behaviour is now inferred from the ``body.tag`` shape on the
+# imbi-api side: semver tags trigger a Deployment, raw SHAs cut a tag
+# + GitHub Release.  Per-env workflow input overrides live on the
+# ``USES_PLUGIN`` edge under ``env_payloads`` (keyed by env slug),
+# resolved by the host and passed in via ``ctx.environment_config``.
+_COMMON_EDGE_LABELS: list[PluginEdgeLabel] = []
 
 _COMMON_CREDENTIALS: list[CredentialField] = [
     CredentialField(

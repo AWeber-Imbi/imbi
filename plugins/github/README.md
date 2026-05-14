@@ -21,8 +21,10 @@ to GitHub APIs as a `Bearer` token, so `materialize()` is a no-op.
 ### Deployment
 
 Drives the GitHub Deployments API (`POST /repos/{owner}/{repo}/deployments`)
-plus tag and release creation. See `deployment.py` for the per-environment
-`DEPLOYS_VIA` edge contract.
+plus tag and release creation. Promote behaviour is inferred from the
+ref shape by the host (semver → trigger Deployment, raw SHA → cut tag
++ Release).  Per-env workflow inputs ride on the `USES_PLUGIN` edge as
+`env_payloads` and arrive on `PluginContext.environment_config`.
 
 ### Lifecycle
 
