@@ -13,7 +13,7 @@ authors = [{ name = "Gavin M. Roy", email = "gavinr@aweber.com" }]
 dependencies = [
   "fastmcp>=2.0.0",
   "httpx>=0.28.1",
-  "imbi-common",
+  "imbi-common>=2.3.0",
   "pydantic~=2.12",
 ]
 
@@ -120,6 +120,3 @@ addopts = [
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
-
-[tool.uv.sources]
-imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common", rev = "main" }
