@@ -28,6 +28,7 @@ from .project_type_plugins import project_type_plugins_router
 from .project_types import project_types_router
 from .projects import projects_router
 from .releases import releases_router
+from .search import search_router
 from .service_plugins import service_plugins_router
 from .tags import tags_router
 from .teams import teams_router
@@ -127,6 +128,10 @@ organizations_router.include_router(
 organizations_router.include_router(
     project_deployments_router,
     prefix='/{org_slug}/projects/{project_id}/deployments',
+)
+organizations_router.include_router(
+    search_router,
+    prefix='/{org_slug}',
 )
 
 

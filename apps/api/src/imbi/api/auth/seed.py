@@ -365,6 +365,13 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'deployment:write',
         'Trigger deployments and promotions via plugins',
     ),
+    # Vector search
+    (
+        'search:read',
+        'search',
+        'read',
+        'Search nodes by semantic similarity',
+    ),
     # Identity plugin connections
     (
         'me:identities:manage',
@@ -436,6 +443,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'document:delete',
             'document_template:read',
             'me:identities:manage',
+            'search:read',
         ],
         False,
     ),
@@ -456,6 +464,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'project:read',
             'project_type:read',
             'role:read',
+            'search:read',
             'tag:read',
             'team:read',
             'third_party_service:read',
@@ -478,6 +487,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'project:read',
             'project_type:read',
             'organization:read',
+            'search:read',
             'team:read',
             'third_party_service:read',
             'user:read',
