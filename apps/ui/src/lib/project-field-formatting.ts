@@ -23,7 +23,8 @@ const WORD_OVERRIDES: Record<string, string> = {
   sonarqube: 'SonarQube',
 }
 
-export function formatFieldKey(key: string): string {
+export function formatFieldKey(key: null | string | undefined): string {
+  if (!key) return ''
   return key
     .replace(/_/g, ' ')
     .replace(/([a-z])([A-Z])/g, '$1 $2')

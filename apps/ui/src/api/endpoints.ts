@@ -2058,3 +2058,27 @@ export const listPluginEdgesByOrg = (
     { org_slug: orgSlug, rel_type: relType },
     signal,
   )
+
+export interface SearchResult {
+  attribute: string
+  chunk_text: string
+  distance: number
+  node_id: string
+  node_label: string
+}
+
+export const searchOrganization = (
+  orgSlug: string,
+  q: string,
+  params?: {
+    limit?: number
+    node_label?: string
+    threshold?: number
+  },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<SearchResult[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/search`,
+    { limit: 20, threshold: 0.75, ...params, q },
+    signal,
+  )

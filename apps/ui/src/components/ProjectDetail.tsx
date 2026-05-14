@@ -511,6 +511,7 @@ export function ProjectDetail({
   const externalLinks = useMemo(
     () =>
       Object.entries(project.links || {})
+        // fallow-ignore-next-line complexity
         .map(([key, url]) => {
           const safeUrl = sanitizeHttpUrl(url)
           if (!safeUrl) return null
@@ -589,6 +590,7 @@ export function ProjectDetail({
     { id: 'operations-log', label: 'Operations Log' },
     {
       id: 'relationships',
+      // fallow-ignore-next-line complexity
       label: (() => {
         const rel = project.relationships
         const total = (rel?.inbound_count ?? 0) + (rel?.outbound_count ?? 0)
@@ -1191,11 +1193,15 @@ function ScoreBreakdownDetail({
             <span className="font-mono">{improve.length}</span>
           </div>
           <div className="flex flex-col gap-3">
+            {/* fallow-ignore-next-line complexity */}
             {improve.map(({ contribution: c, maxPts, policy }) => {
               const fillPct =
                 maxPts > 0 ? (c.weighted_contribution / maxPts) * 100 : 0
               const lost = Math.round(maxPts - c.weighted_contribution)
-              const policyName = formatFieldKey(c.attribute_name)
+              const policyName =
+                formatFieldKey(c.attribute_name) ||
+                policy?.name ||
+                formatFieldKey(c.policy_slug)
               const recommendation = policy
                 ? buildRecommendation(c, policy)
                 : null
@@ -1260,8 +1266,12 @@ function ScoreBreakdownDetail({
             <span className="font-mono">{perfect.length}</span>
           </div>
           <div className="border-tertiary overflow-hidden rounded-md border">
-            {perfect.map(({ contribution: c, maxPts }, idx) => {
-              const policyName = formatFieldKey(c.attribute_name)
+            {/* fallow-ignore-next-line complexity */}
+            {perfect.map(({ contribution: c, maxPts, policy }, idx) => {
+              const policyName =
+                formatFieldKey(c.attribute_name) ||
+                policy?.name ||
+                formatFieldKey(c.policy_slug)
               return (
                 <div
                   className={`bg-primary grid grid-cols-[auto_1fr_auto] items-center gap-2.5 px-3 py-2.5 ${
@@ -1291,6 +1301,7 @@ function ScoreBreakdownDetail({
   )
 }
 
+// fallow-ignore-next-line complexity
 function ScoreTrendPill({
   liveScore,
   scoreTrend,

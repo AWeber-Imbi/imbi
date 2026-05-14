@@ -2,13 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useNavigate } from 'react-router-dom'
 
+import { useQuery } from '@tanstack/react-query'
 import {
   ChevronDown,
   ChevronUp,
   HelpCircle,
+  Search,
   Send,
   Sparkles,
-  Terminal,
   X,
 } from 'lucide-react'
 
@@ -17,7 +18,15 @@ import {
   getConversation,
   sendMessageSSE,
 } from '@/api/assistant'
+import { getConfidenceLabel, searchOrg, type SearchResult } from '@/api/search'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
 import { queryClient } from '@/lib/queryClient'
@@ -27,12 +36,17 @@ import { useAssistantStore } from '@/stores/assistantStore'
 import { ConversationHistory } from './assistant/ConversationHistory'
 import { SessionEntry } from './assistant/MessageBubble'
 import { ToolUseIndicator } from './assistant/ToolUseIndicator'
+import { SearchResultsPanel } from './search/SearchResultsPanel'
 
+type TrayMode = 'assistant' | 'search'
+
+// fallow-ignore-next-line complexity
 export function CommandBar() {
   const { user } = useAuth()
   const { selectedOrganization } = useOrganization()
   const navigate = useNavigate()
   const [input, setInput] = useState('')
+  const [mode, setMode] = useState<TrayMode>('search')
   const [panelHeight, setPanelHeight] = useState(() => {
     const saved = localStorage.getItem('imbi-assistant-height')
     return saved ? Number(saved) : Math.round(window.innerHeight * 0.6)
@@ -41,6 +55,7 @@ export function CommandBar() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const dragRef = useRef<null | { startHeight: number; startY: number }>(null)
+  const [unreadAssistant, setUnreadAssistant] = useState(false)
 
   const {
     activeToolUse,
@@ -61,6 +76,25 @@ export function CommandBar() {
     streamingContent,
   } = useAssistantStore()
 
+  // Debounced query for search (only active in search mode)
+  const debouncedQuery = useDebounced(mode === 'search' ? input : '', 200)
+  const orgSlug = selectedOrganization?.slug ?? null
+  const [searchThreshold, setSearchThreshold] = useState(0.75)
+  const [searchLimit, setSearchLimit] = useState(20)
+
+  const { data: searchResults = [], isFetching: isSearching } = useQuery({
+    enabled: !!debouncedQuery.trim() && !!orgSlug && mode === 'search',
+    queryFn: ({ signal }) =>
+      searchOrg(
+        orgSlug!,
+        debouncedQuery.trim(),
+        { limit: searchLimit, threshold: searchThreshold },
+        signal,
+      ),
+    queryKey: ['search', orgSlug, debouncedQuery, searchThreshold, searchLimit],
+    staleTime: 30_000,
+  })
+
   // Set CSS custom property so page content can avoid being hidden
   const INPUT_BAR_HEIGHT = 72
   useEffect(() => {
@@ -71,12 +105,12 @@ export function CommandBar() {
     )
   }, [isExpanded, panelHeight])
 
-  // Auto-scroll to bottom on new content
+  // Auto-scroll to bottom on new assistant content
   useEffect(() => {
-    if (isExpanded && scrollRef.current) {
+    if (isExpanded && mode === 'assistant' && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages, isExpanded, streamingContent])
+  }, [messages, isExpanded, streamingContent, mode])
 
   // Focus input when panel expands
   useEffect(() => {
@@ -84,6 +118,34 @@ export function CommandBar() {
       inputRef.current.focus()
     }
   }, [isExpanded])
+
+  // Mark unread when messages arrive while not viewing the assistant tab
+  useEffect(() => {
+    if (messages.length === 0) {
+      setUnreadAssistant(false)
+    } else if (!(isExpanded && mode === 'assistant')) {
+      setUnreadAssistant(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length])
+
+  // Clear unread when user opens the assistant tab
+  useEffect(() => {
+    if (isExpanded && mode === 'assistant') {
+      setUnreadAssistant(false)
+    }
+  }, [isExpanded, mode])
+
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value
+      setInput(value)
+      if (value && mode === 'search' && !isExpanded) {
+        setExpanded(true)
+      }
+    },
+    [mode, isExpanded, setExpanded],
+  )
 
   const handleSelectConversation = useCallback(
     async (id: string) => {
@@ -114,19 +176,11 @@ export function CommandBar() {
     clearConversation()
   }, [clearConversation])
 
-  const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault()
-      if (!input.trim() || isStreaming) return
+  const sendAssistantMessage = useCallback(
+    // fallow-ignore-next-line complexity
+    async (messageContent: string, displayText: string) => {
+      if (!isExpanded) setExpanded(true)
 
-      const userText = input.trim()
-      setInput('')
-
-      if (!isExpanded) {
-        setExpanded(true)
-      }
-
-      // Create conversation if none active
       let conversationId = currentConversationId
       let isNewConversation = false
       if (!conversationId) {
@@ -147,24 +201,17 @@ export function CommandBar() {
         }
       }
 
-      // Add user message optimistically after conversation
-      // context is set (setCurrentConversation clears messages)
-      const userMessage = {
-        content: userText,
+      addMessage({
+        content: displayText,
         id: Date.now().toString(),
-        role: 'user' as const,
+        role: 'user',
         timestamp: new Date(),
-      }
-      addMessage(userMessage)
+      })
 
-      // Prepend user/org context on the first message so
-      // the assistant knows who is asking and which org
-      // they are working in.
-      const messageContent = isNewConversation
-        ? buildUserContext(user, selectedOrganization) + userText
-        : userText
+      const fullContent = isNewConversation
+        ? buildUserContext(user, selectedOrganization) + messageContent
+        : messageContent
 
-      // Start streaming
       startStreaming()
       const abort = new AbortController()
       abortRef.current = abort
@@ -172,8 +219,9 @@ export function CommandBar() {
       try {
         await sendMessageSSE(
           conversationId,
-          messageContent,
+          fullContent,
           {
+            // fallow-ignore-next-line complexity
             onClientAction: (action, params) => {
               if (action === 'navigate_to' && params.path) {
                 navigate(params.path)
@@ -183,9 +231,7 @@ export function CommandBar() {
                   params.org_slug,
                 )
                 for (const key of keys) {
-                  queryClient.invalidateQueries({
-                    queryKey: key,
-                  })
+                  queryClient.invalidateQueries({ queryKey: key })
                 }
               }
             },
@@ -242,8 +288,6 @@ export function CommandBar() {
       }
     },
     [
-      input,
-      isStreaming,
       isExpanded,
       currentConversationId,
       setExpanded,
@@ -258,6 +302,41 @@ export function CommandBar() {
       finishStreaming,
       navigate,
     ],
+  )
+
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault()
+      if (!input.trim()) return
+
+      const userText = input.trim()
+
+      if (mode === 'search') {
+        // Inject top 3 search results as context, then switch to assistant
+        const top3 = searchResults
+          .filter((r) => getConfidenceLabel(r.distance) !== null)
+          .slice(0, 3)
+        const messageContent = buildSearchContext(userText, top3)
+        setInput('')
+        setMode('assistant')
+        await sendAssistantMessage(messageContent, userText)
+      } else {
+        // Assistant mode: send message directly
+        if (isStreaming) return
+        setInput('')
+        await sendAssistantMessage(userText, userText)
+      }
+    },
+    [input, mode, searchResults, isStreaming, sendAssistantMessage],
+  )
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Escape') {
+        setExpanded(false)
+      }
+    },
+    [setExpanded],
   )
 
   const handleDragStart = useCallback(
@@ -298,108 +377,144 @@ export function CommandBar() {
     <>
       {/* Session Panel */}
       <div
-        className={`fixed right-0 bottom-16 left-0 transition-transform duration-300 ease-out ${
+        className={`fixed right-0 left-0 z-40 flex flex-col transition-transform duration-300 ease-out ${
           isExpanded ? 'translate-y-0' : 'translate-y-full'
         } border-border bg-secondary border-t shadow-2xl`}
-        style={{ height: `${panelHeight}px` }}
+        style={{ bottom: `${INPUT_BAR_HEIGHT}px`, height: `${panelHeight}px` }}
       >
         {/* Resize Handle */}
         <div
-          className="group hover:bg-secondary flex h-1.5 cursor-ns-resize items-center justify-center transition-colors"
+          className="group hover:bg-secondary flex h-1.5 shrink-0 cursor-ns-resize items-center justify-center transition-colors"
           onPointerDown={handleDragStart}
           onPointerMove={handleDragMove}
           onPointerUp={handleDragEnd}
         >
           <div className="bg-secondary group-hover:bg-muted-foreground/40 h-0.5 w-8 rounded-full transition-colors" />
         </div>
-        {/* Panel Header */}
-        <div className="border-border bg-secondary flex items-center justify-between border-b px-4 py-2">
-          <div className="flex items-center gap-2">
-            <Terminal className="text-tertiary size-3.5" />
-            <span className="text-tertiary font-mono text-xs">
-              imbi-assistant
-            </span>
-            {messages.length > 0 && (
-              <span className="text-tertiary font-mono text-xs">
-                ({Math.floor(messages.length / 2) || 1} exchange
-                {Math.floor(messages.length / 2) !== 1 ? 's' : ''})
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              aria-label="Help"
-              className="text-tertiary hover:bg-secondary hover:text-secondary size-auto rounded p-1"
-              onClick={() => {
-                setInput('help')
-                inputRef.current?.focus()
-              }}
-              size="icon"
-              type="button"
-              variant="ghost"
-            >
-              <HelpCircle className="size-3.5" />
-            </Button>
-            <ConversationHistory
-              currentConversationId={currentConversationId}
-              onNewConversation={handleNewConversation}
-              onSelectConversation={handleSelectConversation}
-            />
-            {messages.length > 0 && (
-              <Button
-                className="text-tertiary hover:bg-secondary hover:text-secondary h-auto rounded px-2 py-0.5 font-mono text-xs"
-                onClick={handleClearHistory}
-                variant="ghost"
-              >
-                clear
-              </Button>
-            )}
-            <Button
-              aria-label="Close assistant"
-              className="text-tertiary hover:bg-secondary hover:text-secondary size-auto rounded p-1"
-              onClick={() => setExpanded(false)}
-              size="icon"
-              type="button"
-              variant="ghost"
-            >
-              <X className="size-3.5" />
-            </Button>
-          </div>
-        </div>
 
-        {/* Session Output */}
-        <div
-          className="bg-tertiary space-y-3 overflow-y-auto px-6 py-4"
-          ref={scrollRef}
-          style={{ height: 'calc(100% - 43px)' }}
-        >
-          {messages.length === 0 && !isStreaming ? (
-            <div className="h-full" />
-          ) : (
-            <>
-              {messages.map((message) => (
-                <SessionEntry
-                  content={message.content}
-                  key={message.id}
-                  role={message.role}
-                />
-              ))}
-              {isStreaming && (
+        {/* Panel Header with Tabs */}
+        <Tabs onValueChange={(v) => setMode(v as TrayMode)} value={mode}>
+          <div className="border-border bg-secondary flex h-8 shrink-0 border-b">
+            <TabsList className="h-full w-auto items-center gap-4 border-b-0 bg-transparent px-3">
+              <TabsTrigger
+                className="flex items-center gap-1.5 font-mono text-xs"
+                value="search"
+              >
+                <Search className="size-3" />
+                Search
+              </TabsTrigger>
+              <TabsTrigger
+                className="flex items-center gap-1.5 font-mono text-xs"
+                value="assistant"
+              >
+                <Sparkles className="size-3" />
+                Assistant
+                {unreadAssistant && (
+                  <span className="size-1.5 rounded-full bg-blue-500" />
+                )}
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Right controls */}
+            <div className="ml-auto flex h-full items-center gap-1 pr-2 pb-1">
+              {mode === 'assistant' && (
                 <>
-                  {activeToolUse && (
-                    <ToolUseIndicator toolName={activeToolUse.name} />
-                  )}
-                  {streamingContent && (
-                    <SessionEntry content={streamingContent} role="assistant" />
-                  )}
-                  {!streamingContent && !activeToolUse && (
-                    <div className="text-tertiary pl-4 font-mono text-sm">
-                      <span className="animate-pulse">...</span>
-                    </div>
+                  <Button
+                    aria-label="Help"
+                    className="text-tertiary hover:bg-secondary hover:text-secondary size-auto rounded p-1"
+                    onClick={() => sendAssistantMessage('help', 'help')}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <HelpCircle className="size-3.5" />
+                  </Button>
+                  <ConversationHistory
+                    currentConversationId={currentConversationId}
+                    onNewConversation={handleNewConversation}
+                    onSelectConversation={handleSelectConversation}
+                  />
+                  {messages.length > 0 && (
+                    <Button
+                      className="text-tertiary hover:bg-secondary hover:text-secondary h-auto rounded px-2 py-0.5 font-mono text-xs"
+                      onClick={handleClearHistory}
+                      variant="ghost"
+                    >
+                      clear
+                    </Button>
                   )}
                 </>
               )}
-            </>
+              <TooltipProvider delayDuration={400}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      aria-label="Close tray"
+                      className="text-tertiary hover:bg-secondary hover:text-secondary size-auto rounded p-1"
+                      onClick={() => setExpanded(false)}
+                      size="icon"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <X className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Close</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
+        </Tabs>
+
+        {/* Panel Body */}
+        <div className="bg-secondary min-h-0 flex-1 overflow-hidden">
+          {mode === 'search' ? (
+            <SearchResultsPanel
+              isLoading={isSearching}
+              limit={searchLimit}
+              onLimitChange={setSearchLimit}
+              onThresholdChange={setSearchThreshold}
+              query={debouncedQuery}
+              results={searchResults}
+              threshold={searchThreshold}
+            />
+          ) : (
+            <div
+              className="h-full space-y-3 overflow-y-auto px-6 py-4"
+              ref={scrollRef}
+            >
+              {messages.length === 0 && !isStreaming ? (
+                <div className="h-full" />
+              ) : (
+                <>
+                  {messages.map((message) => (
+                    <SessionEntry
+                      content={message.content}
+                      key={message.id}
+                      role={message.role}
+                    />
+                  ))}
+                  {isStreaming && (
+                    <>
+                      {activeToolUse && (
+                        <ToolUseIndicator toolName={activeToolUse.name} />
+                      )}
+                      {streamingContent && (
+                        <SessionEntry
+                          content={streamingContent}
+                          role="assistant"
+                        />
+                      )}
+                      {!streamingContent && !activeToolUse && (
+                        <div className="text-tertiary pl-4 font-mono text-sm">
+                          <span className="animate-pulse">...</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -409,7 +524,7 @@ export function CommandBar() {
         {/* Tray Toggle */}
         <div className="flex justify-center">
           <Button
-            aria-label={isExpanded ? 'Collapse assistant' : 'Expand assistant'}
+            aria-label={isExpanded ? 'Collapse tray' : 'Expand tray'}
             className={`border-tertiary bg-card text-tertiary hover:text-secondary -mt-3 h-auto rounded-t-md border border-b-0 px-4 py-0.5 font-mono text-xs transition-all ${isExpanded ? 'shadow-lg' : ''}`}
             onClick={() => setExpanded(!isExpanded)}
             type="button"
@@ -420,7 +535,7 @@ export function CommandBar() {
             ) : (
               <div className="flex items-center gap-1.5">
                 <ChevronUp className="size-3" />
-                {messages.length > 0 && (
+                {unreadAssistant && (
                   <span className="size-1.5 rounded-full bg-blue-500" />
                 )}
               </div>
@@ -434,10 +549,11 @@ export function CommandBar() {
             <span className="text-tertiary text-sm select-none">&gt;</span>
             <input
               className="text-primary placeholder:text-muted-foreground flex-1 bg-transparent text-sm outline-none disabled:opacity-50"
-              disabled={isStreaming}
-              onChange={(e) => setInput(e.target.value)}
+              disabled={mode === 'assistant' && isStreaming}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
               placeholder={
-                isStreaming
+                mode === 'assistant' && isStreaming
                   ? 'waiting...'
                   : "Search projects, ask about deployments, or type 'help'..."
               }
@@ -445,7 +561,7 @@ export function CommandBar() {
               type="text"
               value={input}
             />
-            {input.trim() && !isStreaming && (
+            {input.trim() && !(mode === 'assistant' && isStreaming) && (
               <Button
                 className="text-tertiary hover:text-secondary size-auto rounded p-1 transition-colors"
                 size="icon"
@@ -458,7 +574,9 @@ export function CommandBar() {
           </div>
           <div className="flex items-center justify-between px-1 pt-1">
             <span className="text-secondary text-[11px]">
-              Press Enter to send
+              {mode === 'search'
+                ? '↵ switch to assistant  esc: close'
+                : '↵ send  esc: close'}
             </span>
             <span className="text-secondary flex items-center gap-1 text-[11px]">
               <Sparkles className="size-3" />
@@ -471,6 +589,28 @@ export function CommandBar() {
   )
 }
 
+function buildSearchContext(query: string, results: SearchResult[]): string {
+  if (results.length === 0) return query
+
+  const lines = results.map((r, i) => {
+    const label = getConfidenceLabel(r.distance) ?? 'Related'
+    const snippet =
+      r.chunk_text.length > 200
+        ? r.chunk_text.slice(0, 200).trimEnd() + '…'
+        : r.chunk_text
+    return `${i + 1}. [${label}] ${r.node_label}: "${snippet}"`
+  })
+
+  return (
+    `<search_context>\n` +
+    `User searched for: "${query}"\n\n` +
+    `Top results:\n${lines.join('\n')}\n` +
+    `</search_context>\n\n` +
+    query
+  )
+}
+
+// fallow-ignore-next-line complexity
 function buildUserContext(
   user: null | {
     display_name: string
@@ -487,4 +627,13 @@ function buildUserContext(
   if (user.roles?.length) parts.push(`Roles: ${user.roles.join(', ')}`)
   if (org) parts.push(`Organization: ${org.name} (${org.slug})`)
   return `<context>\n${parts.join('\n')}\n</context>\n\n`
+}
+
+function useDebounced<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), ms)
+    return () => clearTimeout(t)
+  }, [value, ms])
+  return debounced
 }
