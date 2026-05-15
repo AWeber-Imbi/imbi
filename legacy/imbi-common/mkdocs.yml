@@ -45,6 +45,7 @@ nav:
       - Valkey Client: api/valkey.md
       - Models: api/models.md
       - Blueprints: api/blueprints.md
+      - JSON Pointer: api/json-pointer.md
       - Authentication: api/auth.md
       - Logging: api/logging.md
       - Lifespan: api/lifespan.md
