@@ -5,6 +5,7 @@ import celpy.celparser
 import httpx
 import jsonpointer
 import pydantic
+from imbi_common.plugins import base as plugin_base
 
 from imbi_gateway import actions
 from tests import helpers
@@ -12,10 +13,27 @@ from tests import helpers
 _TOKEN = 'test-token'  # noqa: S105
 
 
+def _ctx(
+    *,
+    org_slug: str = 'org',
+    project_id: str = 'proj',
+    project_slug: str = 'proj',
+    user_id: str | None = None,
+) -> plugin_base.PluginContext:
+    return plugin_base.PluginContext(
+        org_slug=org_slug,
+        project_id=project_id,
+        project_slug=project_slug,
+        actor_user_id=user_id,
+    )
+
+
 class UpdateProjectTests(helpers.TestCase):
     async def test_single_rule_builds_correct_patch(self) -> None:
         body = {'repo': {'name': 'my-repo'}}
-        spec = '[{"path": "/name", "from": "/repo/name"}]'
+        config = actions.UpdateProjectConfig.model_validate_json(
+            '[{"path": "/name", "from": "/repo/name"}]'
+        )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
             unittest.mock.patch.object(
@@ -25,7 +43,13 @@ class UpdateProjectTests(helpers.TestCase):
                 return_value=httpx.Response(200),
             ) as mock_patch,
         ):
-            await actions.update_project('myorg', 'proj-1', body, None, spec)
+            await actions.update_project(
+                ctx=_ctx(org_slug='myorg', project_id='proj-1'),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload=body,
+            )
 
         mock_patch.assert_called_once_with(
             'myorg',
@@ -35,7 +59,9 @@ class UpdateProjectTests(helpers.TestCase):
 
     async def test_multiple_rules_produce_multiple_operations(self) -> None:
         body = {'a': 1, 'b': 2}
-        spec = '[{"path": "/x", "from": "/a"}, {"path": "/y", "from": "/b"}]'
+        config = actions.UpdateProjectConfig.model_validate_json(
+            '[{"path": "/x", "from": "/a"}, {"path": "/y", "from": "/b"}]'
+        )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
             unittest.mock.patch.object(
@@ -45,7 +71,13 @@ class UpdateProjectTests(helpers.TestCase):
                 return_value=httpx.Response(200),
             ) as mock_patch,
         ):
-            await actions.update_project('org', 'proj', body, None, spec)
+            await actions.update_project(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload=body,
+            )
 
         mock_patch.assert_called_once_with(
             'org',
@@ -57,6 +89,7 @@ class UpdateProjectTests(helpers.TestCase):
         )
 
     async def test_empty_rules_still_calls_patch(self) -> None:
+        config = actions.UpdateProjectConfig.model_validate_json('[]')
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
             unittest.mock.patch.object(
@@ -66,25 +99,32 @@ class UpdateProjectTests(helpers.TestCase):
                 return_value=httpx.Response(200),
             ) as mock_patch,
         ):
-            await actions.update_project('org', 'proj', {}, None, '[]')
+            await actions.update_project(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload={},
+            )
 
         mock_patch.assert_called_once_with('org', 'proj', [])
 
-    async def test_invalid_update_spec_raises_validation_error(self) -> None:
-        with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
-            self.assertRaises(pydantic.ValidationError),
-        ):
-            await actions.update_project('org', 'proj', {}, None, 'not-json')
-
     async def test_missing_pointer_in_body_raises(self) -> None:
         body = {'foo': 'bar'}
-        spec = '[{"path": "/x", "from": "/does/not/exist"}]'
+        config = actions.UpdateProjectConfig.model_validate_json(
+            '[{"path": "/x", "from": "/does/not/exist"}]'
+        )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
             self.assertRaises(jsonpointer.JsonPointerException),
         ):
-            await actions.update_project('org', 'proj', body, None, spec)
+            await actions.update_project(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload=body,
+            )
 
 
 class ImbiClientPatchProjectTests(helpers.TestCase):
@@ -180,16 +220,24 @@ _STATUS_BODY: dict[str, object] = {
     'deployment_status': {'state': 'success', 'environment': 'production'},
 }
 
-_CREATE_RELEASE_CONFIG = (
-    '{"title_selector": "/deployment/ref",'
-    ' "version_expression": "deployment.ref",'
-    ' "committish_expression": "substring(deployment.sha, 0, 7)"}'
-)
-_DEPLOYMENT_EVENT_CONFIG = (
-    '{"environment_selector": "/deployment_status/environment",'
-    ' "version_expression": "deployment.ref",'
-    ' "status_selector": "/deployment_status/state"}'
-)
+def _create_release_config(
+    raw: str = (
+        '{"title_selector": "/deployment/ref",'
+        ' "committish_expression": "substring(deployment.sha, 0, 7)",'
+        ' "version_expression": "deployment.ref"}'
+    ),
+) -> actions.CreateReleaseConfig:
+    return actions.CreateReleaseConfig.model_validate_json(raw)
+
+
+def _deployment_event_config(
+    raw: str = (
+        '{"environment_selector": "/deployment_status/environment",'
+        ' "version_expression": "deployment.ref",'
+        ' "status_selector": "/deployment_status/state"}'
+    ),
+) -> actions.AddDeploymentEventConfig:
+    return actions.AddDeploymentEventConfig.model_validate_json(raw)
 
 
 class CreateReleaseTests(helpers.TestCase):
@@ -204,11 +252,11 @@ class CreateReleaseTests(helpers.TestCase):
             ) as mock_create,
         ):
             await actions.create_release(
-                'org',
-                'proj',
-                _DEPLOYMENT_BODY,
-                'alice@example.com',
-                _CREATE_RELEASE_CONFIG,
+                ctx=_ctx(user_id='alice@example.com'),
+                credentials={},
+                external_identifier='',
+                action_config=_create_release_config(),
+                payload=_DEPLOYMENT_BODY,
             )
 
         mock_create.assert_called_once()
@@ -232,14 +280,18 @@ class CreateReleaseTests(helpers.TestCase):
             ) as mock_create,
         ):
             await actions.create_release(
-                'org', 'proj', _DEPLOYMENT_BODY, None, _CREATE_RELEASE_CONFIG
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=_create_release_config(),
+                payload=_DEPLOYMENT_BODY,
             )
 
         body_arg = mock_create.call_args.args[2]
         self.assertNotIn('created_by', body_arg)
 
     async def test_title_selector_used(self) -> None:
-        config = (
+        config = _create_release_config(
             '{"title_selector": "/deployment/description",'
             ' "version_expression": "deployment.ref",'
             ' "committish_expression": "substring(deployment.sha, 0, 7)"}'
@@ -254,7 +306,11 @@ class CreateReleaseTests(helpers.TestCase):
             ) as mock_create,
         ):
             await actions.create_release(
-                'org', 'proj', _DEPLOYMENT_BODY, None, config
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload=_DEPLOYMENT_BODY,
             )
 
         body_arg = mock_create.call_args.args[2]
@@ -262,21 +318,19 @@ class CreateReleaseTests(helpers.TestCase):
         self.assertEqual('v1.2.3', body_arg['tag'])
 
     async def test_version_expression_evaluated(self) -> None:
-        # Same shape as the feature-file example (ref when it looks
-        # like a semver tag, otherwise fall back to the sha) but using
-        # `[.]` character classes since `\.` would require a four-deep
-        # escape stack through Python -> JSON -> CEL.
-        config = json.dumps(
-            {
-                'title_selector': '/deployment/ref',
-                'version_expression': (
-                    'deployment.ref.matches('
-                    "'^[0-9]+[.][0-9]+[.][0-9]+$'"
-                    ') ? deployment.ref'
-                    " : 'sha-' + deployment.sha"
-                ),
-                'committish_expression': 'substring(deployment.sha, 0, 7)',
-            }
+        config = _create_release_config(
+            json.dumps(
+                {
+                    'title_selector': '/deployment/ref',
+                    'committish_expression': 'deployment.sha',
+                    'version_expression': (
+                        'deployment.ref.matches('
+                        "'^[0-9]+[.][0-9]+[.][0-9]+$'"
+                        ') ? deployment.ref'
+                        " : 'sha-' + deployment.sha"
+                    ),
+                }
+            )
         )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
@@ -287,45 +341,46 @@ class CreateReleaseTests(helpers.TestCase):
                 return_value=httpx.Response(201),
             ) as mock_create,
         ):
-            # Branch-style ref -> takes the fallback expression.
             await actions.create_release(
-                'org',
-                'proj',
-                {'deployment': {'ref': 'feature/x', 'sha': 'abcdef1234'}},
-                None,
-                config,
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload={
+                    'deployment': {'ref': 'feature/x', 'sha': 'abcdef1234'}
+                },
             )
             self.assertEqual(
                 'sha-abcdef1234', mock_create.call_args.args[2]['tag']
             )
 
-            # Semver-style ref -> takes the deployment.ref branch.
             await actions.create_release(
-                'org',
-                'proj',
-                {'deployment': {'ref': '1.2.3', 'sha': 'abcdef1234'}},
-                None,
-                config,
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload={'deployment': {'ref': '1.2.3', 'sha': 'abcdef1234'}},
             )
             self.assertEqual('1.2.3', mock_create.call_args.args[2]['tag'])
 
     async def test_substring_function_available(self) -> None:
-        # `substring(s, start, end)` for trimming a git sha to its
-        # short form. Same call also works as the method form
-        # `s.substring(start, end)`.
-        config = json.dumps(
-            {
-                'title_selector': '/deployment/ref',
-                'version_expression': 'substring(deployment.sha, 0, 7)',
-                'committish_expression': 'substring(deployment.sha, 0, 7)',
-            }
+        cfg = {
+            'title_selector': '/deployment/ref',
+            'version_expression': 'deployment.ref',
+        }
+        config = _create_release_config(
+            json.dumps(
+                cfg | {
+                    'committish_expression': 'substring(deployment.sha, 0, 7)',
+                }
+            )
         )
-        method_config = json.dumps(
-            {
-                'title_selector': '/deployment/ref',
-                'version_expression': 'deployment.sha.substring(0, 7)',
-                'committish_expression': 'deployment.sha.substring(0, 7)',
-            }
+        method_config = _create_release_config(
+            json.dumps(
+                cfg | {
+                    'committish_expression': 'deployment.sha.substring(0, 7)',
+                }
+            )
         )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
@@ -337,30 +392,36 @@ class CreateReleaseTests(helpers.TestCase):
             ) as mock_create,
         ):
             await actions.create_release(
-                'org',
-                'proj',
-                {'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}},
-                None,
-                config,
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload={
+                    'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}
+                },
             )
-            self.assertEqual('abcdef1', mock_create.call_args.args[2]['tag'])
+            self.assertEqual('abcdef1', mock_create.call_args.args[2]['committish'])
 
             await actions.create_release(
-                'org',
-                'proj',
-                {'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}},
-                None,
-                method_config,
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=method_config,
+                payload={
+                    'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}
+                },
             )
-            self.assertEqual('abcdef1', mock_create.call_args.args[2]['tag'])
+            self.assertEqual('abcdef1', mock_create.call_args.args[2]['committish'])
 
     async def test_substring_with_only_start(self) -> None:
-        config = json.dumps(
-            {
-                'title_selector': '/deployment/ref',
-                'version_expression': 'deployment.sha.substring(8)',
-                'committish_expression': 'substring(deployment.sha, 0, 7)',
-            }
+        config = _create_release_config(
+            json.dumps(
+                {
+                    'title_selector': '/deployment/ref',
+                    'committish_expression': 'deployment.sha.substring(8)',
+                    'version_expression': 'deployment.ref',
+                }
+            )
         )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
@@ -372,27 +433,18 @@ class CreateReleaseTests(helpers.TestCase):
             ) as mock_create,
         ):
             await actions.create_release(
-                'org',
-                'proj',
-                {'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}},
-                None,
-                config,
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload={
+                    'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}
+                },
             )
-            self.assertEqual('34567890', mock_create.call_args.args[2]['tag'])
-
-    async def test_invalid_handler_config_raises_validation_error(
-        self,
-    ) -> None:
-        with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
-            self.assertRaises(pydantic.ValidationError),
-        ):
-            await actions.create_release(
-                'org', 'proj', _DEPLOYMENT_BODY, None, '{}'
-            )
+            self.assertEqual('34567890', mock_create.call_args.args[2]['committish'])
 
     async def test_invalid_version_expression_propagates(self) -> None:
-        config = (
+        config = _create_release_config(
             '{"title_selector": "/deployment/ref",'
             ' "version_expression": "this is not valid CEL",'
             ' "committish_expression": "substring(deployment.sha, 0, 7)"}'
@@ -402,11 +454,15 @@ class CreateReleaseTests(helpers.TestCase):
             self.assertRaises(celpy.celparser.CELParseError),
         ):
             await actions.create_release(
-                'org', 'proj', _DEPLOYMENT_BODY, None, config
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload=_DEPLOYMENT_BODY,
             )
 
     async def test_invalid_committish_expression_propagates(self) -> None:
-        config = (
+        config = _create_release_config(
             '{"title_selector": "/deployment/ref",'
             ' "version_expression": "deployment.ref",'
             ' "committish_expression": "this is not valid CEL"}'
@@ -416,7 +472,11 @@ class CreateReleaseTests(helpers.TestCase):
             self.assertRaises(celpy.celparser.CELParseError),
         ):
             await actions.create_release(
-                'org', 'proj', _DEPLOYMENT_BODY, None, config
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload=_DEPLOYMENT_BODY,
             )
 
     async def test_409_is_treated_as_idempotent(self) -> None:
@@ -430,9 +490,12 @@ class CreateReleaseTests(helpers.TestCase):
             ),
             self.assertLogs('imbi_gateway.actions', level='DEBUG') as cm,
         ):
-            # No exception expected — already exists is the steady state.
             await actions.create_release(
-                'org', 'proj', _DEPLOYMENT_BODY, None, _CREATE_RELEASE_CONFIG
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=_create_release_config(),
+                payload=_DEPLOYMENT_BODY,
             )
 
         self.assertTrue(any('already exists' in line for line in cm.output))
@@ -450,7 +513,11 @@ class AddDeploymentEventTests(helpers.TestCase):
             ) as mock_record,
         ):
             await actions.add_deployment_event(
-                'org', 'proj', _STATUS_BODY, None, _DEPLOYMENT_EVENT_CONFIG
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=_deployment_event_config(),
+                payload=_STATUS_BODY,
             )
 
         mock_record.assert_called_once_with(
@@ -458,13 +525,15 @@ class AddDeploymentEventTests(helpers.TestCase):
         )
 
     async def test_note_selector_emits_note(self) -> None:
-        config = json.dumps(
-            {
-                'environment_selector': '/deployment_status/environment',
-                'version_expression': 'deployment.ref',
-                'status_selector': '/deployment_status/state',
-                'note_selector': '/deployment/url',
-            }
+        config = _deployment_event_config(
+            json.dumps(
+                {
+                    'environment_selector': '/deployment_status/environment',
+                    'version_expression': 'deployment.ref',
+                    'status_selector': '/deployment_status/state',
+                    'note_selector': '/deployment/url',
+                }
+            )
         )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
@@ -476,7 +545,11 @@ class AddDeploymentEventTests(helpers.TestCase):
             ) as mock_record,
         ):
             await actions.add_deployment_event(
-                'org', 'proj', _STATUS_BODY, None, config
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload=_STATUS_BODY,
             )
 
         event_body = mock_record.call_args.args[4]
@@ -486,7 +559,7 @@ class AddDeploymentEventTests(helpers.TestCase):
         )
 
     async def test_failure_state_maps_to_failed(self) -> None:
-        body = {
+        payload = {
             **_STATUS_BODY,
             'deployment_status': {
                 'state': 'failure',
@@ -503,13 +576,17 @@ class AddDeploymentEventTests(helpers.TestCase):
             ) as mock_record,
         ):
             await actions.add_deployment_event(
-                'org', 'proj', body, None, _DEPLOYMENT_EVENT_CONFIG
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=_deployment_event_config(),
+                payload=payload,
             )
 
         self.assertEqual('failed', mock_record.call_args.args[4]['status'])
 
     async def test_unknown_state_skipped(self) -> None:
-        body = {
+        payload = {
             **_STATUS_BODY,
             'deployment_status': {
                 'state': 'frobbed',
@@ -526,7 +603,11 @@ class AddDeploymentEventTests(helpers.TestCase):
             self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
         ):
             await actions.add_deployment_event(
-                'org', 'proj', body, None, _DEPLOYMENT_EVENT_CONFIG
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=_deployment_event_config(),
+                payload=payload,
             )
 
         mock_record.assert_not_called()
@@ -546,23 +627,16 @@ class AddDeploymentEventTests(helpers.TestCase):
             self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
         ):
             await actions.add_deployment_event(
-                'org', 'proj', _STATUS_BODY, None, _DEPLOYMENT_EVENT_CONFIG
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=_deployment_event_config(),
+                payload=_STATUS_BODY,
             )
 
         self.assertTrue(
             any('Release' in line and 'missing' in line for line in cm.output)
         )
-
-    async def test_invalid_handler_config_raises_validation_error(
-        self,
-    ) -> None:
-        with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
-            self.assertRaises(pydantic.ValidationError),
-        ):
-            await actions.add_deployment_event(
-                'org', 'proj', _STATUS_BODY, None, '{}'
-            )
 
 
 class ImbiClientFindUserByIdentityTests(helpers.TestCase):
@@ -772,7 +846,7 @@ class StatusMapTests(helpers.TestCase):
     """Verify every GitHub deployment_status state mapping."""
 
     async def _capture_status(self, github_state: str) -> str:
-        body = {
+        payload = {
             **_STATUS_BODY,
             'deployment_status': {
                 'state': github_state,
@@ -789,7 +863,11 @@ class StatusMapTests(helpers.TestCase):
             ) as mock_record,
         ):
             await actions.add_deployment_event(
-                'o', 'p', body, None, _DEPLOYMENT_EVENT_CONFIG
+                ctx=_ctx(org_slug='o', project_id='p'),
+                credentials={},
+                external_identifier='',
+                action_config=_deployment_event_config(),
+                payload=payload,
             )
         return str(mock_record.call_args.args[4]['status'])
 

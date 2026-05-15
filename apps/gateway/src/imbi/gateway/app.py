@@ -3,12 +3,14 @@ import datetime
 import fastapi
 import typer
 from imbi_common import access_log, graph, lifespan, server
+from imbi_common.plugins import registry as plugin_registry
 
 import imbi_gateway
 from imbi_gateway import app_status, lifespans, notifications
 
 
 def create_app() -> fastapi.FastAPI:
+    plugin_registry.load_plugins()
     app = fastapi.FastAPI(
         version=imbi_gateway.version,
         started_at=datetime.datetime.now(datetime.UTC),

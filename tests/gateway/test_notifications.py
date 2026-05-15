@@ -1,3 +1,4 @@
+import json
 import typing
 import unittest.mock
 
@@ -6,10 +7,14 @@ import fastapi
 import httpx
 import nanoid
 import pydantic
+from cryptography import fernet
 from imbi_common import clickhouse, graph
+from imbi_common.auth.encryption import TokenEncryption
 from imbi_common.graph import (
     _inject_graph,  # pyright: ignore[reportPrivateUsage]
 )
+from imbi_common.plugins import base as plugin_base
+from imbi_common.plugins import registry as plugin_registry
 
 import imbi_gateway.app
 from imbi_gateway import actions, notifications
@@ -20,53 +25,168 @@ if typing.TYPE_CHECKING:
 
 _TOKEN = 'test-token'  # noqa: S105
 
-HANDLER_CALLS: list[tuple[str, str, object, str | None, str]] = []
+#: Captures ``run_action`` invocations across tests.
+ACTION_CALLS: list[dict[str, object]] = []
 
 
-async def stub_handler(
-    org_slug: str,
-    project_id: str,
-    body: object,
-    user_id: str | None,
-    config: str,
+async def stub_action(
+    *,
+    ctx: plugin_base.PluginContext,
+    credentials: dict[str, str],
+    external_identifier: str,
+    action_config: 'StubActionConfig',
+    payload: object,
 ) -> None:
-    HANDLER_CALLS.append((org_slug, project_id, body, user_id, config))
+    ACTION_CALLS.append(
+        {
+            'ctx': ctx,
+            'credentials': credentials,
+            'external_identifier': external_identifier,
+            'action_config': action_config,
+            'payload': payload,
+        }
+    )
 
 
-def sync_stub_handler(
-    org_slug: str,
-    project_id: str,
-    body: object,
-    user_id: str | None,
-    config: str,
+async def raising_action(
+    *,
+    ctx: plugin_base.PluginContext,
+    credentials: dict[str, str],
+    external_identifier: str,
+    action_config: 'StubActionConfig',
+    payload: object,
 ) -> None:
-    pass
-
-
-async def raising_stub_handler(
-    _org_slug: str,
-    _project_id: str,
-    _body: object,
-    _user_id: str | None,
-    _config: str,
-) -> None:
+    del ctx, credentials, external_identifier, action_config, payload
     raise RuntimeError('test error')
+
+
+class StubActionConfig(pydantic.BaseModel):
+    label: str = 'default'
+
+
+class StubNoCredsPlugin(plugin_base.WebhookActionPlugin):
+    """Stub registered for tests that need a no-credentials plugin."""
+
+    manifest = plugin_base.PluginManifest(
+        slug='stub-nocreds',
+        name='Stub (no credentials)',
+        plugin_type='webhook',
+        credentials=[],
+    )
+
+    @classmethod
+    def actions(cls) -> list[plugin_base.ActionDescriptor]:
+        return [
+            plugin_base.ActionDescriptor(
+                name='do_thing',
+                label='Do Thing',
+                callable=typing.cast(
+                    'typing.Any', 'tests.test_notifications:stub_action'
+                ),
+                config_model=typing.cast(
+                    'typing.Any', 'tests.test_notifications:StubActionConfig'
+                ),
+            ),
+            plugin_base.ActionDescriptor(
+                name='boom',
+                label='Boom',
+                callable=typing.cast(
+                    'typing.Any', 'tests.test_notifications:raising_action'
+                ),
+                config_model=typing.cast(
+                    'typing.Any', 'tests.test_notifications:StubActionConfig'
+                ),
+            ),
+        ]
+
+
+class StubWithCredsPlugin(plugin_base.WebhookActionPlugin):
+    """Stub registered for tests that exercise credential resolution."""
+
+    manifest = plugin_base.PluginManifest(
+        slug='stub-creds',
+        name='Stub (with credentials)',
+        plugin_type='webhook',
+        credentials=[
+            plugin_base.CredentialField(name='api_token', label='API Token')
+        ],
+    )
+
+    @classmethod
+    def actions(cls) -> list[plugin_base.ActionDescriptor]:
+        return [
+            plugin_base.ActionDescriptor(
+                name='do_thing',
+                label='Do Thing',
+                callable=typing.cast(
+                    'typing.Any', 'tests.test_notifications:stub_action'
+                ),
+                config_model=typing.cast(
+                    'typing.Any', 'tests.test_notifications:StubActionConfig'
+                ),
+            )
+        ]
+
+
+def _install_stub_plugins() -> None:
+    """Pre-populate the registry with stub plugins used across tests."""
+    _registry: dict[str, plugin_registry.RegistryEntry] = (
+        plugin_registry._registry  # pyright: ignore[reportPrivateUsage]
+    )
+    for cls in (StubNoCredsPlugin, StubWithCredsPlugin):
+        _registry[cls.manifest.slug] = plugin_registry.RegistryEntry(
+            handler_cls=cls,
+            manifest=cls.manifest,
+            package_name='tests',
+            package_version='0.0.0',
+        )
+
+
+def _uninstall_stub_plugins() -> None:
+    _registry: dict[str, plugin_registry.RegistryEntry] = (
+        plugin_registry._registry  # pyright: ignore[reportPrivateUsage]
+    )
+    for slug in ('stub-nocreds', 'stub-creds'):
+        _registry.pop(slug, None)
 
 
 class WebhookRuleUnitTests(helpers.TestCase):
     _VALID_RULE: typing.ClassVar[dict[str, object]] = {
-        'handler': 'tests.test_notifications.stub_handler',
+        'handler': 'stub-nocreds#do_thing',
         'ordinal': 1,
         'handler_config': '{}',
         'filter_expression': 'true',
     }
 
-    def test_sync_handler_rejected_by_validator(self) -> None:
+    def test_valid_handler_exposes_slug_and_action(self) -> None:
+        rule = notifications.WebhookRule.model_validate(self._VALID_RULE)
+        self.assertEqual('stub-nocreds', rule.plugin_slug)
+        self.assertEqual('do_thing', rule.action_name)
+
+    def test_handler_without_separator_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            notifications.WebhookRule.model_validate(
+                {**self._VALID_RULE, 'handler': 'no-separator'}
+            )
+
+    def test_handler_with_empty_slug_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            notifications.WebhookRule.model_validate(
+                {**self._VALID_RULE, 'handler': '#do_thing'}
+            )
+
+    def test_handler_with_empty_action_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            notifications.WebhookRule.model_validate(
+                {**self._VALID_RULE, 'handler': 'stub-nocreds#'}
+            )
+
+    def test_handler_dotted_path_rejected(self) -> None:
         with self.assertRaises(pydantic.ValidationError):
             notifications.WebhookRule.model_validate(
                 {
                     **self._VALID_RULE,
-                    'handler': 'tests.test_notifications.sync_stub_handler',
+                    'handler': 'imbi_gateway.actions:update_project',
                 }
             )
 
@@ -89,25 +209,26 @@ class WebhookRuleUnitTests(helpers.TestCase):
 
 class ProcessNotificationTests(helpers.TestCase):
     async def asyncSetUp(self) -> None:
-        HANDLER_CALLS.clear()
+        ACTION_CALLS.clear()
 
         self.org_id = nanoid.generate()
         self.org_slug = f'org-{self.org_id[:8]}'
         self.webhook_id = nanoid.generate()
-        # ThirdPartyService nodes in production are persisted without an
-        # ``id`` property (the create endpoint does not generate one), so
-        # the test fixture intentionally omits ``id`` and looks the node
-        # up by slug to mirror the real graph.
         self.tps_slug = f'tps-{nanoid.generate()[:8]}'
         self.proj_id = nanoid.generate()
         self.ext_id = f'ext-{nanoid.generate()[:8]}'
         self.rule_ids: list[str] = []
+        self.plugin_ids: list[str] = []
         self.extra_project_ids: list[str] = []
 
         self.g = graph.Graph()
         await self.g.open()
 
+        # create_app() calls plugin_registry.load_plugins() which wipes
+        # the registry, so the stub plugins must be installed *after*
+        # the app has been built.
         self.app = imbi_gateway.app.create_app()
+        _install_stub_plugins()
 
         async def _override_graph() -> abc.AsyncIterator[graph.Graph]:
             yield self.g
@@ -202,6 +323,12 @@ class ProcessNotificationTests(helpers.TestCase):
                 {'id': rule_id},
                 ['r'],
             )
+        for plugin_id in self.plugin_ids:
+            await self.g.execute(
+                'MATCH (n:Plugin {{id: {id}}}) DETACH DELETE n RETURN 1 AS r',
+                {'id': plugin_id},
+                ['r'],
+            )
         for project_id in self.extra_project_ids:
             await self.g.execute(
                 'MATCH (n:Project {{id: {id}}}) DETACH DELETE n RETURN 1 AS r',
@@ -226,11 +353,12 @@ class ProcessNotificationTests(helpers.TestCase):
                 ['r'],
             )
         await self.g.close()
+        _uninstall_stub_plugins()
 
     async def _add_rule(
         self,
         *,
-        handler: str = 'tests.test_notifications.stub_handler',
+        handler: str = 'stub-nocreds#do_thing',
         filter_expression: str = 'true',
         ordinal: int = 1,
         handler_config: str = '{}',
@@ -259,6 +387,41 @@ class ProcessNotificationTests(helpers.TestCase):
         )
         return rule_id
 
+    async def _attach_plugin(
+        self, slug: str, *, plugin_configuration: str | None = None
+    ) -> str:
+        plugin_id = nanoid.generate()
+        self.plugin_ids.append(plugin_id)
+        ts = '2024-01-01T00:00:00+00:00'
+        if plugin_configuration is None:
+            await self.g.execute(
+                'CREATE (p:Plugin {{id: {id}, plugin_slug: {slug},'
+                ' label: {slug}, created_at: {ts}}}) RETURN p',
+                {'id': plugin_id, 'slug': slug, 'ts': ts},
+                ['p'],
+            )
+        else:
+            await self.g.execute(
+                'CREATE (p:Plugin {{id: {id}, plugin_slug: {slug},'
+                ' label: {slug}, created_at: {ts},'
+                ' plugin_configuration: {cfg}}}) RETURN p',
+                {
+                    'id': plugin_id,
+                    'slug': slug,
+                    'ts': ts,
+                    'cfg': plugin_configuration,
+                },
+                ['p'],
+            )
+        await self.g.execute(
+            'MATCH (p:Plugin {{id: {pid}}}),'
+            ' (tps:ThirdPartyService {{slug: {tslug}}})'
+            ' CREATE (tps)-[:HAS_PLUGIN]->(p) RETURN p',
+            {'pid': plugin_id, 'tslug': self.tps_slug},
+            ['p'],
+        )
+        return plugin_id
+
     async def _post(
         self,
         webhook_id: str,
@@ -274,10 +437,6 @@ class ProcessNotificationTests(helpers.TestCase):
             )
 
     async def _create_extra_project(self) -> str:
-        """Create a second Project linked to the test TPS via ``self.ext_id``.
-
-        Returns the new project id. The project is tracked for teardown.
-        """
         project_id = nanoid.generate()
         self.extra_project_ids.append(project_id)
         ts = '2024-01-01T00:00:00+00:00'
@@ -308,19 +467,16 @@ class ProcessNotificationTests(helpers.TestCase):
         ) as cm:
             response = await self._post(nanoid.generate(), {})
         self.assertEqual(204, response.status_code)
-        self.assertEqual([], HANDLER_CALLS)
+        self.assertEqual([], ACTION_CALLS)
         self.assertTrue(any('No records found' in line for line in cm.output))
 
     async def test_no_rules_empty_collect(self) -> None:
-        # Confirms collect() returns [] not None when no WebhookRule
-        # nodes exist
         body = {'repo': {'id': self.ext_id}}
         response = await self._post(self.webhook_id, body)
         self.assertEqual(204, response.status_code)
-        self.assertEqual([], HANDLER_CALLS)
+        self.assertEqual([], ACTION_CALLS)
 
     async def test_no_service_global_webhook_not_implemented(self) -> None:
-        # Remove the IMPLEMENTED_BY edge by using a webhook with no TPS link
         no_tps_webhook_id = nanoid.generate()
         ts = '2024-01-01T00:00:00+00:00'
         await self.g.execute(
@@ -347,7 +503,7 @@ class ProcessNotificationTests(helpers.TestCase):
             ) as cm:
                 response = await self._post(no_tps_webhook_id, {})
             self.assertEqual(204, response.status_code)
-            self.assertEqual([], HANDLER_CALLS)
+            self.assertEqual([], ACTION_CALLS)
             self.assertTrue(
                 any('Global webhooks' in line for line in cm.output)
             )
@@ -366,7 +522,7 @@ class ProcessNotificationTests(helpers.TestCase):
         ) as cm:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(204, response.status_code)
-        self.assertEqual([], HANDLER_CALLS)
+        self.assertEqual([], ACTION_CALLS)
         self.assertTrue(any('no filter matches' in line for line in cm.output))
 
     async def test_handler_called_when_condition_matches(self) -> None:
@@ -374,13 +530,15 @@ class ProcessNotificationTests(helpers.TestCase):
         body = {'repo': {'id': self.ext_id}}
         response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
-        self.assertEqual(1, len(HANDLER_CALLS))
-        org_slug, project_id, received_body, user_id, _ = HANDLER_CALLS[0]
-        self.assertEqual(self.org_slug, org_slug)
-        self.assertEqual(self.proj_id, project_id)
-        self.assertEqual(body, received_body)
-        # No user_subject_selector configured on the IMPLEMENTED_BY edge
-        self.assertIsNone(user_id)
+        self.assertEqual(1, len(ACTION_CALLS))
+        call = ACTION_CALLS[0]
+        ctx = typing.cast('plugin_base.PluginContext', call['ctx'])
+        self.assertEqual(self.org_slug, ctx.org_slug)
+        self.assertEqual(self.proj_id, ctx.project_id)
+        self.assertEqual(body, call['payload'])
+        self.assertEqual({}, call['credentials'])
+        self.assertEqual(self.ext_id, call['external_identifier'])
+        self.assertIsNone(ctx.actor_user_id)
 
     async def test_handler_called_for_each_matching_project(self) -> None:
         await self._add_rule(filter_expression='true')
@@ -388,8 +546,11 @@ class ProcessNotificationTests(helpers.TestCase):
         body = {'repo': {'id': self.ext_id}}
         response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
-        self.assertEqual(2, len(HANDLER_CALLS))
-        project_ids = {call[1] for call in HANDLER_CALLS}
+        self.assertEqual(2, len(ACTION_CALLS))
+        project_ids = {
+            typing.cast('plugin_base.PluginContext', call['ctx']).project_id
+            for call in ACTION_CALLS
+        }
         self.assertEqual({self.proj_id, second_proj_id}, project_ids)
 
     async def test_project_not_found_for_external_id(self) -> None:
@@ -400,10 +561,37 @@ class ProcessNotificationTests(helpers.TestCase):
         ) as cm:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(204, response.status_code)
-        self.assertEqual([], HANDLER_CALLS)
+        self.assertEqual([], ACTION_CALLS)
         self.assertTrue(any('no project found' in line for line in cm.output))
 
-    async def test_invalid_rule_handler_logs_error(self) -> None:
+    async def test_unknown_plugin_slug_logs_error_and_skips(self) -> None:
+        await self._add_rule(handler='no-such-plugin#do_thing')
+        body = {'repo': {'id': self.ext_id}}
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='ERROR'
+        ) as cm:
+            response = await self._post(self.webhook_id, body)
+        # Dispatcher logs and skips the rule; events were recorded so 202.
+        self.assertEqual(202, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(any('Unknown plugin' in line for line in cm.output))
+
+    async def test_unknown_action_name_logs_error_and_skips(self) -> None:
+        await self._add_rule(handler='stub-nocreds#missing_action')
+        body = {'repo': {'id': self.ext_id}}
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='ERROR'
+        ) as cm:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(
+            any('does not expose action' in line for line in cm.output)
+        )
+
+    async def test_invalid_handler_string_fails_rule_validation(self) -> None:
+        # A handler that doesn't match the `#` shape fails WebhookRule
+        # validation, causing the whole batch to be skipped with an error.
         await self._add_rule(handler='does.not.exist.handler')
         body = {'repo': {'id': self.ext_id}}
         with self.assertLogs(
@@ -411,13 +599,68 @@ class ProcessNotificationTests(helpers.TestCase):
         ) as cm:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(204, response.status_code)
-        self.assertEqual([], HANDLER_CALLS)
+        self.assertEqual([], ACTION_CALLS)
         self.assertTrue(
             any('failed to deserialize rules' in line for line in cm.output)
         )
 
+    async def test_invalid_handler_config_logs_and_skips(self) -> None:
+        await self._add_rule(handler_config='not valid json')
+        body = {'repo': {'id': self.ext_id}}
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='ERROR'
+        ) as cm:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(
+            any('Invalid handler_config' in line for line in cm.output)
+        )
+
+    async def test_plugin_requiring_credentials_skipped_when_unattached(
+        self,
+    ) -> None:
+        await self._add_rule(handler='stub-creds#do_thing')
+        body = {'repo': {'id': self.ext_id}}
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='WARNING'
+        ) as cm:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(
+            any(
+                'requires credentials' in line and 'stub-creds' in line
+                for line in cm.output
+            )
+        )
+
+    async def test_plugin_with_credentials_receives_decrypted_blob(
+        self,
+    ) -> None:
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                encrypted = TokenEncryption.get_instance().encrypt(
+                    json.dumps({'api_token': 's3cret'})
+                )
+                await self._attach_plugin(
+                    'stub-creds', plugin_configuration=encrypted
+                )
+                await self._add_rule(handler='stub-creds#do_thing')
+                body = {'repo': {'id': self.ext_id}}
+                response = await self._post(self.webhook_id, body)
+                self.assertEqual(202, response.status_code)
+                self.assertEqual(1, len(ACTION_CALLS))
+                self.assertEqual(
+                    {'api_token': 's3cret'}, ACTION_CALLS[0]['credentials']
+                )
+            finally:
+                TokenEncryption.reset_instance()
+
     async def test_identifier_pointer_not_in_body(self) -> None:
-        # Body is missing /repo/id so JsonPointerException is raised
         with self.assertLogs(
             'imbi_gateway.notifications', level='ERROR'
         ) as cm:
@@ -431,7 +674,6 @@ class ProcessNotificationTests(helpers.TestCase):
         )
 
     async def test_webhook_in_multiple_orgs_fails(self) -> None:
-        # A second BELONGS_TO edge makes the query return 2 rows
         extra_org_id = nanoid.generate()
         ts = '2024-01-01T00:00:00+00:00'
         await self.g.execute(
@@ -467,6 +709,7 @@ class ProcessNotificationTests(helpers.TestCase):
     async def test_invalid_json_body_returns_unprocessable_content(
         self,
     ) -> None:
+        await self._add_rule(filter_expression='true')
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=self.app), base_url='http://test'
         ) as client:
@@ -529,8 +772,9 @@ class ProcessNotificationTests(helpers.TestCase):
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
         mock_lookup.assert_awaited_once_with('github', '12345')
-        self.assertEqual(1, len(HANDLER_CALLS))
-        self.assertEqual('alice@example.com', HANDLER_CALLS[0][3])
+        self.assertEqual(1, len(ACTION_CALLS))
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertEqual('alice@example.com', ctx.actor_user_id)
 
     async def test_user_subject_selector_misses_returns_none(self) -> None:
         await self._add_rule(filter_expression='true')
@@ -548,7 +792,8 @@ class ProcessNotificationTests(helpers.TestCase):
         ):
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
-        self.assertIsNone(HANDLER_CALLS[0][3])
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertIsNone(ctx.actor_user_id)
 
     async def test_user_subject_selector_unresolvable_pointer(self) -> None:
         await self._add_rule(filter_expression='true')
@@ -569,12 +814,12 @@ class ProcessNotificationTests(helpers.TestCase):
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
         mock_lookup.assert_not_awaited()
-        self.assertIsNone(HANDLER_CALLS[0][3])
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertIsNone(ctx.actor_user_id)
 
     async def test_user_subject_selector_resolves_to_empty_string(
         self,
     ) -> None:
-        # An empty subject is treated as "no identity" — no lookup
         await self._add_rule(filter_expression='true')
         await self._set_implemented_by(
             user_subject_selector='/sender/id', identity_plugin_slug='github'
@@ -591,12 +836,10 @@ class ProcessNotificationTests(helpers.TestCase):
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
         mock_lookup.assert_not_awaited()
-        self.assertIsNone(HANDLER_CALLS[0][3])
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertIsNone(ctx.actor_user_id)
 
     async def test_user_subject_selector_no_candidate_plugins(self) -> None:
-        # user_subject_selector resolves, but no edge identity_plugin_slug
-        # and no HAS_PLUGIN edges, so the slug list is empty and the
-        # handler runs without attribution.
         await self._add_rule(filter_expression='true')
         await self._set_implemented_by(user_subject_selector='/sender/id')
         body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
@@ -611,15 +854,15 @@ class ProcessNotificationTests(helpers.TestCase):
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
         mock_lookup.assert_not_awaited()
-        self.assertIsNone(HANDLER_CALLS[0][3])
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertIsNone(ctx.actor_user_id)
 
     async def test_user_resolution_two_distinct_users_logs_error(self) -> None:
         await self._add_rule(filter_expression='true')
         await self._set_implemented_by(user_subject_selector='/sender/id')
-        # Add two identity plugins to the TPS so candidate_plugin_slugs
-        # has two entries that resolve to different users.
         ts = '2024-01-01T00:00:00+00:00'
         plugin_ids = [nanoid.generate(), nanoid.generate()]
+        self.plugin_ids.extend(plugin_ids)
         slugs = ['github', 'gitlab']
         for plugin_id, slug in zip(plugin_ids, slugs, strict=True):
             await self.g.execute(
@@ -636,41 +879,28 @@ class ProcessNotificationTests(helpers.TestCase):
                 ['p'],
             )
 
-        try:
-            body = {'repo': {'id': self.ext_id}, 'sender': {'id': 1}}
-            with (
-                self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
-                unittest.mock.patch.object(
-                    actions.ImbiClient,
-                    'find_user_by_identity',
-                    new=unittest.mock.AsyncMock(
-                        side_effect=['alice@x.com', 'bob@y.com']
-                    ),
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 1}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(
+                    side_effect=['alice@x.com', 'bob@y.com']
                 ),
-                self.assertLogs(
-                    'imbi_gateway.notifications', level='ERROR'
-                ) as cm,
-            ):
-                response = await self._post(self.webhook_id, body)
-            self.assertEqual(202, response.status_code)
-            self.assertIsNone(HANDLER_CALLS[0][3])
-            self.assertTrue(
-                any('multiple Imbi users' in line for line in cm.output)
-            )
-        finally:
-            for plugin_id in plugin_ids:
-                await self.g.execute(
-                    'MATCH (n:Plugin {{id: {id}}})'
-                    ' DETACH DELETE n RETURN 1 AS r',
-                    {'id': plugin_id},
-                    ['r'],
-                )
+            ),
+            self.assertLogs('imbi_gateway.notifications', level='ERROR') as cm,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertIsNone(ctx.actor_user_id)
+        self.assertTrue(
+            any('multiple Imbi users' in line for line in cm.output)
+        )
 
     async def test_handler_exception_is_caught(self) -> None:
-        # Handler raises at dispatch time; exception logged, 202 returned
-        await self._add_rule(
-            handler='tests.test_notifications.raising_stub_handler'
-        )
+        await self._add_rule(handler='stub-nocreds#boom')
         body = {'repo': {'id': self.ext_id}}
         with self.assertLogs(
             'imbi_gateway.notifications', level='ERROR'
@@ -680,7 +910,6 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertTrue(any('Failure in' in line for line in cm.output))
 
     async def test_event_recorded_for_each_matching_project(self) -> None:
-        """Each project that matches the webhook gets one events row."""
         await self._add_rule(filter_expression='true')
         await self._set_implemented_by(event_type_selector='x-github-event')
         second_proj_id = await self._create_extra_project()
@@ -698,14 +927,11 @@ class ProcessNotificationTests(helpers.TestCase):
         assert mock_insert.await_args is not None  # noqa: S101 - test narrowing
         table_arg, events_arg = mock_insert.await_args.args
         self.assertEqual('events', table_arg)
-        # Both matching projects get their own events row
         self.assertEqual(2, len(events_arg))
         self.assertEqual(
             {self.proj_id, second_proj_id},
             {ev.project_id for ev in events_arg},
         )
-        # Per-row contract: type, payload, and metadata are populated the
-        # same way for every fan-out row.
         for ev in events_arg:
             self.assertEqual('deployment_status', ev.type)
             self.assertEqual(body, ev.payload)
@@ -716,8 +942,6 @@ class ProcessNotificationTests(helpers.TestCase):
             )
 
     async def test_event_recorded_when_filter_does_not_match(self) -> None:
-        """Events are recorded for every webhook delivery with a matching
-        project, even when no filter matches and no handler runs."""
         await self._add_rule(filter_expression='false')
         body = {'repo': {'id': self.ext_id}}
         with unittest.mock.patch.object(
@@ -725,7 +949,7 @@ class ProcessNotificationTests(helpers.TestCase):
         ) as mock_insert:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(204, response.status_code)
-        self.assertEqual([], HANDLER_CALLS)
+        self.assertEqual([], ACTION_CALLS)
         mock_insert.assert_awaited_once()
         assert mock_insert.await_args is not None  # noqa: S101 - test narrowing
         table_arg, events_arg = mock_insert.await_args.args
@@ -812,7 +1036,6 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertIn('event:ping', access_line)
 
     async def test_event_insert_failure_does_not_block_handlers(self) -> None:
-        """ClickHouse failures are best-effort; handler runs anyway."""
         await self._add_rule(filter_expression='true')
         body = {'repo': {'id': self.ext_id}}
         with (
@@ -825,7 +1048,7 @@ class ProcessNotificationTests(helpers.TestCase):
         ):
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
-        self.assertEqual(1, len(HANDLER_CALLS))
+        self.assertEqual(1, len(ACTION_CALLS))
         self.assertTrue(
             any(
                 'Failed to record webhook events in ClickHouse' in line
@@ -930,8 +1153,6 @@ class ResolveEventTypeUnitTests(helpers.TestCase):
         )
 
     def test_header_absent_returns_literal_selector(self) -> None:
-        # SonarQube case: no header named "SonarQube Notification" exists;
-        # the selector itself is the stable label.
         self.assertEqual(
             'SonarQube Notification',
             _resolve_event_type('SonarQube Notification', {}, {}),
