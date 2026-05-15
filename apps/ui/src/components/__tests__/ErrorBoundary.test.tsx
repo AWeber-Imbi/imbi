@@ -83,4 +83,21 @@ describe('ErrorBoundary', () => {
     expect(reloadSpy).not.toHaveBeenCalled()
     expect(screen.getByText('Something went wrong')).toBeInTheDocument()
   })
+
+  it('still reloads when sessionStorage.setItem throws', () => {
+    const setItemSpy = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new Error('QuotaExceededError')
+      })
+
+    render(
+      <ErrorBoundary>
+        <Boom message="Failed to fetch dynamically imported module" />
+      </ErrorBoundary>,
+    )
+
+    expect(reloadSpy).toHaveBeenCalledTimes(1)
+    setItemSpy.mockRestore()
+  })
 })

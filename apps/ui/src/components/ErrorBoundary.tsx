@@ -36,7 +36,14 @@ export class ErrorBoundary extends Component<
   componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error('[ErrorBoundary] Render error:', error, info)
     if (CHUNK_LOAD_ERROR_RE.test(error.message) && this.shouldAutoReload()) {
-      window.sessionStorage.setItem(RELOAD_GUARD_KEY, String(Date.now()))
+      try {
+        window.sessionStorage.setItem(RELOAD_GUARD_KEY, String(Date.now()))
+      } catch {
+        // Ignore storage failures (quota, disabled, privacy mode) and still
+        // attempt the reload — recovery matters more than the loop guard, and
+        // a broken `setItem` usually means `getItem` is broken too, which
+        // makes `shouldAutoReload` return false on the next pass anyway.
+      }
       window.location.reload()
     }
   }
