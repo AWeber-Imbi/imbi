@@ -36,6 +36,18 @@
 		reverse_proxy 127.0.0.1:8000
 	}
 
+	@sourcemaps path *.map
+	handle @sourcemaps {
+		@maps_allowed expression `{env.SERVE_SOURCE_MAPS} == "true"`
+		handle @maps_allowed {
+			root * /srv/ui
+			file_server
+		}
+		handle {
+			respond "Not Found" 404
+		}
+	}
+
 	handle {
 		root * /srv/ui
 		try_files {path} /index.html
