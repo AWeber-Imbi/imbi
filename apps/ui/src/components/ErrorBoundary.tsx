@@ -13,6 +13,16 @@ interface ErrorBoundaryState {
   error: Error | null
 }
 
+// Matches the various ways browsers report a failed dynamic `import()` for a
+// hashed chunk that no longer exists on the server (typically after a redeploy
+// while the user has a stale tab open). The MIME-type variant fires when the
+// SPA's index.html is served as a fallback for the missing JS file.
+const CHUNK_LOAD_ERROR_RE =
+  /Loading chunk|Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Expected a JavaScript-or-Wasm module/i
+
+const RELOAD_GUARD_KEY = 'imbi:error-boundary-reloaded-at'
+const RELOAD_GUARD_WINDOW_MS = 10_000
+
 export class ErrorBoundary extends Component<
   ErrorBoundaryProps,
   ErrorBoundaryState
@@ -25,6 +35,10 @@ export class ErrorBoundary extends Component<
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error('[ErrorBoundary] Render error:', error, info)
+    if (CHUNK_LOAD_ERROR_RE.test(error.message) && this.shouldAutoReload()) {
+      window.sessionStorage.setItem(RELOAD_GUARD_KEY, String(Date.now()))
+      window.location.reload()
+    }
   }
 
   render(): ReactNode {
@@ -65,5 +79,20 @@ export class ErrorBoundary extends Component<
 
   reset = (): void => {
     this.setState({ error: null })
+  }
+
+  private shouldAutoReload(): boolean {
+    // Guard against infinite reload loops: only auto-reload if we haven't
+    // already reloaded in the last RELOAD_GUARD_WINDOW_MS. If a fresh
+    // index.html still references missing chunks the user falls through to
+    // the manual fallback UI.
+    try {
+      const last = Number(
+        window.sessionStorage.getItem(RELOAD_GUARD_KEY) ?? '0',
+      )
+      return Date.now() - last > RELOAD_GUARD_WINDOW_MS
+    } catch {
+      return false
+    }
   }
 }
