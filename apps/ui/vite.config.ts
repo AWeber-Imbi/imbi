@@ -34,6 +34,7 @@ export default defineConfig({
         },
       },
     },
+    sourcemap: true,
   },
   esbuild: {
     drop: ['console'],

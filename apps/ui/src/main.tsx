@@ -6,9 +6,12 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import ReactDOM from 'react-dom/client'
 
 import { queryClient } from '@/lib/queryClient'
+import { initSentry } from '@/lib/sentry'
 
 import App from './App.tsx'
 import './index.css'
+
+initSentry()
 
 // Vite emits `vite:preloadError` when a dynamic `import()` for a hashed chunk
 // fails — typically when a redeploy has rotated the chunk hashes while the
