@@ -750,6 +750,9 @@ databases = [
 llm = [
     { name = "anthropic" },
 ]
+sentry = [
+    { name = "sentry-sdk" },
+]
 server = [
     { name = "fastapi" },
     { name = "uvicorn", extra = ["standard"] },
@@ -801,11 +804,12 @@ requires-dist = [
     { name = "pydantic-settings" },
     { name = "pyjwt", specifier = ">=2.10.1" },
     { name = "python-slugify" },
+    { name = "sentry-sdk", marker = "extra == 'sentry'", specifier = ">=2.48.0" },
     { name = "typer", specifier = ">=0.21.1" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.40.0" },
     { name = "valkey", marker = "extra == 'databases'", specifier = ">=6" },
 ]
-provides-extras = ["databases", "llm", "server"]
+provides-extras = ["databases", "llm", "sentry", "server"]
 
 [package.metadata.requires-dev]
 dev = [
