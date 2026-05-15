@@ -27,7 +27,7 @@ dependencies = [
   "fastapi",
   "filetype",
   "httpx>=0.28.1,<1",
-  "imbi-common[databases,llm,server]>=2.4.0",
+  "imbi-common[databases,llm,sentry,server]>=2.4.0",
   "jinja2",
   "jsonpatch>=1.33",
   "nanoid>=2.0.0",
@@ -36,6 +36,7 @@ dependencies = [
   "pyotp>=2.9.0",
   "python-multipart>=0.0.26",
   "qrcode>=8.0",
+  "sentry-sdk>=2.48.0",
   "slowapi==0.1.9",  # Pin: alpha quality, API may change
   "typer",
   "uvicorn",
