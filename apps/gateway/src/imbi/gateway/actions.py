@@ -4,12 +4,9 @@ import typing
 
 import celpy
 import httpx
-import jsonpointer
 import pydantic
-import pydantic_core
 import pydantic_settings
-from pydantic import json_schema
-from pydantic_core import core_schema
+from imbi_common import json_pointer
 
 from imbi_gateway import helpers, version
 
@@ -26,47 +23,11 @@ class ActionSettings(pydantic_settings.BaseSettings):
 LOGGER = logging.getLogger(__name__)
 
 
-class _JsonPointerImplementation:
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls,
-        _source_type: typing.Any,  # noqa: ANN401
-        _handler: pydantic.GetCoreSchemaHandler,
-    ) -> pydantic_core.CoreSchema:
-        return core_schema.no_info_plain_validator_function(
-            cls._validate, serialization=core_schema.to_string_ser_schema()
-        )
-
-    @classmethod
-    def __get_pydantic_json_schema__(
-        cls,
-        _schema: pydantic_core.CoreSchema,
-        _handler: pydantic.GetJsonSchemaHandler,
-    ) -> json_schema.JsonSchemaValue:
-        return {'type': 'string', 'format': 'json-pointer'}
-
-    @staticmethod
-    def _validate(value: object) -> jsonpointer.JsonPointer:
-        if isinstance(value, jsonpointer.JsonPointer):
-            return value
-        if isinstance(value, str):
-            try:
-                return jsonpointer.JsonPointer(value)
-            except jsonpointer.JsonPointerException as e:
-                raise ValueError(str(e)) from e
-        raise ValueError(
-            f'Expected a string or JsonPointer, got {type(value)}'
-        )
-
-
-JsonPointer = typing.Annotated[
-    jsonpointer.JsonPointer, _JsonPointerImplementation
-]
-
-
 class UpdateProjectRule(pydantic.BaseModel):
-    path: JsonPointer
-    from_: typing.Annotated[JsonPointer, pydantic.Field(alias='from')]
+    path: json_pointer.JsonPointer
+    from_: typing.Annotated[
+        json_pointer.JsonPointer, pydantic.Field(alias='from')
+    ]
 
 
 UpdateProjectRules = pydantic.TypeAdapter(list[UpdateProjectRule])
@@ -167,7 +128,7 @@ class ImbiClient(httpx.AsyncClient):
 class CreateReleaseConfig(pydantic.BaseModel):
     """Validates ``handler_config`` for :func:`create_release`."""
 
-    title_selector: JsonPointer
+    title_selector: json_pointer.JsonPointer
     version_expression: str
     committish_expression: str
 
@@ -175,10 +136,10 @@ class CreateReleaseConfig(pydantic.BaseModel):
 class AddDeploymentEventConfig(pydantic.BaseModel):
     """Validates ``handler_config`` for :func:`add_deployment_event`."""
 
-    environment_selector: JsonPointer
+    environment_selector: json_pointer.JsonPointer
     version_expression: str
-    status_selector: JsonPointer
-    note_selector: JsonPointer | None = None
+    status_selector: json_pointer.JsonPointer
+    note_selector: json_pointer.JsonPointer | None = None
 
 
 # Raw deployment-status state -> Imbi _DEPLOYMENT_STATUS literal.
