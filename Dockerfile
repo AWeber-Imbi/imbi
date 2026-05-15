@@ -53,7 +53,12 @@ RUN uv venv --python $(which python3) $UV_PROJECT_DIRECTORY \
 FROM caddy:${CADDY_VERSION} AS caddy
 
 # ---------------------------------------------------------------------------
-# Stage 4: Final runtime image
+# Stage 4: Sentry CLI binary
+# ---------------------------------------------------------------------------
+FROM getsentry/sentry-cli AS sentry-cli
+
+# ---------------------------------------------------------------------------
+# Stage 5: Final runtime image
 # ---------------------------------------------------------------------------
 FROM python:${PYTHON_VERSION}-slim AS runtime
 
@@ -70,6 +75,9 @@ COPY --from=python-builder --chown=imbi:users /app/ /app/
 
 # Copy Caddy binary
 COPY --from=caddy /usr/bin/caddy /usr/local/bin/caddy
+
+# Copy Sentry CLI binary
+COPY --from=sentry-cli /bin/sentry-cli /usr/local/bin/sentry-cli
 
 # Copy Caddyfile
 COPY Caddyfile /etc/caddy/Caddyfile

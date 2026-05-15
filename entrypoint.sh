@@ -98,6 +98,34 @@ esac
 check_errors "service '$IMBI_SERVICE'"
 
 # --------------------------------------------------------------------------
+# Optional: upload source maps to Sentry
+# --------------------------------------------------------------------------
+# Runs when SENTRY_AUTH_TOKEN, SENTRY_ORG, and SENTRY_PROJECT are all set.
+# SENTRY_RELEASE defaults to unversioned if not provided.
+# Maps remain in the image; whether they are served is controlled by
+# the SERVE_SOURCE_MAPS env var (Caddy returns 404 unless it is "true").
+
+upload_sourcemaps() {
+    if [ -z "${SENTRY_AUTH_TOKEN:-}" ] || \
+       [ -z "${SENTRY_ORG:-}" ] || \
+       [ -z "${SENTRY_PROJECT:-}" ]; then
+        return
+    fi
+    echo "Uploading source maps to Sentry..."
+    local args="--org $SENTRY_ORG --project $SENTRY_PROJECT"
+    if [ -n "${SENTRY_RELEASE:-}" ]; then
+        args="$args --release $SENTRY_RELEASE"
+    fi
+    if [ -n "${SENTRY_URL:-}" ]; then
+        args="$args --url $SENTRY_URL"
+    fi
+    sentry-cli sourcemaps upload $args /srv/ui/assets/
+    echo "Source maps uploaded."
+}
+
+upload_sourcemaps
+
+# --------------------------------------------------------------------------
 # Service startup
 # --------------------------------------------------------------------------
 
