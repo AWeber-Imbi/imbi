@@ -43,6 +43,9 @@ databases = [
 llm = [
   "anthropic>=0.40",
 ]
+sentry = [
+  "sentry-sdk>=2.48.0",
+]
 server = [
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.40.0",
