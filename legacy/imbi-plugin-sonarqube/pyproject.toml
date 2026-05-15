@@ -1,0 +1,116 @@
+[project]
+name = "imbi-plugin-sonarqube"
+version = "0.0.0"
+description = "SonarQube webhook-action plugin for Imbi"
+readme = "README.md"
+requires-python = ">=3.14"
+license = { text = "BSD-3-Clause" }
+authors = [{ name = "Dave Shawley", email = "daves@aweber.com" }]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+  "httpx>=0.27",
+  "imbi-common~=2.5",
+  "pydantic>=2",
+]
+
+[project.entry-points."imbi.plugins"]
+sonarqube = "imbi_plugin_sonarqube.plugin:SonarqubePlugin"
+
+[dependency-groups]
+dev = [
+  "coverage[toml]",
+  "imbi-common[server,databases]~=2.1",
+  "pre-commit",
+  "pyrefly~=1.0",
+  "pytest",
+  "pytest-asyncio",
+  "respx",
+  "ruff~=0.15.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.coverage.report]
+exclude_also = ["typing.TYPE_CHECKING"]
+fail_under = 90
+show_missing = true
+
+[tool.coverage.run]
+branch = true
+source = ["src/imbi_plugin_sonarqube"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/imbi_plugin_sonarqube"]
+
+[tool.pyrefly]
+min-severity = "warn"
+preset = "strict"
+
+[tool.pyrefly.errors]
+missing-override-decorator = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 79
+target-version = "py314"
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint]
+select = [
+  "ASYNC",
+  "B",
+  "BLE",
+  "C4",
+  "C90",
+  "DTZ",
+  "E",
+  "F",
+  "FURB",
+  "G",
+  "I",
+  "N",
+  "Q",
+  "RUF",
+  "S",
+  "T20",
+  "UP",
+  "W",
+]
+ignore = [
+  "ASYNC109",
+  "N818",
+  "RSE",
+  "S105",
+  "TRY003",
+  "TRY400",
+  "UP047",
+]
+flake8-quotes = { inline-quotes = "single" }
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S"]
+
+[tool.uv]
+constraint-dependencies = ["clickhouse-connect>=0.12rc1"]
+default-groups = ["dev"]
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true
