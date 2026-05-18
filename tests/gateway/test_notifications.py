@@ -635,6 +635,59 @@ class ProcessNotificationTests(helpers.TestCase):
             )
         )
 
+    async def test_plugin_actions_failure_logs_and_skips_rule(self) -> None:
+        # If a plugin's ``actions()`` raises (third-party code we cannot
+        # trust), the dispatcher logs and skips that rule instead of
+        # aborting delivery for every sibling rule.
+        def _boom(
+            cls: type[StubNoCredsPlugin],
+        ) -> list[plugin_base.ActionDescriptor]:
+            del cls
+            raise RuntimeError('boom in actions()')
+
+        await self._add_rule(handler='stub-nocreds#do_thing')
+        body = {'repo': {'id': self.ext_id}}
+        with (
+            unittest.mock.patch.object(
+                StubNoCredsPlugin, 'actions', classmethod(_boom)
+            ),
+            self.assertLogs('imbi_gateway.notifications', level='ERROR') as cm,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(
+            any(
+                'raised while enumerating actions' in line
+                and 'stub-nocreds' in line
+                for line in cm.output
+            )
+        )
+
+    async def test_plugin_skipped_when_credentials_cannot_be_loaded(
+        self,
+    ) -> None:
+        # A plugin row whose ``plugin_configuration`` cannot be decrypted
+        # is treated like an unattached plugin -- the rule is skipped
+        # rather than invoked with an empty credentials dict.
+        await self._attach_plugin(
+            'stub-creds', plugin_configuration='not-a-valid-ciphertext'
+        )
+        await self._add_rule(handler='stub-creds#do_thing')
+        body = {'repo': {'id': self.ext_id}}
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='WARNING'
+        ) as cm:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(
+            any(
+                'none could be loaded' in line and 'stub-creds' in line
+                for line in cm.output
+            )
+        )
+
     async def test_plugin_with_credentials_receives_decrypted_blob(
         self,
     ) -> None:

@@ -364,9 +364,19 @@ def _resolve_rule_handler(
             rule.handler,
         )
         return None
-    descriptors = [
-        d for d in entry.handler_cls.actions() if d.name == rule.action_name
-    ]
+    try:
+        descriptors = [
+            d
+            for d in entry.handler_cls.actions()
+            if d.name == rule.action_name
+        ]
+    except Exception:
+        LOGGER.exception(
+            'Plugin %r raised while enumerating actions; skipping rule %r',
+            rule.plugin_slug,
+            rule.handler,
+        )
+        return None
     if not descriptors:
         LOGGER.error(
             'Plugin %r does not expose action %r',
@@ -455,7 +465,15 @@ def _credentials_for_plugin(
             entry.manifest.slug,
         )
         return None
-    return _decrypt_plugin_credentials(record)
+    credentials = _decrypt_plugin_credentials(record)
+    if not credentials:
+        LOGGER.warning(
+            'Plugin %r requires credentials but none could be loaded;'
+            ' skipping rule',
+            entry.manifest.slug,
+        )
+        return None
+    return credentials
 
 
 def _extract_subject(
