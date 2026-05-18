@@ -405,6 +405,20 @@ class CreateReleaseTests(helpers.TestCase):
                 'org', 'proj', _DEPLOYMENT_BODY, None, config
             )
 
+    async def test_invalid_committish_expression_propagates(self) -> None:
+        config = (
+            '{"title_selector": "/deployment/ref",'
+            ' "version_expression": "deployment.ref",'
+            ' "committish_expression": "this is not valid CEL"}'
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.assertRaises(celpy.celparser.CELParseError),
+        ):
+            await actions.create_release(
+                'org', 'proj', _DEPLOYMENT_BODY, None, config
+            )
+
     async def test_409_is_treated_as_idempotent(self) -> None:
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
