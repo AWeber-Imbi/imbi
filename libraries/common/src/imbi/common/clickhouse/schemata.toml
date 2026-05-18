@@ -46,6 +46,64 @@ ORDER BY (project_id, id);
 """
 enabled = true
 
+[pull_requests]
+query = """
+CREATE TABLE IF NOT EXISTS pull_requests (
+    project_id      LowCardinality(String),
+    pr_id           String,
+    pr_number       UInt32,
+    title           String,
+    url             String,
+    state           LowCardinality(String),
+    author          String,
+    draft           Bool,
+    merged          Bool,
+    created_at      DateTime64(3, 'UTC'),
+    updated_at      DateTime64(3, 'UTC'),
+    merged_at       Nullable(DateTime64(3, 'UTC')),
+    additions       UInt32,
+    deletions       UInt32,
+    changed_files   UInt32,
+    recorded_at     DateTime64(3, 'UTC')
+) ENGINE = ReplacingMergeTree(recorded_at)
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (project_id, pr_id);
+"""
+enabled = true
+
+[pull_request_mv]
+query = """
+CREATE MATERIALIZED VIEW IF NOT EXISTS imbi.pull_requests_mv
+TO imbi.pull_requests AS
+SELECT
+    project_id,
+    CAST(payload.pull_request.id, 'String')                         AS pr_id,
+    CAST(payload.pull_request.number, 'UInt32')                     AS pr_number,
+    CAST(payload.pull_request.title, 'String')                      AS title,
+    CAST(payload.pull_request.html_url, 'String')                   AS url,
+    CAST(payload.pull_request.state, 'String')                      AS state,
+    CAST(payload.pull_request.user.login, 'String')                 AS author,
+    CAST(payload.pull_request.draft, 'Bool')                        AS draft,
+    CAST(payload.pull_request.merged, 'Bool')                       AS merged,
+    parseDateTime64BestEffort(
+        CAST(payload.pull_request.created_at, 'String'))            AS created_at,
+    parseDateTime64BestEffort(
+        CAST(payload.pull_request.updated_at, 'String'))            AS updated_at,
+    if(isNotNull(payload.pull_request.merged_at),
+        parseDateTime64BestEffort(
+            CAST(payload.pull_request.merged_at, 'String')),
+        NULL)                                                        AS merged_at,
+    CAST(payload.pull_request.additions, 'UInt32')                  AS additions,
+    CAST(payload.pull_request.deletions, 'UInt32')                  AS deletions,
+    CAST(payload.pull_request.changed_files, 'UInt32')              AS changed_files,
+    recorded_at
+FROM imbi.events
+WHERE type = 'pull_request'
+  AND third_party_service = 'github-enterprise-cloud'
+  AND CAST(payload.action, 'String') IN ('opened', 'closed', 'reopened');
+"""
+enabled = true
+
 [score_history]
 query = """
 CREATE TABLE IF NOT EXISTS score_history (
