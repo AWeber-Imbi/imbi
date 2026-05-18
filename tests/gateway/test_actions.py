@@ -182,7 +182,8 @@ _STATUS_BODY: dict[str, object] = {
 
 _CREATE_RELEASE_CONFIG = (
     '{"title_selector": "/deployment/ref",'
-    ' "version_expression": "deployment.ref"}'
+    ' "version_expression": "deployment.ref",'
+    ' "committish_expression": "substring(deployment.sha, 0, 7)"}'
 )
 _DEPLOYMENT_EVENT_CONFIG = (
     '{"environment_selector": "/deployment_status/environment",'
@@ -214,7 +215,8 @@ class CreateReleaseTests(helpers.TestCase):
         org_arg, proj_arg, body_arg = mock_create.call_args.args
         self.assertEqual('org', org_arg)
         self.assertEqual('proj', proj_arg)
-        self.assertEqual('v1.2.3', body_arg['version'])
+        self.assertEqual('v1.2.3', body_arg['tag'])
+        self.assertEqual('abcdef1', body_arg['committish'])
         self.assertEqual('v1.2.3', body_arg['title'])
         self.assertEqual('alice@example.com', body_arg['created_by'])
         self.assertNotIn('links', body_arg)
@@ -239,7 +241,8 @@ class CreateReleaseTests(helpers.TestCase):
     async def test_title_selector_used(self) -> None:
         config = (
             '{"title_selector": "/deployment/description",'
-            ' "version_expression": "deployment.ref"}'
+            ' "version_expression": "deployment.ref",'
+            ' "committish_expression": "substring(deployment.sha, 0, 7)"}'
         )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
@@ -256,7 +259,7 @@ class CreateReleaseTests(helpers.TestCase):
 
         body_arg = mock_create.call_args.args[2]
         self.assertEqual('Deployed v1.2.3 to production', body_arg['title'])
-        self.assertEqual('v1.2.3', body_arg['version'])
+        self.assertEqual('v1.2.3', body_arg['tag'])
 
     async def test_version_expression_evaluated(self) -> None:
         # Same shape as the feature-file example (ref when it looks
@@ -272,6 +275,7 @@ class CreateReleaseTests(helpers.TestCase):
                     ') ? deployment.ref'
                     " : 'sha-' + deployment.sha"
                 ),
+                'committish_expression': 'substring(deployment.sha, 0, 7)',
             }
         )
         with (
@@ -292,7 +296,7 @@ class CreateReleaseTests(helpers.TestCase):
                 config,
             )
             self.assertEqual(
-                'sha-abcdef1234', mock_create.call_args.args[2]['version']
+                'sha-abcdef1234', mock_create.call_args.args[2]['tag']
             )
 
             # Semver-style ref -> takes the deployment.ref branch.
@@ -303,7 +307,7 @@ class CreateReleaseTests(helpers.TestCase):
                 None,
                 config,
             )
-            self.assertEqual('1.2.3', mock_create.call_args.args[2]['version'])
+            self.assertEqual('1.2.3', mock_create.call_args.args[2]['tag'])
 
     async def test_substring_function_available(self) -> None:
         # `substring(s, start, end)` for trimming a git sha to its
@@ -313,12 +317,14 @@ class CreateReleaseTests(helpers.TestCase):
             {
                 'title_selector': '/deployment/ref',
                 'version_expression': 'substring(deployment.sha, 0, 7)',
+                'committish_expression': 'substring(deployment.sha, 0, 7)',
             }
         )
         method_config = json.dumps(
             {
                 'title_selector': '/deployment/ref',
                 'version_expression': 'deployment.sha.substring(0, 7)',
+                'committish_expression': 'deployment.sha.substring(0, 7)',
             }
         )
         with (
@@ -337,9 +343,7 @@ class CreateReleaseTests(helpers.TestCase):
                 None,
                 config,
             )
-            self.assertEqual(
-                'abcdef1', mock_create.call_args.args[2]['version']
-            )
+            self.assertEqual('abcdef1', mock_create.call_args.args[2]['tag'])
 
             await actions.create_release(
                 'org',
@@ -348,15 +352,14 @@ class CreateReleaseTests(helpers.TestCase):
                 None,
                 method_config,
             )
-            self.assertEqual(
-                'abcdef1', mock_create.call_args.args[2]['version']
-            )
+            self.assertEqual('abcdef1', mock_create.call_args.args[2]['tag'])
 
     async def test_substring_with_only_start(self) -> None:
         config = json.dumps(
             {
                 'title_selector': '/deployment/ref',
                 'version_expression': 'deployment.sha.substring(8)',
+                'committish_expression': 'substring(deployment.sha, 0, 7)',
             }
         )
         with (
@@ -375,9 +378,7 @@ class CreateReleaseTests(helpers.TestCase):
                 None,
                 config,
             )
-            self.assertEqual(
-                '34567890', mock_create.call_args.args[2]['version']
-            )
+            self.assertEqual('34567890', mock_create.call_args.args[2]['tag'])
 
     async def test_invalid_handler_config_raises_validation_error(
         self,
@@ -393,7 +394,22 @@ class CreateReleaseTests(helpers.TestCase):
     async def test_invalid_version_expression_propagates(self) -> None:
         config = (
             '{"title_selector": "/deployment/ref",'
-            ' "version_expression": "this is not valid CEL"}'
+            ' "version_expression": "this is not valid CEL",'
+            ' "committish_expression": "substring(deployment.sha, 0, 7)"}'
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.assertRaises(celpy.celparser.CELParseError),
+        ):
+            await actions.create_release(
+                'org', 'proj', _DEPLOYMENT_BODY, None, config
+            )
+
+    async def test_invalid_committish_expression_propagates(self) -> None:
+        config = (
+            '{"title_selector": "/deployment/ref",'
+            ' "version_expression": "deployment.ref",'
+            ' "committish_expression": "this is not valid CEL"}'
         )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
@@ -648,13 +664,11 @@ class ImbiClientCreateReleaseTests(helpers.TestCase):
             ) as mock_post,
         ):
             async with actions.ImbiClient() as client:
-                await client.create_release(
-                    'myorg', 'proj-42', {'version': 'v1'}
-                )
+                await client.create_release('myorg', 'proj-42', {'tag': 'v1'})
 
         mock_post.assert_called_once_with(
             '/organizations/myorg/projects/proj-42/releases/',
-            json={'version': 'v1'},
+            json={'tag': 'v1'},
         )
 
     async def test_409_response_does_not_log_warning(self) -> None:
