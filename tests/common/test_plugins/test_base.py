@@ -1,6 +1,8 @@
 import datetime
 import unittest
 
+import pydantic
+
 import imbi_common.plugins.base as plugin_base
 from imbi_common.plugins.base import (
     AuthorizationRequest,
@@ -549,36 +551,107 @@ class PluginManifestWebhookTypeTestCase(unittest.TestCase):
         self.assertEqual(manifest.credentials[0].name, 'api_token')
 
 
+async def _sample_action(
+    *,
+    ctx,
+    credentials,
+    external_identifier,
+    action_config,
+    payload,
+):
+    _ = (ctx, credentials, external_identifier, action_config, payload)
+
+
+class _SampleActionConfig(pydantic.BaseModel):
+    pass
+
+
+class ActionDescriptorTestCase(unittest.TestCase):
+    callable_path = 'tests.test_plugins.test_base:_sample_action'
+    config_path = 'tests.test_plugins.test_base:_SampleActionConfig'
+
+    def test_descriptor_resolves_import_strings(self) -> None:
+        descriptor = plugin_base.ActionDescriptor(
+            name='do_thing',
+            label='Do Thing',
+            description='Sample action',
+            callable=self.callable_path,  # type: ignore[arg-type]
+            config_model=self.config_path,  # type: ignore[arg-type]
+        )
+        self.assertEqual(descriptor.name, 'do_thing')
+        self.assertEqual(descriptor.label, 'Do Thing')
+        self.assertIs(descriptor.callable, _sample_action)
+        self.assertIs(descriptor.config_model, _SampleActionConfig)
+
+    def test_descriptor_defaults_description_to_none(self) -> None:
+        descriptor = plugin_base.ActionDescriptor(
+            name='do_thing',
+            label='Do Thing',
+            callable=self.callable_path,  # type: ignore[arg-type]
+            config_model=self.config_path,  # type: ignore[arg-type]
+        )
+        self.assertIsNone(descriptor.description)
+
+    def test_descriptor_rejects_bad_name(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            plugin_base.ActionDescriptor(
+                name='Bad-Name',
+                label='Do Thing',
+                callable=self.callable_path,  # type: ignore[arg-type]
+                config_model=self.config_path,  # type: ignore[arg-type]
+            )
+
+    def test_descriptor_rejects_unresolvable_callable(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            plugin_base.ActionDescriptor(
+                name='do_thing',
+                label='Do Thing',
+                callable='does.not.exist:nope',  # type: ignore[arg-type]
+                config_model=self.config_path,  # type: ignore[arg-type]
+            )
+
+    def test_descriptor_rejects_unresolvable_config_model(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            plugin_base.ActionDescriptor(
+                name='do_thing',
+                label='Do Thing',
+                callable=self.callable_path,  # type: ignore[arg-type]
+                config_model='does.not.exist:Nope',  # type: ignore[arg-type]
+            )
+
+
 class WebhookActionPluginTestCase(unittest.TestCase):
-    def test_subclass_must_implement_run_action(self) -> None:
+    def test_subclass_must_implement_actions(self) -> None:
         class _IncompleteWebhook(plugin_base.WebhookActionPlugin):
             pass
 
         with self.assertRaises(TypeError):
             _IncompleteWebhook()  # type: ignore[abstract]
 
-    def test_concrete_subclass_instantiates(self) -> None:
-        class _FakeWebhook(plugin_base.WebhookActionPlugin):
-            async def run_action(  # type: ignore[override]
-                self,
-                ctx,
-                credentials,
-                external_identifier,
-                action,
-                action_config,
-                payload,
-            ):
-                _ = (
-                    ctx,
-                    credentials,
-                    external_identifier,
-                    action,
-                    action_config,
-                    payload,
-                )
+    def test_concrete_subclass_returns_catalog(self) -> None:
+        callable_path = 'tests.test_plugins.test_base:_sample_action'
+        config_path = 'tests.test_plugins.test_base:_SampleActionConfig'
 
-        _FakeWebhook.manifest = plugin_base.PluginManifest(
-            slug='wh', name='Webhook plugin', plugin_type='webhook'
-        )
-        instance = _FakeWebhook()
-        self.assertEqual(instance.manifest.slug, 'wh')
+        class _FakeWebhook(plugin_base.WebhookActionPlugin):
+            manifest = plugin_base.PluginManifest(
+                slug='wh', name='Webhook plugin', plugin_type='webhook'
+            )
+
+            @classmethod
+            def actions(cls) -> list[plugin_base.ActionDescriptor]:
+                return [
+                    plugin_base.ActionDescriptor(
+                        name='do_thing',
+                        label='Do Thing',
+                        callable=callable_path,  # type: ignore[arg-type]
+                        config_model=config_path,  # type: ignore[arg-type]
+                    )
+                ]
+
+        descriptors = _FakeWebhook.actions()
+        self.assertEqual(len(descriptors), 1)
+        self.assertEqual(descriptors[0].name, 'do_thing')
+        self.assertIs(descriptors[0].callable, _sample_action)
+        self.assertIs(descriptors[0].config_model, _SampleActionConfig)
+        # Plugin is still instantiable for parity with other plugin types.
+        self.assertIsInstance(_FakeWebhook(), plugin_base.WebhookActionPlugin)

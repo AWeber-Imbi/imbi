@@ -1,6 +1,7 @@
 """Plugin base classes and shared data models."""
 
 import abc
+import collections.abc
 import datetime
 import typing
 
@@ -798,46 +799,93 @@ class LifecyclePlugin(abc.ABC):
 # ---------------------------------------------------------------------------
 
 
+#: Action callable contract. Webhook action implementations are
+#: ``async`` functions invoked by the host with a uniform keyword-only
+#: signature: ``ctx`` (standard :class:`PluginContext`),
+#: ``credentials`` (decrypted credential blob, ``{}`` when the plugin
+#: declares none), ``external_identifier`` (the value resolved by the
+#: gateway from ``IMPLEMENTED_BY.identifier_selector`` -- pass-through
+#: as an empty string when not in play), ``action_config`` (a
+#: **pre-validated** instance of the action's
+#: :attr:`ActionDescriptor.config_model`, never a raw JSON string), and
+#: ``payload`` (the raw webhook body).
+WebhookActionCallable = collections.abc.Callable[
+    ...,
+    collections.abc.Awaitable[None],
+]
+
+
+class ActionDescriptor(pydantic.BaseModel):
+    """Describes a single action exposed by a :class:`WebhookActionPlugin`.
+
+    Plugins return a list of these from :meth:`WebhookActionPlugin.actions`
+    so the host can:
+
+    1. Look the action up by ``name`` after parsing ``WebhookRule.handler``
+       as ``"<plugin_slug>#<action_name>"``.
+    2. Resolve :attr:`callable` lazily via ``pydantic.ImportString`` and
+       invoke it with the uniform :data:`WebhookActionCallable` signature.
+    3. Resolve :attr:`config_model` to validate the rule's
+       ``handler_config`` JSON blob *before* dispatching, and to surface
+       :meth:`pydantic.BaseModel.model_json_schema` to the rule editor UI.
+
+    ``label`` and ``description`` are operator-facing text. The UI pairs
+    them with the JSON Schema derived from ``config_model`` to render
+    the rule editor; no additional per-field metadata is needed on the
+    descriptor itself because pydantic ``Field(...)`` annotations on
+    the config model fields already flow through to the schema.
+    """
+
+    name: str = pydantic.Field(
+        pattern=r'^[a-z][a-z0-9_]*$',
+        min_length=1,
+        description=(
+            'Stable action key used in WebhookRule.handler after the '
+            "'#' separator. Must be unique within a single plugin."
+        ),
+    )
+    label: str = pydantic.Field(
+        min_length=1,
+        description='Short operator-facing title shown in the rule editor.',
+    )
+    description: str | None = pydantic.Field(
+        default=None,
+        description='Optional operator-facing help text.',
+    )
+    callable: pydantic.ImportString[WebhookActionCallable]
+    config_model: pydantic.ImportString[type[pydantic.BaseModel]]
+
+
 class WebhookActionPlugin(abc.ABC):
     """Base class for webhook-action plugins.
 
     Webhook action plugins declare a manifest (slug, credentials,
     optional configuration options) so operators can install and
-    configure them like any other plugin.  The host (``imbi-gateway``)
-    parses ``WebhookRule.handler`` as ``"<plugin_slug>:<action>"``,
-    looks the plugin up in the registry, fetches the decrypted
-    per-instance credentials, builds a :class:`PluginContext`, and
-    calls :meth:`run_action`.
+    configure them like any other plugin, and advertise a static
+    catalog of actions through :meth:`actions`. The host
+    (``imbi-gateway``) parses ``WebhookRule.handler`` as
+    ``"<plugin_slug>#<action_name>"``, looks the plugin up in the
+    registry, picks the matching :class:`ActionDescriptor`, validates
+    the rule's ``handler_config`` against
+    :attr:`ActionDescriptor.config_model`, and calls
+    :attr:`ActionDescriptor.callable` with the uniform signature
+    captured in :data:`WebhookActionCallable`.
 
-    Implementations dispatch on the ``action`` parameter; each named
-    action is one branch of webhook behaviour (e.g. a SonarQube
-    plugin might expose ``'update_project_from_webhook'``).
+    The plugin class itself carries no runtime dispatch logic -- the
+    callable lives wherever the descriptor points (typically the
+    plugin's own ``actions`` submodule).
     """
 
     manifest: PluginManifest
 
+    @classmethod
     @abc.abstractmethod
-    async def run_action(
-        self,
-        ctx: PluginContext,
-        credentials: dict[str, str],
-        external_identifier: str,
-        action: str,
-        action_config: str,
-        payload: object,
-    ) -> None:
-        """Run the named webhook action.
+    def actions(cls) -> list[ActionDescriptor]:
+        """Return the static catalog of actions this plugin exposes.
 
-        Arguments:
-            ctx: standard plugin context (org/project/team slugs, etc.).
-            credentials: decrypted plugin credentials keyed by manifest
-                ``CredentialField.name``.
-            external_identifier: the value the gateway resolved out of
-                the inbound payload via ``IMPLEMENTED_BY.identifier_selector``
-                (e.g. a SonarQube ``/project/key``).
-            action: the action name parsed from ``WebhookRule.handler``
-                after the ``:`` separator.
-            action_config: opaque per-rule JSON config; the implementation
-                is responsible for validation.
-            payload: the raw webhook body.
+        Implementations should return a fresh list each call so callers
+        can mutate the result safely. The host validates each
+        descriptor's ``callable`` and ``config_model`` ImportStrings at
+        construction time, so misconfigured paths fail loud during
+        registry load rather than at request time.
         """

@@ -1,6 +1,8 @@
 import unittest
 import unittest.mock
 
+import pydantic
+
 from imbi_common.plugins import base, registry
 from imbi_common.plugins.errors import PluginNotFoundError
 
@@ -424,44 +426,65 @@ class LoadPluginsLifecycleTestCase(unittest.TestCase):
         _reset_registry()
 
 
+async def _sample_webhook_action(
+    *, ctx, credentials, external_identifier, action_config, payload
+):
+    _ = (ctx, credentials, external_identifier, action_config, payload)
+
+
+class _SampleWebhookConfig(pydantic.BaseModel):
+    pass
+
+
+_WEBHOOK_CALLABLE_PATH = (
+    'tests.test_plugins.test_registry:_sample_webhook_action'
+)
+_WEBHOOK_CONFIG_PATH = 'tests.test_plugins.test_registry:_SampleWebhookConfig'
+
+
+def _make_webhook_descriptor(name: str = 'do_thing') -> base.ActionDescriptor:
+    return base.ActionDescriptor(
+        name=name,
+        label=name.replace('_', ' ').title(),
+        callable=_WEBHOOK_CALLABLE_PATH,  # type: ignore[arg-type]
+        config_model=_WEBHOOK_CONFIG_PATH,  # type: ignore[arg-type]
+    )
+
+
+def _make_webhook_plugin_cls(
+    slug: str,
+    descriptors: list[base.ActionDescriptor],
+) -> type[base.WebhookActionPlugin]:
+    manifest = base.PluginManifest(
+        slug=slug,
+        name='Hook Plugin',
+        plugin_type='webhook',
+        credentials=[
+            base.CredentialField(name='api_token', label='API Token')
+        ],
+    )
+
+    class _FakeWebhook(base.WebhookActionPlugin):
+        @classmethod
+        def actions(cls) -> list[base.ActionDescriptor]:
+            return list(descriptors)
+
+    _FakeWebhook.manifest = manifest  # type: ignore[attr-defined]
+    return _FakeWebhook
+
+
 class LoadPluginsWebhookTestCase(unittest.TestCase):
     def setUp(self) -> None:
         _reset_registry()
 
     def test_load_webhook_plugin_round_trip(self) -> None:
-        manifest = base.PluginManifest(
-            slug='hook',
-            name='Hook Plugin',
-            plugin_type='webhook',
-            credentials=[
-                base.CredentialField(name='api_token', label='API Token')
-            ],
+        cls = _make_webhook_plugin_cls(
+            'hook', [_make_webhook_descriptor('do_thing')]
         )
-
-        class _FakeWebhook(base.WebhookActionPlugin):
-            async def run_action(  # type: ignore[override]
-                self,
-                ctx,
-                credentials,
-                external_identifier,
-                action,
-                action_config,
-                payload,
-            ):
-                _ = (
-                    ctx,
-                    credentials,
-                    external_identifier,
-                    action,
-                    action_config,
-                    payload,
-                )
-
-        _FakeWebhook.manifest = manifest  # type: ignore[attr-defined]
 
         ep = unittest.mock.MagicMock()
         ep.name = 'hook'
-        ep.load.return_value = _FakeWebhook
+        ep.load.return_value = cls
         ep.dist.name = 'imbi-plugin-hook'
         ep.dist.version = '1.0'
 
@@ -472,7 +495,7 @@ class LoadPluginsWebhookTestCase(unittest.TestCase):
 
         self.assertIn('hook', result.loaded)
         entry = registry.get_plugin('hook')
-        self.assertIs(entry.handler_cls, _FakeWebhook)
+        self.assertIs(entry.handler_cls, cls)
         self.assertEqual(entry.manifest.plugin_type, 'webhook')
 
     def test_load_webhook_plugin_type_mismatch(self) -> None:
@@ -500,6 +523,147 @@ class LoadPluginsWebhookTestCase(unittest.TestCase):
 
         self.assertIn('mis-hook', result.errors)
         self.assertEqual(result.loaded, [])
+
+    def test_load_webhook_plugin_with_empty_catalog_warns_but_loads(
+        self,
+    ) -> None:
+        cls = _make_webhook_plugin_cls('inert', [])
+
+        ep = unittest.mock.MagicMock()
+        ep.name = 'inert'
+        ep.load.return_value = cls
+        ep.dist.name = 'pkg'
+        ep.dist.version = '1.0'
+
+        with (
+            unittest.mock.patch(
+                'importlib.metadata.entry_points', return_value=[ep]
+            ),
+            self.assertLogs('imbi_common.plugins.registry', 'WARNING') as logs,
+        ):
+            result = registry.load_plugins()
+
+        self.assertIn('inert', result.loaded)
+        self.assertTrue(
+            any('inert' in record.getMessage() for record in logs.records)
+        )
+
+    def test_load_webhook_plugin_duplicate_action_names_rejected(
+        self,
+    ) -> None:
+        cls = _make_webhook_plugin_cls(
+            'dup-action',
+            [
+                _make_webhook_descriptor('do_thing'),
+                _make_webhook_descriptor('do_thing'),
+            ],
+        )
+
+        ep = unittest.mock.MagicMock()
+        ep.name = 'dup-action'
+        ep.load.return_value = cls
+        ep.dist.name = 'pkg'
+        ep.dist.version = '1.0'
+
+        with unittest.mock.patch(
+            'importlib.metadata.entry_points', return_value=[ep]
+        ):
+            result = registry.load_plugins()
+
+        self.assertEqual(result.loaded, [])
+        self.assertIn('dup-action', result.errors)
+        self.assertIn('Duplicate action', result.errors['dup-action'])
+
+    def test_load_webhook_plugin_actions_raises_is_reported(self) -> None:
+        manifest = base.PluginManifest(
+            slug='broken',
+            name='Broken',
+            plugin_type='webhook',
+        )
+
+        class _BrokenWebhook(base.WebhookActionPlugin):
+            @classmethod
+            def actions(cls) -> list[base.ActionDescriptor]:
+                raise RuntimeError('boom')
+
+        _BrokenWebhook.manifest = manifest  # type: ignore[attr-defined]
+
+        ep = unittest.mock.MagicMock()
+        ep.name = 'broken'
+        ep.load.return_value = _BrokenWebhook
+        ep.dist.name = 'pkg'
+        ep.dist.version = '1.0'
+
+        with unittest.mock.patch(
+            'importlib.metadata.entry_points', return_value=[ep]
+        ):
+            result = registry.load_plugins()
+
+        self.assertEqual(result.loaded, [])
+        self.assertIn('broken', result.errors)
+        self.assertIn('actions() raised', result.errors['broken'])
+
+    def test_load_webhook_plugin_actions_returns_non_list_rejected(
+        self,
+    ) -> None:
+        manifest = base.PluginManifest(
+            slug='not-list',
+            name='Not List',
+            plugin_type='webhook',
+        )
+
+        class _NotListWebhook(base.WebhookActionPlugin):
+            @classmethod
+            def actions(cls) -> list[base.ActionDescriptor]:
+                return None  # type: ignore[return-value]
+
+        _NotListWebhook.manifest = manifest  # type: ignore[attr-defined]
+
+        ep = unittest.mock.MagicMock()
+        ep.name = 'not-list'
+        ep.load.return_value = _NotListWebhook
+        ep.dist.name = 'pkg'
+        ep.dist.version = '1.0'
+
+        with unittest.mock.patch(
+            'importlib.metadata.entry_points', return_value=[ep]
+        ):
+            result = registry.load_plugins()
+
+        self.assertEqual(result.loaded, [])
+        self.assertIn('not-list', result.errors)
+        self.assertIn('list[ActionDescriptor]', result.errors['not-list'])
+
+    def test_load_webhook_plugin_actions_returns_wrong_items_rejected(
+        self,
+    ) -> None:
+        manifest = base.PluginManifest(
+            slug='bad-items',
+            name='Bad Items',
+            plugin_type='webhook',
+        )
+
+        class _BadItemsWebhook(base.WebhookActionPlugin):
+            @classmethod
+            def actions(cls) -> list[base.ActionDescriptor]:
+                return ['not a descriptor']  # type: ignore[list-item]
+
+        _BadItemsWebhook.manifest = manifest  # type: ignore[attr-defined]
+
+        ep = unittest.mock.MagicMock()
+        ep.name = 'bad-items'
+        ep.load.return_value = _BadItemsWebhook
+        ep.dist.name = 'pkg'
+        ep.dist.version = '1.0'
+
+        with unittest.mock.patch(
+            'importlib.metadata.entry_points', return_value=[ep]
+        ):
+            result = registry.load_plugins()
+
+        self.assertEqual(result.loaded, [])
+        self.assertIn('bad-items', result.errors)
+        self.assertIn('list[ActionDescriptor]', result.errors['bad-items'])
 
     def tearDown(self) -> None:
         _reset_registry()

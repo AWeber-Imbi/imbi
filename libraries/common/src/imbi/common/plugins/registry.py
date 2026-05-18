@@ -7,6 +7,7 @@ import threading
 import typing
 
 from imbi_common.plugins.base import (
+    ActionDescriptor,
     ConfigurationPlugin,
     DeploymentPlugin,
     IdentityPlugin,
@@ -55,6 +56,53 @@ class LoadResult(typing.NamedTuple):
 
 _lock = threading.RLock()
 _registry: dict[str, RegistryEntry] = {}
+
+
+_PLUGIN_TYPE_BASES: dict[
+    str,
+    type[ConfigurationPlugin]
+    | type[LogsPlugin]
+    | type[IdentityPlugin]
+    | type[DeploymentPlugin]
+    | type[LifecyclePlugin]
+    | type[WebhookActionPlugin],
+] = {
+    'configuration': ConfigurationPlugin,
+    'logs': LogsPlugin,
+    'identity': IdentityPlugin,
+    'deployment': DeploymentPlugin,
+    'lifecycle': LifecyclePlugin,
+    'webhook': WebhookActionPlugin,
+}
+
+
+def _validate_action_catalog(
+    ep_name: str, descriptors: list[ActionDescriptor]
+) -> str | None:
+    """Return an error message describing a bad action catalog, or ``None``.
+
+    Logs a warning for plugins that advertise no actions (the plugin is
+    inert but still loadable). Rejects plugins with duplicate action
+    names within a single catalog.
+    """
+    if not descriptors:
+        LOGGER.warning(
+            'Webhook plugin %r exposes no actions; the plugin is inert',
+            ep_name,
+        )
+        return None
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for descriptor in descriptors:
+        if descriptor.name in seen:
+            duplicates.append(descriptor.name)
+        else:
+            seen.add(descriptor.name)
+    if duplicates:
+        return (
+            f'Duplicate action names within plugin: {sorted(set(duplicates))}'
+        )
+    return None
 
 
 def load_plugins() -> LoadResult:
@@ -108,26 +156,7 @@ def load_plugins() -> LoadResult:
             )
             continue
 
-        expected_base: (
-            type[ConfigurationPlugin]
-            | type[LogsPlugin]
-            | type[IdentityPlugin]
-            | type[DeploymentPlugin]
-            | type[LifecyclePlugin]
-            | type[WebhookActionPlugin]
-        )
-        if manifest.plugin_type == 'configuration':
-            expected_base = ConfigurationPlugin
-        elif manifest.plugin_type == 'logs':
-            expected_base = LogsPlugin
-        elif manifest.plugin_type == 'identity':
-            expected_base = IdentityPlugin
-        elif manifest.plugin_type == 'deployment':
-            expected_base = DeploymentPlugin
-        elif manifest.plugin_type == 'lifecycle':
-            expected_base = LifecyclePlugin
-        else:
-            expected_base = WebhookActionPlugin
+        expected_base = _PLUGIN_TYPE_BASES[manifest.plugin_type]
         if not issubclass(cls, expected_base):  # pyright: ignore[reportUnnecessaryIsInstance]
             LOGGER.error(
                 'Plugin %r manifest plugin_type=%r does not match class '
@@ -151,6 +180,35 @@ def load_plugins() -> LoadResult:
             )
             skipped.append(ep.name)
             continue
+
+        if issubclass(cls, WebhookActionPlugin):
+            try:
+                descriptors = cls.actions()
+            except Exception as exc:
+                LOGGER.exception(
+                    'Plugin %r failed to enumerate actions: %s',
+                    ep.name,
+                    exc,
+                )
+                errors[ep.name] = f'actions() raised: {exc}'
+                continue
+            if not isinstance(descriptors, list) or any(
+                not isinstance(descriptor, ActionDescriptor)
+                for descriptor in descriptors
+            ):
+                LOGGER.error(
+                    'Plugin %r actions() did not return '
+                    'list[ActionDescriptor]; skipping',
+                    ep.name,
+                )
+                errors[ep.name] = (
+                    'actions() must return list[ActionDescriptor]'
+                )
+                continue
+            action_error = _validate_action_catalog(ep.name, descriptors)
+            if action_error is not None:
+                errors[ep.name] = action_error
+                continue
 
         dist = ep.dist
         pkg_name = dist.name if dist else 'unknown'

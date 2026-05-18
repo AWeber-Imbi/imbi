@@ -1,6 +1,7 @@
 """Plugin system — base classes, registry, and template expansion."""
 
 from imbi_common.plugins.base import (
+    ActionDescriptor,
     AuthorizationRequest,
     ConfigKey,
     ConfigKeyWithValue,
@@ -25,6 +26,7 @@ from imbi_common.plugins.base import (
     PluginOption,
     PluginVertexLabel,
     PollingDescriptor,
+    WebhookActionCallable,
     WebhookActionPlugin,
 )
 from imbi_common.plugins.credentials import (
@@ -55,6 +57,7 @@ from imbi_common.plugins.schemas import (
 from imbi_common.plugins.templates import expand_template, validate_template
 
 __all__ = [
+    'ActionDescriptor',
     'AuthorizationRequest',
     'ConfigKey',
     'ConfigKeyWithValue',
@@ -87,6 +90,7 @@ __all__ = [
     'PluginVertexLabel',
     'PollingDescriptor',
     'RegistryEntry',
+    'WebhookActionCallable',
     'WebhookActionPlugin',
     'apply_plugin_schemas',
     'expand_template',
