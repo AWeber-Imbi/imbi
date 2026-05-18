@@ -535,6 +535,7 @@ class ProcessNotificationTests(helpers.TestCase):
         ctx = typing.cast('plugin_base.PluginContext', call['ctx'])
         self.assertEqual(self.org_slug, ctx.org_slug)
         self.assertEqual(self.proj_id, ctx.project_id)
+        self.assertEqual(f'proj-{self.proj_id[:8]}', ctx.project_slug)
         self.assertEqual(body, call['payload'])
         self.assertEqual({}, call['credentials'])
         self.assertEqual(self.ext_id, call['external_identifier'])
