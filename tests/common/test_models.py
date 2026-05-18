@@ -274,6 +274,18 @@ class NodeModelTestCase(unittest.TestCase):
         self.assertEqual(project_type.slug, 'web-service')
         self.assertEqual(project_type.description, 'HTTP-based services')
         self.assertEqual(project_type.organization, org)
+        self.assertFalse(project_type.deployable)
+
+    def test_project_type_deployable(self) -> None:
+        """Explicit override for the deployable flag round-trips."""
+        org = models.Organization(name='Org', slug='org')
+        project_type = models.ProjectType(
+            name='Web Service',
+            slug='web-service',
+            organization=org,
+            deployable=True,
+        )
+        self.assertTrue(project_type.deployable)
 
     def test_node_timestamps_defaults(self) -> None:
         """Test that created_at defaults to now, updated_at to None."""

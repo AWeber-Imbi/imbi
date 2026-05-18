@@ -302,6 +302,7 @@ class Environment(Node):
 
 
 class ProjectType(Node):
+    deployable: bool = False
     organization: BelongsToOrganization
 
 
