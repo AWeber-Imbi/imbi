@@ -246,16 +246,16 @@ async def create_release(
 ) -> None:
     """Processes a deployment notification and ensures the release exists.
 
-    The version is the result of evaluating the CEL
-    ``version_expression`` against the body; the title is taken from
-    the JSONPointer ``title_selector``. ``user_id`` (the resolved Imbi
-    user's email) is passed as ``created_by`` when present; otherwise
-    the API defaults to the gateway's service principal.
+    The tag is the result of evaluating the CEL ``version_expression``
+    against the body; the title is taken from the JSONPointer
+    ``title_selector``. ``user_id`` (the resolved Imbi user's email)
+    is passed as ``created_by`` when present; otherwise the API
+    defaults to the gateway's service principal.
     """
     config = CreateReleaseConfig.model_validate_json(handler_config)
     version_value = _evaluate_cel(config.version_expression, body)
     create_body: dict[str, object] = {
-        'version': version_value,
+        'tag': version_value,
         'title': str(config.title_selector.resolve(body)),
     }
     if user_id is not None:
