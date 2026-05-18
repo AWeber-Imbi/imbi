@@ -860,9 +860,10 @@ class ReleaseModelTestCase(unittest.TestCase):
     def _make(self, **overrides: typing.Any) -> models.Release:
         defaults: dict[str, typing.Any] = {
             'project': _make_project(),
-            'version': '1.0.0',
+            'tag': '1.0.0',
             'title': 'Initial release',
             'created_by': 'alice@example.com',
+            'committish': 'a1b2c3d',
         }
         defaults.update(overrides)
         return models.Release(**defaults)
@@ -889,11 +890,48 @@ class ReleaseModelTestCase(unittest.TestCase):
         self.assertIsNone(release.description)
         self.assertEqual(release.links, [])
 
-    def test_version_is_plain_string(self) -> None:
+    def test_committish_accepts_seven_char_short_sha(self) -> None:
+        release = self._make(committish='a1b2c3d')
+        self.assertEqual(release.committish, 'a1b2c3d')
+
+    def test_committish_is_required(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.Release(
+                project=_make_project(),
+                tag='1.0.0',
+                title='x',
+                created_by='alice@example.com',
+            )
+
+    def test_committish_rejects_wrong_length(self) -> None:
+        for value in ('abc', 'a1b2c3', 'a1b2c3de', 'abcdef0123'):
+            with self.assertRaises(pydantic.ValidationError):
+                self._make(committish=value)
+
+    def test_committish_rejects_uppercase(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            self._make(committish='A1B2C3D')
+
+    def test_committish_rejects_non_alphanumeric(self) -> None:
+        for value in ('abcd-12', 'abcd 12', 'abcd!12'):
+            with self.assertRaises(pydantic.ValidationError):
+                self._make(committish=value)
+
+    def test_committish_rejects_non_hex_letters(self) -> None:
+        # Short SHAs are hex only; letters g-z must be rejected.
+        for value in ('g123456', 'abcdefg', 'zzzzzzz'):
+            with self.assertRaises(pydantic.ValidationError):
+                self._make(committish=value)
+
+    def test_tag_is_optional(self) -> None:
+        release = self._make(tag=None)
+        self.assertIsNone(release.tag)
+
+    def test_tag_is_plain_string(self) -> None:
         # Model must accept any string — format validation is a
         # runtime concern at the endpoint boundary.
-        release = self._make(version='deadbeef')
-        self.assertEqual(release.version, 'deadbeef')
+        release = self._make(tag='deadbeef')
+        self.assertEqual(release.tag, 'deadbeef')
 
     def test_release_with_links(self) -> None:
         release = self._make(
@@ -920,7 +958,7 @@ class ReleaseModelTestCase(unittest.TestCase):
         )
         dumped = release.model_dump_json()
         parsed = json.loads(dumped)
-        self.assertEqual(parsed['version'], '1.0.0')
+        self.assertEqual(parsed['tag'], '1.0.0')
         self.assertEqual(parsed['title'], 'Initial release')
         self.assertEqual(parsed['description'], '# Initial')
         self.assertEqual(len(parsed['links']), 1)
@@ -928,7 +966,7 @@ class ReleaseModelTestCase(unittest.TestCase):
         self.assertEqual(parsed['links'][0]['label'], 'GitHub')
 
         roundtrip = models.Release.model_validate_json(dumped)
-        self.assertEqual(roundtrip.version, release.version)
+        self.assertEqual(roundtrip.tag, release.tag)
         self.assertEqual(roundtrip.title, release.title)
         self.assertEqual(len(roundtrip.links), 1)
         self.assertEqual(roundtrip.links[0].type, 'github_release')
@@ -936,9 +974,10 @@ class ReleaseModelTestCase(unittest.TestCase):
     def test_release_missing_project_rejected(self) -> None:
         with self.assertRaises(pydantic.ValidationError):
             models.Release(
-                version='1.0.0',
+                tag='1.0.0',
                 title='x',
                 created_by='alice@example.com',
+                committish='a1b2c3d',
             )
 
     def test_release_in_all(self) -> None:

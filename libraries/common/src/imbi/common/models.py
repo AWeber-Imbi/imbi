@@ -507,11 +507,11 @@ class ReleaseLink(pydantic.BaseModel):
 class Release(GraphModel):
     """A versioned release of a ``Project``.
 
-    The version string is the business identity, but per-project
-    uniqueness is enforced at the application layer (two projects
-    may legitimately share a version like ``1.0.0``).  The active
-    version format is a runtime setting — see
-    ``imbi_common.versioning.validate_version``.
+    The ``tag`` string is the optional business identity (e.g.
+    ``1.0.0`` or ``v2024.05.18``).  Per-project uniqueness is
+    enforced at the application layer (two projects may legitimately
+    share a tag like ``1.0.0``).  The active tag format is a runtime
+    setting — see ``imbi_common.versioning.validate_version``.
 
     """
 
@@ -523,7 +523,7 @@ class Release(GraphModel):
         list[Environment],
         Edge(rel_type='DEPLOYED_TO', direction='OUTGOING'),
     ] = []
-    version: str
+    tag: str | None = None
     title: str
     description: typing.Annotated[
         str | None,
@@ -531,6 +531,16 @@ class Release(GraphModel):
     ] = None
     links: list[ReleaseLink] = []
     created_by: str
+    committish: typing.Annotated[
+        str,
+        pydantic.Field(
+            pattern=r'^[0-9a-f]{7}$',
+            description=(
+                'Short commit SHA (7 lowercase hexadecimal chars) '
+                'identifying the source revision for this release.'
+            ),
+        ),
+    ]
 
 
 class ReleaseDeploymentEdge(RelationshipEdge):
