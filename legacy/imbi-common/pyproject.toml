@@ -35,7 +35,7 @@ dependencies = [
 
 [project.optional-dependencies]
 databases = [
-  "clickhouse-connect[async]==0.12rc1",
+  "clickhouse-connect[async]==1.0.0",
   "fastembed>=0.6",
   "pgvector>=0.3",
   "psycopg[binary,pool]>=3.3",
