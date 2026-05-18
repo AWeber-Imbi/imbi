@@ -182,7 +182,8 @@ _STATUS_BODY: dict[str, object] = {
 
 _CREATE_RELEASE_CONFIG = (
     '{"title_selector": "/deployment/ref",'
-    ' "version_expression": "deployment.ref"}'
+    ' "version_expression": "deployment.ref",'
+    ' "committish_expression": "substring(deployment.sha, 0, 7)"}'
 )
 _DEPLOYMENT_EVENT_CONFIG = (
     '{"environment_selector": "/deployment_status/environment",'
@@ -215,6 +216,7 @@ class CreateReleaseTests(helpers.TestCase):
         self.assertEqual('org', org_arg)
         self.assertEqual('proj', proj_arg)
         self.assertEqual('v1.2.3', body_arg['tag'])
+        self.assertEqual('abcdef1', body_arg['committish'])
         self.assertEqual('v1.2.3', body_arg['title'])
         self.assertEqual('alice@example.com', body_arg['created_by'])
         self.assertNotIn('links', body_arg)
@@ -239,7 +241,8 @@ class CreateReleaseTests(helpers.TestCase):
     async def test_title_selector_used(self) -> None:
         config = (
             '{"title_selector": "/deployment/description",'
-            ' "version_expression": "deployment.ref"}'
+            ' "version_expression": "deployment.ref",'
+            ' "committish_expression": "substring(deployment.sha, 0, 7)"}'
         )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
@@ -272,6 +275,7 @@ class CreateReleaseTests(helpers.TestCase):
                     ') ? deployment.ref'
                     " : 'sha-' + deployment.sha"
                 ),
+                'committish_expression': 'substring(deployment.sha, 0, 7)',
             }
         )
         with (
@@ -313,12 +317,14 @@ class CreateReleaseTests(helpers.TestCase):
             {
                 'title_selector': '/deployment/ref',
                 'version_expression': 'substring(deployment.sha, 0, 7)',
+                'committish_expression': 'substring(deployment.sha, 0, 7)',
             }
         )
         method_config = json.dumps(
             {
                 'title_selector': '/deployment/ref',
                 'version_expression': 'deployment.sha.substring(0, 7)',
+                'committish_expression': 'deployment.sha.substring(0, 7)',
             }
         )
         with (
@@ -353,6 +359,7 @@ class CreateReleaseTests(helpers.TestCase):
             {
                 'title_selector': '/deployment/ref',
                 'version_expression': 'deployment.sha.substring(8)',
+                'committish_expression': 'substring(deployment.sha, 0, 7)',
             }
         )
         with (
@@ -387,7 +394,8 @@ class CreateReleaseTests(helpers.TestCase):
     async def test_invalid_version_expression_propagates(self) -> None:
         config = (
             '{"title_selector": "/deployment/ref",'
-            ' "version_expression": "this is not valid CEL"}'
+            ' "version_expression": "this is not valid CEL",'
+            ' "committish_expression": "substring(deployment.sha, 0, 7)"}'
         )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
