@@ -420,6 +420,28 @@ class ProjectModelTestCase(unittest.TestCase):
                 identifiers={},
             )
 
+    def test_project_links_parsed_from_json_string(self) -> None:
+        """AGE stores dict properties as JSON strings; verify the
+        before-validator decodes them back so consumers (e.g. the
+        link-presence scoring policy) see a real dict."""
+        org = models.Organization(name='Org', slug='org')
+        team = models.Team(name='Team', slug='team', organization=org)
+        project = models.Project.model_validate(
+            {
+                'name': 'Test',
+                'slug': 'test',
+                'team': team,
+                'links': (
+                    '{"grafana-dashboard": "https://grafana.example/d/foo"}'
+                ),
+                'identifiers': '{"github": "12345"}',
+            }
+        )
+        self.assertIsInstance(project.links, dict)
+        self.assertIn('grafana-dashboard', project.links)
+        self.assertIsInstance(project.identifiers, dict)
+        self.assertEqual('12345', project.identifiers['github'])
+
 
 class DocumentTemplateModelTestCase(unittest.TestCase):
     """Test cases for DocumentTemplate model."""

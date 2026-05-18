@@ -1,5 +1,6 @@
 import dataclasses
 import datetime
+import json
 import typing
 
 import nanoid
@@ -403,6 +404,13 @@ class Project(Node):
     links: dict[str, pydantic.AnyUrl] = {}
     identifiers: dict[str, int | str | pydantic.AnyUrl] = {}
     score: float | None = None
+
+    @pydantic.field_validator('links', 'identifiers', mode='before')
+    @classmethod
+    def _parse_json_dict(cls, value: object) -> object:
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
 
 
 class Tag(Node):
