@@ -4,7 +4,6 @@ import unittest.mock
 import celpy.celparser
 import httpx
 import jsonpointer
-import pydantic
 from imbi_common.plugins import base as plugin_base
 
 from imbi_gateway import actions
@@ -220,6 +219,7 @@ _STATUS_BODY: dict[str, object] = {
     'deployment_status': {'state': 'success', 'environment': 'production'},
 }
 
+
 def _create_release_config(
     raw: str = (
         '{"title_selector": "/deployment/ref",'
@@ -370,16 +370,14 @@ class CreateReleaseTests(helpers.TestCase):
         }
         config = _create_release_config(
             json.dumps(
-                cfg | {
-                    'committish_expression': 'substring(deployment.sha, 0, 7)',
-                }
+                cfg
+                | {'committish_expression': 'substring(deployment.sha, 0, 7)'}
             )
         )
         method_config = _create_release_config(
             json.dumps(
-                cfg | {
-                    'committish_expression': 'deployment.sha.substring(0, 7)',
-                }
+                cfg
+                | {'committish_expression': 'deployment.sha.substring(0, 7)'}
             )
         )
         with (
@@ -400,7 +398,9 @@ class CreateReleaseTests(helpers.TestCase):
                     'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}
                 },
             )
-            self.assertEqual('abcdef1', mock_create.call_args.args[2]['committish'])
+            self.assertEqual(
+                'abcdef1', mock_create.call_args.args[2]['committish']
+            )
 
             await actions.create_release(
                 ctx=_ctx(),
@@ -411,7 +411,9 @@ class CreateReleaseTests(helpers.TestCase):
                     'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}
                 },
             )
-            self.assertEqual('abcdef1', mock_create.call_args.args[2]['committish'])
+            self.assertEqual(
+                'abcdef1', mock_create.call_args.args[2]['committish']
+            )
 
     async def test_substring_with_only_start(self) -> None:
         config = _create_release_config(
@@ -441,7 +443,9 @@ class CreateReleaseTests(helpers.TestCase):
                     'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}
                 },
             )
-            self.assertEqual('34567890', mock_create.call_args.args[2]['committish'])
+            self.assertEqual(
+                '34567890', mock_create.call_args.args[2]['committish']
+            )
 
     async def test_invalid_version_expression_propagates(self) -> None:
         config = _create_release_config(
