@@ -34,6 +34,7 @@ import { useRecentDeployments } from '@/hooks/useRecentDeployments'
 import { queryKeys } from '@/lib/queryKeys'
 import type { AdminPluginsResponse, IdentityConnectionResponse } from '@/types'
 
+import { MyPullRequestCountsWidget } from './dashboard/widgets/MyPullRequestCountsWidget'
 import { MyPullRequestsWidget } from './dashboard/widgets/MyPullRequestsWidget'
 import { OutdatedComponentsWidget } from './dashboard/widgets/OutdatedComponentsWidget'
 import { RecentActivityWidget } from './dashboard/widgets/RecentActivityWidget'
@@ -57,6 +58,7 @@ interface ViewChangeEvent {
 const WIDGET_STORAGE_KEY = 'imbi-dashboard-widgets-v3'
 
 type WidgetId =
+  | 'my-pull-request-counts'
   | 'my-pull-requests'
   | 'outdated-components'
   | 'recent-activity'
@@ -118,7 +120,15 @@ const availableWidgets: WidgetConfig[] = [
   {
     category: 'stats',
     columnSpan: 1,
-    description: 'Your open and closed pull requests',
+    description: 'Your open and closed pull request counts',
+    icon: '🔀',
+    id: 'my-pull-request-counts',
+    name: 'My Pull Request Counts',
+  },
+  {
+    category: 'activity',
+    columnSpan: 2,
+    description: 'Your recent pull requests across all projects',
     icon: '🔀',
     id: 'my-pull-requests',
     name: 'My Pull Requests',
@@ -140,6 +150,7 @@ const defaultWidgets: WidgetId[] = [
 ]
 
 const WIDGET_IDS: ReadonlySet<WidgetId> = new Set<WidgetId>([
+  'my-pull-request-counts',
   'my-pull-requests',
   'outdated-components',
   'recent-activity',
@@ -290,6 +301,7 @@ export function Dashboard({
   }
 
   const widgetRegistry: Record<WidgetId, () => ReactElement> = {
+    'my-pull-request-counts': () => <MyPullRequestCountsWidget />,
     'my-pull-requests': () => <MyPullRequestsWidget />,
     'outdated-components': () => (
       <OutdatedComponentsWidget onProjectSelect={onProjectSelect} />
