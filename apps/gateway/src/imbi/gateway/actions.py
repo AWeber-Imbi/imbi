@@ -152,7 +152,7 @@ class CreateReleaseConfig(pydantic.BaseModel):
 
     title_selector: json_pointer.JsonPointer
     version_expression: str
-    committish_expression: str
+    committish_expression: str | None = None
 
 
 class AddDeploymentEventConfig(pydantic.BaseModel):
@@ -249,14 +249,14 @@ async def create_release(
     """
     del credentials, external_identifier
     version_value = _evaluate_cel(action_config.version_expression, payload)
-    committish_value = _evaluate_cel(
-        action_config.committish_expression, payload
-    )
     create_body: dict[str, object] = {
         'tag': version_value,
-        'committish': committish_value,
         'title': str(action_config.title_selector.resolve(payload)),
     }
+    if action_config.committish_expression is not None:
+        create_body['committish'] = _evaluate_cel(
+            action_config.committish_expression, payload
+        )
     if ctx.actor_user_id is not None:
         create_body['created_by'] = ctx.actor_user_id
     async with ImbiClient() as client:
