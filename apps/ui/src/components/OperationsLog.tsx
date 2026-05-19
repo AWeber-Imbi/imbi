@@ -167,6 +167,11 @@ export function OperationsLog({
   }, [])
   const hasScrolledRef = useRef(false)
 
+  useEffect(() => {
+    hasScrolledRef.current = false
+    setOpenId(highlightEntryId)
+  }, [highlightEntryId])
+
   const {
     data: projects = [],
     isError: projectsError,

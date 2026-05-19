@@ -104,7 +104,7 @@ export function WidgetSelector({
                       >
                         {isSelected && (
                           <svg
-                            className="text-info size-3"
+                            className="size-3 text-white"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"

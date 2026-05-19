@@ -31,6 +31,7 @@ export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
 
   const {
     data: openData,
+    isError: openError,
     isFetching: openFetching,
     refetch: refetchOpen,
   } = useQuery({
@@ -48,6 +49,7 @@ export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
 
   const {
     data: closedData,
+    isError: closedError,
     isFetching: closedFetching,
     refetch: refetchClosed,
   } = useQuery({
@@ -77,6 +79,7 @@ export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
   }, [users])
 
   const isLoading = openFetching || closedFetching
+  const hasError = openError || closedError
 
   // fallow-ignore-next-line complexity
   const allPRs = useMemo(() => {
@@ -225,7 +228,22 @@ export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
             </tr>
           </thead>
           <tbody>
-            {isLoading && allPRs.length === 0 ? (
+            {hasError ? (
+              <tr>
+                <td className="px-4 py-8 text-center" colSpan={7}>
+                  <div className="text-danger text-sm">
+                    Failed to load pull requests.
+                  </div>
+                  <button
+                    className="text-action mt-2 text-xs hover:underline"
+                    onClick={handleRefresh}
+                    type="button"
+                  >
+                    Retry
+                  </button>
+                </td>
+              </tr>
+            ) : isLoading && allPRs.length === 0 ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <tr className="border-border border-b" key={i}>
                   <td className="px-4 py-3" colSpan={7}>

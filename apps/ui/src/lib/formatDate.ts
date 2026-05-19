@@ -39,6 +39,7 @@ export function relTime(
   now: number = Date.now(),
 ): string {
   const t = typeof iso === 'number' ? iso : Date.parse(iso)
+  if (!Number.isFinite(t)) return 'now'
   const diff = Math.max(0, now - t)
   const m = Math.floor(diff / 60_000)
   if (m < 1) return 'now'
