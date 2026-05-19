@@ -1,6 +1,6 @@
 [project]
 name = "imbi-assistant"
-version = "1.0.0"
+version = "1.1.0"
 description = "Imbi AI assistant service"
 readme = "README.md"
 requires-python = ">=3.14"
