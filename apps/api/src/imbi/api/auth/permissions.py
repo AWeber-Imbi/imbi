@@ -304,6 +304,25 @@ async def authenticate_jwt(
     )
 
 
+async def _stamp_api_key_last_used(db: graph.Graph, key_id: str) -> None:
+    """Set last_used on the APIKey node identified by key_id.
+
+    AGE's cypher() wrapper requires a RETURN clause to properly
+    finalize a write operation — omitting it causes an internal
+    "Entity failed to be updated" error.
+    """
+    now = datetime.datetime.now(datetime.UTC).isoformat()
+    query: typing.LiteralString = (
+        'MATCH (k:APIKey {{key_id: {key_id}}})'
+        ' SET k.last_used = {now} RETURN k'
+    )
+    await db.execute(
+        query,
+        {'key_id': key_id, 'now': now},
+        columns=['k'],
+    )
+
+
 async def authenticate_api_key(
     db: graph.Graph,
     key: str,
@@ -407,11 +426,7 @@ async def authenticate_api_key(
         filtered = all_perms.intersection(set(scopes)) if scopes else all_perms
 
         # Update last_used only after all validation passes
-        now = datetime.datetime.now(datetime.UTC).isoformat()
-        update_query = (
-            'MATCH (k:APIKey {{key_id: {key_id}}}) SET k.last_used = {now}'
-        )
-        await db.execute(update_query, {'key_id': key_id, 'now': now})
+        await _stamp_api_key_last_used(db, key_id)
 
         return AuthContext(
             service_account=sa,
@@ -433,11 +448,7 @@ async def authenticate_api_key(
     identities = await _load_user_identities(db, user.id)
 
     # Update last_used only after all validation passes
-    now = datetime.datetime.now(datetime.UTC).isoformat()
-    update_query = (
-        'MATCH (k:APIKey {{key_id: {key_id}}}) SET k.last_used = {now}'
-    )
-    await db.execute(update_query, {'key_id': key_id, 'now': now})
+    await _stamp_api_key_last_used(db, key_id)
 
     return AuthContext(
         user=user,
