@@ -9,7 +9,7 @@ authors = [{ name = "Gavin M. Roy", email = "gavinr@aweber.com" }]
 dependencies = [
   "fastmcp>=2.0.0",
   "httpx>=0.28.1",
-  "imbi-common>=2.3.0",
+  "imbi-common>=2.5.0",
   "pydantic~=2.12",
   "sentry-sdk>=2.48.0",
 ]
