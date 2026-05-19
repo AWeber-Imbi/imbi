@@ -500,19 +500,21 @@ function SortableWidget({ children, id }: SortableWidgetProps) {
 
   return (
     <div
-      className="group relative mb-4 break-inside-avoid"
+      className="relative mb-4 break-inside-avoid"
       ref={setNodeRef}
       style={style}
     >
-      {/* Drag handle - appears on hover */}
-      <div
-        {...attributes}
-        {...listeners}
-        className="bg-secondary/80 text-tertiary hover:text-primary absolute top-2 left-2 z-20 cursor-grab rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
-      >
-        <svg className="size-4" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
-        </svg>
+      {/* Header hover zone — drag handle only shows when hovering here */}
+      <div className="group absolute inset-x-0 top-0 z-10 h-14">
+        <div
+          {...attributes}
+          {...listeners}
+          className="bg-secondary/80 text-tertiary hover:text-primary absolute top-2 left-2 cursor-grab rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
+        >
+          <svg className="size-4" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
+          </svg>
+        </div>
       </div>
       {children}
     </div>
