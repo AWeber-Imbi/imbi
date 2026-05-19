@@ -361,9 +361,12 @@ async def list_for_user(
             claims_plain = _decrypt(row.get('claims_enc'))
             if claims_plain:
                 try:
-                    claims = json.loads(claims_plain)
-                    if isinstance(claims, dict) and claims.get('login'):
-                        meta['login'] = str(claims['login'])
+                    parsed = json.loads(claims_plain)
+                    if isinstance(parsed, dict):
+                        claims = typing.cast('dict[str, object]', parsed)
+                        login = claims.get('login')
+                        if login:
+                            meta['login'] = str(login)
                 except (json.JSONDecodeError, TypeError):
                     pass
         decoded['metadata'] = meta
