@@ -1,24 +1,27 @@
 import http
-import inspect
+import json
 import logging
+import re
 import typing
-from collections import abc
 
 import celpy
 import fastapi
 import jsonpointer
 import pydantic
 from imbi_common import clickhouse, graph, models
+from imbi_common.auth.encryption import TokenEncryption
+from imbi_common.plugins import base as plugin_base
+from imbi_common.plugins import registry as plugin_registry
+from imbi_common.plugins.errors import PluginNotFoundError
 
 from imbi_gateway import actions
+
+if typing.TYPE_CHECKING:
+    from collections import abc
 
 LOGGER = logging.getLogger(__name__)
 
 router = fastapi.APIRouter(prefix='/notifications')
-
-ActionFunction = typing.Callable[
-    [str, str, typing.Any, str | None, str], abc.Awaitable[None]
-]
 
 #: Headers that may carry credentials or webhook signatures. These are
 #: replaced with ``'[redacted]'`` before persisting ``metadata.headers``
@@ -37,8 +40,13 @@ _SENSITIVE_HEADERS = frozenset(
     }
 )
 
+#: ``WebhookRule.handler`` is ``"<plugin_slug>#<action_name>"``. The ``#``
+#: separator is invalid Python import syntax so a stored value can never
+#: be confused with the previous ``pydantic.ImportString`` form.
+_HANDLER_PATTERN = re.compile(r'^[a-z][a-z0-9-]*#[a-z][a-z0-9_]*$')
 
-def _safe_headers(headers: abc.Mapping[str, str]) -> dict[str, str]:
+
+def _safe_headers(headers: 'abc.Mapping[str, str]') -> dict[str, str]:
     """Return a redacted copy of ``headers`` for persisted metadata.
 
     Sensitive header values (authorization, cookies, webhook signatures)
@@ -51,17 +59,35 @@ def _safe_headers(headers: abc.Mapping[str, str]) -> dict[str, str]:
 
 
 class WebhookRule(pydantic.BaseModel):
-    handler: pydantic.ImportString[ActionFunction]
+    """A single ``WebhookRule`` row pulled from the graph.
+
+    ``handler`` is a ``"<plugin_slug>#<action_name>"`` string. The
+    field validator only enforces shape -- plugin/action resolution
+    happens at dispatch time so a stale rule does not stop the gateway
+    from accepting deliveries (the dispatcher logs and skips instead).
+    """
+
+    handler: str
     ordinal: int
     handler_config: str
     filter_expression: str
 
     @pydantic.field_validator('handler')
     @classmethod
-    def _handler_must_by_async(cls, v: ActionFunction) -> ActionFunction:
-        if not inspect.iscoroutinefunction(v):
-            raise ValueError(f'{v!r} must be an async function')
-        return v
+    def _handler_shape(cls, value: str) -> str:
+        if not _HANDLER_PATTERN.match(value):
+            raise ValueError(
+                f"handler {value!r} must be '<plugin_slug>#<action_name>'"
+            )
+        return value
+
+    @property
+    def plugin_slug(self) -> str:
+        return self.handler.split('#', 1)[0]
+
+    @property
+    def action_name(self) -> str:
+        return self.handler.split('#', 1)[1]
 
     def evaluate_condition(self, body: object) -> bool | None:
         try:
@@ -104,149 +130,350 @@ async def process_notification(
         ' WITH w, o, tps, i, collect(r{{.*}}) AS rules'
         ' OPTIONAL MATCH (tps)-[:HAS_PLUGIN]->(plg:Plugin)'
         ' WITH w, o, tps, i, rules,'
-        '      collect(DISTINCT plg.plugin_slug) AS plugin_slugs'
+        '      collect(DISTINCT plg.plugin_slug) AS plugin_slugs,'
+        '      collect(DISTINCT plg{{.id, .plugin_slug,'
+        '        .plugin_configuration}}) AS plugins'
         ' RETURN w{{.*}} AS webhook, o{{.*}} AS org, tps{{.*}} AS service,'
-        '        i{{.*}} AS sel, rules, plugin_slugs',
+        '        i{{.*}} AS sel, rules, plugin_slugs, plugins',
         {'webhook_id': webhook_id},
-        ['webhook', 'org', 'service', 'sel', 'rules', 'plugin_slugs'],
+        [
+            'webhook',
+            'org',
+            'service',
+            'sel',
+            'rules',
+            'plugin_slugs',
+            'plugins',
+        ],
     )
     if not records:
         LOGGER.warning('No records found for %r', webhook_id)
-    else:
-        if len(records) != 1:
-            LOGGER.error(
-                'Webhook %r is connected to %s Organizations',
-                webhook_id,
-                len(records),
-            )
-            raise fastapi.HTTPException(http.HTTPStatus.INTERNAL_SERVER_ERROR)
-
-        record = records[0]
-        webhook = graph.parse_agtype(record['webhook'])
-        org = graph.parse_agtype(record['org'])
-        service = graph.parse_agtype(record['service'])  # maybe None
-        sel = graph.parse_agtype(record['sel'])  # maybe None
-        raw_rules = record['rules']
-        plugin_slugs_raw: list[typing.Any] = (
-            graph.parse_agtype(record['plugin_slugs']) or []
+        return
+    if len(records) != 1:
+        LOGGER.error(
+            'Webhook %r is connected to %s Organizations',
+            webhook_id,
+            len(records),
         )
-        plugin_slugs: list[str] = [str(s) for s in plugin_slugs_raw if s]
+        raise fastapi.HTTPException(http.HTTPStatus.INTERNAL_SERVER_ERROR)
 
-        try:
-            rules = [
-                WebhookRule.model_validate(row)
-                for row in graph.parse_agtype(raw_rules)
-            ]
-        except pydantic.ValidationError as e:
-            LOGGER.error(
-                'failed to deserialize rules: %s',
-                e,
-                extra={'rules': raw_rules},
-            )
-            return
+    record = records[0]
+    webhook = graph.parse_agtype(record['webhook'])
+    org = graph.parse_agtype(record['org'])
+    service = graph.parse_agtype(record['service'])  # maybe None
+    sel = graph.parse_agtype(record['sel'])  # maybe None
+    raw_rules = record['rules']
+    plugin_slugs_raw: list[typing.Any] = (
+        graph.parse_agtype(record['plugin_slugs']) or []
+    )
+    plugin_slugs: list[str] = [str(s) for s in plugin_slugs_raw if s]
+    plugins_raw: list[typing.Any] = graph.parse_agtype(record['plugins']) or []
+    plugins_by_slug = _index_plugins(plugins_raw)
 
-        LOGGER.debug('webhook: %r', webhook)
-        LOGGER.debug('org: %r', org)
-        LOGGER.debug('third_party_service: %r', service)
-        LOGGER.debug('third_party_sel: %r', sel)
-        LOGGER.debug('%s rules: %r', len(rules), rules)
+    try:
+        rules = [
+            WebhookRule.model_validate(row)
+            for row in graph.parse_agtype(raw_rules)
+        ]
+    except pydantic.ValidationError as e:
+        LOGGER.error(
+            'failed to deserialize rules: %s', e, extra={'rules': raw_rules}
+        )
+        return
 
-        if sel is None or service is None:
-            LOGGER.warning('Global webhooks are not yet implemented')
-        else:
-            body = await _extract_json_body(request)
-            try:
-                ptr = jsonpointer.JsonPointer(sel['identifier_selector'])
-                resolved = ptr.resolve(body)
-            except jsonpointer.JsonPointerException:
-                LOGGER.exception(
-                    'failed to select project identifier %r',
-                    sel['identifier_selector'],
-                )
-                return
+    LOGGER.debug('webhook: %r', webhook)
+    LOGGER.debug('org: %r', org)
+    LOGGER.debug('third_party_service: %r', service)
+    LOGGER.debug('third_party_sel: %r', sel)
+    LOGGER.debug('%s rules: %r', len(rules), rules)
 
-            # Look up matching projects before evaluating filters so we
-            # always record an events row per project, even when no
-            # filter matches and no handler will run.
-            # TODO(daves) - this should probably be an imbi-api request
-            records = await db.execute(
-                'MATCH (p:Project)'
-                '      -[:EXISTS_IN {{identifier: {external_id}}}]'
-                '      ->(tps:ThirdPartyService {{slug: {tps_slug}}}) '
-                'RETURN p.id AS project_id',
-                {
-                    'external_id': str(resolved),
-                    'tps_slug': str(service['slug']),
-                },
-                ['project_id'],
-            )
-            if not records:
-                LOGGER.warning(
-                    'Ignoring notification: no project found for %r',
-                    str(resolved),
-                )
-                return
+    if sel is None or service is None:
+        LOGGER.warning('Global webhooks are not yet implemented')
+        return
 
-            user_id = await _resolve_user_id(
-                body=body,
-                user_subject_selector=sel.get('user_subject_selector'),
-                edge_plugin_slug=sel.get('identity_plugin_slug'),
-                candidate_plugin_slugs=plugin_slugs,
-            )
-            event_type = _resolve_event_type(
-                sel.get('event_type_selector'), body, request.headers
-            )
-            _set_access_log_context(request, user_id=user_id, event=event_type)
-            await _record_events(
-                records,
-                webhook_id=webhook_id,
-                service_slug=service['slug'],
-                user_id=user_id,
-                event_type=event_type,
-                headers=request.headers,
-                body=body,
-            )
+    body = await _extract_json_body(request)
+    try:
+        ptr = jsonpointer.JsonPointer(sel['identifier_selector'])
+        resolved = ptr.resolve(body)
+    except jsonpointer.JsonPointerException:
+        LOGGER.exception(
+            'failed to select project identifier %r',
+            sel['identifier_selector'],
+        )
+        return
 
-            filter_results = [rule.evaluate_condition(body) for rule in rules]
-            if not any(filter_results):
-                LOGGER.debug('Ignoring notification: no filter matches')
-                return
+    project_records = await db.execute(
+        'MATCH (p:Project)'
+        '      -[:EXISTS_IN {{identifier: {external_id}}}]'
+        '      ->(tps:ThirdPartyService {{slug: {tps_slug}}}) '
+        'OPTIONAL MATCH (p)-[:OWNED_BY]->(t:Team)'
+        ' RETURN p.id AS project_id, p.slug AS project_slug,'
+        '        t.slug AS team_slug',
+        {'external_id': str(resolved), 'tps_slug': str(service['slug'])},
+        ['project_id', 'project_slug', 'team_slug'],
+    )
+    if not project_records:
+        LOGGER.warning(
+            'Ignoring notification: no project found for %r', str(resolved)
+        )
+        return
 
-            handlers = [
-                rule
-                for rule, enabled in zip(rules, filter_results, strict=True)
-                if enabled
-            ]
-            for record in records:
-                await _run_handlers(
-                    org['slug'],
-                    graph.parse_agtype(record['project_id']),
-                    body,
-                    user_id,
-                    handlers,
-                )
+    user_id = await _resolve_user_id(
+        body=body,
+        user_subject_selector=sel.get('user_subject_selector'),
+        edge_plugin_slug=sel.get('identity_plugin_slug'),
+        candidate_plugin_slugs=plugin_slugs,
+    )
+    event_type = _resolve_event_type(
+        sel.get('event_type_selector'), body, request.headers
+    )
+    _set_access_log_context(request, user_id=user_id, event=event_type)
+    await _record_events(
+        project_records,
+        webhook_id=webhook_id,
+        service_slug=service['slug'],
+        user_id=user_id,
+        event_type=event_type,
+        headers=request.headers,
+        body=body,
+    )
 
-            # indicates that we actually did something
-            response.status_code = http.HTTPStatus.ACCEPTED
+    filter_results = [rule.evaluate_condition(body) for rule in rules]
+    if not any(filter_results):
+        LOGGER.debug('Ignoring notification: no filter matches')
+        return
+
+    matched_rules = [
+        rule
+        for rule, enabled in zip(rules, filter_results, strict=True)
+        if enabled
+    ]
+    for proj_record in project_records:
+        await _run_handlers(
+            org_slug=str(org['slug']),
+            project_id=str(graph.parse_agtype(proj_record['project_id'])),
+            project_slug=str(
+                graph.parse_agtype(proj_record['project_slug'])
+                if proj_record.get('project_slug') is not None
+                else ''
+            ),
+            team_slug=(
+                str(graph.parse_agtype(proj_record['team_slug']))
+                if proj_record.get('team_slug') is not None
+                else None
+            ),
+            service_slug=str(service['slug']),
+            service_endpoint=(
+                str(service['api_endpoint'])
+                if service.get('api_endpoint') is not None
+                else None
+            ),
+            external_identifier=str(resolved),
+            payload=body,
+            user_id=user_id,
+            rules=matched_rules,
+            plugins_by_slug=plugins_by_slug,
+        )
+
+    # indicates that we actually did something
+    response.status_code = http.HTTPStatus.ACCEPTED
 
 
-async def _run_handlers(
+def _index_plugins(
+    plugins_raw: 'abc.Iterable[typing.Any]',
+) -> dict[str, dict[str, str]]:
+    """Build ``{plugin_slug: {id, plugin_configuration}}`` from raw rows."""
+    indexed: dict[str, dict[str, str]] = {}
+    for row in plugins_raw:
+        if not isinstance(row, dict):
+            continue
+        row_dict = typing.cast('dict[str, typing.Any]', row)
+        slug_raw: object = row_dict.get('plugin_slug')
+        if not slug_raw:
+            continue
+        slug = str(slug_raw)
+        plugin_id: object = row_dict.get('id')
+        configuration: object = row_dict.get('plugin_configuration')
+        indexed[slug] = {
+            'id': str(plugin_id) if plugin_id is not None else '',
+            'plugin_configuration': (
+                str(configuration) if configuration is not None else ''
+            ),
+        }
+    return indexed
+
+
+def _decrypt_plugin_credentials(
+    plugin_record: dict[str, str],
+) -> dict[str, str]:
+    """Decrypt the ``plugin_configuration`` blob into a credential dict.
+
+    Returns ``{}`` for plugins that store no configuration. Decryption
+    or JSON parse failures are logged and treated as missing creds so
+    a bad row does not 5xx the webhook.
+    """
+    encrypted = plugin_record.get('plugin_configuration')
+    if not encrypted:
+        return {}
+    try:
+        plaintext = TokenEncryption.get_instance().decrypt(encrypted)
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Plugin credentials decrypt failed for plugin_id=%s',
+            plugin_record.get('id'),
+        )
+        return {}
+    if not plaintext:
+        return {}
+    try:
+        data = json.loads(plaintext)
+    except json.JSONDecodeError:
+        LOGGER.warning(
+            'Plugin credentials JSON parse failed for plugin_id=%s',
+            plugin_record.get('id'),
+        )
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    creds = typing.cast('dict[str, typing.Any]', data)
+    return {k: str(v) for k, v in creds.items() if v is not None}
+
+
+def _resolve_rule_handler(
+    rule: WebhookRule,
+) -> tuple[plugin_registry.RegistryEntry, plugin_base.ActionDescriptor] | None:
+    """Look the rule's plugin / action up in the registry.
+
+    Returns ``None`` (after logging) when the plugin or action cannot
+    be resolved -- the dispatcher continues with the next rule rather
+    than failing the whole delivery.
+    """
+    try:
+        entry = plugin_registry.get_plugin(rule.plugin_slug)
+    except PluginNotFoundError:
+        LOGGER.error(
+            'Unknown plugin %r referenced by rule handler %r',
+            rule.plugin_slug,
+            rule.handler,
+        )
+        return None
+    if not issubclass(entry.handler_cls, plugin_base.WebhookActionPlugin):
+        LOGGER.error(
+            'Plugin %r is not a WebhookActionPlugin; cannot dispatch %r',
+            rule.plugin_slug,
+            rule.handler,
+        )
+        return None
+    try:
+        descriptors = [
+            d
+            for d in entry.handler_cls.actions()
+            if d.name == rule.action_name
+        ]
+    except Exception:
+        LOGGER.exception(
+            'Plugin %r raised while enumerating actions; skipping rule %r',
+            rule.plugin_slug,
+            rule.handler,
+        )
+        return None
+    if not descriptors:
+        LOGGER.error(
+            'Plugin %r does not expose action %r',
+            rule.plugin_slug,
+            rule.action_name,
+        )
+        return None
+    return entry, descriptors[0]
+
+
+async def _run_handlers(  # noqa: PLR0913
+    *,
     org_slug: str,
     project_id: str,
-    body: object,
+    project_slug: str,
+    team_slug: str | None,
+    service_slug: str,
+    service_endpoint: str | None,
+    external_identifier: str,
+    payload: object,
     user_id: str | None,
-    handlers: abc.Iterable[WebhookRule],
+    rules: 'abc.Iterable[WebhookRule]',
+    plugins_by_slug: dict[str, dict[str, str]],
 ) -> None:
     LOGGER.debug('Running handlers for %s/%s', org_slug, project_id)
-    for rule in handlers:
+    assignment_options: dict[str, typing.Any] = {'service_slug': service_slug}
+    if service_endpoint is not None:
+        assignment_options['service_endpoint'] = service_endpoint
+    ctx = plugin_base.PluginContext(
+        project_id=project_id,
+        project_slug=project_slug,
+        org_slug=org_slug,
+        team_slug=team_slug,
+        actor_user_id=user_id,
+        assignment_options=assignment_options,
+    )
+    for rule in rules:
+        resolved = _resolve_rule_handler(rule)
+        if resolved is None:
+            continue
+        entry, descriptor = resolved
+        credentials = _credentials_for_plugin(entry, plugins_by_slug)
+        if credentials is None:
+            continue
         try:
-            await rule.handler(
-                org_slug, project_id, body, user_id, rule.handler_config
+            config = descriptor.config_model.model_validate_json(
+                rule.handler_config
+            )
+        except pydantic.ValidationError:
+            LOGGER.exception(
+                'Invalid handler_config for %s; skipping rule', rule.handler
+            )
+            continue
+        try:
+            await descriptor.callable(
+                ctx=ctx,
+                credentials=credentials,
+                external_identifier=external_identifier,
+                action_config=config,
+                payload=payload,
             )
         except Exception:
             LOGGER.exception(
                 'Failure in %s', rule.handler, extra={'rule': rule}
             )
+
+
+def _credentials_for_plugin(
+    entry: plugin_registry.RegistryEntry,
+    plugins_by_slug: dict[str, dict[str, str]],
+) -> dict[str, str] | None:
+    """Return decrypted credentials for ``entry`` or ``None`` to skip.
+
+    Plugins that declare no credentials always get ``{}``. Plugins
+    with declared credentials but no attached ``Plugin`` node are
+    skipped with a warning -- they require operator configuration the
+    TPS does not have.
+    """
+    if not entry.manifest.credentials:
+        return {}
+    record = plugins_by_slug.get(entry.manifest.slug)
+    if record is None:
+        LOGGER.warning(
+            'Plugin %r requires credentials but is not attached to the TPS;'
+            ' skipping rule',
+            entry.manifest.slug,
+        )
+        return None
+    credentials = _decrypt_plugin_credentials(record)
+    if not credentials:
+        LOGGER.warning(
+            'Plugin %r requires credentials but none could be loaded;'
+            ' skipping rule',
+            entry.manifest.slug,
+        )
+        return None
+    return credentials
 
 
 def _extract_subject(
@@ -349,7 +576,7 @@ def _payload_dict(body: object) -> dict[str, typing.Any]:
 
 
 def _resolve_event_type(
-    selector: str | None, body: object, headers: abc.Mapping[str, str]
+    selector: str | None, body: object, headers: 'abc.Mapping[str, str]'
 ) -> str:
     """Resolve the event-type label per the configured selector.
 
@@ -379,13 +606,13 @@ def _resolve_event_type(
 
 
 async def _record_events(  # noqa: PLR0913 - all inputs are required event fields
-    records: abc.Sequence[abc.Mapping[str, typing.Any]],
+    records: 'abc.Sequence[abc.Mapping[str, typing.Any]]',
     *,
     webhook_id: str,
     service_slug: str,
     user_id: str | None,
     event_type: str,
-    headers: abc.Mapping[str, str],
+    headers: 'abc.Mapping[str, str]',
     body: object,
 ) -> None:
     """Insert one ``events`` row per matched project into ClickHouse.
