@@ -417,7 +417,6 @@ async def _record_deployment_audit(
     description = json.dumps(
         {
             'action': action,
-            'external_run_id': external_run_id,
             'plugin_slug': plugin_slug,
             'run_url': run_url,
             'release_url': release_url,
@@ -438,6 +437,7 @@ async def _record_deployment_audit(
         link=run_url,
         version=tag or committish,
         plugin_slug=plugin_slug,
+        external_run_id=external_run_id,
     )
     row = entry.model_dump(by_alias=True, mode='python')
     row['is_deleted'] = 1 if entry.is_deleted else 0
