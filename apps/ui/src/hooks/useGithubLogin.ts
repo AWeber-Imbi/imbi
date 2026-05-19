@@ -5,6 +5,7 @@ import type { IdentityConnectionResponse } from '@/types'
 
 const GITHUB_PR_PLUGIN_SLUG = 'github-enterprise-cloud'
 
+// fallow-ignore-next-line complexity
 export function useGithubLogin() {
   const {
     data: identities,
@@ -17,8 +18,8 @@ export function useGithubLogin() {
   })
 
   const login = identities ? githubLoginFromIdentities(identities) : undefined
-  const hasIdentity = !isLoading && !!login
-  const notConnected = !isLoading && !login
+  const hasIdentity = !isLoading && !isError && !!login
+  const notConnected = !isLoading && !isError && !login
 
   return { hasIdentity, isError, isLoading, login, notConnected }
 }

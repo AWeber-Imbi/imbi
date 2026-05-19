@@ -54,33 +54,39 @@ export function RecentDeploymentsWidget() {
     return map
   }, [projects])
 
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
-    useInfiniteQuery<
-      OperationsLogPage,
-      Error,
-      InfiniteData<OperationsLogPage>,
-      readonly unknown[],
-      string | undefined
-    >({
-      enabled: Boolean(orgSlug),
-      getNextPageParam: (lastPage) => lastPage.nextCursor,
-      initialPageParam: undefined,
-      queryFn: ({ pageParam, signal }) =>
-        listOperationsLog(
-          {
-            cursor: pageParam,
-            filters: {
-              entry_type: 'Deployed',
-              since,
-              ...(envFilter ? { environment_slug: envFilter } : {}),
-            },
-            limit: PAGE_SIZE,
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isError,
+    isFetchingNextPage,
+    isLoading,
+  } = useInfiniteQuery<
+    OperationsLogPage,
+    Error,
+    InfiniteData<OperationsLogPage>,
+    readonly unknown[],
+    string | undefined
+  >({
+    enabled: Boolean(orgSlug),
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialPageParam: undefined,
+    queryFn: ({ pageParam, signal }) =>
+      listOperationsLog(
+        {
+          cursor: pageParam,
+          filters: {
+            entry_type: 'Deployed',
+            since,
+            ...(envFilter ? { environment_slug: envFilter } : {}),
           },
-          signal,
-        ),
-      queryKey: ['deployments-widget', orgSlug, envFilter, since],
-      staleTime: 60_000,
-    })
+          limit: PAGE_SIZE,
+        },
+        signal,
+      ),
+    queryKey: ['deployments-widget', orgSlug, envFilter, since],
+    staleTime: 60_000,
+  })
 
   const { sentinelRef } = useInfiniteScroll({
     fetchNextPage,
@@ -128,6 +134,10 @@ export function RecentDeploymentsWidget() {
                 key={i}
               />
             ))}
+          </div>
+        ) : isError ? (
+          <div className="text-danger py-8 text-center text-sm">
+            Unavailable
           </div>
         ) : items.length === 0 ? (
           <div className="text-secondary py-8 text-center text-sm">

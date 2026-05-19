@@ -52,6 +52,8 @@ export function MyPullRequestCountsWidget() {
   const isLoading = identitiesLoading || openLoading || closedLoading
   const isError = identitiesError || openError || closedError
   const openCount = openData?.total ?? 0
+  // TODO: replace with a dedicated count endpoint or full pagination so
+  // merged/closed totals are accurate beyond the first 200 results.
   const mergedCount = closedData?.data.filter((pr) => pr.merged).length ?? 0
   const closedCount = closedData?.data.filter((pr) => !pr.merged).length ?? 0
 
@@ -84,12 +86,12 @@ export function MyPullRequestCountsWidget() {
           <span className="text-secondary text-xs">Open</span>
           <span className="text-tertiary text-xs">/</span>
           <span className="text-2xl text-purple-500">
-            {mergedCount.toLocaleString()}
+            ≈{mergedCount.toLocaleString()}
           </span>
           <span className="text-secondary text-xs">Merged</span>
           <span className="text-tertiary text-xs">/</span>
           <span className="text-tertiary text-2xl">
-            {closedCount.toLocaleString()}
+            ≈{closedCount.toLocaleString()}
           </span>
           <span className="text-secondary text-xs">Closed</span>
         </div>

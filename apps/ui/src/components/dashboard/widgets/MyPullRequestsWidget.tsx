@@ -123,9 +123,14 @@ export function MyPullRequestsWidget() {
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-baseline gap-2">
           <h3 className="text-primary text-lg">My Pull Requests</h3>
-          {!isLoading && total > 0 && (
-            <span className="text-tertiary text-sm">{total}</span>
-          )}
+          {/* TODO: show total for merged/closed once a server-side accurate count is available.
+               For now, apiState='closed' covers both states so the total is inaccurate for
+               client-side filtered views. */}
+          {!isLoading &&
+            total > 0 &&
+            (stateFilter === 'all' || stateFilter === 'open') && (
+              <span className="text-tertiary text-sm">{total}</span>
+            )}
         </div>
       </div>
 
