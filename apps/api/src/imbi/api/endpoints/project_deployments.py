@@ -380,7 +380,8 @@ async def _record_deployment_audit(
     environment_slug: str,
     recorded_by: str,
     action: str,
-    version: str,
+    tag: str | None,
+    committish: str,
     plugin_slug: str,
     run_url: str | None,
     release_url: str | None = None,
@@ -393,6 +394,10 @@ async def _record_deployment_audit(
     project's history pane surfaces deploys/promotes the same way
     it surfaces config changes.  Audit failures intentionally
     propagate so a bad write never silently desyncs the log.
+
+    ``OperationLog.version`` is populated with ``tag if tag else
+    committish`` — a single human-friendly display string that the
+    operations-log UI can render directly.
     """
     description = json.dumps(
         {
@@ -415,7 +420,7 @@ async def _record_deployment_audit(
         entry_type='Deployed',
         description=description,
         link=run_url,
-        version=version,
+        version=tag or committish,
         plugin_slug=plugin_slug,
     )
     row = entry.model_dump(by_alias=True, mode='python')
@@ -435,19 +440,23 @@ async def _record_deployment_audit(
 _SEMVER_REF_RE = re.compile(r'^v?\d+\.\d+\.\d+(?:[-+].*)?$')
 
 
-def _resync_version(observed: RemoteDeployment) -> str:
-    """Pick the ``Release.version`` to record for an observed deployment.
+def _resync_release_identity(
+    observed: RemoteDeployment,
+) -> tuple[str | None, str]:
+    """Pick ``(tag, committish)`` to record for an observed deployment.
 
     Mirrors the CEL expression the gateway uses on
-    ``imbi_gateway.actions.create_release``:
-    semver-shaped ``ref`` wins, otherwise the first 7 chars of the
-    commit SHA.  Keeping the rules aligned means a project whose
-    webhooks recover later sees the same ``version`` strings the
-    gateway would have created, so the badge does not flip.
+    ``imbi_gateway.actions.create_release``: semver-shaped ``ref``
+    becomes the tag; the committish is always the first 7 chars of
+    the commit SHA. Keeping the rules aligned means a project whose
+    webhooks recover later produces the same ``(tag, committish)``
+    pair the gateway would have created, so deduplication stays
+    consistent.
     """
+    tag: str | None = None
     if observed.ref and _SEMVER_REF_RE.match(observed.ref):
-        return observed.ref
-    return observed.sha[:7]
+        tag = observed.ref
+    return tag, observed.sha[:7].lower()
 
 
 async def _load_resync_environments(
@@ -487,25 +496,40 @@ async def _load_resync_environments(
     ]
 
 
-async def _release_exists(
+async def _release_id_for(
     db: graph.Graph,
     *,
     project_id: str,
-    version: str,
-) -> bool:
-    """Cheap existence probe for ``project -[:HAS_RELEASE]-> Release``."""
+    committish: str,
+    tag: str | None,
+) -> str | None:
+    """Return the ``Release.id`` matching ``(project, committish, tag)``.
+
+    Acts as both an existence probe and a lookup for the release-id
+    the caller needs to pass to ``append_deployment_event`` and the
+    deployment-audit writer. AGE doesn't expose NULL equality, so
+    tag-matching is COALESCEd through a sentinel.
+    """
     query: typing.LiteralString = """
     MATCH (:Project {{id: {project_id}}})
-        -[:HAS_RELEASE]->(r:Release {{version: {version}}})
+        -[:HAS_RELEASE]->(r:Release {{committish: {committish}}})
+    WHERE COALESCE(r.tag, '') = COALESCE({tag}, '')
     RETURN r.id AS rid
     LIMIT 1
     """
     rows = await db.execute(
         query,
-        {'project_id': project_id, 'version': version},
+        {
+            'project_id': project_id,
+            'committish': committish,
+            'tag': tag,
+        },
         ['rid'],
     )
-    return bool(rows)
+    if not rows:
+        return None
+    rid = graph.parse_agtype(rows[0].get('rid'))
+    return str(rid) if rid else None
 
 
 async def resync_for_project(
@@ -570,11 +594,11 @@ async def resync_for_project(
             ),
         ) from exc
     summary.observed = len(observations)
-    # Track versions we've already touched so ``releases_created`` /
-    # ``releases_updated`` are counted once per distinct ``version`` --
-    # the same tag promoted across multiple environments is one
-    # Release node, not N.
-    seen_versions: set[str] = set()
+    # Track identities we've already touched so ``releases_created`` /
+    # ``releases_updated`` are counted once per distinct
+    # ``(committish, tag)`` pair -- the same tag promoted across
+    # multiple environments is one Release node, not N.
+    seen_identities: set[tuple[str, str | None]] = set()
     for observed in observations:
         try:
             await _apply_remote_deployment(
@@ -586,7 +610,7 @@ async def resync_for_project(
                 recorded_by=auth.principal_name,
                 observed=observed,
                 summary=summary,
-                seen_versions=seen_versions,
+                seen_identities=seen_identities,
             )
         except Exception as exc:
             LOGGER.exception(
@@ -620,30 +644,41 @@ async def _apply_remote_deployment(
     recorded_by: str,
     observed: RemoteDeployment,
     summary: ResyncSummary,
-    seen_versions: set[str],
+    seen_identities: set[tuple[str, str | None]],
 ) -> None:
     """Persist one observed remote deployment + audit row.
 
-    ``seen_versions`` is mutated to track which ``version`` strings
-    have already been counted against ``releases_created`` /
-    ``releases_updated`` during this resync, so a tag promoted across
-    multiple environments is counted as one Release node, not N.
+    ``seen_identities`` is mutated to track which
+    ``(committish, tag)`` pairs have already been counted against
+    ``releases_created`` / ``releases_updated`` during this resync,
+    so a tag promoted across multiple environments is counted as one
+    Release node, not N.
     """
-    version = _resync_version(observed)
-    title = observed.description or observed.ref or version
-    first_time_this_resync = version not in seen_versions
-    existed = await _release_exists(db, project_id=project_id, version=version)
-    await _upsert_release_node(
+    tag, committish = _resync_release_identity(observed)
+    title = observed.description or observed.ref or tag or committish
+    identity = (committish, tag)
+    first_time_this_resync = identity not in seen_identities
+    existed = (
+        await _release_id_for(
+            db,
+            project_id=project_id,
+            committish=committish,
+            tag=tag,
+        )
+        is not None
+    )
+    release_id = await _upsert_release_node(
         db,
         project_id=project_id,
-        version=version,
+        tag=tag,
+        committish=committish,
         title=title,
         notes_markdown=observed.description or '',
         release_url=observed.deployment_url,
         created_by=recorded_by,
     )
     if first_time_this_resync:
-        seen_versions.add(version)
+        seen_identities.add(identity)
         if existed:
             summary.releases_updated += 1
         else:
@@ -652,7 +687,7 @@ async def _apply_remote_deployment(
         db,
         org_slug=org_slug,
         project_id=project_id,
-        version=version,
+        release_id=release_id,
         env_slug=observed.environment,
         status=observed.status,
         note=f'resync via {plugin_slug}',
@@ -669,8 +704,10 @@ async def _apply_remote_deployment(
                 project_id=project_id,
                 environment=observed.environment,
                 detail=(
-                    f'Could not attach DeploymentEvent for version '
-                    f'{version!r} -- release or environment not found.'
+                    f'Could not attach DeploymentEvent for release '
+                    f'{release_id!r} (committish={committish!r} '
+                    f'tag={tag!r}) -- release or environment not '
+                    f'found.'
                 ),
             )
         )
@@ -691,7 +728,8 @@ async def _apply_remote_deployment(
         environment_slug=observed.environment,
         recorded_by=recorded_by,
         action='resync',
-        version=version,
+        tag=tag,
+        committish=committish,
         plugin_slug=plugin_slug,
         run_url=observed.run_url,
         release_url=observed.deployment_url,
@@ -993,14 +1031,32 @@ async def _handle_deploy(
         run.run_id,
     )
     note = f'via {resolved.plugin_slug}'
-    recorded_version: str | None = None
+    committish_short = body.committish[:7].lower()
+    candidate_tag = (
+        body.ref_label
+        if body.ref_label and _SEMVER_REF_RE.match(body.ref_label)
+        else None
+    )
+    # Look up the release that was deployed. Try (committish, tag) first
+    # so a SHA that ships under a tag matches the tagged Release node;
+    # fall back to (committish, None) so a raw-SHA deploy still finds
+    # an untagged Release if one exists.
     result: tuple[ReleaseEnvironmentEdgeResponse, AppendOutcome] | None = None
-    for candidate in filter(None, (body.ref_label, body.committish)):
+    matched_tag: str | None = None
+    for try_tag in [candidate_tag, None] if candidate_tag else [None]:
+        release_id = await _release_id_for(
+            db,
+            project_id=project_id,
+            committish=committish_short,
+            tag=try_tag,
+        )
+        if release_id is None:
+            continue
         result = await append_deployment_event(
             db,
             org_slug=org_slug,
             project_id=project_id,
-            version=candidate,
+            release_id=release_id,
             env_slug=body.environment,
             status='in_progress',
             note=note,
@@ -1008,7 +1064,7 @@ async def _handle_deploy(
             external_run_url=run.run_url,
         )
         if result is not None:
-            recorded_version = candidate
+            matched_tag = try_tag
             break
     await _record_deployment_audit(
         project_id=project_id,
@@ -1016,7 +1072,8 @@ async def _handle_deploy(
         environment_slug=body.environment,
         recorded_by=auth.principal_name,
         action=body.action,
-        version=recorded_version or body.ref_label or body.committish,
+        tag=matched_tag if result is not None else candidate_tag,
+        committish=committish_short,
         plugin_slug=resolved.plugin_slug,
         run_url=run.run_url,
     )
@@ -1240,10 +1297,12 @@ async def _handle_promote(
 
     # 4. Upsert the Release node so future deploys of the same tag
     #    can attach a DeploymentEvent.
-    await _upsert_release_node(
+    promoted_committish = body.from_committish[:7].lower()
+    release_id = await _upsert_release_node(
         db,
         project_id=project_id,
-        version=body.tag,
+        tag=body.tag,
+        committish=promoted_committish,
         title=body.release_name or body.tag,
         notes_markdown=body.release_notes_markdown,
         release_url=release_url,
@@ -1256,7 +1315,7 @@ async def _handle_promote(
         db,
         org_slug=org_slug,
         project_id=project_id,
-        version=body.tag,
+        release_id=release_id,
         env_slug=body.to_environment,
         status='in_progress',
         note=note,
@@ -1281,7 +1340,8 @@ async def _handle_promote(
         environment_slug=body.to_environment,
         recorded_by=auth.principal_name,
         action='promote',
-        version=body.tag,
+        tag=body.tag,
+        committish=promoted_committish,
         plugin_slug=resolved.plugin_slug,
         run_url=run.run_url,
         release_url=release_url,
@@ -1302,17 +1362,19 @@ async def _upsert_release_node(
     db: graph.Graph,
     *,
     project_id: str,
-    version: str,
+    tag: str | None,
+    committish: str,
     title: str,
     notes_markdown: str,
     release_url: str | None,
     created_by: str,
-) -> None:
+) -> str:
     """Create the ``Release`` node if missing, otherwise update notes.
 
-    Uses MATCH-then-CREATE-or-SET so the second-promote-of-same-tag
-    case (rare; tag re-creation will already have failed at the
-    plugin) is benign rather than blowing up on a duplicate node.
+    Identity is ``(project, committish, tag)``: re-promoting the same
+    tag from the same SHA is benign and refreshes notes / links;
+    re-tagging the same SHA produces a new ``Release`` node.
+    Returns the resulting ``Release.id``.
     """
     now = datetime.datetime.now(datetime.UTC).isoformat()
     links_json = (
@@ -1320,15 +1382,22 @@ async def _upsert_release_node(
         if release_url
         else json.dumps([])
     )
-    query: typing.LiteralString = """
+    new_id: str = nanoid.generate()
+    # Match the exact identity (committish, tag) before deciding to
+    # create.  Filtering inside ``OPTIONAL MATCH`` keeps a sibling
+    # release with the same committish but a different tag from
+    # spawning a duplicate ``(committish, tag)`` row.
+    create_query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
     OPTIONAL MATCH (p)-[:HAS_RELEASE]
-        ->(existing:Release {{version: {version}}})
+        ->(existing:Release {{committish: {committish}}})
+    WHERE COALESCE(existing.tag, '') = COALESCE({tag}, '')
     WITH p, existing
     WHERE existing IS NULL
     CREATE (p)-[:HAS_RELEASE]->(:Release {{
         id: {id},
-        version: {version},
+        tag: {tag},
+        committish: {committish},
         title: {title},
         description: {description},
         links: {links},
@@ -1338,11 +1407,12 @@ async def _upsert_release_node(
     }})
     """
     await db.execute(
-        query,
+        create_query,
         {
             'project_id': project_id,
-            'version': version,
-            'id': nanoid.generate(),
+            'committish': committish,
+            'tag': tag,
+            'id': new_id,
             'title': title,
             'description': notes_markdown,
             'links': links_json,
@@ -1352,24 +1422,34 @@ async def _upsert_release_node(
         [],
     )
     # Update notes / links on a pre-existing release (idempotent re-run).
+    # Match on (committish, tag) — tag matching uses COALESCE so a NULL
+    # tag compares equal to a NULL tag (AGE has no NULL equality).
     update_query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
-          -[:HAS_RELEASE]->(r:Release {{version: {version}}})
+          -[:HAS_RELEASE]->(r:Release {{committish: {committish}}})
+    WHERE COALESCE(r.tag, '') = COALESCE({tag}, '')
     SET r.description = {description},
         r.links = {links},
         r.updated_at = {now}
+    RETURN r.id AS rid
     """
-    await db.execute(
+    rows = await db.execute(
         update_query,
         {
             'project_id': project_id,
-            'version': version,
+            'committish': committish,
+            'tag': tag,
             'description': notes_markdown,
             'links': links_json,
             'now': now,
         },
-        [],
+        ['rid'],
     )
+    if rows:
+        rid = graph.parse_agtype(rows[0].get('rid'))
+        if rid:
+            return str(rid)
+    return new_id
 
 
 # ---------------------------------------------------------------------------
@@ -1650,32 +1730,46 @@ async def list_promotion_options(
         to_release = to_item['release']
         if not from_release:
             continue
-        from_version = str(from_release.get('version') or '')
-        to_version = (
-            str(to_release.get('version') or '') if to_release else None
-        )
+        from_committish = str(from_release.get('committish') or '')
+        from_tag = from_release.get('tag')
+        from_display = str(from_tag) if from_tag else (from_committish or None)
+        if to_release:
+            to_committish = str(to_release.get('committish') or '')
+            to_tag = to_release.get('tag')
+            to_display = str(to_tag) if to_tag else (to_committish or None)
+        else:
+            to_committish = ''
+            to_display = None
         commits_pending: int | None = None
-        if to_version and to_version != from_version:
+        if (
+            to_committish
+            and from_committish
+            and to_committish != from_committish
+        ):
             try:
                 cmp_result = await call_with_timeout(
                     handler.compare(
                         ctx,
                         credentials,
-                        base=to_version,
-                        head=from_version,
+                        base=to_committish,
+                        head=from_committish,
                     )
                 )
                 commits_pending = cmp_result.ahead
             except Exception:  # noqa: BLE001
                 LOGGER.debug(
-                    'compare failed for %s..%s', to_version, from_version
+                    'compare failed for %s..%s',
+                    to_committish,
+                    from_committish,
                 )
         options.append(
             PromotionOption(
                 from_environment=from_item['env']['slug'],
                 to_environment=to_item['env']['slug'],
-                from_version=from_version or None,
-                to_version=to_version or None,
+                from_version=from_display,
+                to_version=to_display,
+                from_sha=from_committish or None,
+                to_sha=to_committish or None,
                 commits_pending=commits_pending,
             )
         )

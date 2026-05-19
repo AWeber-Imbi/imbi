@@ -839,7 +839,8 @@ _GRAPH_ACTIVITY_QUERIES: dict[str, str] = {
           AND r.created_at <= {before}
         RETURN r.id AS id,
                r.created_at AS ts,
-               r.version AS version,
+               r.tag AS tag,
+               r.committish AS committish,
                r.title AS title,
                p.id AS project_id,
                p.slug AS project_slug,
@@ -878,13 +879,15 @@ def _graph_summary(label: str, row: dict[str, typing.Any]) -> str:
         )
         return f'Wrote document "{title}" on {proj}'
     if label == 'release':
-        version = graph.parse_agtype(row.get('version')) or ''
+        tag = graph.parse_agtype(row.get('tag'))
+        committish = graph.parse_agtype(row.get('committish'))
+        display = str(tag) if tag else (str(committish) if committish else '')
         proj = (
             graph.parse_agtype(row.get('project_name'))
             or graph.parse_agtype(row.get('project_slug'))
             or 'a project'
         )
-        return f'Released {version} of {proj}'.strip()
+        return f'Released {display} of {proj}'.strip()
     if label == 'upload':
         filename = graph.parse_agtype(row.get('filename')) or '(unknown)'
         return f'Uploaded {filename}'
@@ -927,7 +930,8 @@ _GRAPH_ACTIVITY_COLUMNS: dict[str, list[str]] = {
     'release': [
         'id',
         'ts',
-        'version',
+        'tag',
+        'committish',
         'title',
         'project_id',
         'project_slug',

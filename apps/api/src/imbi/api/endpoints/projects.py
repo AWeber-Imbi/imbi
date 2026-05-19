@@ -4,6 +4,7 @@ Projects are identified by a Nano-ID (``id`` field) and may
 belong to multiple project types.  See ADR-0006 for rationale.
 """
 
+import asyncio
 import datetime
 import json
 import logging
@@ -127,6 +128,21 @@ class ProjectRelationships(pydantic.BaseModel):
     inbound_count: int = 0
 
 
+class ReleaseInfo(pydantic.BaseModel):
+    """Current release for a project in an environment.
+
+    ``tag`` is the optional human-readable label (e.g. ``1.0.0``);
+    ``committish`` is the 7-char short SHA. The UI displays
+    ``tag ?? committish`` and uses ``committish`` equality to group
+    environments showing the same release.
+    """
+
+    deployed_at: datetime.datetime
+    performed_by: str | None = None
+    tag: str | None = None
+    committish: str | None = None
+
+
 class ProjectResponse(pydantic.BaseModel):
     """Response body for a project."""
 
@@ -149,6 +165,13 @@ class ProjectResponse(pydantic.BaseModel):
     score: float | None = None
     breakdown: scoring_models.ScoreBreakdown | None = None
     relationships: ProjectRelationships | None = None
+    open_pr_count: int = 0
+    closed_pr_count: int = 0
+    viewer_open_pr_count: int = 0
+    viewer_closed_pr_count: int = 0
+    current_releases: dict[str, ReleaseInfo] = pydantic.Field(
+        default_factory=dict
+    )
 
     @pydantic.field_validator(
         'links',
@@ -252,6 +275,228 @@ async def _validate_env_slugs(
             status_code=422,
             detail=(f'Environment slug(s) not found: {sorted(missing)!r}'),
         )
+
+
+async def _fetch_pr_counts(
+    project_ids: list[str],
+    viewer: str | None = None,
+) -> dict[str, tuple[int, int, int, int]]:
+    """Return {project_id: (open, closed, viewer_open, viewer_closed)}.
+
+    Errors are swallowed — PR counts are best-effort and should not
+    fail the project list endpoint.
+    """
+    if not project_ids:
+        return {}
+    params: dict[str, typing.Any] = {'project_ids': project_ids}
+    if viewer:
+        sql = (
+            'SELECT project_id,'
+            " countIf(state = 'open') AS open_count,"
+            " countIf(state = 'closed') AS closed_count,"
+            " countIf(state = 'open' AND author = {viewer:String})"
+            ' AS viewer_open_count,'
+            " countIf(state = 'closed' AND author = {viewer:String})"
+            ' AS viewer_closed_count'
+            ' FROM pull_requests FINAL'
+            ' WHERE project_id IN {project_ids:Array(String)}'
+            ' GROUP BY project_id'
+        )
+        params['viewer'] = viewer
+    else:
+        sql = (
+            'SELECT project_id,'
+            " countIf(state = 'open') AS open_count,"
+            " countIf(state = 'closed') AS closed_count,"
+            ' 0 AS viewer_open_count,'
+            ' 0 AS viewer_closed_count'
+            ' FROM pull_requests FINAL'
+            ' WHERE project_id IN {project_ids:Array(String)}'
+            ' GROUP BY project_id'
+        )
+    try:
+        rows = await ch_client.Clickhouse.get_instance().query(sql, params)
+    except Exception:  # noqa: BLE001
+        LOGGER.warning('Failed to fetch PR counts for projects', exc_info=True)
+        return {}
+    return {
+        str(r['project_id']): (
+            int(r['open_count']),
+            int(r['closed_count']),
+            int(r['viewer_open_count']),
+            int(r['viewer_closed_count']),
+        )
+        for r in rows
+    }
+
+
+async def _resolve_display_names(
+    db: graph.Graph,
+    emails: list[str],
+) -> dict[str, str]:
+    """Return {email: display_name} for known User nodes.
+
+    Best-effort enrichment: callers fall back to the local-part of
+    the email when a name is not returned, so DB errors should never
+    surface as a 500.
+    """
+    if not emails:
+        return {}
+    query: typing.LiteralString = (
+        'MATCH (u:User) WHERE u.email IN {emails}'
+        ' RETURN u.email AS email, u.display_name AS display_name'
+    )
+    try:
+        records = await db.execute(
+            query, {'emails': emails}, ['email', 'display_name']
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Failed to resolve performer display names', exc_info=True
+        )
+        return {}
+    return {
+        str(graph.parse_agtype(r['email'])): str(
+            graph.parse_agtype(r['display_name'])
+        )
+        for r in records
+        if r.get('email') and r.get('display_name')
+    }
+
+
+async def _fetch_current_releases(
+    db: graph.Graph,
+    project_ids: list[str],
+) -> dict[str, dict[str, ReleaseInfo]]:
+    """Return {project_id: {env_slug: ReleaseInfo}} for current releases.
+
+    ClickHouse tells us which release ``version`` string is currently
+    deployed per (project, environment). The Release node itself
+    carries the structured ``tag`` + ``committish`` fields, so we
+    join back to AGE with a single bulk query keyed on
+    ``(project_id, version)`` — matching ``r.tag = version`` for
+    tagged releases and ``r.committish = version`` for raw-SHA
+    deploys. The ops_log writer (see
+    ``project_deployments._record_deployment_audit``) stores
+    ``tag if tag else committish`` in ``version``, so the ``OR``
+    branch is exhaustive in normal data.
+
+    Errors are swallowed — release data is best-effort.
+    """
+    if not project_ids:
+        return {}
+    sql = (
+        'SELECT project_id, environment_slug,'
+        ' argMax(version, occurred_at) AS version,'
+        ' argMax(performed_by, occurred_at) AS performed_by,'
+        ' max(occurred_at) AS deployed_at'
+        ' FROM operations_log FINAL'
+        " WHERE entry_type = 'Deployed'"
+        ' AND project_id IN {project_ids:Array(String)}'
+        ' GROUP BY project_id, environment_slug'
+    )
+    try:
+        rows = await ch_client.Clickhouse.get_instance().query(
+            sql, {'project_ids': project_ids}
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Failed to fetch current releases for projects', exc_info=True
+        )
+        return {}
+    # First pass: collect rows and the (project_id, version) pairs we
+    # need to translate to (tag, committish).
+    rows_list = list(rows)
+    pairs = sorted(
+        {
+            (str(r['project_id']), str(r['version']))
+            for r in rows_list
+            if r.get('version')
+        }
+    )
+    identity_by_pair = await _resolve_release_identities(db, pairs)
+    result: dict[str, dict[str, ReleaseInfo]] = {}
+    for r in rows_list:
+        pid = str(r['project_id'])
+        env_slug = str(r['environment_slug'])
+        version_value = str(r['version']) if r.get('version') else ''
+        tag, committish = identity_by_pair.get(
+            (pid, version_value), (None, None)
+        )
+        result.setdefault(pid, {})[env_slug] = ReleaseInfo(
+            tag=tag,
+            committish=committish,
+            performed_by=r.get('performed_by') or None,
+            deployed_at=r['deployed_at'],
+        )
+    return result
+
+
+async def _resolve_release_identities(
+    db: graph.Graph,
+    pairs: list[tuple[str, str]],
+) -> dict[tuple[str, str], tuple[str | None, str | None]]:
+    """Look up ``(tag, committish)`` for each ``(project_id, version)`` pair.
+
+    Fetches every release for the projects involved in one bulk
+    Cypher query, then joins against ``pairs`` in Python. Avoids
+    the cross-product scan that an inline UNWIND + ``OR`` filter
+    would force per pair (no tag/committish indexes exist, so each
+    pair would otherwise walk every Release for its project).
+
+    When a ``(project_id, version)`` matches both a release's
+    ``tag`` and another release's ``committish``, the tag match
+    wins so the human-readable label stays canonical.
+    """
+    if not pairs:
+        return {}
+    project_ids = sorted({pid for pid, _ in pairs})
+    query: typing.LiteralString = """
+    MATCH (p:Project)-[:HAS_RELEASE]->(r:Release)
+    WHERE p.id IN {project_ids}
+    RETURN p.id AS project_id, r.tag AS tag, r.committish AS committish
+    """
+    try:
+        rows = await db.execute(
+            query,
+            {'project_ids': project_ids},
+            ['project_id', 'tag', 'committish'],
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Failed to resolve release identities from the graph',
+            exc_info=True,
+        )
+        return {}
+
+    # Build two indexes per project: tag → (tag, committish) and
+    # committish → (tag, committish). The tag index wins for lookup
+    # so a ``version`` that happens to match both indexes resolves
+    # to the tagged release.
+    by_tag: dict[tuple[str, str], tuple[str | None, str | None]] = {}
+    by_committish: dict[tuple[str, str], tuple[str | None, str | None]] = {}
+    for row in rows:
+        pid = graph.parse_agtype(row.get('project_id'))
+        tag_val = graph.parse_agtype(row.get('tag'))
+        committish_val = graph.parse_agtype(row.get('committish'))
+        if not isinstance(pid, str):
+            continue
+        tag = str(tag_val) if tag_val else None
+        committish = str(committish_val) if committish_val else None
+        identity = (tag, committish)
+        if tag:
+            by_tag.setdefault((pid, tag), identity)
+        if committish:
+            by_committish.setdefault((pid, committish), identity)
+
+    result: dict[tuple[str, str], tuple[str | None, str | None]] = {}
+    for pid, version in pairs:
+        key = (pid, version)
+        if key in by_tag:
+            result[key] = by_tag[key]
+        elif key in by_committish:
+            result[key] = by_committish[key]
+    return result
 
 
 _EVENT_SKIP_FIELDS: frozenset[str] = frozenset(
@@ -700,6 +945,7 @@ async def list_projects(
         },
         ['project', 'outbound_count', 'inbound_count'],
     )
+    project_data_list: list[dict[str, typing.Any]] = []
     for record in records:
         project_data = graph.parse_agtype(record['project'])
         _flatten_edge_props(project_data)
@@ -710,9 +956,49 @@ async def list_projects(
             graph.parse_agtype(record['outbound_count']),
             graph.parse_agtype(record['inbound_count']),
         )
-        results.append(
-            ProjectResponse.model_validate(project_data),
+        project_data_list.append(project_data)
+
+    project_ids = [
+        str(p.get('id', '')) for p in project_data_list if p.get('id')
+    ]
+    viewer = auth.identity_for('github-enterprise-cloud')
+    pr_counts, releases = await asyncio.gather(
+        _fetch_pr_counts(project_ids, viewer=viewer),
+        _fetch_current_releases(db, project_ids),
+    )
+
+    emails = list(
+        {
+            info.performed_by
+            for env_map in releases.values()
+            for info in env_map.values()
+            if info.performed_by
+        }
+    )
+    display_names = await _resolve_display_names(db, emails)
+    for env_map in releases.values():
+        for slug, info in env_map.items():
+            if not info.performed_by:
+                continue
+            if info.performed_by in display_names:
+                name: str = display_names[info.performed_by]
+            elif '@' in info.performed_by:
+                name = info.performed_by.split('@')[0]
+            else:
+                continue
+            env_map[slug] = info.model_copy(update={'performed_by': name})
+
+    for project_data in project_data_list:
+        pid = str(project_data.get('id', ''))
+        open_count, closed_count, viewer_open, viewer_closed = pr_counts.get(
+            pid, (0, 0, 0, 0)
         )
+        project_data['open_pr_count'] = open_count
+        project_data['closed_pr_count'] = closed_count
+        project_data['viewer_open_pr_count'] = viewer_open
+        project_data['viewer_closed_pr_count'] = viewer_closed
+        project_data['current_releases'] = releases.get(pid, {})
+        results.append(ProjectResponse.model_validate(project_data))
     return results
 
 

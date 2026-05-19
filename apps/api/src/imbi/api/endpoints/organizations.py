@@ -27,6 +27,7 @@ from .project_plugins import project_plugins_router
 from .project_type_plugins import project_type_plugins_router
 from .project_types import project_types_router
 from .projects import projects_router
+from .pull_requests import pull_requests_project_router, pull_requests_router
 from .releases import releases_router
 from .search import search_router
 from .service_plugins import service_plugins_router
@@ -128,6 +129,14 @@ organizations_router.include_router(
 organizations_router.include_router(
     project_deployments_router,
     prefix='/{org_slug}/projects/{project_id}/deployments',
+)
+organizations_router.include_router(
+    pull_requests_project_router,
+    prefix='/{org_slug}/projects/{project_id}/pull-requests',
+)
+organizations_router.include_router(
+    pull_requests_router,
+    prefix='/{org_slug}/pull-requests',
 )
 organizations_router.include_router(
     search_router,

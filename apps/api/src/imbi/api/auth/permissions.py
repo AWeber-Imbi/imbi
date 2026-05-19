@@ -21,6 +21,13 @@ LOGGER = logging.getLogger(__name__)
 oauth2_scheme = security.HTTPBearer(auto_error=False)
 
 
+class IdentityInfo(pydantic.BaseModel):
+    """A single third-party identity connection for an authenticated user."""
+
+    plugin_slug: str
+    subject: str
+
+
 class AuthContext(pydantic.BaseModel):
     """Authentication context for the current request."""
 
@@ -29,6 +36,14 @@ class AuthContext(pydantic.BaseModel):
     session_id: str | None = None
     auth_method: typing.Literal['jwt', 'api_key', 'client_credentials']
     permissions: set[str] = pydantic.Field(default_factory=set)
+    identities: list[IdentityInfo] = pydantic.Field(default_factory=list)
+
+    def identity_for(self, plugin_slug: str) -> str | None:
+        """Return the subject for the given plugin_slug, or None."""
+        for i in self.identities:
+            if i.plugin_slug == plugin_slug:
+                return i.subject
+        return None
 
     @property
     def principal_name(self) -> str:
@@ -134,6 +149,47 @@ async def load_principal_permissions(
     return set()
 
 
+async def _load_user_identities(
+    db: graph.Graph,
+    user_id: str,
+) -> list[IdentityInfo]:
+    """Return active third-party identity connections for the user.
+
+    Identity enrichment is auxiliary — authentication has already
+    succeeded by the time this runs.  A failure here (DB hiccup,
+    AGType parse error) must not turn a valid token into a 5xx, so
+    all exceptions are caught, logged, and treated as "no identities".
+    """
+    query: typing.LiteralString = """
+    MATCH (u:User {{id: {user_id}}})-[:HAS_IDENTITY]->(c:IdentityConnection)
+    WHERE c.status = 'active'
+    OPTIONAL MATCH (c)-[:USES_PLUGIN]->(p:Plugin)
+    RETURN p.plugin_slug AS plugin_slug, c.subject AS subject
+    """
+    try:
+        records = await db.execute(
+            query,
+            {'user_id': user_id},
+            ['plugin_slug', 'subject'],
+        )
+        result: list[IdentityInfo] = []
+        for row in records:
+            plugin_slug = graph.parse_agtype(row['plugin_slug'])
+            subject = graph.parse_agtype(row['subject'])
+            if plugin_slug and subject:
+                result.append(
+                    IdentityInfo(plugin_slug=plugin_slug, subject=subject)
+                )
+        return result
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Failed to load identity connections for user_id=%s',
+            user_id,
+            exc_info=True,
+        )
+        return []
+
+
 async def authenticate_jwt(
     db: graph.Graph,
     token: str,
@@ -237,12 +293,14 @@ async def authenticate_jwt(
 
     # Load permissions
     perms = await load_principal_permissions(db, 'User', 'email', subject)
+    identities = await _load_user_identities(db, user.id)
 
     return AuthContext(
         user=user,
         session_id=jti,
         auth_method='jwt',
         permissions=perms,
+        identities=identities,
     )
 
 
@@ -372,6 +430,7 @@ async def authenticate_api_key(
         db, 'User', 'email', user.email
     )
     filtered = all_perms.intersection(set(scopes)) if scopes else all_perms
+    identities = await _load_user_identities(db, user.id)
 
     # Update last_used only after all validation passes
     now = datetime.datetime.now(datetime.UTC).isoformat()
@@ -385,6 +444,7 @@ async def authenticate_api_key(
         session_id=key_id,
         auth_method='api_key',
         permissions=filtered,
+        identities=identities,
     )
 
 

@@ -317,20 +317,29 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
 
     def test_trigger_deploy_records_event_when_release_matches(self) -> None:
         self.mocks['append_deployment_event'].return_value = mock.Mock()
+        # Mock _release_id_for so the deploy flow finds a Release node
+        # to attach the in-progress DeploymentEvent to.
+        self._start(
+            mock.patch(
+                f'{_MODULE}._release_id_for',
+                return_value='matched-release-id',
+            )
+        )
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
                 '/organizations/myorg/projects/proj1/deployments',
                 json={
                     'action': 'deploy',
                     'environment': 'staging',
-                    'committish': 'v6.4.0',
+                    'committish': 'abc1234',
+                    'ref_label': 'v6.4.0',
                 },
             )
         self.assertEqual(response.status_code, 202)
         self.assertTrue(response.json()['recorded'])
         self.mocks['append_deployment_event'].assert_called_once()
         call = self.mocks['append_deployment_event'].call_args
-        self.assertEqual(call.kwargs['version'], 'v6.4.0')
+        self.assertEqual(call.kwargs['release_id'], 'matched-release-id')
         self.assertEqual(call.kwargs['env_slug'], 'staging')
         self.assertEqual(call.kwargs['status'], 'in_progress')
         self.assertEqual(call.kwargs['external_run_id'], '42')
@@ -825,19 +834,19 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
                 {
                     'env': '{"slug": "testing", "name": "Testing", '
                     '"sort_order": 1}',
-                    'release': '{"version": "v6.4.0"}',
+                    'release': '{"tag": "v6.4.0", "committish": "aaa6400"}',
                     'deployments': None,
                 },
                 {
                     'env': '{"slug": "staging", "name": "Staging", '
                     '"sort_order": 2}',
-                    'release': '{"version": "v6.3.0"}',
+                    'release': '{"tag": "v6.3.0", "committish": "bbb6300"}',
                     'deployments': None,
                 },
                 {
                     'env': '{"slug": "production", "name": "Production", '
                     '"sort_order": 3}',
-                    'release': '{"version": "v6.2.0"}',
+                    'release': '{"tag": "v6.2.0", "committish": "ccc6200"}',
                     'deployments': None,
                 },
             ]
@@ -872,7 +881,7 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
                 {
                     'env': '{"slug": "testing", "name": "Testing", '
                     '"sort_order": 1}',
-                    'release': '{"version": "v6.3.0"}',
+                    'release': '{"tag": "v6.3.0", "committish": "bbb6300"}',
                     'deployments': (
                         '[{"timestamp": "2024-01-01T00:00:00+00:00", '
                         '"status": "success"}]'
@@ -881,7 +890,7 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
                 {
                     'env': '{"slug": "testing", "name": "Testing", '
                     '"sort_order": 1}',
-                    'release': '{"version": "v6.4.0"}',
+                    'release': '{"tag": "v6.4.0", "committish": "aaa6400"}',
                     'deployments': (
                         '[{"timestamp": "2024-06-01T00:00:00+00:00", '
                         '"status": "success"}]'
@@ -890,7 +899,7 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
                 {
                     'env': '{"slug": "staging", "name": "Staging", '
                     '"sort_order": 2}',
-                    'release': '{"version": "v6.2.0"}',
+                    'release': '{"tag": "v6.2.0", "committish": "ccc6200"}',
                     'deployments': None,
                 },
             ]
@@ -924,13 +933,13 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
                 {
                     'env': '{"slug": "testing", "name": "Testing", '
                     '"sort_order": 1}',
-                    'release': '{"version": "v1.0.0"}',
+                    'release': '{"tag": "v1.0.0", "committish": "abc1000"}',
                     'deployments': None,
                 },
                 {
                     'env': '{"slug": "staging", "name": "Staging", '
                     '"sort_order": 2}',
-                    'release': '{"version": "v0.9.0"}',
+                    'release': '{"tag": "v0.9.0", "committish": "def0900"}',
                     'deployments': None,
                 },
             ]
@@ -990,7 +999,7 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
                 json={
                     'action': 'deploy',
                     'environment': 'testing',
-                    'committish': 'main',
+                    'committish': 'abc1234',
                     'ref_label': 'main',
                 },
             )
@@ -1006,7 +1015,10 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         self.assertEqual(row['entry_type'], 'Deployed')
         self.assertEqual(row['environment_slug'], 'testing')
         self.assertEqual(row['link'], 'https://gh/runs/42')
-        self.assertEqual(row['version'], 'main')
+        # ``ref_label='main'`` is not semver-shaped, so it's treated as
+        # a non-tag and the audit row's ``version`` falls back to the
+        # committish short SHA.
+        self.assertEqual(row['version'], 'abc1234')
         self.assertEqual(row['plugin_slug'], 'github-deployment')
 
     def test_promote_writes_operations_log_audit(self) -> None:
@@ -1067,14 +1079,15 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         )
         self.mocks['release_exists'] = self._start(
             mock.patch(
-                f'{_MODULE}._release_exists',
-                return_value=release_exists,
+                f'{_MODULE}._release_id_for',
+                # Existing returns a release_id; missing returns None
+                return_value='existing-release-id' if release_exists else None,
             )
         )
         self.mocks['upsert_release_node'] = self._start(
             mock.patch(
                 f'{_MODULE}._upsert_release_node',
-                return_value=None,
+                return_value='upserted-release-id',
             )
         )
         if edge_status == 'missing':
@@ -1132,19 +1145,21 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(data['releases_updated'], 0)
         self.assertEqual(data['events_recorded'], 1)
         self.assertEqual(data['errors'], [])
-        # Sha-style ref derives version from sha prefix (matches the
-        # gateway's create_release CEL expression).
+        # Sha-style ref produces (tag=None, committish=sha[:7]).
         upsert_call = self.mocks['upsert_release_node'].call_args
-        self.assertEqual(upsert_call.kwargs['version'], '2668cd0')
+        self.assertIsNone(upsert_call.kwargs['tag'])
+        self.assertEqual(upsert_call.kwargs['committish'], '2668cd0')
         append_call = self.mocks['append_deployment_event'].call_args
-        self.assertEqual(append_call.kwargs['version'], '2668cd0')
+        self.assertEqual(
+            append_call.kwargs['release_id'], 'upserted-release-id'
+        )
         self.assertEqual(
             append_call.kwargs['env_slug'], 'infrastructure-testing'
         )
         self.assertEqual(append_call.kwargs['external_run_id'], '12345')
         self.assertEqual(append_call.kwargs['timestamp'], observed.created_at)
 
-    def test_resync_uses_semver_ref_as_version(self) -> None:
+    def test_resync_uses_semver_ref_as_tag(self) -> None:
         self._arm(
             [self._observed(ref='v1.2.3', sha='deadbeefcafebabe')],
             release_exists=True,
@@ -1158,7 +1173,8 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(data['releases_created'], 0)
         self.assertEqual(data['releases_updated'], 1)
         upsert_call = self.mocks['upsert_release_node'].call_args
-        self.assertEqual(upsert_call.kwargs['version'], 'v1.2.3')
+        self.assertEqual(upsert_call.kwargs['tag'], 'v1.2.3')
+        self.assertEqual(upsert_call.kwargs['committish'], 'deadbee')
 
     def test_resync_400_when_plugin_opts_out(self) -> None:
         # Override the resolved plugin to advertise the no-sync flavor.

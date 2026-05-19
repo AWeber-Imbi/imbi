@@ -1,10 +1,12 @@
 """Release CRUD and deployment-edge endpoints.
 
-Releases are identified by a per-project ``version`` string. The
-``Release`` node is connected to its ``Project`` via an incoming
-``HAS_RELEASE`` edge and to every ``Environment`` it has been
-deployed to via a ``DEPLOYED_TO`` edge carrying an append-only
-``deployments`` history.
+Releases are identified by their stable nano-id (``Release.id``).
+A ``Release`` node carries an optional ``tag`` (human-readable
+business identity such as ``1.0.0``) and a required 7-char
+``committish`` (lowercase short SHA).  It is connected to its
+``Project`` via an incoming ``HAS_RELEASE`` edge and to every
+``Environment`` it has been deployed to via a ``DEPLOYED_TO`` edge
+carrying an append-only ``deployments`` history.
 
 """
 
@@ -46,7 +48,17 @@ class ReleaseCreate(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(extra='forbid')
 
-    version: str
+    tag: str | None = None
+    committish: typing.Annotated[
+        str,
+        pydantic.Field(
+            pattern=r'^[0-9a-f]{7}$',
+            description=(
+                'Short commit SHA (7 lowercase hexadecimal chars) '
+                'identifying the source revision for this release.'
+            ),
+        ),
+    ]
     title: str
     description: str | None = None
     links: list[models.ReleaseLink] = []
@@ -56,12 +68,13 @@ class ReleaseCreate(pydantic.BaseModel):
 class ReleaseUpdate(pydantic.BaseModel):
     """JSON Patch-compatible release shape.
 
-    Only ``title``, ``description``, and ``links`` may be patched;
-    ``version`` / ``id`` / timestamps / project are read-only.
+    ``title``, ``description``, ``links``, and ``tag`` may be patched;
+    ``id`` / ``committish`` / timestamps / project are read-only.
     """
 
     model_config = pydantic.ConfigDict(extra='forbid')
 
+    tag: str | None = None
     title: str | None = None
     description: str | None = None
     links: list[models.ReleaseLink] | None = None
@@ -72,7 +85,8 @@ class ReleaseResponse(pydantic.BaseModel):
 
     id: str
     project_id: str
-    version: str
+    tag: str | None = None
+    committish: str
     title: str
     description: str | None = None
     links: list[models.ReleaseLink] = []
@@ -140,7 +154,7 @@ class CurrentReleaseEnvironment(pydantic.BaseModel):
 _RELEASE_READONLY_PATHS: frozenset[str] = frozenset(
     [
         '/id',
-        '/version',
+        '/committish',
         '/project_id',
         '/created_at',
         '/updated_at',
@@ -187,7 +201,8 @@ def _release_to_response(
         {
             'id': data['id'],
             'project_id': project_id,
-            'version': data['version'],
+            'tag': data.get('tag'),
+            'committish': data['committish'],
             'title': data['title'],
             'description': data.get('description'),
             'links': raw_links,
@@ -222,14 +237,14 @@ async def _fetch_release(
     db: graph.Graph,
     org_slug: str,
     project_id: str,
-    version: str,
+    release_id: str,
 ) -> dict[str, typing.Any] | None:
-    """Fetch a release node by project and version."""
+    """Fetch a release node by project and release id."""
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-    MATCH (p)-[:HAS_RELEASE]->(r:Release {{version: {version}}})
+    MATCH (p)-[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
     RETURN r{{.*}} AS release
     """
     rows = await db.execute(
@@ -237,7 +252,7 @@ async def _fetch_release(
         {
             'project_id': project_id,
             'org_slug': org_slug,
-            'version': version,
+            'release_id': release_id,
         },
         ['release'],
     )
@@ -285,21 +300,22 @@ async def _hydrate_release_train(
     Failures are tolerated silently — the release train must keep
     rendering even if the plugin can't be resolved or its calls hiccup.
     """
-    in_flight: list[tuple[str, str, models.DeploymentEvent]] = []
+    in_flight: list[tuple[str, str, str, models.DeploymentEvent]] = []
     deployed: list[tuple[str, str]] = []
     for slug, (_env, release_raw, event) in by_env.items():
         if release_raw is None:
             continue
-        version = str(release_raw.get('version') or '')
-        if not version:
+        release_id = str(release_raw.get('id') or '')
+        committish = str(release_raw.get('committish') or '')
+        if not release_id or not committish:
             continue
-        deployed.append((slug, version))
+        deployed.append((slug, committish))
         if (
             event is not None
             and event.status == 'in_progress'
             and event.external_run_id
         ):
-            in_flight.append((slug, version, event))
+            in_flight.append((slug, release_id, committish, event))
 
     if not in_flight and not deployed:
         return {}
@@ -332,21 +348,23 @@ async def _hydrate_release_train(
                     ctx, credentials, run_id=str(event.external_run_id)
                 )
             )
-            for _, _, event in in_flight
+            for _, _, _, event in in_flight
         ),
         return_exceptions=True,
     )
     ci_results = await asyncio.gather(
         *(
             call_with_timeout(
-                handler.get_check_status(ctx, credentials, committish=version)
+                handler.get_check_status(
+                    ctx, credentials, committish=committish
+                )
             )
-            for _, version in deployed
+            for _, committish in deployed
         ),
         return_exceptions=True,
     )
 
-    for (slug, version, event), result in zip(
+    for (slug, release_id, _committish, event), result in zip(
         in_flight, run_results, strict=True
     ):
         if isinstance(result, BaseException):
@@ -368,7 +386,7 @@ async def _hydrate_release_train(
                     db,
                     org_slug=org_slug,
                     project_id=project_id,
-                    version=version,
+                    release_id=release_id,
                     env_slug=slug,
                     status=new_status,
                     note='via release-train hydration',
@@ -384,7 +402,9 @@ async def _hydrate_release_train(
                 )
 
     ci_status_by_slug: dict[str, CheckStatus | None] = {}
-    for (slug, _version), ci_result in zip(deployed, ci_results, strict=True):
+    for (slug, _committish), ci_result in zip(
+        deployed, ci_results, strict=True
+    ):
         if isinstance(ci_result, BaseException) or ci_result == 'unknown':
             ci_status_by_slug[slug] = None
         else:
@@ -409,31 +429,37 @@ async def create_release(
     ],
 ) -> ReleaseResponse:
     """Create a new release for a project."""
-    version = data.version
-
     if not await _project_exists(db, org_slug, project_id):
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Project {project_id!r} not found',
         )
 
-    # Per-project version uniqueness pre-check.
+    # Per-project (committish, tag) uniqueness pre-check. A SHA can
+    # ship under multiple tags and a tag is optional, so the natural
+    # key combines both fields. AGE has no NULL equality, so the tag
+    # comparison is split via COALESCE to a sentinel.
     existing_query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
-          -[:HAS_RELEASE]->(r:Release {{version: {version}}})
+          -[:HAS_RELEASE]->(r:Release {{committish: {committish}}})
+    WHERE COALESCE(r.tag, '') = COALESCE({tag}, '')
     RETURN r.id AS id
     """
     existing = await db.execute(
         existing_query,
-        {'project_id': project_id, 'version': version},
+        {
+            'project_id': project_id,
+            'committish': data.committish,
+            'tag': data.tag,
+        },
         ['id'],
     )
     if existing:
         raise fastapi.HTTPException(
             status_code=409,
             detail=(
-                f'Release {version!r} already exists'
-                f' for project {project_id!r}'
+                f'Release committish={data.committish!r} tag={data.tag!r}'
+                f' already exists for project {project_id!r}'
             ),
         )
 
@@ -445,7 +471,8 @@ async def create_release(
     now = datetime.datetime.now(datetime.UTC)
     props: dict[str, typing.Any] = {
         'id': nanoid.generate(),
-        'version': version,
+        'tag': data.tag,
+        'committish': data.committish,
         'title': data.title,
         'description': data.description,
         'links': _serialize_links(data.links),
@@ -458,7 +485,8 @@ async def create_release(
     MATCH (p:Project {{id: {project_id}}})
     CREATE (r:Release {{
         id: {id},
-        version: {version},
+        tag: {tag},
+        committish: {committish},
         title: {title},
         description: {description},
         links: {links},
@@ -628,11 +656,11 @@ async def list_current_releases(
     return [item for _, _, item in sortable]
 
 
-@releases_router.get('/{version}', response_model=ReleaseResponse)
+@releases_router.get('/{release_id}', response_model=ReleaseResponse)
 async def get_release(
     org_slug: str,
     project_id: str,
-    version: str,
+    release_id: str,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -641,24 +669,24 @@ async def get_release(
         ),
     ],
 ) -> ReleaseResponse:
-    """Get a single release by version."""
+    """Get a single release by id."""
     del auth
-    data = await _fetch_release(db, org_slug, project_id, version)
+    data = await _fetch_release(db, org_slug, project_id, release_id)
     if data is None:
         raise fastapi.HTTPException(
             status_code=404,
             detail=(
-                f'Release {version!r} for project {project_id!r} not found'
+                f'Release {release_id!r} for project {project_id!r} not found'
             ),
         )
     return _release_to_response(data, project_id)
 
 
-@releases_router.patch('/{version}', response_model=ReleaseResponse)
+@releases_router.patch('/{release_id}', response_model=ReleaseResponse)
 async def patch_release(
     org_slug: str,
     project_id: str,
-    version: str,
+    release_id: str,
     operations: list[json_patch.PatchOperation],
     db: graph.Pool,
     auth: typing.Annotated[
@@ -670,12 +698,12 @@ async def patch_release(
 ) -> ReleaseResponse:
     """Apply a JSON Patch (RFC 6902) to a release."""
     del auth
-    data = await _fetch_release(db, org_slug, project_id, version)
+    data = await _fetch_release(db, org_slug, project_id, release_id)
     if data is None:
         raise fastapi.HTTPException(
             status_code=404,
             detail=(
-                f'Release {version!r} for project {project_id!r} not found'
+                f'Release {release_id!r} for project {project_id!r} not found'
             ),
         )
 
@@ -683,6 +711,7 @@ async def patch_release(
     if isinstance(raw_links, str):
         raw_links = json.loads(raw_links)
     patchable: dict[str, typing.Any] = {
+        'tag': data.get('tag'),
         'title': data['title'],
         'description': data.get('description'),
         'links': raw_links,
@@ -708,16 +737,49 @@ async def patch_release(
     # Use key presence, not truthiness, so explicit empty strings
     # (``replace /title ""``) are persisted rather than silently
     # reverted to the old value.
+    merged_tag = patched['tag'] if 'tag' in patched else data.get('tag')
     merged_title = patched['title'] if 'title' in patched else data['title']
     merged_description = patched.get('description')
     merged_links_raw = patched.get('links', raw_links)
     serialized_links = _serialize_links(merged_links_raw)
     del update
 
+    # Identity is ``(committish, tag)`` — reject a patch that would
+    # collide with another release on this project's same SHA.  AGE
+    # has no NULL equality, so compare via ``COALESCE`` to a sentinel.
+    conflict_query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})
+          -[:HAS_RELEASE]->(other:Release {{committish: {committish}}})
+    WHERE other.id <> {release_id}
+      AND COALESCE(other.tag, '') = COALESCE({tag}, '')
+    RETURN other.id AS id
+    LIMIT 1
+    """
+    conflict = await db.execute(
+        conflict_query,
+        {
+            'project_id': project_id,
+            'release_id': release_id,
+            'committish': data['committish'],
+            'tag': merged_tag,
+        },
+        ['id'],
+    )
+    if conflict:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'Release committish={data["committish"]!r}'
+                f' tag={merged_tag!r} already exists for project'
+                f' {project_id!r}'
+            ),
+        )
+
     update_query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
-          -[:HAS_RELEASE]->(r:Release {{version: {version}}})
-    SET r.title = {title},
+          -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
+    SET r.tag = {tag},
+        r.title = {title},
         r.description = {description},
         r.links = {links},
         r.updated_at = {updated_at}
@@ -727,7 +789,8 @@ async def patch_release(
         update_query,
         {
             'project_id': project_id,
-            'version': version,
+            'release_id': release_id,
+            'tag': merged_tag,
             'title': merged_title,
             'description': merged_description,
             'links': serialized_links,
@@ -739,7 +802,7 @@ async def patch_release(
         raise fastapi.HTTPException(
             status_code=404,
             detail=(
-                f'Release {version!r} for project {project_id!r} not found'
+                f'Release {release_id!r} for project {project_id!r} not found'
             ),
         )
     release_data = graph.parse_agtype(rows[0]['release'])
@@ -753,13 +816,13 @@ async def _fetch_deployment_edge(
     db: graph.Graph,
     org_slug: str,
     project_id: str,
-    version: str,
+    release_id: str,
     env_slug: str,
 ) -> tuple[dict[str, typing.Any] | None, list[models.DeploymentEvent]]:
     """Fetch environment and any existing DEPLOYED_TO edge."""
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
-          -[:HAS_RELEASE]->(r:Release {{version: {version}}})
+          -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
     MATCH (e:Environment {{slug: {env_slug}}})
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
     OPTIONAL MATCH (r)-[d:DEPLOYED_TO]->(e)
@@ -771,7 +834,7 @@ async def _fetch_deployment_edge(
         query,
         {
             'project_id': project_id,
-            'version': version,
+            'release_id': release_id,
             'env_slug': env_slug,
             'org_slug': org_slug,
         },
@@ -811,7 +874,7 @@ async def append_deployment_event(
     *,
     org_slug: str,
     project_id: str,
-    version: str,
+    release_id: str,
     env_slug: str,
     status: typing.Literal[
         'pending', 'in_progress', 'success', 'failed', 'rolled_back'
@@ -845,11 +908,11 @@ async def append_deployment_event(
     ``timestamp`` lets the resync flow record the remote's deployment
     creation time rather than ``now()``; defaults to now when omitted.
     """
-    release = await _fetch_release(db, org_slug, project_id, version)
+    release = await _fetch_release(db, org_slug, project_id, release_id)
     if release is None:
         return None
     env, existing = await _fetch_deployment_edge(
-        db, org_slug, project_id, version, env_slug
+        db, org_slug, project_id, release_id, env_slug
     )
     if env is None:
         return None
@@ -885,7 +948,7 @@ async def append_deployment_event(
                 updated_edge = await _set_deployments(
                     db,
                     project_id=project_id,
-                    version=version,
+                    release_id=release_id,
                     env_slug=env_slug,
                     deployments=updated_list,
                     env=env,
@@ -903,7 +966,7 @@ async def append_deployment_event(
         appended_edge = await _set_deployments(
             db,
             project_id=project_id,
-            version=version,
+            release_id=release_id,
             env_slug=env_slug,
             deployments=deployments,
             env=env,
@@ -912,7 +975,7 @@ async def append_deployment_event(
     created_edge = await _create_deployments_edge(
         db,
         project_id=project_id,
-        version=version,
+        release_id=release_id,
         env_slug=env_slug,
         org_slug=org_slug,
         deployments=deployments,
@@ -925,7 +988,7 @@ async def _set_deployments(
     db: graph.Graph,
     *,
     project_id: str,
-    version: str,
+    release_id: str,
     env_slug: str,
     deployments: list[models.DeploymentEvent],
     env: dict[str, typing.Any],
@@ -934,7 +997,7 @@ async def _set_deployments(
     serialized = json.dumps([e.model_dump(mode='json') for e in deployments])
     set_query: typing.LiteralString = """
     MATCH (:Project {{id: {project_id}}})
-          -[:HAS_RELEASE]->(r:Release {{version: {version}}})
+          -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
     MATCH (r)-[d:DEPLOYED_TO]->(:Environment {{slug: {env_slug}}})
     SET d.deployments = {deployments}
     RETURN d.deployments AS deployments
@@ -943,7 +1006,7 @@ async def _set_deployments(
         set_query,
         {
             'project_id': project_id,
-            'version': version,
+            'release_id': release_id,
             'env_slug': env_slug,
             'deployments': serialized,
         },
@@ -956,7 +1019,7 @@ async def _set_deployments(
         raise fastapi.HTTPException(
             status_code=409,
             detail=(
-                f'Release {version!r} or its deployment to '
+                f'Release {release_id!r} or its deployment to '
                 f'environment {env_slug!r} no longer exists'
             ),
         )
@@ -967,7 +1030,7 @@ async def _create_deployments_edge(
     db: graph.Graph,
     *,
     project_id: str,
-    version: str,
+    release_id: str,
     env_slug: str,
     org_slug: str,
     deployments: list[models.DeploymentEvent],
@@ -977,7 +1040,7 @@ async def _create_deployments_edge(
     serialized = json.dumps([e.model_dump(mode='json') for e in deployments])
     create_query: typing.LiteralString = """
     MATCH (:Project {{id: {project_id}}})
-          -[:HAS_RELEASE]->(r:Release {{version: {version}}})
+          -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
     MATCH (e:Environment {{slug: {env_slug}}})
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
     CREATE (r)-[d:DEPLOYED_TO {{deployments: {deployments}}}]->(e)
@@ -987,7 +1050,7 @@ async def _create_deployments_edge(
         create_query,
         {
             'project_id': project_id,
-            'version': version,
+            'release_id': release_id,
             'env_slug': env_slug,
             'org_slug': org_slug,
             'deployments': serialized,
@@ -1001,7 +1064,7 @@ async def _create_deployments_edge(
         raise fastapi.HTTPException(
             status_code=409,
             detail=(
-                f'Release {version!r} or environment {env_slug!r} in '
+                f'Release {release_id!r} or environment {env_slug!r} in '
                 f'organization {org_slug!r} no longer exists'
             ),
         )
@@ -1009,13 +1072,13 @@ async def _create_deployments_edge(
 
 
 @releases_router.post(
-    '/{version}/environments/{env_slug}',
+    '/{release_id}/environments/{env_slug}',
     response_model=ReleaseEnvironmentEdgeResponse,
 )
 async def record_deployment(
     org_slug: str,
     project_id: str,
-    version: str,
+    release_id: str,
     env_slug: str,
     data: DeploymentEventInput,
     db: graph.Pool,
@@ -1028,17 +1091,17 @@ async def record_deployment(
 ) -> ReleaseEnvironmentEdgeResponse:
     """Record a deployment event for a release in an environment."""
     del auth
-    release = await _fetch_release(db, org_slug, project_id, version)
+    release = await _fetch_release(db, org_slug, project_id, release_id)
     if release is None:
         raise fastapi.HTTPException(
             status_code=404,
             detail=(
-                f'Release {version!r} for project {project_id!r} not found'
+                f'Release {release_id!r} for project {project_id!r} not found'
             ),
         )
 
     env, existing = await _fetch_deployment_edge(
-        db, org_slug, project_id, version, env_slug
+        db, org_slug, project_id, release_id, env_slug
     )
     if env is None:
         raise fastapi.HTTPException(
@@ -1062,7 +1125,7 @@ async def record_deployment(
     if existing:
         set_query: typing.LiteralString = """
         MATCH (:Project {{id: {project_id}}})
-              -[:HAS_RELEASE]->(r:Release {{version: {version}}})
+              -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
         MATCH (r)-[d:DEPLOYED_TO]->(:Environment {{slug: {env_slug}}})
         SET d.deployments = {deployments}
         RETURN d.deployments AS deployments
@@ -1071,7 +1134,7 @@ async def record_deployment(
             set_query,
             {
                 'project_id': project_id,
-                'version': version,
+                'release_id': release_id,
                 'env_slug': env_slug,
                 'deployments': serialized,
             },
@@ -1080,7 +1143,7 @@ async def record_deployment(
     else:
         create_query: typing.LiteralString = """
         MATCH (:Project {{id: {project_id}}})
-              -[:HAS_RELEASE]->(r:Release {{version: {version}}})
+              -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
         MATCH (e:Environment {{slug: {env_slug}}})
               -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
         CREATE (r)-[d:DEPLOYED_TO {{deployments: {deployments}}}]->(e)
@@ -1090,7 +1153,7 @@ async def record_deployment(
             create_query,
             {
                 'project_id': project_id,
-                'version': version,
+                'release_id': release_id,
                 'env_slug': env_slug,
                 'org_slug': org_slug,
                 'deployments': serialized,
@@ -1102,13 +1165,13 @@ async def record_deployment(
 
 
 @releases_router.get(
-    '/{version}/environments',
+    '/{release_id}/environments',
     response_model=list[ReleaseEnvironmentEdgeResponse],
 )
 async def list_deployment_edges(
     org_slug: str,
     project_id: str,
-    version: str,
+    release_id: str,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -1119,12 +1182,12 @@ async def list_deployment_edges(
 ) -> list[ReleaseEnvironmentEdgeResponse]:
     """List every environment edge for a release."""
     del auth
-    release = await _fetch_release(db, org_slug, project_id, version)
+    release = await _fetch_release(db, org_slug, project_id, release_id)
     if release is None:
         raise fastapi.HTTPException(
             status_code=404,
             detail=(
-                f'Release {version!r} for project {project_id!r} not found'
+                f'Release {release_id!r} for project {project_id!r} not found'
             ),
         )
 
@@ -1132,7 +1195,7 @@ async def list_deployment_edges(
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-    MATCH (p)-[:HAS_RELEASE]->(r:Release {{version: {version}}})
+    MATCH (p)-[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
     MATCH (r)-[d:DEPLOYED_TO]->(e:Environment)
     RETURN e{{.slug, .name}} AS env, d.deployments AS deployments
     ORDER BY e.slug
@@ -1142,7 +1205,7 @@ async def list_deployment_edges(
         {
             'project_id': project_id,
             'org_slug': org_slug,
-            'version': version,
+            'release_id': release_id,
         },
         ['env', 'deployments'],
     )
@@ -1159,13 +1222,13 @@ async def list_deployment_edges(
 
 
 @releases_router.get(
-    '/{version}/environments/{env_slug}',
+    '/{release_id}/environments/{env_slug}',
     response_model=ReleaseEnvironmentEdgeResponse,
 )
 async def get_deployment_edge(
     org_slug: str,
     project_id: str,
-    version: str,
+    release_id: str,
     env_slug: str,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -1177,22 +1240,22 @@ async def get_deployment_edge(
 ) -> ReleaseEnvironmentEdgeResponse:
     """Get a single deployment edge by environment slug."""
     del auth
-    release = await _fetch_release(db, org_slug, project_id, version)
+    release = await _fetch_release(db, org_slug, project_id, release_id)
     if release is None:
         raise fastapi.HTTPException(
             status_code=404,
             detail=(
-                f'Release {version!r} for project {project_id!r} not found'
+                f'Release {release_id!r} for project {project_id!r} not found'
             ),
         )
     env, deployments = await _fetch_deployment_edge(
-        db, org_slug, project_id, version, env_slug
+        db, org_slug, project_id, release_id, env_slug
     )
     if env is None or not deployments:
         raise fastapi.HTTPException(
             status_code=404,
             detail=(
-                f'Deployment edge for release {version!r} in'
+                f'Deployment edge for release {release_id!r} in'
                 f' environment {env_slug!r} not found'
             ),
         )
