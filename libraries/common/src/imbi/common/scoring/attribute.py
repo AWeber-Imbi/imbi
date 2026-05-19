@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import typing
 
 from imbi_common.scoring.models import (
@@ -59,11 +60,20 @@ def _evaluate(
     project: typing.Any, policy: Policy
 ) -> tuple[typing.Any, float | None]:
     if isinstance(policy, LinkPresencePolicy):
-        links = _get_value(project, 'links') or {}
-        if isinstance(links, dict):
-            sample = links.get(policy.link_slug)
-        else:
-            sample = None
+        raw = _get_value(project, 'links')
+        # AGE stores dict properties as JSON strings. model_validate normally
+        # decodes them via the field validator on Project, but if
+        # model_construct was used as a fallback (due to any other field
+        # failing validation), the value arrives here as a raw string.
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except (TypeError, ValueError):
+                raw = {}
+        links: dict[str, typing.Any] = raw or {}
+        sample = (
+            links.get(policy.link_slug) if isinstance(links, dict) else None
+        )
         return sample, policy.evaluate(links)
     value = _get_value(project, policy.attribute_name)
     if isinstance(policy, PresencePolicy):

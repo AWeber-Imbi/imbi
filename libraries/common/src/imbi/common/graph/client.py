@@ -265,7 +265,13 @@ class Graph:
         _strip_edge_fields(node_type, props)
         try:
             return node_type.model_validate(props)
-        except pydantic.ValidationError:
+        except pydantic.ValidationError as exc:
+            LOGGER.debug(
+                'model_validate failed for %s; '
+                'falling back to model_construct: %s',
+                node_type.__name__,
+                exc,
+            )
             return node_type.model_construct(**props)
 
     async def match(

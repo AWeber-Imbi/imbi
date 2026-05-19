@@ -170,6 +170,24 @@ class ComputeBaseScoreTests(unittest.TestCase):
         )
         self.assertEqual(0.0, score)
 
+    def test_link_presence_links_as_json_string(self) -> None:
+        """model_construct fallback leaves links as a JSON string; scoring
+        must still detect the link rather than treating it as absent."""
+        policy = models.LinkPresencePolicy(
+            name='grafana',
+            slug='grafana-dashboard',
+            link_slug='grafana-dashboard',
+            weight=10,
+        )
+        score, contribs = attribute.compute_base_score(
+            types.SimpleNamespace(
+                links='{"grafana-dashboard": "https://grafana.example/d/abc"}'
+            ),
+            [policy],
+        )
+        self.assertEqual(100.0, score)
+        self.assertEqual('grafana-dashboard', contribs[0].link_slug)
+
     def test_age_policy_fresh(self) -> None:
         now = datetime.datetime.now(datetime.UTC)
         recent = (now - datetime.timedelta(days=1)).isoformat()
