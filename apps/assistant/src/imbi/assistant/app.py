@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import fastapi
 import typer
-from imbi_common import graph, lifespan, server
+from imbi_common import graph, lifespan, sentry, server
 
 import imbi_assistant
 from imbi_assistant import app_status, client, endpoints, mcp, settings
@@ -37,6 +37,7 @@ def create_app() -> fastapi.FastAPI:
         version=imbi_assistant.version,
         started_at=datetime.datetime.now(datetime.UTC),
         lifespan=lifespan.Lifespan(
+            sentry.sentry_lifespan,
             graph.graph_lifespan,
             _anthropic_lifespan,
             _mcp_lifespan,
