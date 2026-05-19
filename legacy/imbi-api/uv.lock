@@ -961,7 +961,7 @@ dependencies = [
   { name = "fastapi" },
   { name = "filetype" },
   { name = "httpx" },
-  { name = "imbi-common", extra = ["databases", "llm", "server"] },
+  { name = "imbi-common", extra = ["databases", "llm", "sentry", "server"] },
   { name = "jinja2" },
   { name = "jsonpatch" },
   { name = "nanoid" },
@@ -1079,11 +1079,12 @@ plugins = [
 
 [[package]]
 name = "imbi-common"
-version = "2.4.0"
+version = "2.5.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
   { name = "cryptography" },
   { name = "httpx" },
+  { name = "jsonpointer" },
   { name = "jsonschema-models" },
   { name = "markdown-it-py" },
   { name = "nanoid" },
@@ -1094,9 +1095,9 @@ dependencies = [
   { name = "python-slugify" },
   { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/20/90/0e613931f0309a08ba07ace0d567d3fcf69c60bc0bc908d216e58c2f2c85/imbi_common-2.4.0.tar.gz", hash = "sha256:eefb7c53256cfbad45881d00dc60479d05488f2e94aa63a17625f693edae6992", size = 269729, upload-time = "2026-05-14T21:33:28.946Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7d/04/a1c672f1efd55b16ac34788a39f72b139f9e3e4f973934adad011fbe269f/imbi_common-2.5.2.tar.gz", hash = "sha256:e42dfda824a5eb63ac8cfa4c4267b74c612d7650b1f4aed4a52a51ac0590e613", size = 276855, upload-time = "2026-05-19T15:43:01.917290Z" }
 wheels = [
-  { url = "https://files.pythonhosted.org/packages/27/94/c56575ae624db3cef3e0d5b65dc33dfea3d29d12514c68ebe2f8c3bf2f2f/imbi_common-2.4.0-py3-none-any.whl", hash = "sha256:f43c927f677e565c0c8cbe04f4d06cf6c1b57eb5bd36b6428d9a96917b1c4f20", size = 86575, upload-time = "2026-05-14T21:33:27.334Z" },
+  { url = "https://files.pythonhosted.org/packages/7a/13/54a4c7dfd0122a4f8200eb4bbd33ab8c41586941dbe574343d4057f01d57/imbi_common-2.5.2-py3-none-any.whl", hash = "sha256:186878dac74e905dd71cf7ea8e47e14c08aec23019b29542580e223885416280", size = 90588, upload-time = "2026-05-19T15:43:00.100290Z" },
 ]
 
 [package.optional-dependencies]
@@ -1109,6 +1110,9 @@ databases = [
 ]
 llm = [
   { name = "anthropic" },
+]
+sentry = [
+  { name = "sentry-sdk" },
 ]
 server = [
   { name = "fastapi" },

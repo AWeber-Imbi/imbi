@@ -3,7 +3,7 @@ import logging
 import fastapi
 from fastapi import responses
 from fastapi.middleware import cors
-from imbi_common import access_log, graph, lifespan, valkey
+from imbi_common import access_log, graph, lifespan, sentry, valkey
 from imbi_common.plugins.errors import PluginCredentialsMissing
 from uvicorn.middleware import proxy_headers
 
@@ -17,6 +17,7 @@ def create_app() -> fastapi.FastAPI:
     app = fastapi.FastAPI(
         title='Imbi',
         lifespan=lifespan.Lifespan(
+            sentry.sentry_lifespan,
             lifespans.clickhouse_hook,
             graph.graph_lifespan,
             lifespans.email_hook,
