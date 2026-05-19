@@ -18,6 +18,7 @@ import re
 import typing
 
 import fastapi
+import httpx
 import nanoid
 import pydantic
 from imbi_common import clickhouse, graph, versioning
@@ -1243,6 +1244,7 @@ async def _handle_promote(
     run = DeploymentRun(run_id='', status='queued')
     release_info = None
     release_url: str | None = None
+    trigger_failed = False
 
     if action == 'release':
         release_info = await _promote_cut_release(
@@ -1293,7 +1295,14 @@ async def _handle_promote(
                 body.to_environment,
                 body.tag,
             )
+            if isinstance(exc, httpx.HTTPStatusError):
+                LOGGER.error(
+                    'trigger_deployment HTTP %s response body: %s',
+                    exc.response.status_code,
+                    exc.response.text,
+                )
             warnings.append(_promote_warning('trigger_deployment', exc))
+            trigger_failed = True
 
     # 4. Upsert the Release node so future deploys of the same tag
     #    can attach a DeploymentEvent.
@@ -1334,19 +1343,20 @@ async def _handle_promote(
         ctx.actor_user_id,
         run.run_id,
     )
-    await _record_deployment_audit(
-        project_id=project_id,
-        project_slug=ctx.project_slug,
-        environment_slug=body.to_environment,
-        recorded_by=auth.principal_name,
-        action='promote',
-        tag=body.tag,
-        committish=promoted_committish,
-        plugin_slug=resolved.plugin_slug,
-        run_url=run.run_url,
-        release_url=release_url,
-        from_environment=body.from_environment,
-    )
+    if not trigger_failed:
+        await _record_deployment_audit(
+            project_id=project_id,
+            project_slug=ctx.project_slug,
+            environment_slug=body.to_environment,
+            recorded_by=auth.principal_name,
+            action='promote',
+            tag=body.tag,
+            committish=promoted_committish,
+            plugin_slug=resolved.plugin_slug,
+            run_url=run.run_url,
+            release_url=release_url,
+            from_environment=body.from_environment,
+        )
     return DeploymentTriggerResponse(
         run=run,
         plugin_id=resolved.plugin_id,
