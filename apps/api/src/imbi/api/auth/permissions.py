@@ -324,7 +324,11 @@ async def _stamp_api_key_last_used(db: graph.Graph, key_id: str) -> None:
             columns=['k'],
         )
     except Exception:  # noqa: BLE001
-        LOGGER.warning('Failed to stamp last_used for API key %s', key_id)
+        LOGGER.warning(
+            'Failed to stamp last_used for API key %s',
+            key_id,
+            exc_info=True,
+        )
 
 
 async def authenticate_api_key(
