@@ -34,7 +34,7 @@ export function RecentDeploymentsWidget() {
   const items = (deployments ?? []).slice(0, 5)
 
   return (
-    <Card className="p-6">
+    <Card className="h-full p-6">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-primary text-lg">Recent Deployments</h3>
       </div>

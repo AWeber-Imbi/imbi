@@ -457,10 +457,7 @@ export function Dashboard({
                 items={otherWidgets}
                 strategy={rectSortingStrategy}
               >
-                <div
-                  className="columns-1 gap-4 md:columns-2"
-                  style={{ columnFill: 'balance' }}
-                >
+                <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
                   {otherWidgets.map((widgetId) => (
                     <SortableWidget id={widgetId} key={widgetId}>
                       {renderWidget(widgetId)}

@@ -1,6 +1,7 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import type { InfiniteData } from '@tanstack/react-query'
 import {
   ChevronRight,
   GitMerge,
@@ -16,15 +17,24 @@ import {
 import { Card } from '@/components/ui/card'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { relTime } from '@/lib/formatDate'
-import type { IdentityConnectionResponse, Project, PullRequest } from '@/types'
+import type {
+  IdentityConnectionResponse,
+  Project,
+  PullRequest,
+  PullRequestListResponse,
+} from '@/types'
 
 const GITHUB_PR_PLUGIN_SLUG = 'github-enterprise-cloud'
-const DISPLAY_COUNT = 5
+const PAGE_SIZE = 20
+
+type StateFilter = 'closed' | 'merged' | 'open'
 
 // fallow-ignore-next-line complexity
 export function MyPullRequestsWidget() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug ?? ''
+  const [stateFilter, setStateFilter] = useState<StateFilter>('open')
+  const sentinelRef = useRef<HTMLDivElement>(null)
 
   const { data: identities, isLoading: identitiesLoading } = useQuery({
     queryFn: ({ signal }) => getMyIdentities(signal),
@@ -36,28 +46,36 @@ export function MyPullRequestsWidget() {
   const hasIdentity = !identitiesLoading && !!login
   const notConnected = !identitiesLoading && !login
 
-  const { data: prsData, isLoading: prsLoading } = useQuery({
-    enabled: hasIdentity && !!orgSlug,
-    queryFn: ({ signal }) =>
-      getOrgPullRequests(
-        orgSlug,
-        { author: login, limit: DISPLAY_COUNT },
-        signal,
-      ),
-    queryKey: ['my-prs-list', orgSlug, login],
-    staleTime: 60 * 1000,
-  })
+  const apiState =
+    stateFilter === 'open' ? 'open' : ('closed' as 'closed' | 'open')
 
-  const { data: openCountData } = useQuery({
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading: prsLoading,
+  } = useInfiniteQuery<
+    PullRequestListResponse,
+    Error,
+    InfiniteData<PullRequestListResponse>,
+    readonly unknown[],
+    number
+  >({
     enabled: hasIdentity && !!orgSlug,
-    queryFn: ({ signal }) =>
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((s, p) => s + p.data.length, 0)
+      return loaded < lastPage.total ? loaded : undefined
+    },
+    initialPageParam: 0,
+    queryFn: ({ pageParam, signal }) =>
       getOrgPullRequests(
         orgSlug,
-        { author: login, limit: 1, state: 'open' },
+        { author: login, limit: PAGE_SIZE, offset: pageParam, state: apiState },
         signal,
       ),
-    queryKey: ['my-prs', orgSlug, login, 'open'],
-    staleTime: 60 * 1000,
+    queryKey: ['my-prs-list', orgSlug, login, apiState],
+    staleTime: 60_000,
   })
 
   const { data: projects } = useQuery({
@@ -72,56 +90,109 @@ export function MyPullRequestsWidget() {
     return m
   }, [projects])
 
+  // fallow-ignore-next-line complexity
+  const prs = useMemo(() => {
+    const flat = data?.pages.flatMap((p) => p.data) ?? []
+    if (stateFilter === 'merged') return flat.filter((pr) => pr.merged)
+    if (stateFilter === 'closed')
+      return flat.filter((pr) => pr.state === 'closed' && !pr.merged)
+    return flat
+  }, [data, stateFilter])
+
+  const total = data?.pages[0]?.total ?? 0
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          void fetchNextPage()
+        }
+      },
+      { threshold: 0.1 },
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage])
+
   const isLoading = identitiesLoading || prsLoading
-  const prs = prsData?.data ?? []
-  const total = openCountData?.total ?? 0
+
+  const filterOptions: [StateFilter, string][] = [
+    ['open', 'Open'],
+    ['merged', 'Merged'],
+    ['closed', 'Closed'],
+  ]
 
   return (
-    <Card className="p-6">
-      <div className="mb-4 flex items-center justify-between">
+    <Card className="flex h-full flex-col p-6">
+      <div className="mb-3 flex items-center justify-between">
         <div className="flex items-baseline gap-2">
-          <h3 className="text-primary text-lg font-semibold">
-            My Pull Requests
-          </h3>
+          <h3 className="text-primary text-lg">My Pull Requests</h3>
           {!isLoading && total > 0 && (
-            <span className="text-tertiary text-sm">
-              {Math.min(DISPLAY_COUNT, prs.length)} of {total}
-            </span>
+            <span className="text-tertiary text-sm">{total}</span>
           )}
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div
-              aria-hidden="true"
-              className="bg-tertiary/30 h-20 animate-pulse rounded-lg"
-              key={i}
-            />
-          ))}
-        </div>
-      ) : notConnected ? (
-        <div className="text-secondary py-6 text-center text-sm">
-          <p className="mb-2">No GitHub identity connected.</p>
-          <a
-            className="text-action text-xs hover:underline"
-            href="/settings/connections"
+      <div className="mb-3 flex items-center gap-0.5">
+        {filterOptions.map(([s, label]) => (
+          <button
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              stateFilter === s
+                ? 'bg-action text-action-foreground'
+                : 'text-secondary hover:text-primary'
+            }`}
+            key={s}
+            onClick={() => setStateFilter(s)}
+            type="button"
           >
-            Connect GitHub
-          </a>
-        </div>
-      ) : prs.length === 0 ? (
-        <div className="text-secondary py-6 text-center text-sm">
-          No pull requests found.
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {prs.map((pr) => (
-            <PrRow key={pr.pr_id} pr={pr} projectsById={projectsById} />
-          ))}
-        </div>
-      )}
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {isLoading ? (
+          <div className="space-y-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                aria-hidden="true"
+                className="bg-tertiary/30 h-20 animate-pulse rounded-lg"
+                key={i}
+              />
+            ))}
+          </div>
+        ) : notConnected ? (
+          <div className="text-secondary py-6 text-center text-sm">
+            <p className="mb-2">No GitHub identity connected.</p>
+            <a
+              className="text-action text-xs hover:underline"
+              href="/settings/connections"
+            >
+              Connect GitHub
+            </a>
+          </div>
+        ) : prs.length === 0 ? (
+          <div className="text-secondary py-6 text-center text-sm">
+            No pull requests found.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {prs.map((pr) => (
+              <PrRow key={pr.pr_id} pr={pr} projectsById={projectsById} />
+            ))}
+            <div ref={sentinelRef}>
+              {isFetchingNextPage && (
+                <div
+                  aria-hidden="true"
+                  className="bg-tertiary/30 h-16 animate-pulse rounded-lg"
+                />
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </Card>
   )
 }
