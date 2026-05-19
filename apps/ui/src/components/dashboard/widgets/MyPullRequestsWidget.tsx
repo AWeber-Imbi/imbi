@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import type { InfiniteData } from '@tanstack/react-query'
@@ -9,45 +9,46 @@ import {
   GitPullRequestClosed,
 } from 'lucide-react'
 
-import {
-  getMyIdentities,
-  getOrgPullRequests,
-  getProjects,
-} from '@/api/endpoints'
+import { getOrgPullRequests, getProjects } from '@/api/endpoints'
 import { Card } from '@/components/ui/card'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useGithubLogin } from '@/hooks/useGithubLogin'
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
 import { relTime } from '@/lib/formatDate'
-import type {
-  IdentityConnectionResponse,
-  Project,
-  PullRequest,
-  PullRequestListResponse,
-} from '@/types'
+import type { Project, PullRequest, PullRequestListResponse } from '@/types'
 
-const GITHUB_PR_PLUGIN_SLUG = 'github-enterprise-cloud'
 const PAGE_SIZE = 20
+const FILTER_KEY = 'imbi-my-prs-filter'
 
-type StateFilter = 'closed' | 'merged' | 'open'
+type StateFilter = 'all' | 'closed' | 'merged' | 'open'
 
 // fallow-ignore-next-line complexity
 export function MyPullRequestsWidget() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug ?? ''
-  const [stateFilter, setStateFilter] = useState<StateFilter>('open')
-  const sentinelRef = useRef<HTMLDivElement>(null)
+  const [stateFilter, setStateFilter] = useState<StateFilter>(readSavedFilter)
 
-  const { data: identities, isLoading: identitiesLoading } = useQuery({
-    queryFn: ({ signal }) => getMyIdentities(signal),
-    queryKey: ['me-identities'],
-    staleTime: 0,
-  })
+  function handleFilterClick(f: StateFilter) {
+    const next = stateFilter === f ? 'all' : f
+    setStateFilter(next)
+    try {
+      localStorage.setItem(FILTER_KEY, next)
+    } catch {}
+  }
 
-  const login = identities ? githubLogin(identities) : undefined
-  const hasIdentity = !identitiesLoading && !!login
-  const notConnected = !identitiesLoading && !login
+  const {
+    hasIdentity,
+    isLoading: identitiesLoading,
+    login,
+    notConnected,
+  } = useGithubLogin()
 
-  const apiState =
-    stateFilter === 'open' ? 'open' : ('closed' as 'closed' | 'open')
+  const apiState: 'closed' | 'open' | undefined =
+    stateFilter === 'open'
+      ? 'open'
+      : stateFilter === 'all'
+        ? undefined
+        : 'closed'
 
   const {
     data,
@@ -100,23 +101,13 @@ export function MyPullRequestsWidget() {
   }, [data, stateFilter])
 
   const total = data?.pages[0]?.total ?? 0
-
-  useEffect(() => {
-    const sentinel = sentinelRef.current
-    if (!sentinel) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
-          void fetchNextPage()
-        }
-      },
-      { threshold: 0.1 },
-    )
-    observer.observe(sentinel)
-    return () => observer.disconnect()
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage])
-
   const isLoading = identitiesLoading || prsLoading
+
+  const { sentinelRef } = useInfiniteScroll({
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  })
 
   const filterOptions: [StateFilter, string][] = [
     ['open', 'Open'],
@@ -125,7 +116,7 @@ export function MyPullRequestsWidget() {
   ]
 
   return (
-    <Card className="flex h-full flex-col p-6">
+    <Card className="flex h-150 flex-col p-6">
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-baseline gap-2">
           <h3 className="text-primary text-lg">My Pull Requests</h3>
@@ -144,7 +135,7 @@ export function MyPullRequestsWidget() {
                 : 'text-secondary hover:text-primary'
             }`}
             key={s}
-            onClick={() => setStateFilter(s)}
+            onClick={() => handleFilterClick(s)}
             type="button"
           >
             {label}
@@ -195,16 +186,6 @@ export function MyPullRequestsWidget() {
       </div>
     </Card>
   )
-}
-
-// fallow-ignore-next-line complexity
-function githubLogin(
-  identities: IdentityConnectionResponse[],
-): string | undefined {
-  const conn = identities.find((i) => i.plugin_slug === GITHUB_PR_PLUGIN_SLUG)
-  if (!conn) return undefined
-  const login = conn.metadata?.login
-  return typeof login === 'string' && login ? login : undefined
 }
 
 // fallow-ignore-next-line complexity
@@ -298,4 +279,14 @@ function prStateAttrs(pr: PullRequest) {
     stateClass: 'bg-info/10 text-info',
     stateLabel: 'Open',
   }
+}
+
+// fallow-ignore-next-line complexity
+function readSavedFilter(): StateFilter {
+  try {
+    const v = localStorage.getItem(FILTER_KEY)
+    if (v === 'all' || v === 'open' || v === 'merged' || v === 'closed')
+      return v
+  } catch {}
+  return 'all'
 }
