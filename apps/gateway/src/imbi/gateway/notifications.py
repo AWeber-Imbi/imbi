@@ -46,7 +46,7 @@ _SENSITIVE_HEADERS = frozenset(
 _HANDLER_PATTERN = re.compile(r'^[a-z][a-z0-9-]*#[a-z][a-z0-9_]*$')
 
 
-def _safe_headers(headers: abc.Mapping[str, str]) -> dict[str, str]:
+def _safe_headers(headers: 'abc.Mapping[str, str]') -> dict[str, str]:
     """Return a redacted copy of ``headers`` for persisted metadata.
 
     Sensitive header values (authorization, cookies, webhook signatures)
@@ -398,7 +398,7 @@ async def _run_handlers(  # noqa: PLR0913
     external_identifier: str,
     payload: object,
     user_id: str | None,
-    rules: abc.Iterable[WebhookRule],
+    rules: 'abc.Iterable[WebhookRule]',
     plugins_by_slug: dict[str, dict[str, str]],
 ) -> None:
     LOGGER.debug('Running handlers for %s/%s', org_slug, project_id)
@@ -576,7 +576,7 @@ def _payload_dict(body: object) -> dict[str, typing.Any]:
 
 
 def _resolve_event_type(
-    selector: str | None, body: object, headers: abc.Mapping[str, str]
+    selector: str | None, body: object, headers: 'abc.Mapping[str, str]'
 ) -> str:
     """Resolve the event-type label per the configured selector.
 
@@ -606,13 +606,13 @@ def _resolve_event_type(
 
 
 async def _record_events(  # noqa: PLR0913 - all inputs are required event fields
-    records: abc.Sequence[abc.Mapping[str, typing.Any]],
+    records: 'abc.Sequence[abc.Mapping[str, typing.Any]]',
     *,
     webhook_id: str,
     service_slug: str,
     user_id: str | None,
     event_type: str,
-    headers: abc.Mapping[str, str],
+    headers: 'abc.Mapping[str, str]',
     body: object,
 ) -> None:
     """Insert one ``events`` row per matched project into ClickHouse.
