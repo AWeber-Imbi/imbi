@@ -38,3 +38,5 @@ auth_config = settings.Auth()
 ::: imbi_common.settings.Clickhouse
 
 ::: imbi_common.settings.Auth
+
+::: imbi_common.settings.SSL

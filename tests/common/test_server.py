@@ -8,7 +8,7 @@ from importlib import resources
 import tomli_w
 import typer.testing
 
-from imbi_common import helpers, server
+from imbi_common import helpers, server, settings
 
 
 class ServerCliTests(unittest.TestCase):
@@ -16,6 +16,9 @@ class ServerCliTests(unittest.TestCase):
         super().setUp()
         self.uvicorn_run = self.enterContext(
             unittest.mock.patch('imbi_common.server.uvicorn.run')
+        )
+        self.enterContext(
+            unittest.mock.patch.object(settings.SSL, 'configure')
         )
         self.log_config_data = tomllib.loads(
             resources.files('imbi_common')

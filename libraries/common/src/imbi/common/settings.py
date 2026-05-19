@@ -144,6 +144,39 @@ class Releases(pydantic_settings.BaseSettings):
     version_format: VersionFormat = 'semver'
 
 
+class SSL(pydantic_settings.BaseSettings):
+    """SSL configuration settings."""
+
+    model_config = base_settings_config(env_prefix='SSL_')
+
+    cert_dir: pathlib.Path | None = pydantic.Field(
+        default=None,
+        description='Path to directory containing CA certificates',
+    )
+
+    def configure(self) -> None:
+        """Configure the default SSL context if cert_dir is set.
+
+        Patches ssl.create_default_context and
+        ssl._create_default_https_context to load CA certificates from
+        cert_dir on every call.
+        """
+        if self.cert_dir is None:
+            return
+        import ssl
+
+        cert_dir = str(self.cert_dir)
+        _orig = ssl.create_default_context
+
+        def _patched(*args: object, **kwargs: object) -> ssl.SSLContext:
+            ctx = _orig(*args, **kwargs)  # type: ignore[arg-type]
+            ctx.load_verify_locations(capath=cert_dir)
+            return ctx
+
+        ssl.create_default_context = _patched
+        ssl._create_default_https_context = _patched
+
+
 class ValkeyDSN(pydantic.AnyUrl):
     """Valkey DSN settings."""
 
@@ -209,6 +242,7 @@ class Configuration(pydantic.BaseModel):
             'embeddings': Embeddings,
             'postgres': Postgres,
             'releases': Releases,
+            'ssl': SSL,
             'valkey': Valkey,
         }
         for field, settings_cls in settings_fields.items():
@@ -232,6 +266,7 @@ class Configuration(pydantic.BaseModel):
     releases: Releases = pydantic.Field(
         default_factory=Releases,
     )
+    ssl: SSL = pydantic.Field(default_factory=SSL)
     valkey: Valkey = pydantic.Field(
         default_factory=Valkey,
     )

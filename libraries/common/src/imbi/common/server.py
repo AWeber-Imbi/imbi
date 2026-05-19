@@ -11,7 +11,7 @@ from importlib import resources
 import click
 import typer
 
-from imbi_common import sentry
+from imbi_common import sentry, settings
 
 # Flag is used to test uvicorn availability without mucking with imports
 try:
@@ -100,6 +100,7 @@ def serve(
             'uvicorn is not installed. Install it with the `server` extra'
         ) from None
 
+    settings.SSL().configure()
     sentry.init()
 
     if log_config is None:

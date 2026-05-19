@@ -2,6 +2,7 @@
 
 import os
 import pathlib
+import ssl
 import tempfile
 import unittest
 import unittest.mock
@@ -213,6 +214,59 @@ access_token_expire_seconds = 7200
                 self.assertEqual(config.auth.access_token_expire_seconds, 7200)
         finally:
             os.chdir(original_cwd)
+
+
+class SSLSettingsTestCase(unittest.TestCase):
+    """Test cases for SSL settings."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self._orig_create = ssl.create_default_context
+        self._orig_https = ssl._create_default_https_context  # type: ignore[attr-defined]
+
+    def tearDown(self) -> None:
+        ssl.create_default_context = self._orig_create
+        ssl._create_default_https_context = self._orig_https  # type: ignore[attr-defined]
+        super().tearDown()
+
+    def test_default_cert_dir_is_none(self) -> None:
+        with unittest.mock.patch.dict(os.environ, {}, clear=True):
+            ssl_settings = settings.SSL(_env_file=None)
+        self.assertIsNone(ssl_settings.cert_dir)
+
+    def test_cert_dir_from_env(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with unittest.mock.patch.dict(
+                os.environ, {'SSL_CERT_DIR': tmpdir}, clear=True
+            ):
+                ssl_settings = settings.SSL(_env_file=None)
+            self.assertEqual(ssl_settings.cert_dir, pathlib.Path(tmpdir))
+
+    def test_configure_does_nothing_when_cert_dir_is_none(self) -> None:
+        with unittest.mock.patch.dict(os.environ, {}, clear=True):
+            ssl_settings = settings.SSL(_env_file=None)
+        ssl_settings.configure()
+        self.assertIs(ssl.create_default_context, self._orig_create)
+
+    def test_configure_patches_ssl_context_when_cert_dir_is_set(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ssl_settings = settings.SSL(cert_dir=pathlib.Path(tmpdir))
+            # verify patching happens (load_verify_locations raises for an
+            # empty dir, so we stub it out)
+            with unittest.mock.patch.object(
+                ssl.SSLContext, 'load_verify_locations'
+            ) as mock_load:
+                ssl_settings.configure()
+                self.assertIsNot(ssl.create_default_context, self._orig_create)
+                self.assertIsNot(
+                    ssl._create_default_https_context,  # type: ignore[attr-defined]
+                    self._orig_https,
+                )
+                # patched call must invoke load_verify_locations
+                ssl.create_default_context()
+                mock_load.assert_called_once_with(capath=tmpdir)
 
 
 class BaseSettingsConfigTestCase(unittest.TestCase):
