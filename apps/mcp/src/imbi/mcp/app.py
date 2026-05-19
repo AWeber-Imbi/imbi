@@ -1,9 +1,8 @@
 import logging
-import os
 import typing as t
 
-import sentry_sdk
 import typer
+from imbi_common import sentry
 
 from imbi_mcp import server
 
@@ -12,22 +11,6 @@ _LOGGER = logging.getLogger(__name__)
 Transport = t.Literal['stdio', 'http', 'sse', 'streamable-http']
 
 cli = typer.Typer(no_args_is_help=True)
-
-
-def _init_sentry() -> None:
-    """Initialize Sentry SDK if SENTRY_DSN is configured."""
-    dsn = os.environ.get('SENTRY_DSN')
-    if not dsn:
-        return
-    sentry_sdk.init(
-        dsn=dsn,
-        send_default_pii=False,
-        server_name=os.environ.get('SERVICE', 'imbi-mcp'),
-        traces_sample_rate=float(
-            os.environ.get('SENTRY_TRACES_SAMPLE_RATE', '0.1')
-        ),
-    )
-    _LOGGER.info('Sentry initialized for imbi-mcp')
 
 
 @cli.command()
@@ -54,7 +37,7 @@ def serve(
     ] = 8001,
 ) -> None:
     """Run the Imbi MCP server."""
-    _init_sentry()
+    sentry.init()
     try:
         mcp = server.create_server(api_url)
     except Exception as err:
