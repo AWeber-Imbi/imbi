@@ -571,9 +571,9 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         self.assertEqual(data['version'], 'v7.0.0')
 
     def test_promote_sha_ref_cuts_tag_and_release(self) -> None:
-        # Promote target is a git SHA -- the handler should cut a tag
-        # and create a release, but NOT dispatch.  The repo's
-        # ``on: release: [published]`` workflow handles deployment.
+        # Promote target is a git SHA -- the handler cuts a tag, creates
+        # a release, AND dispatches trigger_deployment so the run is
+        # tracked in the deployment event.
         self.mocks['append_deployment_event'].return_value = mock.Mock()
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
@@ -599,13 +599,15 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         self.assertIsNone(data['warning'])
         call = self.mocks['append_deployment_event'].call_args
         self.assertEqual(call.kwargs['env_slug'], 'staging')
-        # No dispatch happened -> no external run id/url.
-        self.assertIsNone(call.kwargs['external_run_id'])
-        self.assertIsNone(call.kwargs['external_run_url'])
+        # Trigger was dispatched -- run id and url are present.
+        self.assertEqual(call.kwargs['external_run_id'], '42')
+        self.assertEqual(call.kwargs['external_run_url'], 'https://gh/runs/42')
 
-    def test_promote_semver_tag_dispatches_only(self) -> None:
-        # Promote target is a semver tag -- the handler should dispatch
-        # against the existing tag with no new tag/release.
+    def test_promote_semver_tag_dispatches_and_recreates_release(self) -> None:
+        # Promote target is a semver tag -- the handler attempts create_tag
+        # and create_release (idempotently) AND dispatches trigger_deployment.
+        # A real GitHub 422 "already exists" for the tag/release is silently
+        # ignored; the fake plugin succeeds so we get a release URL.
         self.mocks['append_deployment_event'].return_value = mock.Mock()
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
@@ -621,8 +623,8 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 202)
         data = response.json()
         self.assertEqual(data['tag'], 'v6.4.0')
-        # No release was cut -- production reuses the staging tag.
-        self.assertIsNone(data['release_url'])
+        # The fake plugin returned a release URL.
+        self.assertEqual(data['release_url'], 'https://gh/releases/v6.4.0')
         self.assertIsNone(data['warning'])
         # The dispatched run surfaced on the event.
         call = self.mocks['append_deployment_event'].call_args
@@ -742,9 +744,10 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         self.assertEqual(captured['inputs']['tier'], 'override')
 
     def test_promote_deployment_failure_becomes_warning(self) -> None:
-        # If trigger_deployment raises, the promote still records the
-        # DeploymentEvent and surfaces the failure as a warning rather
-        # than 500ing.
+        # If trigger_deployment raises, the promote returns early with
+        # recorded=False and surfaces the failure as a warning rather
+        # than 500ing.  No DeploymentEvent is recorded for a deployment
+        # that never started.
         self.mocks['append_deployment_event'].return_value = mock.Mock()
 
         class _Boom(_FakeDeploymentPlugin):
@@ -785,7 +788,8 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         self.assertIn('RuntimeError', data['warning'])
         self.assertNotIn('422', data['warning'])
         self.assertNotIn('Unprocessable', data['warning'])
-        self.assertTrue(data['recorded'])
+        # No DeploymentEvent was recorded -- trigger never started.
+        self.assertFalse(data['recorded'])
 
     def test_promote_falls_back_when_plugin_lacks_create_tag(self) -> None:
         class _NoTag(_FakeDeploymentPlugin):

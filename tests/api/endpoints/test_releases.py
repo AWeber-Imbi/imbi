@@ -571,6 +571,76 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
             )
         self.assertEqual(response.status_code, 404)
 
+    def test_record_deployment_closes_opslog_on_terminal_status(
+        self,
+    ) -> None:
+        # When external_run_id + a terminal status arrive together,
+        # complete_opslog_entry should be called to close the ops-log row.
+        existing = [
+            {
+                'timestamp': '2026-04-20T10:00:00+00:00',
+                'status': 'in_progress',
+                'note': None,
+            }
+        ]
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+            [
+                {
+                    'env': self._env(),
+                    'deployments': json.dumps(existing),
+                }
+            ],
+            [{'deployments': None}],
+        ]
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.releases.complete_opslog_entry',
+                new_callable=mock.AsyncMock,
+                return_value=True,
+            ) as mock_close,
+        ):
+            response = self.client.post(
+                self._url(f'/{RELEASE_ID}/environments/production'),
+                json={'status': 'success', 'external_run_id': 'run-42'},
+            )
+        self.assertEqual(response.status_code, 200)
+        mock_close.assert_awaited_once()
+        args = mock_close.call_args
+        self.assertEqual(args.args[0], 'run-42')
+
+    def test_record_deployment_skips_opslog_for_non_terminal_status(
+        self,
+    ) -> None:
+        # complete_opslog_entry must NOT be called for non-terminal statuses
+        # even when external_run_id is present.
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+            [{'env': self._env(), 'deployments': None}],
+            [{'deployments': None}],
+        ]
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.releases.complete_opslog_entry',
+                new_callable=mock.AsyncMock,
+                return_value=True,
+            ) as mock_close,
+        ):
+            response = self.client.post(
+                self._url(f'/{RELEASE_ID}/environments/production'),
+                json={'status': 'in_progress', 'external_run_id': 'run-42'},
+            )
+        self.assertEqual(response.status_code, 200)
+        mock_close.assert_not_called()
+
     def test_list_deployment_edges(self) -> None:
         deployments = json.dumps(
             [

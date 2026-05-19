@@ -97,6 +97,15 @@ async def upsert_connection(
     new_id = nanoid.generate()
     now = _now_iso()
 
+    # Propagate the provider login (e.g. GitHub's ``login`` claim) into
+    # plain-text metadata so callers can use it for filtering without
+    # having to decrypt the claims ciphertext.  Caller-supplied metadata
+    # takes precedence; we only set the key when it is absent.
+    effective_metadata: dict[str, typing.Any] = dict(metadata or {})
+    raw_login = profile.raw_claims.get('login') if profile.raw_claims else None
+    if raw_login and 'login' not in effective_metadata:
+        effective_metadata['login'] = str(raw_login)
+
     # AGE doesn't implement ON CREATE SET, so the MERGE below uses
     # coalesce() to preserve ``id`` and ``created_at`` on the existing
     # row while every other field is overwritten.
@@ -132,7 +141,7 @@ async def upsert_connection(
         'claims': enc_claims,
         'expires_at': expires_at,
         'scopes': credentials.scopes,
-        'metadata': metadata or {},
+        'metadata': effective_metadata,
     }
 
     try:
@@ -321,7 +330,8 @@ async def list_for_user(
            c.expires_at AS expires_at,
            c.scopes AS scopes,
            c.last_used_at AS last_used_at,
-           c.metadata AS metadata
+           c.metadata AS metadata,
+           c.id_token_claims_encrypted AS claims_enc
     """
     records = await db.execute(
         query,
@@ -338,13 +348,30 @@ async def list_for_user(
             'scopes',
             'last_used_at',
             'metadata',
+            'claims_enc',
         ],
     )
     out: list[dict[str, typing.Any]] = []
     for row in records:
         decoded = {k: graph.parse_agtype(v) for k, v in row.items()}
-        # ``metadata`` lands as a JSON-encoded string (see _parse_metadata).
-        decoded['metadata'] = _parse_metadata(row.get('metadata'))
+        meta = _parse_metadata(row.get('metadata'))
+        # Backfill ``login`` for connections created before the metadata
+        # propagation fix — decrypt the claims ciphertext and extract it.
+        if 'login' not in meta:
+            claims_plain = _decrypt(row.get('claims_enc'))
+            if claims_plain:
+                try:
+                    parsed = json.loads(claims_plain)
+                    if isinstance(parsed, dict):
+                        claims = typing.cast('dict[str, object]', parsed)
+                        login = claims.get('login')
+                        if login:
+                            meta['login'] = str(login)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        decoded['metadata'] = meta
+        # Don't leak the ciphertext to callers.
+        decoded.pop('claims_enc', None)
         out.append(decoded)
     return out
 

@@ -27,7 +27,7 @@ dependencies = [
   "fastapi",
   "filetype",
   "httpx>=0.28.1,<1",
-  "imbi-common[databases,llm,sentry,server]>=2.4.0",
+  "imbi-common[databases,llm,sentry,server]>=2.5.3",
   "jinja2",
   "jsonpatch>=1.33",
   "nanoid>=2.0.0",
@@ -158,6 +158,7 @@ reportAttributeAccessIssue = "none"
 reportCallIssue = "none"
 reportMissingParameterType = "none"
 reportMissingTypeArgument = "none"
+reportMissingTypeStubs = "none"
 reportOptionalMemberAccess = "none"
 reportOptionalSubscript = "none"
 reportPrivateUsage = "none"
@@ -226,3 +227,6 @@ max-complexity = 15
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
+
+[tool.uv.sources]
+imbi-plugin-github = { path = "../imbi-plugin-github", editable = true }

@@ -18,6 +18,7 @@ import re
 import typing
 
 import fastapi
+import httpx
 import nanoid
 import pydantic
 from imbi_common import clickhouse, graph, versioning
@@ -341,6 +342,19 @@ async def _load_env_flags(
     )
 
 
+def _is_already_exists_error(exc: BaseException) -> bool:
+    """Return True when exc is a GitHub 422 'Reference already exists'."""
+    if not isinstance(exc, httpx.HTTPStatusError):
+        return False
+    if exc.response.status_code != 422:
+        return False
+    try:
+        msg = (exc.response.json().get('message') or '').lower()
+        return 'already exists' in msg
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _promote_warning(step: str, exc: BaseException) -> str:
     """Sanitized client-facing warning for a failed promote step.
 
@@ -384,6 +398,7 @@ async def _record_deployment_audit(
     committish: str,
     plugin_slug: str,
     run_url: str | None,
+    external_run_id: str | None = None,
     release_url: str | None = None,
     from_environment: str | None = None,
 ) -> None:
@@ -422,6 +437,7 @@ async def _record_deployment_audit(
         link=run_url,
         version=tag or committish,
         plugin_slug=plugin_slug,
+        external_run_id=external_run_id,
     )
     row = entry.model_dump(by_alias=True, mode='python')
     row['is_deleted'] = 1 if entry.is_deleted else 0
@@ -732,6 +748,7 @@ async def _apply_remote_deployment(
         committish=committish,
         plugin_slug=plugin_slug,
         run_url=observed.run_url,
+        external_run_id=observed.external_run_id,
         release_url=observed.deployment_url,
     )
 
@@ -1076,6 +1093,7 @@ async def _handle_deploy(
         committish=committish_short,
         plugin_slug=resolved.plugin_slug,
         run_url=run.run_url,
+        external_run_id=str(run.run_id) if run.run_id else None,
     )
     return DeploymentTriggerResponse(
         run=run,
@@ -1132,13 +1150,20 @@ async def _promote_cut_release(
             ),
         ) from exc
     except Exception as exc:
-        LOGGER.exception(
-            'create_tag failed for project=%s env=%s tag=%s',
-            project_id,
-            body.to_environment,
-            body.tag,
-        )
-        warnings.append(_promote_warning('create_tag', exc))
+        if _is_already_exists_error(exc):
+            LOGGER.debug(
+                'create_tag: tag %s already exists for project=%s, continuing',
+                body.tag,
+                project_id,
+            )
+        else:
+            LOGGER.exception(
+                'create_tag failed for project=%s env=%s tag=%s',
+                project_id,
+                body.to_environment,
+                body.tag,
+            )
+            warnings.append(_promote_warning('create_tag', exc))
 
     async def _create_release(c: PluginContext) -> typing.Any:
         return await call_with_timeout(
@@ -1163,13 +1188,20 @@ async def _promote_cut_release(
         )
         return None
     except Exception as exc:
-        LOGGER.exception(
-            'create_release failed for project=%s env=%s tag=%s',
-            project_id,
-            body.to_environment,
-            body.tag,
-        )
-        warnings.append(_promote_warning('create_release', exc))
+        if _is_already_exists_error(exc):
+            LOGGER.debug(
+                'create_release: %s already exists for project=%s',
+                body.tag,
+                project_id,
+            )
+        else:
+            LOGGER.exception(
+                'create_release failed for project=%s env=%s tag=%s',
+                project_id,
+                body.to_environment,
+                body.tag,
+            )
+            warnings.append(_promote_warning('create_release', exc))
         return None
 
 
@@ -1215,11 +1247,9 @@ async def _handle_promote(
     # * Anything else (e.g. ``main``)            -> 400.  We refuse to
     #   silently cut a tag named after a branch; a typo at the API
     #   boundary should fail loudly rather than mint ``refs/tags/main``.
-    if versioning.is_semver_tag(body.tag):
-        action: typing.Literal['release', 'deployment'] | None = 'deployment'
-    elif versioning.is_commitish(body.tag):
-        action = 'release'
-    else:
+    if not versioning.is_semver_tag(body.tag) and not versioning.is_commitish(
+        body.tag
+    ):
         raise fastapi.HTTPException(
             status_code=400,
             detail=(
@@ -1244,56 +1274,67 @@ async def _handle_promote(
     release_info = None
     release_url: str | None = None
 
-    if action == 'release':
-        release_info = await _promote_cut_release(
-            db,
-            ctx=ctx,
-            resolved=resolved,
-            handler=handler,
-            credentials=credentials,
-            auth=auth,
-            body=body,
-            warnings=warnings,
-            project_id=project_id,
-        )
-        release_url = (release_info.html_url if release_info else None) or (
-            release_info.url if release_info else None
-        )
-    elif action == 'deployment':
-        # Dispatch against the existing tag.  We do this before upserting
-        # the Release node so a trigger failure doesn't leave a Release
-        # in the graph with no associated deployment run.
-        promote_inputs: dict[str, str] | None
-        if ctx.environment_config:
-            promote_inputs = {
-                key: value if isinstance(value, str) else json.dumps(value)
-                for key, value in ctx.environment_config.items()
-            }
-        else:
-            promote_inputs = None
+    release_info = await _promote_cut_release(
+        db,
+        ctx=ctx,
+        resolved=resolved,
+        handler=handler,
+        credentials=credentials,
+        auth=auth,
+        body=body,
+        warnings=warnings,
+        project_id=project_id,
+    )
+    release_url = (release_info.html_url if release_info else None) or (
+        release_info.url if release_info else None
+    )
 
-        async def _trigger(c: PluginContext) -> DeploymentRun:
-            return await call_with_timeout(
-                handler.trigger_deployment(
-                    c,
-                    _resolve_credentials(c, credentials),
-                    ref_or_sha=body.tag,
-                    inputs=promote_inputs,
-                )
-            )
+    promote_inputs: dict[str, str] | None
+    if ctx.environment_config:
+        promote_inputs = {
+            key: value if isinstance(value, str) else json.dumps(value)
+            for key, value in ctx.environment_config.items()
+        }
+    else:
+        promote_inputs = None
 
-        try:
-            run = await call_with_identity_retry(
-                db, ctx, resolved, auth, fn=_trigger, attached=True
+    async def _trigger(c: PluginContext) -> DeploymentRun:
+        return await call_with_timeout(
+            handler.trigger_deployment(
+                c,
+                _resolve_credentials(c, credentials),
+                ref_or_sha=body.tag,
+                inputs=promote_inputs,
             )
-        except Exception as exc:
-            LOGGER.exception(
-                'trigger_deployment failed for project=%s env=%s tag=%s',
-                project_id,
-                body.to_environment,
-                body.tag,
+        )
+
+    try:
+        run = await call_with_identity_retry(
+            db, ctx, resolved, auth, fn=_trigger, attached=True
+        )
+    except Exception as exc:
+        LOGGER.exception(
+            'trigger_deployment failed for project=%s env=%s tag=%s',
+            project_id,
+            body.to_environment,
+            body.tag,
+        )
+        if isinstance(exc, httpx.HTTPStatusError):
+            LOGGER.error(
+                'trigger_deployment HTTP %s response body: %s',
+                exc.response.status_code,
+                exc.response.text,
             )
-            warnings.append(_promote_warning('trigger_deployment', exc))
+        warnings.append(_promote_warning('trigger_deployment', exc))
+        return DeploymentTriggerResponse(
+            run=run,
+            plugin_id=resolved.plugin_id,
+            plugin_slug=resolved.plugin_slug,
+            recorded=False,
+            release_url=release_url,
+            tag=body.tag,
+            warning='; '.join(warnings) if warnings else None,
+        )
 
     # 4. Upsert the Release node so future deploys of the same tag
     #    can attach a DeploymentEvent.
@@ -1344,6 +1385,7 @@ async def _handle_promote(
         committish=promoted_committish,
         plugin_slug=resolved.plugin_slug,
         run_url=run.run_url,
+        external_run_id=str(run.run_id) if run.run_id else None,
         release_url=release_url,
         from_environment=body.from_environment,
     )

@@ -43,8 +43,10 @@ def _sample_row(**overrides: typing.Any) -> dict[str, typing.Any]:
         'notes': None,
         'ticket_slug': None,
         'version': '2.4.0',
+        'external_run_id': None,
         '_row_version': 1,
         'is_deleted': 0,
+        'plugin_slug': '',
     }
     base.update(overrides)
     return base
@@ -522,3 +524,44 @@ class DeleteOperationLogTests(_OpsLogTestBase):
         self._revoke_permissions()
         response = self.client.delete('/operations-log/entry-abc')
         self.assertEqual(response.status_code, 403)
+
+
+class CompleteOpslogEntryTestCase(unittest.IsolatedAsyncioTestCase):
+    """Tests for the complete_opslog_entry helper."""
+
+    async def test_returns_false_when_no_row_found(self) -> None:
+        instance = mock.MagicMock()
+        instance.query = mock.AsyncMock(return_value=[])
+        with mock.patch.object(
+            imbi_clickhouse.client.Clickhouse,
+            'get_instance',
+            return_value=instance,
+        ):
+            result = await operations_log.complete_opslog_entry(
+                'run-abc', datetime.datetime.now(datetime.UTC)
+            )
+        self.assertFalse(result)
+        instance.query.assert_awaited_once()
+
+    async def test_closes_open_entry(self) -> None:
+        now = datetime.datetime.now(datetime.UTC)
+        existing = dict(_sample_row(external_run_id='run-99', _row_version=1))
+        instance = mock.MagicMock()
+        instance.query = mock.AsyncMock(return_value=[existing])
+        instance.insert = mock.AsyncMock(return_value=None)
+        with mock.patch.object(
+            imbi_clickhouse.client.Clickhouse,
+            'get_instance',
+            return_value=instance,
+        ):
+            result = await operations_log.complete_opslog_entry('run-99', now)
+        self.assertTrue(result)
+        # Verify the insert was called with the bumped row_version and
+        # completed_at set.
+        instance.insert.assert_awaited_once()
+        call_args = instance.insert.call_args
+        columns: list[str] = call_args.args[2]
+        values: list[typing.Any] = call_args.args[1][0]
+        row_dict = dict(zip(columns, values, strict=True))
+        self.assertEqual(row_dict['completed_at'], now)
+        self.assertGreater(int(row_dict['_row_version']), 1)

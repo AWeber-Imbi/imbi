@@ -188,6 +188,42 @@ async def _insert_row(row: dict[str, typing.Any]) -> None:
     )
 
 
+_BY_EXTERNAL_RUN_SQL: typing.Final[str] = (
+    'SELECT * FROM operations_log FINAL '
+    'WHERE external_run_id = {run_id:String} '
+    'AND completed_at IS NULL AND is_deleted = 0 '
+    'ORDER BY _row_version DESC LIMIT 1'
+)
+
+
+async def complete_opslog_entry(
+    external_run_id: str,
+    completed_at: datetime.datetime,
+) -> bool:
+    """Mark the opslog entry for ``external_run_id`` as completed.
+
+    Looks up the latest in-progress row by ``external_run_id``, then
+    re-inserts it with ``completed_at`` set and a bumped ``_row_version``
+    so ReplacingMergeTree converges to the completed state.  Returns
+    ``True`` when an entry was found and written, ``False`` otherwise.
+    Silently no-ops when the entry is already completed or missing.
+    """
+    rows = await clickhouse.client.Clickhouse.get_instance().query(
+        _BY_EXTERNAL_RUN_SQL, {'run_id': external_run_id}
+    )
+    if not rows:
+        LOGGER.debug(
+            'complete_opslog_entry: no open entry for external_run_id=%s',
+            external_run_id,
+        )
+        return False
+    row = dict(rows[0])
+    row['completed_at'] = completed_at
+    row['_row_version'] = _next_row_version(int(row['_row_version']))
+    await _insert_row(row)
+    return True
+
+
 @operations_log_router.post(
     '/',
     status_code=201,
