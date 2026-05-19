@@ -44,9 +44,17 @@ export function MyPullRequestCountsWidget() {
 
   return (
     <Card
+      aria-label="View my open pull requests"
       className="hover:border-secondary relative flex h-full cursor-pointer flex-col transition-colors"
       onClick={() => navigate('/projects?view=list&has_my_open_prs=1')}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          navigate('/projects?view=list&has_my_open_prs=1')
+        }
+      }}
       role="link"
+      tabIndex={0}
     >
       <GitMerge className="text-tertiary absolute top-6 right-6 size-9" />
       <CardHeader className="pb-2">
@@ -69,6 +77,7 @@ export function MyPullRequestCountsWidget() {
             <a
               className="text-action mt-1 block text-xs hover:underline"
               href="/settings/connections"
+              onClick={(event) => event.stopPropagation()}
             >
               Connect GitHub
             </a>

@@ -334,7 +334,14 @@ export function Dashboard({
       <Card
         className="hover:border-secondary relative flex h-full cursor-pointer flex-col transition-colors"
         onClick={() => navigate('/projects?view=list&has_open_prs=1')}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            navigate('/projects?view=list&has_open_prs=1')
+          }
+        }}
         role="link"
+        tabIndex={0}
       >
         <GitPullRequest className="text-tertiary absolute top-6 right-6 size-9 shrink-0" />
         <CardHeader className="pb-2">

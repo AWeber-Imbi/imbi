@@ -22,7 +22,18 @@ export function StatWidget({
     <Card
       className={`relative flex h-full flex-col${onClick ? ' hover:border-secondary cursor-pointer transition-colors' : ''}`}
       onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onClick()
+              }
+            }
+          : undefined
+      }
       role={onClick ? 'link' : undefined}
+      tabIndex={onClick ? 0 : undefined}
     >
       <div className="absolute top-6 right-6 text-4xl">{icon}</div>
       <CardHeader className="pb-2">
