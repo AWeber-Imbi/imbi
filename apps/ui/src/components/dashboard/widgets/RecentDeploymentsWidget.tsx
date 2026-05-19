@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
 
+import { useNavigate } from 'react-router-dom'
+
 import { useQuery } from '@tanstack/react-query'
 import { CheckCircle, ChevronRight, Clock, Rocket } from 'lucide-react'
 
@@ -11,13 +13,8 @@ import { useRecentDeployments } from '@/hooks/useRecentDeployments'
 import { formatRelativeDate } from '@/lib/formatDate'
 import type { Project } from '@/types'
 
-interface RecentDeploymentsWidgetProps {
-  onProjectSelect?: (projectId: string) => void
-}
-
-export function RecentDeploymentsWidget({
-  onProjectSelect,
-}: RecentDeploymentsWidgetProps) {
+export function RecentDeploymentsWidget() {
+  const navigate = useNavigate()
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug ?? ''
 
@@ -43,8 +40,14 @@ export function RecentDeploymentsWidget({
       </div>
 
       {isLoading ? (
-        <div className="text-secondary py-8 text-center text-sm">
-          Loading deployments…
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div
+              aria-hidden="true"
+              className="bg-tertiary/30 h-16 animate-pulse rounded-lg"
+              key={i}
+            />
+          ))}
         </div>
       ) : items.length === 0 ? (
         <div className="text-secondary py-8 text-center text-sm">
@@ -68,7 +71,9 @@ export function RecentDeploymentsWidget({
               <button
                 className="border-input bg-background hover:border-secondary w-full rounded-lg border p-3 text-left transition-colors"
                 key={d.id}
-                onClick={() => onProjectSelect?.(d.project_id)}
+                onClick={() =>
+                  navigate(`/operations-log?entry=${encodeURIComponent(d.id)}`)
+                }
                 type="button"
               >
                 <div className="flex items-start justify-between gap-3">
@@ -98,7 +103,7 @@ export function RecentDeploymentsWidget({
                           {statusLabel}
                         </Badge>
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-tertiary text-xs">
                         {d.performed_by ?? d.recorded_by} •{' '}
                         {formatRelativeDate(d.occurred_at)}
                       </div>

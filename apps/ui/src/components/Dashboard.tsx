@@ -63,7 +63,6 @@ type WidgetId =
   | 'recent-deployments'
   | 'stat-active-deployments'
   | 'stat-open-prs'
-  | 'stat-teams'
   | 'stat-total-projects'
   | 'team-activity'
 
@@ -83,14 +82,6 @@ const availableWidgets: WidgetConfig[] = [
     icon: '🚀',
     id: 'stat-active-deployments',
     name: 'Active Deployments',
-  },
-  {
-    category: 'stats',
-    columnSpan: 1,
-    description: 'Total number of teams',
-    icon: '👥',
-    id: 'stat-teams',
-    name: 'Teams',
   },
   {
     category: 'stats',
@@ -125,7 +116,7 @@ const availableWidgets: WidgetConfig[] = [
     name: 'Recent Deployments',
   },
   {
-    category: 'development',
+    category: 'stats',
     columnSpan: 1,
     description: 'Your open and closed pull requests',
     icon: '🔀',
@@ -145,6 +136,7 @@ const availableWidgets: WidgetConfig[] = [
 const defaultWidgets: WidgetId[] = [
   'stat-total-projects',
   'stat-active-deployments',
+  'recent-deployments',
 ]
 
 const WIDGET_IDS: ReadonlySet<WidgetId> = new Set<WidgetId>([
@@ -154,7 +146,6 @@ const WIDGET_IDS: ReadonlySet<WidgetId> = new Set<WidgetId>([
   'recent-deployments',
   'stat-active-deployments',
   'stat-open-prs',
-  'stat-teams',
   'stat-total-projects',
   'team-activity',
 ])
@@ -240,9 +231,6 @@ export function Dashboard({
   })
 
   const projectCount = projects?.length || 0
-  const teamCount = projects
-    ? new Set(projects.map((p) => p.team.slug)).size
-    : 0
 
   const {
     data: recentDeployments,
@@ -312,9 +300,7 @@ export function Dashboard({
         onUserSelect={onUserSelect}
       />
     ),
-    'recent-deployments': () => (
-      <RecentDeploymentsWidget onProjectSelect={onProjectSelect} />
-    ),
+    'recent-deployments': () => <RecentDeploymentsWidget />,
     'stat-active-deployments': () => (
       <StatWidget
         icon="🚀"
@@ -353,9 +339,6 @@ export function Dashboard({
           <GitPullRequest className="text-tertiary size-9 shrink-0" />
         </div>
       </div>
-    ),
-    'stat-teams': () => (
-      <StatWidget icon="👥" title="Teams" value={teamCount.toLocaleString()} />
     ),
     'stat-total-projects': () => (
       <StatWidget

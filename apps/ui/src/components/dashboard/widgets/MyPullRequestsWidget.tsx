@@ -106,9 +106,12 @@ export function MyPullRequestsWidget() {
   )
 }
 
+// fallow-ignore-next-line complexity
 function githubLogin(
   identities: IdentityConnectionResponse[],
 ): string | undefined {
-  return identities.find((i) => i.plugin_slug === GITHUB_PR_PLUGIN_SLUG)
-    ?.subject
+  const conn = identities.find((i) => i.plugin_slug === GITHUB_PR_PLUGIN_SLUG)
+  if (!conn) return undefined
+  const login = conn.metadata?.login
+  return typeof login === 'string' && login ? login : undefined
 }

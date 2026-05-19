@@ -130,6 +130,7 @@ const DEFAULT_FILTERS: ScreenFilters = {
 
 export interface OperationsLogProps {
   embedded?: boolean
+  highlightEntryId?: string
   projectSlug?: string
   showHeader?: boolean
   showSummary?: boolean
@@ -137,6 +138,7 @@ export interface OperationsLogProps {
 
 export function OperationsLog({
   embedded = false,
+  highlightEntryId,
   projectSlug,
   showHeader = true,
   showSummary = true,
@@ -156,12 +158,13 @@ export function OperationsLog({
     }))
   }, [projectSlug])
   const [view, setView] = useState<OperationsLogView>('grouped')
-  const [openId, setOpenId] = useState<string | undefined>(undefined)
+  const [openId, setOpenId] = useState<string | undefined>(highlightEntryId)
   // Stable dispatcher — lets memoised row components compare props by
   // reference without creating a new closure per row per render.
   const toggleOpen = useCallback((id: string) => {
     setOpenId((prev) => (prev === id ? undefined : id))
   }, [])
+  const hasScrolledRef = useRef(false)
 
   const {
     data: projects = [],
@@ -401,6 +404,41 @@ export function OperationsLog({
     getItemKey: (index) => virtualItems[index]?.key ?? index,
     overscan: 8,
   })
+
+  // Scroll to and expand a highlighted entry once items are loaded.
+  useEffect(() => {
+    if (
+      !highlightEntryId ||
+      hasScrolledRef.current ||
+      isLoading ||
+      virtualItems.length === 0
+    )
+      return
+
+    // Direct match: single entry or the latestEntry of a release group.
+    let idx = virtualItems.findIndex(
+      (vi) =>
+        (vi.kind === 'evt' || vi.kind === 'rel') && vi.id === highlightEntryId,
+    )
+
+    // Not found directly — check if it's a stop within a release group.
+    if (idx === -1) {
+      for (const item of items) {
+        if (item.kind !== 'release') continue
+        if (!item.group.stops.some((s) => s.entry.id === highlightEntryId))
+          continue
+        const releaseId = item.group.latestEntry.id
+        idx = virtualItems.findIndex(
+          (vi) => vi.kind === 'rel' && vi.id === releaseId,
+        )
+        break
+      }
+    }
+
+    if (idx === -1) return // Entry not yet loaded — wait for next page.
+    hasScrolledRef.current = true
+    virtualizer.scrollToIndex(idx, { align: 'start' })
+  }, [highlightEntryId, virtualItems, items, isLoading, virtualizer])
 
   // Pull the next page as soon as the virtualizer renders within a few
   // rows of the end of the current list. Replaces the prior eager loop
