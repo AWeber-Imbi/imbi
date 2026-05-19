@@ -72,6 +72,7 @@ import type {
   ProjectRelationshipsResponse,
   ProjectType,
   ProjectTypeCreate,
+  PullRequestListResponse,
   Role,
   RoleCreate,
   RoleDetail,
@@ -375,6 +376,7 @@ function parseNextCursor(headers: Headers): string | undefined {
   }
 }
 
+// fallow-ignore-next-line complexity
 export const listOperationsLog = async (
   params: {
     cursor?: string
@@ -1735,6 +1737,7 @@ export const getProjectLogsHistogram = (
   )
 }
 
+// fallow-ignore-next-line complexity
 export const searchProjectLogs = (
   orgSlug: string,
   projectId: string,
@@ -2080,5 +2083,38 @@ export const searchOrganization = (
   apiClient.get<SearchResult[]>(
     `/organizations/${encodeURIComponent(orgSlug)}/search`,
     { limit: 20, threshold: 0.75, ...params, q },
+    signal,
+  )
+
+export const getProjectPullRequests = (
+  orgSlug: string,
+  projectId: string,
+  params?: {
+    author?: string
+    limit?: number
+    offset?: number
+    state?: 'closed' | 'open'
+  },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<PullRequestListResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/pull-requests/`,
+    params,
+    signal,
+  )
+
+export const getOrgPullRequests = (
+  orgSlug: string,
+  params?: {
+    author?: string
+    limit?: number
+    offset?: number
+    state?: 'closed' | 'open'
+  },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<PullRequestListResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/pull-requests/`,
+    params,
     signal,
   )

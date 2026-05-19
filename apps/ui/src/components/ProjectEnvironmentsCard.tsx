@@ -10,7 +10,12 @@ type Environment = NonNullable<Project['environments']>[number]
 interface ProjectEnvironmentsCardProps {
   deploymentStatus: Record<
     string,
-    { status: string; updated: string; version: string }
+    {
+      committish: string
+      status: string
+      tag: null | string
+      updated: string
+    }
   >
   environments: Environment[]
 }
@@ -47,7 +52,9 @@ export function ProjectEnvironmentsCard({
                 </div>
                 <div className="w-28 shrink-0 text-right">
                   <span className="text-tertiary font-mono text-sm">
-                    {deployment?.version ?? ''}
+                    {deployment
+                      ? (deployment.tag ?? deployment.committish)
+                      : ''}
                   </span>
                 </div>
                 <div className="flex-1 text-right">

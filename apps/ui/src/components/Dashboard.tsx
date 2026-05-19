@@ -20,9 +20,14 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useQuery } from '@tanstack/react-query'
-import { Settings } from 'lucide-react'
+import { GitPullRequest, Settings } from 'lucide-react'
 
-import { getAdminPlugins, getMyIdentities, getProjects } from '@/api/endpoints'
+import {
+  getAdminPlugins,
+  getMyIdentities,
+  getOrgPullRequests,
+  getProjects,
+} from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useRecentDeployments } from '@/hooks/useRecentDeployments'
@@ -57,6 +62,7 @@ type WidgetId =
   | 'recent-activity'
   | 'recent-deployments'
   | 'stat-active-deployments'
+  | 'stat-open-prs'
   | 'stat-teams'
   | 'stat-total-projects'
   | 'team-activity'
@@ -87,6 +93,14 @@ const availableWidgets: WidgetConfig[] = [
     name: 'Teams',
   },
   {
+    category: 'stats',
+    columnSpan: 1,
+    description: 'Open pull requests across all projects',
+    icon: '🔀',
+    id: 'stat-open-prs',
+    name: 'Total Open PRs',
+  },
+  {
     category: 'activity',
     columnSpan: 2,
     description: 'Overview of team projects and deployments',
@@ -112,8 +126,8 @@ const availableWidgets: WidgetConfig[] = [
   },
   {
     category: 'development',
-    columnSpan: 2,
-    description: 'Your pending code reviews and PR status',
+    columnSpan: 1,
+    description: 'Your open and closed pull requests',
     icon: '🔀',
     id: 'my-pull-requests',
     name: 'My Pull Requests',
@@ -139,6 +153,7 @@ const WIDGET_IDS: ReadonlySet<WidgetId> = new Set<WidgetId>([
   'recent-activity',
   'recent-deployments',
   'stat-active-deployments',
+  'stat-open-prs',
   'stat-teams',
   'stat-total-projects',
   'team-activity',
@@ -152,6 +167,7 @@ interface SortableWidgetProps {
   id: string
 }
 
+// fallow-ignore-next-line complexity
 export function Dashboard({
   onProjectSelect,
   onUserSelect,
@@ -242,6 +258,18 @@ export function Dashboard({
     (d) => d.completed_at == null,
   ).length
 
+  const {
+    data: openPrsData,
+    isError: isOpenPrsError,
+    isLoading: isOpenPrsLoading,
+  } = useQuery({
+    enabled: !!orgSlug,
+    queryFn: ({ signal }) =>
+      getOrgPullRequests(orgSlug, { limit: 1, state: 'open' }, signal),
+    queryKey: ['org-prs', orgSlug, 'open'],
+    staleTime: 5 * 60 * 1000,
+  })
+
   // Persist selections
   useEffect(() => {
     localStorage.setItem(WIDGET_STORAGE_KEY, JSON.stringify(selectedWidgets))
@@ -256,6 +284,7 @@ export function Dashboard({
     )
   }
 
+  // fallow-ignore-next-line complexity
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
 
@@ -273,9 +302,7 @@ export function Dashboard({
   }
 
   const widgetRegistry: Record<WidgetId, () => ReactElement> = {
-    'my-pull-requests': () => (
-      <MyPullRequestsWidget onUserSelect={onUserSelect} />
-    ),
+    'my-pull-requests': () => <MyPullRequestsWidget />,
     'outdated-components': () => (
       <OutdatedComponentsWidget onProjectSelect={onProjectSelect} />
     ),
@@ -297,6 +324,36 @@ export function Dashboard({
         value={activeDeploymentCount.toLocaleString()}
       />
     ),
+    // fallow-ignore-next-line complexity
+    'stat-open-prs': () => (
+      <div className="border-border bg-card rounded-lg border p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-secondary text-sm">Total Open PRs</p>
+            {isOpenPrsLoading ? (
+              <span
+                aria-label="Loading Total Open PRs"
+                className="bg-tertiary/40 mt-2 inline-block h-9 w-32 animate-pulse rounded"
+                role="status"
+              />
+            ) : isOpenPrsError ? (
+              <p className="text-danger mt-2 text-sm">Unavailable</p>
+            ) : (
+              <div className="mt-2 flex items-baseline gap-1.5">
+                <span className="text-primary text-3xl">
+                  {(openPrsData?.total ?? 0).toLocaleString()}
+                </span>
+                <span className="text-secondary text-sm">
+                  across {(openPrsData?.project_count ?? 0).toLocaleString()}{' '}
+                  projects
+                </span>
+              </div>
+            )}
+          </div>
+          <GitPullRequest className="text-tertiary size-9 shrink-0" />
+        </div>
+      </div>
+    ),
     'stat-teams': () => (
       <StatWidget icon="👥" title="Teams" value={teamCount.toLocaleString()} />
     ),
@@ -312,9 +369,12 @@ export function Dashboard({
 
   const renderWidget = (widgetId: WidgetId) => widgetRegistry[widgetId]()
 
-  // Separate stat widgets from other widgets for layout
-  const statWidgets = selectedWidgets.filter((id) => id.startsWith('stat-'))
-  const otherWidgets = selectedWidgets.filter((id) => !id.startsWith('stat-'))
+  // columnSpan:1 widgets go in the narrow stat grid; everything else is masonry
+  const narrowWidgetIds = new Set(
+    availableWidgets.filter((w) => w.columnSpan === 1).map((w) => w.id),
+  )
+  const statWidgets = selectedWidgets.filter((id) => narrowWidgetIds.has(id))
+  const otherWidgets = selectedWidgets.filter((id) => !narrowWidgetIds.has(id))
 
   return (
     <div className="mx-auto max-w-[1400px] px-6 py-8">

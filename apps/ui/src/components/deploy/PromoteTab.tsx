@@ -63,8 +63,8 @@ export function PromoteTab({
     return currentReleases.find((r) => r.environment.slug === toEnvironment)
   }, [currentReleases, toEnvironment])
 
-  const lastTag = toCurrent?.release?.version ?? null
-  const fromTipSha = fromCommittish ?? fromCurrent?.release?.version ?? null
+  const lastTag = toCurrent?.release?.tag ?? null
+  const fromTipSha = fromCommittish ?? fromCurrent?.release?.committish ?? null
 
   // Compare last_tag → fromTipSha to enumerate the commits in flight.
   const compareEnabled =

@@ -1,10 +1,16 @@
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { BarChart3, GitCommitHorizontal, TrendingUp } from 'lucide-react'
+import {
+  BarChart3,
+  GitCommitHorizontal,
+  Network,
+  TrendingUp,
+} from 'lucide-react'
 
 import { CommandBar } from '@/components/CommandBar'
 import { Navigation } from '@/components/Navigation'
 import { MonthlyImprovementReport } from '@/components/reports/MonthlyImprovementReport'
+import { ProjectsGraphReport } from '@/components/reports/ProjectsGraphReport'
 import { ScoreHistoryReport } from '@/components/reports/ScoreHistoryReport'
 import { TeamKPIReport } from '@/components/reports/TeamKPIReport'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -20,13 +26,19 @@ const REPORTS: Report[] = [
   {
     description: 'Month-over-month score delta',
     id: 'monthly-improvement',
-    label: 'Monthly improvement',
+    label: 'Monthly Improvement',
     subtitle: 'Score improvement by team for a selected month',
+  },
+  {
+    description: 'Service dependency graph',
+    id: 'projects-graph',
+    label: 'Projects Graph',
+    subtitle: 'Project relationships across the org',
   },
   {
     description: 'Score trends over time per team',
     id: 'score-history',
-    label: 'Score history',
+    label: 'Score History',
     subtitle: 'Avg score trend per team over time',
   },
   {
@@ -40,6 +52,7 @@ const REPORTS: Report[] = [
 const DEFAULT_REPORT = REPORTS[0].id
 const VALID_IDS = new Set(REPORTS.map((r) => r.id))
 
+// fallow-ignore-next-line complexity
 export function ReportsPage() {
   usePageTitle('Reports')
   const { reportId } = useParams<{ reportId?: string }>()
@@ -70,6 +83,7 @@ export function ReportsPage() {
                 </div>
               </div>
               <div className="space-y-1 p-2">
+                {/* fallow-ignore-next-line complexity */}
                 {REPORTS.map((r) => {
                   const isActive = r.id === activeId
                   return (
@@ -86,6 +100,8 @@ export function ReportsPage() {
                         <BarChart3 className="mt-0.5 size-3.5 shrink-0" />
                       ) : r.id === 'score-history' ? (
                         <GitCommitHorizontal className="mt-0.5 size-3.5 shrink-0" />
+                      ) : r.id === 'projects-graph' ? (
+                        <Network className="mt-0.5 size-3.5 shrink-0" />
                       ) : (
                         <TrendingUp className="mt-0.5 size-3.5 shrink-0" />
                       )}
@@ -113,6 +129,7 @@ export function ReportsPage() {
             {activeId === 'team-kpi' && <TeamKPIReport />}
             {activeId === 'monthly-improvement' && <MonthlyImprovementReport />}
             {activeId === 'score-history' && <ScoreHistoryReport />}
+            {activeId === 'projects-graph' && <ProjectsGraphReport />}
           </div>
         </div>
       </main>

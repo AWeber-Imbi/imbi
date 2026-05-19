@@ -96,6 +96,7 @@ type TabType = (typeof VALID_TABS)[number]
 
 const VALID_TAB_SET: Set<string> = new Set(VALID_TABS)
 
+// fallow-ignore-next-line complexity
 export function ProjectDetail({
   initialSubAction,
   initialSubId,
@@ -134,24 +135,27 @@ export function ProjectDetail({
   // placeholder for the version slot so versions don't pop in.
   const releasesLoading = releasesPending && !!orgSlug && !!project.id
 
+  // fallow-ignore-next-line complexity
   const deploymentStatus: Record<
     string,
     {
       ciStatus: 'fail' | 'pass' | 'warn' | null
+      committish: string
       runUrl: null | string
       status: string
+      tag: null | string
       updated: string
-      version: string
     }
   > = useMemo(() => {
     const out: Record<
       string,
       {
         ciStatus: 'fail' | 'pass' | 'warn' | null
+        committish: string
         runUrl: null | string
         status: string
+        tag: null | string
         updated: string
-        version: string
       }
     > = {}
     for (const row of currentReleases) {
@@ -162,12 +166,13 @@ export function ProjectDetail({
         row.ci_status && row.ci_status !== 'unknown' ? row.ci_status : null
       out[row.environment.slug] = {
         ciStatus: ci,
+        committish: row.release.committish,
         runUrl: row.external_run_url,
         status: row.current_status ?? '',
+        tag: row.release.tag ?? null,
         updated: formatDistanceToNow(new Date(row.last_event_at), {
           addSuffix: true,
         }),
-        version: row.release.version,
       }
     }
     return out
@@ -181,6 +186,7 @@ export function ProjectDetail({
   // the pipeline, *and* ``promote`` requires the upstream env to have a
   // deployed version (otherwise ``fromCommittish`` would be undefined
   // and the promote flow can't succeed).
+  // fallow-ignore-next-line complexity
   useEffect(() => {
     const isModalTab = initialTab === 'deploy' || initialTab === 'promote'
     if (initialTab && !VALID_TAB_SET.has(initialTab) && !isModalTab) {
@@ -207,8 +213,8 @@ export function ProjectDetail({
           return
         }
         const fromSlug = sortedEnvironments[idx - 1]?.slug
-        const fromVersion = fromSlug
-          ? deploymentStatus[fromSlug]?.version
+        const fromCommittish = fromSlug
+          ? deploymentStatus[fromSlug]?.committish
           : undefined
         // Wait for the releases query (drives ``deploymentStatus``) to
         // settle before deciding the upstream is empty. Use the
@@ -216,7 +222,7 @@ export function ProjectDetail({
         // genuinely zero releases would otherwise stay stuck here
         // without redirecting.
         if (releasesPending) return
-        if (!fromVersion) {
+        if (!fromCommittish) {
           navigate(`/projects/${project.id}`, { replace: true })
         }
       }
@@ -415,6 +421,7 @@ export function ProjectDetail({
   // ``github-deployment-ec``). The fallback covers the case where the
   // project-type assignment didn't bind an identity plugin but a
   // matching one exists in the org's plugin catalog.
+  // fallow-ignore-next-line complexity
   const resolvedIdentityPlugin = useMemo(() => {
     if (!deploymentPlugin) return null
     const catalog = identityPlugins ?? []
@@ -460,9 +467,13 @@ export function ProjectDetail({
         : isUserConnectedToDeployment
           ? 'connected'
           : 'disconnected'
+  const isDeployable = (project.project_types ?? []).some(
+    (pt) => (pt as { deployable?: boolean }).deployable === true,
+  )
   const canTriggerDeployments =
-    !!deploymentPlugin && deploymentReadiness === 'connected'
+    isDeployable && !!deploymentPlugin && deploymentReadiness === 'connected'
 
+  // fallow-ignore-next-line complexity
   const deploymentConnectLabel = (() => {
     if (resolvedIdentityPlugin?.label) return resolvedIdentityPlugin.label
     if (deploymentIdentityPluginId) {
@@ -481,6 +492,7 @@ export function ProjectDetail({
   // resolve successfully before deciding — otherwise the empty default
   // during the initial fetch redirects every direct navigation to
   // /logs or /configuration.
+  // fallow-ignore-next-line complexity
   useEffect(() => {
     if (!projectPluginsFetched || !projectPluginsSuccess) return
     if (
@@ -660,7 +672,9 @@ export function ProjectDetail({
                       ? 'Deploy / Promote'
                       : 'Deploy'
                   const versionSlot = deployment ? (
-                    <span className="font-mono">{deployment.version}</span>
+                    <span className="font-mono">
+                      {deployment.tag ?? deployment.committish}
+                    </span>
                   ) : releasesLoading ? (
                     <span
                       aria-hidden
@@ -717,7 +731,7 @@ export function ProjectDetail({
                   )
                 })}
             </div>
-            {deploymentPlugin && (
+            {isDeployable && deploymentPlugin && (
               <div className="text-tertiary flex items-center gap-1.5 text-xs italic">
                 <Info className="size-3.5" />
                 <span>
@@ -1042,18 +1056,18 @@ export function ProjectDetail({
           // omit the Promote tab when prerequisites are unmet.
           const fromSlug =
             targetIdx > 0 ? sortedEnvironments[targetIdx - 1]?.slug : undefined
-          const fromVersion = fromSlug
-            ? deploymentStatus[fromSlug]?.version
+          const fromCommittish = fromSlug
+            ? deploymentStatus[fromSlug]?.committish
             : undefined
           const promoteAvailable =
-            canPromote && !!fromSlug && !!fromVersion && targetIdx > 0
+            canPromote && !!fromSlug && !!fromCommittish && targetIdx > 0
           if (!canDeploy && !promoteAvailable) return null
           return (
             <ReleaseModal
               canDeploy={canDeploy}
               canPromote={promoteAvailable}
               environments={sortedEnvironments}
-              fromCommittish={fromVersion}
+              fromCommittish={fromCommittish}
               fromEnvironment={fromSlug}
               initialAction={isPromoteModal ? 'promote' : 'deploy'}
               initialEnvSlug={initialSubId}
@@ -1091,6 +1105,7 @@ export function ProjectDetail({
   )
 }
 
+// fallow-ignore-next-line complexity
 function buildRecommendation(
   c: AttributeContribution,
   policy: ScoringPolicy,

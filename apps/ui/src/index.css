@@ -68,6 +68,7 @@
   --background-color-success: var(--ds-bg-success);
   --background-color-warning: var(--ds-bg-warning);
   --background-color-accent: var(--ds-bg-accent);
+  --background-color-teal: var(--ds-bg-teal);
   --background-color-action: var(--ds-action-bg);
   --background-color-action-hover: var(--ds-action-bg-hover);
 
@@ -79,6 +80,7 @@
   --text-color-success: var(--ds-text-success);
   --text-color-warning: var(--ds-text-warning);
   --text-color-accent: var(--ds-text-accent);
+  --text-color-teal: var(--ds-text-teal);
   --text-color-action: var(--ds-action-bg);
   --text-color-action-foreground: var(--ds-action-fg);
 
@@ -90,6 +92,7 @@
   --border-color-success: var(--ds-border-success);
   --border-color-warning: var(--ds-border-warning);
   --border-color-accent: var(--ds-border-accent);
+  --border-color-teal: var(--ds-border-teal);
   --border-color-action: var(--ds-action-bg);
 
   --ring-color-primary: var(--ds-border-primary);
@@ -100,6 +103,7 @@
   --ring-color-success: var(--ds-border-success);
   --ring-color-warning: var(--ds-border-warning);
   --ring-color-accent: var(--ds-border-accent);
+  --ring-color-teal: var(--ds-border-teal);
   --ring-color-action: var(--ds-action-bg);
 
   --divide-color-primary: var(--ds-border-primary);
@@ -217,24 +221,27 @@
   --ds-bg-success: #eaf3de;
   --ds-bg-warning: #faeeda;
   --ds-bg-accent: #eeedfe;
+  --ds-bg-teal: #d6efea;
 
   --ds-text-primary: #1a1a18;
   --ds-text-secondary: #5f5e5a;
   --ds-text-tertiary: #888780;
   --ds-text-info: #185fa5;
-  --ds-text-danger: #a32d2d;
-  --ds-text-success: #27500a;
+  --ds-text-danger: #c86b5e;
+  --ds-text-success: #6b9a3f;
   --ds-text-warning: #7c5900;
   --ds-text-accent: #3c3489;
+  --ds-text-teal: #0f7164;
 
   --ds-border-tertiary: rgba(26, 26, 24, 0.15);
   --ds-border-secondary: rgba(26, 26, 24, 0.3);
   --ds-border-primary: rgba(26, 26, 24, 0.4);
   --ds-border-info: #185fa5;
-  --ds-border-danger: #f5b4b4;
-  --ds-border-success: #b4d99a;
+  --ds-border-danger: #c86b5e;
+  --ds-border-success: #6b9a3f;
   --ds-border-warning: #e6c77a;
-  --ds-border-accent: #c8c4f1;
+  --ds-border-accent: #3c3489;
+  --ds-border-teal: #0f7164;
 
   --ds-action-bg: #b8860b;
   --ds-action-bg-hover: #8f6a09;
@@ -251,6 +258,7 @@
   --ds-bg-success: #1c2e12;
   --ds-bg-warning: #3d2e12;
   --ds-bg-accent: #20204a;
+  --ds-bg-teal: #0f2e28;
 
   --ds-text-primary: #e8e7e3;
   --ds-text-secondary: #a0a09a;
@@ -260,19 +268,30 @@
   --ds-text-success: #7cbf4a;
   --ds-text-warning: #e0a830;
   --ds-text-accent: #9d95e8;
+  --ds-text-teal: #5fc9b4;
 
   --ds-border-tertiary: rgba(232, 231, 227, 0.15);
   --ds-border-secondary: rgba(232, 231, 227, 0.25);
   --ds-border-primary: rgba(232, 231, 227, 0.35);
   --ds-border-info: #6db3f2;
-  --ds-border-danger: #8a3030;
-  --ds-border-success: #4a7a1a;
+  --ds-border-danger: #f08a8a;
+  --ds-border-success: #7cbf4a;
   --ds-border-warning: #7a5818;
-  --ds-border-accent: #3a3570;
+  --ds-border-accent: #9d95e8;
+  --ds-border-teal: #5fc9b4;
 
   --ds-action-bg: #fbce39;
   --ds-action-bg-hover: #e0b525;
   --ds-action-fg: #1a1a18;
+
+  /* WorkerBee amber brand tokens — dim the cream backdrop and brighten
+     the text so highlighted "selected" surfaces (StatBadge amber, active
+     nav, etc.) carry the same visual weight as the other --ds-bg-*
+     tinted variants in dark mode. Border/ring stay brand-orange. */
+  --background-color-amber-bg: #3d2e12;
+  --text-color-amber-text: #e0a830;
+  --text-color-amber-text-mid: #d1962a;
+  --border-color-amber-text: #e0a830;
 
   --color-background: hsl(40 5% 11%);
   --color-foreground: hsl(40 4% 90%);

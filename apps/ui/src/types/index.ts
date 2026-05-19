@@ -129,7 +129,9 @@ export interface Project {
   [key: string]: unknown
   archived?: boolean
   archived_at?: null | string
+  closed_pr_count?: number
   created_at?: null | string
+  current_releases?: Record<string, ReleaseInfo>
   description?: null | string
   environments?: Environment[]
   icon?: null | string
@@ -137,6 +139,7 @@ export interface Project {
   identifiers?: Record<string, number | string>
   links?: Record<string, string>
   name: string
+  open_pr_count?: number
   project_type?: {
     name: string
     organization: {
@@ -172,6 +175,8 @@ export interface Project {
     slug: string
   }
   updated_at?: null | string
+  viewer_closed_pr_count?: number
+  viewer_open_pr_count?: number
 }
 
 // `ProjectCreate` stays hand-written: the UI sends `environment_slugs` (a
@@ -211,13 +216,45 @@ export type ProjectType = Schemas['ProjectTypeResponse']
 // mounts project-type creation via the generic org scoped endpoint.
 export interface ProjectTypeCreate {
   [key: string]: unknown
+  deployable?: boolean
   description?: null | string
   icon?: null | string
   name: string
   slug: string
 }
 
+export interface PullRequest {
+  additions: number
+  author: string
+  changed_files: number
+  created_at: string
+  deletions: number
+  draft: boolean
+  merged: boolean
+  merged_at: null | string
+  pr_id: string
+  pr_number: number
+  project_id: string
+  state: string
+  title: string
+  updated_at: string
+  url: string
+}
+
+export interface PullRequestListResponse {
+  data: PullRequest[]
+  project_count: number
+  total: number
+}
+
 export type RelationshipLink = Schemas['RelationshipLink']
+
+export interface ReleaseInfo {
+  committish?: null | string
+  deployed_at: string
+  performed_by?: null | string
+  tag?: null | string
+}
 
 // Scoring policy types — discriminated union on `category`. See
 // imbi-common/scoring/models.py for the canonical shape.
@@ -901,15 +938,16 @@ export type ProjectRelationshipsResponse =
   Schemas['ProjectRelationshipsResponse']
 
 export interface Release {
+  committish: string
   created_at: string
   created_by: string
   description?: null | string
   id: string
   links: ReleaseLink[]
   project_id: string
+  tag?: null | string
   title: string
   updated_at?: null | string
-  version: string
 }
 export interface ReleaseLink {
   label?: null | string

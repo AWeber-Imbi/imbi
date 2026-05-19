@@ -20,6 +20,8 @@
       "file": "src/api/endpoints.ts",
       "exports": [
         "getMonthlyImprovement",
+        "getOrgPullRequests",
+        "getProjectPullRequests",
         "getScoreHistoryByTeam",
         "getScoreHistoryFeed",
         "getScoreRollup",

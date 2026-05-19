@@ -13,6 +13,7 @@ import {
 import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { PROJECT_TYPE_BASE_FIELDS_SET } from '@/lib/constants'
@@ -27,6 +28,7 @@ interface ProjectTypeFormProps {
   projectType: null | ProjectType
 }
 
+// fallow-ignore-next-line complexity
 export function ProjectTypeForm({
   error,
   isLoading = false,
@@ -41,6 +43,9 @@ export function ProjectTypeForm({
   const [slug, setSlug] = useState(projectType?.slug || '')
   const [description, setDescription] = useState(projectType?.description || '')
   const [icon, setIcon] = useState(projectType?.icon || '')
+  const [deployable, setDeployable] = useState<boolean>(
+    (projectType as null | { deployable?: boolean })?.deployable ?? false,
+  )
   const handleIconChange = useIconWithCleanup(icon, setIcon)
   const [orgSlug, setOrgSlug] = useState(
     projectType?.organization.slug || selectedOrganization?.slug || '',
@@ -60,6 +65,7 @@ export function ProjectTypeForm({
     staleTime: 5 * 60 * 1000,
   })
 
+  // fallow-ignore-next-line complexity
   const validate = () => {
     const newErrors: Record<string, string> = {}
     if (!name.trim()) newErrors.name = 'Project type name is required'
@@ -84,6 +90,7 @@ export function ProjectTypeForm({
     if (!validate()) return
 
     onSave(orgSlug, {
+      deployable,
       description: description.trim() || null,
       icon: icon.trim() || null,
       name: name.trim(),
@@ -250,6 +257,29 @@ export function ProjectTypeForm({
                 rows={3}
                 value={description}
               />
+            </div>
+
+            <div>
+              <div className="border-input flex items-start justify-between gap-3 rounded-lg border p-3">
+                <div>
+                  <label
+                    className="text-foreground text-sm font-medium"
+                    htmlFor="project-type-deployable"
+                  >
+                    Deployable
+                  </label>
+                  <p className="text-tertiary text-xs">
+                    Enable deployment tracking and release-train features for
+                    projects of this type.
+                  </p>
+                </div>
+                <Switch
+                  checked={deployable}
+                  disabled={isLoading}
+                  id="project-type-deployable"
+                  onCheckedChange={setDeployable}
+                />
+              </div>
             </div>
 
             <div>

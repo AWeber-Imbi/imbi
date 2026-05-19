@@ -169,17 +169,20 @@ export function DeployTab({
   }, [envSlug])
 
   // For first-env (commit-based) deployments, ``selected.label`` is the
-  // branch name (e.g. ``main``), so compare against ``selected.sha``.
-  // For tag-based envs ``selected.label`` is the tag and matches
-  // ``current.release.version``.
+  // branch name (e.g. ``main``), so compare against ``selected.sha`` via
+  // the release's ``committish``. For tag-based envs ``selected.label`` is
+  // the tag and matches ``current.release.tag``.
+  const currentCommittish = current?.release?.committish ?? null
+  const currentTag = current?.release?.tag ?? null
   const isRedeploy =
     !!current?.release &&
     !!selected &&
     (isFirstEnv
-      ? current.release.version === selected.sha ||
-        selected.sha.startsWith(current.release.version) ||
-        current.release.version.startsWith(selected.sha)
-      : current.release.version === selected.label)
+      ? !!currentCommittish &&
+        (currentCommittish === selected.sha ||
+          selected.sha.startsWith(currentCommittish) ||
+          currentCommittish.startsWith(selected.sha))
+      : currentTag === selected.label)
 
   const queryClient = useQueryClient()
   const mutation = useMutation({
@@ -261,7 +264,9 @@ export function DeployTab({
           <div className="text-tertiary mt-1 text-xs">
             {current?.release ? (
               <>
-                <span className="font-mono">{current.release.version}</span>
+                <span className="font-mono">
+                  {current.release.tag ?? current.release.committish}
+                </span>
                 {current.last_event_at ? (
                   <>
                     {' · '}
@@ -304,7 +309,9 @@ export function DeployTab({
         </div>
         {!isFirstEnv ? (
           <TagList
-            current={current?.release?.version ?? null}
+            current={
+              current?.release?.tag ?? current?.release?.committish ?? null
+            }
             onSelect={(r) => setSelected({ label: r.name, sha: r.sha })}
             selectedSha={selected?.sha ?? null}
             tags={tagOptions}
@@ -316,7 +323,9 @@ export function DeployTab({
             branchesLoading={branchesLoading}
             commits={activeBranchCommits}
             commitsLoading={activeBranchLoading}
-            current={current?.release?.version ?? null}
+            current={
+              current?.release?.tag ?? current?.release?.committish ?? null
+            }
             onBranchSelect={(name) => {
               setActiveBranch(name)
               setSelected(null)
@@ -332,7 +341,9 @@ export function DeployTab({
         ) : (
           <CommitList
             commits={branchCommits}
-            current={current?.release?.version ?? null}
+            current={
+              current?.release?.tag ?? current?.release?.committish ?? null
+            }
             isLoading={commitsLoading}
             onSelect={(c) =>
               setSelected({ label: defaultBranchName, sha: c.sha })
@@ -345,7 +356,7 @@ export function DeployTab({
       {/* Diff summary */}
       {selected && current?.release ? (
         <DiffSummary
-          base={current.release.version}
+          base={current.release.committish}
           head={selected.label ?? selected.sha}
           orgSlug={orgSlug}
           projectId={projectId}
