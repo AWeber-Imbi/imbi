@@ -152,18 +152,7 @@ export function groupReleases(entries: OperationsLogRecord[]): FeedItem[] {
   return order
 }
 
-export function relTime(iso: string, now: number = Date.now()): string {
-  const t = toMs(iso)
-  const diff = Math.max(0, now - t)
-  const m = Math.floor(diff / 60_000)
-  if (m < 1) return 'now'
-  if (m < 60) return `${m}m`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h`
-  const d = Math.floor(h / 24)
-  if (d < 7) return `${d}d`
-  return `${Math.floor(d / 7)}w`
-}
+export { relTime } from '@/lib/formatDate'
 
 // Return occurred_at as milliseconds without allocating a Date object.
 // Hot path: called from sort comparators and filter loops over thousands

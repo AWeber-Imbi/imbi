@@ -4,11 +4,12 @@ import { useQuery } from '@tanstack/react-query'
 import { useWindowVirtualizer } from '@tanstack/react-virtual'
 import { Activity, LoaderCircle, SearchX, X } from 'lucide-react'
 
-import { getProjects, listAdminUsers, listEnvironments } from '@/api/endpoints'
+import { getProjects, listEnvironments } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { LoadingState } from '@/components/ui/loading-state'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useInfiniteOperationsLog } from '@/hooks/useInfiniteOperationsLog'
+import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { cn } from '@/lib/utils'
 import type {
   Environment,
@@ -185,13 +186,10 @@ export function OperationsLog({
     queryKey: ['environments', orgSlug],
   })
   const {
-    data: users = [],
+    displayNames: performerDisplayNames,
     isError: usersError,
     refetch: refetchUsers,
-  } = useQuery({
-    queryFn: ({ signal }) => listAdminUsers({ is_active: true }, signal),
-    queryKey: ['admin-users', 'active'],
-  })
+  } = useUserDisplayNames()
   // Metadata queries back the filter dropdowns and the slug→name
   // lookups. When any of them fail we surface a non-blocking banner so
   // the user can retry rather than silently falling back to raw slugs.
@@ -199,7 +197,7 @@ export function OperationsLog({
   const retryMetadata = () => {
     if (projectsError) refetchProjects()
     if (environmentsError) refetchEnvironments()
-    if (usersError) refetchUsers()
+    if (usersError) void refetchUsers()
   }
 
   // Only the time-range boundary is pushed to the server. Facet filters
@@ -306,14 +304,6 @@ export function OperationsLog({
     () => new Map(environments.map((e: Environment) => [e.slug, e])),
     [environments],
   )
-  const performerDisplayNames = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const u of users) {
-      if (u.email && u.display_name) m.set(u.email, u.display_name)
-    }
-    return m
-  }, [users])
-
   // Toolbar counts — one pass over the date-filtered universe, built
   // independently of the search/env filters so the other facets show
   // the full set they're picking from.

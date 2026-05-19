@@ -8,12 +8,12 @@ import { toast } from 'sonner'
 import {
   createProjectDocument,
   deleteProjectDocument,
-  listAdminUsers,
   listProjectDocuments,
   patchProjectDocument,
 } from '@/api/endpoints'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { LoadingState } from '@/components/ui/loading-state'
+import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import type { Document, DocumentTemplate } from '@/types'
 
@@ -98,30 +98,13 @@ export function ProjectDocumentsTab({
     queryKey: documentsKey,
   })
 
-  const { data: users = [], error: usersError } = useQuery({
-    queryFn: ({ signal }) => listAdminUsers({ is_active: true }, signal),
-    queryKey: ['admin-users', 'active'],
-  })
+  const { displayNames, isError: usersError } = useUserDisplayNames()
 
-  // Display-name enrichment is non-essential — when the admin-users fetch
-  // fails, fall back to raw author IDs (existing UserDisplay behavior) but
-  // log so the failure is diagnosable rather than truly silent.
   useEffect(() => {
     if (usersError) {
-      console.warn(
-        'Failed to load admin users for document display names',
-        usersError,
-      )
+      console.warn('Failed to load admin users for document display names')
     }
   }, [usersError])
-
-  const displayNames = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const u of users) {
-      if (u.email && u.display_name) m.set(u.email, u.display_name)
-    }
-    return m
-  }, [users])
 
   const pinMutation = useMutation<
     Document,
