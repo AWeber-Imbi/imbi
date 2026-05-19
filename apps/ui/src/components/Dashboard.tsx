@@ -29,6 +29,7 @@ import {
   getProjects,
 } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useRecentDeployments } from '@/hooks/useRecentDeployments'
 import { queryKeys } from '@/lib/queryKeys'
@@ -324,33 +325,35 @@ export function Dashboard({
     ),
     // fallow-ignore-next-line complexity
     'stat-open-prs': () => (
-      <div className="border-border bg-card rounded-lg border p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-secondary text-sm">Total Open PRs</p>
-            {isOpenPrsLoading ? (
-              <span
-                aria-label="Loading Total Open PRs"
-                className="bg-tertiary/40 mt-2 inline-block h-9 w-32 animate-pulse rounded"
-                role="status"
-              />
-            ) : isOpenPrsError ? (
-              <p className="text-danger mt-2 text-sm">Unavailable</p>
-            ) : (
-              <div className="mt-2 flex items-baseline gap-1.5">
-                <span className="text-primary text-3xl">
-                  {(openPrsData?.total ?? 0).toLocaleString()}
-                </span>
-                <span className="text-secondary text-sm">
-                  across {(openPrsData?.project_count ?? 0).toLocaleString()}{' '}
-                  projects
-                </span>
-              </div>
-            )}
-          </div>
+      <Card className="h-full">
+        <CardHeader className="flex-row items-start justify-between space-y-0 pb-2">
+          <CardTitle className="text-secondary font-normal">
+            Total Open PRs
+          </CardTitle>
           <GitPullRequest className="text-tertiary size-9 shrink-0" />
-        </div>
-      </div>
+        </CardHeader>
+        <CardContent>
+          {isOpenPrsLoading ? (
+            <span
+              aria-label="Loading Total Open PRs"
+              className="bg-tertiary/40 inline-block h-9 w-32 animate-pulse rounded"
+              role="status"
+            />
+          ) : isOpenPrsError ? (
+            <p className="text-danger text-sm">Unavailable</p>
+          ) : (
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-primary text-3xl">
+                {(openPrsData?.total ?? 0).toLocaleString()}
+              </span>
+              <span className="text-secondary text-sm">
+                across {(openPrsData?.project_count ?? 0).toLocaleString()}{' '}
+                projects
+              </span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     ),
     'stat-total-projects': () => (
       <StatWidget
