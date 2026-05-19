@@ -290,6 +290,32 @@ class CreateReleaseTests(helpers.TestCase):
         body_arg = mock_create.call_args.args[2]
         self.assertNotIn('created_by', body_arg)
 
+    async def test_omits_committish_when_expression_absent(self) -> None:
+        config = _create_release_config(
+            '{"title_selector": "/deployment/ref",'
+            ' "version_expression": "deployment.ref"}'
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201),
+            ) as mock_create,
+        ):
+            await actions.create_release(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload=_DEPLOYMENT_BODY,
+            )
+
+        body_arg = mock_create.call_args.args[2]
+        self.assertNotIn('committish', body_arg)
+        self.assertEqual('v1.2.3', body_arg['tag'])
+
     async def test_title_selector_used(self) -> None:
         config = _create_release_config(
             '{"title_selector": "/deployment/description",'
