@@ -611,6 +611,7 @@ class OperationLog(pydantic.BaseModel):
     )
     is_deleted: bool = False
     plugin_slug: str = ''
+    external_run_id: str | None = None
 
 
 class Event(pydantic.BaseModel):

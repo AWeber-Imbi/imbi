@@ -595,6 +595,7 @@ class OperationLogTestCase(unittest.TestCase):
             '_row_version',
             'is_deleted',
             'plugin_slug',
+            'external_run_id',
         ]
         self.assertEqual(keys, expected)
 
