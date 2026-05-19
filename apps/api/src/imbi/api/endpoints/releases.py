@@ -24,6 +24,7 @@ from imbi_common.plugins.base import CheckStatus
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
+from imbi_api.endpoints.operations_log import complete_opslog_entry
 from imbi_api.plugins import call_with_timeout
 
 LOGGER = logging.getLogger(__name__)
@@ -109,6 +110,7 @@ class DeploymentEventInput(pydantic.BaseModel):
 
     status: _DEPLOYMENT_STATUS
     note: str | None = None
+    external_run_id: str | None = None
 
 
 class ReleaseEnvironmentRef(pydantic.BaseModel):
@@ -1159,6 +1161,16 @@ async def record_deployment(
                 'deployments': serialized,
             },
             ['deployments'],
+        )
+
+    if data.external_run_id and data.status in {
+        'success',
+        'failed',
+        'rolled_back',
+    }:
+        await complete_opslog_entry(
+            data.external_run_id,
+            datetime.datetime.now(datetime.UTC),
         )
 
     return _edge_to_response(env, deployments)

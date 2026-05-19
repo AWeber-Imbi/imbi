@@ -3,7 +3,7 @@ import fastapi
 from imbi_api.identity.endpoints import me_identities_router
 
 from . import (
-    user_activity,  # pyright: ignore[reportUnusedImport]  # noqa: F401  # registers routes on users_router
+    user_activity,  # pyright: ignore[reportUnusedImport]  # noqa: F401
 )
 from .admin import admin_router
 from .admin_plugins import admin_plugins_router
