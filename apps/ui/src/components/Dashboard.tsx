@@ -34,6 +34,7 @@ import { useRecentDeployments } from '@/hooks/useRecentDeployments'
 import { queryKeys } from '@/lib/queryKeys'
 import type { AdminPluginsResponse, IdentityConnectionResponse } from '@/types'
 
+import { MyPullRequestCountsWidget } from './dashboard/widgets/MyPullRequestCountsWidget'
 import { MyPullRequestsWidget } from './dashboard/widgets/MyPullRequestsWidget'
 import { OutdatedComponentsWidget } from './dashboard/widgets/OutdatedComponentsWidget'
 import { RecentActivityWidget } from './dashboard/widgets/RecentActivityWidget'
@@ -57,13 +58,13 @@ interface ViewChangeEvent {
 const WIDGET_STORAGE_KEY = 'imbi-dashboard-widgets-v3'
 
 type WidgetId =
+  | 'my-pull-request-counts'
   | 'my-pull-requests'
   | 'outdated-components'
   | 'recent-activity'
   | 'recent-deployments'
   | 'stat-active-deployments'
   | 'stat-open-prs'
-  | 'stat-teams'
   | 'stat-total-projects'
   | 'team-activity'
 
@@ -83,14 +84,6 @@ const availableWidgets: WidgetConfig[] = [
     icon: '🚀',
     id: 'stat-active-deployments',
     name: 'Active Deployments',
-  },
-  {
-    category: 'stats',
-    columnSpan: 1,
-    description: 'Total number of teams',
-    icon: '👥',
-    id: 'stat-teams',
-    name: 'Teams',
   },
   {
     category: 'stats',
@@ -125,9 +118,17 @@ const availableWidgets: WidgetConfig[] = [
     name: 'Recent Deployments',
   },
   {
-    category: 'development',
+    category: 'stats',
     columnSpan: 1,
-    description: 'Your open and closed pull requests',
+    description: 'Your open and closed pull request counts',
+    icon: '🔀',
+    id: 'my-pull-request-counts',
+    name: 'My Pull Request Counts',
+  },
+  {
+    category: 'activity',
+    columnSpan: 2,
+    description: 'Your recent pull requests across all projects',
     icon: '🔀',
     id: 'my-pull-requests',
     name: 'My Pull Requests',
@@ -145,16 +146,17 @@ const availableWidgets: WidgetConfig[] = [
 const defaultWidgets: WidgetId[] = [
   'stat-total-projects',
   'stat-active-deployments',
+  'recent-deployments',
 ]
 
 const WIDGET_IDS: ReadonlySet<WidgetId> = new Set<WidgetId>([
+  'my-pull-request-counts',
   'my-pull-requests',
   'outdated-components',
   'recent-activity',
   'recent-deployments',
   'stat-active-deployments',
   'stat-open-prs',
-  'stat-teams',
   'stat-total-projects',
   'team-activity',
 ])
@@ -240,9 +242,6 @@ export function Dashboard({
   })
 
   const projectCount = projects?.length || 0
-  const teamCount = projects
-    ? new Set(projects.map((p) => p.team.slug)).size
-    : 0
 
   const {
     data: recentDeployments,
@@ -302,6 +301,7 @@ export function Dashboard({
   }
 
   const widgetRegistry: Record<WidgetId, () => ReactElement> = {
+    'my-pull-request-counts': () => <MyPullRequestCountsWidget />,
     'my-pull-requests': () => <MyPullRequestsWidget />,
     'outdated-components': () => (
       <OutdatedComponentsWidget onProjectSelect={onProjectSelect} />
@@ -312,9 +312,7 @@ export function Dashboard({
         onUserSelect={onUserSelect}
       />
     ),
-    'recent-deployments': () => (
-      <RecentDeploymentsWidget onProjectSelect={onProjectSelect} />
-    ),
+    'recent-deployments': () => <RecentDeploymentsWidget />,
     'stat-active-deployments': () => (
       <StatWidget
         icon="🚀"
@@ -353,9 +351,6 @@ export function Dashboard({
           <GitPullRequest className="text-tertiary size-9 shrink-0" />
         </div>
       </div>
-    ),
-    'stat-teams': () => (
-      <StatWidget icon="👥" title="Teams" value={teamCount.toLocaleString()} />
     ),
     'stat-total-projects': () => (
       <StatWidget
@@ -462,10 +457,7 @@ export function Dashboard({
                 items={otherWidgets}
                 strategy={rectSortingStrategy}
               >
-                <div
-                  className="columns-1 gap-4 md:columns-2"
-                  style={{ columnFill: 'balance' }}
-                >
+                <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
                   {otherWidgets.map((widgetId) => (
                     <SortableWidget id={widgetId} key={widgetId}>
                       {renderWidget(widgetId)}
@@ -508,19 +500,20 @@ function SortableWidget({ children, id }: SortableWidgetProps) {
 
   return (
     <div
-      className="group relative mb-4 break-inside-avoid"
+      className="relative mb-4 break-inside-avoid"
       ref={setNodeRef}
       style={style}
     >
-      {/* Drag handle - appears on hover */}
-      <div
-        {...attributes}
-        {...listeners}
-        className="bg-secondary/80 text-tertiary hover:text-primary absolute top-2 left-2 z-20 cursor-grab rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
-      >
-        <svg className="size-4" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
-        </svg>
+      <div className="group absolute inset-x-0 top-0 z-10 h-14">
+        <div
+          {...attributes}
+          {...listeners}
+          className="bg-secondary/80 text-tertiary hover:text-primary absolute top-2 left-2 cursor-grab rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
+        >
+          <svg className="size-4" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
+          </svg>
+        </div>
       </div>
       {children}
     </div>

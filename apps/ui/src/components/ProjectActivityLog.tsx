@@ -5,7 +5,6 @@ import { formatDistanceToNow } from 'date-fns'
 import { History, LoaderCircle } from 'lucide-react'
 
 import {
-  listAdminUsers,
   listEnvironments,
   listOperationsLog,
   listProjectEvents,
@@ -22,6 +21,7 @@ import {
 } from '@/components/ui/tooltip'
 import { usePluginOpsLogTemplates } from '@/hooks/usePluginOpsLogTemplates'
 import type { PluginOpsLogTemplateMap } from '@/hooks/usePluginOpsLogTemplates'
+import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { formatFieldKey } from '@/lib/project-field-formatting'
 import type { Environment, OperationsLogRecord } from '@/types'
 
@@ -79,12 +79,7 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
     staleTime: 30_000,
   })
 
-  const { data: adminUsers = [] } = useQuery({
-    enabled: Boolean(orgSlug),
-    queryFn: ({ signal }) => listAdminUsers({ is_active: true }, signal),
-    queryKey: ['admin-users', 'active'],
-    staleTime: 5 * 60_000,
-  })
+  const { displayNames } = useUserDisplayNames()
 
   const { data: environments = [] } = useQuery({
     enabled: Boolean(orgSlug),
@@ -98,14 +93,6 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
     for (const e of environments) m.set(e.slug, e)
     return m
   }, [environments])
-
-  const displayNames = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const u of adminUsers) {
-      if (u.email && u.display_name) m.set(u.email, u.display_name)
-    }
-    return m
-  }, [adminUsers])
 
   const isPending = eventsPending || opsPending
 

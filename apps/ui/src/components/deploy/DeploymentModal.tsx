@@ -78,8 +78,11 @@ export function ReleaseModal({
   // Lock the active tab to whichever action is actually available so a
   // deep-link to /promote/<env> on an env that no longer supports promote
   // doesn't render an empty pane.
-  const resolveTab = (a: 'deploy' | 'promote') =>
-    a === 'promote' ? (canPromote ? 'promote' : 'deploy') : 'deploy'
+  const resolveTab = (a: 'deploy' | 'promote') => {
+    if (a === 'promote') return canPromote ? 'promote' : 'deploy'
+    if (canPromote) return 'promote'
+    return 'deploy'
+  }
   const [tab, setTab] = useState<'deploy' | 'promote'>(
     resolveTab(initialAction),
   )
@@ -103,11 +106,11 @@ export function ReleaseModal({
           value={tab}
         >
           <TabsList className="border-tertiary h-auto justify-start gap-6 rounded-none border-b px-6 pt-5">
-            {canDeploy ? (
-              <TabsTrigger value="deploy">Deploy</TabsTrigger>
-            ) : null}
             {canPromote ? (
               <TabsTrigger value="promote">Promote</TabsTrigger>
+            ) : null}
+            {canDeploy ? (
+              <TabsTrigger value="deploy">Deploy</TabsTrigger>
             ) : null}
           </TabsList>
           <DialogDescription className="px-6 pt-3">

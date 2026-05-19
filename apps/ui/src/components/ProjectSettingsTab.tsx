@@ -185,41 +185,12 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
 
       <ProjectPluginsSection orgSlug={orgSlug} projectId={project.id} />
 
-      {deploymentPlugin && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Resync deployments</CardTitle>
-            <CardDescription className="text-secondary">
-              Fetch the latest deployment for each environment from{' '}
-              <strong>{deploymentPlugin.label}</strong> and backfill releases
-              and deployment history. Useful when webhook delivery has lapsed or
-              the badge appears stale.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button
-              disabled={resyncMutation.isPending}
-              onClick={() => resyncMutation.mutate()}
-              size="sm"
-              variant="outline"
-            >
-              {resyncMutation.isPending ? 'Resyncing...' : 'Resync Deployments'}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
       {isAdmin && (
         <Card>
           <CardHeader>
-            <CardTitle>Recompute score</CardTitle>
-            <CardDescription className="text-secondary">
-              Enqueue an immediate score recompute for this project. Use this
-              after manually correcting project data or when the displayed score
-              appears stale.
-            </CardDescription>
+            <CardTitle>Utility Functions</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex gap-2">
             <Button
               disabled={rescoreMutation.isPending}
               onClick={() => rescoreMutation.mutate()}
@@ -228,6 +199,16 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
             >
               {rescoreMutation.isPending ? 'Enqueuing...' : 'Recompute Score'}
             </Button>
+            {deploymentPlugin && (
+              <Button
+                disabled={resyncMutation.isPending}
+                onClick={() => resyncMutation.mutate()}
+                size="sm"
+                variant="outline"
+              >
+                {resyncMutation.isPending ? 'Syncing...' : 'Sync Deployments'}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}

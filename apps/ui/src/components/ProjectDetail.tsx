@@ -18,6 +18,7 @@ import {
   type AttributeContribution,
   getMyIdentities,
   getProjectBreakdown,
+  getProjectPullRequests,
   getProjectSchema,
   getScoreTrend,
   listCurrentReleases,
@@ -39,6 +40,7 @@ import { ProjectDocumentsTab } from '@/components/documents/ProjectDocumentsTab'
 import { OperationsLog } from '@/components/OperationsLog'
 import { ConfigurationTab } from '@/components/project/ConfigurationTab'
 import { LogsTab } from '@/components/project/LogsTab'
+import { ProjectPullRequestsTab } from '@/components/project/ProjectPullRequestsTab'
 import { ProjectActivityLog } from '@/components/ProjectActivityLog'
 import { ProjectAttributesSection } from '@/components/ProjectAttributesSection'
 import { ProjectEnvironmentsCard } from '@/components/ProjectEnvironmentsCard'
@@ -88,6 +90,7 @@ const VALID_TABS = [
   'logs',
   'documents',
   'operations-log',
+  'pull-requests',
   'score-history',
   'settings',
 ] as const
@@ -374,6 +377,9 @@ export function ProjectDetail({
   const hasLogsPlugin =
     projectPluginsSuccess &&
     (projectPlugins ?? []).some((a) => a.tab === 'logs')
+  const hasLifecyclePlugin =
+    projectPluginsSuccess &&
+    (projectPlugins ?? []).some((a) => a.tab === 'lifecycle')
   const deploymentPlugin = projectPluginsSuccess
     ? (projectPlugins ?? []).find((a) => a.tab === 'deployment')
     : undefined
@@ -486,6 +492,20 @@ export function ProjectDetail({
     return 'the identity provider'
   })()
 
+  const { data: openPrCountData } = useQuery({
+    enabled: hasLifecyclePlugin && !!orgSlug && !!project.id,
+    queryFn: ({ signal }) =>
+      getProjectPullRequests(
+        orgSlug,
+        project.id,
+        { limit: 1, state: 'open' },
+        signal,
+      ),
+    queryKey: ['project-prs-count', orgSlug, project.id],
+    staleTime: 60_000,
+  })
+  const openPrCount = openPrCountData?.total ?? 0
+
   // Redirect to overview when a deep-link points at a tab that no
   // longer surfaces (e.g. /configuration on a project type with no
   // configuration plugin assigned). Wait for the assignments query to
@@ -497,13 +517,15 @@ export function ProjectDetail({
     if (!projectPluginsFetched || !projectPluginsSuccess) return
     if (
       (activeTab === 'configuration' && !hasConfigurationPlugin) ||
-      (activeTab === 'logs' && !hasLogsPlugin)
+      (activeTab === 'logs' && !hasLogsPlugin) ||
+      (activeTab === 'pull-requests' && !hasLifecyclePlugin)
     ) {
       navigate(`/projects/${project.id}`, { replace: true })
     }
   }, [
     activeTab,
     hasConfigurationPlugin,
+    hasLifecyclePlugin,
     hasLogsPlugin,
     navigate,
     project.id,
@@ -600,6 +622,17 @@ export function ProjectDetail({
     },
     ...(hasLogsPlugin ? [{ id: 'logs' as const, label: 'Logs' }] : []),
     { id: 'operations-log', label: 'Operations Log' },
+    ...(hasLifecyclePlugin
+      ? [
+          {
+            id: 'pull-requests' as const,
+            label:
+              openPrCount > 0
+                ? `Pull Requests (${openPrCount})`
+                : 'Pull Requests',
+          },
+        ]
+      : []),
     {
       id: 'relationships',
       // fallow-ignore-next-line complexity
@@ -1029,6 +1062,11 @@ export function ProjectDetail({
             showSummary={false}
           />
         </TabsContent>
+        {hasLifecyclePlugin && (
+          <TabsContent value="pull-requests">
+            <ProjectPullRequestsTab orgSlug={orgSlug} projectId={project.id} />
+          </TabsContent>
+        )}
         <TabsContent value="score-history">
           <ScoreHistoryTab orgSlug={orgSlug} projectId={project.id} />
         </TabsContent>
