@@ -80,18 +80,18 @@ export function MyPullRequestCountsWidget() {
         </>
       ) : (
         <div className="mt-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-          <span className="text-primary text-2xl">
+          <span className="text-primary text-xl">
             {openCount.toLocaleString()}
           </span>
           <span className="text-secondary text-xs">Open</span>
           <span className="text-tertiary text-xs">/</span>
-          <span className="text-2xl text-purple-500">
-            ≈{mergedCount.toLocaleString()}
+          <span className="text-xl text-purple-500">
+            {mergedCount.toLocaleString()}
           </span>
           <span className="text-secondary text-xs">Merged</span>
           <span className="text-tertiary text-xs">/</span>
-          <span className="text-tertiary text-2xl">
-            ≈{closedCount.toLocaleString()}
+          <span className="text-tertiary text-xl">
+            {closedCount.toLocaleString()}
           </span>
           <span className="text-secondary text-xs">Closed</span>
         </div>
