@@ -11,7 +11,7 @@ from importlib import resources
 import click
 import typer
 
-from imbi_common import sentry, settings
+from imbi_common import settings
 
 # Flag is used to test uvicorn availability without mucking with imports
 try:
@@ -101,7 +101,6 @@ def serve(
         ) from None
 
     settings.SSL().configure()
-    sentry.init()
 
     if log_config is None:
         config_data = tomllib.loads(

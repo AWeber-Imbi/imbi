@@ -1,7 +1,21 @@
+import contextlib
 import logging
 import os
+from collections import abc
 
 LOGGER = logging.getLogger(__name__)
+
+
+@contextlib.asynccontextmanager
+async def sentry_lifespan() -> abc.AsyncIterator[None]:
+    """Async lifespan hook that initializes Sentry inside the event loop.
+
+    Per the Sentry Python docs, init() should be called inside an async
+    function for async apps to ensure async code is instrumented properly.
+    Add this as the first hook in your service's Lifespan() composition.
+    """
+    init()
+    yield
 
 
 def init(service_name: str | None = None) -> None:
