@@ -29,6 +29,7 @@ import {
   getProjects,
 } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useRecentDeployments } from '@/hooks/useRecentDeployments'
 import { queryKeys } from '@/lib/queryKeys'
@@ -55,7 +56,7 @@ interface ViewChangeEvent {
   view: string
 }
 
-const WIDGET_STORAGE_KEY = 'imbi-dashboard-widgets-v3'
+const WIDGET_STORAGE_KEY = 'imbi-dashboard-widgets-v4'
 
 type WidgetId =
   | 'my-pull-request-counts'
@@ -97,6 +98,7 @@ const availableWidgets: WidgetConfig[] = [
     category: 'activity',
     columnSpan: 2,
     description: 'Overview of team projects and deployments',
+    hidden: true,
     icon: '👥',
     id: 'team-activity',
     name: 'Team Activity',
@@ -105,6 +107,7 @@ const availableWidgets: WidgetConfig[] = [
     category: 'activity',
     columnSpan: 2,
     description: 'Latest actions and updates across projects',
+    hidden: true,
     icon: '📝',
     id: 'recent-activity',
     name: 'Recent Activity',
@@ -120,10 +123,10 @@ const availableWidgets: WidgetConfig[] = [
   {
     category: 'stats',
     columnSpan: 1,
-    description: 'Your open and closed pull request counts',
+    description: 'Your open pull requests across all projects',
     icon: '🔀',
     id: 'my-pull-request-counts',
-    name: 'My Pull Request Counts',
+    name: 'My Open PRs',
   },
   {
     category: 'activity',
@@ -137,6 +140,7 @@ const availableWidgets: WidgetConfig[] = [
     category: 'health',
     columnSpan: 2,
     description: 'Dependencies that need updating',
+    hidden: true,
     icon: '📦',
     id: 'outdated-components',
     name: 'Outdated Components',
@@ -146,7 +150,10 @@ const availableWidgets: WidgetConfig[] = [
 const defaultWidgets: WidgetId[] = [
   'stat-total-projects',
   'stat-active-deployments',
+  'stat-open-prs',
+  'my-pull-request-counts',
   'recent-deployments',
+  'my-pull-requests',
 ]
 
 const WIDGET_IDS: ReadonlySet<WidgetId> = new Set<WidgetId>([
@@ -324,37 +331,51 @@ export function Dashboard({
     ),
     // fallow-ignore-next-line complexity
     'stat-open-prs': () => (
-      <div className="border-border bg-card rounded-lg border p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-secondary text-sm">Total Open PRs</p>
-            {isOpenPrsLoading ? (
-              <span
-                aria-label="Loading Total Open PRs"
-                className="bg-tertiary/40 mt-2 inline-block h-9 w-32 animate-pulse rounded"
-                role="status"
-              />
-            ) : isOpenPrsError ? (
-              <p className="text-danger mt-2 text-sm">Unavailable</p>
-            ) : (
-              <div className="mt-2 flex items-baseline gap-1.5">
-                <span className="text-primary text-3xl">
-                  {(openPrsData?.total ?? 0).toLocaleString()}
-                </span>
-                <span className="text-secondary text-sm">
-                  across {(openPrsData?.project_count ?? 0).toLocaleString()}{' '}
-                  projects
-                </span>
-              </div>
-            )}
-          </div>
-          <GitPullRequest className="text-tertiary size-9 shrink-0" />
-        </div>
-      </div>
+      <Card
+        className="hover:border-secondary relative flex h-full cursor-pointer flex-col transition-colors"
+        onClick={() => navigate('/projects?view=list&has_open_prs=1')}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            navigate('/projects?view=list&has_open_prs=1')
+          }
+        }}
+        role="link"
+        tabIndex={0}
+      >
+        <GitPullRequest className="text-tertiary absolute top-6 right-6 size-9 shrink-0" />
+        <CardHeader className="pb-2">
+          <CardTitle className="text-secondary font-normal">
+            Total Open PRs
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="mt-auto">
+          {isOpenPrsLoading ? (
+            <span
+              aria-label="Loading Total Open PRs"
+              className="bg-tertiary/40 inline-block h-9 w-32 animate-pulse rounded"
+              role="status"
+            />
+          ) : isOpenPrsError ? (
+            <p className="text-danger text-sm">Unavailable</p>
+          ) : (
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-primary text-3xl">
+                {(openPrsData?.total ?? 0).toLocaleString()}
+              </span>
+              <span className="text-secondary text-sm">
+                across {(openPrsData?.project_count ?? 0).toLocaleString()}{' '}
+                projects
+              </span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     ),
     'stat-total-projects': () => (
       <StatWidget
         icon="📁"
+        onClick={() => navigate('/projects')}
         title="Total Projects"
         value={projectCount.toLocaleString()}
       />
@@ -472,7 +493,7 @@ export function Dashboard({
 
       {/* Widget Selector Modal */}
       <WidgetSelector
-        availableWidgets={availableWidgets}
+        availableWidgets={availableWidgets.filter((w) => !w.hidden)}
         onOpenChange={setShowWidgetSelector}
         onToggleWidget={handleToggleWidget}
         open={showWidgetSelector}

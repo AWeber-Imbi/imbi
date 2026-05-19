@@ -189,7 +189,9 @@ function DeploymentRow({
     <button
       className="border-input bg-background hover:border-secondary w-full rounded-lg border p-3 text-left transition-colors"
       onClick={() =>
-        navigate(`/operations-log?entry=${encodeURIComponent(d.id)}`)
+        project
+          ? navigate(`/projects/${project.id}`)
+          : navigate(`/operations-log?entry=${encodeURIComponent(d.id)}`)
       }
       type="button"
     >

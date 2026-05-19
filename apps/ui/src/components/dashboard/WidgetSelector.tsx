@@ -12,6 +12,7 @@ export interface WidgetConfig {
   category: 'activity' | 'development' | 'health' | 'overview' | 'stats'
   columnSpan?: 1 | 2 | 4 // Number of columns to span in 4-column grid
   description: string
+  hidden?: boolean
   icon: string
   id: string
   name: string
