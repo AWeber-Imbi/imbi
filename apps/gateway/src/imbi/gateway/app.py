@@ -2,7 +2,7 @@ import datetime
 
 import fastapi
 import typer
-from imbi_common import access_log, graph, lifespan, server
+from imbi_common import access_log, graph, lifespan, sentry, server
 from imbi_common.plugins import registry as plugin_registry
 
 import imbi_gateway
@@ -10,12 +10,15 @@ from imbi_gateway import app_status, lifespans, notifications
 
 
 def create_app() -> fastapi.FastAPI:
+    """Create and configure the FastAPI application instance."""
     plugin_registry.load_plugins()
     app = fastapi.FastAPI(
         version=imbi_gateway.version,
         started_at=datetime.datetime.now(datetime.UTC),
         lifespan=lifespan.Lifespan(
-            graph.graph_lifespan, lifespans.clickhouse_hook
+            sentry.sentry_lifespan,
+            graph.graph_lifespan,
+            lifespans.clickhouse_hook,
         ),
     )
     app.include_router(notifications.router)
