@@ -417,6 +417,7 @@ async def _record_deployment_audit(
     description = json.dumps(
         {
             'action': action,
+            'external_run_id': external_run_id,
             'plugin_slug': plugin_slug,
             'run_url': run_url,
             'release_url': release_url,
@@ -437,7 +438,6 @@ async def _record_deployment_audit(
         link=run_url,
         version=tag or committish,
         plugin_slug=plugin_slug,
-        external_run_id=external_run_id,
     )
     row = entry.model_dump(by_alias=True, mode='python')
     row['is_deleted'] = 1 if entry.is_deleted else 0
@@ -1273,7 +1273,6 @@ async def _handle_promote(
     run = DeploymentRun(run_id='', status='queued')
     release_info = None
     release_url: str | None = None
-    trigger_failed = False
 
     release_info = await _promote_cut_release(
         db,
@@ -1327,7 +1326,15 @@ async def _handle_promote(
                 exc.response.text,
             )
         warnings.append(_promote_warning('trigger_deployment', exc))
-        trigger_failed = True
+        return DeploymentTriggerResponse(
+            run=run,
+            plugin_id=resolved.plugin_id,
+            plugin_slug=resolved.plugin_slug,
+            recorded=False,
+            release_url=release_url,
+            tag=body.tag,
+            warning='; '.join(warnings) if warnings else None,
+        )
 
     # 4. Upsert the Release node so future deploys of the same tag
     #    can attach a DeploymentEvent.
@@ -1368,21 +1375,20 @@ async def _handle_promote(
         ctx.actor_user_id,
         run.run_id,
     )
-    if not trigger_failed:
-        await _record_deployment_audit(
-            project_id=project_id,
-            project_slug=ctx.project_slug,
-            environment_slug=body.to_environment,
-            recorded_by=auth.principal_name,
-            action='promote',
-            tag=body.tag,
-            committish=promoted_committish,
-            plugin_slug=resolved.plugin_slug,
-            run_url=run.run_url,
-            external_run_id=str(run.run_id) if run.run_id else None,
-            release_url=release_url,
-            from_environment=body.from_environment,
-        )
+    await _record_deployment_audit(
+        project_id=project_id,
+        project_slug=ctx.project_slug,
+        environment_slug=body.to_environment,
+        recorded_by=auth.principal_name,
+        action='promote',
+        tag=body.tag,
+        committish=promoted_committish,
+        plugin_slug=resolved.plugin_slug,
+        run_url=run.run_url,
+        external_run_id=str(run.run_id) if run.run_id else None,
+        release_url=release_url,
+        from_environment=body.from_environment,
+    )
     return DeploymentTriggerResponse(
         run=run,
         plugin_id=resolved.plugin_id,

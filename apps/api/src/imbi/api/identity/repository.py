@@ -102,7 +102,7 @@ async def upsert_connection(
     # having to decrypt the claims ciphertext.  Caller-supplied metadata
     # takes precedence; we only set the key when it is absent.
     effective_metadata: dict[str, typing.Any] = dict(metadata or {})
-    raw_login = profile.raw_claims.get('login')
+    raw_login = profile.raw_claims.get('login') if profile.raw_claims else None
     if raw_login and 'login' not in effective_metadata:
         effective_metadata['login'] = str(raw_login)
 
