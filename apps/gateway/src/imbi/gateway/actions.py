@@ -162,6 +162,7 @@ class AddDeploymentEventConfig(pydantic.BaseModel):
     version_expression: str
     status_selector: json_pointer.JsonPointer
     note_selector: json_pointer.JsonPointer | None = None
+    external_run_id_selector: json_pointer.JsonPointer | None = None
 
 
 # Raw deployment-status state -> Imbi _DEPLOYMENT_STATUS literal.
@@ -295,6 +296,10 @@ async def add_deployment_event(
     event_body: dict[str, object] = {'status': status}
     if action_config.note_selector is not None:
         event_body['note'] = str(action_config.note_selector.resolve(payload))
+    if action_config.external_run_id_selector is not None:
+        event_body['external_run_id'] = str(
+            action_config.external_run_id_selector.resolve(payload)
+        )
     async with ImbiClient() as client:
         response = await client.record_deployment(
             ctx.org_slug,
