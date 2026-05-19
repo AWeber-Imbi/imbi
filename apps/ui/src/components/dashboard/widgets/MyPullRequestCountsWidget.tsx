@@ -1,4 +1,7 @@
+import { useNavigate } from 'react-router-dom'
+
 import { useQuery } from '@tanstack/react-query'
+import { GitMerge } from 'lucide-react'
 
 import { getOrgPullRequests } from '@/api/endpoints'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -7,6 +10,7 @@ import { useGithubLogin } from '@/hooks/useGithubLogin'
 
 // fallow-ignore-next-line complexity
 export function MyPullRequestCountsWidget() {
+  const navigate = useNavigate()
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug ?? ''
 
@@ -34,49 +38,34 @@ export function MyPullRequestCountsWidget() {
     staleTime: 60 * 1000,
   })
 
-  const {
-    data: closedData,
-    isError: closedError,
-    isLoading: closedLoading,
-  } = useQuery({
-    enabled: hasIdentity && !!orgSlug,
-    queryFn: ({ signal }) =>
-      getOrgPullRequests(
-        orgSlug,
-        { author: login, limit: 200, state: 'closed' },
-        signal,
-      ),
-    queryKey: ['my-prs', orgSlug, login, 'closed'],
-    staleTime: 60 * 1000,
-  })
-
-  const isLoading = identitiesLoading || openLoading || closedLoading
-  const isError = identitiesError || openError || closedError
+  const isLoading = identitiesLoading || openLoading
+  const isError = identitiesError || openError
   const openCount = openData?.total ?? 0
-  // TODO: replace with a dedicated count endpoint or full pagination so
-  // merged/closed totals are accurate beyond the first 200 results.
-  const mergedCount = closedData?.data.filter((pr) => pr.merged).length ?? 0
-  const closedCount = closedData?.data.filter((pr) => !pr.merged).length ?? 0
 
   return (
-    <Card className="h-full">
+    <Card
+      className="hover:border-secondary relative flex h-full cursor-pointer flex-col transition-colors"
+      onClick={() => navigate('/projects?view=list&has_my_open_prs=1')}
+      role="link"
+    >
+      <GitMerge className="text-tertiary absolute top-6 right-6 size-9" />
       <CardHeader className="pb-2">
         <CardTitle className="text-secondary font-normal">
-          My Pull Request Counts
+          My Open PRs
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="mt-auto">
         {isLoading ? (
           <span
-            aria-label="Loading My Pull Request Counts"
-            className="bg-tertiary/40 inline-block h-9 w-32 animate-pulse rounded"
+            aria-label="Loading My Open PRs"
+            className="bg-tertiary/40 inline-block h-8 w-20 animate-pulse rounded"
             role="status"
           />
         ) : isError ? (
           <p className="text-danger text-sm">Unavailable</p>
         ) : notConnected ? (
           <>
-            <p className="text-tertiary text-2xl">—</p>
+            <p className="text-tertiary text-3xl">—</p>
             <a
               className="text-action mt-1 block text-xs hover:underline"
               href="/settings/connections"
@@ -85,22 +74,7 @@ export function MyPullRequestCountsWidget() {
             </a>
           </>
         ) : (
-          <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-            <span className="text-primary text-xl">
-              {openCount.toLocaleString()}
-            </span>
-            <span className="text-secondary text-xs">Open</span>
-            <span className="text-tertiary text-xs">/</span>
-            <span className="text-xl text-purple-500">
-              {mergedCount.toLocaleString()}
-            </span>
-            <span className="text-secondary text-xs">Merged</span>
-            <span className="text-tertiary text-xs">/</span>
-            <span className="text-tertiary text-xl">
-              {closedCount.toLocaleString()}
-            </span>
-            <span className="text-secondary text-xs">Closed</span>
-          </div>
+          <p className="text-primary text-3xl">{openCount.toLocaleString()}</p>
         )}
       </CardContent>
     </Card>
