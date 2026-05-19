@@ -4,17 +4,16 @@ import typing
 
 import celpy
 import httpx
-import jsonpointer
 import pydantic
-import pydantic_core
 import pydantic_settings
-from pydantic import json_schema
-from pydantic_core import core_schema
+from imbi_common import json_pointer
 
 from imbi_gateway import helpers, version
 
 if typing.TYPE_CHECKING:
     from collections import abc
+
+    from imbi_common.plugins import base as plugin_base
 
 
 class ActionSettings(pydantic_settings.BaseSettings):
@@ -26,50 +25,34 @@ class ActionSettings(pydantic_settings.BaseSettings):
 LOGGER = logging.getLogger(__name__)
 
 
-class _JsonPointerImplementation:
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls,
-        _source_type: typing.Any,  # noqa: ANN401
-        _handler: pydantic.GetCoreSchemaHandler,
-    ) -> pydantic_core.CoreSchema:
-        return core_schema.no_info_plain_validator_function(
-            cls._validate, serialization=core_schema.to_string_ser_schema()
-        )
-
-    @classmethod
-    def __get_pydantic_json_schema__(
-        cls,
-        _schema: pydantic_core.CoreSchema,
-        _handler: pydantic.GetJsonSchemaHandler,
-    ) -> json_schema.JsonSchemaValue:
-        return {'type': 'string', 'format': 'json-pointer'}
-
-    @staticmethod
-    def _validate(value: object) -> jsonpointer.JsonPointer:
-        if isinstance(value, jsonpointer.JsonPointer):
-            return value
-        if isinstance(value, str):
-            try:
-                return jsonpointer.JsonPointer(value)
-            except jsonpointer.JsonPointerException as e:
-                raise ValueError(str(e)) from e
-        raise ValueError(
-            f'Expected a string or JsonPointer, got {type(value)}'
-        )
-
-
-JsonPointer = typing.Annotated[
-    jsonpointer.JsonPointer, _JsonPointerImplementation
-]
-
-
 class UpdateProjectRule(pydantic.BaseModel):
-    path: JsonPointer
-    from_: typing.Annotated[JsonPointer, pydantic.Field(alias='from')]
+    path: typing.Annotated[
+        json_pointer.JsonPointer,
+        pydantic.Field(
+            description='JSON Pointer on the Imbi project to patch.'
+        ),
+    ]
+    from_: typing.Annotated[
+        json_pointer.JsonPointer,
+        pydantic.Field(
+            alias='from',
+            description='JSON Pointer on the webhook payload to read.',
+        ),
+    ]
 
 
-UpdateProjectRules = pydantic.TypeAdapter(list[UpdateProjectRule])
+class UpdateProjectConfig(pydantic.RootModel[list[UpdateProjectRule]]):
+    """``WebhookRule.handler_config`` for :func:`update_project`.
+
+    A list of ``{path, from}`` mappings. Each entry resolves
+    ``from`` against the webhook body and patches the value into
+    ``path`` on the matched Imbi project.
+    """
+
+    root: list[UpdateProjectRule] = pydantic.Field(
+        default_factory=list,
+        description='Ordered list of source/target JSON Pointer mappings.',
+    )
 
 
 class ImbiClient(httpx.AsyncClient):
@@ -167,7 +150,7 @@ class ImbiClient(httpx.AsyncClient):
 class CreateReleaseConfig(pydantic.BaseModel):
     """Validates ``handler_config`` for :func:`create_release`."""
 
-    title_selector: JsonPointer
+    title_selector: json_pointer.JsonPointer
     version_expression: str
     committish_expression: str
 
@@ -175,10 +158,10 @@ class CreateReleaseConfig(pydantic.BaseModel):
 class AddDeploymentEventConfig(pydantic.BaseModel):
     """Validates ``handler_config`` for :func:`add_deployment_event`."""
 
-    environment_selector: JsonPointer
+    environment_selector: json_pointer.JsonPointer
     version_expression: str
-    status_selector: JsonPointer
-    note_selector: JsonPointer | None = None
+    status_selector: json_pointer.JsonPointer
+    note_selector: json_pointer.JsonPointer | None = None
 
 
 # Raw deployment-status state -> Imbi _DEPLOYMENT_STATUS literal.
@@ -216,100 +199,114 @@ def _evaluate_cel(expression: str, body: object) -> str:
 
 
 async def update_project(
-    org_slug: str,
-    project_id: str,
-    body: object,
-    user_id: str | None,
-    update_spec: str,
+    *,
+    ctx: plugin_base.PluginContext,
+    credentials: dict[str, str],
+    external_identifier: str,
+    action_config: UpdateProjectConfig,
+    payload: object,
 ) -> None:
-    del user_id  # unused — patch attribution is the gateway's service token
-    updates = UpdateProjectRules.validate_json(update_spec)
-    LOGGER.info('Updating project /%s/%s', org_slug, project_id)
-    LOGGER.info('%r', updates)
+    """Patch the matched Imbi project with values pulled from the payload.
+
+    Patch attribution is the gateway's service token, so
+    ``ctx.actor_user_id`` and ``credentials`` are unused here.
+    ``action_config`` arrives pre-validated as
+    :class:`UpdateProjectConfig`.
+    """
+    del credentials, external_identifier
+    LOGGER.info('Updating project /%s/%s', ctx.org_slug, ctx.project_id)
+    LOGGER.info('%r', action_config.root)
     patch = [
         {
             'op': 'add',
             'path': str(update.path),
-            'value': update.from_.resolve(body),
+            'value': update.from_.resolve(payload),
         }
-        for update in updates
+        for update in action_config.root
     ]
     async with ImbiClient() as client:
-        await client.patch_project(org_slug, project_id, patch)
+        await client.patch_project(ctx.org_slug, ctx.project_id, patch)
 
 
 async def create_release(
-    org_slug: str,
-    project_id: str,
-    body: object,
-    user_id: str | None,
-    handler_config: str,
+    *,
+    ctx: plugin_base.PluginContext,
+    credentials: dict[str, str],
+    external_identifier: str,
+    action_config: CreateReleaseConfig,
+    payload: object,
 ) -> None:
     """Processes a deployment notification and ensures the release exists.
 
     The tag is the result of evaluating the CEL ``version_expression``
-    against the body; the committish is the result of evaluating the
-    CEL ``committish_expression`` (typically
-    ``substring(deployment.sha, 0, 7)``); the title is taken from the
-    JSONPointer ``title_selector``. ``user_id`` (the resolved Imbi
-    user's email) is passed as ``created_by`` when present; otherwise
-    the API defaults to the gateway's service principal.
+    against ``payload``; the committish is the result of evaluating the
+    CEL ``committish_expression`` (typically ``substring(deployment.sha,
+    0, 7)``; the title is taken from the JSONPointer ``title_selector``.
+    ``ctx.actor_user_id`` (the resolved Imbi user's email) is passed
+    as ``created_by`` when present; otherwise the API defaults to the
+    gateway's service principal. ``action_config`` arrives pre-validated.
     """
-    config = CreateReleaseConfig.model_validate_json(handler_config)
-    version_value = _evaluate_cel(config.version_expression, body)
-    committish_value = _evaluate_cel(config.committish_expression, body)
+    del credentials, external_identifier
+    version_value = _evaluate_cel(action_config.version_expression, payload)
+    committish_value = _evaluate_cel(
+        action_config.committish_expression, payload
+    )
     create_body: dict[str, object] = {
         'tag': version_value,
         'committish': committish_value,
-        'title': str(config.title_selector.resolve(body)),
+        'title': str(action_config.title_selector.resolve(payload)),
     }
-    if user_id is not None:
-        create_body['created_by'] = user_id
+    if ctx.actor_user_id is not None:
+        create_body['created_by'] = ctx.actor_user_id
     async with ImbiClient() as client:
         response = await client.create_release(
-            org_slug, project_id, create_body
+            ctx.org_slug, ctx.project_id, create_body
         )
     if response.status_code == http.HTTPStatus.CONFLICT:
         LOGGER.debug(
             'Release %r already exists for project %s',
             version_value,
-            project_id,
+            ctx.project_id,
         )
 
 
 async def add_deployment_event(
-    org_slug: str,
-    project_id: str,
-    body: object,
-    user_id: str | None,
-    handler_config: str,
+    *,
+    ctx: plugin_base.PluginContext,
+    credentials: dict[str, str],
+    external_identifier: str,
+    action_config: AddDeploymentEventConfig,
+    payload: object,
 ) -> None:
     """Processes a deployment_status notification.
 
     Appends a deployment event to the release's DEPLOYED_TO edge for
     the matching environment. ``record_deployment`` has no
-    ``created_by`` field so ``user_id`` is unused here.
+    ``created_by`` field so ``ctx.actor_user_id`` is unused here.
     """
-    del user_id
-    config = AddDeploymentEventConfig.model_validate_json(handler_config)
-    raw_state = str(config.status_selector.resolve(body))
+    del credentials, external_identifier
+    raw_state = str(action_config.status_selector.resolve(payload))
     status = _STATUS_MAP.get(raw_state)
     if status is None:
         LOGGER.warning('Unmapped deployment status %r — skipping', raw_state)
         return
-    version_value = _evaluate_cel(config.version_expression, body)
-    environment = str(config.environment_selector.resolve(body))
+    version_value = _evaluate_cel(action_config.version_expression, payload)
+    environment = str(action_config.environment_selector.resolve(payload))
     event_body: dict[str, object] = {'status': status}
-    if config.note_selector is not None:
-        event_body['note'] = str(config.note_selector.resolve(body))
+    if action_config.note_selector is not None:
+        event_body['note'] = str(action_config.note_selector.resolve(payload))
     async with ImbiClient() as client:
         response = await client.record_deployment(
-            org_slug, project_id, version_value, environment, event_body
+            ctx.org_slug,
+            ctx.project_id,
+            version_value,
+            environment,
+            event_body,
         )
     if response.status_code == http.HTTPStatus.NOT_FOUND:
         LOGGER.warning(
             'Release %r missing for project %s; status %r dropped',
             version_value,
-            project_id,
+            ctx.project_id,
             status,
         )
