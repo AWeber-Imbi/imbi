@@ -504,7 +504,6 @@ function SortableWidget({ children, id }: SortableWidgetProps) {
       ref={setNodeRef}
       style={style}
     >
-      {/* Header hover zone — drag handle only shows when hovering here */}
       <div className="group absolute inset-x-0 top-0 z-10 h-14">
         <div
           {...attributes}

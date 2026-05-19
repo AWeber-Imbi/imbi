@@ -38,6 +38,7 @@ export function MyPullRequestsWidget() {
 
   const {
     hasIdentity,
+    isError: identitiesError,
     isLoading: identitiesLoading,
     login,
     notConnected,
@@ -54,6 +55,7 @@ export function MyPullRequestsWidget() {
     data,
     fetchNextPage,
     hasNextPage,
+    isError: prsError,
     isFetchingNextPage,
     isLoading: prsLoading,
   } = useInfiniteQuery<
@@ -64,9 +66,9 @@ export function MyPullRequestsWidget() {
     number
   >({
     enabled: hasIdentity && !!orgSlug,
-    getNextPageParam: (lastPage, allPages) => {
-      const loaded = allPages.reduce((s, p) => s + p.data.length, 0)
-      return loaded < lastPage.total ? loaded : undefined
+    getNextPageParam: (lastPage, _pages, lastPageParam) => {
+      const nextOffset = (lastPageParam ?? 0) + lastPage.data.length
+      return nextOffset < lastPage.total ? nextOffset : undefined
     },
     initialPageParam: 0,
     queryFn: ({ pageParam, signal }) =>
@@ -102,6 +104,7 @@ export function MyPullRequestsWidget() {
 
   const total = data?.pages[0]?.total ?? 0
   const isLoading = identitiesLoading || prsLoading
+  const isError = identitiesError || prsError
 
   const { sentinelRef } = useInfiniteScroll({
     fetchNextPage,
@@ -153,6 +156,10 @@ export function MyPullRequestsWidget() {
                 key={i}
               />
             ))}
+          </div>
+        ) : isError ? (
+          <div className="text-danger py-6 text-center text-sm">
+            Unavailable
           </div>
         ) : notConnected ? (
           <div className="text-secondary py-6 text-center text-sm">
@@ -239,7 +246,10 @@ function PrRow({
           )}
         </div>
         <div className="text-tertiary text-xs">
-          {relTime(pr.updated_at)} ago
+          {(() => {
+            const r = relTime(pr.updated_at)
+            return r === 'now' ? 'just now' : `${r} ago`
+          })()}
         </div>
       </div>
       <ChevronRight className="text-tertiary mt-0.5 size-4 shrink-0" />

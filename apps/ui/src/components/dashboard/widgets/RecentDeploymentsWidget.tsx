@@ -26,6 +26,10 @@ export function RecentDeploymentsWidget() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug ?? ''
   const [envFilter, setEnvFilter] = useState<string | undefined>(undefined)
+  const since = useMemo(
+    () => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    [],
+  )
 
   function handleEnvClick(slug: string) {
     setEnvFilter((prev) => (prev === slug ? undefined : slug))
@@ -61,11 +65,8 @@ export function RecentDeploymentsWidget() {
       enabled: Boolean(orgSlug),
       getNextPageParam: (lastPage) => lastPage.nextCursor,
       initialPageParam: undefined,
-      queryFn: ({ pageParam, signal }) => {
-        const since = new Date(
-          Date.now() - 30 * 24 * 60 * 60 * 1000,
-        ).toISOString()
-        return listOperationsLog(
+      queryFn: ({ pageParam, signal }) =>
+        listOperationsLog(
           {
             cursor: pageParam,
             filters: {
@@ -76,9 +77,8 @@ export function RecentDeploymentsWidget() {
             limit: PAGE_SIZE,
           },
           signal,
-        )
-      },
-      queryKey: ['deployments-widget', orgSlug, envFilter],
+        ),
+      queryKey: ['deployments-widget', orgSlug, envFilter, since],
       staleTime: 60_000,
     })
 
