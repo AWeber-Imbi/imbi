@@ -643,7 +643,7 @@ wheels = [
 
 [[package]]
 name = "imbi-common"
-version = "2.5.1"
+version = "2.5.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
@@ -659,9 +659,9 @@ dependencies = [
     { name = "python-slugify" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0a/70/b1003b29fbc2037b7d4ed13272a6643c83d62b706ea228aabd82825b4c0c/imbi_common-2.5.1.tar.gz", hash = "sha256:65326a494c33eee1dfd7a82656aac53e82c63d59b3587a43e94f6703cd282f66", size = 275414, upload-time = "2026-05-18T21:19:33.587Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7d/04/a1c672f1efd55b16ac34788a39f72b139f9e3e4f973934adad011fbe269f/imbi_common-2.5.2.tar.gz", hash = "sha256:e42dfda824a5eb63ac8cfa4c4267b74c612d7650b1f4aed4a52a51ac0590e613", size = 276855, upload-time = "2026-05-19T15:43:01.917Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4c/60/44bf22acdfdbe32145e04c4d6e0d60271a32a8c927933c46538aed6fb6c0/imbi_common-2.5.1-py3-none-any.whl", hash = "sha256:35014ba28d31821fc3e449fe6d99962cc66579813e5ecc3981cc3933cca49b9e", size = 90079, upload-time = "2026-05-18T21:19:31.954Z" },
+    { url = "https://files.pythonhosted.org/packages/7a/13/54a4c7dfd0122a4f8200eb4bbd33ab8c41586941dbe574343d4057f01d57/imbi_common-2.5.2-py3-none-any.whl", hash = "sha256:186878dac74e905dd71cf7ea8e47e14c08aec23019b29542580e223885416280", size = 90588, upload-time = "2026-05-19T15:43:00.1Z" },
 ]
 
 [package.optional-dependencies]
@@ -711,7 +711,7 @@ requires-dist = [
     { name = "cel-python", specifier = ">=0.5.0" },
     { name = "fastapi", specifier = ">=0.135.1" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "imbi-common", extras = ["databases", "server"], specifier = ">=2.5.1" },
+    { name = "imbi-common", extras = ["databases", "server"], specifier = ">=2.5.2" },
     { name = "jsonpointer", specifier = ">=3.1.1" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = "~=3.3.2" },
     { name = "pydantic", specifier = "~=2.12" },
