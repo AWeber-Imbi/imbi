@@ -309,18 +309,22 @@ async def _stamp_api_key_last_used(db: graph.Graph, key_id: str) -> None:
 
     AGE's cypher() wrapper requires a RETURN clause to properly
     finalize a write operation — omitting it causes an internal
-    "Entity failed to be updated" error.
+    "Entity failed to be updated" error. Failures are logged and
+    swallowed: the stamp is best-effort and must not fail authentication.
     """
     now = datetime.datetime.now(datetime.UTC).isoformat()
     query: typing.LiteralString = (
         'MATCH (k:APIKey {{key_id: {key_id}}})'
         ' SET k.last_used = {now} RETURN k'
     )
-    await db.execute(
-        query,
-        {'key_id': key_id, 'now': now},
-        columns=['k'],
-    )
+    try:
+        await db.execute(
+            query,
+            {'key_id': key_id, 'now': now},
+            columns=['k'],
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning('Failed to stamp last_used for API key %s', key_id)
 
 
 async def authenticate_api_key(
