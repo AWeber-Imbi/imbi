@@ -937,6 +937,13 @@ class _DeploymentBase(DeploymentPlugin):
         ref_value = deployment.get('ref')
         description = deployment.get('description')
         deployment_url = deployment.get('url') or deployment.get('html_url')
+        creator_login: str | None = None
+        creator_raw = deployment.get('creator')
+        if isinstance(creator_raw, dict):
+            creator_dict = typing.cast(dict[str, typing.Any], creator_raw)
+            login = creator_dict.get('login')
+            if isinstance(login, str) and login:
+                creator_login = login
         return RemoteDeployment(
             environment=environment,
             sha=str(sha),
@@ -947,6 +954,7 @@ class _DeploymentBase(DeploymentPlugin):
             run_url=status_url,
             deployment_url=str(deployment_url) if deployment_url else None,
             description=str(description) if description else None,
+            creator=creator_login,
         )
 
     async def _latest_status(
