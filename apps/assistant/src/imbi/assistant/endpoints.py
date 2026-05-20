@@ -307,6 +307,49 @@ async def _process_stream_events(
                 }
 
 
+def _build_assistant_message(
+    state: dict[str, typing.Any],
+    tool_use_blocks: list[dict[str, typing.Any]],
+) -> dict[str, typing.Any]:
+    """Build the ``assistant`` API message for a tool-use round."""
+    content: list[dict[str, typing.Any]] = []
+    if state['text']:
+        content.append({'type': 'text', 'text': state['text']})
+    content.extend(
+        {
+            'type': 'tool_use',
+            'id': tb['id'],
+            'name': tb['name'],
+            'input': tb['input'],
+        }
+        for tb in tool_use_blocks
+    )
+    return {'role': 'assistant', 'content': content}
+
+
+def _build_tools_and_system(
+    mcp_manager: mcp.MCPManager,
+    auth_ctx: auth.AuthContext,
+) -> tuple[list[dict[str, typing.Any]] | None, str]:
+    """Build the Anthropic tool payload and system prompt from
+    the current MCP, server, and client tool sets.
+    """
+    all_tools = (
+        mcp_manager.get_tools()
+        + mcp.get_server_tools()
+        + client_tools.get_tools()
+    )
+    system = system_prompt.build_system_prompt(
+        auth_ctx,
+        tool_names=[
+            *mcp_manager.get_tool_names(),
+            mcp.REFRESH_TOOL_NAME,
+            *client_tools.get_tool_names(),
+        ],
+    )
+    return (all_tools or None), system
+
+
 async def _stream_response(
     db: graph.Graph,
     conversation_id: str,
@@ -381,30 +424,41 @@ async def _stream_response(
             token_usage=(state['usage'] or None),
         )
 
-        assistant_content: list[dict[str, typing.Any]] = []
-        if state['text']:
-            assistant_content.append(
-                {'type': 'text', 'text': state['text']},
-            )
-        assistant_content.extend(
-            {
-                'type': 'tool_use',
-                'id': tb['id'],
-                'name': tb['name'],
-                'input': tb['input'],
-            }
-            for tb in tool_use_blocks
-        )
         api_messages.append(
-            {
-                'role': 'assistant',
-                'content': assistant_content,
-            },
+            _build_assistant_message(state, tool_use_blocks),
         )
 
         tool_results: list[dict[str, typing.Any]] = []
         for tb in tool_use_blocks:
-            if client_tools.is_client_tool(tb['name']):
+            if mcp.is_server_tool(tb['name']):
+                yield _sse_event(
+                    'tool_executing',
+                    {'id': tb['id'], 'name': tb['name']},
+                )
+                success, tool_count = await mcp_manager.reinitialize()
+                if success:
+                    # Rebuild so later rounds in this stream see
+                    # the refreshed endpoints.
+                    tools, system = _build_tools_and_system(
+                        mcp_manager, auth_ctx
+                    )
+                tool_results.append(
+                    {
+                        'type': 'tool_result',
+                        'tool_use_id': tb['id'],
+                        'content': json.dumps(
+                            {
+                                'success': success,
+                                'tool_count': tool_count,
+                            }
+                        ),
+                    }
+                )
+                yield _sse_event(
+                    'tool_result',
+                    {'id': tb['id'], 'name': tb['name']},
+                )
+            elif client_tools.is_client_tool(tb['name']):
                 yield _sse_event(
                     'client_action',
                     {
@@ -547,14 +601,7 @@ async def send_message(
     ]
 
     mcp_manager = mcp.get_manager()
-    mcp_tool_list = mcp_manager.get_tools()
-    all_tools = (mcp_tool_list or []) + (client_tools.get_tools())
-    tools = all_tools or None
-    tool_names = mcp_manager.get_tool_names() + client_tools.get_tool_names()
-    system = system_prompt.build_system_prompt(
-        auth_ctx,
-        tool_names=tool_names,
-    )
+    tools, system = _build_tools_and_system(mcp_manager, auth_ctx)
 
     is_first_exchange = len(all_msgs) <= 2
     auth_token = credentials.credentials if credentials else None
