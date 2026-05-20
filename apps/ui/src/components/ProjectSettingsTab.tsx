@@ -44,6 +44,8 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
   const navigate = useNavigate()
   const { user } = useAuth()
   const isAdmin = user?.is_admin === true
+  const canRescore =
+    isAdmin || (user?.permissions ?? []).includes('scoring_policy:rescore')
   const { patch, scheduleScoreRefresh } = useProjectPatch(orgSlug, project.id)
   const [deleteConfirmSlug, setDeleteConfirmSlug] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -185,21 +187,23 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
 
       <ProjectPluginsSection orgSlug={orgSlug} projectId={project.id} />
 
-      {isAdmin && (
+      {(canRescore || (isAdmin && deploymentPlugin)) && (
         <Card>
           <CardHeader>
             <CardTitle>Utility Functions</CardTitle>
           </CardHeader>
           <CardContent className="flex gap-2">
-            <Button
-              disabled={rescoreMutation.isPending}
-              onClick={() => rescoreMutation.mutate()}
-              size="sm"
-              variant="outline"
-            >
-              {rescoreMutation.isPending ? 'Enqueuing...' : 'Recompute Score'}
-            </Button>
-            {deploymentPlugin && (
+            {canRescore && (
+              <Button
+                disabled={rescoreMutation.isPending}
+                onClick={() => rescoreMutation.mutate()}
+                size="sm"
+                variant="outline"
+              >
+                {rescoreMutation.isPending ? 'Enqueuing...' : 'Recompute Score'}
+              </Button>
+            )}
+            {isAdmin && deploymentPlugin && (
               <Button
                 disabled={resyncMutation.isPending}
                 onClick={() => resyncMutation.mutate()}
