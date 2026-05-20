@@ -87,7 +87,7 @@ class ReleaseResponse(pydantic.BaseModel):
     id: str
     project_id: str
     tag: str | None = None
-    committish: str
+    committish: str | None = None
     title: str
     description: str | None = None
     links: list[models.ReleaseLink] = []
@@ -204,7 +204,7 @@ def _release_to_response(
             'id': data['id'],
             'project_id': project_id,
             'tag': data.get('tag'),
-            'committish': data['committish'],
+            'committish': data.get('committish'),
             'title': data['title'],
             'description': data.get('description'),
             'links': raw_links,
