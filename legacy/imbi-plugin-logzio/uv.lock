@@ -2,6 +2,21 @@ version = 1
 revision = 3
 requires-python = ">=3.14"
 
+[options]
+exclude-newer = "0001-01-01T00:00:00Z"  # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
+exclude-newer-span = "P7D"
+
+[options.exclude-newer-package]
+imbi-common = false
+imbi-plugin-pagerduty = false
+imbi-plugin-github = false
+imbi-plugin-logzio = false
+imbi-plugin-aws = false
+imbi-plugin-sonarqube = false
+clickhouse-connect = false
+imbi-plugin-sentry = false
+imbi-plugin-oidc = false
+
 [[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
