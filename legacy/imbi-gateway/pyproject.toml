@@ -132,9 +132,8 @@ flake8-type-checking = { runtime-evaluated-base-classes = [
 isort = { split-on-trailing-comma = false }
 
 [tool.uv]
-override-dependencies = [
-  "clickhouse-connect[async]==0.12rc1",  # until imbi-common sorts this
-]
+exclude-newer = "7 days"
+exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "imbi-plugin-aws" = false, "imbi-plugin-github" = false, "imbi-plugin-logzio" = false, "imbi-plugin-oidc" = false, "imbi-plugin-pagerduty" = false, "imbi-plugin-sentry" = false, "imbi-plugin-sonarqube" = false }
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
