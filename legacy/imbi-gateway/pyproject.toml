@@ -24,6 +24,12 @@ imbi-gateway = "imbi_gateway.app:cli"
 [project.entry-points."imbi.plugins"]
 gateway-actions = "imbi_gateway.plugin:GatewayActionsPlugin"
 
+[project.optional-dependencies]
+plugins = [
+  "imbi-plugin-github~=1.0",
+  "imbi-plugin-sonarqube>=0.0.0",
+]
+
 [dependency-groups]
 dev = [
   "basedpyright>=1.37.1",
