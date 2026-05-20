@@ -9,12 +9,12 @@ image := "ghcr.io/aweber-imbi/imbi"
 [doc("Build the Docker image")]
 [group("Build Docker")]
 build tag="latest":
-    docker build -t {{ image }}:{{ tag }} .
+    docker build --build-arg VITE_GIT_REF={{ tag }} -t {{ image }}:{{ tag }} .
 
 [doc("Build the Docker image and tag as both version and latest")]
 [group("Build Docker")]
 release tag:
-    docker build -t {{ image }}:{{ tag }} -t {{ image }}:latest .
+    docker build --build-arg VITE_GIT_REF={{ tag }} -t {{ image }}:{{ tag }} -t {{ image }}:latest .
 
 [doc("Update all submodules to what is currently checked in")]
 [group("Submodules")]
