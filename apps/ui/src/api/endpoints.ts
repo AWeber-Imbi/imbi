@@ -134,6 +134,56 @@ export const getProjects = async (
   return Array.isArray(response) ? response : []
 }
 
+// Slim variant: returns a trimmed ``ProjectListItem`` payload (just
+// the fields the projects-list view reads). Used by the projects
+// page to keep the cached array compact in memory; other callers
+// can opt in once their consumers are audited.
+export interface ProjectListItem {
+  archived: boolean
+  closed_pr_count: number
+  current_releases: Record<
+    string,
+    {
+      committish?: null | string
+      deployed_at: string
+      performed_by?: null | string
+      tag?: null | string
+    }
+  >
+  description: null | string
+  environments: {
+    label_color?: null | string
+    name: string
+    slug: string
+    sort_order: number
+  }[]
+  id: string
+  name: string
+  open_pr_count: number
+  project_types: {
+    deployable: boolean
+    name: string
+    slug: string
+  }[]
+  score: null | number
+  slug: string
+  team: { name: string; slug: string }
+  viewer_closed_pr_count: number
+  viewer_open_pr_count: number
+}
+
+export const getProjectsSlim = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<ProjectListItem[]> => {
+  const response = await apiClient.get<ProjectListItem[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/?slim=true`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
 export const getProject = (
   orgSlug: string,
   projectId: string,

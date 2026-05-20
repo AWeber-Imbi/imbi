@@ -1,5 +1,11 @@
 import * as React from 'react'
-import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -21,12 +27,11 @@ import {
 } from 'lucide-react'
 import { matchSorter } from 'match-sorter'
 
-import { getProjects } from '@/api/endpoints'
+import { getProjectsSlim, type ProjectListItem } from '@/api/endpoints'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { deriveChipColors } from '@/lib/chip-colors'
-import type { Project } from '@/types'
 
 import { NewProjectDialog } from './NewProjectDialog'
 import { Button } from './ui/button'
@@ -69,7 +74,7 @@ interface FilterPopoverProps {
 
 interface ProjectListRowProps {
   onSelect: (id: string) => void
-  project: Project
+  project: ProjectListItem
 }
 
 type SortDir = 'asc' | 'desc'
@@ -211,8 +216,8 @@ export function ProjectsView() {
     refetch,
   } = useQuery({
     enabled: !!orgSlug,
-    queryFn: ({ signal }) => getProjects(orgSlug, signal),
-    queryKey: ['projects', orgSlug],
+    queryFn: ({ signal }) => getProjectsSlim(orgSlug, signal),
+    queryKey: ['projects', orgSlug, 'slim'],
   })
 
   const teamOptions = useMemo(
@@ -240,9 +245,14 @@ export function ProjectsView() {
       .sort((a, b) => a.label.localeCompare(b.label))
   }, [projects])
 
-  const handleProjectSelect = (projectId: string) => {
-    navigate(`/projects/${projectId}`)
-  }
+  // Stable ref so the memoized ``ProjectListRow`` can actually skip
+  // re-renders when only the parent's input/filter state changes.
+  const handleProjectSelect = useCallback(
+    (projectId: string) => {
+      navigate(`/projects/${projectId}`)
+    },
+    [navigate],
+  )
 
   const driftedProjectIds = useMemo(() => {
     const ids = new Set<string>()
