@@ -193,17 +193,15 @@ async def process_notification(
     plugins_raw: list[typing.Any] = graph.parse_agtype(record['plugins']) or []
     plugins_by_slug = _index_plugins(plugins_raw)
 
+    parsed_rules: list[typing.Any] = graph.parse_agtype(raw_rules) or []
     try:
-        rules = [
-            WebhookRule.model_validate(row)
-            for row in graph.parse_agtype(raw_rules)
-        ]
+        rules = [WebhookRule.model_validate(row) for row in parsed_rules]
     except pydantic.ValidationError as e:
         LOGGER.error(
             'failed to deserialize rules for webhook_id=%r: %s',
             webhook_id,
             e,
-            extra={'webhook_id': webhook_id, 'rules': raw_rules},
+            extra={'webhook_id': webhook_id, 'rules_count': len(parsed_rules)},
         )
         return
 
@@ -297,6 +295,7 @@ async def process_notification(
             'Ignoring notification: no filter matches (webhook_id=%r tps=%r)',
             webhook_id,
             tps_slug,
+            extra={'webhook_id': webhook_id, 'tps_slug': tps_slug},
         )
         return
 
