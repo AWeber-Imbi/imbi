@@ -8,6 +8,8 @@ ARG NODE_VERSION=22
 FROM node:${NODE_VERSION}-slim AS ui-builder
 
 WORKDIR /tmp/build
+ARG VITE_GIT_REF=""
+ENV VITE_GIT_REF=${VITE_GIT_REF}
 COPY imbi-ui/package.json imbi-ui/package-lock.json ./
 RUN npm ci
 COPY imbi-ui/ ./

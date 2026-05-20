@@ -4,6 +4,9 @@
 }
 
 :8080 {
+	@no_cache path /index.html /version.json
+	header @no_cache Cache-Control "no-cache, no-store, must-revalidate"
+
 	handle /api/* {
 		reverse_proxy 127.0.0.1:8000
 	}
