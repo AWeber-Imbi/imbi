@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import * as React from 'react'
+import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -23,7 +24,9 @@ import { matchSorter } from 'match-sorter'
 import { getProjects } from '@/api/endpoints'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useTheme } from '@/contexts/ThemeContext'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { deriveChipColors } from '@/lib/chip-colors'
+import type { Project } from '@/types'
 
 import { NewProjectDialog } from './NewProjectDialog'
 import { Button } from './ui/button'
@@ -64,6 +67,11 @@ interface FilterPopoverProps {
   options: { label: string; slug: string }[]
 }
 
+interface ProjectListRowProps {
+  onSelect: (id: string) => void
+  project: Project
+}
+
 type SortDir = 'asc' | 'desc'
 
 interface SortHeaderProps {
@@ -77,6 +85,12 @@ interface SortHeaderProps {
 type SortKey = 'name' | 'prs' | 'score' | 'team' | 'type'
 
 const VIEW_MODE_STORAGE_KEY = 'imbi.projects.view-mode'
+
+// Trails the user by ~one settle so the URL ``?q=`` write (and the
+// downstream filter+render pass) doesn't fire on every keystroke.
+// 200ms is short enough to feel synchronous for the common
+// type-pause-look pattern.
+const SEARCH_DEBOUNCE_MS = 200
 
 // fallow-ignore-next-line complexity
 export function ProjectsView() {
@@ -92,7 +106,19 @@ export function ProjectsView() {
   )
   const rawView = searchParams.get('view')
   const viewMode = resolveViewMode(rawView, storedView)
-  const searchQuery = searchParams.get('q') ?? ''
+  // ``inputQuery`` drives the controlled <Input>; ``debouncedQuery``
+  // is what gets persisted to the URL and consumed by the filter
+  // pipeline. Local input state keeps typing responsive even though
+  // filtering hundreds of rows is expensive; the URL sync trails the
+  // user by ``SEARCH_DEBOUNCE_MS`` so back-buttoning still works.
+  const urlQuery = searchParams.get('q') ?? ''
+  const [inputQuery, setInputQuery] = useState(urlQuery)
+  const debouncedQuery = useDebouncedValue(inputQuery, SEARCH_DEBOUNCE_MS)
+  // ``useDeferredValue`` lets React render the stale filtered list
+  // first (so the input never freezes), then reconcile to the new
+  // ``debouncedQuery`` at a lower priority. Cheap to add and
+  // additive to the debounce.
+  const deferredQuery = useDeferredValue(debouncedQuery)
   const sortKey = (searchParams.get('sort') ?? 'name') as SortKey
   const sortDir = (searchParams.get('dir') ?? 'asc') as SortDir
   const teamsParam = searchParams.get('teams') ?? ''
@@ -116,16 +142,32 @@ export function ProjectsView() {
     )
   }
 
-  const setSearchQuery = (q: string) =>
+  // Sync the debounced query → URL. Skip the write when the value
+  // already matches what's in the URL (covers back/forward and the
+  // initial mount where ``inputQuery === urlQuery`` by construction).
+  useEffect(() => {
+    if (debouncedQuery === urlQuery) return
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev)
-        if (q) next.set('q', q)
+        if (debouncedQuery) next.set('q', debouncedQuery)
         else next.delete('q')
         return next
       },
       { replace: true },
     )
+  }, [debouncedQuery, urlQuery, setSearchParams])
+
+  // Honor external URL changes (back/forward, deep links) by
+  // resyncing the input. Compares against the *current* input so
+  // typing isn't clobbered by the debounced URL write that just
+  // landed.
+  useEffect(() => {
+    if (urlQuery !== inputQuery && urlQuery !== debouncedQuery) {
+      setInputQuery(urlQuery)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlQuery])
 
   const setSort = (key: SortKey) =>
     setSearchParams((prev) => nextSortParams(prev, key), { replace: true })
@@ -238,8 +280,8 @@ export function ProjectsView() {
     if (hasDrift) {
       all = all.filter((p) => driftedProjectIds.has(p.id))
     }
-    if (searchQuery) {
-      return matchSorter(all, searchQuery, {
+    if (deferredQuery) {
+      return matchSorter(all, deferredQuery, {
         keys: [
           'name',
           'description',
@@ -273,7 +315,7 @@ export function ProjectsView() {
   }, [
     projects,
     driftedProjectIds,
-    searchQuery,
+    deferredQuery,
     sortKey,
     sortDir,
     teamsParam,
@@ -326,10 +368,10 @@ export function ProjectsView() {
               <Input
                 className="pl-9"
                 disabled={isLoading}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => setInputQuery(e.target.value)}
                 placeholder="Search projects..."
                 type="text"
-                value={searchQuery}
+                value={inputQuery}
               />
             </div>
 
@@ -548,62 +590,12 @@ export function ProjectsView() {
               maxHeight: 'calc(100vh - 330px - var(--assistant-height, 64px))',
             }}
           >
-            {/* fallow-ignore-next-line complexity */}
             {filteredProjects.map((project) => (
-              <div
-                className="hover:bg-secondary flex cursor-pointer items-center transition-colors"
+              <ProjectListRow
                 key={`row-${project.id}`}
-                onClick={() => handleProjectSelect(project.id)}
-              >
-                <div className="w-65 shrink-0 px-6 py-4">
-                  <p className="text-primary font-medium">{project.name}</p>
-                  {(project.project_types ?? []).length > 0 && (
-                    <p className="text-secondary text-xs">
-                      {project.project_types!.map((pt) => pt.name).join(', ')}
-                    </p>
-                  )}
-                  <p className="text-tertiary text-xs">{project.team.name}</p>
-                </div>
-                <div className="w-40 shrink-0 px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center justify-center gap-1.5">
-                    {(project.open_pr_count ?? 0) > 0 && (
-                      <span className="border-accent bg-accent text-accent inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs">
-                        <GitPullRequest className="size-3.5" />
-                        <span>{project.open_pr_count}</span>
-                      </span>
-                    )}
-                    {(project.viewer_open_pr_count ?? 0) > 0 && (
-                      <span className="border-info bg-info text-info inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs">
-                        <User className="size-3.5" />
-                        <span>{project.viewer_open_pr_count}</span>
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex w-40 shrink-0 items-center justify-center px-5 py-4">
-                  <DriftCell project={project} />
-                </div>
-                <div
-                  className="flex min-w-0 flex-1 overflow-x-auto px-6 py-4"
-                  style={{ justifyContent: 'safe center' }}
-                >
-                  {isProjectDeployable(project) &&
-                    project.environments &&
-                    project.environments.length > 0 && (
-                      <DeploymentCards
-                        environments={project.environments}
-                        releases={project.current_releases ?? {}}
-                      />
-                    )}
-                </div>
-                <div className="flex w-40 shrink-0 justify-center px-6 py-4 whitespace-nowrap">
-                  <ScoreBadge
-                    score={project.score}
-                    size="md"
-                    variant="circle"
-                  />
-                </div>
-              </div>
+                onSelect={handleProjectSelect}
+                project={project}
+              />
             ))}
           </div>
         </Card>
@@ -1207,3 +1199,66 @@ function timeAgo(iso: string): string {
   const rounded = Math.round(years * 10) / 10
   return `${rounded}y ago`
 }
+
+// Memoized list-mode row so a parent re-render (e.g. an ``inputQuery``
+// keystroke) doesn't redo the JSX for every row in the table. The
+// ``project`` reference comes from a memoized filter pipeline, so as
+// long as the underlying object identity is stable (it is — React Query
+// returns the same array between renders), the row skips its render.
+// fallow-ignore-next-line complexity
+const ProjectListRow = React.memo(function ProjectListRow({
+  onSelect,
+  project,
+}: ProjectListRowProps) {
+  return (
+    <div
+      className="hover:bg-secondary flex cursor-pointer items-center transition-colors"
+      onClick={() => onSelect(project.id)}
+    >
+      <div className="w-65 shrink-0 px-6 py-4">
+        <p className="text-primary font-medium">{project.name}</p>
+        {(project.project_types ?? []).length > 0 && (
+          <p className="text-secondary text-xs">
+            {project.project_types!.map((pt) => pt.name).join(', ')}
+          </p>
+        )}
+        <p className="text-tertiary text-xs">{project.team.name}</p>
+      </div>
+      <div className="w-40 shrink-0 px-6 py-4 whitespace-nowrap">
+        <div className="flex items-center justify-center gap-1.5">
+          {(project.open_pr_count ?? 0) > 0 && (
+            <span className="border-accent bg-accent text-accent inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs">
+              <GitPullRequest className="size-3.5" />
+              <span>{project.open_pr_count}</span>
+            </span>
+          )}
+          {(project.viewer_open_pr_count ?? 0) > 0 && (
+            <span className="border-info bg-info text-info inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs">
+              <User className="size-3.5" />
+              <span>{project.viewer_open_pr_count}</span>
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="flex w-40 shrink-0 items-center justify-center px-5 py-4">
+        <DriftCell project={project} />
+      </div>
+      <div
+        className="flex min-w-0 flex-1 overflow-x-auto px-6 py-4"
+        style={{ justifyContent: 'safe center' }}
+      >
+        {isProjectDeployable(project) &&
+          project.environments &&
+          project.environments.length > 0 && (
+            <DeploymentCards
+              environments={project.environments}
+              releases={project.current_releases ?? {}}
+            />
+          )}
+      </div>
+      <div className="flex w-40 shrink-0 justify-center px-6 py-4 whitespace-nowrap">
+        <ScoreBadge score={project.score} size="md" variant="circle" />
+      </div>
+    </div>
+  )
+})
