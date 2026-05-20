@@ -118,6 +118,10 @@ ignore = [
 ]
 flake8-quotes = { inline-quotes = "single" }
 
+[tool.uv]
+exclude-newer = "7 days"
+exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "imbi-plugin-aws" = false, "imbi-plugin-github" = false, "imbi-plugin-logzio" = false, "imbi-plugin-oidc" = false, "imbi-plugin-pagerduty" = false, "imbi-plugin-sentry" = false, "imbi-plugin-sonarqube" = false }
+
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
