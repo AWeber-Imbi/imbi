@@ -2,7 +2,7 @@ import * as React from 'react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, Plus, Trash2 } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
@@ -17,7 +17,11 @@ import {
   replaceServicePluginAssignments,
   updateServicePlugin,
 } from '@/api/endpoints'
-import { Badge } from '@/components/ui/badge'
+import {
+  OverrideCountChevron,
+  RemoveRowButton,
+} from '@/components/plugin-options/ExpandableRowControls'
+import { OptionRow } from '@/components/plugin-options/OptionRow'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -51,13 +55,13 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useServiceDeploymentResync } from '@/hooks/useDeploymentResync'
+import { useExpandableRows } from '@/hooks/useExpandableRows'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
 import type {
   InstalledPlugin,
   PluginAssignmentInput,
   PluginAssignmentRow,
-  PluginOptionDef,
   PluginResponse,
   PluginTab,
 } from '@/types'
@@ -104,16 +108,6 @@ interface IdentityCardProps {
 }
 
 // --------------------------- Credentials -------------------------------
-
-interface OptionRowProps {
-  description: null | string
-  label: string
-  name: string
-  onChange: (next: unknown) => void
-  opt: PluginOptionDef
-  placeholder?: string
-  value: unknown
-}
 
 interface ProjectTypesCardProps {
   manifest: InstalledPlugin | null
@@ -747,93 +741,6 @@ function IdentityCard({
   )
 }
 
-// --------------------------- OptionRow ---------------------------------
-
-function OptionRow({
-  description,
-  label,
-  name,
-  onChange,
-  opt,
-  placeholder,
-  value,
-}: OptionRowProps) {
-  const id = `option-${name}`
-  let control: React.ReactNode
-
-  if (opt.choices && opt.choices.length > 0) {
-    control = (
-      <Select
-        onValueChange={(v) => onChange(v)}
-        value={typeof value === 'string' ? value : ''}
-      >
-        <SelectTrigger id={id}>
-          <SelectValue placeholder={placeholder ?? 'Select…'} />
-        </SelectTrigger>
-        <SelectContent>
-          {opt.choices.map((c) => (
-            <SelectItem key={c} value={c}>
-              {c}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    )
-  } else if (opt.type === 'boolean') {
-    control = (
-      <input
-        checked={Boolean(value)}
-        id={id}
-        onChange={(e) => onChange(e.target.checked)}
-        type="checkbox"
-      />
-    )
-  } else if (opt.type === 'integer') {
-    control = (
-      <Input
-        id={id}
-        onChange={(e) => {
-          const raw = e.target.value
-          if (raw === '') {
-            onChange(null)
-            return
-          }
-          const n = Number.parseInt(raw, 10)
-          if (!Number.isNaN(n)) onChange(n)
-        }}
-        placeholder={placeholder}
-        type="number"
-        value={
-          typeof value === 'number' ? String(value) : (value as string) || ''
-        }
-      />
-    )
-  } else {
-    control = (
-      <Input
-        id={id}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        type={opt.type === 'secret' ? 'password' : 'text'}
-        value={(value as string) ?? ''}
-      />
-    )
-  }
-
-  return (
-    <div className="grid grid-cols-[160px_1fr] items-center gap-3">
-      <Label className="truncate text-xs" htmlFor={id} title={label}>
-        {label}
-        {opt.required && <span className="text-destructive ml-1">*</span>}
-      </Label>
-      <div className="space-y-1">
-        {control}
-        {description && <p className="text-secondary text-xs">{description}</p>}
-      </div>
-    </div>
-  )
-}
-
 function ProjectTypesCard({
   manifest,
   orgSlug,
@@ -843,14 +750,7 @@ function ProjectTypesCard({
 }: ProjectTypesCardProps) {
   const [drafts, setDrafts] = useState<DraftAssignment[]>([])
   const [seedHash, setSeedHash] = useState<null | string>(null)
-  const [expanded, setExpanded] = useState<Set<number>>(new Set())
-  const toggleExpanded = (idx: number) =>
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      if (next.has(idx)) next.delete(idx)
-      else next.add(idx)
-      return next
-    })
+  const { expanded, removeRow, toggleExpanded } = useExpandableRows()
 
   const { data: existing } = useQuery({
     queryFn: ({ signal }) =>
@@ -950,19 +850,7 @@ function ProjectTypesCard({
     })
   }
 
-  const handleRemove = (idx: number) => {
-    setDrafts((prev) => prev.filter((_, i) => i !== idx))
-    setExpanded((prev) => {
-      const next = new Set<number>()
-      // Indices shift left by 1 once we drop ``idx``; rebuild the set
-      // accordingly so a different row doesn't suddenly appear expanded.
-      for (const i of prev) {
-        if (i === idx) continue
-        next.add(i > idx ? i - 1 : i)
-      }
-      return next
-    })
-  }
+  const handleRemove = (idx: number) => removeRow(idx, setDrafts)
 
   const updateDraft = (idx: number, patch: Partial<DraftAssignment>) => {
     setDrafts((prev) =>
@@ -1082,34 +970,16 @@ function ProjectTypesCard({
                         />
                       </TableCell>
                       <TableCell className="align-middle">
-                        <span className="relative inline-flex items-center">
-                          <ChevronDown
-                            className={`text-tertiary size-3.5 transition-transform ${
-                              isExpanded ? 'rotate-180' : ''
-                            }`}
-                          />
-                          {overrideCount > 0 && (
-                            <Badge
-                              className="ml-1 h-4 px-1 text-[10px]"
-                              variant="secondary"
-                            >
-                              {overrideCount}
-                            </Badge>
-                          )}
-                        </span>
+                        <OverrideCountChevron
+                          count={overrideCount}
+                          isExpanded={isExpanded}
+                        />
                       </TableCell>
                       <TableCell className="align-middle">
-                        <Button
-                          aria-label="Remove assignment"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleRemove(idx)
-                          }}
-                          size="icon"
-                          variant="ghost"
-                        >
-                          <Trash2 className="text-destructive size-3" />
-                        </Button>
+                        <RemoveRowButton
+                          ariaLabel="Remove assignment"
+                          onRemove={() => handleRemove(idx)}
+                        />
                       </TableCell>
                     </TableRow>
                     {isExpanded && (

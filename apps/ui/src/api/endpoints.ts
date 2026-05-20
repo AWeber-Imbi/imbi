@@ -65,6 +65,7 @@ import type {
   PluginEntity,
   PluginEntityCreate,
   PluginEntitySchema,
+  PluginOptionDef,
   PluginResponse,
   PluginUpdate,
   Project,
@@ -1939,6 +1940,25 @@ export const getAdminPlugins = (signal?: AbortSignal) =>
 export const getAdminPlugin = (slug: string, signal?: AbortSignal) =>
   apiClient.get<InstalledPlugin>(
     `/admin/plugins/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
+  )
+
+// Non-admin manifest endpoint -- returns just the static schema so
+// project editors with ``project:write`` (but not ``admin:plugins:read``)
+// can render a typed option editor for per-project overrides.
+export interface PluginManifestResponse {
+  credentials: { description?: null | string; label: string; name: string }[]
+  description: null | string
+  name: string
+  options: PluginOptionDef[]
+  plugin_type: string
+  slug: string
+}
+
+export const getPluginManifest = (slug: string, signal?: AbortSignal) =>
+  apiClient.get<PluginManifestResponse>(
+    `/plugins/${encodeURIComponent(slug)}/manifest`,
     undefined,
     signal,
   )
