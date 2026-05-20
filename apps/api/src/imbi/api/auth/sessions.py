@@ -6,6 +6,7 @@ concurrent session limits, and tracking session activity.
 
 import datetime
 import logging
+import typing
 
 from imbi_common import graph
 
@@ -58,20 +59,44 @@ async def enforce_session_limit(
         )
 
 
-async def update_session_activity(db: graph.Graph, session_id: str) -> None:
+async def update_session_activity(
+    db: graph.Graph,
+    session_id: str,
+    auth_settings: settings.Auth,
+) -> None:
     """Update last activity timestamp for session.
+
+    Skips the write atomically when the existing ``last_activity`` is
+    newer than ``auth_settings.last_used_throttle_seconds`` ago.
+    Authentication runs on every request, so without throttling this
+    would book a graph write per request even though we only need
+    minute-scale accuracy.
 
     Args:
         db: Graph database connection.
         session_id: Session ID to update.
+        auth_settings: Auth settings (reads
+            ``last_used_throttle_seconds``).
 
     """
-    now = datetime.datetime.now(datetime.UTC).isoformat()
-    query = (
-        'MATCH (s:Session {{session_id: {session_id}}}) '
-        'SET s.last_activity = {now}'
+    now = datetime.datetime.now(datetime.UTC)
+    threshold = now - datetime.timedelta(
+        seconds=max(0, auth_settings.last_used_throttle_seconds)
     )
-    await db.execute(query, {'session_id': session_id, 'now': now})
+    query: typing.LiteralString = (
+        'MATCH (s:Session {{session_id: {session_id}}}) '
+        'WHERE s.last_activity IS NULL OR s.last_activity < {threshold} '
+        'SET s.last_activity = {now} RETURN s'
+    )
+    await db.execute(
+        query,
+        {
+            'session_id': session_id,
+            'now': now.isoformat(),
+            'threshold': threshold.isoformat(),
+        },
+        columns=['s'],
+    )
 
 
 async def delete_expired_sessions(db: graph.Graph) -> int:

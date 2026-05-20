@@ -304,23 +304,41 @@ async def authenticate_jwt(
     )
 
 
-async def _stamp_api_key_last_used(db: graph.Graph, key_id: str) -> None:
+async def _stamp_api_key_last_used(
+    db: graph.Graph,
+    key_id: str,
+    auth_settings: settings.Auth,
+) -> None:
     """Set last_used on the APIKey node identified by key_id.
+
+    Skips the write atomically when the existing ``last_used`` is
+    newer than ``auth_settings.last_used_throttle_seconds`` ago. The
+    value only needs to be accurate to the nearest minute or so; we
+    don't need to spend a graph write on every authenticated
+    request. A throttle of ``0`` disables this and always writes.
 
     AGE's cypher() wrapper requires a RETURN clause to properly
     finalize a write operation — omitting it causes an internal
     "Entity failed to be updated" error. Failures are logged and
     swallowed: the stamp is best-effort and must not fail authentication.
     """
-    now = datetime.datetime.now(datetime.UTC).isoformat()
+    now = datetime.datetime.now(datetime.UTC)
+    threshold = now - datetime.timedelta(
+        seconds=max(0, auth_settings.last_used_throttle_seconds)
+    )
     query: typing.LiteralString = (
         'MATCH (k:APIKey {{key_id: {key_id}}})'
+        ' WHERE k.last_used IS NULL OR k.last_used < {threshold}'
         ' SET k.last_used = {now} RETURN k'
     )
     try:
         await db.execute(
             query,
-            {'key_id': key_id, 'now': now},
+            {
+                'key_id': key_id,
+                'now': now.isoformat(),
+                'threshold': threshold.isoformat(),
+            },
             columns=['k'],
         )
     except Exception:  # noqa: BLE001
@@ -434,7 +452,7 @@ async def authenticate_api_key(
         filtered = all_perms.intersection(set(scopes)) if scopes else all_perms
 
         # Update last_used only after all validation passes
-        await _stamp_api_key_last_used(db, key_id)
+        await _stamp_api_key_last_used(db, key_id, auth_settings)
 
         return AuthContext(
             service_account=sa,
@@ -456,7 +474,7 @@ async def authenticate_api_key(
     identities = await _load_user_identities(db, user.id)
 
     # Update last_used only after all validation passes
-    await _stamp_api_key_last_used(db, key_id)
+    await _stamp_api_key_last_used(db, key_id, auth_settings)
 
     return AuthContext(
         user=user,

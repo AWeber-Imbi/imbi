@@ -420,3 +420,63 @@ class GetCurrentUserTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(auth_context.user.email, 'test@example.com')
         self.assertEqual(auth_context.session_id, self.key_id)
         self.assertEqual(auth_context.auth_method, 'api_key')
+
+
+class StampApiKeyLastUsedTestCase(unittest.IsolatedAsyncioTestCase):
+    """Test ``_stamp_api_key_last_used`` throttling behavior."""
+
+    async def test_query_carries_throttle_threshold(self) -> None:
+        """Stamp query filters on the configured throttle interval."""
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = []
+        auth_settings = settings.Auth(
+            jwt_secret='test-secret-key-min-32-chars-long',
+            last_used_throttle_seconds=60,
+        )
+
+        await permissions._stamp_api_key_last_used(
+            mock_db, 'ik_abc', auth_settings
+        )
+
+        mock_db.execute.assert_awaited_once()
+        call_args = mock_db.execute.await_args
+        assert call_args is not None
+        query = call_args[0][0]
+        params = call_args[0][1] if len(call_args[0]) > 1 else {}
+        self.assertEqual('ik_abc', params.get('key_id'))
+        self.assertIn('threshold', params)
+        self.assertIn('k.last_used IS NULL', query)
+        self.assertIn('k.last_used < {threshold}', query)
+        now_dt = datetime.datetime.fromisoformat(params['now'])
+        threshold_dt = datetime.datetime.fromisoformat(params['threshold'])
+        self.assertEqual(60.0, (now_dt - threshold_dt).total_seconds())
+
+    async def test_zero_throttle_uses_now_as_threshold(self) -> None:
+        """A 0-second throttle disables the filter (threshold == now)."""
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = []
+        auth_settings = settings.Auth(
+            jwt_secret='test-secret-key-min-32-chars-long',
+            last_used_throttle_seconds=0,
+        )
+
+        await permissions._stamp_api_key_last_used(
+            mock_db, 'ik_abc', auth_settings
+        )
+
+        call_args = mock_db.execute.await_args
+        assert call_args is not None
+        params = call_args[0][1] if len(call_args[0]) > 1 else {}
+        self.assertEqual(params['now'], params['threshold'])
+
+    async def test_swallows_db_errors(self) -> None:
+        """Stamp failures are logged but never propagate."""
+        mock_db = mock.AsyncMock()
+        mock_db.execute.side_effect = RuntimeError('graph down')
+        auth_settings = settings.Auth(
+            jwt_secret='test-secret-key-min-32-chars-long',
+        )
+
+        await permissions._stamp_api_key_last_used(
+            mock_db, 'ik_abc', auth_settings
+        )

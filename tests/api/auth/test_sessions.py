@@ -1,5 +1,6 @@
 """Tests for session management."""
 
+import datetime
 import unittest
 from unittest import mock
 
@@ -70,18 +71,49 @@ class UpdateSessionActivityTestCase(
 ):
     """Test update_session_activity function."""
 
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.auth_settings = settings.Auth(last_used_throttle_seconds=60)
+
     async def test_update_session_activity(self) -> None:
-        """Test update_session_activity updates timestamp."""
+        """Test update_session_activity issues a throttled SET query."""
         mock_db = mock.AsyncMock()
         mock_db.execute.return_value = []
 
-        await sessions.update_session_activity(mock_db, 'session123')
+        await sessions.update_session_activity(
+            mock_db, 'session123', self.auth_settings
+        )
 
-        # Verify execute was called with correct session_id
-        mock_db.execute.assert_called_once()
-        call_args = mock_db.execute.call_args
+        # Verify execute was called with the expected params and the
+        # query carries the throttling guard.
+        mock_db.execute.assert_awaited_once()
+        call_args = mock_db.execute.await_args
+        assert call_args is not None
+        query = call_args[0][0]
         params = call_args[0][1] if len(call_args[0]) > 1 else {}
         self.assertEqual('session123', params.get('session_id'))
+        self.assertIn('threshold', params)
+        self.assertIn('s.last_activity IS NULL', query)
+        self.assertIn('s.last_activity < {threshold}', query)
+        # ``now`` and ``threshold`` should be 60 seconds apart.
+        now_dt = datetime.datetime.fromisoformat(params['now'])
+        threshold_dt = datetime.datetime.fromisoformat(params['threshold'])
+        self.assertEqual(60.0, (now_dt - threshold_dt).total_seconds())
+
+    async def test_zero_throttle_uses_now_as_threshold(self) -> None:
+        """With throttle=0 the WHERE filter never blocks the write."""
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = []
+        zero_settings = settings.Auth(last_used_throttle_seconds=0)
+
+        await sessions.update_session_activity(
+            mock_db, 'session123', zero_settings
+        )
+
+        call_args = mock_db.execute.await_args
+        assert call_args is not None
+        params = call_args[0][1] if len(call_args[0]) > 1 else {}
+        self.assertEqual(params['now'], params['threshold'])
 
 
 class DeleteExpiredSessionsTestCase(
