@@ -170,6 +170,10 @@ max-complexity = 15
 "src/imbi_assistant/system_prompt.py" = ["PLW0603"]
 "tests/**/*.py" = ["ANN", "ARG005", "B018", "PLC0415", "S"]
 
+[tool.uv]
+exclude-newer = "7 days"
+exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "imbi-plugin-aws" = false, "imbi-plugin-github" = false, "imbi-plugin-logzio" = false, "imbi-plugin-oidc" = false, "imbi-plugin-pagerduty" = false, "imbi-plugin-sentry" = false, "imbi-plugin-sonarqube" = false }
+
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
