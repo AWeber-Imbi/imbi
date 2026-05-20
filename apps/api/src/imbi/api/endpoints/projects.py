@@ -143,6 +143,61 @@ class ReleaseInfo(pydantic.BaseModel):
     committish: str | None = None
 
 
+class ProjectListTeamRef(pydantic.BaseModel):
+    """Minimal team identity for the projects-list view."""
+
+    name: str
+    slug: str
+
+
+class ProjectListProjectTypeRef(pydantic.BaseModel):
+    """Minimal project-type identity for the projects-list view."""
+
+    name: str
+    slug: str
+    deployable: bool = False
+
+
+class ProjectListEnvironmentRef(pydantic.BaseModel):
+    """Minimal environment identity for the projects-list view."""
+
+    name: str
+    slug: str
+    label_color: str | None = None
+    sort_order: int = 0
+
+
+class ProjectListItem(pydantic.BaseModel):
+    """Slim project payload returned from ``GET /projects/?slim=true``.
+
+    Stripped to the fields the projects-list page actually reads --
+    no ``links``, ``identifiers``, ``relationships``, embedded
+    organizations, blueprint dynamic fields, or ``DEPLOYED_IN`` edge
+    properties. Cuts the response shape from kilobytes-per-project
+    down to a few hundred bytes.
+
+    The page-equivalent fetcher in imbi-ui calls this endpoint with
+    ``slim=true`` to keep the cached array compact in memory.
+    """
+
+    id: str
+    name: str
+    slug: str
+    description: str | None = None
+    archived: bool = False
+    score: float | None = None
+    team: ProjectListTeamRef
+    project_types: list[ProjectListProjectTypeRef] = []
+    environments: list[ProjectListEnvironmentRef] = []
+    open_pr_count: int = 0
+    closed_pr_count: int = 0
+    viewer_open_pr_count: int = 0
+    viewer_closed_pr_count: int = 0
+    current_releases: dict[str, ReleaseInfo] = pydantic.Field(
+        default_factory=dict
+    )
+
+
 class ProjectResponse(pydantic.BaseModel):
     """Response body for a project."""
 
@@ -709,6 +764,34 @@ _RETURN_FRAGMENT: typing.LiteralString = """
 """
 
 
+# Slim variant: drops blueprint dynamic fields, embedded organizations,
+# DEPLOYED_IN edge props, DEPENDS_ON counts, and every Project node
+# field the projects-list page doesn't read (links, identifiers,
+# icon, created_at, archived_at, ...). Cuts the per-project payload
+# by an order of magnitude.
+_SLIM_RETURN_FRAGMENT: typing.LiteralString = """
+    MATCH (p)-[:OWNED_BY]->(t:Team)-[:BELONGS_TO]->(o)
+    WITH p, t
+    OPTIONAL MATCH (p)-[:TYPE]->(pt:ProjectType)
+    WITH p, t,
+         collect(CASE WHEN pt IS NOT NULL
+                      THEN pt{{.slug, .name,
+                               deployable: coalesce(pt.deployable, false)}}
+                      END) AS pts
+    OPTIONAL MATCH (p)-[:DEPLOYED_IN]->(env:Environment)
+    WITH p, t, pts,
+         collect(CASE WHEN env IS NOT NULL
+                      THEN env{{.slug, .name, .label_color,
+                                sort_order: coalesce(env.sort_order, 0)}}
+                      END) AS envs
+    RETURN p{{.id, .name, .slug, .description, .score,
+              archived: coalesce(p.archived, false),
+              team: t{{.name, .slug}},
+              project_types: pts,
+              environments: envs}} AS project
+"""
+
+
 # -- Endpoints ----------------------------------------------------------
 
 
@@ -938,79 +1021,15 @@ def _attach_project_relationships(
     project['relationships'] = rels
 
 
-@projects_router.get('/', name='list_projects')
-async def list_projects(
-    org_slug: str,
-    request: fastapi.Request,
-    db: graph.Pool,
-    auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(
-            permissions.require_permission('project:read'),
-        ),
-    ],
-    project_type: str | None = None,
-    include_archived: bool = False,
-) -> list[ProjectResponse]:
-    """List projects in the organization.
+async def _resolve_release_display_names(
+    db: graph.Graph,
+    releases: dict[str, dict[str, ReleaseInfo]],
+) -> None:
+    """Replace ``performed_by`` emails with the user's display name.
 
-    By default archived projects are excluded.  Pass
-    ``include_archived=true`` to include them.
+    Operates in-place on the releases map. Emails with no matching
+    user fall back to the local-part; anything else is left alone.
     """
-    type_filter: typing.LiteralString = (
-        'MATCH (p)-[:TYPE]->(filter_pt:ProjectType {{slug: {project_type}}})'
-        if project_type
-        else ''
-    )
-    archived_filter: typing.LiteralString = (
-        '' if include_archived else 'WHERE coalesce(p.archived, false) = false'
-    )
-    query: typing.LiteralString = (
-        """
-    MATCH (p:Project)-[:OWNED_BY]->(:Team)
-          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    """
-        + archived_filter
-        + """
-    WITH DISTINCT p, o
-    """
-        + type_filter
-        + _RETURN_FRAGMENT
-        + """
-    ORDER BY p.name
-    """
-    )
-    results: list[ProjectResponse] = []
-    records = await db.execute(
-        query,
-        {
-            'org_slug': org_slug,
-            'project_type': project_type,
-        },
-        ['project', 'outbound_count', 'inbound_count'],
-    )
-    project_data_list: list[dict[str, typing.Any]] = []
-    for record in records:
-        project_data = graph.parse_agtype(record['project'])
-        _flatten_edge_props(project_data)
-        _attach_project_relationships(
-            project_data,
-            org_slug,
-            request,
-            graph.parse_agtype(record['outbound_count']),
-            graph.parse_agtype(record['inbound_count']),
-        )
-        project_data_list.append(project_data)
-
-    project_ids = [
-        str(p.get('id', '')) for p in project_data_list if p.get('id')
-    ]
-    viewer = auth.identity_for('github-enterprise-cloud')
-    pr_counts, releases = await asyncio.gather(
-        _fetch_pr_counts(project_ids, viewer=viewer),
-        _fetch_current_releases(db, project_ids),
-    )
-
     emails = list(
         {
             info.performed_by
@@ -1032,6 +1051,107 @@ async def list_projects(
                 continue
             env_map[slug] = info.model_copy(update={'performed_by': name})
 
+
+@projects_router.get('/', name='list_projects')
+async def list_projects(
+    org_slug: str,
+    request: fastapi.Request,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:read'),
+        ),
+    ],
+    project_type: str | None = None,
+    include_archived: bool = False,
+    slim: bool = False,
+) -> list[ProjectListItem] | list[ProjectResponse]:
+    """List projects in the organization.
+
+    By default archived projects are excluded.  Pass
+    ``include_archived=true`` to include them.
+
+    ``slim=true`` returns a stripped payload tailored to the
+    projects-list UI: only the fields the list view reads (id, name,
+    score, team slug+name, project_type slug+name+deployable,
+    environment slug+name+label_color+sort_order, PR counts,
+    current releases). Strips the embedded organization,
+    blueprint dynamic fields, ``links``, ``identifiers``,
+    DEPLOYED_IN edge properties, and the hypermedia
+    ``relationships`` block. Cuts the response from megabytes to
+    kilobytes for large orgs.
+    """
+    type_filter: typing.LiteralString = (
+        'MATCH (p)-[:TYPE]->(filter_pt:ProjectType {{slug: {project_type}}})'
+        if project_type
+        else ''
+    )
+    archived_filter: typing.LiteralString = (
+        '' if include_archived else 'WHERE coalesce(p.archived, false) = false'
+    )
+    return_fragment: typing.LiteralString = (
+        _SLIM_RETURN_FRAGMENT if slim else _RETURN_FRAGMENT
+    )
+    query: typing.LiteralString = (
+        """
+    MATCH (p:Project)-[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    """
+        + archived_filter
+        + """
+    WITH DISTINCT p, o
+    """
+        + type_filter
+        + return_fragment
+        + """
+    ORDER BY p.name
+    """
+    )
+    columns: list[str] = (
+        ['project'] if slim else ['project', 'outbound_count', 'inbound_count']
+    )
+    records = await db.execute(
+        query,
+        {
+            'org_slug': org_slug,
+            'project_type': project_type,
+        },
+        columns,
+    )
+    project_data_list: list[dict[str, typing.Any]] = []
+    for record in records:
+        project_data = graph.parse_agtype(record['project'])
+        if not slim:
+            _flatten_edge_props(project_data)
+            _attach_project_relationships(
+                project_data,
+                org_slug,
+                request,
+                graph.parse_agtype(record['outbound_count']),
+                graph.parse_agtype(record['inbound_count']),
+            )
+        else:
+            # Strip null/empty entries AGE can inject when
+            # ``collect(CASE WHEN ... END)`` matches nothing.
+            for key in ('project_types', 'environments'):
+                raw: list[typing.Any] = project_data.get(key) or []
+                project_data[key] = [
+                    item for item in raw if isinstance(item, dict) and item
+                ]
+        project_data_list.append(project_data)
+
+    project_ids = [
+        str(p.get('id', '')) for p in project_data_list if p.get('id')
+    ]
+    viewer = auth.identity_for('github-enterprise-cloud')
+    pr_counts, releases = await asyncio.gather(
+        _fetch_pr_counts(project_ids, viewer=viewer),
+        _fetch_current_releases(db, project_ids),
+    )
+
+    await _resolve_release_display_names(db, releases)
+
     for project_data in project_data_list:
         pid = str(project_data.get('id', ''))
         open_count, closed_count, viewer_open, viewer_closed = pr_counts.get(
@@ -1042,8 +1162,10 @@ async def list_projects(
         project_data['viewer_open_pr_count'] = viewer_open
         project_data['viewer_closed_pr_count'] = viewer_closed
         project_data['current_releases'] = releases.get(pid, {})
-        results.append(ProjectResponse.model_validate(project_data))
-    return results
+
+    if slim:
+        return [ProjectListItem.model_validate(p) for p in project_data_list]
+    return [ProjectResponse.model_validate(p) for p in project_data_list]
 
 
 class BlueprintSectionProperty(pydantic.BaseModel):
