@@ -404,7 +404,29 @@ async def _stream_response(
 
         tool_results: list[dict[str, typing.Any]] = []
         for tb in tool_use_blocks:
-            if client_tools.is_client_tool(tb['name']):
+            if mcp.is_server_tool(tb['name']):
+                yield _sse_event(
+                    'tool_executing',
+                    {'id': tb['id'], 'name': tb['name']},
+                )
+                success, tool_count = await mcp_manager.reinitialize()
+                tool_results.append(
+                    {
+                        'type': 'tool_result',
+                        'tool_use_id': tb['id'],
+                        'content': json.dumps(
+                            {
+                                'success': success,
+                                'tool_count': tool_count,
+                            }
+                        ),
+                    }
+                )
+                yield _sse_event(
+                    'tool_result',
+                    {'id': tb['id'], 'name': tb['name']},
+                )
+            elif client_tools.is_client_tool(tb['name']):
                 yield _sse_event(
                     'client_action',
                     {
@@ -548,9 +570,17 @@ async def send_message(
 
     mcp_manager = mcp.get_manager()
     mcp_tool_list = mcp_manager.get_tools()
-    all_tools = (mcp_tool_list or []) + (client_tools.get_tools())
+    all_tools = (
+        (mcp_tool_list or [])
+        + mcp.get_server_tools()
+        + client_tools.get_tools()
+    )
     tools = all_tools or None
-    tool_names = mcp_manager.get_tool_names() + client_tools.get_tool_names()
+    tool_names = [
+        *mcp_manager.get_tool_names(),
+        mcp.REFRESH_TOOL_NAME,
+        *client_tools.get_tool_names(),
+    ]
     system = system_prompt.build_system_prompt(
         auth_ctx,
         tool_names=tool_names,
