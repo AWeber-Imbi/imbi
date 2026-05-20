@@ -961,7 +961,9 @@ class ProcessNotificationTests(helpers.TestCase):
         ) as cm:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
-        self.assertTrue(any('Failure in' in line for line in cm.output))
+        self.assertTrue(
+            any('Failure executing rule' in line for line in cm.output)
+        )
 
     async def test_event_recorded_for_each_matching_project(self) -> None:
         await self._add_rule(filter_expression='true')
