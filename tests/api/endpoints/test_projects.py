@@ -674,6 +674,94 @@ class ProjectEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertIn('already exists', response.json()['detail'])
 
+    def test_patch_project_retries_age_entity_update_error(self) -> None:
+        """AGE 'Entity failed to be updated' is retried, eventually
+        succeeds."""
+        existing = self._project_data()
+        updated_row = {
+            'project': existing,
+            'outbound_count': 0,
+            'inbound_count': 0,
+        }
+        self.mock_db.execute.side_effect = [
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+            [{'slug': 'platform'}],
+            [{'pt_slug': 'api-service', 'found': True}],
+            psycopg.errors.InternalError('Entity failed to be updated: 3'),
+            [updated_row],  # retry succeeds
+        ]
+
+        with (
+            mock.patch('imbi_api.endpoints.projects.asyncio.sleep'),
+            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            mock_get_model.return_value = models.Project
+
+            response = self.client.patch(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json=[{'op': 'replace', 'path': '/name', 'value': 'Updated'}],
+            )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_patch_project_age_update_error_exhausted(self) -> None:
+        """AGE 'Entity failed to be updated' that persists is raised after
+        three attempts."""
+        existing = self._project_data()
+        self.mock_db.execute.side_effect = [
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+            [{'slug': 'platform'}],
+            [{'pt_slug': 'api-service', 'found': True}],
+            psycopg.errors.InternalError('Entity failed to be updated: 3'),
+            psycopg.errors.InternalError('Entity failed to be updated: 3'),
+            psycopg.errors.InternalError('Entity failed to be updated: 3'),
+        ]
+
+        with (
+            mock.patch(
+                'imbi_api.endpoints.projects.asyncio.sleep'
+            ) as mock_sleep,
+            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            self.assertRaises(psycopg.errors.InternalError),
+        ):
+            mock_get_model.return_value = models.Project
+            self.client.patch(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json=[{'op': 'replace', 'path': '/name', 'value': 'Updated'}],
+            )
+
+        self.assertEqual(self.mock_db.execute.call_count, 6)
+        self.assertEqual(mock_sleep.await_count, 2)
+
+    def test_patch_project_other_internal_error_not_retried(self) -> None:
+        """Non-AGE InternalError propagates without retry."""
+        existing = self._project_data()
+        self.mock_db.execute.side_effect = [
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+            [{'slug': 'platform'}],
+            [{'pt_slug': 'api-service', 'found': True}],
+            psycopg.errors.InternalError('some other error'),
+        ]
+
+        with (
+            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            self.assertRaises(psycopg.errors.InternalError),
+        ):
+            mock_get_model.return_value = models.Project
+            self.client.patch(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json=[{'op': 'replace', 'path': '/name', 'value': 'Updated'}],
+            )
+
     def test_patch_project_concurrent_delete(self) -> None:
         """Patch when update query returns empty returns 404."""
         existing = self._project_data()

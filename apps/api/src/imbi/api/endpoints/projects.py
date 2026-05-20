@@ -1722,24 +1722,43 @@ async def _execute_project_update(
         + _RETURN_FRAGMENT
     )
 
-    try:
-        updated = await db.execute(
-            update_query,
-            {
-                'project_id': project_id,
-                'org_slug': org_slug,
-                **props,
-                'new_team_slug': data.team_slug or '',
-                'new_type_slugs': data.project_type_slugs or [],
-                **new_env_params,
-            },
-            ['project', 'outbound_count', 'inbound_count'],
-        )
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=str(e),
-        ) from e
+    update_params: dict[str, typing.Any] = {
+        'project_id': project_id,
+        'org_slug': org_slug,
+        **props,
+        'new_team_slug': data.team_slug or '',
+        'new_type_slugs': data.project_type_slugs or [],
+        **new_env_params,
+    }
+    # AGE sporadically raises "Entity failed to be updated" on
+    # multi-stage MATCH/SET queries even when the entity exists.
+    # The error is non-deterministic and resolves on retry, so wrap
+    # the update in a short bounded retry loop.  ``UniqueViolation``
+    # is a real conflict and is surfaced as 409 immediately.
+    updated: list[dict[str, typing.Any]] = []
+    for attempt in range(3):
+        try:
+            updated = await db.execute(
+                update_query,
+                update_params,
+                ['project', 'outbound_count', 'inbound_count'],
+            )
+            break
+        except psycopg.errors.UniqueViolation as e:
+            raise fastapi.HTTPException(
+                status_code=409,
+                detail=str(e),
+            ) from e
+        except psycopg.errors.InternalError as e:
+            if 'Entity failed to be updated' not in str(e) or attempt == 2:
+                raise
+            LOGGER.warning(
+                'AGE update retry %d/3 for project %r: %s',
+                attempt + 1,
+                project_id,
+                e,
+            )
+            await asyncio.sleep(0.05 * (attempt + 1))
 
     if not updated:
         raise fastapi.HTTPException(
