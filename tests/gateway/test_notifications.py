@@ -128,6 +128,52 @@ class StubWithCredsPlugin(plugin_base.WebhookActionPlugin):
         ]
 
 
+class StubIdentityPlugin(plugin_base.IdentityPlugin):
+    """Stub identity plugin used to satisfy registry filtering in tests."""
+
+    manifest = plugin_base.PluginManifest(
+        slug='stub-identity', name='Stub Identity', plugin_type='identity'
+    )
+
+    async def authorization_request(
+        self,
+        ctx: plugin_base.PluginContext,
+        credentials: dict[str, str],
+        redirect_uri: str,
+        scopes: list[str] | None = None,
+    ) -> plugin_base.AuthorizationRequest:
+        del ctx, credentials, redirect_uri, scopes
+        raise NotImplementedError
+
+    async def exchange_code(
+        self,
+        ctx: plugin_base.PluginContext,
+        credentials: dict[str, str],
+        code: str,
+        redirect_uri: str,
+        code_verifier: str | None = None,
+    ) -> tuple[plugin_base.IdentityProfile, plugin_base.IdentityCredentials]:
+        del ctx, credentials, code, redirect_uri, code_verifier
+        raise NotImplementedError
+
+    async def refresh(
+        self,
+        ctx: plugin_base.PluginContext,
+        credentials: dict[str, str],
+        refresh_token: str,
+    ) -> plugin_base.IdentityCredentials:
+        del ctx, credentials, refresh_token
+        raise NotImplementedError
+
+
+#: Identity-typed slugs registered for tests that exercise the user
+#: resolution path. ``_resolve_user_id`` filters candidate plugin slugs
+#: through the registry, so every slug referenced as an identity plugin
+#: must be installed with ``plugin_type='identity'`` for the existing
+#: behavior to be reachable from tests.
+_IDENTITY_PLUGIN_SLUGS = ('github', 'gitlab', 'stub-identity')
+
+
 def _install_stub_plugins() -> None:
     """Pre-populate the registry with stub plugins used across tests."""
     _registry: dict[str, plugin_registry.RegistryEntry] = (
@@ -140,13 +186,22 @@ def _install_stub_plugins() -> None:
             package_name='tests',
             package_version='0.0.0',
         )
+    for slug in _IDENTITY_PLUGIN_SLUGS:
+        _registry[slug] = plugin_registry.RegistryEntry(
+            handler_cls=StubIdentityPlugin,
+            manifest=plugin_base.PluginManifest(
+                slug=slug, name=f'Stub {slug}', plugin_type='identity'
+            ),
+            package_name='tests',
+            package_version='0.0.0',
+        )
 
 
 def _uninstall_stub_plugins() -> None:
     _registry: dict[str, plugin_registry.RegistryEntry] = (
         plugin_registry._registry  # pyright: ignore[reportPrivateUsage]
     )
-    for slug in ('stub-nocreds', 'stub-creds'):
+    for slug in ('stub-nocreds', 'stub-creds', *_IDENTITY_PLUGIN_SLUGS):
         _registry.pop(slug, None)
 
 
@@ -910,6 +965,35 @@ class ProcessNotificationTests(helpers.TestCase):
         mock_lookup.assert_not_awaited()
         ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
         self.assertIsNone(ctx.actor_user_id)
+
+    async def test_non_identity_plugin_skipped_during_user_resolution(
+        self,
+    ) -> None:
+        """Non-identity attached plugins are not probed for users.
+
+        The gateway used to call ``/users/by-identity`` for every plugin
+        attached to the TPS, generating 404 noise for webhook /
+        configuration / deployment plugins. After the refactor only
+        plugins registered with ``plugin_type='identity'`` are queried.
+        """
+        await self._add_rule(filter_expression='true')
+        await self._set_implemented_by(user_subject_selector='/sender/id')
+        await self._attach_plugin('stub-nocreds')
+        await self._attach_plugin('github')
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(return_value='alice@example.com'),
+            ) as mock_lookup,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_awaited_once_with('github', '12345')
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertEqual('alice@example.com', ctx.actor_user_id)
 
     async def test_user_resolution_two_distinct_users_logs_error(self) -> None:
         await self._add_rule(filter_expression='true')
