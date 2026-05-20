@@ -364,36 +364,49 @@ async def _resolve_display_names(
     }
 
 
-async def _fetch_current_releases(
-    db: graph.Graph,
-    project_ids: list[str],
-) -> dict[str, dict[str, ReleaseInfo]]:
-    """Return {project_id: {env_slug: ReleaseInfo}} for current releases.
+def _parse_deployment_events(
+    raw: typing.Any,
+) -> list[models.DeploymentEvent]:
+    """Parse the JSON-encoded ``deployments`` edge property."""
+    if not raw:
+        return []
+    data = json.loads(raw) if isinstance(raw, str) else raw
+    if not isinstance(data, list):
+        return []
+    items: list[typing.Any] = data  # type: ignore[assignment]
+    out: list[models.DeploymentEvent] = []
+    for item in items:
+        try:
+            out.append(models.DeploymentEvent.model_validate(item))
+        except pydantic.ValidationError:
+            continue
+    return out
 
-    ClickHouse tells us which release ``version`` string is currently
-    deployed per (project, environment). The Release node itself
-    carries the structured ``tag`` + ``committish`` fields, so we
-    join back to AGE with a single bulk query keyed on
-    ``(project_id, version)`` — matching ``r.tag = version`` for
-    tagged releases and ``r.committish = version`` for raw-SHA
-    deploys. The ops_log writer (see
-    ``project_deployments._record_deployment_audit``) stores
-    ``tag if tag else committish`` in ``version``, so the ``OR``
-    branch is exhaustive in normal data.
 
-    Errors are swallowed — release data is best-effort.
+async def _lookup_ops_log_performed_by(
+    targets: list[tuple[str, str, str]],
+) -> dict[tuple[str, str, str], str]:
+    """Map ``(project_id, environment_slug, version)`` → ``performed_by``.
+
+    Backfills the deployer for releases whose
+    ``DeploymentEvent.performed_by`` on the AGE edge is null.
+    The in-product deploy/promote handlers intentionally leave that
+    field empty because the audit row in ``operations_log`` already
+    carries the operator (see
+    ``project_deployments._record_deployment_audit``).
+
+    Errors are swallowed — performer attribution is best-effort.
     """
-    if not project_ids:
+    if not targets:
         return {}
+    project_ids = sorted({t[0] for t in targets})
     sql = (
-        'SELECT project_id, environment_slug,'
-        ' argMax(version, occurred_at) AS version,'
-        ' argMax(performed_by, occurred_at) AS performed_by,'
-        ' max(occurred_at) AS deployed_at'
+        'SELECT project_id, environment_slug, version,'
+        ' argMax(performed_by, occurred_at) AS performed_by'
         ' FROM operations_log FINAL'
         " WHERE entry_type = 'Deployed'"
         ' AND project_id IN {project_ids:Array(String)}'
-        ' GROUP BY project_id, environment_slug'
+        ' GROUP BY project_id, environment_slug, version'
     )
     try:
         rows = await ch_client.Clickhouse.get_instance().query(
@@ -401,101 +414,132 @@ async def _fetch_current_releases(
         )
     except Exception:  # noqa: BLE001
         LOGGER.warning(
-            'Failed to fetch current releases for projects', exc_info=True
+            'Failed to enrich performed_by from operations_log',
+            exc_info=True,
         )
         return {}
-    # First pass: collect rows and the (project_id, version) pairs we
-    # need to translate to (tag, committish).
-    rows_list = list(rows)
-    pairs = sorted(
-        {
-            (str(r['project_id']), str(r['version']))
-            for r in rows_list
-            if r.get('version')
-        }
-    )
-    identity_by_pair = await _resolve_release_identities(db, pairs)
-    result: dict[str, dict[str, ReleaseInfo]] = {}
-    for r in rows_list:
-        pid = str(r['project_id'])
-        env_slug = str(r['environment_slug'])
-        version_value = str(r['version']) if r.get('version') else ''
-        tag, committish = identity_by_pair.get(
-            (pid, version_value), (None, None)
+    target_keys = set(targets)
+    result: dict[tuple[str, str, str], str] = {}
+    for row in rows:
+        key = (
+            str(row.get('project_id') or ''),
+            str(row.get('environment_slug') or ''),
+            str(row.get('version') or ''),
         )
-        result.setdefault(pid, {})[env_slug] = ReleaseInfo(
-            tag=tag,
-            committish=committish,
-            performed_by=r.get('performed_by') or None,
-            deployed_at=r['deployed_at'],
-        )
+        performed_by = row.get('performed_by')
+        if performed_by and key in target_keys:
+            result[key] = str(performed_by)
     return result
 
 
-async def _resolve_release_identities(
+async def _fetch_current_releases(
     db: graph.Graph,
-    pairs: list[tuple[str, str]],
-) -> dict[tuple[str, str], tuple[str | None, str | None]]:
-    """Look up ``(tag, committish)`` for each ``(project_id, version)`` pair.
+    project_ids: list[str],
+) -> dict[str, dict[str, ReleaseInfo]]:
+    """Return {project_id: {env_slug: ReleaseInfo}} for current releases.
 
-    Fetches every release for the projects involved in one bulk
-    Cypher query, then joins against ``pairs`` in Python. Avoids
-    the cross-product scan that an inline UNWIND + ``OR`` filter
-    would force per pair (no tag/committish indexes exist, so each
-    pair would otherwise walk every Release for its project).
+    Reads from the AGE graph — the same source the project-detail
+    ``/releases/current`` endpoint uses — so both views agree.  For
+    each project we walk every
+    ``(p)-[:HAS_RELEASE]->(r:Release)-[d:DEPLOYED_TO]->(e:Environment)``
+    edge and pick the release whose latest ``DeploymentEvent``
+    has the most recent ``timestamp`` per environment.
 
-    When a ``(project_id, version)`` matches both a release's
-    ``tag`` and another release's ``committish``, the tag match
-    wins so the human-readable label stays canonical.
+    ``performed_by`` on each ``DeploymentEvent`` is populated for
+    resync-sourced events but is intentionally null for in-product
+    deploy/promote actions (which capture the operator on the
+    ``operations_log`` audit row instead).  For those rows we look
+    up the deployer in ``operations_log`` keyed on
+    ``(project_id, environment_slug, version)`` — where ``version``
+    is ``tag if tag else committish``, matching the audit writer.
+
+    Errors are swallowed — release data is best-effort.
     """
-    if not pairs:
+    if not project_ids:
         return {}
-    project_ids = sorted({pid for pid, _ in pairs})
     query: typing.LiteralString = """
     MATCH (p:Project)-[:HAS_RELEASE]->(r:Release)
+                    -[d:DEPLOYED_TO]->(e:Environment)
     WHERE p.id IN {project_ids}
-    RETURN p.id AS project_id, r.tag AS tag, r.committish AS committish
+    RETURN p.id AS project_id,
+           e.slug AS env_slug,
+           r.tag AS tag,
+           r.committish AS committish,
+           d.deployments AS deployments
     """
     try:
         rows = await db.execute(
             query,
             {'project_ids': project_ids},
-            ['project_id', 'tag', 'committish'],
+            ['project_id', 'env_slug', 'tag', 'committish', 'deployments'],
         )
     except Exception:  # noqa: BLE001
         LOGGER.warning(
-            'Failed to resolve release identities from the graph',
-            exc_info=True,
+            'Failed to fetch current releases for projects', exc_info=True
         )
         return {}
 
-    # Build two indexes per project: tag → (tag, committish) and
-    # committish → (tag, committish). The tag index wins for lookup
-    # so a ``version`` that happens to match both indexes resolves
-    # to the tagged release.
-    by_tag: dict[tuple[str, str], tuple[str | None, str | None]] = {}
-    by_committish: dict[tuple[str, str], tuple[str | None, str | None]] = {}
+    # For each (project_id, env_slug), keep the (release, event) pair
+    # with the latest event timestamp.
+    latest: dict[
+        tuple[str, str],
+        tuple[str | None, str | None, datetime.datetime, str | None],
+    ] = {}
     for row in rows:
         pid = graph.parse_agtype(row.get('project_id'))
+        env_slug = graph.parse_agtype(row.get('env_slug'))
+        if not isinstance(pid, str) or not isinstance(env_slug, str):
+            continue
+        events = _parse_deployment_events(
+            graph.parse_agtype(row.get('deployments'))
+        )
+        if not events:
+            continue
+        event = max(events, key=lambda e: e.timestamp)
         tag_val = graph.parse_agtype(row.get('tag'))
         committish_val = graph.parse_agtype(row.get('committish'))
-        if not isinstance(pid, str):
-            continue
         tag = str(tag_val) if tag_val else None
         committish = str(committish_val) if committish_val else None
-        identity = (tag, committish)
-        if tag:
-            by_tag.setdefault((pid, tag), identity)
-        if committish:
-            by_committish.setdefault((pid, committish), identity)
+        key = (pid, env_slug)
+        existing = latest.get(key)
+        if existing is None or event.timestamp > existing[2]:
+            latest[key] = (
+                tag,
+                committish,
+                event.timestamp,
+                event.performed_by,
+            )
 
-    result: dict[tuple[str, str], tuple[str | None, str | None]] = {}
-    for pid, version in pairs:
-        key = (pid, version)
-        if key in by_tag:
-            result[key] = by_tag[key]
-        elif key in by_committish:
-            result[key] = by_committish[key]
+    # Backfill performed_by from operations_log for events whose
+    # AGE edge left it null (in-product deploy/promote path).
+    enrich_targets = [
+        (pid, env_slug, str(tag or committish or ''))
+        for (pid, env_slug), (
+            tag,
+            committish,
+            _ts,
+            performed_by,
+        ) in latest.items()
+        if performed_by is None and (tag or committish)
+    ]
+    performed_by_by_key = await _lookup_ops_log_performed_by(enrich_targets)
+    if performed_by_by_key:
+        for key, (tag, committish, ts, performed_by) in list(latest.items()):
+            if performed_by is not None:
+                continue
+            version = str(tag or committish or '')
+            looked_up = performed_by_by_key.get((key[0], key[1], version))
+            if looked_up:
+                latest[key] = (tag, committish, ts, looked_up)
+
+    result: dict[str, dict[str, ReleaseInfo]] = {}
+    for (pid, env_slug), (tag, committish, ts, performed_by) in latest.items():
+        result.setdefault(pid, {})[env_slug] = ReleaseInfo(
+            tag=tag,
+            committish=committish,
+            performed_by=performed_by,
+            deployed_at=ts,
+        )
     return result
 
 
