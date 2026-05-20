@@ -959,7 +959,7 @@ wheels = [
 
 [[package]]
 name = "imbi-api"
-version = "2.4.0"
+version = "2.5.1"
 source = { editable = "." }
 dependencies = [
   { name = "aioboto3" },
@@ -1034,7 +1034,7 @@ requires-dist = [
   { name = "fastapi" },
   { name = "filetype" },
   { name = "httpx", specifier = ">=0.28.1,<1" },
-  { name = "imbi-common", extras = ["databases", "llm", "sentry", "server"], specifier = ">=2.5.3" },
+  { name = "imbi-common", extras = ["databases", "llm", "sentry", "server"], specifier = ">=2.5.5" },
   { name = "jinja2" },
   { name = "jsonpatch", specifier = ">=1.33" },
   { name = "nanoid", specifier = ">=2.0.0" },
@@ -1087,7 +1087,7 @@ plugins = [
 
 [[package]]
 name = "imbi-common"
-version = "2.5.3"
+version = "2.5.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
   { name = "cryptography" },
@@ -1103,9 +1103,9 @@ dependencies = [
   { name = "python-slugify" },
   { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3a/a4/925d4524170a451c4ec109af083191c5bffed64086e33f171b17eeca458d/imbi_common-2.5.3.tar.gz", hash = "sha256:ee7500e8787008c831232b804a0fa7d2373b3e329aa7b7b736a1713082bd32c1", size = 276944, upload-time = "2026-05-19T18:27:33.638Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0d/b7/6dab7155b281f9c075d3434e3f234ef217fe49db840b14e59e3e5a75faa2/imbi_common-2.5.5.tar.gz", hash = "sha256:56751efe31fdc1fcb1d1be19e6b3f073d5b3e4fda3c89c0bcdec5c7943549477", size = 277481, upload-time = "2026-05-20T02:10:09.044Z" }
 wheels = [
-  { url = "https://files.pythonhosted.org/packages/b3/4b/bcd5c211fd04c294c077ed9ade6be8b8ffd3872414d2b720bbdf496efb7c/imbi_common-2.5.3-py3-none-any.whl", hash = "sha256:5f7573717d34953369b6b8d1b300dfdbe95319c7e2880d3401994c1ef2acbf64", size = 90672, upload-time = "2026-05-19T18:27:32.184Z" },
+  { url = "https://files.pythonhosted.org/packages/48/04/69e72ec3a1968a9dd8b91df38e6a7be16e1399a054a953777a23f34c60ca/imbi_common-2.5.5-py3-none-any.whl", hash = "sha256:19ffa23d9cdb0b8065af1d3a9166f819c15414fc4b5707d089adaf64b932ebf1", size = 91154, upload-time = "2026-05-20T02:10:07.448Z" },
 ]
 
 [package.optional-dependencies]
@@ -1154,7 +1154,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
   { name = "httpx", specifier = ">=0.27" },
-  { name = "imbi-common", specifier = ">=2.3.0" },
+  { name = "imbi-common", specifier = ">=2.5.5" },
   { name = "pydantic", specifier = ">=2" },
 ]
 

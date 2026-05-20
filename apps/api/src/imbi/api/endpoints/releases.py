@@ -885,6 +885,7 @@ async def append_deployment_event(
     external_run_id: str | None = None,
     external_run_url: str | None = None,
     timestamp: datetime.datetime | None = None,
+    performed_by: str | None = None,
 ) -> tuple[ReleaseEnvironmentEdgeResponse, AppendOutcome] | None:
     """Append a ``DeploymentEvent`` to ``Release -[:DEPLOYED_TO]-> Env``.
 
@@ -909,6 +910,12 @@ async def append_deployment_event(
 
     ``timestamp`` lets the resync flow record the remote's deployment
     creation time rather than ``now()``; defaults to now when omitted.
+
+    ``performed_by`` records the original deployer when the event is
+    being backfilled from a remote (e.g. ``deployment.creator.login``
+    from GitHub during resync). Deploy/promote flows can leave this
+    ``None`` -- those code paths already attribute the operator via
+    ``operations_log``.
     """
     release = await _fetch_release(db, org_slug, project_id, release_id)
     if release is None:
@@ -931,6 +938,7 @@ async def append_deployment_event(
                     candidate.status == status
                     and candidate.note == note
                     and candidate.external_run_url == external_run_url
+                    and candidate.performed_by == performed_by
                 ):
                     return _edge_to_response(env, existing), 'noop'
                 refreshed = candidate.model_copy(
@@ -940,6 +948,7 @@ async def append_deployment_event(
                         'external_run_url': external_run_url,
                         'timestamp': timestamp
                         or datetime.datetime.now(datetime.UTC),
+                        'performed_by': performed_by,
                     }
                 )
                 updated_list = [
@@ -962,6 +971,7 @@ async def append_deployment_event(
         note=note,
         external_run_id=external_run_id,
         external_run_url=external_run_url,
+        performed_by=performed_by,
     )
     deployments = [*existing, event]
     if existing:

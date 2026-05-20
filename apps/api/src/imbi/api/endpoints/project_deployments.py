@@ -621,7 +621,6 @@ async def resync_for_project(
                 db,
                 org_slug=org_slug,
                 project_id=project_id,
-                project_slug=ctx.project_slug,
                 plugin_slug=resolved.plugin_slug,
                 recorded_by=auth.principal_name,
                 observed=observed,
@@ -655,14 +654,20 @@ async def _apply_remote_deployment(
     *,
     org_slug: str,
     project_id: str,
-    project_slug: str,
     plugin_slug: str,
     recorded_by: str,
     observed: RemoteDeployment,
     summary: ResyncSummary,
     seen_identities: set[tuple[str, str | None]],
 ) -> None:
-    """Persist one observed remote deployment + audit row.
+    """Persist one observed remote deployment.
+
+    Writes the ``Release`` node + ``DeploymentEvent`` on the
+    ``DEPLOYED_TO`` edge.  No ``operations_log`` audit row is written
+    here -- resync backfills historical activity, and attributing it to
+    the resync operator poisons ``argMax(performed_by, occurred_at)``
+    queries.  The edge's ``DeploymentEvent.performed_by`` carries the
+    original deployer when the plugin can resolve one.
 
     ``seen_identities`` is mutated to track which
     ``(committish, tag)`` pairs have already been counted against
@@ -710,6 +715,7 @@ async def _apply_remote_deployment(
         external_run_id=observed.external_run_id,
         external_run_url=observed.run_url,
         timestamp=observed.created_at,
+        performed_by=observed.creator,
     )
     if result is None:
         # Either the Release upsert didn't take or the env slug isn't
@@ -738,19 +744,13 @@ async def _apply_remote_deployment(
         summary.events_skipped += 1
     else:
         summary.events_recorded += 1
-    await _record_deployment_audit(
-        project_id=project_id,
-        project_slug=project_slug,
-        environment_slug=observed.environment,
-        recorded_by=recorded_by,
-        action='resync',
-        tag=tag,
-        committish=committish,
-        plugin_slug=plugin_slug,
-        run_url=observed.run_url,
-        external_run_id=observed.external_run_id,
-        release_url=observed.deployment_url,
-    )
+    # Intentionally no operations_log audit row here: resync backfills
+    # historical remote deployments, so attributing them to the resync
+    # operator poisons ``argMax(performed_by, occurred_at)`` lookups
+    # (e.g. the "Current Deployments" column on /projects). The
+    # ``DEPLOYED_TO`` edge already carries the original creator via
+    # ``DeploymentEvent.performed_by``; in-product deploy/promote
+    # actions still get their own audit row written by their handlers.
 
 
 # ---------------------------------------------------------------------------
