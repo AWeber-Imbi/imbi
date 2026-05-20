@@ -1117,6 +1117,7 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         sha: str = '2668cd0abcdef',
         status: str = 'success',
         external_run_id: str = '12345',
+        creator: str | None = 'octocat',
     ) -> RemoteDeployment:
         return RemoteDeployment(
             environment=environment,
@@ -1132,6 +1133,7 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
                 'https://api.github.com/repos/octo/demo/deployments/12345'
             ),
             description='Bump foo',
+            creator=creator,
         )
 
     def test_resync_persists_release_and_event_for_sha(self) -> None:
@@ -1225,7 +1227,16 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         )
         self.assertEqual(data['events_recorded'], 0)
 
-    def test_resync_writes_audit_per_environment(self) -> None:
+    def test_resync_does_not_write_operations_log_audit(self) -> None:
+        """Resync must not poison ``argMax(performed_by, occurred_at)``.
+
+        Backfilling historical remote deployments through the
+        ``operations_log`` would attribute every event to whoever
+        clicked "Resync", overriding the v1-migrated rows that already
+        carry the real deployer.  The ``DEPLOYED_TO`` edge alone
+        carries the event during resync; in-product deploy / promote
+        flows still write their own audit rows.
+        """
         self._arm([self._observed()])
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
@@ -1233,18 +1244,18 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
             )
         self.assertEqual(response.status_code, 200, response.text)
         ch = self.mocks['clickhouse'].return_value
-        ch.insert.assert_awaited_once()
-        args, _kwargs = ch.insert.call_args
-        cols = args[2]
-        row = dict(zip(cols, args[1][0], strict=False))
-        self.assertEqual(row['entry_type'], 'Deployed')
-        self.assertEqual(row['environment_slug'], 'infrastructure-testing')
-        self.assertEqual(row['version'], '2668cd0')
-        description = row['description']
-        if isinstance(description, str):
-            import json as _json
+        ch.insert.assert_not_awaited()
 
-            self.assertEqual(_json.loads(description)['action'], 'resync')
+    def test_resync_threads_creator_to_performed_by(self) -> None:
+        """``observed.creator`` becomes ``DeploymentEvent.performed_by``."""
+        self._arm([self._observed(creator='octocat')])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/resync'
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        append_call = self.mocks['append_deployment_event'].call_args
+        self.assertEqual(append_call.kwargs['performed_by'], 'octocat')
 
     def test_resync_requires_write_permission(self) -> None:
         non_admin = models.User(

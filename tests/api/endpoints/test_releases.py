@@ -727,6 +727,7 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
         external_run_id: str | None,
         status: str = 'success',
         note: str | None = None,
+        performed_by: str | None = None,
     ) -> typing.Any:
         import asyncio
 
@@ -757,6 +758,7 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
                     note=note,
                     external_run_id=external_run_id,
                     external_run_url='https://gh/runs/42',
+                    performed_by=performed_by,
                 )
             )
 
@@ -830,6 +832,53 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
         )
         self.assertEqual(outcome, 'appended')
         self.assertEqual(len(edge.deployments), 2)
+
+    def test_performed_by_change_refreshes_in_place(self) -> None:
+        """A new ``performed_by`` for the same run triggers a refresh.
+
+        Resync replaying a deployment after a plugin upgrade can now
+        supply a creator login it didn't have before; the dedupe path
+        must treat that as a change so the edge picks up the new
+        attribution rather than no-op'ing on identical-looking rows.
+        """
+        existing = [
+            {
+                'timestamp': '2026-05-13T14:00:00+00:00',
+                'status': 'success',
+                'note': None,
+                'external_run_id': '42',
+                'external_run_url': 'https://gh/runs/42',
+                'performed_by': None,
+            }
+        ]
+        edge, outcome = self._call(
+            existing,
+            external_run_id='42',
+            status='success',
+            performed_by='octocat',
+        )
+        self.assertEqual(outcome, 'updated')
+        self.assertEqual(edge.deployments[0].performed_by, 'octocat')
+
+    def test_performed_by_match_is_no_op(self) -> None:
+        existing = [
+            {
+                'timestamp': '2026-05-13T14:00:00+00:00',
+                'status': 'success',
+                'note': None,
+                'external_run_id': '42',
+                'external_run_url': 'https://gh/runs/42',
+                'performed_by': 'octocat',
+            }
+        ]
+        edge, outcome = self._call(
+            existing,
+            external_run_id='42',
+            status='success',
+            performed_by='octocat',
+        )
+        self.assertEqual(outcome, 'noop')
+        self.assertEqual(edge.deployments[0].performed_by, 'octocat')
 
 
 class CurrentReleasesTestCase(_ReleasesTestBase):
