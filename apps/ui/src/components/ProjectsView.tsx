@@ -93,7 +93,7 @@ export function ProjectsView() {
   const rawView = searchParams.get('view')
   const viewMode = resolveViewMode(rawView, storedView)
   const searchQuery = searchParams.get('q') ?? ''
-  const sortKey = searchParams.get('sort') as null | SortKey
+  const sortKey = (searchParams.get('sort') ?? 'name') as SortKey
   const sortDir = (searchParams.get('dir') ?? 'asc') as SortDir
   const teamsParam = searchParams.get('teams') ?? ''
   const typesParam = searchParams.get('types') ?? ''
@@ -128,24 +128,7 @@ export function ProjectsView() {
     )
 
   const setSort = (key: SortKey) =>
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        if (prev.get('sort') === key) {
-          if ((prev.get('dir') ?? 'asc') === 'asc') {
-            next.set('dir', 'desc')
-          } else {
-            next.delete('sort')
-            next.delete('dir')
-          }
-        } else {
-          next.set('sort', key)
-          next.set('dir', 'asc')
-        }
-        return next
-      },
-      { replace: true },
-    )
+    setSearchParams((prev) => nextSortParams(prev, key), { replace: true })
 
   const toggleBoolParam = (key: string) => () =>
     setSearchParams(
@@ -265,17 +248,23 @@ export function ProjectsView() {
         ],
       })
     }
-    if (!sortKey) return all
+    // Case-insensitive collation so "AWeber" and "aws-foo" don't end up
+    // ordered before "Account" via JS's default locale-strength tiebreak.
+    // Names get trimmed because some legacy data carries leading
+    // whitespace that would otherwise float those rows to the top.
+    const collator = new Intl.Collator('en', { sensitivity: 'base' })
+    const key = (s: null | string | undefined) => (s ?? '').trim()
 
     // fallow-ignore-next-line complexity
     return [...all].sort((a, b) => {
       let cmp = 0
-      if (sortKey === 'name') cmp = a.name.localeCompare(b.name)
-      else if (sortKey === 'team') cmp = a.team.name.localeCompare(b.team.name)
+      if (sortKey === 'name') cmp = collator.compare(key(a.name), key(b.name))
+      else if (sortKey === 'team')
+        cmp = collator.compare(key(a.team.name), key(b.team.name))
       else if (sortKey === 'type') {
         const aType = (a.project_types ?? [])[0]?.name ?? ''
         const bType = (b.project_types ?? [])[0]?.name ?? ''
-        cmp = aType.localeCompare(bType)
+        cmp = collator.compare(key(aType), key(bType))
       } else if (sortKey === 'prs')
         cmp = (a.open_pr_count ?? 0) - (b.open_pr_count ?? 0)
       else if (sortKey === 'score') cmp = (a.score ?? 0) - (b.score ?? 0)
@@ -737,24 +726,7 @@ function DeploymentCards({
                 {env.name}
               </p>
               <p className="flex items-center gap-2 font-mono text-base leading-tight">
-                <span className="min-w-0 flex-1">
-                  {release ? (
-                    <>
-                      <span className="text-primary">
-                        {release.tag ?? release.committish ?? '—'}
-                      </span>
-                      {release.tag && release.committish && (
-                        <span className="text-tertiary ml-2 text-xs font-normal">
-                          {release.committish}
-                        </span>
-                      )}
-                    </>
-                  ) : (
-                    <span className="text-tertiary text-sm font-normal">
-                      Not deployed
-                    </span>
-                  )}
-                </span>
+                <ReleaseLabel release={release} />
               </p>
               <p className="text-tertiary mt-1 flex items-center justify-between text-xs">
                 {release ? (
@@ -899,24 +871,7 @@ function EnvDeploymentHover({
             {env.name}
           </p>
           <p className="flex items-center gap-2 font-mono text-base leading-tight font-bold">
-            <span className="min-w-0 flex-1">
-              {release ? (
-                <>
-                  <span className="text-primary">
-                    {release.tag ?? release.committish ?? '—'}
-                  </span>
-                  {release.tag && release.committish && (
-                    <span className="text-tertiary ml-2 text-xs font-normal">
-                      {release.committish}
-                    </span>
-                  )}
-                </>
-              ) : (
-                <span className="text-tertiary text-sm font-normal">
-                  Not deployed
-                </span>
-              )}
-            </span>
+            <ReleaseLabel release={release} />
             {release && (
               <CircleCheck className="text-success size-4 shrink-0" />
             )}
@@ -1058,6 +1013,25 @@ function isProjectDeployable(project: {
 }
 
 // fallow-ignore-next-line complexity
+function nextSortParams(prev: URLSearchParams, key: SortKey): URLSearchParams {
+  const next = new URLSearchParams(prev)
+  const curKey = (prev.get('sort') ?? 'name') as SortKey
+  const curDir = (prev.get('dir') ?? 'asc') as SortDir
+  const flipping = curKey === key && curDir === 'asc'
+  const nextDir: SortDir = flipping ? 'desc' : 'asc'
+  // Keep the URL clean when reverting to the default (name asc).
+  const isDefault = key === 'name' && nextDir === 'asc'
+  if (isDefault) {
+    next.delete('sort')
+    next.delete('dir')
+    return next
+  }
+  next.set('sort', key)
+  next.set('dir', nextDir)
+  return next
+}
+
+// fallow-ignore-next-line complexity
 function projectHasDrift(project: {
   current_releases?: null | Record<
     string,
@@ -1078,6 +1052,35 @@ function projectHasDrift(project: {
   if (envs.length < 2) return false
   const pairs = computeDriftPairs(envs, project.current_releases ?? {})
   return pairs.some((p) => p.drifted)
+}
+
+// fallow-ignore-next-line complexity
+function ReleaseLabel({
+  release,
+}: {
+  release?: null | {
+    committish?: null | string
+    tag?: null | string
+  }
+}) {
+  return (
+    <span className="min-w-0 flex-1">
+      {release ? (
+        <>
+          <span className="text-primary">
+            {release.tag ?? release.committish ?? '—'}
+          </span>
+          {release.tag && release.committish && (
+            <span className="text-tertiary ml-2 text-xs font-normal">
+              {release.committish}
+            </span>
+          )}
+        </>
+      ) : (
+        <span className="text-tertiary text-sm font-normal">Not deployed</span>
+      )}
+    </span>
+  )
 }
 
 // fallow-ignore-next-line complexity
