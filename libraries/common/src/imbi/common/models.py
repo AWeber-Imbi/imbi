@@ -489,6 +489,11 @@ class DeploymentEvent(pydantic.BaseModel):
     note: str | None = None
     external_run_id: str | None = None
     external_run_url: str | None = None
+    #: Original deployer when observed from a remote (e.g. the GitHub
+    #: ``deployment.creator.login`` for resyncs). ``None`` for events
+    #: recorded against an in-product action where the operator is
+    #: already captured in the ``operations_log`` audit row.
+    performed_by: str | None = None
 
 
 class ReleaseLink(pydantic.BaseModel):

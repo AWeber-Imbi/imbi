@@ -586,6 +586,10 @@ class RemoteDeployment(pydantic.BaseModel):
     run_url: str | None = None
     deployment_url: str | None = None
     description: str | None = None
+    #: Identifier (typically a username/login) of whoever originated the
+    #: deployment on the remote. ``None`` when the remote doesn't expose
+    #: the creator or the plugin can't determine one.
+    creator: str | None = None
 
 
 class DeploymentPlugin(abc.ABC):
