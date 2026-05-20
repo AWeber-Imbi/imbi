@@ -89,7 +89,15 @@ class WebhookRule(pydantic.BaseModel):
     def action_name(self) -> str:
         return self.handler.split('#', 1)[1]
 
-    def evaluate_condition(self, body: object) -> bool | None:
+    def evaluate_condition(
+        self, body: object, *, webhook_id: str | None = None
+    ) -> bool | None:
+        log_extra: dict[str, typing.Any] = {
+            'webhook_id': webhook_id,
+            'rule_handler': self.handler,
+            'rule_ordinal': self.ordinal,
+            'filter_expression': self.filter_expression,
+        }
         try:
             env = celpy.Environment()
             ast = env.compile(self.filter_expression)
@@ -98,15 +106,25 @@ class WebhookRule(pydantic.BaseModel):
             return bool(result)
         except celpy.CELEvalError as e:
             LOGGER.warning(
-                'CEL evaluation error in expression %r: %s',
+                'CEL evaluation error for webhook_id=%r rule=%r'
+                ' (ordinal=%s) expression=%r: %s',
+                webhook_id,
+                self.handler,
+                self.ordinal,
                 self.filter_expression,
                 e,
+                extra=log_extra,
             )
         except Exception as e:  # noqa: BLE001
             LOGGER.warning(
-                'Unexpected error in expression %r: %s',
+                'Unexpected error evaluating webhook_id=%r rule=%r'
+                ' (ordinal=%s) expression=%r: %s',
+                webhook_id,
+                self.handler,
+                self.ordinal,
                 self.filter_expression,
                 e,
+                extra=log_extra,
             )
         return None
 
@@ -147,13 +165,18 @@ async def process_notification(
         ],
     )
     if not records:
-        LOGGER.warning('No records found for %r', webhook_id)
+        LOGGER.warning(
+            'No records found for webhook_id=%r',
+            webhook_id,
+            extra={'webhook_id': webhook_id},
+        )
         return
     if len(records) != 1:
         LOGGER.error(
             'Webhook %r is connected to %s Organizations',
             webhook_id,
             len(records),
+            extra={'webhook_id': webhook_id},
         )
         raise fastapi.HTTPException(http.HTTPStatus.INTERNAL_SERVER_ERROR)
 
@@ -177,7 +200,10 @@ async def process_notification(
         ]
     except pydantic.ValidationError as e:
         LOGGER.error(
-            'failed to deserialize rules: %s', e, extra={'rules': raw_rules}
+            'failed to deserialize rules for webhook_id=%r: %s',
+            webhook_id,
+            e,
+            extra={'webhook_id': webhook_id, 'rules': raw_rules},
         )
         return
 
@@ -188,17 +214,29 @@ async def process_notification(
     LOGGER.debug('%s rules: %r', len(rules), rules)
 
     if sel is None or service is None:
-        LOGGER.warning('Global webhooks are not yet implemented')
+        LOGGER.warning(
+            'Global webhooks are not yet implemented (webhook_id=%r)',
+            webhook_id,
+            extra={'webhook_id': webhook_id},
+        )
         return
 
+    tps_slug = str(service['slug'])
     body = await _extract_json_body(request)
     try:
         ptr = jsonpointer.JsonPointer(sel['identifier_selector'])
         resolved = ptr.resolve(body)
     except jsonpointer.JsonPointerException:
         LOGGER.exception(
-            'failed to select project identifier %r',
+            'failed to select project identifier %r for webhook_id=%r tps=%r',
             sel['identifier_selector'],
+            webhook_id,
+            tps_slug,
+            extra={
+                'webhook_id': webhook_id,
+                'tps_slug': tps_slug,
+                'identifier_selector': sel['identifier_selector'],
+            },
         )
         return
 
@@ -209,12 +247,21 @@ async def process_notification(
         'OPTIONAL MATCH (p)-[:OWNED_BY]->(t:Team)'
         ' RETURN p.id AS project_id, p.slug AS project_slug,'
         '        t.slug AS team_slug',
-        {'external_id': str(resolved), 'tps_slug': str(service['slug'])},
+        {'external_id': str(resolved), 'tps_slug': tps_slug},
         ['project_id', 'project_slug', 'team_slug'],
     )
     if not project_records:
         LOGGER.warning(
-            'Ignoring notification: no project found for %r', str(resolved)
+            'Ignoring notification: no project found for external_id=%r'
+            ' (webhook_id=%r tps=%r)',
+            str(resolved),
+            webhook_id,
+            tps_slug,
+            extra={
+                'webhook_id': webhook_id,
+                'tps_slug': tps_slug,
+                'external_identifier': str(resolved),
+            },
         )
         return
 
@@ -223,24 +270,34 @@ async def process_notification(
         user_subject_selector=sel.get('user_subject_selector'),
         edge_plugin_slug=sel.get('identity_plugin_slug'),
         candidate_plugin_slugs=plugin_slugs,
+        webhook_id=webhook_id,
     )
     event_type = _resolve_event_type(
-        sel.get('event_type_selector'), body, request.headers
+        sel.get('event_type_selector'),
+        body,
+        request.headers,
+        webhook_id=webhook_id,
     )
     _set_access_log_context(request, user_id=user_id, event=event_type)
     await _record_events(
         project_records,
         webhook_id=webhook_id,
-        service_slug=service['slug'],
+        service_slug=tps_slug,
         user_id=user_id,
         event_type=event_type,
         headers=request.headers,
         body=body,
     )
 
-    filter_results = [rule.evaluate_condition(body) for rule in rules]
+    filter_results = [
+        rule.evaluate_condition(body, webhook_id=webhook_id) for rule in rules
+    ]
     if not any(filter_results):
-        LOGGER.debug('Ignoring notification: no filter matches')
+        LOGGER.debug(
+            'Ignoring notification: no filter matches (webhook_id=%r tps=%r)',
+            webhook_id,
+            tps_slug,
+        )
         return
 
     matched_rules = [
@@ -262,7 +319,7 @@ async def process_notification(
                 if proj_record.get('team_slug') is not None
                 else None
             ),
-            service_slug=str(service['slug']),
+            service_slug=tps_slug,
             service_endpoint=(
                 str(service['api_endpoint'])
                 if service.get('api_endpoint') is not None
@@ -273,6 +330,7 @@ async def process_notification(
             user_id=user_id,
             rules=matched_rules,
             plugins_by_slug=plugins_by_slug,
+            webhook_id=webhook_id,
         )
 
     # indicates that we actually did something
@@ -340,7 +398,7 @@ def _decrypt_plugin_credentials(
 
 
 def _resolve_rule_handler(
-    rule: WebhookRule,
+    rule: WebhookRule, *, webhook_id: str | None = None
 ) -> tuple[plugin_registry.RegistryEntry, plugin_base.ActionDescriptor] | None:
     """Look the rule's plugin / action up in the registry.
 
@@ -348,20 +406,32 @@ def _resolve_rule_handler(
     be resolved -- the dispatcher continues with the next rule rather
     than failing the whole delivery.
     """
+    log_extra: dict[str, typing.Any] = {
+        'webhook_id': webhook_id,
+        'rule_handler': rule.handler,
+        'rule_ordinal': rule.ordinal,
+        'plugin_slug': rule.plugin_slug,
+        'action_name': rule.action_name,
+    }
     try:
         entry = plugin_registry.get_plugin(rule.plugin_slug)
     except PluginNotFoundError:
         LOGGER.error(
-            'Unknown plugin %r referenced by rule handler %r',
+            'Unknown plugin %r referenced by rule handler %r (webhook_id=%r)',
             rule.plugin_slug,
             rule.handler,
+            webhook_id,
+            extra=log_extra,
         )
         return None
     if not issubclass(entry.handler_cls, plugin_base.WebhookActionPlugin):
         LOGGER.error(
-            'Plugin %r is not a WebhookActionPlugin; cannot dispatch %r',
+            'Plugin %r is not a WebhookActionPlugin; cannot dispatch %r'
+            ' (webhook_id=%r)',
             rule.plugin_slug,
             rule.handler,
+            webhook_id,
+            extra=log_extra,
         )
         return None
     try:
@@ -372,16 +442,22 @@ def _resolve_rule_handler(
         ]
     except Exception:
         LOGGER.exception(
-            'Plugin %r raised while enumerating actions; skipping rule %r',
+            'Plugin %r raised while enumerating actions; skipping rule %r'
+            ' (webhook_id=%r)',
             rule.plugin_slug,
             rule.handler,
+            webhook_id,
+            extra=log_extra,
         )
         return None
     if not descriptors:
         LOGGER.error(
-            'Plugin %r does not expose action %r',
+            'Plugin %r does not expose action %r (webhook_id=%r rule=%r)',
             rule.plugin_slug,
             rule.action_name,
+            webhook_id,
+            rule.handler,
+            extra=log_extra,
         )
         return None
     return entry, descriptors[0]
@@ -400,8 +476,15 @@ async def _run_handlers(  # noqa: PLR0913
     user_id: str | None,
     rules: 'abc.Iterable[WebhookRule]',
     plugins_by_slug: dict[str, dict[str, str]],
+    webhook_id: str | None = None,
 ) -> None:
-    LOGGER.debug('Running handlers for %s/%s', org_slug, project_id)
+    LOGGER.debug(
+        'Running handlers for %s/%s (webhook_id=%r tps=%r)',
+        org_slug,
+        project_id,
+        webhook_id,
+        service_slug,
+    )
     assignment_options: dict[str, typing.Any] = {'service_slug': service_slug}
     if service_endpoint is not None:
         assignment_options['service_endpoint'] = service_endpoint
@@ -414,11 +497,16 @@ async def _run_handlers(  # noqa: PLR0913
         assignment_options=assignment_options,
     )
     for rule in rules:
-        resolved = _resolve_rule_handler(rule)
+        resolved = _resolve_rule_handler(rule, webhook_id=webhook_id)
         if resolved is None:
             continue
         entry, descriptor = resolved
-        credentials = _credentials_for_plugin(entry, plugins_by_slug)
+        credentials = _credentials_for_plugin(
+            entry,
+            plugins_by_slug,
+            webhook_id=webhook_id,
+            rule_handler=rule.handler,
+        )
         if credentials is None:
             continue
         try:
@@ -427,7 +515,17 @@ async def _run_handlers(  # noqa: PLR0913
             )
         except pydantic.ValidationError:
             LOGGER.exception(
-                'Invalid handler_config for %s; skipping rule', rule.handler
+                'Invalid handler_config for rule %r (webhook_id=%r tps=%r);'
+                ' skipping rule',
+                rule.handler,
+                webhook_id,
+                service_slug,
+                extra={
+                    'webhook_id': webhook_id,
+                    'tps_slug': service_slug,
+                    'rule_handler': rule.handler,
+                    'rule_ordinal': rule.ordinal,
+                },
             )
             continue
         try:
@@ -440,13 +538,31 @@ async def _run_handlers(  # noqa: PLR0913
             )
         except Exception:
             LOGGER.exception(
-                'Failure in %s', rule.handler, extra={'rule': rule}
+                'Failure executing rule %r (webhook_id=%r tps=%r'
+                ' project=%s/%s)',
+                rule.handler,
+                webhook_id,
+                service_slug,
+                org_slug,
+                project_id,
+                extra={
+                    'webhook_id': webhook_id,
+                    'tps_slug': service_slug,
+                    'rule_handler': rule.handler,
+                    'rule_ordinal': rule.ordinal,
+                    'org_slug': org_slug,
+                    'project_id': project_id,
+                    'rule': rule,
+                },
             )
 
 
 def _credentials_for_plugin(
     entry: plugin_registry.RegistryEntry,
     plugins_by_slug: dict[str, dict[str, str]],
+    *,
+    webhook_id: str | None = None,
+    rule_handler: str | None = None,
 ) -> dict[str, str] | None:
     """Return decrypted credentials for ``entry`` or ``None`` to skip.
 
@@ -457,27 +573,41 @@ def _credentials_for_plugin(
     """
     if not entry.manifest.credentials:
         return {}
+    log_extra: dict[str, typing.Any] = {
+        'webhook_id': webhook_id,
+        'rule_handler': rule_handler,
+        'plugin_slug': entry.manifest.slug,
+    }
     record = plugins_by_slug.get(entry.manifest.slug)
     if record is None:
         LOGGER.warning(
             'Plugin %r requires credentials but is not attached to the TPS;'
-            ' skipping rule',
+            ' skipping rule %r (webhook_id=%r)',
             entry.manifest.slug,
+            rule_handler,
+            webhook_id,
+            extra=log_extra,
         )
         return None
     credentials = _decrypt_plugin_credentials(record)
     if not credentials:
         LOGGER.warning(
             'Plugin %r requires credentials but none could be loaded;'
-            ' skipping rule',
+            ' skipping rule %r (webhook_id=%r)',
             entry.manifest.slug,
+            rule_handler,
+            webhook_id,
+            extra=log_extra,
         )
         return None
     return credentials
 
 
 def _extract_subject(
-    body: object, user_subject_selector: str | None
+    body: object,
+    user_subject_selector: str | None,
+    *,
+    webhook_id: str | None = None,
 ) -> str | None:
     if not user_subject_selector:
         return None
@@ -485,8 +615,14 @@ def _extract_subject(
         subject = jsonpointer.JsonPointer(user_subject_selector).resolve(body)
     except jsonpointer.JsonPointerException:
         LOGGER.warning(
-            'user_subject_selector %r did not resolve in payload',
+            'user_subject_selector %r did not resolve in payload'
+            ' for webhook_id=%r',
             user_subject_selector,
+            webhook_id,
+            extra={
+                'webhook_id': webhook_id,
+                'user_subject_selector': user_subject_selector,
+            },
         )
         return None
     if subject in (None, ''):
@@ -500,6 +636,7 @@ async def _resolve_user_id(
     user_subject_selector: str | None,
     edge_plugin_slug: str | None,
     candidate_plugin_slugs: list[str],
+    webhook_id: str | None = None,
 ) -> str | None:
     """Resolve the Imbi ``user_id`` for a webhook delivery.
 
@@ -509,7 +646,9 @@ async def _resolve_user_id(
     *different* user ids (logged as an error — handler still runs
     without attribution).
     """
-    subject = _extract_subject(body, user_subject_selector)
+    subject = _extract_subject(
+        body, user_subject_selector, webhook_id=webhook_id
+    )
     if subject is None:
         return None
     slugs: list[str] = (
@@ -528,10 +667,17 @@ async def _resolve_user_id(
     if len(matches) > 1:
         LOGGER.error(
             'Identity subject %r resolved to multiple Imbi users via '
-            'plugins %r: %r — passing user_id=None',
+            'plugins %r: %r — passing user_id=None (webhook_id=%r)',
             subject,
             slugs,
             sorted(matches),
+            webhook_id,
+            extra={
+                'webhook_id': webhook_id,
+                'identity_subject': subject,
+                'identity_plugins': slugs,
+                'identity_matches': sorted(matches),
+            },
         )
         return None
     return next(iter(matches), None)
@@ -576,7 +722,11 @@ def _payload_dict(body: object) -> dict[str, typing.Any]:
 
 
 def _resolve_event_type(
-    selector: str | None, body: object, headers: 'abc.Mapping[str, str]'
+    selector: str | None,
+    body: object,
+    headers: 'abc.Mapping[str, str]',
+    *,
+    webhook_id: str | None = None,
 ) -> str:
     """Resolve the event-type label per the configured selector.
 
@@ -595,7 +745,13 @@ def _resolve_event_type(
             resolved = jsonpointer.JsonPointer(selector).resolve(body)
         except jsonpointer.JsonPointerException:
             LOGGER.warning(
-                'event_type_selector %r failed to resolve', selector
+                'event_type_selector %r failed to resolve for webhook_id=%r',
+                selector,
+                webhook_id,
+                extra={
+                    'webhook_id': webhook_id,
+                    'event_type_selector': selector,
+                },
             )
             return ''
         return '' if resolved is None else str(resolved)
