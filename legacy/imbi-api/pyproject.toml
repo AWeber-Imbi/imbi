@@ -1,6 +1,6 @@
 [project]
 name = "imbi-api"
-version = "2.4.0"
+version = "2.5.1"
 description = "Imbi is a DevOps Service Management Platform designed to provide an efficient way to manage a large environment that contains many services and applications."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -105,7 +105,6 @@ output = "build/coverage.xml"
 
 [tool.hatch.build.targets.wheel]
 src-layout = true
-artifacts = ["src/imbi_api/prompts/**/*.md"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/imbi_api/prompts" = "imbi_api/prompts"
