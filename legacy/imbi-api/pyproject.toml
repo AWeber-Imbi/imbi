@@ -55,6 +55,13 @@ otel = [
   "opentelemetry-instrumentation-httpx",
   "opentelemetry-instrumentation-jinja2",
 ]
+plugins = [
+  "imbi-plugin-aws>=1.0.0",
+  "imbi-plugin-github>=1.0.0",
+  "imbi-plugin-logzio>=1.0.0",
+  "imbi-plugin-oidc>=1.0.0",
+  "imbi-plugin-sonarqube>=0.0.0",
+]
 sentry = ["sentry-sdk"]
 
 [dependency-groups]
@@ -76,12 +83,6 @@ docs = [
   "mkdocs-material>9.5,<10",
   "mkdocstrings-python-xref>=1.6,<2",
   "mkdocstrings[python]"
-]
-plugins = [
-  "imbi-plugin-aws>=1.0.0",
-  "imbi-plugin-github>=1.0.0",
-  "imbi-plugin-logzio>=1.0.0",
-  "imbi-plugin-oidc>=1.0.0",
 ]
 
 [build-system]
@@ -223,6 +224,3 @@ max-complexity = 15
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
-
-[tool.uv.sources]
-imbi-plugin-github = { path = "../imbi-plugin-github", editable = true }
