@@ -252,6 +252,51 @@ class ScoringEndpointsTestCase(unittest.TestCase):
         args = self.mock_valkey.xadd.call_args.args
         self.assertEqual(args[1]['project_id'], 'proj-abc')
 
+    def test_rescore_single_project_requires_only_rescore_perm(self) -> None:
+        """Non-admin with ``scoring_policy:rescore`` can rescore one project.
+
+        The wider permission ``scoring_policy:rescore_all`` is not
+        required for the single-project case.
+        """
+        self.auth.user = self.user.model_copy(update={'is_admin': False})
+        self.auth.permissions = {'scoring_policy:rescore'}
+        response = self.client.post(
+            '/scoring/rescore', json={'project_id': 'proj-abc'}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['enqueued'], 1)
+
+    def test_rescore_single_project_rejects_without_perm(self) -> None:
+        """Non-admin with neither rescore permission is rejected (403)."""
+        self.auth.user = self.user.model_copy(update={'is_admin': False})
+        self.auth.permissions = set()
+        response = self.client.post(
+            '/scoring/rescore', json={'project_id': 'proj-abc'}
+        )
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertIn('scoring_policy:rescore', response.json()['detail'])
+
+    def test_rescore_wider_scope_requires_rescore_all(self) -> None:
+        """``rescore`` alone is not enough for blueprint / policy scope."""
+        self.auth.user = self.user.model_copy(update={'is_admin': False})
+        self.auth.permissions = {'scoring_policy:rescore'}
+        response = self.client.post(
+            '/scoring/rescore', json={'policy_slug': 'python-version'}
+        )
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertIn('scoring_policy:rescore_all', response.json()['detail'])
+
+    def test_rescore_all_requires_rescore_all_for_non_admin(self) -> None:
+        """A non-admin with ``rescore_all`` runs the empty-body bulk path."""
+        self.auth.user = self.user.model_copy(update={'is_admin': False})
+        self.auth.permissions = {'scoring_policy:rescore_all'}
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=[{'id': 'p1'}, {'id': 'p2'}]
+        )
+        response = self.client.post('/scoring/rescore', json={})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['enqueued'], 2)
+
     def test_score_trend_returns_delta(self) -> None:
         self.mock_db.execute = mock.AsyncMock(
             return_value=[{'score': 90.0}],

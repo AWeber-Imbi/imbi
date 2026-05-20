@@ -285,6 +285,12 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'Delete scoring policies',
     ),
     (
+        'scoring_policy:rescore',
+        'scoring_policy',
+        'rescore',
+        'Trigger rescore for a single project',
+    ),
+    (
         'scoring_policy:rescore_all',
         'scoring_policy',
         'rescore_all',
@@ -425,6 +431,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'organization:read',
             'organization:update',
             'project_type:read',
+            'scoring_policy:rescore',
             'team:read',
             'team:update',
             'user:read',
@@ -464,6 +471,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'project:read',
             'project_type:read',
             'role:read',
+            'scoring_policy:rescore',
             'search:read',
             'tag:read',
             'team:read',

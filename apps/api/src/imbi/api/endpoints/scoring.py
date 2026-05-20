@@ -508,13 +508,25 @@ async def rescore(
     valkey_client: OptionalValkeyClient,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(
-            permissions.require_permission('scoring_policy:rescore_all')
-        ),
+        fastapi.Depends(permissions.get_current_user),
     ],
     body: scoring_models.RescoreRequest | None = None,
 ) -> scoring_models.RescoreResponse:
     body = body or scoring_models.RescoreRequest()
+    # Single-project rescore only needs scoring_policy:rescore; any wider
+    # scope (policy, blueprint, project_type, or global) requires
+    # scoring_policy:rescore_all.
+    if body.project_id and not (
+        body.policy_slug or body.blueprint_slug or body.project_type_slug
+    ):
+        required = 'scoring_policy:rescore'
+    else:
+        required = 'scoring_policy:rescore_all'
+    if not auth.is_admin and required not in auth.permissions:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail=f'Permission denied: {required} required',
+        )
     project_ids: list[str] = []
     if body.project_id:
         project_ids = [body.project_id]
