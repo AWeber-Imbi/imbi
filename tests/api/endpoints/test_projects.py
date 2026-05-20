@@ -721,7 +721,9 @@ class ProjectEndpointsTestCase(unittest.TestCase):
         ]
 
         with (
-            mock.patch('imbi_api.endpoints.projects.asyncio.sleep'),
+            mock.patch(
+                'imbi_api.endpoints.projects.asyncio.sleep'
+            ) as mock_sleep,
             mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
             mock.patch(
                 'imbi_common.graph.parse_agtype', side_effect=lambda x: x
@@ -733,6 +735,9 @@ class ProjectEndpointsTestCase(unittest.TestCase):
                 f'/organizations/engineering/projects/{PROJECT_ID}',
                 json=[{'op': 'replace', 'path': '/name', 'value': 'Updated'}],
             )
+
+        self.assertEqual(self.mock_db.execute.call_count, 6)
+        self.assertEqual(mock_sleep.await_count, 2)
 
     def test_patch_project_other_internal_error_not_retried(self) -> None:
         """Non-AGE InternalError propagates without retry."""
