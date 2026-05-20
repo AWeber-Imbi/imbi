@@ -78,17 +78,19 @@ interface LogsTabProps {
 type RelativeRange = '1d' | '1h' | '7d' | '12h' | '30d'
 
 // ── Constants ──────────────────────────────────────────────────────────────
+// Default env selection is computed from the project's own environments
+// (see ``defaultEnvSlugs`` below) -- a hard-coded list would surface envs
+// the project doesn't actually have. Empty here means "let the project
+// drive it" on first visit; localStorage / URL params still override.
 const DEFAULT_CONFIG: LogsConfig = {
   baseQuery: '',
-  envs: ['production', 'staging'],
+  envs: [],
   excludeSources: '',
   levels: { DEBUG: false, ERROR: true, INFO: true, WARN: true },
   range: '1h',
   showHistogram: true,
   wrap: false,
 }
-
-const ENVS = ['production', 'staging', 'testing'] as const
 
 const RANGES: { key: RelativeRange; label: string; ms: number }[] = [
   { key: '1h', label: '1h', ms: 60 * 60_000 },
@@ -162,15 +164,23 @@ export function LogsTab({
   }, [sortedEnvironments, isDarkMode])
   const envOptions = useMemo(
     () =>
-      sortedEnvironments.length > 0
-        ? sortedEnvironments.map((e) => ({
-            color: envChipColors[e.slug],
-            name: e.name,
-            slug: e.slug,
-          }))
-        : ENVS.map((slug) => ({ color: null, name: slug, slug })),
+      sortedEnvironments.map((e) => ({
+        color: envChipColors[e.slug],
+        name: e.name,
+        slug: e.slug,
+      })),
     [sortedEnvironments, envChipColors],
   )
+  // Sorted ascending by ``sort_order`` -- the highest sort_order is the
+  // last element, used as the cold-start default selection.
+  const projectEnvSlugs = useMemo(
+    () => sortedEnvironments.map((e) => e.slug),
+    [sortedEnvironments],
+  )
+  const defaultEnvSlugs = useMemo(() => {
+    if (projectEnvSlugs.length === 0) return []
+    return [projectEnvSlugs[projectEnvSlugs.length - 1]]
+  }, [projectEnvSlugs])
   const envSlugToName = useMemo(() => {
     const out: Record<string, string> = {}
     for (const e of sortedEnvironments) out[e.slug] = e.name
@@ -187,10 +197,11 @@ export function LogsTab({
       return { ...DEFAULT_CONFIG }
     }
   })
-
-  useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(config))
-  }, [config, storageKey])
+  // Captured at mount before any persistence effect writes to
+  // ``storageKey``. The plugin-defaults effect below needs the *true*
+  // first-visit signal -- reading localStorage at runtime would always
+  // look like a saved config exists once the persistence effect runs.
+  const [hadSavedConfig] = useState(() => !!localStorage.getItem(storageKey))
 
   const [range, setRange] = useState<RelativeRange>(() => {
     const p = searchParams.get('range')
@@ -202,6 +213,30 @@ export function LogsTab({
     const p = searchParams.getAll('env')
     return p.length > 0 ? p : config.envs
   })
+  // Persist the *reconciled* env list along with ``config``. Without
+  // including ``envs`` in the saved payload, a stale ``staging`` that
+  // gets filtered out for this render would still be rehydrated on the
+  // next visit.
+  useEffect(() => {
+    localStorage.setItem(storageKey, JSON.stringify({ ...config, envs }))
+  }, [config, envs, storageKey])
+  // Once we know the project's actual environments, intersect the
+  // selection with them and pick a project-derived default when the
+  // intersection is empty. Without this, a stale ``staging`` from
+  // localStorage (or the old hard-coded default) survives on projects
+  // that don't have it.
+  const envsReconciledRef = useRef(false)
+  useEffect(() => {
+    if (envsReconciledRef.current) return
+    if (projectEnvSlugs.length === 0) return
+    envsReconciledRef.current = true
+    const available = new Set(projectEnvSlugs)
+    setEnvs((prev) => {
+      const filtered = prev.filter((s) => available.has(s))
+      if (filtered.length > 0) return filtered
+      return defaultEnvSlugs
+    })
+  }, [projectEnvSlugs, defaultEnvSlugs])
   const [levels, setLevels] = useState<Record<string, boolean>>(() => {
     const p = searchParams.getAll('level')
     if (p.length > 0) {
@@ -274,20 +309,24 @@ export function LogsTab({
 
   // Apply plugin-level default_environments once, only when there is no
   // user-saved config in localStorage (i.e. first visit for this project).
+  // Intersect with the project's actual envs -- a plugin default that
+  // names ``staging`` should not surface on a project that doesn't
+  // have staging.
   useEffect(() => {
     if (pluginDefaultsApplied.current) return
     if (!activeAssignment) return
+    if (projectEnvSlugs.length === 0) return
     const raw = activeAssignment.options['default_environments']
     if (typeof raw !== 'string' || !raw.trim()) return
+    const available = new Set(projectEnvSlugs)
     const defaults = raw
       .split(',')
       .map((s) => s.trim())
-      .filter(Boolean)
+      .filter((s) => s && available.has(s))
     if (defaults.length === 0) return
     pluginDefaultsApplied.current = true
-    const hasLocalConfig = !!localStorage.getItem(storageKey)
-    if (!hasLocalConfig) setEnvs(defaults)
-  }, [activeAssignment, storageKey])
+    if (!hadSavedConfig) setEnvs(defaults)
+  }, [activeAssignment, hadSavedConfig, projectEnvSlugs])
 
   // Sync filter state → URL params whenever they change
   useEffect(() => {
