@@ -314,3 +314,105 @@ class ModuleLevelFunctionsTestCase(
         manager = mcp.get_manager()
         self.assertFalse(manager.is_initialized)
         await mcp.aclose()
+
+
+class ServerToolHelpersTestCase(unittest.TestCase):
+    """Test cases for the server-tool helper functions."""
+
+    def test_is_server_tool_true(self) -> None:
+        self.assertTrue(mcp.is_server_tool(mcp.REFRESH_TOOL_NAME))
+
+    def test_is_server_tool_false(self) -> None:
+        self.assertFalse(mcp.is_server_tool('some_api_tool'))
+
+    def test_get_server_tools_includes_refresh(self) -> None:
+        tools = mcp.get_server_tools()
+        names = [t['name'] for t in tools]
+        self.assertIn(mcp.REFRESH_TOOL_NAME, names)
+
+
+class ReinitializeTestCase(unittest.IsolatedAsyncioTestCase):
+    """Test cases for MCPManager.reinitialize."""
+
+    def setUp(self) -> None:
+        settings._assistant_settings = None
+        self.addCleanup(
+            setattr,
+            settings,
+            '_assistant_settings',
+            None,
+        )
+
+    async def test_reinitialize_preserves_state_on_failure(
+        self,
+    ) -> None:
+        """A failing reinit leaves existing tools intact."""
+        manager = mcp.MCPManager()
+        manager._tools = [{'name': 'existing_tool'}]
+        manager._initialized = True
+
+        with mock.patch.object(
+            mcp.MCPManager,
+            'initialize',
+            side_effect=RuntimeError('boom'),
+        ):
+            success, count = await manager.reinitialize()
+
+        self.assertFalse(success)
+        self.assertEqual(count, 0)
+        # Existing tools are still there.
+        self.assertTrue(manager.is_initialized)
+        self.assertEqual(manager.get_tool_names(), ['existing_tool'])
+
+    async def test_reinitialize_preserves_state_when_no_api_url(
+        self,
+    ) -> None:
+        """If the replacement reports not initialized, keep state."""
+        manager = mcp.MCPManager()
+        manager._tools = [{'name': 'existing_tool'}]
+        manager._initialized = True
+
+        async def fake_initialize(_self: mcp.MCPManager) -> None:
+            # Mimic the no-API-URL early return: leaves _initialized
+            # False on the replacement.
+            return None
+
+        with mock.patch.object(
+            mcp.MCPManager,
+            'initialize',
+            fake_initialize,
+        ):
+            success, count = await manager.reinitialize()
+
+        self.assertFalse(success)
+        self.assertEqual(count, 0)
+        self.assertTrue(manager.is_initialized)
+        self.assertEqual(manager.get_tool_names(), ['existing_tool'])
+
+    async def test_reinitialize_swaps_state_on_success(self) -> None:
+        """A successful reinit swaps in the new tools and closes old."""
+        manager = mcp.MCPManager()
+        old_client = mock.AsyncMock()
+        old_client.__aexit__ = mock.AsyncMock(return_value=None)
+        old_http = mock.AsyncMock()
+        manager._client = old_client
+        manager._http_client = old_http
+        manager._tools = [{'name': 'old_tool'}]
+        manager._initialized = True
+
+        async def fake_initialize(self: mcp.MCPManager) -> None:
+            self._tools = [{'name': 'new_tool'}]
+            self._initialized = True
+
+        with mock.patch.object(
+            mcp.MCPManager,
+            'initialize',
+            fake_initialize,
+        ):
+            success, count = await manager.reinitialize()
+
+        self.assertTrue(success)
+        self.assertEqual(count, 1)
+        self.assertEqual(manager.get_tool_names(), ['new_tool'])
+        old_client.__aexit__.assert_awaited_once()
+        old_http.aclose.assert_awaited_once()

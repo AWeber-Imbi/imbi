@@ -207,16 +207,47 @@ class MCPManager:
     async def reinitialize(self) -> tuple[bool, int]:
         """Re-fetch the OpenAPI spec and rebuild the tool list.
 
+        Builds a replacement in a temporary manager first; only swaps
+        in the new state if initialization succeeds, so a transient
+        fetch/init failure leaves the existing tools in place.
+
         Returns:
             Tuple of (success, tool_count).
 
         """
-        await self.aclose()
+        replacement = MCPManager()
         try:
-            await self.initialize()
+            await replacement.initialize()
         except Exception:
             LOGGER.exception('Failed to reinitialize MCP tools')
+            await replacement.aclose()
             return False, 0
+
+        if not replacement._initialized:
+            # API URL not configured; keep existing state.
+            await replacement.aclose()
+            return False, 0
+
+        # Swap in the new state, then close the old client/transport.
+        old_client = self._client
+        old_http_client = self._http_client
+        self._server = replacement._server
+        self._client = replacement._client
+        self._http_client = replacement._http_client
+        self._tools = replacement._tools
+        self._initialized = replacement._initialized
+        # Detach so `replacement.aclose()` (if ever called) is a no-op.
+        replacement._server = None
+        replacement._client = None
+        replacement._http_client = None
+        replacement._tools = []
+        replacement._initialized = False
+
+        if old_client is not None:
+            await old_client.__aexit__(None, None, None)  # type: ignore[no-untyped-call]  # pyright: ignore[reportUnknownMemberType]
+        if old_http_client is not None:
+            await old_http_client.aclose()
+
         return self._initialized, len(self._tools)
 
     @property
