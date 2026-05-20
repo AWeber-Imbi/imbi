@@ -602,6 +602,32 @@ def _credentials_for_plugin(
     return credentials
 
 
+def _filter_to_identity_plugins(slugs: list[str]) -> list[str]:
+    """Return only ``slugs`` registered as identity plugins.
+
+    Slugs whose plugin is unknown, or registered as a non-identity type,
+    are dropped. This keeps the gateway from probing
+    ``/users/by-identity`` for plugins that cannot resolve a user.
+    """
+    identity_slugs: list[str] = []
+    for slug in slugs:
+        try:
+            entry = plugin_registry.get_plugin(slug)
+        except PluginNotFoundError:
+            LOGGER.debug(
+                'Skipping unknown plugin %r during identity resolution', slug
+            )
+            continue
+        if entry.manifest.plugin_type != 'identity':
+            LOGGER.debug(
+                'Skipping non-identity plugin %r during identity resolution',
+                slug,
+            )
+            continue
+        identity_slugs.append(slug)
+    return identity_slugs
+
+
 def _extract_subject(
     body: object,
     user_subject_selector: str | None,
@@ -644,15 +670,22 @@ async def _resolve_user_id(
     no identity plugin yields a match, or two or more plugins yield
     *different* user ids (logged as an error — handler still runs
     without attribution).
+
+    Candidate slugs are filtered through the plugin registry so only
+    plugins with ``plugin_type == 'identity'`` are queried. This keeps
+    the gateway from probing ``/users/by-identity`` for configuration,
+    deployment, or webhook plugins -- the previous behavior produced
+    noisy 404s in the API access log.
     """
     subject = _extract_subject(
         body, user_subject_selector, webhook_id=webhook_id
     )
     if subject is None:
         return None
-    slugs: list[str] = (
+    candidate_slugs: list[str] = (
         [edge_plugin_slug] if edge_plugin_slug else candidate_plugin_slugs
     )
+    slugs = _filter_to_identity_plugins(candidate_slugs)
     if not slugs:
         return None
 
