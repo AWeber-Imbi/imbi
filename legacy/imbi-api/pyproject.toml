@@ -106,9 +106,6 @@ output = "build/coverage.xml"
 [tool.hatch.build.targets.wheel]
 src-layout = true
 
-[tool.hatch.build.targets.wheel.force-include]
-"src/imbi_api/prompts" = "imbi_api/prompts"
-
 [tool.hatch.envs.default]
 python = "python3.14"
 features = ["dev"]
