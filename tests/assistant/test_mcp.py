@@ -346,15 +346,29 @@ class ReinitializeTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_reinitialize_preserves_state_on_failure(
         self,
     ) -> None:
-        """A failing reinit leaves existing tools intact."""
+        """A failing reinit leaves existing tools intact and cleans
+        up any replacement resources that were partially assigned
+        before the exception.
+        """
         manager = mcp.MCPManager()
         manager._tools = [{'name': 'existing_tool'}]
         manager._initialized = True
 
+        replacement_client = mock.AsyncMock()
+        replacement_client.__aexit__ = mock.AsyncMock(return_value=None)
+        replacement_http = mock.AsyncMock()
+
+        async def failing_initialize(self: mcp.MCPManager) -> None:
+            # Mimic initialize() that assigns transport handles, then
+            # fails before completing.
+            self._client = replacement_client
+            self._http_client = replacement_http
+            raise RuntimeError('boom')
+
         with mock.patch.object(
             mcp.MCPManager,
             'initialize',
-            side_effect=RuntimeError('boom'),
+            failing_initialize,
         ):
             success, count = await manager.reinitialize()
 
@@ -363,6 +377,9 @@ class ReinitializeTestCase(unittest.IsolatedAsyncioTestCase):
         # Existing tools are still there.
         self.assertTrue(manager.is_initialized)
         self.assertEqual(manager.get_tool_names(), ['existing_tool'])
+        # Replacement transport was cleaned up via aclose().
+        replacement_client.__aexit__.assert_awaited_once()
+        replacement_http.aclose.assert_awaited_once()
 
     async def test_reinitialize_preserves_state_when_no_api_url(
         self,

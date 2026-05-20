@@ -243,10 +243,12 @@ class MCPManager:
         replacement._tools = []
         replacement._initialized = False
 
-        if old_client is not None:
-            await old_client.__aexit__(None, None, None)  # type: ignore[no-untyped-call]  # pyright: ignore[reportUnknownMemberType]
-        if old_http_client is not None:
-            await old_http_client.aclose()
+        try:
+            if old_client is not None:
+                await old_client.__aexit__(None, None, None)  # type: ignore[no-untyped-call]  # pyright: ignore[reportUnknownMemberType]
+        finally:
+            if old_http_client is not None:
+                await old_http_client.aclose()
 
         return self._initialized, len(self._tools)
 
