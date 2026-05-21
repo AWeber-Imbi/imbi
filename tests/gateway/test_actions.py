@@ -473,6 +473,73 @@ class CreateReleaseTests(helpers.TestCase):
                 '34567890', mock_create.call_args.args[2]['committish']
             )
 
+    async def test_null_version_expression_skips_release(self) -> None:
+        config = _create_release_config(
+            json.dumps(
+                {
+                    'title_selector': '/deployment/ref',
+                    'version_expression': (
+                        "deployment.ref.matches('^[0-9]+[.][0-9]+[.][0-9]+$')"
+                        ' ? deployment.ref : null'
+                    ),
+                    'committish_expression': 'substring(deployment.sha, 0, 7)',
+                }
+            )
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201),
+            ) as mock_create,
+        ):
+            await actions.create_release(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload={
+                    'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}
+                },
+            )
+
+        mock_create.assert_not_called()
+
+    async def test_null_committish_expression_omits_committish(self) -> None:
+        config = _create_release_config(
+            json.dumps(
+                {
+                    'title_selector': '/deployment/ref',
+                    'version_expression': 'deployment.ref',
+                    'committish_expression': (
+                        "deployment.sha != '' ? deployment.sha : null"
+                    ),
+                }
+            )
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201),
+            ) as mock_create,
+        ):
+            await actions.create_release(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload={'deployment': {'ref': 'v1.2.3', 'sha': ''}},
+            )
+
+        body_arg = mock_create.call_args.args[2]
+        self.assertNotIn('committish', body_arg)
+        self.assertEqual('v1.2.3', body_arg['tag'])
+
     async def test_invalid_version_expression_propagates(self) -> None:
         config = _create_release_config(
             '{"title_selector": "/deployment/ref",'
@@ -644,6 +711,49 @@ class AddDeploymentEventTests(helpers.TestCase):
         self.assertTrue(
             any('Unmapped' in line and 'frobbed' in line for line in cm.output)
         )
+
+    async def test_null_version_expression_skips_event(self) -> None:
+        config = _deployment_event_config(
+            json.dumps(
+                {
+                    'environment_selector': '/deployment_status/environment',
+                    'version_expression': (
+                        "deployment.ref.matches('^[0-9]+[.][0-9]+[.][0-9]+$')"
+                        ' ? deployment.ref : null'
+                    ),
+                    'status_selector': '/deployment_status/state',
+                }
+            )
+        )
+        payload = {
+            'deployment': {
+                'ref': 'main',
+                'url': 'https://api.github.com/repos/o/r/deployments/42',
+                'environment': 'production',
+            },
+            'deployment_status': {
+                'state': 'success',
+                'environment': 'production',
+            },
+        }
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'record_deployment',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(200),
+            ) as mock_record,
+        ):
+            await actions.add_deployment_event(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload=payload,
+            )
+
+        mock_record.assert_not_called()
 
     async def test_release_missing_logs_warning(self) -> None:
         with (

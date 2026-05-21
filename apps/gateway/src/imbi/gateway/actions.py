@@ -193,10 +193,13 @@ def _cel_substring(
 _CEL_FUNCTIONS: dict[str, celpy.CELFunction] = {'substring': _cel_substring}
 
 
-def _evaluate_cel(expression: str, body: object) -> str:
+def _evaluate_cel(expression: str, body: object) -> str | None:
     env = celpy.Environment()
     program = env.program(env.compile(expression), functions=_CEL_FUNCTIONS)
-    return str(program.evaluate(celpy.json_to_cel(body)))
+    result = program.evaluate(celpy.json_to_cel(body))
+    if result is None:
+        return None
+    return str(result)
 
 
 async def update_project(
@@ -249,14 +252,23 @@ async def create_release(
     """
     del credentials, external_identifier
     version_value = _evaluate_cel(action_config.version_expression, payload)
+    if version_value is None:
+        LOGGER.info(
+            'Skipping release for project %s: version expression evaluated'
+            ' to null',
+            ctx.project_id,
+        )
+        return
     create_body: dict[str, object] = {
         'tag': version_value,
         'title': str(action_config.title_selector.resolve(payload)),
     }
     if action_config.committish_expression is not None:
-        create_body['committish'] = _evaluate_cel(
+        committish_value = _evaluate_cel(
             action_config.committish_expression, payload
         )
+        if committish_value is not None:
+            create_body['committish'] = committish_value
     if ctx.actor_user_id is not None:
         create_body['created_by'] = ctx.actor_user_id
     async with ImbiClient() as client:
@@ -292,6 +304,13 @@ async def add_deployment_event(
         LOGGER.warning('Unmapped deployment status %r — skipping', raw_state)
         return
     version_value = _evaluate_cel(action_config.version_expression, payload)
+    if version_value is None:
+        LOGGER.info(
+            'Skipping deployment event for project %s: version expression'
+            ' evaluated to null',
+            ctx.project_id,
+        )
+        return
     environment = str(action_config.environment_selector.resolve(payload))
     event_body: dict[str, object] = {'status': status}
     if action_config.note_selector is not None:
