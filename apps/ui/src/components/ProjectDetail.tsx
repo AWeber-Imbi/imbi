@@ -362,27 +362,35 @@ export function ProjectDetail({
   // strip an existing tab and leave a deep-link landing on a blank
   // pane. While the query is unresolved or failed, we hold both flags
   // back; the redirect effect already waits on success before rerouting.
+  // `select` derives the tab-presence flags + deployment plugin once per
+  // payload change, instead of recomputing them on every render (the
+  // previous code walked `projectPlugins` four times per render via
+  // .some/.find).
   const {
-    data: projectPlugins,
+    data: projectPluginsView,
     isFetched: projectPluginsFetched,
     isSuccess: projectPluginsSuccess,
   } = useQuery({
     enabled: !!orgSlug && !!project.id,
     queryFn: ({ signal }) => listProjectPlugins(orgSlug, project.id, signal),
     queryKey: ['project-plugins', orgSlug, project.id],
+    select: (plugins) => ({
+      deploymentPlugin: plugins.find((a) => a.tab === 'deployment'),
+      hasConfigurationPlugin: plugins.some((a) => a.tab === 'configuration'),
+      hasLifecyclePlugin: plugins.some((a) => a.tab === 'lifecycle'),
+      hasLogsPlugin: plugins.some((a) => a.tab === 'logs'),
+    }),
     staleTime: 5 * 60 * 1000,
   })
   const hasConfigurationPlugin =
     projectPluginsSuccess &&
-    (projectPlugins ?? []).some((a) => a.tab === 'configuration')
+    (projectPluginsView?.hasConfigurationPlugin ?? false)
   const hasLogsPlugin =
-    projectPluginsSuccess &&
-    (projectPlugins ?? []).some((a) => a.tab === 'logs')
+    projectPluginsSuccess && (projectPluginsView?.hasLogsPlugin ?? false)
   const hasLifecyclePlugin =
-    projectPluginsSuccess &&
-    (projectPlugins ?? []).some((a) => a.tab === 'lifecycle')
+    projectPluginsSuccess && (projectPluginsView?.hasLifecyclePlugin ?? false)
   const deploymentPlugin = projectPluginsSuccess
-    ? (projectPlugins ?? []).find((a) => a.tab === 'deployment')
+    ? projectPluginsView?.deploymentPlugin
     : undefined
   const deploymentIdentityPluginId =
     deploymentPlugin?.identity_plugin_id ?? null
