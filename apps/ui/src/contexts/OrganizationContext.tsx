@@ -31,7 +31,8 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     localStorage.getItem(ORG_STORAGE_KEY),
   )
 
-  const { accessToken, isTokenExpired } = useAuthStore()
+  const accessToken = useAuthStore((s) => s.accessToken)
+  const isTokenExpired = useAuthStore((s) => s.isTokenExpired)
 
   const { data: organizations = [], isLoading } = useQuery({
     enabled: !!accessToken && !isTokenExpired(),

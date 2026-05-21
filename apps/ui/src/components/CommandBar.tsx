@@ -12,6 +12,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 
 import {
   createConversation,
@@ -57,6 +58,10 @@ export function CommandBar() {
   const dragRef = useRef<null | { startHeight: number; startY: number }>(null)
   const [unreadAssistant, setUnreadAssistant] = useState(false)
 
+  // useShallow keeps the consumer subscribed only to the listed fields
+  // and re-runs render only when one of them changes — without it any
+  // store update would re-render this component (and the assistant store
+  // ticks on every SSE chunk).
   const {
     activeToolUse,
     addMessage,
@@ -74,7 +79,26 @@ export function CommandBar() {
     setMessages,
     startStreaming,
     streamingContent,
-  } = useAssistantStore()
+  } = useAssistantStore(
+    useShallow((s) => ({
+      activeToolUse: s.activeToolUse,
+      addMessage: s.addMessage,
+      addPendingToolUse: s.addPendingToolUse,
+      appendStreamingContent: s.appendStreamingContent,
+      clearConversation: s.clearConversation,
+      currentConversationId: s.currentConversationId,
+      finishStreaming: s.finishStreaming,
+      isExpanded: s.isExpanded,
+      isStreaming: s.isStreaming,
+      messages: s.messages,
+      setActiveToolUse: s.setActiveToolUse,
+      setCurrentConversation: s.setCurrentConversation,
+      setExpanded: s.setExpanded,
+      setMessages: s.setMessages,
+      startStreaming: s.startStreaming,
+      streamingContent: s.streamingContent,
+    })),
+  )
 
   // Debounced query for search (only active in search mode)
   const debouncedQuery = useDebounced(mode === 'search' ? input : '', 200)

@@ -10,7 +10,8 @@ import { useAuthStore } from '@/stores/authStore'
 export function OAuthCallbackPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { accessToken, setTokens } = useAuthStore()
+  const accessToken = useAuthStore((s) => s.accessToken)
+  const setTokens = useAuthStore((s) => s.setTokens)
   const { error, user } = useAuth()
 
   useEffect(() => {

@@ -20,14 +20,15 @@ export function useAuth(): UseAuthReturn {
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
-  const {
-    accessToken,
-    clearTokens,
-    getUsername,
-    isTokenExpired,
-    refreshToken,
-    setTokens,
-  } = useAuthStore()
+  // Subscribe per-field instead of destructuring the whole store: a token
+  // tick would otherwise re-render every consumer of useAuth, which sits at
+  // the app root and would cascade through the whole tree.
+  const accessToken = useAuthStore((s) => s.accessToken)
+  const refreshToken = useAuthStore((s) => s.refreshToken)
+  const clearTokens = useAuthStore((s) => s.clearTokens)
+  const setTokens = useAuthStore((s) => s.setTokens)
+  const getUsername = useAuthStore((s) => s.getUsername)
+  const isTokenExpired = useAuthStore((s) => s.isTokenExpired)
 
   const {
     data: user,
