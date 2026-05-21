@@ -1,13 +1,8 @@
 import { useState } from 'react'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 
-import {
-  createProject,
-  listEnvironments,
-  listProjectTypes,
-  listTeams,
-} from '@/api/endpoints'
+import { createProject } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Combobox } from '@/components/ui/combobox'
@@ -22,7 +17,11 @@ import { Input } from '@/components/ui/input'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
-import { queryKeys } from '@/lib/queryKeys'
+import {
+  useEnvironments,
+  useProjectTypes,
+  useTeams,
+} from '@/hooks/useOrgResources'
 import { slugify } from '@/lib/utils'
 import type { ProjectCreate } from '@/types'
 
@@ -49,22 +48,12 @@ export function NewProjectDialog({
   const [description, setDescription] = useState('')
   const [selectedEnvSlugs, setSelectedEnvSlugs] = useState<string[]>([])
 
-  const { data: teams = [] } = useQuery({
-    enabled: !!orgSlug && isOpen,
-    queryFn: ({ signal }) => listTeams(orgSlug, signal),
-    queryKey: ['teams', orgSlug],
+  const { data: teams = [] } = useTeams(orgSlug, { enabled: isOpen })
+  const { data: projectTypes = [] } = useProjectTypes(orgSlug, {
+    enabled: isOpen,
   })
-
-  const { data: projectTypes = [] } = useQuery({
-    enabled: !!orgSlug && isOpen,
-    queryFn: ({ signal }) => listProjectTypes(orgSlug, signal),
-    queryKey: queryKeys.projectTypes(orgSlug),
-  })
-
-  const { data: environments = [] } = useQuery({
-    enabled: !!orgSlug && isOpen,
-    queryFn: ({ signal }) => listEnvironments(orgSlug, signal),
-    queryKey: ['environments', orgSlug],
+  const { data: environments = [] } = useEnvironments(orgSlug, {
+    enabled: isOpen,
   })
 
   const createMutation = useMutation({

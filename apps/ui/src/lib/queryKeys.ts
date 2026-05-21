@@ -15,6 +15,7 @@ export const queryKeys = {
     anchorSlug: string,
     relType: string,
   ) => ['anchor-edges', kind, orgSlug, anchorSlug, relType] as const,
+  environments: (orgSlug: string) => ['environments', orgSlug] as const,
   identityPlugins: (orgSlug: string) => ['identity-plugins', orgSlug] as const,
   pluginEdgesByOrg: (pluginSlug: string, relType: string, orgSlug: string) =>
     ['plugin-edges-by-org', pluginSlug, relType, orgSlug] as const,
@@ -29,6 +30,7 @@ export const queryKeys = {
   // different consumers. Mutations on the admin list must invalidate both so
   // the LoginPage picker stays in sync.
   publicAuthProviders: () => ['authProviders'] as const,
+  teams: (orgSlug: string) => ['teams', orgSlug] as const,
 } as const
 
 /**

@@ -6,17 +6,14 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import type { InfiniteData } from '@tanstack/react-query'
 import { CheckCircle, ChevronRight, Clock, Rocket } from 'lucide-react'
 
-import {
-  getProjects,
-  listEnvironments,
-  listOperationsLog,
-} from '@/api/endpoints'
+import { getProjects, listOperationsLog } from '@/api/endpoints'
 import type { OperationsLogPage } from '@/api/endpoints'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
+import { useEnvironments } from '@/hooks/useOrgResources'
 import { formatRelativeDate } from '@/lib/formatDate'
 import type { OperationsLogRecord, Project } from '@/types'
 
@@ -36,12 +33,7 @@ export function RecentDeploymentsWidget() {
     setEnvFilter((prev) => (prev === slug ? undefined : slug))
   }
 
-  const { data: environments } = useQuery({
-    enabled: Boolean(orgSlug),
-    queryFn: ({ signal }) => listEnvironments(orgSlug, signal),
-    queryKey: ['environments', orgSlug],
-    staleTime: 5 * 60_000,
-  })
+  const { data: environments } = useEnvironments(orgSlug)
 
   const { data: projects } = useQuery({
     enabled: Boolean(orgSlug),

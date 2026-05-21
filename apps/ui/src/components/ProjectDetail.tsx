@@ -26,9 +26,7 @@ import {
   listLinkDefinitions,
   listProjectDocuments,
   listProjectPlugins,
-  listProjectTypes,
   listScoringPolicies,
-  listTeams,
   type ScoreTrend,
 } from '@/api/endpoints'
 import {
@@ -69,10 +67,10 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useProjectTypes, useTeams } from '@/hooks/useOrgResources'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import { formatFieldKey } from '@/lib/project-field-formatting'
-import { queryKeys } from '@/lib/queryKeys'
 import { sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
 import type { Project, ScoringPolicy } from '@/types'
 
@@ -339,16 +337,8 @@ export function ProjectDetail({
     queryKey: ['projectSchema', orgSlug, project.id],
   })
 
-  const { data: teams = [] } = useQuery({
-    enabled: !!orgSlug,
-    queryFn: ({ signal }) => listTeams(orgSlug, signal),
-    queryKey: ['teams', orgSlug],
-  })
-  const { data: projectTypes = [] } = useQuery({
-    enabled: !!orgSlug,
-    queryFn: ({ signal }) => listProjectTypes(orgSlug, signal),
-    queryKey: queryKeys.projectTypes(orgSlug),
-  })
+  const { data: teams = [] } = useTeams(orgSlug)
+  const { data: projectTypes = [] } = useProjectTypes(orgSlug)
   const { data: projectDocuments = [] } = useQuery({
     enabled: !!orgSlug && !!project.id,
     queryFn: ({ signal }) =>

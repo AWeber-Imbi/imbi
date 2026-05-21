@@ -4,11 +4,12 @@ import { useQuery } from '@tanstack/react-query'
 import { useWindowVirtualizer } from '@tanstack/react-virtual'
 import { Activity, LoaderCircle, SearchX, X } from 'lucide-react'
 
-import { getProjects, listEnvironments } from '@/api/endpoints'
+import { getProjects } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { LoadingState } from '@/components/ui/loading-state'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useInfiniteOperationsLog } from '@/hooks/useInfiniteOperationsLog'
+import { useEnvironments } from '@/hooks/useOrgResources'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { cn } from '@/lib/utils'
 import type {
@@ -185,11 +186,7 @@ export function OperationsLog({
     data: environments = [],
     isError: environmentsError,
     refetch: refetchEnvironments,
-  } = useQuery({
-    enabled: !!orgSlug,
-    queryFn: ({ signal }) => listEnvironments(orgSlug, signal),
-    queryKey: ['environments', orgSlug],
-  })
+  } = useEnvironments(orgSlug)
   const {
     displayNames: performerDisplayNames,
     isError: usersError,
