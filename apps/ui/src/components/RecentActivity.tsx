@@ -3,6 +3,7 @@ import type { ReactElement } from 'react'
 import md5 from 'md5'
 
 import { usePluginOpsLogTemplates } from '@/hooks/usePluginOpsLogTemplates'
+import { formatRelativeDate } from '@/lib/formatDate'
 import type { ActivityFeedEntry, OperationsLogEntry } from '@/types'
 
 import { renderActivityTemplate } from './activityFeed/renderActivityTemplate'
@@ -102,12 +103,11 @@ export function RecentActivity({
               />
 
               <p className="text-tertiary mt-1 text-xs">
-                {getRelativeTime(
+                {formatRelativeDate(
                   activity.occurred_at ||
                     (activity.type === 'ProjectFeedEntry'
                       ? activity.when
-                      : undefined) ||
-                    '',
+                      : undefined),
                 )}
               </p>
             </div>
@@ -189,43 +189,6 @@ function ActivityLine({
 function getGravatarUrl(email: string, size: number = 40): string {
   const hash = md5(email.trim().toLowerCase())
   return `https://www.gravatar.com/avatar/${hash}?s=${size}&d=identicon`
-}
-
-function getRelativeTime(timestamp: string): string {
-  try {
-    const now = new Date()
-    const past = new Date(timestamp)
-
-    // Check if date is valid
-    if (isNaN(past.getTime())) {
-      console.warn('Invalid timestamp:', timestamp)
-      return `Invalid date: ${timestamp}`
-    }
-
-    const diffMs = now.getTime() - past.getTime()
-
-    // Handle future dates or invalid differences
-    if (diffMs < 0) {
-      return 'just now'
-    }
-
-    const diffMins = Math.floor(diffMs / 60000)
-    const diffHours = Math.floor(diffMs / 3600000)
-    const diffDays = Math.floor(diffMs / 86400000)
-
-    if (diffMins < 1) {
-      return 'just now'
-    } else if (diffMins < 60) {
-      return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`
-    } else if (diffHours < 24) {
-      return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`
-    } else {
-      return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`
-    }
-  } catch (error) {
-    console.error('Error parsing timestamp:', timestamp, error)
-    return 'unknown time'
-  }
 }
 
 function OpsLogActivityLine({
