@@ -1,7 +1,6 @@
 import type { ReactElement } from 'react'
 
-import md5 from 'md5'
-
+import { Gravatar } from '@/components/ui/gravatar'
 import { usePluginOpsLogTemplates } from '@/hooks/usePluginOpsLogTemplates'
 import { formatRelativeDate } from '@/lib/formatDate'
 import type { ActivityFeedEntry, OperationsLogEntry } from '@/types'
@@ -86,10 +85,11 @@ export function RecentActivity({
           key={activityKey(activity)}
         >
           <div className="flex gap-3">
-            <img
+            <Gravatar
               alt={activity.display_name}
               className="size-10 shrink-0 rounded-full"
-              src={getGravatarUrl(activity.email_address)}
+              email={activity.email_address}
+              size={40}
             />
 
             <div className="min-w-0 flex-1">
@@ -191,11 +191,6 @@ function ActivityLine({
       userButton={userButton}
     />
   )
-}
-
-function getGravatarUrl(email: string, size: number = 40): string {
-  const hash = md5(email.trim().toLowerCase())
-  return `https://www.gravatar.com/avatar/${hash}?s=${size}&d=identicon`
 }
 
 function OpsLogActivityLine({
