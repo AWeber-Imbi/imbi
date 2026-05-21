@@ -128,13 +128,13 @@ class ImbiClient(httpx.AsyncClient):
         self,
         org_slug: str,
         project_id: str,
-        version: str,
+        release_id: str,
         env_slug: str,
         body: abc.Mapping[str, object],
     ) -> httpx.Response:
         url = (
             f'/organizations/{org_slug}/projects/{project_id}'
-            f'/releases/{version}/environments/{env_slug}'
+            f'/releases/{release_id}/environments/{env_slug}'
         )
         LOGGER.debug('Recording deployment %s', url)
         response = await self.post(url, json=body)
@@ -145,6 +145,34 @@ class ImbiClient(httpx.AsyncClient):
                 'Failed to record deployment %r: %s', url, response.text
             )
         return response
+
+    async def list_releases(
+        self,
+        org_slug: str,
+        project_id: str,
+        *,
+        committish: str | None = None,
+        tag: str | None = None,
+    ) -> list[dict[str, object]]:
+        """List releases for a project, optionally filtered.
+
+        Returns the raw JSON list of releases (each a dict) so callers
+        can pick the ``id`` they need without coupling to the full
+        response shape.
+        """
+        url = f'/organizations/{org_slug}/projects/{project_id}/releases/'
+        params: dict[str, str] = {}
+        if committish is not None:
+            params['committish'] = committish
+        if tag is not None:
+            params['tag'] = tag
+        response = await self.get(url, params=params)
+        if response.is_error:
+            LOGGER.warning(
+                'Failed to list releases %r: %s', url, response.text
+            )
+            return []
+        return typing.cast('list[dict[str, object]]', response.json())
 
 
 class CreateReleaseConfig(pydantic.BaseModel):
@@ -163,11 +191,19 @@ class CreateReleaseConfig(pydantic.BaseModel):
 
 
 class AddDeploymentEventConfig(pydantic.BaseModel):
-    """Validates ``handler_config`` for :func:`add_deployment_event`."""
+    """Validates ``handler_config`` for :func:`add_deployment_event`.
+
+    ``committish_expression`` is required and is the load-bearing
+    lookup key for the release the event attaches to.
+    ``version_expression`` is optional; when present it narrows the
+    lookup so that a single committish that ships under multiple tags
+    is disambiguated.
+    """
 
     environment_selector: json_pointer.JsonPointer
-    version_expression: str
+    committish_expression: str
     status_selector: json_pointer.JsonPointer
+    version_expression: str | None = None
     note_selector: json_pointer.JsonPointer | None = None
     external_run_id_selector: json_pointer.JsonPointer | None = None
 
@@ -307,7 +343,10 @@ async def add_deployment_event(
     """Processes a deployment_status notification.
 
     Appends a deployment event to the release's DEPLOYED_TO edge for
-    the matching environment. ``record_deployment`` has no
+    the matching environment. The release is located via the Imbi API's
+    ``list_releases`` endpoint filtered by ``committish`` (required) and
+    optionally ``tag``; the first matching release's nano-id is used to
+    target the deployment endpoint. ``record_deployment`` has no
     ``created_by`` field so ``ctx.actor_user_id`` is unused here.
     """
     del credentials, external_identifier
@@ -316,14 +355,19 @@ async def add_deployment_event(
     if status is None:
         LOGGER.warning('Unmapped deployment status %r — skipping', raw_state)
         return
-    version_value = _evaluate_cel(action_config.version_expression, payload)
-    if version_value is None:
-        LOGGER.info(
-            'Skipping deployment event for project %s: version expression'
-            ' evaluated to null',
+    committish_value = _evaluate_cel(
+        action_config.committish_expression, payload
+    )
+    if committish_value is None:
+        LOGGER.warning(
+            'Skipping deployment event for project %s: committish'
+            ' expression evaluated to null',
             ctx.project_id,
         )
         return
+    tag_value: str | None = None
+    if action_config.version_expression is not None:
+        tag_value = _evaluate_cel(action_config.version_expression, payload)
     environment = str(action_config.environment_selector.resolve(payload))
     event_body: dict[str, object] = {'status': status}
     if action_config.note_selector is not None:
@@ -333,17 +377,30 @@ async def add_deployment_event(
             action_config.external_run_id_selector.resolve(payload)
         )
     async with ImbiClient() as client:
-        response = await client.record_deployment(
+        releases = await client.list_releases(
             ctx.org_slug,
             ctx.project_id,
-            version_value,
-            environment,
-            event_body,
+            committish=committish_value,
+            tag=tag_value,
+        )
+        if not releases:
+            LOGGER.warning(
+                'No release matches committish=%r tag=%r for project %s;'
+                ' status %r dropped',
+                committish_value,
+                tag_value,
+                ctx.project_id,
+                status,
+            )
+            return
+        release_id = str(releases[0]['id'])
+        response = await client.record_deployment(
+            ctx.org_slug, ctx.project_id, release_id, environment, event_body
         )
     if response.status_code == http.HTTPStatus.NOT_FOUND:
         LOGGER.warning(
             'Release %r missing for project %s; status %r dropped',
-            version_value,
+            release_id,
             ctx.project_id,
             status,
         )

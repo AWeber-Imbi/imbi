@@ -1,4 +1,5 @@
 import json
+import typing
 import unittest.mock
 
 import celpy.celparser
@@ -214,11 +215,14 @@ _DEPLOYMENT_BODY: dict[str, object] = {
 _STATUS_BODY: dict[str, object] = {
     'deployment': {
         'ref': 'v1.2.3',
+        'sha': 'abcdef1234567890',
         'url': 'https://api.github.com/repos/o/r/deployments/42',
         'environment': 'production',
     },
     'deployment_status': {'state': 'success', 'environment': 'production'},
 }
+
+_RELEASE_ID = 'rel-nanoid-abc'
 
 
 def _create_release_config(
@@ -234,11 +238,30 @@ def _create_release_config(
 def _deployment_event_config(
     raw: str = (
         '{"environment_selector": "/deployment_status/environment",'
+        ' "committish_expression": "substring(deployment.sha, 0, 7)",'
         ' "version_expression": "deployment.ref",'
         ' "status_selector": "/deployment_status/state"}'
     ),
 ) -> actions.AddDeploymentEventConfig:
     return actions.AddDeploymentEventConfig.model_validate_json(raw)
+
+
+def _patch_list_releases(
+    releases: list[dict[str, object]] | None = None,
+) -> typing.Any:  # noqa: ANN401 — unittest.mock._patch is private
+    """Patch ``ImbiClient.list_releases`` to return ``releases``.
+
+    Defaults to a single release with ``id == _RELEASE_ID`` so most
+    tests get the happy-path lookup for free.
+    """
+    return unittest.mock.patch.object(
+        actions.ImbiClient,
+        'list_releases',
+        new_callable=unittest.mock.AsyncMock,
+        return_value=releases
+        if releases is not None
+        else [{'id': _RELEASE_ID}],
+    )
 
 
 class CreateReleaseTests(helpers.TestCase):
@@ -618,6 +641,7 @@ class AddDeploymentEventTests(helpers.TestCase):
     async def test_status_mapping(self) -> None:
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            _patch_list_releases() as mock_list,
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'record_deployment',
@@ -633,8 +657,170 @@ class AddDeploymentEventTests(helpers.TestCase):
                 payload=_STATUS_BODY,
             )
 
+        mock_list.assert_called_once_with(
+            'org', 'proj', committish='abcdef1', tag='v1.2.3'
+        )
         mock_record.assert_called_once_with(
-            'org', 'proj', 'v1.2.3', 'production', {'status': 'success'}
+            'org', 'proj', _RELEASE_ID, 'production', {'status': 'success'}
+        )
+
+    async def test_committish_expression_is_required(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            _deployment_event_config(
+                '{"environment_selector": "/deployment_status/environment",'
+                ' "version_expression": "deployment.ref",'
+                ' "status_selector": "/deployment_status/state"}'
+            )
+
+    async def test_lookup_uses_committish_only_when_version_absent(
+        self,
+    ) -> None:
+        config = _deployment_event_config(
+            json.dumps(
+                {
+                    'environment_selector': '/deployment_status/environment',
+                    'committish_expression': 'substring(deployment.sha, 0, 7)',
+                    'status_selector': '/deployment_status/state',
+                }
+            )
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            _patch_list_releases() as mock_list,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'record_deployment',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(200),
+            ) as mock_record,
+        ):
+            await actions.add_deployment_event(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload=_STATUS_BODY,
+            )
+
+        mock_list.assert_called_once_with(
+            'org', 'proj', committish='abcdef1', tag=None
+        )
+        mock_record.assert_called_once()
+
+    async def test_lookup_drops_tag_when_version_expression_yields_null(
+        self,
+    ) -> None:
+        config = _deployment_event_config(
+            json.dumps(
+                {
+                    'environment_selector': '/deployment_status/environment',
+                    'committish_expression': 'substring(deployment.sha, 0, 7)',
+                    'version_expression': (
+                        "deployment.ref.matches('^[0-9]+[.][0-9]+[.][0-9]+$')"
+                        ' ? deployment.ref : null'
+                    ),
+                    'status_selector': '/deployment_status/state',
+                }
+            )
+        )
+        payload = {
+            **_STATUS_BODY,
+            'deployment': {
+                **typing.cast('dict[str, object]', _STATUS_BODY['deployment']),
+                'ref': 'main',
+            },
+        }
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            _patch_list_releases() as mock_list,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'record_deployment',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(200),
+            ) as mock_record,
+        ):
+            await actions.add_deployment_event(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload=payload,
+            )
+
+        mock_list.assert_called_once_with(
+            'org', 'proj', committish='abcdef1', tag=None
+        )
+        mock_record.assert_called_once()
+
+    async def test_null_committish_expression_skips_event(self) -> None:
+        config = _deployment_event_config(
+            json.dumps(
+                {
+                    'environment_selector': '/deployment_status/environment',
+                    'committish_expression': (
+                        "deployment.sha != '' ? deployment.sha : null"
+                    ),
+                    'status_selector': '/deployment_status/state',
+                }
+            )
+        )
+        payload = {
+            **_STATUS_BODY,
+            'deployment': {
+                **typing.cast('dict[str, object]', _STATUS_BODY['deployment']),
+                'sha': '',
+            },
+        }
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            _patch_list_releases() as mock_list,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'record_deployment',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_record,
+            self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
+        ):
+            await actions.add_deployment_event(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload=payload,
+            )
+
+        mock_list.assert_not_called()
+        mock_record.assert_not_called()
+        self.assertTrue(
+            any(
+                'committish expression evaluated to null' in line
+                for line in cm.output
+            )
+        )
+
+    async def test_no_matching_release_warns_and_skips(self) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            _patch_list_releases([]),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'record_deployment',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_record,
+            self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
+        ):
+            await actions.add_deployment_event(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=_deployment_event_config(),
+                payload=_STATUS_BODY,
+            )
+
+        mock_record.assert_not_called()
+        self.assertTrue(
+            any('No release matches' in line for line in cm.output)
         )
 
     async def test_note_selector_emits_note(self) -> None:
@@ -642,6 +828,7 @@ class AddDeploymentEventTests(helpers.TestCase):
             json.dumps(
                 {
                     'environment_selector': '/deployment_status/environment',
+                    'committish_expression': 'substring(deployment.sha, 0, 7)',
                     'version_expression': 'deployment.ref',
                     'status_selector': '/deployment_status/state',
                     'note_selector': '/deployment/url',
@@ -650,6 +837,7 @@ class AddDeploymentEventTests(helpers.TestCase):
         )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            _patch_list_releases(),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'record_deployment',
@@ -681,6 +869,7 @@ class AddDeploymentEventTests(helpers.TestCase):
         }
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            _patch_list_releases(),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'record_deployment',
@@ -708,6 +897,7 @@ class AddDeploymentEventTests(helpers.TestCase):
         }
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            _patch_list_releases() as mock_list,
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'record_deployment',
@@ -723,57 +913,16 @@ class AddDeploymentEventTests(helpers.TestCase):
                 payload=payload,
             )
 
+        mock_list.assert_not_called()
         mock_record.assert_not_called()
         self.assertTrue(
             any('Unmapped' in line and 'frobbed' in line for line in cm.output)
         )
 
-    async def test_null_version_expression_skips_event(self) -> None:
-        config = _deployment_event_config(
-            json.dumps(
-                {
-                    'environment_selector': '/deployment_status/environment',
-                    'version_expression': (
-                        "deployment.ref.matches('^[0-9]+[.][0-9]+[.][0-9]+$')"
-                        ' ? deployment.ref : null'
-                    ),
-                    'status_selector': '/deployment_status/state',
-                }
-            )
-        )
-        payload = {
-            'deployment': {
-                'ref': 'main',
-                'url': 'https://api.github.com/repos/o/r/deployments/42',
-                'environment': 'production',
-            },
-            'deployment_status': {
-                'state': 'success',
-                'environment': 'production',
-            },
-        }
-        with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
-            unittest.mock.patch.object(
-                actions.ImbiClient,
-                'record_deployment',
-                new_callable=unittest.mock.AsyncMock,
-                return_value=httpx.Response(200),
-            ) as mock_record,
-        ):
-            await actions.add_deployment_event(
-                ctx=_ctx(),
-                credentials={},
-                external_identifier='',
-                action_config=config,
-                payload=payload,
-            )
-
-        mock_record.assert_not_called()
-
     async def test_release_missing_logs_warning(self) -> None:
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            _patch_list_releases(),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'record_deployment',
@@ -950,11 +1099,12 @@ class ImbiClientRecordDeploymentTests(helpers.TestCase):
         ):
             async with actions.ImbiClient() as client:
                 await client.record_deployment(
-                    'o', 'p', 'v1.2.3', 'prod', {'status': 'success'}
+                    'o', 'p', _RELEASE_ID, 'prod', {'status': 'success'}
                 )
 
         mock_post.assert_called_once_with(
-            '/organizations/o/projects/p/releases/v1.2.3/environments/prod',
+            f'/organizations/o/projects/p/releases/{_RELEASE_ID}'
+            f'/environments/prod',
             json={'status': 'success'},
         )
 
@@ -998,6 +1148,65 @@ class ImbiClientRecordDeploymentTests(helpers.TestCase):
         )
 
 
+class ImbiClientListReleasesTests(helpers.TestCase):
+    async def test_url_and_no_filters(self) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'get',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(200, json=[{'id': _RELEASE_ID}]),
+            ) as mock_get,
+        ):
+            async with actions.ImbiClient() as client:
+                releases = await client.list_releases('org', 'proj')
+
+        mock_get.assert_called_once_with(
+            '/organizations/org/projects/proj/releases/', params={}
+        )
+        self.assertEqual([{'id': _RELEASE_ID}], releases)
+
+    async def test_passes_committish_and_tag(self) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'get',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(200, json=[]),
+            ) as mock_get,
+        ):
+            async with actions.ImbiClient() as client:
+                await client.list_releases(
+                    'org', 'proj', committish='abcdef1', tag='v1.2.3'
+                )
+
+        mock_get.assert_called_once_with(
+            '/organizations/org/projects/proj/releases/',
+            params={'committish': 'abcdef1', 'tag': 'v1.2.3'},
+        )
+
+    async def test_error_logs_warning_and_returns_empty(self) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'get',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(500, content=b'boom'),
+            ),
+            self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
+        ):
+            async with actions.ImbiClient() as client:
+                releases = await client.list_releases('org', 'proj')
+
+        self.assertEqual([], releases)
+        self.assertTrue(
+            any('Failed to list releases' in line for line in cm.output)
+        )
+
+
 class StatusMapTests(helpers.TestCase):
     """Verify every GitHub deployment_status state mapping."""
 
@@ -1011,6 +1220,7 @@ class StatusMapTests(helpers.TestCase):
         }
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            _patch_list_releases(),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'record_deployment',
