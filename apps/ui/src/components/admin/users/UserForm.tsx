@@ -37,6 +37,7 @@ import { FormField } from '@/components/ui/form-field'
 import { Switch } from '@/components/ui/switch'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useFormScaffold } from '@/hooks/useFormScaffold'
+import { formatDateTime } from '@/lib/formatDate'
 import { cn } from '@/lib/utils'
 import type { AdminUser, AdminUserCreate } from '@/types'
 
@@ -221,17 +222,6 @@ export function UserForm({
     })
 
     return Object.keys(errors).length === 0
-  }
-
-  const formatDate = (value?: null | string) => {
-    if (!value) return 'Never'
-    return new Date(value).toLocaleString('en-US', {
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    })
   }
 
   const handleSave = () => {
@@ -839,11 +829,15 @@ export function UserForm({
         {isEditing && (
           <div className="border-tertiary bg-secondary text-tertiary flex items-center gap-1.5 border-t px-6 py-3 text-xs">
             <Info className="size-3" />
-            <span>Created {formatDate(user.created_at)}</span>
+            <span>
+              Created {formatDateTime(user.created_at, { fallback: 'Never' })}
+            </span>
             <span>·</span>
             <span>
               Last sign-in{' '}
-              <span className="font-mono">{formatDate(user.last_login)}</span>
+              <span className="font-mono">
+                {formatDateTime(user.last_login, { fallback: 'Never' })}
+              </span>
             </span>
           </div>
         )}

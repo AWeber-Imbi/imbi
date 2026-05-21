@@ -1,17 +1,50 @@
+interface DateFormatOptions {
+  /** String returned when the input is null/undefined or unparseable. */
+  fallback?: string
+  /** Month rendering. Defaults to short ("Jan"). */
+  month?: 'long' | 'short'
+}
+
 /**
  * Format an ISO date string as a localized short date.
- * Returns '—' for null/undefined values.
+ * Returns the configured fallback (default '—') for null/undefined/invalid.
  */
-export function formatDate(dateString?: null | string): string {
-  if (!dateString) return '—'
+export function formatDate(
+  dateString?: null | string,
+  { fallback = '—', month = 'short' }: DateFormatOptions = {},
+): string {
+  if (!dateString) return fallback
   try {
     return new Date(dateString).toLocaleDateString(undefined, {
       day: 'numeric',
-      month: 'short',
+      month,
       year: 'numeric',
     })
   } catch {
-    return '—'
+    return fallback
+  }
+}
+
+/**
+ * Format an ISO date string as a localized date + time.
+ * Returns the configured fallback (default '—') for null/undefined/invalid.
+ * Use for "last login", "created at" rows where a wall-clock time matters.
+ */
+export function formatDateTime(
+  dateString?: null | string,
+  { fallback = '—', month = 'short' }: DateFormatOptions = {},
+): string {
+  if (!dateString) return fallback
+  try {
+    return new Date(dateString).toLocaleString(undefined, {
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      month,
+      year: 'numeric',
+    })
+  } catch {
+    return fallback
   }
 }
 

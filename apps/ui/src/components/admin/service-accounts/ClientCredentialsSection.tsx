@@ -24,6 +24,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { formatDateTime } from '@/lib/formatDate'
 import type {
   ClientCredential,
   ClientCredentialCreate,
@@ -52,17 +53,6 @@ interface ClientCredentialsSectionProps {
     unknown,
     string
   >
-}
-
-const formatDate = (dateString?: null | string) => {
-  if (!dateString) return 'Never'
-  return new Date(dateString).toLocaleString(undefined, {
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    month: 'long',
-    year: 'numeric',
-  })
 }
 
 const truncateClientId = (clientId: string) => {
@@ -201,11 +191,21 @@ export function ClientCredentialsSection({
                       )}
                     </div>
                     <div className="text-tertiary mt-1 text-xs">
-                      Created {formatDate(cred.created_at)}
+                      Created{' '}
+                      {formatDateTime(cred.created_at, {
+                        fallback: 'Never',
+                        month: 'long',
+                      })}
                       {cred.last_used &&
-                        ` | Last used ${formatDate(cred.last_used)}`}
+                        ` | Last used ${formatDateTime(cred.last_used, {
+                          fallback: 'Never',
+                          month: 'long',
+                        })}`}
                       {cred.expires_at &&
-                        ` | Expires ${formatDate(cred.expires_at)}`}
+                        ` | Expires ${formatDateTime(cred.expires_at, {
+                          fallback: 'Never',
+                          month: 'long',
+                        })}`}
                     </div>
                   </div>
                   {!cred.revoked && (

@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/tooltip'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { formatDateTime } from '@/lib/formatDate'
 import { buildReplacePatch } from '@/lib/json-patch'
 import type { AdminUser, OrgMembership } from '@/types'
 
@@ -117,17 +118,6 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
     (user.organizations ?? []).map((o) => o.organization_slug),
   )
   const availableOrgs = allOrgs.filter((o) => !memberOrgSlugs.has(o.slug))
-
-  const formatDate = (dateString?: null | string) => {
-    if (!dateString) return 'Never'
-    return new Date(dateString).toLocaleString('en-US', {
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      month: 'long',
-      year: 'numeric',
-    })
-  }
 
   return (
     <div className="space-y-6">
@@ -226,7 +216,12 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
                 <Calendar className="size-4" />
                 Created
               </div>
-              <div className="text-primary">{formatDate(user.created_at)}</div>
+              <div className="text-primary">
+                {formatDateTime(user.created_at, {
+                  fallback: 'Never',
+                  month: 'long',
+                })}
+              </div>
             </div>
 
             <div>
@@ -238,7 +233,12 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
                 <Clock className="size-4" />
                 Last Login
               </div>
-              <div className="text-primary">{formatDate(user.last_login)}</div>
+              <div className="text-primary">
+                {formatDateTime(user.last_login, {
+                  fallback: 'Never',
+                  month: 'long',
+                })}
+              </div>
             </div>
           </div>
         </CardContent>

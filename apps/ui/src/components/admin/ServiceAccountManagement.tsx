@@ -13,6 +13,7 @@ import {
 import { AdminTable } from '@/components/ui/admin-table'
 import { useAdminCrud } from '@/hooks/useAdminCrud'
 import { useAdminNav } from '@/hooks/useAdminNav'
+import { formatDateTime } from '@/lib/formatDate'
 import { buildDiffPatch } from '@/lib/json-patch'
 import type {
   PatchOperation,
@@ -111,17 +112,6 @@ export function ServiceAccountManagement() {
 
   const handleCancel = () => {
     goToList()
-  }
-
-  const formatDate = (dateString?: null | string) => {
-    if (!dateString) return 'Never'
-    return new Date(dateString).toLocaleString('en-US', {
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    })
   }
 
   if (viewMode === 'create' || viewMode === 'edit') {
@@ -230,7 +220,9 @@ export function ServiceAccountManagement() {
             key: 'last_auth',
             render: (account) => (
               <span className="text-secondary text-xs">
-                {formatDate(account.last_authenticated)}
+                {formatDateTime(account.last_authenticated, {
+                  fallback: 'Never',
+                })}
               </span>
             ),
           },

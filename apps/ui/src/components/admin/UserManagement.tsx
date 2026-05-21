@@ -17,6 +17,7 @@ import { LoadingState } from '@/components/ui/loading-state'
 import { useAdminCrud } from '@/hooks/useAdminCrud'
 import { useAdminNav } from '@/hooks/useAdminNav'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { formatDateTime } from '@/lib/formatDate'
 import { buildDiffPatch, buildReplacePatch } from '@/lib/json-patch'
 import type { AdminUser, AdminUserCreate, PatchOperation } from '@/types'
 
@@ -112,17 +113,6 @@ export function UserManagement() {
 
   const handleDelete = (user: AdminUser) => {
     deleteMutation.mutate(user.email)
-  }
-
-  const formatDate = (dateString?: null | string) => {
-    if (!dateString) return 'Never'
-    return new Date(dateString).toLocaleString('en-US', {
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    })
   }
 
   // Fetch full user detail (with orgs) when viewing/editing a specific user
@@ -332,7 +322,7 @@ export function UserManagement() {
             key: 'last_login',
             render: (user) => (
               <span className="text-secondary text-xs">
-                {formatDate(user.last_login)}
+                {formatDateTime(user.last_login, { fallback: 'Never' })}
               </span>
             ),
           },

@@ -21,6 +21,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { formatDateTime } from '@/lib/formatDate'
 import type { ApiKey, ApiKeyCreated, ServiceAccount } from '@/types'
 
 import { RevealSecret } from './RevealSecret'
@@ -34,17 +35,6 @@ interface ApiKeysSectionProps {
   onNewlyCreatedKeyChange: (key: ApiKeyCreated | null) => void
   revokeApiKeyMutation: UseMutationResult<unknown, unknown, string>
   rotateApiKeyMutation: UseMutationResult<ApiKeyCreated, unknown, string>
-}
-
-const formatDate = (dateString?: null | string) => {
-  if (!dateString) return 'Never'
-  return new Date(dateString).toLocaleString(undefined, {
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    month: 'long',
-    year: 'numeric',
-  })
 }
 
 export function ApiKeysSection({
@@ -144,11 +134,21 @@ export function ApiKeysSection({
                       {key.revoked && <Badge variant="danger">Revoked</Badge>}
                     </div>
                     <div className="text-tertiary mt-1 text-xs">
-                      Created {formatDate(key.created_at)}
+                      Created{' '}
+                      {formatDateTime(key.created_at, {
+                        fallback: 'Never',
+                        month: 'long',
+                      })}
                       {key.last_used &&
-                        ` | Last used ${formatDate(key.last_used)}`}
+                        ` | Last used ${formatDateTime(key.last_used, {
+                          fallback: 'Never',
+                          month: 'long',
+                        })}`}
                       {key.expires_at &&
-                        ` | Expires ${formatDate(key.expires_at)}`}
+                        ` | Expires ${formatDateTime(key.expires_at, {
+                          fallback: 'Never',
+                          month: 'long',
+                        })}`}
                     </div>
                   </div>
                   {!key.revoked && (

@@ -69,6 +69,7 @@ import {
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useProjectTypes, useTeams } from '@/hooks/useOrgResources'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
+import { formatDateTime } from '@/lib/formatDate'
 import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import { formatFieldKey } from '@/lib/project-field-formatting'
 import { sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
@@ -910,9 +911,7 @@ export function ProjectDetail({
                               </span>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>
-                                {new Date(project.created_at).toLocaleString()}
-                              </p>
+                              <p>{formatDateTime(project.created_at)}</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>

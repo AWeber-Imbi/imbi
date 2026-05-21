@@ -45,6 +45,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { formatDate } from '@/lib/formatDate'
 import type { Permission, RoleUser, ServiceAccount } from '@/types'
 
 type DetailTab = 'groups' | 'permissions' | 'service-accounts' | 'users'
@@ -511,9 +512,7 @@ export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
                         )}
                       </div>
                       <div className="text-tertiary text-sm">
-                        {user.last_login
-                          ? new Date(user.last_login).toLocaleDateString()
-                          : 'Never'}
+                        {formatDate(user.last_login, { fallback: 'Never' })}
                       </div>
                     </div>
                   ))}
@@ -618,9 +617,9 @@ export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
                         )}
                       </div>
                       <div className="text-tertiary text-sm">
-                        {sa.last_authenticated
-                          ? new Date(sa.last_authenticated).toLocaleDateString()
-                          : 'Never'}
+                        {formatDate(sa.last_authenticated, {
+                          fallback: 'Never',
+                        })}
                       </div>
                     </div>
                   ))}
