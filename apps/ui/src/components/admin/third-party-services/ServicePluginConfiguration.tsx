@@ -761,7 +761,7 @@ function ProjectTypesCard({
 
   const { data: projectTypes } = useQuery({
     queryFn: ({ signal }) => listProjectTypes(orgSlug, signal),
-    queryKey: ['project-types', orgSlug],
+    queryKey: queryKeys.projectTypes(orgSlug),
     staleTime: 60 * 1000,
   })
 

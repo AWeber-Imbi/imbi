@@ -21,6 +21,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { queryKeys } from '@/lib/queryKeys'
 import { slugify } from '@/lib/utils'
 import type { ProjectCreate } from '@/types'
 
@@ -56,7 +57,7 @@ export function NewProjectDialog({
   const { data: projectTypes = [] } = useQuery({
     enabled: !!orgSlug && isOpen,
     queryFn: ({ signal }) => listProjectTypes(orgSlug, signal),
-    queryKey: ['projectTypes', orgSlug],
+    queryKey: queryKeys.projectTypes(orgSlug),
   })
 
   const { data: environments = [] } = useQuery({

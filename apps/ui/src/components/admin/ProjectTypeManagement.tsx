@@ -16,6 +16,7 @@ import { useAdminCrud } from '@/hooks/useAdminCrud'
 import { useAdminNav } from '@/hooks/useAdminNav'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { buildDiffPatch } from '@/lib/json-patch'
+import { queryKeys } from '@/lib/queryKeys'
 import type { PatchOperation, ProjectType, ProjectTypeCreate } from '@/types'
 
 import { AdminSection } from './AdminSection'
@@ -51,7 +52,7 @@ export function ProjectTypeManagement() {
     deleteFn: ({ orgSlug, slug }) => deleteProjectType(orgSlug, slug),
     listFn: orgSlug ? (signal) => listProjectTypes(orgSlug, signal) : null,
     onMutationSuccess: goToList,
-    queryKey: ['projectTypes', orgSlug],
+    queryKey: queryKeys.projectTypes(orgSlug ?? ''),
     updateFn: ({ operations, orgSlug, slug }) =>
       updateProjectType(orgSlug, slug, operations),
   })

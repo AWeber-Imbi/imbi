@@ -20,6 +20,7 @@ export const queryKeys = {
     ['plugin-entities', slug, label] as const,
   pluginEntitySchema: (slug: string, label: string) =>
     ['plugin-entity-schema', slug, label] as const,
+  projectTypes: (orgSlug: string) => ['projectTypes', orgSlug] as const,
 } as const
 
 /**
@@ -45,7 +46,9 @@ export function getQueryKeysForResource(
     case 'organizations':
       return [['organizations']]
     case 'project_types':
-      return orgSlug ? [['projectTypes', orgSlug]] : [['projectTypes']]
+      return orgSlug
+        ? [Array.from(queryKeys.projectTypes(orgSlug))]
+        : [['projectTypes']]
     case 'projects':
       return [['projects']]
     case 'roles':

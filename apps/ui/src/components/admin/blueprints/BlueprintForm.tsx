@@ -13,6 +13,7 @@ import { CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { queryKeys } from '@/lib/queryKeys'
 import { parseFilterFromBlueprint } from '@/lib/utils'
 import type { BlueprintCreate, BlueprintFilter, SchemaProperty } from '@/types'
 
@@ -72,7 +73,7 @@ export function BlueprintForm({
   } = useQuery({
     enabled: !!orgSlug,
     queryFn: ({ signal }) => listProjectTypes(orgSlug!, signal),
-    queryKey: ['projectTypes', orgSlug],
+    queryKey: queryKeys.projectTypes(orgSlug ?? ''),
   })
 
   const {

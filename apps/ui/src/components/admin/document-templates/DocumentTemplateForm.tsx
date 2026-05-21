@@ -13,6 +13,7 @@ import { IconUpload } from '@/components/ui/icon-upload'
 import { Input } from '@/components/ui/input'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
+import { queryKeys } from '@/lib/queryKeys'
 import { slugify } from '@/lib/utils'
 import type {
   DocumentTemplate,
@@ -62,7 +63,7 @@ export function DocumentTemplateForm({
   const { data: projectTypes = [] } = useQuery<ProjectType[]>({
     enabled: !!orgSlug,
     queryFn: ({ signal }) => listProjectTypes(orgSlug, signal),
-    queryKey: ['projectTypes', orgSlug],
+    queryKey: queryKeys.projectTypes(orgSlug),
   })
 
   const validate = () => {

@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { queryKeys } from '@/lib/queryKeys'
 import { slugify } from '@/lib/utils'
 import type {
   ScoringPolicy,
@@ -146,7 +147,7 @@ export function ScoringPolicyForm({
   } = useQuery({
     enabled: !!orgSlug,
     queryFn: ({ signal }) => listProjectTypes(orgSlug!, signal),
-    queryKey: ['projectTypes', orgSlug],
+    queryKey: queryKeys.projectTypes(orgSlug ?? ''),
     staleTime: 5 * 60 * 1000,
   })
 

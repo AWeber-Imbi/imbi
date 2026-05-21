@@ -72,6 +72,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import { formatFieldKey } from '@/lib/project-field-formatting'
+import { queryKeys } from '@/lib/queryKeys'
 import { sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
 import type { Project, ScoringPolicy } from '@/types'
 
@@ -346,7 +347,7 @@ export function ProjectDetail({
   const { data: projectTypes = [] } = useQuery({
     enabled: !!orgSlug,
     queryFn: ({ signal }) => listProjectTypes(orgSlug, signal),
-    queryKey: ['projectTypes', orgSlug],
+    queryKey: queryKeys.projectTypes(orgSlug),
   })
   const { data: projectDocuments = [] } = useQuery({
     enabled: !!orgSlug && !!project.id,
