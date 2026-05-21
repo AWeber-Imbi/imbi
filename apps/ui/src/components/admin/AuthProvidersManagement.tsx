@@ -39,6 +39,7 @@ import { LoadingState } from '@/components/ui/loading-state'
 import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/hooks/useAuth'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { queryKeys } from '@/lib/queryKeys'
 import type {
   LocalAuthConfig,
   LoginProviderCreate,
@@ -109,12 +110,12 @@ export function AuthProvidersManagement() {
 
   const { data, error, isLoading } = useQuery({
     queryFn: ({ signal }) => listAuthProviders(signal),
-    queryKey: ['admin', 'auth-providers'],
+    queryKey: queryKeys.adminAuthProviders(),
   })
 
   const localAuthQuery = useQuery({
     queryFn: ({ signal }) => getLocalAuthConfig(signal),
-    queryKey: ['admin', 'local-auth'],
+    queryKey: queryKeys.adminLocalAuth(),
   })
 
   const localAuthMutation = useMutation({
@@ -123,16 +124,15 @@ export function AuthProvidersManagement() {
       toast.error(
         `Failed to update local authentication: ${extractApiErrorDetail(err)}`,
       )
-      queryClient.invalidateQueries({ queryKey: ['admin', 'local-auth'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminLocalAuth() })
     },
     onMutate: async (enabled: boolean) => {
-      await queryClient.cancelQueries({ queryKey: ['admin', 'local-auth'] })
-      const previous = queryClient.getQueryData<LocalAuthConfig>([
-        'admin',
-        'local-auth',
-      ])
+      await queryClient.cancelQueries({ queryKey: queryKeys.adminLocalAuth() })
+      const previous = queryClient.getQueryData<LocalAuthConfig>(
+        queryKeys.adminLocalAuth(),
+      )
       if (previous) {
-        queryClient.setQueryData<LocalAuthConfig>(['admin', 'local-auth'], {
+        queryClient.setQueryData<LocalAuthConfig>(queryKeys.adminLocalAuth(), {
           ...previous,
           enabled,
         })
@@ -140,8 +140,10 @@ export function AuthProvidersManagement() {
       return { previous }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'local-auth'] })
-      queryClient.invalidateQueries({ queryKey: ['authProviders'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminLocalAuth() })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.publicAuthProviders(),
+      })
       toast.success('Local authentication updated')
     },
   })
@@ -149,8 +151,8 @@ export function AuthProvidersManagement() {
   const providers = useMemo(() => sortProviders(data ?? []), [data])
 
   const invalidateAll = () => {
-    queryClient.invalidateQueries({ queryKey: ['admin', 'auth-providers'] })
-    queryClient.invalidateQueries({ queryKey: ['authProviders'] })
+    queryClient.invalidateQueries({ queryKey: queryKeys.adminAuthProviders() })
+    queryClient.invalidateQueries({ queryKey: queryKeys.publicAuthProviders() })
   }
 
   const createMutation = useMutation({

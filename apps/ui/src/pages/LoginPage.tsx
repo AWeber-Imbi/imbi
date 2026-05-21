@@ -14,6 +14,7 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { queryKeys } from '@/lib/queryKeys'
 
 const REMEMBERED_EMAIL_KEY = 'imbi_remembered_email'
 
@@ -33,7 +34,7 @@ export function LoginPage() {
 
   const { data: providersData, isLoading: providersLoading } = useQuery({
     queryFn: ({ signal }) => getAuthProviders(signal),
-    queryKey: ['authProviders'],
+    queryKey: queryKeys.publicAuthProviders(),
     retry: false,
     staleTime: 10 * 60 * 1000,
   })

@@ -5,6 +5,8 @@
  * breaks the other.  Use these builders instead of literals.
  */
 export const queryKeys = {
+  adminAuthProviders: () => ['admin', 'auth-providers'] as const,
+  adminLocalAuth: () => ['admin', 'local-auth'] as const,
   adminPlugin: (slug: string) => ['admin-plugin', slug] as const,
   adminPlugins: () => ['admin-plugins'] as const,
   anchorEdges: (
@@ -21,6 +23,12 @@ export const queryKeys = {
   pluginEntitySchema: (slug: string, label: string) =>
     ['plugin-entity-schema', slug, label] as const,
   projectTypes: (orgSlug: string) => ['projectTypes', orgSlug] as const,
+  // Login form's view of providers (/auth/providers, public payload with
+  // default_redirect). Distinct from adminAuthProviders, which lists admin
+  // metadata from /admin/auth-providers — different endpoint, different shape,
+  // different consumers. Mutations on the admin list must invalidate both so
+  // the LoginPage picker stays in sync.
+  publicAuthProviders: () => ['authProviders'] as const,
 } as const
 
 /**
