@@ -17,9 +17,13 @@ import type { Organization } from '@/types'
 
 const ORG_STORAGE_KEY = 'imbi-selected-org'
 
+// Stable sentinel so consumers don't see a new reference on every render
+// while the query is loading (when `data` is undefined).
+const EMPTY_ORGS: readonly Organization[] = Object.freeze([])
+
 interface OrganizationContextValue {
   isLoading: boolean
-  organizations: Organization[]
+  organizations: readonly Organization[]
   selectedOrganization: null | Organization
   setSelectedOrganization: (org: Organization) => void
 }
@@ -34,12 +38,17 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
   const accessToken = useAuthStore((s) => s.accessToken)
   const isTokenExpired = useAuthStore((s) => s.isTokenExpired)
 
-  const { data: organizations = [], isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     enabled: !!accessToken && !isTokenExpired(),
     queryFn: ({ signal }) => listOrganizations(signal),
     queryKey: ['organizations'],
     retry: 1,
   })
+  // Hold the empty-state reference stable. TanStack's structural sharing
+  // already keeps `data` stable across no-op refetches, but the inline
+  // `?? []` default would produce a fresh array on every render while
+  // the query is loading, blowing up every useOrganization() consumer.
+  const organizations: readonly Organization[] = data ?? EMPTY_ORGS
 
   // Auto-select when orgs load and nothing valid is selected
   useEffect(() => {
