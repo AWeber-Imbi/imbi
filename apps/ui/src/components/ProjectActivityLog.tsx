@@ -65,7 +65,10 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
     queryFn: ({ signal }) =>
       listProjectEvents({ limit: MAX_ROWS, orgSlug, projectId }, signal),
     queryKey: ['events', orgSlug, projectId],
-    staleTime: 0,
+    // 30s matches the opsLog query above. Activity events are roughly
+    // append-only from the user's perspective; refetch-on-focus still
+    // picks up genuinely new activity within a focus cycle.
+    staleTime: 30_000,
   })
 
   const { data: opsPage, isPending: opsPending } = useQuery({

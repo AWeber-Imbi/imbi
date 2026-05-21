@@ -200,7 +200,10 @@ export function Dashboard({
   const identitiesQuery = useQuery<IdentityConnectionResponse[]>({
     queryFn: ({ signal }) => getMyIdentities(signal),
     queryKey: ['me-identities'],
-    staleTime: 0,
+    // User identity connections rarely change between visits. 5 min
+    // matches getCurrentUser staleTime; refetch-on-focus still picks
+    // up changes the user makes elsewhere within seconds.
+    staleTime: 5 * 60 * 1000,
   })
 
   const connectedSlugs = new Set(

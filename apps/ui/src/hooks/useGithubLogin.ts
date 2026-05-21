@@ -14,7 +14,9 @@ export function useGithubLogin() {
   } = useQuery({
     queryFn: ({ signal }) => getMyIdentities(signal),
     queryKey: ['me-identities'],
-    staleTime: 0,
+    // Match Dashboard's me-identities staleTime so the two consumers
+    // share the cache instead of refetching independently on focus.
+    staleTime: 5 * 60 * 1000,
   })
 
   const login = identities ? githubLoginFromIdentities(identities) : undefined
