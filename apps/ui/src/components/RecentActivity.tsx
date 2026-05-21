@@ -80,10 +80,10 @@ export function RecentActivity({
 
   const activityList = (
     <div className="max-h-[calc(100vh-380px)] space-y-4 overflow-y-auto pr-2">
-      {activities.map((activity, index) => (
+      {activities.map((activity) => (
         <div
           className="border-tertiary border-b pb-4 last:border-0 last:pb-0"
-          key={index}
+          key={activityKey(activity)}
         >
           <div className="flex gap-3">
             <img
@@ -139,6 +139,13 @@ export function RecentActivity({
       {activityList}
     </Card>
   )
+}
+
+function activityKey(activity: ActivityFeedEntry): string {
+  if (activity.type === 'OperationsLogEntry') {
+    return `ops-${activity.id}`
+  }
+  return `feed-${activity.project_id}-${activity.what}-${activity.when ?? activity.occurred_at ?? ''}`
 }
 
 function ActivityLine({

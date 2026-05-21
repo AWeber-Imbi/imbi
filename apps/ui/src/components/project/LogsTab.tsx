@@ -904,16 +904,16 @@ export function LogsTab({
       {/* Active field filters */}
       {fieldFilters.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {fieldFilters.map((f, i) => (
+          {fieldFilters.map((f) => (
             <span
               className="bg-tertiary text-secondary flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[11px]"
-              key={i}
+              key={f}
             >
               {f}
               <button
                 className="text-tertiary hover:text-primary"
                 onClick={() =>
-                  setFieldFilters((prev) => prev.filter((_, j) => j !== i))
+                  setFieldFilters((prev) => prev.filter((cur) => cur !== f))
                 }
               >
                 <X size={10} />
