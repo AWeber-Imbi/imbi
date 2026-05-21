@@ -22,6 +22,7 @@ import {
   updateAuthProvider,
   updateLocalAuthConfig,
 } from '@/api/endpoints'
+import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -215,17 +216,10 @@ export function AuthProvidersManagement() {
   return (
     <div className="space-y-4">
       {!canWrite && (
-        <div
-          className={
-            'border-info bg-info flex items-start gap-3 rounded-lg border p-4'
-          }
-        >
-          <Power className="text-info mt-0.5 size-5 shrink-0" />
-          <p className="text-info text-sm">
-            You don't have permission to modify auth providers. Contact an
-            administrator to add or change providers.
-          </p>
-        </div>
+        <Alert icon={Power} variant="info">
+          You don't have permission to modify auth providers. Contact an
+          administrator to add or change providers.
+        </Alert>
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

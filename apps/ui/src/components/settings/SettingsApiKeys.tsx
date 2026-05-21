@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { createApiKey, deleteApiKey, listApiKeys } from '@/api/endpoints'
+import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -168,25 +169,11 @@ export function SettingsApiKeys() {
         )}
       </Card>
 
-      {/* Security info banner */}
-      <Card
-        className="border-info bg-info p-6"
-        style={{ borderWidth: '0.5px' }}
-      >
-        <div className="flex gap-3">
-          <span className="mt-0.5 shrink-0 text-blue-600">ⓘ</span>
-          <div>
-            <h3 className="text-info mb-1 text-[14px] font-medium">
-              Keep your API keys secure
-            </h3>
-            <p className="text-info text-[12px]">
-              API keys grant access to your Imbi resources. Never share them or
-              commit them to version control. Rotate keys regularly and revoke
-              any that may have been compromised.
-            </p>
-          </div>
-        </div>
-      </Card>
+      <Alert title="Keep your API keys secure" variant="info">
+        API keys grant access to your Imbi resources. Never share them or commit
+        them to version control. Rotate keys regularly and revoke any that may
+        have been compromised.
+      </Alert>
 
       {/* Create key dialog */}
       <Dialog

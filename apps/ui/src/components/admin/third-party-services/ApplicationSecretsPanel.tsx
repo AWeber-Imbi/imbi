@@ -16,6 +16,7 @@ import {
   getApplicationSecrets,
   updateApplicationSecrets,
 } from '@/api/endpoints'
+import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -183,10 +184,7 @@ export function ApplicationSecretsPanel({
       )}
 
       {revealed && is403 && (
-        <div className="border-warning bg-warning text-warning flex items-center gap-3 rounded-lg border p-4">
-          <AlertCircle className="size-5 shrink-0" />
-          <div className="text-sm">Admin access required to view secrets.</div>
-        </div>
+        <Alert variant="warning">Admin access required to view secrets.</Alert>
       )}
 
       {revealed && error && !is403 && (
