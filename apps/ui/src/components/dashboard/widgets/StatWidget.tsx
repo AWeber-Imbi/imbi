@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 
 interface StatWidgetProps {
   icon: string
@@ -41,9 +42,9 @@ export function StatWidget({
       </CardHeader>
       <CardContent className="mt-auto">
         {isLoading ? (
-          <span
+          <Skeleton
             aria-label={`Loading ${title}`}
-            className="bg-tertiary/40 inline-block h-8 w-20 animate-pulse rounded"
+            className="bg-tertiary/40 inline-block h-8 w-20"
             role="status"
           />
         ) : isError ? (

@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Tooltip,
   TooltipContent,
@@ -568,7 +569,7 @@ function SkeletonRows() {
       {Array.from({ length: 6 }).map((_, i) => (
         <tr className="border-tertiary border-b" key={i}>
           <td className="px-4 py-3" colSpan={9}>
-            <div className="bg-tertiary/30 h-4 animate-pulse rounded" />
+            <Skeleton className="h-4" />
           </td>
         </tr>
       ))}

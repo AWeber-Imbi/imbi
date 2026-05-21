@@ -13,6 +13,7 @@ import { getProjectPullRequests } from '@/api/endpoints'
 import { DiffBar } from '@/components/pull-requests/DiffBar'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { UserDisplay } from '@/components/ui/user-display'
 import { useLoginToEmail } from '@/hooks/useLoginToEmail'
 import { relTime } from '@/lib/formatDate'
@@ -237,7 +238,7 @@ export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
               Array.from({ length: 5 }).map((_, i) => (
                 <tr className="border-border border-b" key={i}>
                   <td className="px-4 py-3" colSpan={7}>
-                    <div className="bg-tertiary/30 h-4 animate-pulse rounded" />
+                    <Skeleton className="h-4" />
                   </td>
                 </tr>
               ))

@@ -5,6 +5,7 @@ import { GitMerge } from 'lucide-react'
 
 import { getOrgPullRequests } from '@/api/endpoints'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useGithubLogin } from '@/hooks/useGithubLogin'
 
@@ -64,9 +65,9 @@ export function MyPullRequestCountsWidget() {
       </CardHeader>
       <CardContent className="mt-auto">
         {isLoading ? (
-          <span
+          <Skeleton
             aria-label="Loading My Open PRs"
-            className="bg-tertiary/40 inline-block h-8 w-20 animate-pulse rounded"
+            className="bg-tertiary/40 inline-block h-8 w-20"
             role="status"
           />
         ) : isError ? (

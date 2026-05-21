@@ -30,6 +30,7 @@ import {
 } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useRecentDeployments } from '@/hooks/useRecentDeployments'
 import { queryKeys } from '@/lib/queryKeys'
@@ -351,9 +352,9 @@ export function Dashboard({
         </CardHeader>
         <CardContent className="mt-auto">
           {isOpenPrsLoading ? (
-            <span
+            <Skeleton
               aria-label="Loading Total Open PRs"
-              className="bg-tertiary/40 inline-block h-9 w-32 animate-pulse rounded"
+              className="bg-tertiary/40 inline-block h-9 w-32"
               role="status"
             />
           ) : isOpenPrsError ? (

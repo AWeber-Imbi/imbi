@@ -11,6 +11,7 @@ import {
 
 import { getOrgPullRequests, type ProjectListItem } from '@/api/endpoints'
 import { Card } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useGithubLogin } from '@/hooks/useGithubLogin'
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
@@ -146,9 +147,9 @@ export function MyPullRequestsWidget() {
         {isLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div
+              <Skeleton
                 aria-hidden="true"
-                className="bg-tertiary/30 h-20 animate-pulse rounded-lg"
+                className="h-20 rounded-lg"
                 key={i}
               />
             ))}
@@ -178,10 +179,7 @@ export function MyPullRequestsWidget() {
             ))}
             <div ref={sentinelRef}>
               {isFetchingNextPage && (
-                <div
-                  aria-hidden="true"
-                  className="bg-tertiary/30 h-16 animate-pulse rounded-lg"
-                />
+                <Skeleton aria-hidden="true" className="h-16 rounded-lg" />
               )}
             </div>
           </div>

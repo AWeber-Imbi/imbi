@@ -14,6 +14,7 @@ import {
 import type { OperationsLogPage } from '@/api/endpoints'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
 import { formatRelativeDate } from '@/lib/formatDate'
@@ -128,9 +129,9 @@ export function RecentDeploymentsWidget() {
         {isLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div
+              <Skeleton
                 aria-hidden="true"
-                className="bg-tertiary/30 h-16 animate-pulse rounded-lg"
+                className="h-16 rounded-lg"
                 key={i}
               />
             ))}
@@ -154,10 +155,7 @@ export function RecentDeploymentsWidget() {
             ))}
             <div ref={sentinelRef}>
               {isFetchingNextPage && (
-                <div
-                  aria-hidden="true"
-                  className="bg-tertiary/30 h-16 animate-pulse rounded-lg"
-                />
+                <Skeleton aria-hidden="true" className="h-16 rounded-lg" />
               )}
             </div>
           </div>

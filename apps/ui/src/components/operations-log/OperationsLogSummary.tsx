@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 
 import type { OperationsLogMetrics } from '@/api/endpoints'
+import { Skeleton } from '@/components/ui/skeleton'
 import { sortEnvironments } from '@/lib/utils'
 import type { Environment, OperationsLogRecord } from '@/types'
 
@@ -16,15 +17,6 @@ interface SummaryProps {
   // universe, the tiles display those numbers rather than stats derived
   // only from `entries` (which is just the loaded pages).
   serverMetrics?: OperationsLogMetrics
-}
-
-function SkeletonBlock({ className }: { className: string }) {
-  return (
-    <span
-      aria-hidden
-      className={`bg-tertiary/40 inline-block animate-pulse rounded ${className}`}
-    />
-  )
 }
 
 const RANGE_WINDOW_MS: Record<Exclude<TimeRange, 'all'>, number> = {
@@ -134,7 +126,10 @@ export function OperationsLogSummary({
           Events
         </span>
         {loading ? (
-          <SkeletonBlock className="mt-0.5 h-5 w-16" />
+          <Skeleton
+            aria-hidden
+            className="bg-tertiary/40 mt-0.5 inline-block h-5 w-16"
+          />
         ) : (
           <span className="text-primary flex items-baseline gap-1.5 font-medium tabular-nums">
             <span className="text-xl leading-none">
@@ -170,8 +165,14 @@ export function OperationsLogSummary({
         </span>
         {loading ? (
           <>
-            <SkeletonBlock className="mt-0.5 h-5 w-12" />
-            <SkeletonBlock className="mt-1 h-3 w-24" />
+            <Skeleton
+              aria-hidden
+              className="bg-tertiary/40 mt-0.5 inline-block h-5 w-12"
+            />
+            <Skeleton
+              aria-hidden
+              className="bg-tertiary/40 mt-1 inline-block h-3 w-24"
+            />
           </>
         ) : (
           <>
@@ -192,8 +193,14 @@ export function OperationsLogSummary({
         </span>
         {loading ? (
           <>
-            <SkeletonBlock className="mt-0.5 h-5 w-10" />
-            <SkeletonBlock className="mt-1 h-3 w-32" />
+            <Skeleton
+              aria-hidden
+              className="bg-tertiary/40 mt-0.5 inline-block h-5 w-10"
+            />
+            <Skeleton
+              aria-hidden
+              className="bg-tertiary/40 mt-1 inline-block h-3 w-32"
+            />
           </>
         ) : (
           <>
@@ -213,8 +220,14 @@ export function OperationsLogSummary({
         </span>
         {loading ? (
           <>
-            <SkeletonBlock className="mt-0.5 h-5 w-10" />
-            <SkeletonBlock className="mt-1 h-3 w-28" />
+            <Skeleton
+              aria-hidden
+              className="bg-tertiary/40 mt-0.5 inline-block h-5 w-10"
+            />
+            <Skeleton
+              aria-hidden
+              className="bg-tertiary/40 mt-1 inline-block h-3 w-28"
+            />
           </>
         ) : (
           <>
