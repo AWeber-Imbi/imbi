@@ -4,6 +4,7 @@ import unittest.mock
 import celpy.celparser
 import httpx
 import jsonpointer
+import pydantic
 from imbi_common.plugins import base as plugin_base
 
 from imbi_gateway import actions
@@ -290,10 +291,17 @@ class CreateReleaseTests(helpers.TestCase):
         body_arg = mock_create.call_args.args[2]
         self.assertNotIn('created_by', body_arg)
 
-    async def test_omits_committish_when_expression_absent(self) -> None:
+    async def test_committish_expression_is_required(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            _create_release_config(
+                '{"title_selector": "/deployment/ref",'
+                ' "version_expression": "deployment.ref"}'
+            )
+
+    async def test_omits_tag_when_version_expression_absent(self) -> None:
         config = _create_release_config(
             '{"title_selector": "/deployment/ref",'
-            ' "version_expression": "deployment.ref"}'
+            ' "committish_expression": "substring(deployment.sha, 0, 7)"}'
         )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
@@ -313,8 +321,8 @@ class CreateReleaseTests(helpers.TestCase):
             )
 
         body_arg = mock_create.call_args.args[2]
-        self.assertNotIn('committish', body_arg)
-        self.assertEqual('v1.2.3', body_arg['tag'])
+        self.assertNotIn('tag', body_arg)
+        self.assertEqual('abcdef1', body_arg['committish'])
 
     async def test_title_selector_used(self) -> None:
         config = _create_release_config(
@@ -473,7 +481,7 @@ class CreateReleaseTests(helpers.TestCase):
                 '34567890', mock_create.call_args.args[2]['committish']
             )
 
-    async def test_null_version_expression_skips_release(self) -> None:
+    async def test_null_version_expression_omits_tag(self) -> None:
         config = _create_release_config(
             json.dumps(
                 {
@@ -505,9 +513,12 @@ class CreateReleaseTests(helpers.TestCase):
                 },
             )
 
-        mock_create.assert_not_called()
+        mock_create.assert_called_once()
+        body_arg = mock_create.call_args.args[2]
+        self.assertNotIn('tag', body_arg)
+        self.assertEqual('abcdef1', body_arg['committish'])
 
-    async def test_null_committish_expression_omits_committish(self) -> None:
+    async def test_null_committish_expression_skips_release(self) -> None:
         config = _create_release_config(
             json.dumps(
                 {
@@ -527,6 +538,7 @@ class CreateReleaseTests(helpers.TestCase):
                 new_callable=unittest.mock.AsyncMock,
                 return_value=httpx.Response(201),
             ) as mock_create,
+            self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
         ):
             await actions.create_release(
                 ctx=_ctx(),
@@ -536,9 +548,13 @@ class CreateReleaseTests(helpers.TestCase):
                 payload={'deployment': {'ref': 'v1.2.3', 'sha': ''}},
             )
 
-        body_arg = mock_create.call_args.args[2]
-        self.assertNotIn('committish', body_arg)
-        self.assertEqual('v1.2.3', body_arg['tag'])
+        mock_create.assert_not_called()
+        self.assertTrue(
+            any(
+                'committish expression evaluated to null' in line
+                for line in cm.output
+            )
+        )
 
     async def test_invalid_version_expression_propagates(self) -> None:
         config = _create_release_config(

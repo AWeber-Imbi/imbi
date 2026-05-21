@@ -148,11 +148,18 @@ class ImbiClient(httpx.AsyncClient):
 
 
 class CreateReleaseConfig(pydantic.BaseModel):
-    """Validates ``handler_config`` for :func:`create_release`."""
+    """Validates ``handler_config`` for :func:`create_release`.
+
+    ``committish_expression`` is required because the Imbi API
+    ``ReleaseCreate`` model requires the short SHA. ``tag`` (and thus
+    ``version_expression``) is optional; when absent or evaluated to
+    null, the release is still created and identified by its
+    committish.
+    """
 
     title_selector: json_pointer.JsonPointer
-    version_expression: str
-    committish_expression: str | None = None
+    committish_expression: str
+    version_expression: str | None = None
 
 
 class AddDeploymentEventConfig(pydantic.BaseModel):
@@ -242,33 +249,39 @@ async def create_release(
 ) -> None:
     """Processes a deployment notification and ensures the release exists.
 
-    The tag is the result of evaluating the CEL ``version_expression``
-    against ``payload``; the committish is the result of evaluating the
-    CEL ``committish_expression`` (typically ``substring(deployment.sha,
-    0, 7)``; the title is taken from the JSONPointer ``title_selector``.
+    The committish is the result of evaluating the CEL
+    ``committish_expression`` (typically ``substring(deployment.sha,
+    0, 7)``) and is required; when it evaluates to null the action is
+    skipped because the Imbi API requires the short SHA. The tag is the
+    result of evaluating the CEL ``version_expression`` (optional);
+    when omitted or evaluated to null the tag is left off the release.
+    The title is taken from the JSONPointer ``title_selector``.
     ``ctx.actor_user_id`` (the resolved Imbi user's email) is passed
     as ``created_by`` when present; otherwise the API defaults to the
     gateway's service principal. ``action_config`` arrives pre-validated.
     """
     del credentials, external_identifier
-    version_value = _evaluate_cel(action_config.version_expression, payload)
-    if version_value is None:
-        LOGGER.info(
-            'Skipping release for project %s: version expression evaluated'
-            ' to null',
+    committish_value = _evaluate_cel(
+        action_config.committish_expression, payload
+    )
+    if committish_value is None:
+        LOGGER.warning(
+            'Skipping release for project %s: committish expression'
+            ' evaluated to null',
             ctx.project_id,
         )
         return
     create_body: dict[str, object] = {
-        'tag': version_value,
+        'committish': committish_value,
         'title': str(action_config.title_selector.resolve(payload)),
     }
-    if action_config.committish_expression is not None:
-        committish_value = _evaluate_cel(
-            action_config.committish_expression, payload
+    version_value: str | None = None
+    if action_config.version_expression is not None:
+        version_value = _evaluate_cel(
+            action_config.version_expression, payload
         )
-        if committish_value is not None:
-            create_body['committish'] = committish_value
+        if version_value is not None:
+            create_body['tag'] = version_value
     if ctx.actor_user_id is not None:
         create_body['created_by'] = ctx.actor_user_id
     async with ImbiClient() as client:
@@ -278,7 +291,7 @@ async def create_release(
     if response.status_code == http.HTTPStatus.CONFLICT:
         LOGGER.debug(
             'Release %r already exists for project %s',
-            version_value,
+            version_value or committish_value,
             ctx.project_id,
         )
 
