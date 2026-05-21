@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import {
@@ -166,7 +167,7 @@ export function NewOpsLogDialog({
             {/* Project */}
             <div className="space-y-2">
               <label className="text-sm font-medium" htmlFor="new-ops-project">
-                Project <span className="text-red-500">*</span>
+                Project <RequiredAsterisk />
               </label>
               <Combobox
                 onChange={(val) => {
@@ -188,7 +189,7 @@ export function NewOpsLogDialog({
                 className="text-sm font-medium"
                 htmlFor="new-ops-environment"
               >
-                Environment <span className="text-red-500">*</span>
+                Environment <RequiredAsterisk />
               </label>
               <Combobox
                 disabled={
@@ -223,7 +224,7 @@ export function NewOpsLogDialog({
                 className="text-sm font-medium"
                 htmlFor="new-ops-entry-type"
               >
-                Entry Type <span className="text-red-500">*</span>
+                Entry Type <RequiredAsterisk />
               </label>
               <Combobox
                 onChange={(val) => setEntryType(val as OperationsLogEntryType)}
@@ -242,7 +243,7 @@ export function NewOpsLogDialog({
                 className="text-sm font-medium"
                 htmlFor="new-ops-description"
               >
-                Description <span className="text-red-500">*</span>
+                Description <RequiredAsterisk />
               </label>
               <Textarea
                 className="min-h-24 resize-none"

@@ -12,6 +12,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { Input } from '@/components/ui/input'
+import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { slugify } from '@/lib/utils'
@@ -260,7 +261,7 @@ export function WebhookForm({
           <CardContent className="space-y-4 pt-6">
             <div>
               <label className="text-secondary mb-1.5 block text-sm">
-                Name <span className="text-red-500">*</span>
+                Name <RequiredAsterisk />
               </label>
               <Input
                 className={` ${errors.name ? 'border-red-500' : ''}`}
@@ -651,8 +652,7 @@ export function WebhookForm({
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                           <div>
                             <label className="text-secondary mb-1 block text-xs">
-                              Filter Expression (CEL){' '}
-                              <span className="text-red-500">*</span>
+                              Filter Expression (CEL) <RequiredAsterisk />
                             </label>
                             <Input
                               className={`font-mono text-sm ${
@@ -684,7 +684,7 @@ export function WebhookForm({
                           </div>
                           <div>
                             <label className="text-secondary mb-1 block text-xs">
-                              Handler <span className="text-red-500">*</span>
+                              Handler <RequiredAsterisk />
                             </label>
                             <Input
                               className={`font-mono text-sm ${

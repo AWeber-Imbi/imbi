@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
+import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import {
   Select,
   SelectContent,
@@ -278,7 +279,7 @@ export function ScoringPolicyForm({
         <Card>
           <CardHeader>
             <CardTitle>
-              Policy Type <span className="text-danger">*</span>
+              Policy Type <RequiredAsterisk />
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -325,7 +326,7 @@ export function ScoringPolicyForm({
                   className="text-secondary mb-1.5 block text-sm"
                   htmlFor="sp-name"
                 >
-                  Name <span className="text-danger">*</span>
+                  Name <RequiredAsterisk />
                 </label>
                 <Input
                   className={errors.name ? 'border-danger' : ''}
@@ -342,7 +343,7 @@ export function ScoringPolicyForm({
                   className="text-secondary mb-1.5 block text-sm"
                   htmlFor="sp-slug"
                 >
-                  Slug <span className="text-danger">*</span>
+                  Slug <RequiredAsterisk />
                 </label>
                 <Input
                   className={errors.slug ? 'border-danger' : ''}
@@ -388,7 +389,7 @@ export function ScoringPolicyForm({
                   className="text-secondary mb-1.5 block text-sm"
                   htmlFor="sp-link-slug"
                 >
-                  Required Link Type <span className="text-danger">*</span>
+                  Required Link Type <RequiredAsterisk />
                 </label>
                 <Select
                   disabled={isLoading}
@@ -427,7 +428,7 @@ export function ScoringPolicyForm({
                   className="text-secondary mb-1.5 block text-sm"
                   htmlFor="sp-attribute"
                 >
-                  Attribute Name <span className="text-danger">*</span>
+                  Attribute Name <RequiredAsterisk />
                 </label>
                 <Input
                   className={errors.attribute_name ? 'border-danger' : ''}
@@ -456,7 +457,7 @@ export function ScoringPolicyForm({
                   className="text-secondary mb-1.5 block text-sm"
                   htmlFor="sp-weight"
                 >
-                  Weight (0–100) <span className="text-danger">*</span>
+                  Weight (0–100) <RequiredAsterisk />
                 </label>
                 <Input
                   className={errors.weight ? 'border-danger' : ''}

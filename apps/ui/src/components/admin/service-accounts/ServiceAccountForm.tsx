@@ -8,6 +8,7 @@ import { FormHeader } from '@/components/admin/form-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useDirtyState } from '@/hooks/useDirtyState'
 import { useFormScaffold } from '@/hooks/useFormScaffold'
@@ -293,7 +294,7 @@ export function ServiceAccountForm({
             {/* Display Name */}
             <div>
               <label className="text-secondary mb-1.5 block text-sm">
-                Display Name <span className="text-red-500">*</span>
+                Display Name <RequiredAsterisk />
               </label>
               <Input
                 disabled={isLoading}
@@ -320,7 +321,7 @@ export function ServiceAccountForm({
             {/* Slug */}
             <div>
               <label className="text-secondary mb-1.5 block text-sm">
-                Slug <span className="text-red-500">*</span>
+                Slug <RequiredAsterisk />
               </label>
               <Input
                 disabled={isLoading}
@@ -386,7 +387,7 @@ export function ServiceAccountForm({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-secondary mb-1.5 block text-sm">
-                Organization <span className="text-red-500">*</span>
+                Organization <RequiredAsterisk />
               </label>
               <select
                 className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 focus:outline-none"
@@ -416,7 +417,7 @@ export function ServiceAccountForm({
 
             <div>
               <label className="text-secondary mb-1.5 block text-sm">
-                Role <span className="text-red-500">*</span>
+                Role <RequiredAsterisk />
               </label>
               {rolesLoading ? (
                 <p className="text-secondary text-sm">Loading roles...</p>
@@ -660,7 +661,7 @@ function IdentityCardEdit({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-secondary mb-1.5 block text-sm">
-              Display name <span className="text-red-500">*</span>
+              Display name <RequiredAsterisk />
             </label>
             <Input
               disabled={isLoading}

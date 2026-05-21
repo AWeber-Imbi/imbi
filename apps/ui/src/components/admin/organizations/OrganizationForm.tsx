@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { AlertCircle, Save, X } from 'lucide-react'
 
+import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import type { Organization, OrganizationCreate } from '@/types'
 
 import { Button } from '../../ui/button'
@@ -134,7 +135,7 @@ export function OrganizationForm({
             >
               <div>
                 <label className="text-secondary mb-1.5 block text-sm">
-                  Organization Name <span className="text-red-500">*</span>
+                  Organization Name <RequiredAsterisk />
                 </label>
                 <Input
                   className={` ${errors.name ? 'border-red-500' : ''}`}
@@ -154,7 +155,7 @@ export function OrganizationForm({
               {!isEditing && (
                 <div>
                   <label className="text-secondary mb-1.5 block text-sm">
-                    Slug <span className="text-red-500">*</span>
+                    Slug <RequiredAsterisk />
                   </label>
                   <Input
                     className={` ${errors.slug ? 'border-red-500' : ''}`}

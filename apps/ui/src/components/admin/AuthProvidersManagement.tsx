@@ -36,6 +36,7 @@ import {
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
 import { LoadingState } from '@/components/ui/loading-state'
+import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/hooks/useAuth'
 import { extractApiErrorDetail } from '@/lib/apiError'
@@ -500,7 +501,7 @@ function AuthProviderCreateDialog({
           <div className="space-y-4 p-6">
             <div>
               <label className="text-secondary mb-1.5 block text-sm">
-                OAuth Type <span className="text-red-500">*</span>
+                OAuth Type <RequiredAsterisk />
               </label>
               <select
                 className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
@@ -541,7 +542,7 @@ function AuthProviderCreateDialog({
 
             <div>
               <label className="text-secondary mb-1.5 block text-sm">
-                Client ID <span className="text-red-500">*</span>
+                Client ID <RequiredAsterisk />
               </label>
               <Input
                 disabled={isSaving}
@@ -557,7 +558,7 @@ function AuthProviderCreateDialog({
 
             <div>
               <label className="text-secondary mb-1.5 block text-sm">
-                Client Secret <span className="text-red-500">*</span>
+                Client Secret <RequiredAsterisk />
               </label>
               <Input
                 autoComplete="new-password"
@@ -576,7 +577,7 @@ function AuthProviderCreateDialog({
             {showIssuerUrl && (
               <div>
                 <label className="text-secondary mb-1.5 block text-sm">
-                  Issuer URL <span className="text-red-500">*</span>
+                  Issuer URL <RequiredAsterisk />
                 </label>
                 <Input
                   disabled={isSaving}
@@ -813,7 +814,7 @@ function AuthProviderEditDialog({
           <div className="space-y-4 p-6">
             <div>
               <label className="text-secondary mb-1.5 block text-sm">
-                Display Name <span className="text-red-500">*</span>
+                Display Name <RequiredAsterisk />
               </label>
               <Input
                 disabled={isSaving}
@@ -827,7 +828,7 @@ function AuthProviderEditDialog({
 
             <div>
               <label className="text-secondary mb-1.5 block text-sm">
-                OAuth Type <span className="text-red-500">*</span>
+                OAuth Type <RequiredAsterisk />
               </label>
               <select
                 className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
@@ -843,7 +844,7 @@ function AuthProviderEditDialog({
 
             <div>
               <label className="text-secondary mb-1.5 block text-sm">
-                Client ID <span className="text-red-500">*</span>
+                Client ID <RequiredAsterisk />
               </label>
               <Input
                 disabled={isSaving}
@@ -920,7 +921,7 @@ function AuthProviderEditDialog({
             {showIssuerUrl && (
               <div>
                 <label className="text-secondary mb-1.5 block text-sm">
-                  Issuer URL <span className="text-red-500">*</span>
+                  Issuer URL <RequiredAsterisk />
                 </label>
                 <Input
                   disabled={isSaving}

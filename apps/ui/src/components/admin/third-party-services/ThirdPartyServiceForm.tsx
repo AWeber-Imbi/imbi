@@ -9,6 +9,7 @@ import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { Input } from '@/components/ui/input'
 import { KeyValueEditor } from '@/components/ui/key-value-editor'
+import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import {
   Select,
   SelectContent,
@@ -235,7 +236,7 @@ export function ThirdPartyServiceForm({
             >
               <div>
                 <label className="text-secondary mb-1.5 block text-sm">
-                  Service Name <span className="text-danger">*</span>
+                  Service Name <RequiredAsterisk />
                 </label>
                 <Input
                   className={` ${errors.name ? 'border-danger' : ''}`}
@@ -259,7 +260,7 @@ export function ThirdPartyServiceForm({
               {!isEditing && (
                 <div>
                   <label className="text-secondary mb-1.5 block text-sm">
-                    Slug <span className="text-danger">*</span>
+                    Slug <RequiredAsterisk />
                   </label>
                   <Input
                     className={` ${errors.slug ? 'border-danger' : ''}`}
@@ -285,7 +286,7 @@ export function ThirdPartyServiceForm({
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label className="text-secondary mb-1.5 block text-sm">
-                  Vendor <span className="text-danger">*</span>
+                  Vendor <RequiredAsterisk />
                 </label>
                 <Input
                   className={` ${errors.vendor ? 'border-danger' : ''}`}

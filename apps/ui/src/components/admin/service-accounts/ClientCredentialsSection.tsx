@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import {
   Tooltip,
   TooltipContent,
@@ -303,7 +304,7 @@ export function ClientCredentialsSection({
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="credential-name"
               >
-                Name <span className="text-red-500">*</span>
+                Name <RequiredAsterisk />
               </label>
               <Input
                 autoFocus

@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { queryKeys } from '@/lib/queryKeys'
 import { parseFilterFromBlueprint } from '@/lib/utils'
@@ -539,7 +540,7 @@ export function BlueprintForm({
           {/* Name */}
           <div>
             <label className="text-secondary mb-1.5 block text-sm">
-              Name <span className="text-red-500">*</span>
+              Name <RequiredAsterisk />
             </label>
             <Input
               className=""
@@ -592,7 +593,7 @@ export function BlueprintForm({
           {/* Kind */}
           <div>
             <label className="text-secondary mb-1.5 block text-sm">
-              Kind <span className="text-red-500">*</span>
+              Kind <RequiredAsterisk />
             </label>
             <select
               className={`border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
@@ -616,7 +617,7 @@ export function BlueprintForm({
           {kind === 'node' ? (
             <div>
               <label className="text-secondary mb-1.5 block text-sm">
-                Type <span className="text-red-500">*</span>
+                Type <RequiredAsterisk />
               </label>
               <select
                 className={`border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
@@ -644,7 +645,7 @@ export function BlueprintForm({
             <div className="col-span-2 grid grid-cols-[1fr_auto_1fr_auto_1fr] items-end gap-2">
               <div>
                 <label className="text-secondary mb-1.5 block text-sm">
-                  Source <span className="text-red-500">*</span>
+                  Source <RequiredAsterisk />
                 </label>
                 <select
                   className={`border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
@@ -673,7 +674,7 @@ export function BlueprintForm({
               <div className="text-tertiary pb-2">→</div>
               <div>
                 <label className="text-secondary mb-1.5 block text-sm">
-                  Relationship Type <span className="text-red-500">*</span>
+                  Relationship Type <RequiredAsterisk />
                 </label>
                 {source &&
                 target &&
@@ -721,7 +722,7 @@ export function BlueprintForm({
               <div className="text-tertiary pb-2">→</div>
               <div>
                 <label className="text-secondary mb-1.5 block text-sm">
-                  Target <span className="text-red-500">*</span>
+                  Target <RequiredAsterisk />
                 </label>
                 <select
                   className={`border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}

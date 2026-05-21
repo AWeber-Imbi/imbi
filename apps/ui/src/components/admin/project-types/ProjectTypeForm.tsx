@@ -13,6 +13,7 @@ import {
 import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { Input } from '@/components/ui/input'
+import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { Switch } from '@/components/ui/switch'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
@@ -176,7 +177,7 @@ export function ProjectTypeForm({
           <CardContent className="space-y-4 pt-6">
             <div>
               <label className="text-secondary mb-1.5 block text-sm">
-                Organization <span className="text-red-500">*</span>
+                Organization <RequiredAsterisk />
               </label>
               <select
                 className={`border-input bg-background text-foreground w-full rounded-lg border px-3 py-2 text-sm ${isEditing || isLoading || organizations.length <= 1 ? 'cursor-not-allowed opacity-60' : ''} ${
@@ -206,7 +207,7 @@ export function ProjectTypeForm({
             >
               <div>
                 <label className="text-secondary mb-1.5 block text-sm">
-                  Project Type Name <span className="text-red-500">*</span>
+                  Project Type Name <RequiredAsterisk />
                 </label>
                 <Input
                   className={` ${errors.name ? 'border-red-500' : ''}`}
@@ -226,7 +227,7 @@ export function ProjectTypeForm({
               {!isEditing && (
                 <div>
                   <label className="text-secondary mb-1.5 block text-sm">
-                    Slug <span className="text-red-500">*</span>
+                    Slug <RequiredAsterisk />
                   </label>
                   <Input
                     className={` ${errors.slug ? 'border-red-500' : ''}`}

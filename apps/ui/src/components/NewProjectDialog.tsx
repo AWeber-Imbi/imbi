@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { queryKeys } from '@/lib/queryKeys'
@@ -135,7 +136,7 @@ export function NewProjectDialog({
             {/* Team */}
             <div className="space-y-2">
               <label className="text-sm font-medium" htmlFor="new-project-team">
-                Team <span className="text-red-500">*</span>
+                Team <RequiredAsterisk />
               </label>
               <Combobox
                 onChange={setTeamSlug}
@@ -154,7 +155,7 @@ export function NewProjectDialog({
             {/* Project Type */}
             <div className="space-y-2">
               <label className="text-sm font-medium" htmlFor="new-project-type">
-                Project Type <span className="text-red-500">*</span>
+                Project Type <RequiredAsterisk />
               </label>
               <Combobox
                 onChange={setProjectTypeSlug}
@@ -173,7 +174,7 @@ export function NewProjectDialog({
             {/* Name */}
             <div className="space-y-2">
               <label className="text-sm font-medium" htmlFor="new-project-name">
-                Name <span className="text-red-500">*</span>
+                Name <RequiredAsterisk />
               </label>
               <Input
                 id="new-project-name"
@@ -189,7 +190,7 @@ export function NewProjectDialog({
             {/* Slug */}
             <div className="space-y-2">
               <label className="text-sm font-medium" htmlFor="new-project-slug">
-                Slug <span className="text-red-500">*</span>
+                Slug <RequiredAsterisk />
               </label>
               <Input
                 id="new-project-slug"

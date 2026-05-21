@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
+import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { useFormScaffold } from '@/hooks/useFormScaffold'
 import type { Permission, RoleCreate } from '@/types'
 
@@ -327,7 +328,7 @@ export function RoleForm({
             {!isEditing && (
               <div className="col-span-2">
                 <label className="text-secondary mb-1.5 block text-sm">
-                  Slug <span className="text-red-500">*</span>
+                  Slug <RequiredAsterisk />
                 </label>
                 <Input
                   className={`font-mono ${

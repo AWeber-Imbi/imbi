@@ -11,6 +11,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { Input } from '@/components/ui/input'
+import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { queryKeys } from '@/lib/queryKeys'
@@ -163,7 +164,7 @@ export function DocumentTemplateForm({
                   className="text-secondary mb-1.5 block text-sm"
                   htmlFor="document-tpl-name"
                 >
-                  Name <span className="text-red-500">*</span>
+                  Name <RequiredAsterisk />
                 </label>
                 <Input
                   className={errors.name ? 'border-red-500' : ''}
@@ -187,7 +188,7 @@ export function DocumentTemplateForm({
                     className="text-secondary mb-1.5 block text-sm"
                     htmlFor="document-tpl-slug"
                   >
-                    Slug <span className="text-red-500">*</span>
+                    Slug <RequiredAsterisk />
                   </label>
                   <Input
                     className={errors.slug ? 'border-red-500' : ''}

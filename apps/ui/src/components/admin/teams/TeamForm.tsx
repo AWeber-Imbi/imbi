@@ -6,6 +6,7 @@ import { AlertCircle, Save, X } from 'lucide-react'
 import { getTeamSchema } from '@/api/endpoints'
 import { Card, CardContent } from '@/components/ui/card'
 import { IconPicker } from '@/components/ui/icon-picker'
+import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { TEAM_BASE_FIELDS_SET } from '@/lib/constants'
@@ -162,7 +163,7 @@ export function TeamForm({
           <CardContent className="space-y-4 pt-6">
             <div>
               <label className="text-secondary mb-1.5 block text-sm">
-                Organization <span className="text-red-500">*</span>
+                Organization <RequiredAsterisk />
               </label>
               <select
                 className={`border-input bg-background text-foreground w-full rounded-lg border px-3 py-2 text-sm ${isEditing || organizations.length <= 1 ? 'cursor-not-allowed opacity-60' : ''} ${
@@ -192,7 +193,7 @@ export function TeamForm({
             >
               <div>
                 <label className="text-secondary mb-1.5 block text-sm">
-                  Team Name <span className="text-red-500">*</span>
+                  Team Name <RequiredAsterisk />
                 </label>
                 <Input
                   className={` ${errors.name ? 'border-red-500' : ''}`}
@@ -212,7 +213,7 @@ export function TeamForm({
               {!isEditing && (
                 <div>
                   <label className="text-secondary mb-1.5 block text-sm">
-                    Slug <span className="text-red-500">*</span>
+                    Slug <RequiredAsterisk />
                   </label>
                   <Input
                     className={` ${errors.slug ? 'border-red-500' : ''}`}
