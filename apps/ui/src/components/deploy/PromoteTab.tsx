@@ -69,7 +69,12 @@ export function PromoteTab({
   // Compare last_tag → fromTipSha to enumerate the commits in flight.
   const compareEnabled =
     open && !!lastTag && !!fromTipSha && lastTag !== fromTipSha
-  const { data: compare, isLoading: compareLoading } = useQuery({
+  const {
+    data: compare,
+    isFetching: compareFetching,
+    isLoading: compareLoading,
+    refetch: refetchCompare,
+  } = useQuery({
     enabled: compareEnabled,
     queryFn: ({ signal }) =>
       compareDeploymentRefs(
@@ -254,9 +259,24 @@ export function PromoteTab({
 
       {/* Step 1 — pick the build */}
       <section>
-        <p className="text-tertiary mb-2 text-xs tracking-wider uppercase">
-          Step 1 — Build to promote
-        </p>
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-tertiary text-xs tracking-wider uppercase">
+            Step 1 — Build to promote
+          </p>
+          <button
+            aria-label="Reload commits"
+            className="text-tertiary hover:text-primary rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!compareEnabled || compareFetching}
+            onClick={() => {
+              void refetchCompare()
+            }}
+            type="button"
+          >
+            <RefreshCw
+              className={cn('size-3.5', compareFetching && 'animate-spin')}
+            />
+          </button>
+        </div>
         {compareEnabled && compareLoading ? (
           <LoadingState label="Loading commits…" />
         ) : !compareEnabled ? (
