@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import {
   BarChart3,
   GitCommitHorizontal,
+  GitPullRequest,
   Network,
   TrendingUp,
 } from 'lucide-react'
@@ -10,6 +11,7 @@ import {
 import { CommandBar } from '@/components/CommandBar'
 import { Navigation } from '@/components/Navigation'
 import { MonthlyImprovementReport } from '@/components/reports/MonthlyImprovementReport'
+import { OpenPullRequestsReport } from '@/components/reports/OpenPullRequestsReport'
 import { ProjectsGraphReport } from '@/components/reports/ProjectsGraphReport'
 import { ScoreHistoryReport } from '@/components/reports/ScoreHistoryReport'
 import { TeamKPIReport } from '@/components/reports/TeamKPIReport'
@@ -28,6 +30,12 @@ const REPORTS: Report[] = [
     id: 'monthly-improvement',
     label: 'Monthly Improvement',
     subtitle: 'Score improvement by team for a selected month',
+  },
+  {
+    description: 'Open pull requests across the org',
+    id: 'open-pull-requests',
+    label: 'Open Pull Requests',
+    subtitle: 'Open pull requests, filterable by team and project type',
   },
   {
     description: 'Service dependency graph',
@@ -73,7 +81,7 @@ export function ReportsPage() {
         className="pt-16"
         style={{ paddingBottom: 'var(--assistant-height, 64px)' }}
       >
-        <div className="mx-auto flex max-w-[1400px] gap-6 px-6 py-7">
+        <div className="mx-auto flex max-w-screen-2xl gap-6 px-6 py-7">
           {/* Left sidebar — report list */}
           <aside className="w-56 shrink-0">
             <div className="border-tertiary bg-primary rounded-lg border">
@@ -102,6 +110,8 @@ export function ReportsPage() {
                         <GitCommitHorizontal className="mt-0.5 size-3.5 shrink-0" />
                       ) : r.id === 'projects-graph' ? (
                         <Network className="mt-0.5 size-3.5 shrink-0" />
+                      ) : r.id === 'open-pull-requests' ? (
+                        <GitPullRequest className="mt-0.5 size-3.5 shrink-0" />
                       ) : (
                         <TrendingUp className="mt-0.5 size-3.5 shrink-0" />
                       )}
@@ -128,6 +138,7 @@ export function ReportsPage() {
             </div>
             {activeId === 'team-kpi' && <TeamKPIReport />}
             {activeId === 'monthly-improvement' && <MonthlyImprovementReport />}
+            {activeId === 'open-pull-requests' && <OpenPullRequestsReport />}
             {activeId === 'score-history' && <ScoreHistoryReport />}
             {activeId === 'projects-graph' && <ProjectsGraphReport />}
           </div>

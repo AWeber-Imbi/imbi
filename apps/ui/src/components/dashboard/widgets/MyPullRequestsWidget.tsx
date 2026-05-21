@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import type { InfiniteData } from '@tanstack/react-query'
 import {
   ChevronRight,
@@ -9,13 +9,14 @@ import {
   GitPullRequestClosed,
 } from 'lucide-react'
 
-import { getOrgPullRequests, getProjects } from '@/api/endpoints'
+import { getOrgPullRequests, type ProjectListItem } from '@/api/endpoints'
 import { Card } from '@/components/ui/card'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useGithubLogin } from '@/hooks/useGithubLogin'
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
+import { useProjectsSlimMap } from '@/hooks/useProjectsSlimMap'
 import { relTime } from '@/lib/formatDate'
-import type { Project, PullRequest, PullRequestListResponse } from '@/types'
+import type { PullRequest, PullRequestListResponse } from '@/types'
 
 const PAGE_SIZE = 20
 const FILTER_KEY = 'imbi-my-prs-filter'
@@ -81,17 +82,7 @@ export function MyPullRequestsWidget() {
     staleTime: 60_000,
   })
 
-  const { data: projects } = useQuery({
-    enabled: !!orgSlug,
-    queryFn: ({ signal }) => getProjects(orgSlug, signal),
-    queryKey: ['projects', orgSlug],
-  })
-
-  const projectsById = useMemo(() => {
-    const m = new Map<string, Project>()
-    for (const p of projects ?? []) m.set(p.id, p)
-    return m
-  }, [projects])
+  const { projectsById } = useProjectsSlimMap(orgSlug)
 
   // fallow-ignore-next-line complexity
   const prs = useMemo(() => {
@@ -206,7 +197,7 @@ function PrRow({
   projectsById,
 }: {
   pr: PullRequest
-  projectsById: Map<string, Project>
+  projectsById: Map<string, ProjectListItem>
 }) {
   const project = projectsById.get(pr.project_id)
   const repoLabel = project ? `${project.team.slug}/${project.slug}` : undefined
