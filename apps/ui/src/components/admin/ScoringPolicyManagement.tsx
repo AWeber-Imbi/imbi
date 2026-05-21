@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/tooltip'
 import { useAdminCrud } from '@/hooks/useAdminCrud'
 import { useAdminNav } from '@/hooks/useAdminNav'
+import { useClipboard } from '@/hooks/useClipboard'
 import { buildDiffPatch } from '@/lib/json-patch'
 import type {
   AttributeScoringPolicy,
@@ -59,7 +60,7 @@ export function ScoringPolicyManagement() {
   const [enabledFilter, setEnabledFilter] = useState('')
   const [rescoreResult, setRescoreResult] = useState<null | number>(null)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
-  const [copiedSlug, setCopiedSlug] = useState<null | string>(null)
+  const { copied: copiedSlug, copy } = useClipboard()
 
   const rescoreMutation = useMutation({
     mutationFn: rescoreAll,
@@ -115,16 +116,7 @@ export function ScoringPolicyManagement() {
 
   const handleCopy = (policy: ScoringPolicy) => {
     const exportObj = policyToExportPayload(policy)
-    if (!navigator.clipboard?.writeText) return
-    navigator.clipboard
-      .writeText(JSON.stringify(exportObj, null, 2))
-      .then(() => {
-        setCopiedSlug(policy.slug)
-        setTimeout(() => setCopiedSlug(null), 2000)
-      })
-      .catch(() => {
-        setCopiedSlug(null)
-      })
+    void copy(JSON.stringify(exportObj, null, 2), policy.slug)
   }
 
   const handleImport = (data: ScoringPolicyCreate) => {

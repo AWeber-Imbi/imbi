@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/tooltip'
 import { useAdminCrud } from '@/hooks/useAdminCrud'
 import { useAdminNav } from '@/hooks/useAdminNav'
+import { useClipboard } from '@/hooks/useClipboard'
 import { buildDiffPatch } from '@/lib/json-patch'
 import { parseFilterFromBlueprint } from '@/lib/utils'
 import type { Blueprint, BlueprintCreate, PatchOperation } from '@/types'
@@ -57,7 +58,7 @@ export function BlueprintManagement() {
   const [typeFilter, setTypeFilter] = useState<string>('')
   const [enabledFilter, setEnabledFilter] = useState<string>('')
   const [importDialogOpen, setImportDialogOpen] = useState(false)
-  const [copiedKey, setCopiedKey] = useState<null | string>(null)
+  const { copied: copiedKey, copy } = useClipboard()
   const [copyError, setCopyError] = useState<null | string>(null)
 
   // Parse compound key from URL slug (format: "type:slug")
@@ -163,17 +164,10 @@ export function BlueprintManagement() {
       json_schema: schemaObj,
     }
     const rowKey = `${blueprintPathType(bp)}/${bp.slug}`
-    navigator.clipboard
-      .writeText(JSON.stringify(exportObj, null, 2))
-      .then(() => {
-        setCopyError(null)
-        setCopiedKey(rowKey)
-        setTimeout(() => setCopiedKey(null), 2000)
-      })
-      .catch(() => {
-        setCopyError(`Failed to copy "${bp.name}" to clipboard`)
-        setCopiedKey(null)
-      })
+    void copy(JSON.stringify(exportObj, null, 2), rowKey).then((ok) => {
+      if (ok) setCopyError(null)
+      else setCopyError(`Failed to copy "${bp.name}" to clipboard`)
+    })
   }
 
   const handleEditClick = (key: BlueprintKey) => {

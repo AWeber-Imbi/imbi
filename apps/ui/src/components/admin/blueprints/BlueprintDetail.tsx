@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button'
 import { CardTitle } from '@/components/ui/card'
 import { LabelChip } from '@/components/ui/label-chip'
 import { LoadingState } from '@/components/ui/loading-state'
+import { useClipboard } from '@/hooks/useClipboard'
 import { parseFilterFromBlueprint } from '@/lib/utils'
 import type { SchemaProperty } from '@/types'
 
@@ -54,7 +55,7 @@ export function BlueprintDetail({
   onEdit,
 }: BlueprintDetailProps) {
   const [rawSchemaOpen, setRawSchemaOpen] = useState(false)
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useClipboard()
 
   const {
     data: blueprint,
@@ -124,12 +125,7 @@ export function BlueprintDetail({
       json_schema: schemaObj,
     }
 
-    navigator.clipboard
-      .writeText(JSON.stringify(exportObj, null, 2))
-      .then(() => {
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
-      })
+    void copy(JSON.stringify(exportObj, null, 2))
   }
 
   return (

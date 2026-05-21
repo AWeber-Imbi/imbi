@@ -25,6 +25,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useClipboard } from '@/hooks/useClipboard'
 import { buildDiffPatch } from '@/lib/json-patch'
 import type { PatchOperation } from '@/types'
 
@@ -57,7 +58,7 @@ export function ApplicationSecretsPanel({
   const queryClient = useQueryClient()
   const [revealed, setRevealed] = useState(false)
   const [editing, setEditing] = useState(false)
-  const [copiedField, setCopiedField] = useState<null | string>(null)
+  const { copied: copiedField, copy } = useClipboard()
   const [editValues, setEditValues] = useState<Record<string, string>>({})
 
   const visibleFields = TYPE_SECRET_FIELDS[appType] || ['client_secret']
@@ -98,10 +99,8 @@ export function ApplicationSecretsPanel({
     setEditValues({})
   }
 
-  const handleCopy = async (field: string, value: string) => {
-    await navigator.clipboard.writeText(value)
-    setCopiedField(field)
-    setTimeout(() => setCopiedField(null), 2000)
+  const handleCopy = (field: string, value: string) => {
+    void copy(value, field)
   }
 
   const handleStartEdit = () => {

@@ -1,8 +1,7 @@
-import { useState } from 'react'
-
 import { Check, Copy } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { useClipboard } from '@/hooks/useClipboard'
 
 interface RevealSecretProps {
   label: string
@@ -30,13 +29,12 @@ export function RevealSecretRow({
   onCopy,
   value,
 }: RevealSecretRowProps) {
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useClipboard()
 
   const handleCopy = () => {
-    navigator.clipboard?.writeText(value)
-    onCopy?.()
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    void copy(value).then((ok) => {
+      if (ok) onCopy?.()
+    })
   }
 
   return (

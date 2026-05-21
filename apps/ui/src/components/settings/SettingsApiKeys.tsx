@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useClipboard } from '@/hooks/useClipboard'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { formatDate } from '@/lib/formatDate'
 import type { ApiKey, ApiKeyCreated } from '@/types'
@@ -26,7 +27,7 @@ export function SettingsApiKeys() {
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [newKeyName, setNewKeyName] = useState('')
   const [createdKey, setCreatedKey] = useState<ApiKeyCreated | null>(null)
-  const [copiedKeyId, setCopiedKeyId] = useState<null | string>(null)
+  const { copied: copiedKeyId, copy } = useClipboard()
   const [revokingKeyId, setRevokingKeyId] = useState<null | string>(null)
   const [createError, setCreateError] = useState<null | string>(null)
 
@@ -63,10 +64,8 @@ export function SettingsApiKeys() {
     },
   })
 
-  const handleCopyKey = async (text: string, keyId: string) => {
-    await navigator.clipboard.writeText(text)
-    setCopiedKeyId(keyId)
-    setTimeout(() => setCopiedKeyId(null), 2000)
+  const handleCopyKey = (text: string, keyId: string) => {
+    void copy(text, keyId)
   }
 
   const activeKeys = apiKeys.filter((k: ApiKey) => !k.revoked)
