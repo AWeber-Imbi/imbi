@@ -37,7 +37,11 @@ export default defineConfig({
     sourcemap: true,
   },
   esbuild: {
-    drop: ['console'],
+    // Preserve console.error / console.warn so auth-failure diagnostics
+    // (see useAuth.ts) survive in prod; strip the noisy levels only via
+    // esbuild's `pure` annotation. (The pre-commit hook already blocks
+    // breakpoint statements in source, so a `drop` list is unnecessary.)
+    pure: ['console.log', 'console.debug', 'console.info'],
   },
   plugins: [tailwindcss(), react(), requestLogger()],
   resolve: {
