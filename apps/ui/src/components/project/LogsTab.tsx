@@ -31,6 +31,7 @@ import {
 } from '@/api/endpoints'
 import { LoadingState } from '@/components/ui/loading-state'
 import {
+  IconTooltip,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -1530,31 +1531,37 @@ function LogRow({
                   >
                     <span className="min-w-0 break-all">{v}</span>
                     <span className="flex gap-0.5 opacity-0 group-hover:opacity-100">
-                      <button
-                        className="border-secondary text-secondary hover:border-action hover:text-primary rounded border px-1 py-px font-mono text-[10px]"
-                        onClick={() => onAddFilter(k as string, v as string)}
-                        title="Filter for value"
-                      >
-                        +
-                      </button>
-                      <button
-                        className="border-secondary text-secondary hover:border-danger hover:text-danger rounded border px-1 py-px font-mono text-[10px]"
-                        onClick={() =>
-                          onAddFilter(`-${k as string}`, v as string)
-                        }
-                        title="Filter out value"
-                      >
-                        −
-                      </button>
-                      <button
-                        className="border-secondary text-secondary hover:text-primary rounded border px-1 py-px font-mono text-[10px]"
-                        onClick={() =>
-                          navigator.clipboard.writeText(v as string)
-                        }
-                        title="Copy value"
-                      >
-                        <Copy size={8} />
-                      </button>
+                      <IconTooltip label="Filter for value">
+                        <button
+                          aria-label="Filter for value"
+                          className="border-secondary text-secondary hover:border-action hover:text-primary rounded border px-1 py-px font-mono text-[10px]"
+                          onClick={() => onAddFilter(k as string, v as string)}
+                        >
+                          +
+                        </button>
+                      </IconTooltip>
+                      <IconTooltip label="Filter out value">
+                        <button
+                          aria-label="Filter out value"
+                          className="border-secondary text-secondary hover:border-danger hover:text-danger rounded border px-1 py-px font-mono text-[10px]"
+                          onClick={() =>
+                            onAddFilter(`-${k as string}`, v as string)
+                          }
+                        >
+                          −
+                        </button>
+                      </IconTooltip>
+                      <IconTooltip label="Copy value">
+                        <button
+                          aria-label="Copy value"
+                          className="border-secondary text-secondary hover:text-primary rounded border px-1 py-px font-mono text-[10px]"
+                          onClick={() =>
+                            navigator.clipboard.writeText(v as string)
+                          }
+                        >
+                          <Copy size={8} />
+                        </button>
+                      </IconTooltip>
                     </span>
                   </div>
                 </Fragment>

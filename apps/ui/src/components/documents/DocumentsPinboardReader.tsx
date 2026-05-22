@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm'
 
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { IconTooltip } from '@/components/ui/tooltip'
 import { UserDisplay } from '@/components/ui/user-display'
 import { cn } from '@/lib/utils'
 import type { Document } from '@/types'
@@ -133,15 +134,17 @@ export function DocumentsPinboardReader({
                 <Pencil className="size-3" />
                 Edit
               </Button>
-              <Button
-                disabled={!onDelete || deleting}
-                onClick={() => setConfirmDelete(true)}
-                size="sm"
-                title="Delete document"
-                variant="ghost"
-              >
-                <Trash2 className="size-3" />
-              </Button>
+              <IconTooltip label="Delete document">
+                <Button
+                  aria-label="Delete document"
+                  disabled={!onDelete || deleting}
+                  onClick={() => setConfirmDelete(true)}
+                  size="sm"
+                  variant="ghost"
+                >
+                  <Trash2 className="size-3" />
+                </Button>
+              </IconTooltip>
             </div>
           </div>
         </div>

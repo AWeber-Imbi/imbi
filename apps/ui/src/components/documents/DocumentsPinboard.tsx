@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { IconTooltip } from '@/components/ui/tooltip'
 import { UserDisplay } from '@/components/ui/user-display'
 import { cn } from '@/lib/utils'
 import type { Document } from '@/types'
@@ -278,13 +279,15 @@ function RowIconButton({
   title: string
 }) {
   return (
-    <button
-      className="text-tertiary hover:bg-tertiary inline-flex size-[22px] cursor-pointer items-center justify-center rounded border-0 bg-transparent"
-      onClick={onClick}
-      title={title}
-      type="button"
-    >
-      {children}
-    </button>
+    <IconTooltip label={title}>
+      <button
+        aria-label={title}
+        className="text-tertiary hover:bg-tertiary inline-flex size-[22px] cursor-pointer items-center justify-center rounded border-0 bg-transparent"
+        onClick={onClick}
+        type="button"
+      >
+        {children}
+      </button>
+    </IconTooltip>
   )
 }

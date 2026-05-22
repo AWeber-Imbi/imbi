@@ -28,4 +28,38 @@ const TooltipContent = React.forwardRef<
 ))
 TooltipContent.displayName = TooltipPrimitive.Content.displayName
 
-export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger }
+/**
+ * One-shot tooltip wrapper for icon buttons. Replaces the native
+ * `title=` attribute with a styled, design-system tooltip that also
+ * works on touch.
+ *
+ *   <IconTooltip label="Delete">
+ *     <Button onClick={...}><Trash2 /></Button>
+ *   </IconTooltip>
+ *
+ * The child must be a single element that accepts a `ref` (Radix's
+ * `asChild` forwards it). Provide an `aria-label` on the child for
+ * screen readers — the tooltip text alone is not announced.
+ */
+function IconTooltip({
+  children,
+  delayDuration = 200,
+  label,
+  side,
+}: {
+  children: React.ReactElement
+  delayDuration?: number
+  label: React.ReactNode
+  side?: 'bottom' | 'left' | 'right' | 'top'
+}) {
+  return (
+    <TooltipProvider delayDuration={delayDuration}>
+      <Tooltip>
+        <TooltipTrigger asChild>{children}</TooltipTrigger>
+        <TooltipContent side={side}>{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+export { IconTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger }

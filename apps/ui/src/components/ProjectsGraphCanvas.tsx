@@ -28,6 +28,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { IconTooltip } from '@/components/ui/tooltip'
 import { useTheme } from '@/contexts/ThemeContext'
 import { getIconUrl, useIconRegistryVersion } from '@/lib/icons'
 import {
@@ -258,62 +259,69 @@ export function ProjectsGraphCanvas({
           </DropdownMenu>
 
           <div className="flex items-center gap-1">
-            <Button
-              aria-label="Zoom in"
-              className={btnClass}
-              onClick={() => ref.current?.zoomIn()}
-              size="sm"
-              title="Zoom in"
-              variant="outline"
+            <IconTooltip label="Zoom in">
+              <Button
+                aria-label="Zoom in"
+                className={btnClass}
+                onClick={() => ref.current?.zoomIn()}
+                size="sm"
+                variant="outline"
+              >
+                <ZoomIn className="size-4" />
+              </Button>
+            </IconTooltip>
+            <IconTooltip label="Zoom out">
+              <Button
+                aria-label="Zoom out"
+                className={btnClass}
+                onClick={() => ref.current?.zoomOut()}
+                size="sm"
+                variant="outline"
+              >
+                <ZoomOut className="size-4" />
+              </Button>
+            </IconTooltip>
+            <IconTooltip label="Reset to 100% zoom">
+              <Button
+                className={btnClass}
+                disabled={currentZoom === 100}
+                onClick={() =>
+                  ref.current?.getControls().dollyTo(ZOOM_100_DISTANCE, true)
+                }
+                size="sm"
+                variant="outline"
+              >
+                {currentZoom}%
+              </Button>
+            </IconTooltip>
+            <IconTooltip label="Fit to view">
+              <Button
+                aria-label="Fit to view"
+                className={btnClass}
+                onClick={() => ref.current?.fitNodesInView()}
+                size="sm"
+                variant="outline"
+              >
+                <Maximize2 className="size-4" />
+              </Button>
+            </IconTooltip>
+            <IconTooltip
+              label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
             >
-              <ZoomIn className="size-4" />
-            </Button>
-            <Button
-              aria-label="Zoom out"
-              className={btnClass}
-              onClick={() => ref.current?.zoomOut()}
-              size="sm"
-              title="Zoom out"
-              variant="outline"
-            >
-              <ZoomOut className="size-4" />
-            </Button>
-            <Button
-              className={btnClass}
-              disabled={currentZoom === 100}
-              onClick={() =>
-                ref.current?.getControls().dollyTo(ZOOM_100_DISTANCE, true)
-              }
-              size="sm"
-              title="Reset to 100% zoom"
-              variant="outline"
-            >
-              {currentZoom}%
-            </Button>
-            <Button
-              aria-label="Fit to view"
-              className={btnClass}
-              onClick={() => ref.current?.fitNodesInView()}
-              size="sm"
-              title="Fit to view"
-              variant="outline"
-            >
-              <Maximize2 className="size-4" />
-            </Button>
-            <Button
-              aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-              className={btnClass}
-              onClick={toggleFullscreen}
-              size="sm"
-              title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-              variant="outline"
-            >
-              {isFullscreen ? (
-                <Shrink className="size-4" />
-              ) : (
-                <Expand className="size-4" />
-              )}
-            </Button>
+              <Button
+                aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+                className={btnClass}
+                onClick={toggleFullscreen}
+                size="sm"
+                variant="outline"
+              >
+                {isFullscreen ? (
+                  <Shrink className="size-4" />
+                ) : (
+                  <Expand className="size-4" />
+                )}
+              </Button>
+            </IconTooltip>
           </div>
 
           <div className="text-tertiary ml-auto flex items-center gap-4 text-xs">

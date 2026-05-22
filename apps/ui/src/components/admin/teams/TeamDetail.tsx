@@ -294,7 +294,6 @@ export function TeamDetail({ onBack, onEdit, team }: TeamDetailProps) {
                               className="text-danger hover:bg-danger rounded p-1.5"
                               disabled={removeMemberMutation.isPending}
                               onClick={() => handleRemoveMember(member.email)}
-                              title="Remove from team"
                               type="button"
                             >
                               <X className="size-4" />
