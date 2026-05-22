@@ -28,6 +28,7 @@ import {
   listProjectDocuments,
   listProjectPlugins,
   listScoringPolicies,
+  type ProjectSchemaResponse,
   type ScoreTrend,
 } from '@/api/endpoints'
 import {
@@ -1005,6 +1006,7 @@ export function ProjectDetail({
                         <ScoreBreakdownDetail
                           contributions={scoreBreakdown.attribute_contributions}
                           policies={scoringPolicies}
+                          projectSchema={projectSchema}
                         />
                       )}
                     </CardFooter>
@@ -1173,11 +1175,18 @@ export function ProjectDetail({
 function buildRecommendation(
   c: AttributeContribution,
   policy: ScoringPolicy,
+  allowedValues?: Set<string>,
 ): null | string {
   if (policy.category !== 'attribute') return null
   const current = c.mapped_score
   if (policy.value_score_map) {
-    const better = entriesAbove(policy.value_score_map, current)
+    let better = entriesAbove(policy.value_score_map, current)
+    // Clip to values the blueprint actually allows for this attribute, so we
+    // don't suggest frameworks (or whatever) that aren't pickable anymore.
+    // Skip the clip when the blueprint defines no enum for this attribute.
+    if (allowedValues && allowedValues.size > 0) {
+      better = better.filter(([name]) => allowedValues.has(name))
+    }
     if (better.length === 0) return null
     const topScore = better[0][1]
     const top = better
@@ -1228,9 +1237,11 @@ function PlaceholderTab({ name }: { name: string }) {
 function ScoreBreakdownDetail({
   contributions,
   policies,
+  projectSchema,
 }: {
   contributions: AttributeContribution[]
   policies: ScoringPolicy[]
+  projectSchema?: ProjectSchemaResponse
 }) {
   const totalWeight = contributions.reduce((s, c) => s + c.weight, 0)
   const policyBySlug = useMemo(() => {
@@ -1238,6 +1249,24 @@ function ScoreBreakdownDetail({
     for (const p of policies) map.set(p.slug, p)
     return map
   }, [policies])
+
+  // attribute_name -> the set of values the blueprint declares as valid for
+  // that attribute. Used to clip score recommendations down to choices the
+  // user can actually pick — a policy may score a wider universe than the
+  // current blueprint enum (e.g. legacy frameworks that have been pruned).
+  // fallow-ignore-next-line complexity
+  const allowedValuesByAttribute = useMemo(() => {
+    const map = new Map<string, Set<string>>()
+    if (!projectSchema) return map
+    for (const section of projectSchema.sections) {
+      for (const [key, def] of Object.entries(section.properties)) {
+        if (def.enum && def.enum.length > 0) {
+          map.set(key, new Set(def.enum))
+        }
+      }
+    }
+    return map
+  }, [projectSchema])
 
   const enriched = contributions.map((c) => {
     const maxPts = totalWeight > 0 ? (c.weight / totalWeight) * 100 : 0
@@ -1282,7 +1311,11 @@ function ScoreBreakdownDetail({
                 policy?.name ||
                 formatFieldKey(c.policy_slug)
               const recommendation = policy
-                ? buildRecommendation(c, policy)
+                ? buildRecommendation(
+                    c,
+                    policy,
+                    allowedValuesByAttribute.get(c.attribute_name),
+                  )
                 : null
               return (
                 <div
