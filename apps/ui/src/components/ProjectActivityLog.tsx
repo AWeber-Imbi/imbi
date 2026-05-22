@@ -46,9 +46,9 @@ interface Props {
 }
 
 const DOT_CLASS = {
-  info: 'bg-[#3d86d1]',
-  neutral: 'bg-[#888780]',
-  warning: 'bg-[#ef9f27]',
+  info: 'bg-activity-info-dot',
+  neutral: 'bg-activity-neutral-dot',
+  warning: 'bg-activity-warning-dot',
 }
 
 interface KeyChange {

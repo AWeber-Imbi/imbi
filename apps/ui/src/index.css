@@ -59,6 +59,12 @@
   --color-status-failed-dot: #e24b4a;
   --color-status-failed-text: #791f1f;
 
+  /* Activity log row markers. Saturated dot colors that read on both
+     light and dark backgrounds without per-theme overrides. */
+  --color-activity-info-dot: #3d86d1;
+  --color-activity-neutral-dot: #888780;
+  --color-activity-warning-dot: #ef9f27;
+
   /* --- Per-utility design system colors (separate bg/text/border) --- */
   --background-color-primary: var(--ds-bg-primary);
   --background-color-secondary: var(--ds-bg-secondary);
