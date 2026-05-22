@@ -13,6 +13,13 @@ import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { Input } from '@/components/ui/input'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { slugify } from '@/lib/utils'
@@ -232,8 +239,6 @@ export function WebhookForm({
     setRules(newRules)
   }
 
-  const selectClass = `w-full px-3 py-2 rounded-lg border text-sm border-input bg-background text-foreground`
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -427,22 +432,33 @@ export function WebhookForm({
 
             <div className="space-y-4">
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <label
+                  className="text-secondary mb-1.5 block text-sm"
+                  htmlFor="webhook-tps"
+                >
                   Third-Party Service
                 </label>
-                <select
-                  className={selectClass}
+                {/* Radix disallows '' as a SelectItem value, so 'none' is
+                    the empty sentinel and gets translated at the boundary. */}
+                <Select
                   disabled={isLoading}
-                  onChange={(e) => handleServiceChange(e.target.value)}
-                  value={tpsSlug}
+                  onValueChange={(v) =>
+                    handleServiceChange(v === 'none' ? '' : v)
+                  }
+                  value={tpsSlug || 'none'}
                 >
-                  <option value="">None</option>
-                  {services.map((svc) => (
-                    <option key={svc.slug} value={svc.slug}>
-                      {svc.name}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="webhook-tps">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {services.map((svc) => (
+                      <SelectItem key={svc.slug} value={svc.slug}>
+                        {svc.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {tpsSlug && (
