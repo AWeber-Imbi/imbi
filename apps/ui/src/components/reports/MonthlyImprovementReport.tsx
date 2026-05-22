@@ -1,13 +1,19 @@
 import { useMemo, useState } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown } from 'lucide-react'
 
 import {
   getMonthlyImprovement,
   listTeams,
   MonthlyImprovementRow,
 } from '@/api/endpoints'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { Team } from '@/types'
 
@@ -140,23 +146,24 @@ export function MonthlyImprovementReport() {
       {/* Month selector */}
       <div className="flex items-center gap-3">
         <span className="text-secondary text-sm">Month</span>
-        <div className="relative">
-          <select
-            className="border-tertiary bg-primary text-primary hover:border-secondary h-8 appearance-none rounded border py-0 pr-8 pl-3 text-sm transition-colors focus:ring-0 focus:outline-none"
-            onChange={(e) => {
-              const opt = monthOptions[Number(e.target.value)]
-              if (opt) setSelected(opt)
-            }}
-            value={monthOptions.indexOf(selected)}
-          >
+        <Select
+          onValueChange={(v) => {
+            const opt = monthOptions[Number(v)]
+            if (opt) setSelected(opt)
+          }}
+          value={String(monthOptions.indexOf(selected))}
+        >
+          <SelectTrigger aria-label="Month" className="h-8 w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
             {monthOptions.map((opt, i) => (
-              <option key={`${opt.year}-${opt.month}`} value={i}>
+              <SelectItem key={`${opt.year}-${opt.month}`} value={String(i)}>
                 {opt.label}
-              </option>
+              </SelectItem>
             ))}
-          </select>
-          <ChevronDown className="text-tertiary pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2" />
-        </div>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Table */}
