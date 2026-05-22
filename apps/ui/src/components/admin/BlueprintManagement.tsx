@@ -23,6 +23,13 @@ import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { LabelChip } from '@/components/ui/label-chip'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -55,8 +62,9 @@ export function BlueprintManagement() {
     viewMode,
   } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
-  const [typeFilter, setTypeFilter] = useState<string>('')
-  const [enabledFilter, setEnabledFilter] = useState<string>('')
+  // 'all' acts as the unfiltered sentinel; Radix Select disallows '' values.
+  const [typeFilter, setTypeFilter] = useState<string>('all')
+  const [enabledFilter, setEnabledFilter] = useState<string>('all')
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const { copied: copiedKey, copy } = useClipboard()
   const [copyError, setCopyError] = useState<null | string>(null)
@@ -124,7 +132,7 @@ export function BlueprintManagement() {
     }
     if (typeFilter === 'relationship') {
       if (bp.kind !== 'relationship') return false
-    } else if (typeFilter && bp.type !== typeFilter) return false
+    } else if (typeFilter !== 'all' && bp.type !== typeFilter) return false
     if (enabledFilter === 'enabled' && !bp.enabled) return false
     if (enabledFilter === 'disabled' && bp.enabled) return false
     return true
@@ -294,30 +302,36 @@ export function BlueprintManagement() {
       }
       headerExtras={
         <>
-          <select
-            aria-label="Filter blueprints by type"
-            className="border-tertiary bg-primary text-primary h-10 rounded-md border px-3 py-2 text-sm"
-            onChange={(e) => setTypeFilter(e.target.value)}
-            value={typeFilter}
-          >
-            <option value="">All Types</option>
-            {blueprintTypes.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-            <option value="relationship">Relationship</option>
-          </select>
-          <select
-            aria-label="Filter blueprints by status"
-            className="border-tertiary bg-primary text-primary h-10 rounded-md border px-3 py-2 text-sm"
-            onChange={(e) => setEnabledFilter(e.target.value)}
-            value={enabledFilter}
-          >
-            <option value="">All Status</option>
-            <option value="enabled">Enabled</option>
-            <option value="disabled">Disabled</option>
-          </select>
+          <Select onValueChange={setTypeFilter} value={typeFilter}>
+            <SelectTrigger
+              aria-label="Filter blueprints by type"
+              className="w-44"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              {blueprintTypes.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t}
+                </SelectItem>
+              ))}
+              <SelectItem value="relationship">Relationship</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select onValueChange={setEnabledFilter} value={enabledFilter}>
+            <SelectTrigger
+              aria-label="Filter blueprints by status"
+              className="w-36"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="enabled">Enabled</SelectItem>
+              <SelectItem value="disabled">Disabled</SelectItem>
+            </SelectContent>
+          </Select>
         </>
       }
       isLoading={isLoading}
@@ -452,7 +466,7 @@ export function BlueprintManagement() {
           },
         ]}
         emptyMessage={
-          searchQuery || typeFilter || enabledFilter
+          searchQuery || typeFilter !== 'all' || enabledFilter !== 'all'
             ? 'No blueprints match your filters'
             : 'No blueprints created yet'
         }
