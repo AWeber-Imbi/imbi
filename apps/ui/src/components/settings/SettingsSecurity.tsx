@@ -42,11 +42,7 @@ export function SettingsSecurity() {
                     Google OAuth ({user?.email})
                   </p>
                 </div>
-                <Badge
-                  className="border-green-200 bg-green-50 text-green-700"
-                  style={{ borderWidth: '0.5px' }}
-                  variant="outline"
-                >
+                <Badge style={{ borderWidth: '0.5px' }} variant="success">
                   Active
                 </Badge>
               </div>

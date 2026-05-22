@@ -226,15 +226,11 @@ export function EditRelationshipsDialog({
             {changeCount > 0 ? (
               <>
                 {added.length > 0 && (
-                  <span className="text-green-600 dark:text-green-400">
-                    +{added.length} added
-                  </span>
+                  <span className="text-success">+{added.length} added</span>
                 )}
                 {added.length > 0 && removed.length > 0 && ', '}
                 {removed.length > 0 && (
-                  <span className="text-red-600 dark:text-red-400">
-                    -{removed.length} removed
-                  </span>
+                  <span className="text-danger">-{removed.length} removed</span>
                 )}
               </>
             ) : (
@@ -261,7 +257,7 @@ export function EditRelationshipsDialog({
         </DialogFooter>
 
         {mutation.isError && (
-          <p className="text-center text-sm text-red-600 dark:text-red-400">
+          <p className="text-danger text-center text-sm">
             Failed to save. Please try again.
           </p>
         )}

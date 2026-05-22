@@ -280,11 +280,10 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
         <CardContent>
           {!showDeleteConfirm ? (
             <Button
-              className="border-danger bg-red-700 text-white hover:bg-red-800"
               disabled={!project.id}
               onClick={() => setShowDeleteConfirm(true)}
               size="sm"
-              variant="outline"
+              variant="destructive"
             >
               Delete Project
             </Button>
@@ -310,16 +309,13 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
               />
               <div className="flex gap-2">
                 <Button
-                  className={
-                    'border-danger bg-red-700 text-white hover:bg-red-800'
-                  }
                   disabled={
                     deleteConfirmSlug !== project.slug ||
                     deleteMutation.isPending
                   }
                   onClick={() => deleteMutation.mutate()}
                   size="sm"
-                  variant="outline"
+                  variant="destructive"
                 >
                   {deleteMutation.isPending ? 'Deleting...' : 'Confirm Delete'}
                 </Button>

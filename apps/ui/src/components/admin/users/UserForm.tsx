@@ -729,11 +729,11 @@ export function UserForm({
                           <div
                             className={cn(
                               'h-full transition-all',
-                              passwordStrength.color === 'red' && 'bg-red-500',
+                              passwordStrength.color === 'red' && 'bg-danger',
                               passwordStrength.color === 'yellow' &&
-                                'bg-yellow-500',
+                                'bg-warning',
                               passwordStrength.color === 'green' &&
-                                'bg-green-500',
+                                'bg-success',
                             )}
                             style={{
                               width: `${(passwordStrength.score / 6) * 100}%`,
@@ -743,11 +743,11 @@ export function UserForm({
                         <span
                           className={cn(
                             'text-xs',
-                            passwordStrength.color === 'red' && 'text-red-500',
+                            passwordStrength.color === 'red' && 'text-danger',
                             passwordStrength.color === 'yellow' &&
-                              'text-yellow-500',
+                              'text-warning',
                             passwordStrength.color === 'green' &&
-                              'text-green-500',
+                              'text-success',
                           )}
                         >
                           {passwordStrength.label}
