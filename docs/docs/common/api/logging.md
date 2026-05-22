@@ -105,6 +105,38 @@ so existing log lines are unchanged for requests that don't opt in.
 The `imbi_common_access_log` name is namespaced to avoid collisions
 with other middleware that shares `request.state`.
 
+### OpenTelemetry trace ID
+
+When OpenTelemetry instrumentation is active and a valid server span
+is recording the request, `AccessLogMiddleware` prepends
+`trace_id:<32-char hex>` to the context suffix. The suffix renders
+trace context and any handler-supplied context together, so a request
+that sets per-handler context produces a log line like:
+
+```text
+... "POST /events HTTP/1.1" 200 (trace_id:cafebabe... event_type:x selected:False)
+```
+
+When no OpenTelemetry span is active (e.g. instrumentation is not
+configured, the SDK is disabled, or the request was sampled out), the
+`trace_id` field is omitted and the suffix only contains
+handler-supplied context — preserving the existing format for
+services that have not adopted OpenTelemetry.
+
+Pass `include_trace_context=False` to the middleware to disable the
+lookup entirely:
+
+```python
+app.add_middleware(
+    AccessLogMiddleware,
+    include_trace_context=False,
+)
+```
+
+See [OpenTelemetry](otel.md) for the underlying
+`current_trace_id()` helper and the related
+`TraceIdResponseMiddleware`.
+
 ## API Reference
 
 ::: imbi_common.logging.get_log_config

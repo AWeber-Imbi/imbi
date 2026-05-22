@@ -19,6 +19,13 @@ by populating ``request.state.imbi_common_access_log`` (equivalently
 entry is rendered as ``key:value`` in a space-separated list wrapped
 in parentheses after the status code, e.g.
 ``... 200 (event_type:x selected:False)``.
+
+When OpenTelemetry instrumentation is active and a valid server span
+is recording the request, the active trace ID is prepended to the
+context suffix as ``trace_id:<32-char hex>``. This requires no
+configuration beyond installing ``imbi-common[otel]`` and wiring up
+the SDK; it is suppressed by passing ``include_trace_context=False``
+to the middleware constructor.
 """
 
 import logging
@@ -27,7 +34,7 @@ from collections import abc
 
 import jwt
 
-from imbi_common import settings
+from imbi_common import otel, settings
 from imbi_common.auth import core
 
 LOGGER = logging.getLogger('imbi_common.access')
@@ -58,6 +65,11 @@ class AccessLogMiddleware:
             authenticated principal in the log line. Set to ``False``
             to suppress the lookup for services that don't issue JWTs
             or API keys.
+        include_trace_context: When ``True`` (the default), prepend
+            ``trace_id:<hex>`` to the log line's context suffix when
+            an OpenTelemetry server span is recording the request.
+            Has no effect when ``opentelemetry-api`` is not installed
+            or no valid span is active.
     """
 
     def __init__(
@@ -68,12 +80,14 @@ class AccessLogMiddleware:
         quiet_status_codes: abc.Container[int] = range(200, 300),
         logger: logging.Logger | None = None,
         include_principal: bool = True,
+        include_trace_context: bool = True,
     ) -> None:
         self.app = app
         self.quiet_paths = frozenset(quiet_paths)
         self.quiet_status_codes = quiet_status_codes
         self.logger = logger or LOGGER
         self.include_principal = include_principal
+        self.include_trace_context = include_trace_context
 
     async def __call__(
         self, scope: Scope, receive: Receive, send: Send
@@ -111,16 +125,23 @@ class AccessLogMiddleware:
                 principal = _principal_from_scope(scope)
             except Exception:  # noqa: BLE001 - defensive: never fail logging
                 principal = '-'
-        suffix = ''
+        context: list[tuple[object, object]] = []
+        if self.include_trace_context:
+            trace_id = otel.current_trace_id()
+            if trace_id is not None:
+                context.append(('trace_id', trace_id))
         state = scope.get('state')
         if isinstance(state, abc.Mapping):
-            context = state.get('imbi_common_access_log')
-            if isinstance(context, abc.Mapping) and context:
-                rendered = ' '.join(
-                    f'{_sanitize_log_field(k)}:{_sanitize_log_field(v)}'
-                    for k, v in context.items()
-                )
-                suffix = f' ({rendered})'
+            extra = state.get('imbi_common_access_log')
+            if isinstance(extra, abc.Mapping):
+                context.extend(extra.items())
+        suffix = ''
+        if context:
+            rendered = ' '.join(
+                f'{_sanitize_log_field(k)}:{_sanitize_log_field(v)}'
+                for k, v in context
+            )
+            suffix = f' ({rendered})'
         self.logger.info(
             '%s:%s - %s "%s %s HTTP/%s" %d%s',
             client[0],

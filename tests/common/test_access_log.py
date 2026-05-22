@@ -4,8 +4,9 @@ import logging
 import typing
 import unittest
 from collections import abc
+from unittest import mock
 
-from imbi_common import access_log
+from imbi_common import access_log, otel
 from imbi_common.auth import core
 
 
@@ -279,6 +280,88 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('\r', message)
         self.assertIn(r'note:line1\nline2', message)
         self.assertIn(r'cr\rkey:value\r', message)
+
+    async def test_trace_id_prepended_to_suffix(self) -> None:
+        app = _RecordingApp(status=200)
+        middleware = access_log.AccessLogMiddleware(app)
+        with mock.patch.object(otel, 'current_trace_id') as get_id:
+            get_id.return_value = 'cafebabedeadbeefcafebabedeadbeef'
+            with self.assertLogs(
+                'imbi_common.access', level=logging.INFO
+            ) as cm:
+                await middleware(_http_scope(), _noop_receive, _noop_send)
+        self.assertIn(
+            ' 200 (trace_id:cafebabedeadbeefcafebabedeadbeef)',
+            cm.records[0].getMessage(),
+        )
+
+    async def test_trace_id_merges_with_handler_context(self) -> None:
+        class ContextApp:
+            async def __call__(
+                self,
+                scope: abc.MutableMapping[str, typing.Any],
+                _receive: abc.Callable[[], abc.Awaitable[typing.Any]],
+                send: abc.Callable[
+                    [abc.MutableMapping[str, typing.Any]],
+                    abc.Awaitable[None],
+                ],
+            ) -> None:
+                scope.setdefault('state', {})['imbi_common_access_log'] = {
+                    'event_type': 'whatever',
+                }
+                await send(
+                    {
+                        'type': 'http.response.start',
+                        'status': 200,
+                        'headers': [],
+                    }
+                )
+                await send({'type': 'http.response.body', 'body': b''})
+
+        middleware = access_log.AccessLogMiddleware(ContextApp())
+        scope = _http_scope()
+        scope['state'] = {}
+        with mock.patch.object(otel, 'current_trace_id') as get_id:
+            get_id.return_value = 'cafebabedeadbeefcafebabedeadbeef'
+            with self.assertLogs(
+                'imbi_common.access', level=logging.INFO
+            ) as cm:
+                await middleware(scope, _noop_receive, _noop_send)
+        self.assertIn(
+            ' 200 (trace_id:cafebabedeadbeefcafebabedeadbeef '
+            'event_type:whatever)',
+            cm.records[0].getMessage(),
+        )
+
+    async def test_trace_id_omitted_when_no_active_span(self) -> None:
+        app = _RecordingApp(status=200)
+        middleware = access_log.AccessLogMiddleware(app)
+        with mock.patch.object(otel, 'current_trace_id') as get_id:
+            get_id.return_value = None
+            with self.assertLogs(
+                'imbi_common.access', level=logging.INFO
+            ) as cm:
+                await middleware(_http_scope(), _noop_receive, _noop_send)
+        message = cm.records[0].getMessage()
+        self.assertNotIn('trace_id:', message)
+        self.assertTrue(message.endswith('200'), message)
+
+    async def test_include_trace_context_false_suppresses_lookup(
+        self,
+    ) -> None:
+        app = _RecordingApp(status=200)
+        middleware = access_log.AccessLogMiddleware(
+            app, include_trace_context=False
+        )
+        with mock.patch.object(otel, 'current_trace_id') as get_id:
+            get_id.return_value = 'cafebabedeadbeefcafebabedeadbeef'
+            with self.assertLogs(
+                'imbi_common.access', level=logging.INFO
+            ) as cm:
+                await middleware(_http_scope(), _noop_receive, _noop_send)
+        message = cm.records[0].getMessage()
+        self.assertNotIn('trace_id:', message)
+        get_id.assert_not_called()
 
     async def test_custom_logger(self) -> None:
         app = _RecordingApp(status=200)

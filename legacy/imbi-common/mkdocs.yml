@@ -48,6 +48,7 @@ nav:
       - JSON Pointer: api/json-pointer.md
       - Authentication: api/auth.md
       - Logging: api/logging.md
+      - OpenTelemetry: api/otel.md
       - Lifespan: api/lifespan.md
       - Plugins: api/plugins.md
   - Guides:
