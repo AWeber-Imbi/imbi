@@ -9,6 +9,13 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useDirtyState } from '@/hooks/useDirtyState'
 import { useFormScaffold } from '@/hooks/useFormScaffold'
@@ -386,27 +393,31 @@ export function ServiceAccountForm({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <label
+                className="text-secondary mb-1.5 block text-sm"
+                htmlFor="service-account-org"
+              >
                 Organization <RequiredAsterisk />
               </label>
-              <select
-                className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              <Select
                 disabled={isLoading || organizations.length === 1}
-                onChange={(e) => {
-                  setOrganizationSlug(e.target.value)
+                onValueChange={(v) => {
+                  setOrganizationSlug(v)
                   handleFieldChange('organization_slug')
                 }}
                 value={organizationSlug}
               >
-                {organizations.length !== 1 && (
-                  <option value="">Select an organization...</option>
-                )}
-                {organizations.map((org) => (
-                  <option key={org.slug} value={org.slug}>
-                    {org.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="service-account-org">
+                  <SelectValue placeholder="Select an organization..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {organizations.map((org) => (
+                    <SelectItem key={org.slug} value={org.slug}>
+                      {org.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {touched.organization_slug &&
                 validationErrors.organization_slug && (
                   <p className="mt-1 text-sm text-red-600">
@@ -416,7 +427,10 @@ export function ServiceAccountForm({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <label
+                className="text-secondary mb-1.5 block text-sm"
+                htmlFor="service-account-role"
+              >
                 Role <RequiredAsterisk />
               </label>
               {rolesLoading ? (
@@ -426,22 +440,25 @@ export function ServiceAccountForm({
                   Failed to load roles. Please refresh and try again.
                 </p>
               ) : (
-                <select
-                  className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                <Select
                   disabled={isLoading}
-                  onChange={(e) => {
-                    setRoleSlug(e.target.value)
+                  onValueChange={(v) => {
+                    setRoleSlug(v)
                     handleFieldChange('role_slug')
                   }}
                   value={roleSlug}
                 >
-                  <option value="">Select a role...</option>
-                  {availableRoles.map((role) => (
-                    <option key={role.slug} value={role.slug}>
-                      {role.name}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="service-account-role">
+                    <SelectValue placeholder="Select a role..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableRoles.map((role) => (
+                      <SelectItem key={role.slug} value={role.slug}>
+                        {role.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
               {touched.role_slug && validationErrors.role_slug && (
                 <p className="mt-1 text-sm text-red-600">
