@@ -11,6 +11,13 @@ import {
   updateServiceAccount,
 } from '@/api/endpoints'
 import { AdminTable } from '@/components/ui/admin-table'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useAdminCrud } from '@/hooks/useAdminCrud'
 import { useAdminNav } from '@/hooks/useAdminNav'
 import { formatDateTime } from '@/lib/formatDate'
@@ -136,15 +143,22 @@ export function ServiceAccountManagement() {
       error={error}
       errorTitle="Failed to load service accounts"
       headerExtras={
-        <select
-          className="border-input bg-background text-foreground rounded-lg border px-3 py-2 text-sm"
-          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+        <Select
+          onValueChange={(v) => setStatusFilter(v as StatusFilter)}
           value={statusFilter}
         >
-          <option value="all">All Status</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-        </select>
+          <SelectTrigger
+            aria-label="Filter service accounts by status"
+            className="w-36"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
       }
       isLoading={isLoading}
       loadingLabel="Loading service accounts..."

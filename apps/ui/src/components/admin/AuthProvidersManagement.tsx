@@ -38,6 +38,13 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
 import { LoadingState } from '@/components/ui/loading-state'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/hooks/useAuth'
 import { extractApiErrorDetail } from '@/lib/apiError'
@@ -497,16 +504,20 @@ function AuthProviderCreateDialog({
               <label className="text-secondary mb-1.5 block text-sm">
                 OAuth Type <RequiredAsterisk />
               </label>
-              <select
-                className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
+              <Select
                 disabled={isSaving}
-                onChange={(e) => setAppType(e.target.value as OAuthAppType)}
+                onValueChange={(v) => setAppType(v as OAuthAppType)}
                 value={appType}
               >
-                <option value="google">Google</option>
-                <option value="github">GitHub</option>
-                <option value="oidc">OpenID Connect</option>
-              </select>
+                <SelectTrigger aria-label="OAuth type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="google">Google</SelectItem>
+                  <SelectItem value="github">GitHub</SelectItem>
+                  <SelectItem value="oidc">OpenID Connect</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
@@ -824,16 +835,20 @@ function AuthProviderEditDialog({
               <label className="text-secondary mb-1.5 block text-sm">
                 OAuth Type <RequiredAsterisk />
               </label>
-              <select
-                className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
+              <Select
                 disabled={isSaving}
-                onChange={(e) => setAppType(e.target.value as OAuthAppType)}
+                onValueChange={(v) => setAppType(v as OAuthAppType)}
                 value={appType}
               >
-                <option value="google">Google</option>
-                <option value="github">GitHub</option>
-                <option value="oidc">OpenID Connect</option>
-              </select>
+                <SelectTrigger aria-label="OAuth type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="google">Google</SelectItem>
+                  <SelectItem value="github">GitHub</SelectItem>
+                  <SelectItem value="oidc">OpenID Connect</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
