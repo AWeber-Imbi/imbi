@@ -3,6 +3,13 @@ import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -112,21 +119,25 @@ export function BlueprintSchemaPropertyRow({
           value={prop.name}
         />
 
-        <select
-          className="border-input bg-background text-foreground w-28 rounded-md border px-2 py-2 text-sm"
-          onChange={(e) =>
+        <Select
+          onValueChange={(v) =>
             updateProperty(prop.id, {
-              type: e.target.value as SchemaProperty['type'],
+              type: v as SchemaProperty['type'],
             })
           }
           value={prop.type}
         >
-          {PROPERTY_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger aria-label="Property type" className="w-28">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PROPERTY_TYPES.map((t) => (
+              <SelectItem key={t} value={t}>
+                {t}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         <div className="flex items-center gap-1.5">
           <Checkbox
@@ -251,21 +262,28 @@ export function BlueprintSchemaPropertyRow({
                 <label className="text-secondary mb-1 block text-xs">
                   Format
                 </label>
-                <select
-                  className="border-input bg-background text-foreground w-full rounded-md border px-2 py-2 text-sm"
-                  onChange={(e) =>
+                {/* Radix disallows '' as a SelectItem value; the empty
+                    STRING_FORMATS entry becomes "none" and gets translated
+                    back to undefined on store. */}
+                <Select
+                  onValueChange={(v) =>
                     updateProperty(prop.id, {
-                      format: e.target.value || undefined,
+                      format: v === 'none' ? undefined : v,
                     })
                   }
-                  value={prop.format || ''}
+                  value={prop.format || 'none'}
                 >
-                  {STRING_FORMATS.map((f) => (
-                    <option key={f} value={f}>
-                      {f || '(none)'}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger aria-label="Format">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STRING_FORMATS.map((f) => (
+                      <SelectItem key={f || 'none'} value={f || 'none'}>
+                        {f || '(none)'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <label className="text-secondary mb-1 block text-xs">
@@ -310,21 +328,25 @@ export function BlueprintSchemaPropertyRow({
                 <label className="text-secondary mb-1 block text-xs">
                   Items Type
                 </label>
-                <select
-                  className="border-input bg-background text-foreground w-full rounded-md border px-2 py-2 text-sm"
-                  onChange={(e) =>
+                <Select
+                  onValueChange={(v) =>
                     updateProperty(prop.id, {
-                      itemsType: e.target.value as SchemaProperty['itemsType'],
+                      itemsType: v as SchemaProperty['itemsType'],
                     })
                   }
                   value={prop.itemsType ?? 'string'}
                 >
-                  {ARRAY_ITEM_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger aria-label="Items type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ARRAY_ITEM_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <label className="text-secondary mb-1 block text-xs">
