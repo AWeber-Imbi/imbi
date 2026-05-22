@@ -246,15 +246,22 @@ export function ProjectDetail({
     queryKey: ['linkDefinitions', orgSlug],
   })
 
+  // Overview-tab-only queries: skip when the user lands on a deeper tab
+  // (e.g. /projects/:id/logs via deep link) — the overview cards that
+  // consume these aren't mounted in that case.
   const { data: scoreTrend } = useQuery({
-    enabled: !!orgSlug && !!project.id,
+    enabled: !!orgSlug && !!project.id && activeTab === 'overview',
     queryFn: ({ signal }) => getScoreTrend(orgSlug, project.id, 30, signal),
     queryKey: ['scoreTrend', orgSlug, project.id],
     staleTime: 5 * 60 * 1000,
   })
 
   const { data: projectWithBreakdown } = useQuery({
-    enabled: !!orgSlug && !!project.id && project.score != null,
+    enabled:
+      !!orgSlug &&
+      !!project.id &&
+      project.score != null &&
+      activeTab === 'overview',
     queryFn: ({ signal }) => getProjectBreakdown(orgSlug, project.id, signal),
     queryKey: ['projectBreakdown', orgSlug, project.id],
     staleTime: 5 * 60 * 1000,
@@ -332,8 +339,10 @@ export function ProjectDetail({
     [queryClient],
   )
 
+  // Overview-only: feeds ProjectAttributesSection inside <TabsContent
+  // value="overview">. The other tabs render their own components.
   const { data: projectSchema } = useQuery({
-    enabled: !!orgSlug,
+    enabled: !!orgSlug && !!project.id && activeTab === 'overview',
     queryFn: ({ signal }) => getProjectSchema(orgSlug, project.id, signal),
     queryKey: ['projectSchema', orgSlug, project.id],
   })
