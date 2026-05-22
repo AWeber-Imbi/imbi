@@ -1,6 +1,13 @@
 import { Plus, X } from 'lucide-react'
 
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface BlueprintUiMapEditorProps {
   commit: (next: [string, string][]) => void
@@ -63,25 +70,32 @@ export function BlueprintUiMapEditor({
                 value={eKey}
               />
               {isColor ? (
-                <select
-                  className="border-input bg-background text-foreground rounded-md border px-2 py-1.5 text-xs"
-                  onChange={(e) => {
+                <Select
+                  onValueChange={(v) => {
                     const next = entries.map((row, i): [string, string] =>
-                      i === idx ? [row[0], e.target.value] : row,
+                      i === idx ? [row[0], v] : row,
                     )
                     setEntries(next)
                     commit(next)
                   }}
                   value={eVal}
                 >
-                  {['green', 'red', 'amber', 'yellow', 'blue', 'gray'].map(
-                    (c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ),
-                  )}
-                </select>
+                  <SelectTrigger
+                    aria-label="Color"
+                    className="h-8 w-auto text-xs"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['green', 'red', 'amber', 'yellow', 'blue', 'gray'].map(
+                      (c) => (
+                        <SelectItem key={c} value={c}>
+                          {c}
+                        </SelectItem>
+                      ),
+                    )}
+                  </SelectContent>
+                </Select>
               ) : (
                 <Input
                   className="flex-1 text-xs"

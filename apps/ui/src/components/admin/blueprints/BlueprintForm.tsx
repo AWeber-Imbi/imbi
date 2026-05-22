@@ -13,6 +13,13 @@ import { CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { queryKeys } from '@/lib/queryKeys'
 import { parseFilterFromBlueprint } from '@/lib/utils'
@@ -595,17 +602,19 @@ export function BlueprintForm({
             <label className="text-secondary mb-1.5 block text-sm">
               Kind <RequiredAsterisk />
             </label>
-            <select
-              className={`border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+            <Select
               disabled={isLoading || isEditing}
-              onChange={(e) =>
-                setKind(e.target.value as 'node' | 'relationship')
-              }
+              onValueChange={(v) => setKind(v as 'node' | 'relationship')}
               value={kind}
             >
-              <option value="node">Object</option>
-              <option value="relationship">Relationship</option>
-            </select>
+              <SelectTrigger aria-label="Kind">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="node">Object</SelectItem>
+                <SelectItem value="relationship">Relationship</SelectItem>
+              </SelectContent>
+            </Select>
             {isEditing && (
               <p className="text-tertiary mt-1 text-xs">
                 Kind cannot be changed after creation
@@ -619,22 +628,25 @@ export function BlueprintForm({
               <label className="text-secondary mb-1.5 block text-sm">
                 Type <RequiredAsterisk />
               </label>
-              <select
-                className={`border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+              <Select
                 disabled={isLoading || isEditing}
-                onChange={(e) => {
-                  setType(e.target.value)
+                onValueChange={(v) => {
+                  setType(v)
                   handleFieldChange('type')
                 }}
                 value={type}
               >
-                <option value="">Select a type...</option>
-                {blueprintTypes.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger aria-label="Type">
+                  <SelectValue placeholder="Select a type..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {blueprintTypes.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {touched.type && validationErrors.type && (
                 <p className="mt-1 text-sm text-red-600">
                   {validationErrors.type}
@@ -647,24 +659,27 @@ export function BlueprintForm({
                 <label className="text-secondary mb-1.5 block text-sm">
                   Source <RequiredAsterisk />
                 </label>
-                <select
-                  className={`border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                <Select
                   disabled={isLoading || isEditing}
-                  onChange={(e) => {
-                    setSource(e.target.value)
+                  onValueChange={(v) => {
+                    setSource(v)
                     handleFieldChange('source')
-                    const valid = getRelationshipTypes(e.target.value, target)
+                    const valid = getRelationshipTypes(v, target)
                     if (edge && !valid.includes(edge)) setEdge('')
                   }}
                   value={source}
                 >
-                  <option value="">Select source...</option>
-                  {blueprintTypes.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger aria-label="Source">
+                    <SelectValue placeholder="Select source..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {blueprintTypes.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {touched.source && validationErrors.source && (
                   <p className="mt-1 text-sm text-red-600">
                     {validationErrors.source}
@@ -692,26 +707,31 @@ export function BlueprintForm({
                     value={edge}
                   />
                 ) : (
-                  <select
-                    className={`border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                  <Select
                     disabled={isLoading || isEditing || !source || !target}
-                    onChange={(e) => {
-                      setEdge(e.target.value)
+                    onValueChange={(v) => {
+                      setEdge(v)
                       handleFieldChange('edge')
                     }}
                     value={edge}
                   >
-                    <option value="">
-                      {source && target
-                        ? 'Select type...'
-                        : 'Pick source & target first'}
-                    </option>
-                    {getRelationshipTypes(source, target).map((rt) => (
-                      <option key={rt} value={rt}>
-                        {toTitleCase(rt)}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger aria-label="Relationship Type">
+                      <SelectValue
+                        placeholder={
+                          source && target
+                            ? 'Select type...'
+                            : 'Pick source & target first'
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {getRelationshipTypes(source, target).map((rt) => (
+                        <SelectItem key={rt} value={rt}>
+                          {toTitleCase(rt)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 )}
                 {touched.edge && validationErrors.edge && (
                   <p className="mt-1 text-sm text-red-600">
@@ -724,24 +744,27 @@ export function BlueprintForm({
                 <label className="text-secondary mb-1.5 block text-sm">
                   Target <RequiredAsterisk />
                 </label>
-                <select
-                  className={`border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                <Select
                   disabled={isLoading || isEditing}
-                  onChange={(e) => {
-                    setTarget(e.target.value)
+                  onValueChange={(v) => {
+                    setTarget(v)
                     handleFieldChange('target')
-                    const valid = getRelationshipTypes(source, e.target.value)
+                    const valid = getRelationshipTypes(source, v)
                     if (edge && !valid.includes(edge)) setEdge('')
                   }}
                   value={target}
                 >
-                  <option value="">Select target...</option>
-                  {blueprintTypes.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger aria-label="Target">
+                    <SelectValue placeholder="Select target..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {blueprintTypes.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {touched.target && validationErrors.target && (
                   <p className="mt-1 text-sm text-red-600">
                     {validationErrors.target}
