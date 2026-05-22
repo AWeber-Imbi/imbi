@@ -6,6 +6,21 @@ resolution-markers = [
   "python_full_version < '3.15'",
 ]
 
+[options]
+exclude-newer = "0001-01-01T00:00:00Z"  # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
+exclude-newer-span = "P7D"
+
+[options.exclude-newer-package]
+imbi-common = false
+imbi-plugin-pagerduty = false
+imbi-plugin-github = false
+imbi-plugin-logzio = false
+imbi-plugin-aws = false
+imbi-plugin-sonarqube = false
+clickhouse-connect = false
+imbi-plugin-sentry = false
+imbi-plugin-oidc = false
+
 [[package]]
 name = "aioboto3"
 version = "15.5.0"
@@ -959,7 +974,7 @@ wheels = [
 
 [[package]]
 name = "imbi-api"
-version = "2.5.2"
+version = "2.7.0"
 source = { editable = "." }
 dependencies = [
   { name = "aioboto3" },

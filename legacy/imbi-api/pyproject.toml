@@ -1,6 +1,6 @@
 [project]
 name = "imbi-api"
-version = "2.5.2"
+version = "2.7.0"
 description = "Imbi is a DevOps Service Management Platform designed to provide an efficient way to manage a large environment that contains many services and applications."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -220,6 +220,10 @@ max-complexity = 15
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S"]
+
+[tool.uv]
+exclude-newer = "7 days"
+exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "imbi-plugin-aws" = false, "imbi-plugin-github" = false, "imbi-plugin-logzio" = false, "imbi-plugin-oidc" = false, "imbi-plugin-pagerduty" = false, "imbi-plugin-sentry" = false, "imbi-plugin-sonarqube" = false }
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
