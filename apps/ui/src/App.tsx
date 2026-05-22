@@ -9,6 +9,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { OrganizationProvider } from './contexts/OrganizationContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { useAuth } from './hooks/useAuth'
+import { useVersionCheck } from './hooks/useVersionCheck'
 
 const DashboardPage = lazy(() =>
   import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })),
@@ -73,6 +74,7 @@ function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  useVersionCheck()
   return (
     <ThemeProvider>
       <Toaster position="top-right" richColors />
