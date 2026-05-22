@@ -1,5 +1,7 @@
 import { useState } from 'react'
 
+import { Link } from 'react-router-dom'
+
 import { useQuery } from '@tanstack/react-query'
 import { Copy, ExternalLink } from 'lucide-react'
 import Markdown from 'react-markdown'
@@ -159,7 +161,13 @@ export function OperationsLogEntryDetails({ entry }: Props) {
         </p>
       )}
 
-      <div className="flex justify-end pt-2">
+      <div className="flex justify-end gap-2 pt-2">
+        <Button asChild size="sm" variant="outline">
+          <Link to={`/projects/${record.project_id}`}>
+            <ExternalLink className="mr-1.5 size-3.5" />
+            Go to Project
+          </Link>
+        </Button>
         <Button
           onClick={() => setDuplicateOpen(true)}
           size="sm"

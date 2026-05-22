@@ -8,6 +8,7 @@ import {
   ArrowRight,
   Check,
   ChevronDown,
+  Copy,
   Filter,
   Info,
   Settings2 as SettingsIcon,
@@ -45,6 +46,7 @@ import { ProjectEnvironmentsCard } from '@/components/ProjectEnvironmentsCard'
 import { ProjectRelationshipsTab } from '@/components/ProjectRelationshipsTab'
 import { ProjectSettingsTab } from '@/components/ProjectSettingsTab'
 import { ScoreHistoryTab } from '@/components/ScoreHistoryTab'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -61,12 +63,14 @@ import { LabelChip } from '@/components/ui/label-chip'
 import { ScoreBadge } from '@/components/ui/score-badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
+  IconTooltip,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useClipboard } from '@/hooks/useClipboard'
 import { useProjectTypes, useTeams } from '@/hooks/useOrgResources'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { formatDateTime } from '@/lib/formatDate'
@@ -110,6 +114,7 @@ export function ProjectDetail({
   const orgSlug = selectedOrganization?.slug || ''
   const { patch, pendingPath } = useProjectPatch(orgSlug, project.id)
   const navigate = useNavigate()
+  const { copied: copiedProjectId, copy: copyProjectId } = useClipboard()
 
   const activeTab: TabType =
     initialTab && VALID_TAB_SET.has(initialTab)
@@ -669,6 +674,20 @@ export function ProjectDetail({
                 renderValue={renderNameValue}
                 value={project.name}
               />
+              <IconTooltip label="Copy project ID">
+                <Button
+                  aria-label="Copy project ID"
+                  onClick={() => void copyProjectId(project.id)}
+                  size="sm"
+                  variant="ghost"
+                >
+                  {copiedProjectId ? (
+                    <Check className="size-4 text-green-500" />
+                  ) : (
+                    <Copy className="text-secondary size-4" />
+                  )}
+                </Button>
+              </IconTooltip>
               {project.archived && (
                 <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium tracking-wide text-amber-800 uppercase dark:bg-amber-950 dark:text-amber-200">
                   Archived

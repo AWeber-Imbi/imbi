@@ -4,6 +4,6 @@
 // room alongside the description row.
 //   rail | icon | project | version | desc | env/train | avatar | time | chevron
 export const OPS_ROW_GRID =
-  '4px 26px minmax(140px,180px) auto minmax(0,1fr) minmax(560px,4fr) 46px 44px 20px'
+  '4px 26px minmax(180px,320px) auto minmax(0,1fr) minmax(560px,4fr) 46px 44px 20px'
 
 export const OPS_ROW_PAD = 'py-4 pr-3.5 pl-0'
