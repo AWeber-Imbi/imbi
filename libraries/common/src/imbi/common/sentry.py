@@ -2,8 +2,31 @@ import contextlib
 import logging
 import os
 from collections import abc
+from typing import Any
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _traces_sampler(sampling_context: dict[str, Any]) -> float:
+    """Drop `/status` health-check transactions; sample everything else
+    at `SENTRY_TRACES_SAMPLE_RATE` (default `0.0`).
+
+    Matches `/status` and any prefixed variant (`/api/status`,
+    `/assistant/status`, …) so health probes don't fill up Sentry quota.
+    """
+    asgi_scope = sampling_context.get('asgi_scope') or {}
+    path = asgi_scope.get('path') or ''
+    if path == '/status' or path.endswith('/status'):
+        return 0.0
+    raw_rate = os.environ.get('SENTRY_TRACES_SAMPLE_RATE', '0.0')
+    try:
+        return float(raw_rate)
+    except ValueError:
+        LOGGER.warning(
+            'Invalid SENTRY_TRACES_SAMPLE_RATE=%r; defaulting to 0.0',
+            raw_rate,
+        )
+        return 0.0
 
 
 @contextlib.asynccontextmanager
@@ -24,6 +47,12 @@ def init(service_name: str | None = None) -> None:
     Reads SENTRY_DSN from the environment. No-ops if the variable is
     absent or sentry-sdk is not installed. FastAPI/Starlette integrations
     are added automatically when those packages are available.
+
+    Performance tracing is opt-in: set SENTRY_TRACES_SAMPLE_RATE to a
+    value > 0 (e.g. `0.1` for 10%) to enable it. Defaults to `0.0`.
+    `/status` health-check requests (and any prefixed variant like
+    `/api/status`) are always dropped from traces regardless of the
+    sample rate.
 
     Args:
         service_name: Override the service name sent to Sentry. Defaults
@@ -55,8 +84,6 @@ def init(service_name: str | None = None) -> None:
         integrations=integrations,
         send_default_pii=False,
         server_name=name,
-        traces_sample_rate=float(
-            os.environ.get('SENTRY_TRACES_SAMPLE_RATE', '0.1')
-        ),
+        traces_sampler=_traces_sampler,
     )
     LOGGER.info('Sentry initialized for %s', name)
