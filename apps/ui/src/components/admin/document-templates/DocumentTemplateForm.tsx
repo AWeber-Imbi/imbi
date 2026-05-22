@@ -1,12 +1,18 @@
 import { useState } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
-import { AlertCircle, Save, X } from 'lucide-react'
+import { AlertCircle, ChevronDown, Plus, Save, X } from 'lucide-react'
 
 import { listProjectTypes } from '@/api/endpoints'
 import { TagCombobox } from '@/components/documents/TagCombobox'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
@@ -340,23 +346,44 @@ export function DocumentTemplateForm({
                   })}
                 </div>
               )}
-              <select
-                className="border-input bg-background text-foreground w-full rounded-lg border px-3 py-2 text-sm"
-                disabled={isLoading || !orgSlug}
-                onChange={(e) => {
-                  if (e.target.value) toggleProjectType(e.target.value)
-                }}
-                value=""
-              >
-                <option value="">Add project type...</option>
-                {projectTypes
-                  .filter((pt) => !projectTypeSlugs.includes(pt.slug))
-                  .map((pt) => (
-                    <option key={pt.slug} value={pt.slug}>
-                      {pt.name}
-                    </option>
-                  ))}
-              </select>
+              {/* Tag-adder pattern: pick one, append to the list, reset.
+                  Modeled as a DropdownMenu rather than a value-bound Select
+                  since there is no "current value" — picking is an action. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    className="w-full justify-between"
+                    disabled={
+                      isLoading ||
+                      !orgSlug ||
+                      projectTypes.filter(
+                        (pt) => !projectTypeSlugs.includes(pt.slug),
+                      ).length === 0
+                    }
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Plus className="size-4" />
+                      Add project type...
+                    </span>
+                    <ChevronDown className="size-4 opacity-50" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-(--radix-dropdown-menu-trigger-width)">
+                  {projectTypes
+                    .filter((pt) => !projectTypeSlugs.includes(pt.slug))
+                    .map((pt) => (
+                      <DropdownMenuItem
+                        key={pt.slug}
+                        onSelect={() => toggleProjectType(pt.slug)}
+                      >
+                        {pt.name}
+                      </DropdownMenuItem>
+                    ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             <div>
