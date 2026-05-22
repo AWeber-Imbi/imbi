@@ -272,14 +272,16 @@ def _env_entries_template(
     return '[' + ', '.join(maps) + ']', params
 
 
-def _edge_create_props(
+def _edge_props_map(
     entries: list[dict[str, typing.Any]],
 ) -> str:
-    """Build a Cypher property map for DEPLOYED_IN edge creation.
+    """Build a Cypher property map for DEPLOYED_IN edge writes.
 
-    Returns a string like ``{{`url`: entry.`url`}}`` derived from
-    the union of all entries' keys (excluding ``slug``).  Returns
-    an empty string when there are no edge properties.
+    Used for both ``CREATE … []`` (project creation) and
+    ``MERGE … SET r =`` (project update).  Returns a string like
+    ``{{`url`: entry.`url`}}`` derived from the union of all entries'
+    keys (excluding ``slug``).  Returns an empty string when there are
+    no edge properties.
 
     """
     if not entries:
@@ -913,7 +915,7 @@ async def create_project(
     create_tpl = props_template(props)
     env_entries = [{'slug': s, **ep} for s, ep in data.environments.items()]
     env_tpl, env_params = _env_entries_template(env_entries)
-    edge_props_tpl = _edge_create_props(env_entries)
+    edge_props_tpl = _edge_props_map(env_entries)
 
     query: str = (
         '\nMATCH (o:Organization {{slug: {org_slug}}})'
@@ -1711,9 +1713,12 @@ def _build_update_clauses(
         {'slug': s, **ep} for s, ep in (data.environments or {}).items()
     ]
     new_env_tpl, new_env_params = _env_entries_template(new_env_entries)
-    new_edge_props_tpl = _edge_create_props(new_env_entries)
+    new_edge_props_tpl = _edge_props_map(new_env_entries)
 
     if data.environments is not None:
+        # MERGE (not CREATE) so the retry loop in
+        # _execute_project_update cannot accumulate duplicate edges
+        # if AGE rolls back the SET phase but not the edge write.
         rel_clauses += (
             ' WITH DISTINCT p, o'
             ' OPTIONAL MATCH'
@@ -1721,12 +1726,15 @@ def _build_update_clauses(
             ' DELETE old_env'
         )
         if new_env_entries:
+            merge_set = (
+                ' SET r =' + new_edge_props_tpl if new_edge_props_tpl else ''
+            )
             rel_clauses += (
                 ' WITH DISTINCT p, o'
                 f' UNWIND {new_env_tpl} AS entry'
                 ' MATCH (e:Environment'
                 ' {{slug: entry.slug}})-[:BELONGS_TO]->(o)'
-                ' CREATE (p)-[:DEPLOYED_IN' + new_edge_props_tpl + ']->(e)'
+                ' MERGE (p)-[r:DEPLOYED_IN]->(e)' + merge_set
             )
 
     return rel_clauses, new_env_params

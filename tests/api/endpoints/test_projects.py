@@ -646,6 +646,53 @@ class ProjectEndpointsTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_patch_project_environments_uses_merge(self) -> None:
+        """Env edges use MERGE so retries cannot duplicate them."""
+        existing = self._project_data(
+            environments=[
+                {
+                    'slug': 'staging',
+                    'name': 'Staging',
+                    'id': 'env-1',
+                    'created_at': '2026-01-01T00:00:00Z',
+                    'updated_at': '2026-01-01T00:00:00Z',
+                }
+            ]
+        )
+        updated = self._project_data(name='Renamed API')
+
+        self.mock_db.execute.side_effect = [
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+            [{'slug': 'platform'}],
+            [{'pt_slug': 'api-service', 'found': True}],
+            [{'env_slug': 'staging', 'found': True}],
+            [{'project': updated, 'outbound_count': 0, 'inbound_count': 0}],
+        ]
+
+        with (
+            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            mock_get_model.return_value = models.Project
+            response = self.client.patch(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json=[
+                    {'op': 'replace', 'path': '/name', 'value': 'Renamed API'},
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+
+        update_query = next(
+            call.args[0]
+            for call in self.mock_db.execute.call_args_list
+            if 'old_env:DEPLOYED_IN' in call.args[0]
+        )
+        self.assertIn('MERGE (p)-[r:DEPLOYED_IN]->(e)', update_query)
+        self.assertNotIn('CREATE (p)-[:DEPLOYED_IN', update_query)
+
     def test_patch_project_team_change(self) -> None:
         """Patch a project to change its team."""
         existing = self._project_data()
