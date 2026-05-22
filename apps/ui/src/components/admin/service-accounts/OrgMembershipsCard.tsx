@@ -6,6 +6,13 @@ import { Building2, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -87,18 +94,18 @@ export function OrgMembershipsCard({
                 <label className="text-secondary mb-1.5 block text-sm">
                   Organization
                 </label>
-                <select
-                  className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
-                  onChange={(e) => setNewOrgSlug(e.target.value)}
-                  value={newOrgSlug}
-                >
-                  <option value="">Select...</option>
-                  {availableOrgs.map((org) => (
-                    <option key={org.slug} value={org.slug}>
-                      {org.name}
-                    </option>
-                  ))}
-                </select>
+                <Select onValueChange={setNewOrgSlug} value={newOrgSlug}>
+                  <SelectTrigger aria-label="Organization">
+                    <SelectValue placeholder="Select..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableOrgs.map((org) => (
+                      <SelectItem key={org.slug} value={org.slug}>
+                        {org.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <label className="text-secondary mb-1.5 block text-sm">
@@ -109,18 +116,18 @@ export function OrgMembershipsCard({
                 ) : rolesError ? (
                   <p className="text-danger text-sm">Failed to load roles</p>
                 ) : (
-                  <select
-                    className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
-                    onChange={(e) => setNewRoleSlug(e.target.value)}
-                    value={newRoleSlug}
-                  >
-                    <option value="">Select...</option>
-                    {availableRoles.map((role) => (
-                      <option key={role.slug} value={role.slug}>
-                        {role.name}
-                      </option>
-                    ))}
-                  </select>
+                  <Select onValueChange={setNewRoleSlug} value={newRoleSlug}>
+                    <SelectTrigger aria-label="Role">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableRoles.map((role) => (
+                        <SelectItem key={role.slug} value={role.slug}>
+                          {role.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 )}
               </div>
             </div>
@@ -190,24 +197,30 @@ export function OrgMembershipsCard({
                       Roles unavailable
                     </span>
                   ) : (
-                    <select
-                      aria-label={`Role for ${membership.organization_name}`}
-                      className="border-input bg-background text-foreground rounded border px-2 py-1 text-xs"
+                    <Select
                       disabled={updateOrgRoleMutation.isPending}
-                      onChange={(e) =>
+                      onValueChange={(roleSlug) =>
                         updateOrgRoleMutation.mutate({
                           orgSlug: membership.organization_slug,
-                          roleSlug: e.target.value,
+                          roleSlug,
                         })
                       }
                       value={membership.role}
                     >
-                      {availableRoles.map((role) => (
-                        <option key={role.slug} value={role.slug}>
-                          {role.name}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger
+                        aria-label={`Role for ${membership.organization_name}`}
+                        className="h-7 w-auto text-xs"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableRoles.map((role) => (
+                          <SelectItem key={role.slug} value={role.slug}>
+                            {role.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   )}
                   <TooltipProvider delayDuration={200}>
                     <Tooltip>
