@@ -259,9 +259,9 @@ export function LogsTab({
     return p ? new Date(p) : undefined
   })
   const [query, setQuery] = useState(() => searchParams.get('q') ?? '')
-  const [fieldFilters, setFieldFilters] = useState<string[]>(() =>
-    searchParams.getAll('filter'),
-  )
+  const [fieldFilters, setFieldFilters] = useState<string[]>(() => [
+    ...new Set(searchParams.getAll('filter')),
+  ])
   const [datePickerOpen, setDatePickerOpen] = useState(false)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [selectedBucket, setSelectedBucket] = useState<null | number>(null)
