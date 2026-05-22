@@ -34,6 +34,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { FormField } from '@/components/ui/form-field'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useFormScaffold } from '@/hooks/useFormScaffold'
@@ -524,23 +531,31 @@ export function UserForm({
                         {org.name}
                       </span>
                     </div>
-                    <select
-                      className="border-input bg-background text-foreground rounded-md border px-2 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={!checked || isLoading || rolesLoading}
-                      onChange={(e) => {
-                        const next = [...memberships]
-                        next[idx] = { ...next[idx], role: e.target.value }
-                        setMemberships(next)
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      value={checked ? memberships[idx].role : ''}
-                    >
-                      {availableRoles.map((r) => (
-                        <option key={r.slug} value={r.slug}>
-                          {r.name}
-                        </option>
-                      ))}
-                    </select>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <Select
+                        disabled={!checked || isLoading || rolesLoading}
+                        onValueChange={(role) => {
+                          const next = [...memberships]
+                          next[idx] = { ...next[idx], role }
+                          setMemberships(next)
+                        }}
+                        value={checked ? memberships[idx].role : undefined}
+                      >
+                        <SelectTrigger
+                          aria-label={`Role for ${org.name}`}
+                          className="h-8 w-auto text-sm"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableRoles.map((r) => (
+                            <SelectItem key={r.slug} value={r.slug}>
+                              {r.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </label>
                 )
               })}
@@ -561,22 +576,25 @@ export function UserForm({
                 required
                 touched={touched.organization_slug}
               >
-                <select
-                  className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
+                <Select
                   disabled={isLoading}
-                  onChange={(e) => {
-                    setOrganizationSlug(e.target.value)
+                  onValueChange={(v) => {
+                    setOrganizationSlug(v)
                     handleFieldChange('organization_slug')
                   }}
                   value={organizationSlug}
                 >
-                  <option value="">Select an organization...</option>
-                  {organizations.map((org) => (
-                    <option key={org.slug} value={org.slug}>
-                      {org.name}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger aria-label="Organization">
+                    <SelectValue placeholder="Select an organization..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {organizations.map((org) => (
+                      <SelectItem key={org.slug} value={org.slug}>
+                        {org.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </FormField>
               <FormField
                 error={validationErrors.role_slug}
@@ -587,22 +605,25 @@ export function UserForm({
                 {rolesLoading ? (
                   <p className="text-secondary text-sm">Loading roles...</p>
                 ) : (
-                  <select
-                    className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
+                  <Select
                     disabled={isLoading}
-                    onChange={(e) => {
-                      setRoleSlug(e.target.value)
+                    onValueChange={(v) => {
+                      setRoleSlug(v)
                       handleFieldChange('role_slug')
                     }}
                     value={roleSlug}
                   >
-                    <option value="">Select a role...</option>
-                    {availableRoles.map((role) => (
-                      <option key={role.slug} value={role.slug}>
-                        {role.name}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger aria-label="Role">
+                      <SelectValue placeholder="Select a role..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableRoles.map((role) => (
+                        <SelectItem key={role.slug} value={role.slug}>
+                          {role.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 )}
               </FormField>
             </div>
