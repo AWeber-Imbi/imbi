@@ -6,6 +6,9 @@ import { Gravatar } from './gravatar'
 
 interface Props {
   className?: string
+  /** Override the resolved name (e.g. when the caller already has user.display_name in hand). */
+  displayName?: string
+  /** Email → display_name lookup, for row lists. Ignored if `displayName` is set. */
   displayNames?: Map<string, string>
   email: string
   hideName?: boolean
@@ -21,10 +24,15 @@ interface Props {
 
 /**
  * Compact user identity: Gravatar + display name (or local-part fallback).
- * Pass `displayNames` to resolve email → display_name.
+ * Resolution order for the rendered name:
+ *   1. Explicit `displayName` prop
+ *   2. `displayNames.get(email)` if a map is provided
+ *   3. Local-part of the email (the bit before `@`)
+ *   4. The email itself
  */
 export function UserDisplay({
   className,
+  displayName,
   displayNames,
   email,
   hideName = false,
@@ -33,7 +41,8 @@ export function UserDisplay({
   textClassName,
   title,
 }: Props) {
-  const name = displayNames?.get(email) ?? email.split('@')[0] ?? email
+  const name =
+    displayName ?? displayNames?.get(email) ?? email.split('@')[0] ?? email
   const body = (
     <>
       <Gravatar className="shrink-0 rounded-full" email={email} size={size} />

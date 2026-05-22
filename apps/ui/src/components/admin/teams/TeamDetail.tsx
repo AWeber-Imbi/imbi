@@ -24,7 +24,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { DynamicDetailFields } from '@/components/ui/dynamic-fields'
 import { EntityIcon } from '@/components/ui/entity-icon'
-import { Gravatar } from '@/components/ui/gravatar'
 import { Input } from '@/components/ui/input'
 import {
   Table,
@@ -40,6 +39,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { UserDisplay } from '@/components/ui/user-display'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { TEAM_BASE_FIELDS_SET } from '@/lib/constants'
 import { extractDynamicFields } from '@/lib/utils'
@@ -269,17 +269,13 @@ export function TeamDetail({ onBack, onEdit, team }: TeamDetailProps) {
                 {members.map((member) => (
                   <TableRow className="hover:bg-secondary" key={member.email}>
                     <TableCell className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <Gravatar
-                          alt={member.display_name}
-                          className="size-8 rounded-full"
-                          email={member.email}
-                          size={32}
-                        />
-                        <div className="text-primary">
-                          {member.display_name}
-                        </div>
-                      </div>
+                      <UserDisplay
+                        className="gap-3"
+                        displayName={member.display_name}
+                        email={member.email}
+                        size={32}
+                        textClassName="text-primary"
+                      />
                     </TableCell>
                     <TableCell className="text-secondary px-6 py-4 text-sm">
                       {member.email}
