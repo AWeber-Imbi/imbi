@@ -385,8 +385,9 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
                     <TooltipProvider delayDuration={200}>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <button
-                            className="text-danger hover:bg-secondary rounded p-1.5"
+                          <Button
+                            aria-label="Remove from organization"
+                            className="text-danger hover:bg-secondary size-7"
                             disabled={removeOrgMutation.isPending}
                             onClick={() =>
                               setConfirm({
@@ -395,9 +396,11 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
                                 orgSlug: membership.organization_slug,
                               })
                             }
+                            size="icon"
+                            variant="ghost"
                           >
                             <Trash2 className="size-4" />
-                          </button>
+                          </Button>
                         </TooltipTrigger>
                         <TooltipContent>
                           <p>Remove from organization</p>

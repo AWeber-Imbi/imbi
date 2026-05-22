@@ -471,9 +471,11 @@ export function BlueprintDetail({
 
       {/* Raw JSON Schema (collapsible) */}
       <div className="border-border bg-card rounded-lg border">
-        <button
-          className={`hover:bg-secondary flex w-full items-center gap-2 px-6 py-4 text-left ${rawSchemaOpen ? 'border-tertiary border-b' : ''}`}
+        <Button
+          aria-expanded={rawSchemaOpen}
+          className={`hover:bg-secondary h-auto w-full justify-start gap-2 rounded-none px-6 py-4 ${rawSchemaOpen ? 'border-tertiary border-b' : ''}`}
           onClick={() => setRawSchemaOpen(!rawSchemaOpen)}
+          variant="ghost"
         >
           {rawSchemaOpen ? (
             <ChevronDown className="text-tertiary size-4" />
@@ -484,7 +486,7 @@ export function BlueprintDetail({
           <span className="text-tertiary text-xs">
             {raw.split('\n').length} lines
           </span>
-        </button>
+        </Button>
         {rawSchemaOpen && (
           <pre className="text-primary overflow-x-auto px-6 py-4 font-mono text-sm leading-relaxed">
             {raw}

@@ -225,9 +225,9 @@ export function OrgMembershipsCard({
                   <TooltipProvider delayDuration={200}>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <button
+                        <Button
                           aria-label={`Remove from ${membership.organization_name}`}
-                          className="text-danger hover:bg-secondary rounded p-1.5"
+                          className="text-danger hover:bg-secondary size-7"
                           disabled={removeOrgMutation.isPending}
                           onClick={() =>
                             onConfirmRemove(
@@ -235,10 +235,12 @@ export function OrgMembershipsCard({
                               membership.organization_name,
                             )
                           }
+                          size="icon"
                           type="button"
+                          variant="ghost"
                         >
                           <Trash2 className="size-4" />
-                        </button>
+                        </Button>
                       </TooltipTrigger>
                       <TooltipContent>
                         <p>Remove from organization</p>

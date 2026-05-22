@@ -213,15 +213,17 @@ export function ClientCredentialsSection({
                       <TooltipProvider delayDuration={200}>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <button
+                            <Button
                               aria-label={`Rotate credential ${cred.name}`}
-                              className="text-info hover:bg-secondary rounded p-1.5"
+                              className="text-info hover:bg-secondary size-7"
                               disabled={rotateCredentialMutation.isPending}
                               onClick={() => onConfirmRotate(cred.client_id)}
+                              size="icon"
                               type="button"
+                              variant="ghost"
                             >
                               <RotateCw className="size-4" />
-                            </button>
+                            </Button>
                           </TooltipTrigger>
                           <TooltipContent>
                             <p>Rotate credential</p>
@@ -231,15 +233,17 @@ export function ClientCredentialsSection({
                       <TooltipProvider delayDuration={200}>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <button
+                            <Button
                               aria-label={`Revoke credential ${cred.name}`}
-                              className="text-danger hover:bg-secondary rounded p-1.5"
+                              className="text-danger hover:bg-secondary size-7"
                               disabled={revokeCredentialMutation.isPending}
                               onClick={() => onConfirmRevoke(cred.client_id)}
+                              size="icon"
                               type="button"
+                              variant="ghost"
                             >
                               <Trash2 className="size-4" />
-                            </button>
+                            </Button>
                           </TooltipTrigger>
                           <TooltipContent>
                             <p>Revoke credential</p>

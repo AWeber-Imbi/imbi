@@ -316,12 +316,14 @@ export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
                 <h3 className="text-primary text-sm font-medium">
                   Assign Permission
                 </h3>
-                <button
-                  className="text-info hover:text-info/80 text-sm"
+                <Button
+                  className="text-info hover:text-info/80"
                   onClick={() => setShowAddPermission(!showAddPermission)}
+                  size="sm"
+                  variant="link"
                 >
                   {showAddPermission ? 'Cancel' : 'Add Permission'}
-                </button>
+                </Button>
               </div>
 
               {showAddPermission && (
@@ -417,15 +419,18 @@ export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
                               <TooltipProvider delayDuration={200}>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <button
-                                      className="text-danger hover:bg-danger rounded p-1.5"
+                                    <Button
+                                      aria-label={`Remove ${perm.name} permission`}
+                                      className="text-danger hover:bg-danger size-7"
                                       disabled={revokeMutation.isPending}
                                       onClick={() =>
                                         handleRevokePermission(perm.name)
                                       }
+                                      size="icon"
+                                      variant="ghost"
                                     >
                                       <Trash2 className="size-4" />
-                                    </button>
+                                    </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>
                                     <p>Remove permission</p>

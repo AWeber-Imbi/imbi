@@ -289,15 +289,17 @@ export function TeamDetail({ onBack, onEdit, team }: TeamDetailProps) {
                       <TooltipProvider delayDuration={200}>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <button
+                            <Button
                               aria-label={`Remove ${member.display_name} from team`}
-                              className="text-danger hover:bg-danger rounded p-1.5"
+                              className="text-danger hover:bg-danger size-7"
                               disabled={removeMemberMutation.isPending}
                               onClick={() => handleRemoveMember(member.email)}
+                              size="icon"
                               type="button"
+                              variant="ghost"
                             >
                               <X className="size-4" />
-                            </button>
+                            </Button>
                           </TooltipTrigger>
                           <TooltipContent>
                             <p>Remove from team</p>
