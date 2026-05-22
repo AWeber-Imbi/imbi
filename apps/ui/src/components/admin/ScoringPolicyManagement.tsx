@@ -20,6 +20,13 @@ import {
 import { AdminTable } from '@/components/ui/admin-table'
 import { Button } from '@/components/ui/button'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -57,7 +64,8 @@ export function ScoringPolicyManagement() {
     viewMode,
   } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
-  const [enabledFilter, setEnabledFilter] = useState('')
+  // 'all' acts as the unfiltered sentinel; Radix Select disallows '' values.
+  const [enabledFilter, setEnabledFilter] = useState('all')
   const [rescoreResult, setRescoreResult] = useState<null | number>(null)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const { copied: copiedSlug, copy } = useClipboard()
@@ -192,15 +200,16 @@ export function ScoringPolicyManagement() {
           </>
         }
         headerExtras={
-          <select
-            className="border-input bg-background text-foreground rounded-lg border px-3 py-2 text-sm"
-            onChange={(e) => setEnabledFilter(e.target.value)}
-            value={enabledFilter}
-          >
-            <option value="">All</option>
-            <option value="enabled">Enabled</option>
-            <option value="disabled">Disabled</option>
-          </select>
+          <Select onValueChange={setEnabledFilter} value={enabledFilter}>
+            <SelectTrigger className="w-35">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="enabled">Enabled</SelectItem>
+              <SelectItem value="disabled">Disabled</SelectItem>
+            </SelectContent>
+          </Select>
         }
         isLoading={isLoading}
         loadingLabel="Loading scoring policies..."
@@ -318,7 +327,7 @@ export function ScoringPolicyManagement() {
             },
           ]}
           emptyMessage={
-            searchQuery || enabledFilter
+            searchQuery || enabledFilter !== 'all'
               ? 'No policies match your filters.'
               : 'No scoring policies defined yet.'
           }

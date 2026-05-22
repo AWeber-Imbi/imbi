@@ -14,6 +14,13 @@ import {
 import { AdminTable } from '@/components/ui/admin-table'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { LoadingState } from '@/components/ui/loading-state'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useAdminCrud } from '@/hooks/useAdminCrud'
 import { useAdminNav } from '@/hooks/useAdminNav'
 import { extractApiErrorDetail } from '@/lib/apiError'
@@ -218,26 +225,32 @@ export function UserManagement() {
       errorTitle="Failed to load users"
       headerExtras={
         <>
-          <select
-            aria-label="Filter users by type"
-            className="border-input bg-background text-foreground rounded-lg border px-3 py-2 text-sm"
-            onChange={(e) => setUserFilter(e.target.value as UserFilter)}
+          <Select
+            onValueChange={(v) => setUserFilter(v as UserFilter)}
             value={userFilter}
           >
-            <option value="all">All Types</option>
-            <option value="users">Regular Users</option>
-            <option value="admins">Administrators</option>
-          </select>
-          <select
-            aria-label="Filter users by status"
-            className="border-input bg-background text-foreground rounded-lg border px-3 py-2 text-sm"
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            <SelectTrigger aria-label="Filter users by type" className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="users">Regular Users</SelectItem>
+              <SelectItem value="admins">Administrators</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            onValueChange={(v) => setStatusFilter(v as StatusFilter)}
             value={statusFilter}
           >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
+            <SelectTrigger aria-label="Filter users by status" className="w-35">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
         </>
       }
       isLoading={isLoading}
