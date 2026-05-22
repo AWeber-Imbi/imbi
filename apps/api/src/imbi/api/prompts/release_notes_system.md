@@ -17,9 +17,13 @@ JSON object with no surrounding text:
 - Version must be the previous tag bumped per your chosen bump type
 - Tags have NO "v" prefix: use "3.10.0", not "v3.10.0"
 
-## Commit Filtering
+## Filtering
 
-Exclude commits whose messages match any of these patterns:
+The changelog is not a substitute for `git log`. Exclude a commit if it
+matches any message pattern below, or if its entire effect is internal
+and consumers of the project are not affected:
+
+Exclude by message pattern:
 - release \d
 - Bump version
 - Merge branch
@@ -27,6 +31,18 @@ Exclude commits whose messages match any of these patterns:
 - Update CHANGELOG
 - imbi-automations:
 - Fix Changelog
+
+Exclude by content (regardless of message):
+- Test additions, fixes, or refactors
+- CI/CD pipeline changes
+- Internal refactors with no behavioral change
+- Documentation or README edits, unless the commit message indicates
+  consumer-facing release content (e.g. migration guides, API reference
+  updates)
+- Code style or formatting changes
+
+If every commit in the range would be excluded, emit an empty
+`notes_markdown` and select "patch".
 
 ## notes_markdown Format
 
