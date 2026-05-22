@@ -5,6 +5,13 @@ import { AlertCircle } from 'lucide-react'
 import { API_BASE_URL } from '@/api/client'
 import { FormHeader } from '@/components/admin/form-header'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useAuth } from '@/hooks/useAuth'
 import { slugify } from '@/lib/utils'
 import type {
@@ -275,32 +282,40 @@ export function OAuth2ApplicationForm({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className={labelClass}>Application Type *</label>
-            <select
-              className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
+            <Select
               disabled={isEdit}
-              onChange={(e) => setAppType(e.target.value)}
+              onValueChange={setAppType}
               value={appType}
             >
-              {APP_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger aria-label="Application Type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {APP_TYPES.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <label className={labelClass}>Status</label>
-            <select
-              className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
-              onChange={(e) =>
-                setStatus(e.target.value as 'active' | 'inactive' | 'revoked')
+            <Select
+              onValueChange={(v) =>
+                setStatus(v as 'active' | 'inactive' | 'revoked')
               }
               value={status}
             >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="revoked">Revoked</option>
-            </select>
+              <SelectTrigger aria-label="Status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="revoked">Revoked</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 

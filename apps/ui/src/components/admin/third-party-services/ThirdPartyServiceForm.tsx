@@ -159,8 +159,6 @@ export function ThirdPartyServiceForm({
     }
   }
 
-  const selectClass = `w-full px-3 py-2 rounded-lg border text-sm border-input bg-background text-foreground`
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -216,19 +214,25 @@ export function ThirdPartyServiceForm({
               <label className="text-secondary mb-1.5 block text-sm">
                 Managing Team
               </label>
-              <select
-                className={selectClass}
+              {/* Radix disallows '' as a SelectItem value, so 'none' is the
+                  empty sentinel and gets translated at the boundary. */}
+              <Select
                 disabled={isLoading || !orgSlug}
-                onChange={(e) => setTeamSlug(e.target.value)}
-                value={teamSlug}
+                onValueChange={(v) => setTeamSlug(v === 'none' ? '' : v)}
+                value={teamSlug || 'none'}
               >
-                <option value="">No team assigned</option>
-                {orgTeams.map((team) => (
-                  <option key={team.slug} value={team.slug}>
-                    {team.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger aria-label="Managing Team">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No team assigned</SelectItem>
+                  {orgTeams.map((team) => (
+                    <SelectItem key={team.slug} value={team.slug}>
+                      {team.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div
@@ -349,26 +353,26 @@ export function ThirdPartyServiceForm({
                 <label className="text-secondary mb-1.5 block text-sm">
                   Status
                 </label>
-                <select
-                  className={selectClass}
+                <Select
                   disabled={isLoading}
-                  onChange={(e) =>
+                  onValueChange={(v) =>
                     setStatus(
-                      e.target.value as
-                        | 'active'
-                        | 'deprecated'
-                        | 'evaluating'
-                        | 'inactive',
+                      v as 'active' | 'deprecated' | 'evaluating' | 'inactive',
                     )
                   }
                   value={status}
                 >
-                  {STATUS_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger aria-label="Status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STATUS_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
