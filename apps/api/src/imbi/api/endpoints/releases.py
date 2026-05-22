@@ -524,20 +524,47 @@ async def list_releases(
             permissions.require_permission('project:read'),
         ),
     ],
+    committish: typing.Annotated[
+        str | None,
+        fastapi.Query(
+            description=(
+                'Optional 7-character committish to filter releases by.'
+            ),
+        ),
+    ] = None,
+    tag: typing.Annotated[
+        str | None,
+        fastapi.Query(
+            description='Optional tag to filter releases by.',
+        ),
+    ] = None,
 ) -> list[ReleaseResponse]:
-    """List all releases for a project, newest first."""
+    """List releases for a project, newest first.
+
+    Optional ``committish`` and ``tag`` query parameters filter the
+    result; when both are omitted every release is returned. Both are
+    matched exactly. A null parameter is interpolated as Cypher ``null``
+    and short-circuits the corresponding clause via ``null IS NULL``.
+    """
     del auth
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
     MATCH (p)-[:HAS_RELEASE]->(r:Release)
+    WHERE ({committish} IS NULL OR r.committish = {committish})
+      AND ({tag} IS NULL OR r.tag = {tag})
     RETURN r{{.*}} AS release
     ORDER BY r.created_at DESC
     """
     rows = await db.execute(
         query,
-        {'project_id': project_id, 'org_slug': org_slug},
+        {
+            'project_id': project_id,
+            'org_slug': org_slug,
+            'committish': committish,
+            'tag': tag,
+        },
         ['release'],
     )
     return [

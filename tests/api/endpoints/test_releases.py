@@ -297,6 +297,76 @@ class ListGetReleaseTestCase(_ReleasesTestBase):
         self.assertEqual(len(data), 2)
         self.assertEqual(data[0]['tag'], '1.0.0')
         self.assertEqual(data[0]['project_id'], PROJECT_ID)
+        passed_params = self.mock_db.execute.await_args_list[0].args[1]
+        self.assertIsNone(passed_params['committish'])
+        self.assertIsNone(passed_params['tag'])
+
+    def test_list_releases_filter_by_committish(self) -> None:
+        self.mock_db.execute.return_value = [
+            {'release': _release_row(committish=DEFAULT_COMMITTISH)},
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                self._url('/'),
+                params={'committish': DEFAULT_COMMITTISH},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()), 1)
+        passed_params = self.mock_db.execute.await_args_list[0].args[1]
+        self.assertEqual(passed_params['committish'], DEFAULT_COMMITTISH)
+        self.assertIsNone(passed_params['tag'])
+
+    def test_list_releases_filter_by_tag(self) -> None:
+        self.mock_db.execute.return_value = [
+            {'release': _release_row(tag='1.2.3')},
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                self._url('/'),
+                params={'tag': '1.2.3'},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()), 1)
+        passed_params = self.mock_db.execute.await_args_list[0].args[1]
+        self.assertEqual(passed_params['tag'], '1.2.3')
+        self.assertIsNone(passed_params['committish'])
+
+    def test_list_releases_filter_by_both(self) -> None:
+        self.mock_db.execute.return_value = [
+            {
+                'release': _release_row(
+                    committish=DEFAULT_COMMITTISH, tag='1.2.3'
+                )
+            },
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                self._url('/'),
+                params={'committish': DEFAULT_COMMITTISH, 'tag': '1.2.3'},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()), 1)
+        passed_params = self.mock_db.execute.await_args_list[0].args[1]
+        self.assertEqual(passed_params['committish'], DEFAULT_COMMITTISH)
+        self.assertEqual(passed_params['tag'], '1.2.3')
+
+    def test_list_releases_filter_no_matches(self) -> None:
+        self.mock_db.execute.return_value = []
+        response = self.client.get(
+            self._url('/'),
+            params={'committish': 'deadbee'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), [])
 
     def test_get_release_success(self) -> None:
         self.mock_db.execute.return_value = [{'release': _release_row()}]
