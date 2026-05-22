@@ -27,87 +27,91 @@ interface SearchResultsPanelProps {
   threshold: number
 }
 
+// ``hex`` is still the JS source of truth — it feeds ``deriveChipColors``
+// for chip backgrounds, which can't read CSS variables at runtime. The
+// ``dot`` / ``text`` classes reference design tokens defined in
+// ``index.css`` (``--color-entity-*``) so the palette has a single owner.
 const ENTITY_STYLES: Record<
   string,
   { dot: string; hex: string; label: string; round?: boolean; text: string }
 > = {
   Blueprint: {
-    dot: 'bg-[#8C82D4]',
+    dot: 'bg-entity-schema',
     hex: '#8C82D4',
     label: 'Blueprint',
     round: true,
-    text: 'text-[#8C82D4]',
+    text: 'text-entity-schema',
   },
   Document: {
-    dot: 'bg-[#D98847]',
+    dot: 'bg-entity-document',
     hex: '#D98847',
     label: 'Document',
-    text: 'text-[#D98847]',
+    text: 'text-entity-document',
   },
   DocumentTemplate: {
-    dot: 'bg-[#7A7873]',
+    dot: 'bg-entity-config',
     hex: '#7A7873',
     label: 'Doc Template',
-    text: 'text-[#7A7873]',
+    text: 'text-entity-config',
   },
   Environment: {
-    dot: 'bg-[#7A7873]',
+    dot: 'bg-entity-config',
     hex: '#7A7873',
     label: 'Environment',
-    text: 'text-[#7A7873]',
+    text: 'text-entity-config',
   },
   LinkDefinition: {
-    dot: 'bg-[#8C82D4]',
+    dot: 'bg-entity-schema',
     hex: '#8C82D4',
     label: 'Link Definition',
     round: true,
-    text: 'text-[#8C82D4]',
+    text: 'text-entity-schema',
   },
   Organization: {
-    dot: 'bg-[#C86B5E]',
+    dot: 'bg-entity-domain',
     hex: '#C86B5E',
     label: 'Organization',
-    text: 'text-[#C86B5E]',
+    text: 'text-entity-domain',
   },
   Project: {
-    dot: 'bg-[#5A89C9]',
+    dot: 'bg-entity-project',
     hex: '#5A89C9',
     label: 'Project',
-    text: 'text-[#5A89C9]',
+    text: 'text-entity-project',
   },
   ProjectType: {
-    dot: 'bg-[#8C82D4]',
+    dot: 'bg-entity-schema',
     hex: '#8C82D4',
     label: 'Project Type',
-    text: 'text-[#8C82D4]',
+    text: 'text-entity-schema',
   },
   Release: {
-    dot: 'bg-[#C86B5E]',
+    dot: 'bg-entity-domain',
     hex: '#C86B5E',
     label: 'Release',
     round: true,
-    text: 'text-[#C86B5E]',
+    text: 'text-entity-domain',
   },
   Tag: {
-    dot: 'bg-[#C86B5E]',
+    dot: 'bg-entity-domain',
     hex: '#C86B5E',
     label: 'Tag',
     round: true,
-    text: 'text-[#C86B5E]',
+    text: 'text-entity-domain',
   },
   Team: {
-    dot: 'bg-[#7A7873]',
+    dot: 'bg-entity-config',
     hex: '#7A7873',
     label: 'Team',
     round: true,
-    text: 'text-[#7A7873]',
+    text: 'text-entity-config',
   },
   ThirdPartyService: {
-    dot: 'bg-[#7A7873]',
+    dot: 'bg-entity-config',
     hex: '#7A7873',
     label: '3rd-Party Service',
     round: true,
-    text: 'text-[#7A7873]',
+    text: 'text-entity-config',
   },
 }
 
@@ -134,9 +138,9 @@ const CONFIDENCE_STYLES: Record<
     text: 'text-orange-500 dark:text-orange-400',
   },
   Strong: {
-    bar: 'bg-[#6B9A3F]',
-    dot: 'bg-[#6B9A3F]',
-    text: 'text-[#6B9A3F]',
+    bar: 'bg-confidence-strong',
+    dot: 'bg-confidence-strong',
+    text: 'text-confidence-strong',
   },
 }
 
@@ -254,7 +258,7 @@ export function SearchResultsPanel({
       <button
         className={`flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 font-mono text-xs transition-colors ${
           labelFilter === nodeLabel
-            ? 'bg-foreground text-background dark:bg-[#FBCE39] dark:text-black'
+            ? 'bg-foreground text-background dark:bg-action dark:text-black'
             : 'text-muted-foreground hover:text-foreground'
         }`}
         key={nodeLabel}
@@ -360,7 +364,7 @@ export function SearchResultsPanel({
         <button
           className={`flex shrink-0 items-center gap-1 rounded-full px-2.5 py-0.5 font-mono text-xs font-medium transition-colors ${
             labelFilter === null
-              ? 'bg-foreground text-background dark:bg-[#FBCE39] dark:text-black'
+              ? 'bg-foreground text-background dark:bg-action dark:text-black'
               : 'text-muted-foreground hover:text-foreground'
           }`}
           onClick={() => setLabelFilter(null)}
@@ -409,7 +413,7 @@ function highlightKeywords(text: string, query: string): React.ReactNode {
       {parts.map((part, i) =>
         i % 2 === 1 ? (
           <mark
-            className="rounded-sm bg-amber-200/80 px-0.5 dark:bg-[#FBCE39]"
+            className="dark:bg-action rounded-sm bg-amber-200/80 px-0.5"
             key={i}
           >
             {part}

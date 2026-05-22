@@ -65,6 +65,16 @@
   --color-activity-neutral-dot: #888780;
   --color-activity-warning-dot: #ef9f27;
 
+  /* Search-result entity badge palette. Each color groups conceptually
+     related entity types (schema definitions, config primitives, etc.) so
+     the search panel reads at a glance. Saturated, theme-neutral. */
+  --color-entity-schema: #8c82d4; /* Blueprint, LinkDefinition, ProjectType */
+  --color-entity-document: #d98847;
+  --color-entity-config: #7a7873; /* DocumentTemplate, Environment, Team, ThirdPartyService */
+  --color-entity-domain: #c86b5e; /* Organization, Release, Tag */
+  --color-entity-project: #5a89c9;
+  --color-confidence-strong: #6b9a3f;
+
   /* --- Per-utility design system colors (separate bg/text/border) --- */
   --background-color-primary: var(--ds-bg-primary);
   --background-color-secondary: var(--ds-bg-secondary);
