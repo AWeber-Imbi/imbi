@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { AlertCircle, Save, X } from 'lucide-react'
 
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import type { Organization, OrganizationCreate } from '@/types'
 
@@ -107,23 +108,16 @@ export function OrganizationForm({
         </div>
       </div>
 
-      {/* API Error */}
       {error && (
-        <div className="border-danger bg-danger rounded-lg border p-4">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="text-danger size-5 shrink-0" />
-            <div>
-              <div className="text-danger font-medium">
-                Failed to save organization
-              </div>
-              <div className="text-danger mt-1 text-sm">
-                {error?.response?.data?.detail ||
-                  error?.message ||
-                  'An error occurred'}
-              </div>
-            </div>
-          </div>
-        </div>
+        <ErrorBanner
+          error={error}
+          message={
+            error?.response?.data?.detail ||
+            error?.message ||
+            'An error occurred'
+          }
+          title="Failed to save organization"
+        />
       )}
 
       {/* Form */}

@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 
 import { Gravatar } from '@/components/ui/gravatar'
+import { LoadingState } from '@/components/ui/loading-state'
 import { usePluginOpsLogTemplates } from '@/hooks/usePluginOpsLogTemplates'
 import { formatRelativeDate } from '@/lib/formatDate'
 import type { ActivityFeedEntry, OperationsLogEntry } from '@/types'
@@ -59,7 +60,10 @@ export function RecentActivity({
         {!hideHeading && (
           <h2 className="text-primary mb-6 text-xl">Recent Activity</h2>
         )}
-        <div className="text-muted-foreground py-8 text-center">Loading...</div>
+        <LoadingState
+          className="text-muted-foreground py-8 text-center"
+          label="Loading..."
+        />
       </Card>
     )
   }
