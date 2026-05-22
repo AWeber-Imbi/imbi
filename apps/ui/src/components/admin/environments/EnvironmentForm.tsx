@@ -16,6 +16,13 @@ import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { Input } from '@/components/ui/input'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
@@ -173,22 +180,25 @@ export function EnvironmentForm({
               >
                 Organization <RequiredAsterisk />
               </label>
-              <select
-                className={`border-input bg-background text-foreground w-full rounded-lg border px-3 py-2 text-sm ${isEditing || isLoading || organizations.length <= 1 ? 'cursor-not-allowed opacity-60' : ''} ${
-                  errors.organization ? 'border-red-500' : ''
-                }`}
+              <Select
                 disabled={isEditing || isLoading || organizations.length <= 1}
-                id="environment-org"
-                onChange={(e) => setOrgSlug(e.target.value)}
+                onValueChange={setOrgSlug}
                 value={orgSlug}
               >
-                <option value="">Select organization...</option>
-                {organizations.map((org) => (
-                  <option key={org.slug} value={org.slug}>
-                    {org.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  className={errors.organization ? 'border-red-500' : ''}
+                  id="environment-org"
+                >
+                  <SelectValue placeholder="Select organization..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {organizations.map((org) => (
+                    <SelectItem key={org.slug} value={org.slug}>
+                      {org.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {errors.organization && (
                 <div className="text-danger mt-1 flex items-center gap-1 text-xs">
                   <AlertCircle className="size-3" />
