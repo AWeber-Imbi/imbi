@@ -31,6 +31,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Gravatar } from '@/components/ui/gravatar'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Table,
   TableBody,
   TableCell,
@@ -319,18 +326,24 @@ export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
 
               {showAddPermission && (
                 <div className="flex items-center gap-2">
-                  <select
-                    className="border-input bg-background text-foreground flex-1 rounded-lg border px-3 py-2 text-sm"
-                    onChange={(e) => setSelectedPermission(e.target.value)}
+                  <Select
+                    onValueChange={setSelectedPermission}
                     value={selectedPermission}
                   >
-                    <option value="">Select a permission...</option>
-                    {availablePermissions.map((perm) => (
-                      <option key={perm.name} value={perm.name}>
-                        {perm.name} - {perm.description || perm.action}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger
+                      aria-label="Select a permission"
+                      className="flex-1"
+                    >
+                      <SelectValue placeholder="Select a permission..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availablePermissions.map((perm) => (
+                        <SelectItem key={perm.name} value={perm.name}>
+                          {perm.name} - {perm.description || perm.action}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Button
                     className="bg-action text-action-foreground hover:bg-action-hover"
                     disabled={!selectedPermission || grantMutation.isPending}
