@@ -518,7 +518,7 @@ async def list_releases(
     org_slug: str,
     project_id: str,
     db: graph.Pool,
-    auth: typing.Annotated[
+    _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
             permissions.require_permission('project:read'),
@@ -546,7 +546,6 @@ async def list_releases(
     matched exactly. A null parameter is interpolated as Cypher ``null``
     and short-circuits the corresponding clause via ``null IS NULL``.
     """
-    del auth
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
@@ -691,7 +690,7 @@ async def get_release(
     project_id: str,
     release_id: str,
     db: graph.Pool,
-    auth: typing.Annotated[
+    _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
             permissions.require_permission('project:read'),
@@ -699,7 +698,6 @@ async def get_release(
     ],
 ) -> ReleaseResponse:
     """Get a single release by id."""
-    del auth
     data = await _fetch_release(db, org_slug, project_id, release_id)
     if data is None:
         raise fastapi.HTTPException(
@@ -718,7 +716,7 @@ async def patch_release(
     release_id: str,
     operations: list[json_patch.PatchOperation],
     db: graph.Pool,
-    auth: typing.Annotated[
+    _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
             permissions.require_permission('project:write'),
@@ -726,7 +724,6 @@ async def patch_release(
     ],
 ) -> ReleaseResponse:
     """Apply a JSON Patch (RFC 6902) to a release."""
-    del auth
     data = await _fetch_release(db, org_slug, project_id, release_id)
     if data is None:
         raise fastapi.HTTPException(
@@ -1121,7 +1118,7 @@ async def record_deployment(
     env_slug: str,
     data: DeploymentEventInput,
     db: graph.Pool,
-    auth: typing.Annotated[
+    _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
             permissions.require_permission('project:write'),
@@ -1129,7 +1126,6 @@ async def record_deployment(
     ],
 ) -> ReleaseEnvironmentEdgeResponse:
     """Record a deployment event for a release in an environment."""
-    del auth
     release = await _fetch_release(db, org_slug, project_id, release_id)
     if release is None:
         raise fastapi.HTTPException(
@@ -1222,7 +1218,7 @@ async def list_deployment_edges(
     project_id: str,
     release_id: str,
     db: graph.Pool,
-    auth: typing.Annotated[
+    _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
             permissions.require_permission('project:read'),
@@ -1230,7 +1226,6 @@ async def list_deployment_edges(
     ],
 ) -> list[ReleaseEnvironmentEdgeResponse]:
     """List every environment edge for a release."""
-    del auth
     release = await _fetch_release(db, org_slug, project_id, release_id)
     if release is None:
         raise fastapi.HTTPException(
@@ -1280,7 +1275,7 @@ async def get_deployment_edge(
     release_id: str,
     env_slug: str,
     db: graph.Pool,
-    auth: typing.Annotated[
+    _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
             permissions.require_permission('project:read'),
@@ -1288,7 +1283,6 @@ async def get_deployment_edge(
     ],
 ) -> ReleaseEnvironmentEdgeResponse:
     """Get a single deployment edge by environment slug."""
-    del auth
     release = await _fetch_release(db, org_slug, project_id, release_id)
     if release is None:
         raise fastapi.HTTPException(

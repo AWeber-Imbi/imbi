@@ -1,12 +1,13 @@
 """JSON Patch (RFC 6902) utilities."""
 
+import logging
 import typing
 
 import fastapi
 import jsonpatch  # type: ignore[import-untyped]
 import pydantic
 
-LOGGER = __import__('logging').getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 READONLY_PATHS: frozenset[str] = frozenset(
     ['/created_at', '/updated_at', '/relationships', '/id']

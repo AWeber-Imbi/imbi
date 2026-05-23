@@ -214,12 +214,12 @@ async def _setup_async() -> None:
         password = getpass.getpass('  Password: ')
         if not password:
             typer.echo('✗ Password cannot be empty', err=True)
-            raise typer.Exit(code=1) from None
+            raise typer.Exit(code=1)
 
         password_confirm = getpass.getpass('  Confirm password: ')
         if password != password_confirm:
             typer.echo('✗ Passwords do not match', err=True)
-            raise typer.Exit(code=1) from None
+            raise typer.Exit(code=1)
 
         # Create admin user
         try:

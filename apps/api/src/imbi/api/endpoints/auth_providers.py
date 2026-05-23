@@ -43,7 +43,7 @@ def _parse_json_field(value: typing.Any, default: typing.Any) -> typing.Any:
     if isinstance(value, str):
         try:
             return json.loads(value)
-        except json.JSONDecodeError, TypeError:
+        except (json.JSONDecodeError, TypeError):
             return default
     return value
 

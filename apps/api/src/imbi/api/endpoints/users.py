@@ -368,7 +368,7 @@ async def get_user_by_identity(
     plugin_slug: str,
     subject: str,
     db: graph.Pool,
-    auth: typing.Annotated[
+    _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:read')),
     ],
@@ -379,7 +379,6 @@ async def get_user_by_identity(
     (e.g. a GitHub deployment) to the corresponding Imbi user.
     Returns 404 when no active ``IdentityConnection`` matches.
     """
-    del auth
     user_id = await identity_repository.find_user_by_subject(
         db, plugin_slug=plugin_slug, subject=subject
     )

@@ -338,7 +338,7 @@ async def _graph_buckets(
 async def get_user_contributions(
     email: str,
     db: graph.Pool,
-    auth: typing.Annotated[
+    _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:read')),
     ],
@@ -352,7 +352,6 @@ async def get_user_contributions(
     Release, Upload, Conversation) into one daily map keyed by the
     requested ``tz``.
     """
-    del auth
     email = urllib.parse.unquote(email)
     await _ensure_user_exists(db, email)
     zone = _resolve_tz(tz)
@@ -504,7 +503,7 @@ async def _projects_touched(
 async def get_user_stats(
     email: str,
     db: graph.Pool,
-    auth: typing.Annotated[
+    _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:read')),
     ],
@@ -513,7 +512,6 @@ async def get_user_stats(
     tz: str = 'UTC',
 ) -> StatsResponse:
     """Return summary deployment / project tiles for the profile page."""
-    del auth
     _resolve_tz(tz)  # validate even though stats does not bucket by tz
     email = urllib.parse.unquote(email)
     await _ensure_user_exists(db, email)
@@ -589,13 +587,12 @@ async def get_user_stats(
 async def get_user_identities(
     email: str,
     db: graph.Pool,
-    auth: typing.Annotated[
+    _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:read')),
     ],
 ) -> IdentitiesResponse:
     """Return the user's linked OAuth identities (no tokens)."""
-    del auth
     email = urllib.parse.unquote(email)
     await _ensure_user_exists(db, email)
 
@@ -995,7 +992,7 @@ async def get_user_activity(
     request: fastapi.Request,
     email: str,
     db: graph.Pool,
-    auth: typing.Annotated[
+    _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:read')),
     ],
@@ -1003,7 +1000,6 @@ async def get_user_activity(
     cursor: str | None = None,
 ) -> fastapi.Response:
     """Cursor-paginated, mixed-source activity feed for the user."""
-    del auth
     if limit < 1 or limit > MAX_ACTIVITY_LIMIT:
         raise fastapi.HTTPException(
             status_code=400,
