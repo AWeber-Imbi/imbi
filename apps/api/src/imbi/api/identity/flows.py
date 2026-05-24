@@ -14,6 +14,7 @@ from imbi_common.plugins.base import (
 )
 from imbi_common.plugins.errors import PluginNotFoundError
 from imbi_common.plugins.registry import RegistryEntry, get_plugin
+from valkey import asyncio as valkey
 
 from imbi_api.identity import errors, repository, state
 from imbi_api.plugins import credentials as plugin_credentials
@@ -196,17 +197,24 @@ async def complete_flow(
     *,
     code: str,
     state_token: str,
+    valkey_client: valkey.Valkey | None,
 ) -> tuple[IdentityProfile, IdentityCredentials, str, str | None]:
     """Exchange ``code`` for tokens and persist the connection.
 
     Returns ``(profile, credentials, plugin_id, return_to)``.  The caller
     decides whether to also create / refresh a session (login intent) or
     just record the IdentityConnection (identity intent).
+
+    Enforces single-use semantics on the state JWT's nonce via
+    :func:`state.consume_identity_nonce` so a leaked / logged state
+    cannot be replayed within its 10-minute TTL.
     """
     state_data = state.decode_identity_state(state_token)
     plugin_id = state_data.plugin_id
     if not plugin_id:
         raise ValueError('state token missing plugin_id')
+    if not await state.consume_identity_nonce(valkey_client, state_data.nonce):
+        raise ValueError('state token has already been used')
 
     resolved_id, _entry, handler, creds, options = await _load_plugin_handler(
         db, plugin_id
@@ -296,6 +304,7 @@ async def complete_login_flow(
     *,
     code: str,
     state_token: str,
+    valkey_client: valkey.Valkey | None,
 ) -> tuple[IdentityProfile, IdentityCredentials, str, str | None]:
     """Exchange a code from an ``intent='login'`` flow.
 
@@ -304,11 +313,16 @@ async def complete_login_flow(
     :class:`IdentityConnection` — the caller must provision the local
     user first and then call :func:`repository.upsert_connection` with
     that user's id.
+
+    The state JWT's nonce is enforced single-use via Valkey to prevent
+    replay of a leaked or logged login state.
     """
     state_data = state.decode_login_state(state_token)
     plugin_id = state_data.plugin_id
     if not plugin_id:
         raise ValueError('state token missing plugin_id')
+    if not await state.consume_identity_nonce(valkey_client, state_data.nonce):
+        raise ValueError('state token has already been used')
 
     resolved_id, _entry, handler, creds, options = await _load_plugin_handler(
         db, plugin_id

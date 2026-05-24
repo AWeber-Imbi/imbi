@@ -228,7 +228,9 @@ class CallbackEndpointTestCase(unittest.IsolatedAsyncioTestCase):
                 )
             ),
         ):
-            response = await endpoints.callback('plugin-1', 'code', 'st', db)
+            response = await endpoints.callback(
+                'plugin-1', 'code', 'st', db, mock.AsyncMock()
+            )
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers['location'], '/projects/x')
 
@@ -251,7 +253,9 @@ class CallbackEndpointTestCase(unittest.IsolatedAsyncioTestCase):
                 )
             ),
         ):
-            response = await endpoints.callback('plugin-1', 'code', 'st', db)
+            response = await endpoints.callback(
+                'plugin-1', 'code', 'st', db, mock.AsyncMock()
+            )
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers['location'], '/settings/connections')
 
@@ -263,7 +267,9 @@ class CallbackEndpointTestCase(unittest.IsolatedAsyncioTestCase):
             new=mock.AsyncMock(side_effect=ValueError('expired')),
         ):
             with self.assertRaises(fastapi.HTTPException) as ctx:
-                await endpoints.callback('plugin-1', 'code', 'st', db)
+                await endpoints.callback(
+                    'plugin-1', 'code', 'st', db, mock.AsyncMock()
+                )
         self.assertEqual(ctx.exception.status_code, 400)
 
     async def test_maps_plugin_not_found_to_404(self) -> None:
@@ -276,7 +282,9 @@ class CallbackEndpointTestCase(unittest.IsolatedAsyncioTestCase):
             new=mock.AsyncMock(side_effect=PluginNotFoundError('plugin-1')),
         ):
             with self.assertRaises(fastapi.HTTPException) as ctx:
-                await endpoints.callback('plugin-1', 'code', 'st', db)
+                await endpoints.callback(
+                    'plugin-1', 'code', 'st', db, mock.AsyncMock()
+                )
         self.assertEqual(ctx.exception.status_code, 404)
 
 

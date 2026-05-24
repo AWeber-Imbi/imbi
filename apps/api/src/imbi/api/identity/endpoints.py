@@ -21,6 +21,7 @@ from imbi_api.identity import (
     models,
     repository,
 )
+from imbi_api.scoring import OptionalValkeyClient
 
 LOGGER = logging.getLogger(__name__)
 
@@ -194,17 +195,24 @@ async def callback(
     code: str,
     state: str,
     db: graph.Pool,
+    valkey_client: OptionalValkeyClient,
 ) -> fastapi.responses.Response:
     """Browser callback handler — exchanges ``code`` and persists the
-    connection.  Trusts the state JWT for actor identity (the user may
-    not have a session yet during a login flow)."""
+    connection.  The state JWT carries the actor identity (the user may
+    not have a session yet during a login flow) and its nonce is
+    enforced single-use via Valkey to prevent replay."""
     try:
         (
             _profile,
             _credentials,
             _returned_plugin_id,
             return_to,
-        ) = await flows.complete_flow(db, code=code, state_token=state)
+        ) = await flows.complete_flow(
+            db,
+            code=code,
+            state_token=state,
+            valkey_client=valkey_client,
+        )
     except ValueError as exc:
         raise fastapi.HTTPException(
             status_code=400, detail=f'Invalid state: {exc}'

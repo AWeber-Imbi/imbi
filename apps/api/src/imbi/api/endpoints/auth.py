@@ -14,6 +14,7 @@ import pyotp
 from imbi_common import graph
 from imbi_common.auth import core, encryption
 from imbi_common.plugins import errors as plugin_errors
+from valkey import asyncio as valkey_module
 
 from imbi_api import models, settings
 from imbi_api.auth import (
@@ -28,6 +29,7 @@ from imbi_api.auth import password as password_auth
 from imbi_api.identity import flows as identity_flows
 from imbi_api.identity import repository as identity_repository
 from imbi_api.middleware import rate_limit
+from imbi_api.scoring import OptionalValkeyClient
 
 LOGGER = logging.getLogger(__name__)
 
@@ -817,6 +819,7 @@ async def oauth_login(
 async def oauth_callback(
     db: graph.Pool,
     provider: str,
+    valkey_client: OptionalValkeyClient,
     code: str | None = fastapi.Query(default=None),
     state: str | None = fastapi.Query(default=None),
     error: str | None = fastapi.Query(default=None),
@@ -874,6 +877,7 @@ async def oauth_callback(
                 code,
                 state,
                 auth_settings,
+                valkey_client,
             )
 
         # Verify state parameter
@@ -994,6 +998,7 @@ async def _identity_plugin_login_callback(
     code: str,
     state: str,
     auth_settings: settings.Auth,
+    valkey_client: valkey_module.Valkey | None,
 ) -> fastapi.responses.RedirectResponse:
     """Complete a login-intent flow handled by an identity plugin.
 
@@ -1009,7 +1014,10 @@ async def _identity_plugin_login_callback(
         plugin_id,
         return_to,
     ) = await identity_flows.complete_login_flow(
-        db, code=code, state_token=state
+        db,
+        code=code,
+        state_token=state,
+        valkey_client=valkey_client,
     )
     if not profile.email:
         raise ValueError(

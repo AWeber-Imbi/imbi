@@ -6,13 +6,25 @@ state-token format.  ``intent='identity'`` discriminates the identity
 flow path.
 """
 
+import logging
 import secrets
 import time
 
 import jwt
+from valkey import asyncio as valkey
 
 from imbi_api import settings
 from imbi_api.auth import models
+
+LOGGER = logging.getLogger(__name__)
+
+# Identity state JWTs are short-lived (10 min by default), but the
+# JWT alone has no single-use semantics: anyone who replays the
+# state token within its lifetime would otherwise re-trigger the
+# callback and persist (or overwrite) the IdentityConnection again.
+# A Valkey ``SET NX EX`` on the per-token nonce gives single-use
+# guarantees with the same TTL as the JWT itself.
+_NONCE_KEY_PREFIX = 'identity:state:nonce:'
 
 
 def encode_identity_state(
@@ -103,6 +115,30 @@ def decode_identity_state(
         auth_settings=auth_settings,
         max_age_seconds=max_age_seconds,
     )
+
+
+async def consume_identity_nonce(
+    valkey_client: valkey.Valkey | None,
+    nonce: str,
+    *,
+    ttl_seconds: int = 600,
+) -> bool:
+    """Atomically mark ``nonce`` as consumed.
+
+    Returns ``True`` if the nonce was newly recorded (first use),
+    ``False`` if it had already been consumed within ``ttl_seconds``.
+    Raises :class:`RuntimeError` when no Valkey client is available
+    — replay protection requires Valkey, and identity flows must fail
+    closed rather than silently lose the guarantee.
+    """
+    if valkey_client is None:
+        raise RuntimeError(
+            'Identity replay protection requires Valkey; '
+            'no client is configured'
+        )
+    key = f'{_NONCE_KEY_PREFIX}{nonce}'
+    result = await valkey_client.set(key, '1', nx=True, ex=ttl_seconds)
+    return bool(result)
 
 
 def decode_login_state(

@@ -169,3 +169,36 @@ class DecodeLoginStateTestCase(unittest.TestCase):
         wrong = settings.Auth(jwt_secret='different-secret')
         with self.assertRaises(ValueError):
             state.decode_login_state(token, auth_settings=wrong)
+
+
+class ConsumeIdentityNonceTestCase(unittest.IsolatedAsyncioTestCase):
+    """Verify the Valkey-backed nonce replay cache."""
+
+    async def test_returns_true_on_first_use(self) -> None:
+        client = mock.AsyncMock()
+        client.set = mock.AsyncMock(return_value=True)
+        result = await state.consume_identity_nonce(client, 'nonce-x')
+        self.assertTrue(result)
+        client.set.assert_awaited_once_with(
+            'identity:state:nonce:nonce-x', '1', nx=True, ex=600
+        )
+
+    async def test_returns_false_on_replay(self) -> None:
+        client = mock.AsyncMock()
+        client.set = mock.AsyncMock(return_value=None)
+        result = await state.consume_identity_nonce(client, 'nonce-y')
+        self.assertFalse(result)
+
+    async def test_raises_when_valkey_is_none(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, 'requires Valkey'):
+            await state.consume_identity_nonce(None, 'nonce-z')
+
+    async def test_respects_ttl_argument(self) -> None:
+        client = mock.AsyncMock()
+        client.set = mock.AsyncMock(return_value=True)
+        await state.consume_identity_nonce(
+            client, 'nonce-ttl', ttl_seconds=120
+        )
+        client.set.assert_awaited_once_with(
+            'identity:state:nonce:nonce-ttl', '1', nx=True, ex=120
+        )

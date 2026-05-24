@@ -17,6 +17,13 @@ def _parse_agtype_stub(v: typing.Any) -> typing.Any:
     return v.strip('"') if isinstance(v, str) else v
 
 
+def _fresh_nonce_valkey() -> mock.AsyncMock:
+    """A Valkey mock whose ``set`` returns truthy (nonce never seen)."""
+    client = mock.AsyncMock()
+    client.set = mock.AsyncMock(return_value=True)
+    return client
+
+
 def _patch_load_handler(
     handler: object,
     creds: dict[str, str] | None = None,
@@ -204,7 +211,10 @@ class CompleteFlowTestCase(unittest.IsolatedAsyncioTestCase):
             ) as upsert,
         ):
             result = await flows.complete_flow(
-                db, code='auth-code', state_token='state-token'
+                db,
+                code='auth-code',
+                state_token='state-token',
+                valkey_client=_fresh_nonce_valkey(),
             )
         upsert.assert_awaited_once()
         self.assertEqual(result[0], profile)
@@ -240,7 +250,10 @@ class CompleteFlowTestCase(unittest.IsolatedAsyncioTestCase):
             ) as upsert,
         ):
             await flows.complete_flow(
-                db, code='auth-code', state_token='state-token'
+                db,
+                code='auth-code',
+                state_token='state-token',
+                valkey_client=_fresh_nonce_valkey(),
             )
         upsert.assert_not_called()
 
@@ -254,7 +267,41 @@ class CompleteFlowTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=state_data,
         ):
             with self.assertRaises(ValueError):
-                await flows.complete_flow(db, code='c', state_token='s')
+                await flows.complete_flow(
+                    db,
+                    code='c',
+                    state_token='s',
+                    valkey_client=_fresh_nonce_valkey(),
+                )
+
+    async def test_rejects_replayed_state_token(self) -> None:
+        db = mock.AsyncMock()
+        state_data = mock.MagicMock()
+        state_data.plugin_id = 'plugin-1'
+        state_data.actor_user_id = 'user-1'
+        state_data.nonce = 'nonce-abc'
+
+        handler = mock.MagicMock(spec=flows.IdentityPlugin)
+        handler.exchange_code = mock.AsyncMock()
+        replayed = mock.AsyncMock()
+        replayed.set = mock.AsyncMock(return_value=None)
+
+        with (
+            mock.patch.object(
+                flows.state,
+                'decode_identity_state',
+                return_value=state_data,
+            ),
+            _patch_load_handler(handler),
+        ):
+            with self.assertRaisesRegex(ValueError, 'already been used'):
+                await flows.complete_flow(
+                    db,
+                    code='c',
+                    state_token='s',
+                    valkey_client=replayed,
+                )
+        handler.exchange_code.assert_not_called()
 
 
 class CompleteLoginFlowTestCase(unittest.IsolatedAsyncioTestCase):
@@ -292,7 +339,12 @@ class CompleteLoginFlowTestCase(unittest.IsolatedAsyncioTestCase):
                 returned_creds,
                 plugin_id,
                 return_to,
-            ) = await flows.complete_login_flow(db, code='c', state_token='s')
+            ) = await flows.complete_login_flow(
+                db,
+                code='c',
+                state_token='s',
+                valkey_client=_fresh_nonce_valkey(),
+            )
         upsert.assert_not_called()
         self.assertEqual(returned_profile, profile)
         self.assertEqual(returned_creds, credentials)
@@ -309,7 +361,12 @@ class CompleteLoginFlowTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=state_data,
         ):
             with self.assertRaises(ValueError):
-                await flows.complete_login_flow(db, code='c', state_token='s')
+                await flows.complete_login_flow(
+                    db,
+                    code='c',
+                    state_token='s',
+                    valkey_client=_fresh_nonce_valkey(),
+                )
 
 
 class RefreshConnectionTestCase(unittest.IsolatedAsyncioTestCase):
