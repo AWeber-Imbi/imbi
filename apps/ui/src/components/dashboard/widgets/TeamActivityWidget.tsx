@@ -7,6 +7,7 @@ import {
   XCircle,
 } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 
 interface TeamActivityWidgetProps {
@@ -133,13 +134,14 @@ export function TeamActivityWidget({ onViewChange }: TeamActivityWidgetProps) {
                   {team.projects} projects
                 </div>
                 <div className="text-secondary text-sm">•</div>
-                <button
-                  className="text-info hover:text-info/80 text-sm"
+                <Button
+                  className="text-info hover:text-info/80 h-auto p-0 text-sm hover:no-underline"
                   onClick={(e) => handleDeploymentClick(e, team.name)}
                   type="button"
+                  variant="link"
                 >
                   {team.deployments} deployments
-                </button>
+                </Button>
               </div>
             </div>
           )

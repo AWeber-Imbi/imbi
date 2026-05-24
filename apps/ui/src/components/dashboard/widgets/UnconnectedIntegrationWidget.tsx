@@ -99,13 +99,14 @@ export function UnconnectedIntegrationWidget({
             )}
             Connect {plugin.name}
           </Button>
-          <button
-            className="text-secondary hover:text-primary inline-flex items-center gap-1 text-xs font-medium"
+          <Button
+            className="text-secondary hover:text-primary h-auto gap-1 p-0 text-xs font-medium hover:no-underline"
             onClick={onManage}
             type="button"
+            variant="link"
           >
             Manage in settings →
-          </button>
+          </Button>
         </div>
       </div>
 

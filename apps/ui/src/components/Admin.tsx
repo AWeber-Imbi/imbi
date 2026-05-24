@@ -320,13 +320,14 @@ export function Admin() {
                   <currentSectionData.icon className="text-amber-text size-5" />
                 )}
                 {isSubPage ? (
-                  <button
-                    className="text-primary hover:text-amber-text text-xl font-semibold"
+                  <Button
+                    className="hover:text-amber-text h-auto p-0 text-xl font-semibold no-underline hover:no-underline"
                     onClick={() => navigate(`/admin/${currentSection}`)}
                     type="button"
+                    variant="link"
                   >
                     {currentSectionData?.label}
-                  </button>
+                  </Button>
                 ) : (
                   <h1 className="text-primary text-xl font-semibold">
                     {currentSectionData?.label}

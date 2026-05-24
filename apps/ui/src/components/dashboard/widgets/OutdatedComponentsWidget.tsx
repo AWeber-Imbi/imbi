@@ -1,6 +1,7 @@
 import { AlertTriangle, ExternalLink, Package, TrendingUp } from 'lucide-react'
 
 import { Badge, type BadgeProps } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 
 interface OutdatedComponentsWidgetProps {
@@ -105,13 +106,14 @@ export function OutdatedComponentsWidget({
                       </Badge>
                     </div>
 
-                    <button
-                      className="text-info mb-2 text-sm hover:underline"
+                    <Button
+                      className="text-info mb-2 h-auto p-0 text-sm"
                       onClick={() => onProjectSelect?.(item.projectId)}
                       type="button"
+                      variant="link"
                     >
                       {item.project}
-                    </button>
+                    </Button>
 
                     <div className="text-secondary flex items-center gap-3 text-xs">
                       <span className="font-mono">
@@ -128,14 +130,16 @@ export function OutdatedComponentsWidget({
                   </div>
                 </div>
 
-                <button
+                <Button
                   aria-label={`View update details for ${item.component}`}
-                  className="text-secondary hover:bg-secondary hover:text-primary shrink-0 rounded p-2 transition-colors"
+                  className="size-8 shrink-0"
                   onClick={() => onProjectSelect?.(item.projectId)}
+                  size="icon"
                   type="button"
+                  variant="ghost"
                 >
-                  <TrendingUp className="size-4" />
-                </button>
+                  <TrendingUp />
+                </Button>
               </div>
             </div>
           )
@@ -143,14 +147,15 @@ export function OutdatedComponentsWidget({
       </div>
 
       <div className="border-tertiary mt-4 border-t pt-4">
-        <button
-          className="text-info hover:text-info/80 flex items-center gap-1 text-sm"
+        <Button
+          className="text-info hover:text-info/80 h-auto gap-1 p-0 text-sm hover:no-underline"
           onClick={() => onProjectSelect?.('outdated-components')}
           type="button"
+          variant="link"
         >
           View all outdated components
           <ExternalLink className="size-3" />
-        </button>
+        </Button>
       </div>
     </Card>
   )
