@@ -26,6 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
 import type { AdminPluginsResponse, InstalledPlugin } from '@/types'
@@ -69,27 +70,22 @@ export function PluginsManagement() {
 
   return (
     <div className="space-y-6">
-      <div className="border-tertiary border-b">
-        <div className="flex gap-0">
-          {tabs.map((tab) => {
-            const isActive = activeTab === tab.id
-            return (
-              <button
-                className={`border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'border-info text-info'
-                    : 'text-secondary hover:text-primary border-transparent'
-                }`}
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                type="button"
-              >
-                {tab.label}
-              </button>
-            )
-          })}
-        </div>
-      </div>
+      <Tabs
+        onValueChange={(v) => setActiveTab(v as ActiveTab)}
+        value={activeTab}
+      >
+        <TabsList className="border-tertiary h-auto justify-start rounded-none border-b bg-transparent p-0">
+          {tabs.map((tab) => (
+            <TabsTrigger
+              className="text-secondary hover:text-primary data-[state=active]:border-info data-[state=active]:text-info rounded-none border-b-2 border-transparent px-4 py-3 text-sm font-medium data-[state=active]:shadow-none"
+              key={tab.id}
+              value={tab.id}
+            >
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       {activeTab === 'enabled' && (
         <EnabledList
