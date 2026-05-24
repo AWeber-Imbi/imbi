@@ -15,6 +15,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import {
   Select,
@@ -175,12 +176,12 @@ export function EnvironmentForm({
         <Card>
           <CardContent className="space-y-4 pt-6">
             <div>
-              <label
+              <Label
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="environment-org"
               >
                 Organization <RequiredAsterisk />
-              </label>
+              </Label>
               <Select
                 disabled={isEditing || isLoading || organizations.length <= 1}
                 onValueChange={setOrgSlug}
@@ -212,12 +213,12 @@ export function EnvironmentForm({
               className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
             >
               <div>
-                <label
+                <Label
                   className="text-secondary mb-1.5 block text-sm"
                   htmlFor="environment-name"
                 >
                   Environment Name <RequiredAsterisk />
-                </label>
+                </Label>
                 <Input
                   className={` ${errors.name ? 'border-red-500' : ''}`}
                   disabled={isLoading}
@@ -236,12 +237,12 @@ export function EnvironmentForm({
 
               {!isEditing && (
                 <div>
-                  <label
+                  <Label
                     className="text-secondary mb-1.5 block text-sm"
                     htmlFor="environment-slug"
                   >
                     Slug <RequiredAsterisk />
-                  </label>
+                  </Label>
                   <Input
                     className={` ${errors.slug ? 'border-red-500' : ''}`}
                     disabled={isLoading}
@@ -261,12 +262,12 @@ export function EnvironmentForm({
             </div>
 
             <div>
-              <label
+              <Label
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="environment-sort-order"
               >
                 Sort Order
-              </label>
+              </Label>
               <Input
                 className="w-32"
                 disabled={isLoading}
@@ -282,12 +283,12 @@ export function EnvironmentForm({
             </div>
 
             <div>
-              <label
+              <Label
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="environment-description"
               >
                 Description
-              </label>
+              </Label>
               <Textarea
                 className="resize-none rounded-lg"
                 disabled={isLoading}
@@ -300,9 +301,9 @@ export function EnvironmentForm({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Icon
-              </label>
+              </Label>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <p className="text-tertiary mb-1.5 text-xs">Pick an icon</p>
@@ -382,12 +383,12 @@ function ReleaseTrainSwitches({
       <div className="border-input space-y-3 rounded-lg border p-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <label
+            <Label
               className="text-foreground text-sm font-medium"
               htmlFor="environment-can-deploy"
             >
               Allow direct deploy
-            </label>
+            </Label>
             <p className="text-tertiary text-xs">
               Show the &quot;Deploy&quot; button on the release train so
               operators can roll an explicit commit or tag into this
@@ -403,12 +404,12 @@ function ReleaseTrainSwitches({
         </div>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <label
+            <Label
               className="text-foreground text-sm font-medium"
               htmlFor="environment-can-promote"
             >
               Allow promote
-            </label>
+            </Label>
             <p className="text-tertiary text-xs">
               Show the &quot;Promote&quot; button on the release train. Promotes
               cut a tag / GitHub Release when the source build is at a SHA, or

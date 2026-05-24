@@ -8,6 +8,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import {
   Select,
@@ -133,12 +134,12 @@ export function LinkDefinitionForm({
         <Card>
           <CardContent className="space-y-4 pt-6">
             <div>
-              <label
+              <Label
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="link-def-org"
               >
                 Organization <RequiredAsterisk />
-              </label>
+              </Label>
               <Select
                 disabled={isEditing || isLoading || organizations.length <= 1}
                 onValueChange={setOrgSlug}
@@ -170,12 +171,12 @@ export function LinkDefinitionForm({
               className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
             >
               <div>
-                <label
+                <Label
                   className="text-secondary mb-1.5 block text-sm"
                   htmlFor="link-def-name"
                 >
                   Name <RequiredAsterisk />
-                </label>
+                </Label>
                 <Input
                   className={` ${errors.name ? 'border-red-500' : ''}`}
                   disabled={isLoading}
@@ -194,12 +195,12 @@ export function LinkDefinitionForm({
 
               {!isEditing && (
                 <div>
-                  <label
+                  <Label
                     className="text-secondary mb-1.5 block text-sm"
                     htmlFor="link-def-slug"
                   >
                     Slug <RequiredAsterisk />
-                  </label>
+                  </Label>
                   <Input
                     className={` ${errors.slug ? 'border-red-500' : ''}`}
                     disabled={isLoading}
@@ -219,12 +220,12 @@ export function LinkDefinitionForm({
             </div>
 
             <div>
-              <label
+              <Label
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="link-def-description"
               >
                 Description
-              </label>
+              </Label>
               <Textarea
                 className="resize-none rounded-lg"
                 disabled={isLoading}
@@ -237,9 +238,9 @@ export function LinkDefinitionForm({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Icon
-              </label>
+              </Label>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <p className="text-tertiary mb-1.5 text-xs">Pick an icon</p>
@@ -269,12 +270,12 @@ export function LinkDefinitionForm({
             </div>
 
             <div>
-              <label
+              <Label
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="link-def-url-template"
               >
                 URL Template
-              </label>
+              </Label>
               <Input
                 className=""
                 disabled={isLoading}

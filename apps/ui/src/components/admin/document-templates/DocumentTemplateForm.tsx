@@ -17,6 +17,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -167,12 +168,12 @@ export function DocumentTemplateForm({
               className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
             >
               <div>
-                <label
+                <Label
                   className="text-secondary mb-1.5 block text-sm"
                   htmlFor="document-tpl-name"
                 >
                   Name <RequiredAsterisk />
-                </label>
+                </Label>
                 <Input
                   className={errors.name ? 'border-red-500' : ''}
                   disabled={isLoading}
@@ -191,12 +192,12 @@ export function DocumentTemplateForm({
 
               {!isEditing && (
                 <div>
-                  <label
+                  <Label
                     className="text-secondary mb-1.5 block text-sm"
                     htmlFor="document-tpl-slug"
                   >
                     Slug <RequiredAsterisk />
-                  </label>
+                  </Label>
                   <Input
                     className={errors.slug ? 'border-red-500' : ''}
                     disabled={isLoading}
@@ -216,12 +217,12 @@ export function DocumentTemplateForm({
             </div>
 
             <div>
-              <label
+              <Label
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="document-tpl-description"
               >
                 Description
-              </label>
+              </Label>
               <Textarea
                 className="resize-none rounded-lg"
                 disabled={isLoading}
@@ -234,9 +235,9 @@ export function DocumentTemplateForm({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Icon
-              </label>
+              </Label>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <p className="text-tertiary mb-1.5 text-xs">Pick an icon</p>
@@ -266,12 +267,12 @@ export function DocumentTemplateForm({
             </div>
 
             <div>
-              <label
+              <Label
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="document-tpl-title"
               >
                 Default Document Title
-              </label>
+              </Label>
               <Input
                 disabled={isLoading}
                 id="document-tpl-title"
@@ -282,12 +283,12 @@ export function DocumentTemplateForm({
             </div>
 
             <div>
-              <label
+              <Label
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="document-tpl-content"
               >
                 Content
-              </label>
+              </Label>
               <Textarea
                 className="resize-y rounded-lg font-mono"
                 disabled={isLoading}
@@ -300,9 +301,9 @@ export function DocumentTemplateForm({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Default Tags
-              </label>
+              </Label>
               <p className="text-tertiary mb-2 text-xs">
                 Tags applied to documents created from this template.
               </p>
@@ -317,9 +318,9 @@ export function DocumentTemplateForm({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Project Types
-              </label>
+              </Label>
               <p className="text-tertiary mb-2 text-xs">
                 Limit this template to specific project types. Leave empty to
                 offer it for every project type.
@@ -388,12 +389,12 @@ export function DocumentTemplateForm({
             </div>
 
             <div>
-              <label
+              <Label
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="document-tpl-sort-order"
               >
                 Sort Order
-              </label>
+              </Label>
               <Input
                 className={errors.sort_order ? 'border-red-500' : ''}
                 disabled={isLoading}

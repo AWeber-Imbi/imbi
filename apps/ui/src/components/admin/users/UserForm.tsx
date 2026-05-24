@@ -35,6 +35,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { FormField } from '@/components/ui/form-field'
+import { Label } from '@/components/ui/label'
 import {
   SegmentedControl,
   SegmentedControlItem,
@@ -490,7 +491,7 @@ export function UserForm({
                 )
                 const checked = idx !== -1
                 return (
-                  <label
+                  <Label
                     className={cn(
                       'grid cursor-pointer grid-cols-[1fr_180px] items-center gap-4 border-b border-tertiary px-4 py-2.5 last:border-b-0 hover:bg-secondary/50',
                       !checked && 'opacity-60',
@@ -549,7 +550,7 @@ export function UserForm({
                         </SelectContent>
                       </Select>
                     </div>
-                  </label>
+                  </Label>
                 )
               })}
             </div>
@@ -1119,12 +1120,12 @@ function ToggleRow({
   return (
     <div className="border-tertiary grid grid-cols-[1fr_auto] items-center gap-4 border-b py-3 first:pt-0 last:border-b-0 last:pb-0">
       <div>
-        <label
+        <Label
           className="text-primary block cursor-pointer text-sm font-medium"
           htmlFor={id}
         >
           {label}
-        </label>
+        </Label>
         <p className="text-secondary mt-0.5 text-sm">{description}</p>
       </div>
       <Switch

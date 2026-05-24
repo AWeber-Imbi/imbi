@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { Textarea } from '@/components/ui/textarea'
 import { useFormScaffold } from '@/hooks/useFormScaffold'
@@ -328,9 +329,9 @@ export function RoleForm({
             {/* Slug */}
             {!isEditing && (
               <div className="col-span-2">
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Slug <RequiredAsterisk />
-                </label>
+                </Label>
                 <Input
                   className={`font-mono ${
                     isSystemRole ? 'cursor-not-allowed opacity-60' : ''
@@ -361,9 +362,9 @@ export function RoleForm({
 
             {/* Description */}
             <div className="col-span-2">
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Description
-              </label>
+              </Label>
               <Textarea
                 className={`resize-none ${isSystemRole ? 'cursor-not-allowed opacity-60' : ''}`}
                 disabled={isLoading || isSystemRole}
@@ -376,9 +377,9 @@ export function RoleForm({
 
             {/* Priority */}
             <div className="col-span-2 sm:col-span-1">
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Priority
-              </label>
+              </Label>
               <Input
                 className={` ${
                   isSystemRole ? 'cursor-not-allowed opacity-60' : ''
@@ -478,12 +479,12 @@ export function RoleForm({
                           id={`group-${resource}`}
                           onCheckedChange={() => toggleAllInGroup(resource)}
                         />
-                        <label
+                        <Label
                           className="text-primary flex-1 cursor-pointer select-none"
                           htmlFor={`group-${resource}`}
                         >
                           {resourceLabel(resource)}
-                        </label>
+                        </Label>
                         <span
                           className={`rounded-full px-2 py-0.5 text-xs ${
                             selectedCount > 0
@@ -515,7 +516,7 @@ export function RoleForm({
                                   togglePermission(perm.name)
                                 }
                               />
-                              <label
+                              <Label
                                 className="flex-1 cursor-pointer select-none"
                                 htmlFor={perm.name}
                               >
@@ -527,7 +528,7 @@ export function RoleForm({
                                 <div className="text-secondary mt-0.5 text-xs">
                                   {perm.description || perm.name}
                                 </div>
-                              </label>
+                              </Label>
                             </div>
                           ))}
                       </div>

@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { AlertCircle, Save, X } from 'lucide-react'
 
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { Textarea } from '@/components/ui/textarea'
 import type { Organization, OrganizationCreate } from '@/types'
@@ -129,9 +130,9 @@ export function OrganizationForm({
               className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
             >
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Organization Name <RequiredAsterisk />
-                </label>
+                </Label>
                 <Input
                   className={` ${errors.name ? 'border-red-500' : ''}`}
                   disabled={isLoading}
@@ -149,9 +150,9 @@ export function OrganizationForm({
 
               {!isEditing && (
                 <div>
-                  <label className="text-secondary mb-1.5 block text-sm">
+                  <Label className="text-secondary mb-1.5 block text-sm">
                     Slug <RequiredAsterisk />
-                  </label>
+                  </Label>
                   <Input
                     className={` ${errors.slug ? 'border-red-500' : ''}`}
                     disabled={isLoading}
@@ -170,9 +171,9 @@ export function OrganizationForm({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Description
-              </label>
+              </Label>
               <Textarea
                 className="resize-none rounded-lg"
                 disabled={isLoading}
@@ -184,9 +185,9 @@ export function OrganizationForm({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Icon
-              </label>
+              </Label>
               <IconUpload onChange={setIcon} value={icon} />
             </div>
           </CardContent>

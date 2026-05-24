@@ -13,6 +13,7 @@ import {
 import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import {
   Select,
@@ -184,12 +185,12 @@ export function ProjectTypeForm({
         <Card>
           <CardContent className="space-y-4 pt-6">
             <div>
-              <label
+              <Label
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="project-type-org"
               >
                 Organization <RequiredAsterisk />
-              </label>
+              </Label>
               <Select
                 disabled={isEditing || isLoading || organizations.length <= 1}
                 onValueChange={setOrgSlug}
@@ -221,9 +222,9 @@ export function ProjectTypeForm({
               className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
             >
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Project Type Name <RequiredAsterisk />
-                </label>
+                </Label>
                 <Input
                   className={` ${errors.name ? 'border-red-500' : ''}`}
                   disabled={isLoading}
@@ -241,9 +242,9 @@ export function ProjectTypeForm({
 
               {!isEditing && (
                 <div>
-                  <label className="text-secondary mb-1.5 block text-sm">
+                  <Label className="text-secondary mb-1.5 block text-sm">
                     Slug <RequiredAsterisk />
-                  </label>
+                  </Label>
                   <Input
                     className={` ${errors.slug ? 'border-red-500' : ''}`}
                     disabled={isLoading}
@@ -262,9 +263,9 @@ export function ProjectTypeForm({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Description
-              </label>
+              </Label>
               <Textarea
                 className="resize-none rounded-lg"
                 disabled={isLoading}
@@ -278,12 +279,12 @@ export function ProjectTypeForm({
             <div>
               <div className="border-input flex items-start justify-between gap-3 rounded-lg border p-3">
                 <div>
-                  <label
+                  <Label
                     className="text-foreground text-sm font-medium"
                     htmlFor="project-type-deployable"
                   >
                     Deployable
-                  </label>
+                  </Label>
                   <p className="text-tertiary text-xs">
                     Enable deployment tracking and release-train features for
                     projects of this type.
@@ -299,9 +300,9 @@ export function ProjectTypeForm({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Icon
-              </label>
+              </Label>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <p className="text-tertiary mb-1.5 text-xs">Pick an icon</p>
