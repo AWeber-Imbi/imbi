@@ -29,7 +29,13 @@ import {
   listProjectPlugins,
   searchProjectLogs,
 } from '@/api/endpoints'
+import { Button } from '@/components/ui/button'
 import { LoadingState } from '@/components/ui/loading-state'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import {
   IconTooltip,
   Tooltip,
@@ -730,61 +736,61 @@ export function LogsTab({
         </div>
 
         {/* Date picker */}
-        <div className="relative">
-          <button
-            className={`bg-primary text-primary hover:border-primary flex items-center gap-1.5 rounded border px-2.5 py-1.5 font-mono text-xs transition-colors ${datePickerOpen ? 'ring-action/20 border-action ring-1' : ''}`}
-            onClick={() => setDatePickerOpen(!datePickerOpen)}
-          >
-            <Calendar className="text-tertiary" size={12} />
-            {customStart && customEnd
-              ? fmtRangeLabel(
-                  customStart.toISOString(),
-                  customEnd.toISOString(),
-                )
-              : fmtRangeLabel(datetimes.start, datetimes.end)}
-          </button>
-          {datePickerOpen && (
-            <div className="bg-primary absolute top-full left-0 z-30 mt-1 min-w-72 rounded-lg border p-3 shadow-lg">
-              <div className="text-tertiary mb-2 text-[10px] font-semibold tracking-wide uppercase">
-                Custom range
-              </div>
-              <div className="mb-3 flex gap-2">
-                <input
-                  className="bg-tertiary text-primary focus:border-action flex-1 rounded border px-2 py-1 font-mono text-xs outline-none"
-                  onChange={(e) => setStartInput(e.target.value)}
-                  type="datetime-local"
-                  value={startInput}
-                />
-                <input
-                  className="bg-tertiary text-primary focus:border-action flex-1 rounded border px-2 py-1 font-mono text-xs outline-none"
-                  onChange={(e) => setEndInput(e.target.value)}
-                  type="datetime-local"
-                  value={endInput}
-                />
-              </div>
-              <div className="flex justify-end gap-2 border-t pt-2">
-                <button
-                  className="text-tertiary hover:text-secondary text-xs"
-                  onClick={() => setDatePickerOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="bg-action text-action-foreground rounded px-2.5 py-1 text-xs font-medium"
-                  onClick={() => {
-                    if (startInput && endInput) {
-                      setCustomStart(new Date(startInput))
-                      setCustomEnd(new Date(endInput))
-                    }
-                    setDatePickerOpen(false)
-                  }}
-                >
-                  Apply
-                </button>
-              </div>
+        <Popover onOpenChange={setDatePickerOpen} open={datePickerOpen}>
+          <PopoverTrigger asChild>
+            <button
+              className={`bg-primary text-primary hover:border-primary flex items-center gap-1.5 rounded border px-2.5 py-1.5 font-mono text-xs transition-colors ${datePickerOpen ? 'ring-action/20 border-action ring-1' : ''}`}
+            >
+              <Calendar className="text-tertiary" size={12} />
+              {customStart && customEnd
+                ? fmtRangeLabel(
+                    customStart.toISOString(),
+                    customEnd.toISOString(),
+                  )
+                : fmtRangeLabel(datetimes.start, datetimes.end)}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="min-w-72 p-3">
+            <div className="text-tertiary mb-2 text-[10px] font-semibold tracking-wide uppercase">
+              Custom range
             </div>
-          )}
-        </div>
+            <div className="mb-3 flex gap-2">
+              <input
+                className="bg-tertiary text-primary focus:border-action flex-1 rounded border px-2 py-1 font-mono text-xs outline-none"
+                onChange={(e) => setStartInput(e.target.value)}
+                type="datetime-local"
+                value={startInput}
+              />
+              <input
+                className="bg-tertiary text-primary focus:border-action flex-1 rounded border px-2 py-1 font-mono text-xs outline-none"
+                onChange={(e) => setEndInput(e.target.value)}
+                type="datetime-local"
+                value={endInput}
+              />
+            </div>
+            <div className="flex justify-end gap-2 border-t pt-2">
+              <Button
+                className="h-auto px-0 text-xs"
+                onClick={() => setDatePickerOpen(false)}
+                variant="link"
+              >
+                Cancel
+              </Button>
+              <Button
+                className="h-auto px-2.5 py-1 text-xs"
+                onClick={() => {
+                  if (startInput && endInput) {
+                    setCustomStart(new Date(startInput))
+                    setCustomEnd(new Date(endInput))
+                  }
+                  setDatePickerOpen(false)
+                }}
+              >
+                Apply
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
 
         {/* Visual gap between date and env groups */}
         <div aria-hidden className="bg-tertiary ml-3 h-5 w-px opacity-50" />
