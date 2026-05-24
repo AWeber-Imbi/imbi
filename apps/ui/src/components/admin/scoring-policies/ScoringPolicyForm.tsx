@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import {
   Select,
@@ -323,12 +324,12 @@ export function ScoringPolicyForm({
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label
+                <Label
                   className="text-secondary mb-1.5 block text-sm"
                   htmlFor="sp-name"
                 >
                   Name <RequiredAsterisk />
-                </label>
+                </Label>
                 <Input
                   className={errors.name ? 'border-danger' : ''}
                   disabled={isLoading}
@@ -340,12 +341,12 @@ export function ScoringPolicyForm({
                 {fieldError('name')}
               </div>
               <div>
-                <label
+                <Label
                   className="text-secondary mb-1.5 block text-sm"
                   htmlFor="sp-slug"
                 >
                   Slug <RequiredAsterisk />
-                </label>
+                </Label>
                 <Input
                   className={errors.slug ? 'border-danger' : ''}
                   disabled={isEditing || isLoading}
@@ -359,12 +360,12 @@ export function ScoringPolicyForm({
             </div>
 
             <div>
-              <label
+              <Label
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="sp-description"
               >
                 Description
-              </label>
+              </Label>
               <Textarea
                 className="resize-none rounded-lg"
                 disabled={isLoading}
@@ -386,12 +387,12 @@ export function ScoringPolicyForm({
           <CardContent className="space-y-4">
             {category === 'link_presence' ? (
               <div>
-                <label
+                <Label
                   className="text-secondary mb-1.5 block text-sm"
                   htmlFor="sp-link-slug"
                 >
                   Required Link Type <RequiredAsterisk />
-                </label>
+                </Label>
                 <Select
                   disabled={isLoading}
                   onValueChange={setLinkSlug}
@@ -425,12 +426,12 @@ export function ScoringPolicyForm({
               </div>
             ) : (
               <div>
-                <label
+                <Label
                   className="text-secondary mb-1.5 block text-sm"
                   htmlFor="sp-attribute"
                 >
                   Attribute Name <RequiredAsterisk />
-                </label>
+                </Label>
                 <Input
                   className={errors.attribute_name ? 'border-danger' : ''}
                   disabled={isLoading}
@@ -454,12 +455,12 @@ export function ScoringPolicyForm({
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div>
-                <label
+                <Label
                   className="text-secondary mb-1.5 block text-sm"
                   htmlFor="sp-weight"
                 >
                   Weight (0–100) <RequiredAsterisk />
-                </label>
+                </Label>
                 <Input
                   className={errors.weight ? 'border-danger' : ''}
                   disabled={isLoading}
@@ -474,12 +475,12 @@ export function ScoringPolicyForm({
               </div>
 
               <div>
-                <label
+                <Label
                   className="text-secondary mb-1.5 block text-sm"
                   htmlFor="sp-priority"
                 >
                   Priority
-                </label>
+                </Label>
                 <Input
                   disabled={isLoading}
                   id="sp-priority"
@@ -493,7 +494,7 @@ export function ScoringPolicyForm({
               </div>
 
               <div className="flex flex-col justify-center gap-1.5">
-                <label className="text-secondary text-sm">Enabled</label>
+                <Label className="text-secondary text-sm">Enabled</Label>
                 <Switch
                   checked={enabled}
                   disabled={isLoading}
@@ -512,9 +513,9 @@ export function ScoringPolicyForm({
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Mapping type
-                </label>
+                </Label>
                 <div className="flex gap-3">
                   {(['value', 'range'] as const).map((t) => (
                     <button
@@ -598,12 +599,12 @@ export function ScoringPolicyForm({
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label
+                  <Label
                     className="text-secondary mb-1.5 block text-sm"
                     htmlFor="sp-present-score"
                   >
                     Present score (0–100)
-                  </label>
+                  </Label>
                   <Input
                     className={errors.present_score ? 'border-danger' : ''}
                     disabled={isLoading}
@@ -622,12 +623,12 @@ export function ScoringPolicyForm({
                   {fieldError('present_score')}
                 </div>
                 <div>
-                  <label
+                  <Label
                     className="text-secondary mb-1.5 block text-sm"
                     htmlFor="sp-missing-score"
                   >
                     Missing score (0–100)
-                  </label>
+                  </Label>
                   <Input
                     className={errors.missing_score ? 'border-danger' : ''}
                     disabled={isLoading}
@@ -687,12 +688,12 @@ export function ScoringPolicyForm({
                         )
                       }
                     />
-                    <label
+                    <Label
                       className="text-secondary cursor-pointer text-sm select-none"
                       htmlFor={`target-pt-${pt.slug}`}
                     >
                       {pt.name}
-                    </label>
+                    </Label>
                   </div>
                 ))}
               </div>

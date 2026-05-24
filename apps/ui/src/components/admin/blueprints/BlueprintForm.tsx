@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import {
   Select,
@@ -547,9 +548,9 @@ export function BlueprintForm({
         <div className="grid grid-cols-2 gap-4">
           {/* Name */}
           <div>
-            <label className="text-secondary mb-1.5 block text-sm">
+            <Label className="text-secondary mb-1.5 block text-sm">
               Name <RequiredAsterisk />
-            </label>
+            </Label>
             <Input
               className=""
               disabled={isLoading}
@@ -575,9 +576,9 @@ export function BlueprintForm({
           {/* Slug */}
           {!isEditing && (
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Slug
-              </label>
+              </Label>
               <Input
                 className="font-mono"
                 disabled={isLoading}
@@ -600,9 +601,9 @@ export function BlueprintForm({
 
           {/* Kind */}
           <div>
-            <label className="text-secondary mb-1.5 block text-sm">
+            <Label className="text-secondary mb-1.5 block text-sm">
               Kind <RequiredAsterisk />
-            </label>
+            </Label>
             <Select
               disabled={isLoading || isEditing}
               onValueChange={(v) => setKind(v as 'node' | 'relationship')}
@@ -626,9 +627,9 @@ export function BlueprintForm({
           {/* Type (node) or Source/Target/Edge (relationship) */}
           {kind === 'node' ? (
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Type <RequiredAsterisk />
-              </label>
+              </Label>
               <Select
                 disabled={isLoading || isEditing}
                 onValueChange={(v) => {
@@ -657,9 +658,9 @@ export function BlueprintForm({
           ) : (
             <div className="col-span-2 grid grid-cols-[1fr_auto_1fr_auto_1fr] items-end gap-2">
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Source <RequiredAsterisk />
-                </label>
+                </Label>
                 <Select
                   disabled={isLoading || isEditing}
                   onValueChange={(v) => {
@@ -689,9 +690,9 @@ export function BlueprintForm({
               </div>
               <div className="text-tertiary pb-2">→</div>
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Relationship Type <RequiredAsterisk />
-                </label>
+                </Label>
                 {source &&
                 target &&
                 (getRelationshipTypes(source, target).length === 0 ||
@@ -742,9 +743,9 @@ export function BlueprintForm({
               </div>
               <div className="text-tertiary pb-2">→</div>
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Target <RequiredAsterisk />
-                </label>
+                </Label>
                 <Select
                   disabled={isLoading || isEditing}
                   onValueChange={(v) => {
@@ -777,9 +778,9 @@ export function BlueprintForm({
 
           {/* Priority */}
           <div>
-            <label className="text-secondary mb-1.5 block text-sm">
+            <Label className="text-secondary mb-1.5 block text-sm">
               Priority
-            </label>
+            </Label>
             <Input
               className=""
               disabled={isLoading}
@@ -801,9 +802,9 @@ export function BlueprintForm({
 
           {/* Description */}
           <div className="col-span-2">
-            <label className="text-secondary mb-1.5 block text-sm">
+            <Label className="text-secondary mb-1.5 block text-sm">
               Description
-            </label>
+            </Label>
             <Textarea
               className="resize-none"
               disabled={isLoading}
@@ -823,12 +824,12 @@ export function BlueprintForm({
                 id="blueprint-enabled"
                 onCheckedChange={(checked) => setEnabled(checked === true)}
               />
-              <label
+              <Label
                 className="text-secondary cursor-pointer text-sm select-none"
                 htmlFor="blueprint-enabled"
               >
                 Enabled
-              </label>
+              </Label>
             </div>
             <p className="text-tertiary mt-1 ml-6 text-xs">
               Disabled blueprints are not applied to entities

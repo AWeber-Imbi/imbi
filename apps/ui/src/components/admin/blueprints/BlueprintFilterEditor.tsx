@@ -1,6 +1,7 @@
 import { Filter } from 'lucide-react'
 
 import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import type { Environment, ProjectType } from '@/types'
 
 interface BlueprintFilterEditorProps {
@@ -56,12 +57,12 @@ export function BlueprintFilterEditor({
               }
             }}
           />
-          <label
+          <Label
             className="text-secondary cursor-pointer text-sm select-none"
             htmlFor="filter-enabled"
           >
             Enable filter
-          </label>
+          </Label>
         </div>
       </div>
 
@@ -74,9 +75,9 @@ export function BlueprintFilterEditor({
 
           {/* Project Type filter */}
           <div>
-            <label className="text-secondary mb-2 block text-sm font-medium">
+            <Label className="text-secondary mb-2 block text-sm font-medium">
               Project Types
-            </label>
+            </Label>
             {ptLoading ? (
               <p className="text-tertiary text-xs italic">
                 Loading project types...
@@ -107,14 +108,14 @@ export function BlueprintFilterEditor({
                         setSelectedProjectTypes(next)
                       }}
                     />
-                    <label
+                    <Label
                       className={
                         'text-secondary cursor-pointer text-sm select-none'
                       }
                       htmlFor={`filter-pt-${pt.slug}`}
                     >
                       {pt.name}
-                    </label>
+                    </Label>
                   </div>
                 ))}
               </div>
@@ -123,9 +124,9 @@ export function BlueprintFilterEditor({
 
           {/* Environment filter */}
           <div>
-            <label className="text-secondary mb-2 block text-sm font-medium">
+            <Label className="text-secondary mb-2 block text-sm font-medium">
               Environments
-            </label>
+            </Label>
             {envLoading ? (
               <p className="text-tertiary text-xs italic">
                 Loading environments...
@@ -156,14 +157,14 @@ export function BlueprintFilterEditor({
                         setSelectedEnvironments(next)
                       }}
                     />
-                    <label
+                    <Label
                       className={
                         'text-secondary cursor-pointer text-sm select-none'
                       }
                       htmlFor={`filter-env-${env.slug}`}
                     >
                       {env.name}
-                    </label>
+                    </Label>
                   </div>
                 ))}
               </div>

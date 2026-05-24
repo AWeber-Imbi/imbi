@@ -2,6 +2,7 @@ import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
 
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -149,12 +150,12 @@ export function BlueprintSchemaPropertyRow({
               })
             }
           />
-          <label
+          <Label
             className={'text-secondary cursor-pointer text-xs select-none'}
             htmlFor={`req-${prop.id}`}
           >
             Required
-          </label>
+          </Label>
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -167,12 +168,12 @@ export function BlueprintSchemaPropertyRow({
               })
             }
           />
-          <label
+          <Label
             className={'text-secondary cursor-pointer text-xs select-none'}
             htmlFor={`editable-${prop.id}`}
           >
             Editable
-          </label>
+          </Label>
         </div>
 
         <TooltipProvider delayDuration={200}>
@@ -225,9 +226,9 @@ export function BlueprintSchemaPropertyRow({
         <div className="border-secondary space-y-3 border-t px-3 pt-2 pb-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-secondary mb-1 block text-xs">
+              <Label className="text-secondary mb-1 block text-xs">
                 Description
-              </label>
+              </Label>
               <Input
                 className="text-sm"
                 onChange={(e) =>
@@ -240,9 +241,9 @@ export function BlueprintSchemaPropertyRow({
               />
             </div>
             <div>
-              <label className="text-secondary mb-1 block text-xs">
+              <Label className="text-secondary mb-1 block text-xs">
                 Default Value
-              </label>
+              </Label>
               <Input
                 className="text-sm"
                 onChange={(e) =>
@@ -259,9 +260,9 @@ export function BlueprintSchemaPropertyRow({
           {prop.type === 'string' && (
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="text-secondary mb-1 block text-xs">
+                <Label className="text-secondary mb-1 block text-xs">
                   Format
-                </label>
+                </Label>
                 {/* Radix disallows '' as a SelectItem value; the empty
                     STRING_FORMATS entry becomes "none" and gets translated
                     back to undefined on store. */}
@@ -286,9 +287,9 @@ export function BlueprintSchemaPropertyRow({
                 </Select>
               </div>
               <div>
-                <label className="text-secondary mb-1 block text-xs">
+                <Label className="text-secondary mb-1 block text-xs">
                   Min Length
-                </label>
+                </Label>
                 <Input
                   className="text-sm"
                   onChange={(e) =>
@@ -303,9 +304,9 @@ export function BlueprintSchemaPropertyRow({
                 />
               </div>
               <div>
-                <label className="text-secondary mb-1 block text-xs">
+                <Label className="text-secondary mb-1 block text-xs">
                   Max Length
-                </label>
+                </Label>
                 <Input
                   className="text-sm"
                   onChange={(e) =>
@@ -325,9 +326,9 @@ export function BlueprintSchemaPropertyRow({
           {prop.type === 'array' && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-secondary mb-1 block text-xs">
+                <Label className="text-secondary mb-1 block text-xs">
                   Items Type
-                </label>
+                </Label>
                 <Select
                   onValueChange={(v) =>
                     updateProperty(prop.id, {
@@ -349,9 +350,9 @@ export function BlueprintSchemaPropertyRow({
                 </Select>
               </div>
               <div>
-                <label className="text-secondary mb-1 block text-xs">
+                <Label className="text-secondary mb-1 block text-xs">
                   Items Enum (comma-separated)
-                </label>
+                </Label>
                 <Input
                   className="text-sm"
                   onBlur={() => {
@@ -393,9 +394,9 @@ export function BlueprintSchemaPropertyRow({
           {(prop.type === 'integer' || prop.type === 'number') && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-secondary mb-1 block text-xs">
+                <Label className="text-secondary mb-1 block text-xs">
                   Minimum
-                </label>
+                </Label>
                 <Input
                   className="text-sm"
                   onChange={(e) =>
@@ -410,9 +411,9 @@ export function BlueprintSchemaPropertyRow({
                 />
               </div>
               <div>
-                <label className="text-secondary mb-1 block text-xs">
+                <Label className="text-secondary mb-1 block text-xs">
                   Maximum
-                </label>
+                </Label>
                 <Input
                   className="text-sm"
                   onChange={(e) =>
@@ -430,9 +431,9 @@ export function BlueprintSchemaPropertyRow({
           )}
 
           <div>
-            <label className="text-secondary mb-1 block text-xs">
+            <Label className="text-secondary mb-1 block text-xs">
               Enum Values (comma-separated)
-            </label>
+            </Label>
             <Input
               className="text-sm"
               onBlur={() => {
