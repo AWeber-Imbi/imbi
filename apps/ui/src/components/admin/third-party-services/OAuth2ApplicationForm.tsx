@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/hooks/useAuth'
 import { slugify } from '@/lib/utils'
 import type {
@@ -412,8 +413,8 @@ export function OAuth2ApplicationForm({
             {extraSecretFields.includes('private_key') && (
               <div>
                 <label className={labelClass}>Private Key (PEM)</label>
-                <textarea
-                  className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 font-mono text-sm"
+                <Textarea
+                  className="font-mono"
                   onChange={(e) => setPrivateKey(e.target.value)}
                   placeholder={'-----BEGIN RSA PRIVATE KEY-----\n...'}
                   rows={4}

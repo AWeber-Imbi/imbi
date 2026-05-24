@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { queryKeys } from '@/lib/queryKeys'
 import { parseFilterFromBlueprint } from '@/lib/utils'
@@ -803,8 +804,8 @@ export function BlueprintForm({
             <label className="text-secondary mb-1.5 block text-sm">
               Description
             </label>
-            <textarea
-              className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full resize-none rounded-md border px-3 py-2 text-sm"
+            <Textarea
+              className="resize-none"
               disabled={isLoading}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Brief description of what this blueprint defines"

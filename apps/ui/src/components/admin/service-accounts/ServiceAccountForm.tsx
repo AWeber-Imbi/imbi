@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useDirtyState } from '@/hooks/useDirtyState'
 import { useFormScaffold } from '@/hooks/useFormScaffold'
@@ -361,8 +362,7 @@ export function ServiceAccountForm({
                 {description.length}/500
               </span>
             </label>
-            <textarea
-              className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full rounded-md border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            <Textarea
               disabled={isLoading}
               maxLength={500}
               onChange={(e) => setDescription(e.target.value)}
@@ -716,8 +716,7 @@ function IdentityCardEdit({
               {description.length}/500
             </span>
           </label>
-          <textarea
-            className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full rounded-md border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 focus:outline-none"
+          <Textarea
             disabled={isLoading}
             maxLength={500}
             onChange={(e) => onDescriptionChange(e.target.value)}

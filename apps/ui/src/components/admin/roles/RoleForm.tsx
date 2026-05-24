@@ -17,6 +17,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
+import { Textarea } from '@/components/ui/textarea'
 import { useFormScaffold } from '@/hooks/useFormScaffold'
 import type { Permission, RoleCreate } from '@/types'
 
@@ -363,8 +364,8 @@ export function RoleForm({
               <label className="text-secondary mb-1.5 block text-sm">
                 Description
               </label>
-              <textarea
-                className={`border-input bg-background text-foreground placeholder:text-muted-foreground w-full resize-none rounded-md border px-3 py-2 text-sm ${isSystemRole ? 'cursor-not-allowed opacity-60' : ''}`}
+              <Textarea
+                className={`resize-none ${isSystemRole ? 'cursor-not-allowed opacity-60' : ''}`}
                 disabled={isLoading || isSystemRole}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Brief description of this role's purpose and scope"

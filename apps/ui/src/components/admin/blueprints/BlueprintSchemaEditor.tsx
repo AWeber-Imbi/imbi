@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { AlertCircle, Code, List, Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 import type { SchemaProperty } from '@/types'
 
 import { type SchemaEditorMode } from './blueprint-schema-utils'
@@ -143,8 +144,8 @@ export function BlueprintSchemaEditor({
 
       {/* Code Mode */}
       {editorMode === 'code' && (
-        <textarea
-          className="border-input bg-secondary text-primary w-full resize-y rounded-md border px-4 py-3 font-mono text-sm"
+        <Textarea
+          className="bg-secondary text-primary resize-y px-4 py-3 font-mono"
           onBlur={() => syncCodeToVisual(rawSchema)}
           onChange={(e) => {
             setRawSchema(e.target.value)

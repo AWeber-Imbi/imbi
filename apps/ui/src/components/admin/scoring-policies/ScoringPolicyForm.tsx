@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { queryKeys } from '@/lib/queryKeys'
 import { slugify } from '@/lib/utils'
@@ -364,8 +365,8 @@ export function ScoringPolicyForm({
               >
                 Description
               </label>
-              <textarea
-                className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full resize-none rounded-lg border px-3 py-2 text-sm"
+              <Textarea
+                className="resize-none rounded-lg"
                 disabled={isLoading}
                 id="sp-description"
                 onChange={(e) => setDescription(e.target.value)}

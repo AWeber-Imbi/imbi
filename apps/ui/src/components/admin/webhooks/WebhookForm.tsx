@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { slugify } from '@/lib/utils'
@@ -373,8 +374,8 @@ export function WebhookForm({
               <label className="text-secondary mb-1.5 block text-sm">
                 Description
               </label>
-              <textarea
-                className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full resize-none rounded-lg border px-3 py-2"
+              <Textarea
+                className="resize-none rounded-lg"
                 disabled={isLoading}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Brief description of this webhook"
@@ -735,8 +736,8 @@ export function WebhookForm({
                           <label className="text-secondary mb-1 block text-xs">
                             Handler Config (JSON)
                           </label>
-                          <textarea
-                            className={`border-input bg-background text-foreground placeholder:text-muted-foreground w-full resize-y rounded-lg border px-3 py-2 font-mono text-sm ${
+                          <Textarea
+                            className={`resize-y rounded-lg font-mono ${
                               errors[`rule_${index}_config`]
                                 ? 'border-red-500'
                                 : ''

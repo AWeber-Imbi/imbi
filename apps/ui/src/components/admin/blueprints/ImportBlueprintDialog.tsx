@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
 import { type DetectedFormat, detectFormat } from '@/lib/import-format'
 import type { BlueprintCreate, BlueprintFilter } from '@/types'
 
@@ -221,8 +222,8 @@ export function ImportBlueprintDialog({
           )}
 
           {/* Input area */}
-          <textarea
-            className={`border-input bg-secondary text-primary placeholder:text-muted-foreground w-full resize-y rounded-md border px-4 py-3 font-mono text-sm leading-relaxed ${error ? 'border-danger' : ''}`}
+          <Textarea
+            className={`bg-secondary text-primary resize-y px-4 py-3 font-mono leading-relaxed ${error ? 'border-danger' : ''}`}
             onChange={(e) => handleInputChange(e.target.value)}
             placeholder={`{
   "name": "AWS Metadata",

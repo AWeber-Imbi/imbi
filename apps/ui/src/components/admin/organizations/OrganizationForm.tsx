@@ -4,6 +4,7 @@ import { AlertCircle, Save, X } from 'lucide-react'
 
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
+import { Textarea } from '@/components/ui/textarea'
 import type { Organization, OrganizationCreate } from '@/types'
 
 import { Button } from '../../ui/button'
@@ -172,8 +173,8 @@ export function OrganizationForm({
               <label className="text-secondary mb-1.5 block text-sm">
                 Description
               </label>
-              <textarea
-                className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full resize-none rounded-lg border px-3 py-2"
+              <Textarea
+                className="resize-none rounded-lg"
                 disabled={isLoading}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Brief description of the organization's purpose"

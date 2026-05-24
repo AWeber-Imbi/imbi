@@ -19,6 +19,7 @@ import {
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Tooltip,
   TooltipContent,
@@ -270,8 +271,8 @@ export function ApplicationSecretsPanel({
                 {FIELD_LABELS[field]}
               </label>
               {field === 'private_key' ? (
-                <textarea
-                  className="border-input bg-background text-foreground w-full rounded-md border px-3 py-2 font-mono text-sm"
+                <Textarea
+                  className="font-mono"
                   onChange={(e) =>
                     setEditValues({ ...editValues, [field]: e.target.value })
                   }

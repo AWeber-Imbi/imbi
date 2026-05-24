@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { slugify } from '@/lib/utils'
@@ -380,8 +381,8 @@ export function ThirdPartyServiceForm({
               <label className="text-secondary mb-1.5 block text-sm">
                 Description
               </label>
-              <textarea
-                className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full resize-none rounded-lg border px-3 py-2"
+              <Textarea
+                className="resize-none rounded-lg"
                 disabled={isLoading}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Brief description of this service and how it is used"
