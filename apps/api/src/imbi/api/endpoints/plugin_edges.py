@@ -6,6 +6,7 @@ generic across anchor types.
 
 import json
 import logging
+import re
 import typing
 
 import fastapi
@@ -15,6 +16,22 @@ from imbi_common.plugins.base import PluginEdgeLabel
 from imbi_common.plugins.registry import list_plugins
 
 LOGGER = logging.getLogger(__name__)
+
+# Cypher label and relationship-type identifiers are interpolated into
+# queries as f-strings, so each must be a simple identifier. A malformed
+# plugin manifest must not be able to break out of the label position
+# into arbitrary Cypher. Validated at the call site as defense-in-depth;
+# the manifest loader should reject these earlier.
+_CYPHER_IDENTIFIER = re.compile(r'^[A-Za-z][A-Za-z0-9_]*$')
+
+
+def _assert_cypher_identifier(value: str, kind: str) -> None:
+    """Reject any value that isn't a bare Cypher identifier."""
+    if not _CYPHER_IDENTIFIER.match(value):
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'Invalid {kind} {value!r}',
+        )
 
 
 class EdgePutBody(pydantic.BaseModel):
@@ -127,9 +144,13 @@ def resolve_edge_for(anchor_label: str, rel_type: str) -> PluginEdgeLabel:
         an anchor whose label is in ``from_labels``.
 
     """
+    _assert_cypher_identifier(anchor_label, 'anchor label')
+    _assert_cypher_identifier(rel_type, 'relationship type')
     for entry in list_plugins():
         for edge in entry.manifest.edge_labels:
             if edge.name == rel_type and anchor_label in edge.from_labels:
+                for target in edge.to_labels:
+                    _assert_cypher_identifier(target, 'target label')
                 return edge
     raise fastapi.HTTPException(
         status_code=404,

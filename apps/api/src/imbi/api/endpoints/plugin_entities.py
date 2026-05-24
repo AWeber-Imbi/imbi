@@ -8,6 +8,7 @@ import functools
 import importlib
 import json
 import logging
+import re
 import types
 import typing
 
@@ -23,6 +24,13 @@ from imbi_api.auth import permissions
 from imbi_api.graph_sql import props_template, set_clause
 
 LOGGER = logging.getLogger(__name__)
+
+# Cypher label identifiers are interpolated into queries as f-strings,
+# so each label must be a simple identifier. A malformed plugin
+# manifest must not be able to break out of the label position into
+# arbitrary Cypher. Validated at the call site as defense-in-depth;
+# the manifest loader should reject these earlier.
+_CYPHER_IDENTIFIER = re.compile(r'^[A-Za-z][A-Za-z0-9_]*$')
 
 plugin_entities_router = fastapi.APIRouter(
     prefix='/admin/plugins/{slug}/entities',
@@ -77,6 +85,19 @@ def _resolve_label(
         ) from exc
     for vlabel in entry.manifest.vertex_labels:
         if vlabel.name == label:
+            if not _CYPHER_IDENTIFIER.match(vlabel.name):
+                LOGGER.error(
+                    'Plugin %r declares invalid vertex label %r',
+                    slug,
+                    vlabel.name,
+                )
+                raise fastapi.HTTPException(
+                    status_code=500,
+                    detail=(
+                        f'Plugin {slug!r} declares invalid vertex label '
+                        f'{vlabel.name!r}'
+                    ),
+                )
             return _import_model(vlabel.model_ref), vlabel.name
     raise fastapi.HTTPException(
         status_code=404,
