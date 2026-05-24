@@ -30,6 +30,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -960,13 +961,12 @@ function ProjectTypesCard({
                         </span>
                       </TableCell>
                       <TableCell className="align-middle">
-                        <input
+                        <Checkbox
                           checked={draft.default}
-                          onChange={(e) =>
-                            updateDraft(idx, { default: e.target.checked })
+                          onCheckedChange={(checked) =>
+                            updateDraft(idx, { default: checked === true })
                           }
                           onClick={(e) => e.stopPropagation()}
-                          type="checkbox"
                         />
                       </TableCell>
                       <TableCell className="align-middle">

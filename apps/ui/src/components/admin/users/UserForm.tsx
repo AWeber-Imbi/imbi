@@ -24,6 +24,7 @@ import { getLocalAuthConfig, getRoles } from '@/api/endpoints'
 import { FormHeader } from '@/components/admin/form-header'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   Dialog,
@@ -497,12 +498,11 @@ export function UserForm({
                     key={org.slug}
                   >
                     <div className="flex min-w-0 items-center gap-3">
-                      <input
+                      <Checkbox
                         checked={checked}
-                        className="border-tertiary size-4 rounded"
                         disabled={isLoading}
-                        onChange={(e) => {
-                          if (e.target.checked) {
+                        onCheckedChange={(value) => {
+                          if (value === true) {
                             const defaultRole = availableRoles[0]?.slug ?? ''
                             setMemberships([
                               ...memberships,
@@ -519,7 +519,6 @@ export function UserForm({
                             )
                           }
                         }}
-                        type="checkbox"
                       />
                       <span className="text-primary truncate text-sm font-medium">
                         {org.name}

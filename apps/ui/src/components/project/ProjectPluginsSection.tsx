@@ -27,6 +27,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -382,11 +383,10 @@ export function ProjectPluginsSection({
               </div>
             )}
             <div className="flex items-center gap-2">
-              <input
+              <Checkbox
                 checked={isDefault}
                 id="proj-is-default"
-                onChange={(e) => setIsDefault(e.target.checked)}
-                type="checkbox"
+                onCheckedChange={(checked) => setIsDefault(checked === true)}
               />
               <Label htmlFor="proj-is-default">
                 Set as default for this tab

@@ -4,6 +4,7 @@ import addFormats from 'ajv-formats'
 import { AlertCircle } from 'lucide-react'
 
 import type { DynamicFieldSchema, DynamicSchema } from '@/api/endpoints'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -133,13 +134,11 @@ export function DynamicFormFields({
         if (field.type === 'boolean') {
           return (
             <div className="flex items-center gap-2" key={key}>
-              <input
+              <Checkbox
                 checked={!!data[key]}
-                className="rounded border-gray-300"
                 disabled={isLoading}
                 id={`dynamic-${key}`}
-                onChange={(e) => onChange(key, e.target.checked)}
-                type="checkbox"
+                onCheckedChange={(checked) => onChange(key, checked === true)}
               />
               <label
                 className="text-secondary text-sm"

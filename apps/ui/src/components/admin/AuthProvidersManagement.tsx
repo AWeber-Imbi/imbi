@@ -25,6 +25,7 @@ import {
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   Dialog,
@@ -671,12 +672,12 @@ function AuthProviderCreateDialog({
             )}
 
             <label className="text-secondary flex w-full items-center gap-2 text-sm">
-              <input
+              <Checkbox
                 checked={enableIntegration}
-                className="border-input size-4 rounded"
                 disabled={isSaving}
-                onChange={(e) => setEnableIntegration(e.target.checked)}
-                type="checkbox"
+                onCheckedChange={(checked) =>
+                  setEnableIntegration(checked === true)
+                }
               />
               Enable Integration
             </label>
@@ -1019,12 +1020,12 @@ function AuthProviderEditDialog({
             )}
 
             <label className="text-secondary flex w-full items-center gap-2 text-sm">
-              <input
+              <Checkbox
                 checked={enableIntegration}
-                className="border-input size-4 rounded"
                 disabled={isSaving}
-                onChange={(e) => setEnableIntegration(e.target.checked)}
-                type="checkbox"
+                onCheckedChange={(checked) =>
+                  setEnableIntegration(checked === true)
+                }
               />
               Enable Integration
             </label>
