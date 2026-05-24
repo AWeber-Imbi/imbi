@@ -95,8 +95,12 @@ async def create_blueprint(
     ],
 ) -> models.Blueprint:
     """Create a new blueprint node in the graph database."""
+    if blueprint.kind == _RELATIONSHIP:
+        match_on = ['slug', 'kind']
+    else:
+        match_on = ['slug', 'type']
     try:
-        await db.merge(blueprint)
+        await db.merge(blueprint, match_on=match_on)
     except psycopg.errors.UniqueViolation as e:
         raise fastapi.HTTPException(
             status_code=409,

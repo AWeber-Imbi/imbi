@@ -107,6 +107,20 @@ class TagEndpointsTestCase(unittest.TestCase):
         _, args, _ = self.mock_db.execute.mock_calls[0]
         self.assertEqual(args[1]['slug'], 'post-mortem')
 
+    def test_create_rejects_empty_name(self) -> None:
+        response = self.client.post(
+            '/organizations/engineering/tags/',
+            json={'name': ''},
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_create_rejects_empty_slug(self) -> None:
+        response = self.client.post(
+            '/organizations/engineering/tags/',
+            json={'name': 'Runbook', 'slug': ''},
+        )
+        self.assertEqual(response.status_code, 422)
+
     def test_create_slug_conflict(self) -> None:
         self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation()
         with mock.patch(
@@ -269,6 +283,34 @@ class TagEndpointsTestCase(unittest.TestCase):
             response = self.client.patch(
                 '/organizations/engineering/tags/runbook',
                 json=[{'op': 'replace', 'path': '/name', 'value': 123}],
+            )
+        self.assertEqual(response.status_code, 400)
+
+    def test_patch_rejects_empty_name(self) -> None:
+        """Patching /name to an empty string yields a 400."""
+        self.mock_db.execute.return_value = [
+            {'t': self._tag_data(), 'o': self._org_data()}
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/tags/runbook',
+                json=[{'op': 'replace', 'path': '/name', 'value': ''}],
+            )
+        self.assertEqual(response.status_code, 400)
+
+    def test_patch_rejects_empty_slug(self) -> None:
+        """Patching /slug to an empty string yields a 400."""
+        self.mock_db.execute.return_value = [
+            {'t': self._tag_data(), 'o': self._org_data()}
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/tags/runbook',
+                json=[{'op': 'replace', 'path': '/slug', 'value': ''}],
             )
         self.assertEqual(response.status_code, 400)
 

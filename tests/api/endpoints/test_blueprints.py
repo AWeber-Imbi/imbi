@@ -99,6 +99,37 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
         self.assertEqual(data['type'], 'Environment')
         self.assertEqual(data['slug'], 'new-blueprint')
         self.mock_db.merge.assert_called_once()
+        self.assertEqual(
+            self.mock_db.merge.call_args.kwargs['match_on'],
+            ['slug', 'type'],
+        )
+
+    def test_create_relationship_blueprint_uses_kind_match(self) -> None:
+        """Relationship blueprints must merge on ``slug`` + ``kind``."""
+        response = self.client.post(
+            '/blueprints/',
+            json={
+                'name': 'Rel Blueprint',
+                'kind': 'relationship',
+                'source': 'Project',
+                'target': 'Environment',
+                'edge': 'DEPLOYED_IN',
+                'json_schema': {
+                    'type': 'object',
+                    'properties': {},
+                },
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data['kind'], 'relationship')
+        self.assertIsNone(data['type'])
+        self.mock_db.merge.assert_called_once()
+        self.assertEqual(
+            self.mock_db.merge.call_args.kwargs['match_on'],
+            ['slug', 'kind'],
+        )
 
     def test_create_blueprint_duplicate(self) -> None:
         """Test creating duplicate blueprint returns 409."""
