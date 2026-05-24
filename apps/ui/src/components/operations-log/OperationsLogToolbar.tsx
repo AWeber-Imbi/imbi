@@ -25,6 +25,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from '@/components/ui/segmented-control'
 import { cn } from '@/lib/utils'
 import { sortEnvironments } from '@/lib/utils'
 import {
@@ -335,36 +339,19 @@ export function OperationsLogToolbar({
         </DropdownMenu>
       )}
 
-      <div
-        aria-label="View"
-        className="border-tertiary bg-secondary ml-auto inline-flex h-9 items-center rounded-md border p-1"
-        role="group"
+      <SegmentedControl
+        ariaLabel="View"
+        className="ml-auto h-9 p-1"
+        onValueChange={(v) => onView(v as OperationsLogView)}
+        value={view}
       >
-        <button
-          className={cn(
-            'inline-flex h-full items-center gap-1.5 rounded px-3 text-xs font-medium transition-colors',
-            view === 'stream'
-              ? 'bg-primary text-primary shadow-sm'
-              : 'text-secondary hover:text-primary',
-          )}
-          onClick={() => onView('stream')}
-          type="button"
-        >
+        <SegmentedControlItem className="h-full px-3" value="stream">
           <List className="size-3.5" /> Stream
-        </button>
-        <button
-          className={cn(
-            'inline-flex h-full items-center gap-1.5 rounded px-3 text-xs font-medium transition-colors',
-            view === 'grouped'
-              ? 'bg-primary text-primary shadow-sm'
-              : 'text-secondary hover:text-primary',
-          )}
-          onClick={() => onView('grouped')}
-          type="button"
-        >
+        </SegmentedControlItem>
+        <SegmentedControlItem className="h-full px-3" value="grouped">
           <GitBranch className="size-3.5" /> Releases
-        </button>
-      </div>
+        </SegmentedControlItem>
+      </SegmentedControl>
     </div>
   )
 }

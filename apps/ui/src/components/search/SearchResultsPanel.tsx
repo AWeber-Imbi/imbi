@@ -9,6 +9,8 @@ import {
   getConfidenceLabel,
   type SearchResult,
 } from '@/api/search'
+import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible'
+import { Slider } from '@/components/ui/slider'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import {
@@ -309,8 +311,8 @@ export function SearchResultsPanel({
       </div>
 
       {/* Refine accordion */}
-      {refineOpen && (
-        <div className="border-border bg-muted/40 border-b px-4 py-3">
+      <Collapsible open={refineOpen}>
+        <CollapsibleContent className="border-border bg-muted/40 border-b px-4 py-3">
           <div className="mb-3 flex items-baseline gap-2">
             <span className="text-foreground text-xs font-medium">
               Refine search
@@ -325,14 +327,12 @@ export function SearchResultsPanel({
               <label className="text-muted-foreground mb-1.5 block text-xs">
                 Similarity threshold
               </label>
-              <input
-                className="w-full accent-amber-500"
+              <Slider
                 max={1.0}
                 min={0.1}
-                onChange={(e) => onThresholdChange(Number(e.target.value))}
+                onValueChange={(v) => onThresholdChange(v[0])}
                 step={0.05}
-                type="range"
-                value={threshold}
+                value={[threshold]}
               />
               <span className="text-muted-foreground mt-1 block font-mono text-xs">
                 {threshold.toFixed(2)} cosine
@@ -342,22 +342,20 @@ export function SearchResultsPanel({
               <label className="text-muted-foreground mb-1.5 block text-xs">
                 Max results
               </label>
-              <input
-                className="w-full accent-amber-500"
+              <Slider
                 max={100}
                 min={5}
-                onChange={(e) => onLimitChange(Number(e.target.value))}
+                onValueChange={(v) => onLimitChange(v[0])}
                 step={5}
-                type="range"
-                value={limit}
+                value={[limit]}
               />
               <span className="text-muted-foreground mt-1 block font-mono text-xs">
                 {limit}
               </span>
             </div>
           </div>
-        </div>
-      )}
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Filter pills */}
       <div className="border-border flex items-center gap-1 overflow-x-auto border-b px-3 py-2">

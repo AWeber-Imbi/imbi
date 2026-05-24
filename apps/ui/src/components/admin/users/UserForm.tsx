@@ -35,6 +35,10 @@ import {
 } from '@/components/ui/dialog'
 import { FormField } from '@/components/ui/form-field'
 import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from '@/components/ui/segmented-control'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -406,44 +410,34 @@ export function UserForm({
         >
           <div>
             <div className="text-secondary mb-1.5 text-sm">Account type</div>
-            <div
-              aria-label="Account type"
-              className="border-tertiary bg-secondary inline-flex gap-1 rounded-md border p-1"
-              role="radiogroup"
+            <SegmentedControl
+              ariaLabel="Account type"
+              onValueChange={(v) => setIsAdmin(v === 'admin')}
+              value={isAdmin ? 'admin' : 'user'}
             >
-              <button
-                aria-checked={!isAdmin}
+              <SegmentedControlItem
                 className={cn(
-                  'inline-flex h-8 items-center gap-2 rounded px-3 text-sm font-medium transition-colors',
-                  !isAdmin
-                    ? 'bg-background text-primary shadow-sm'
-                    : 'text-secondary hover:text-primary',
+                  'h-8 px-3 text-sm',
+                  !isAdmin && 'bg-background text-primary',
                 )}
                 disabled={isLoading}
-                onClick={() => setIsAdmin(false)}
-                role="radio"
-                type="button"
+                value="user"
               >
                 <User className="size-3.5" />
                 Regular user
-              </button>
-              <button
-                aria-checked={isAdmin}
+              </SegmentedControlItem>
+              <SegmentedControlItem
                 className={cn(
-                  'inline-flex h-8 items-center gap-2 rounded px-3 text-sm font-medium transition-colors',
-                  isAdmin
-                    ? 'bg-background text-amber-700 shadow-sm dark:text-amber-400'
-                    : 'text-secondary hover:text-primary',
+                  'h-8 px-3 text-sm',
+                  isAdmin && 'bg-background text-amber-700 dark:text-amber-400',
                 )}
                 disabled={isLoading}
-                onClick={() => setIsAdmin(true)}
-                role="radio"
-                type="button"
+                value="admin"
               >
                 <Shield className="size-3.5" />
                 Administrator
-              </button>
-            </div>
+              </SegmentedControlItem>
+            </SegmentedControl>
             {isAdmin ? (
               <p className="mt-2 flex items-start gap-1.5 text-sm text-amber-700 dark:text-amber-400">
                 <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
