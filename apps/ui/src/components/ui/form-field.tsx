@@ -1,5 +1,7 @@
 import * as React from 'react'
 
+import { Label } from '@/components/ui/label'
+
 // Label + input + error chrome shared by admin *Form.tsx components.
 // Layout (grid-span etc.) stays with the caller; this only wraps the
 // label, the input slot, optional description, and the error message.
@@ -24,10 +26,10 @@ export function FormField({
 }: FormFieldProps) {
   return (
     <div>
-      <label className="text-secondary mb-1.5 block text-sm" htmlFor={htmlFor}>
+      <Label className="text-secondary mb-1.5 block text-sm" htmlFor={htmlFor}>
         {label}
         {required && <span className="text-red-500"> *</span>}
-      </label>
+      </Label>
       {children}
       {description && (
         <p className="text-secondary mt-1 text-sm">{description}</p>
