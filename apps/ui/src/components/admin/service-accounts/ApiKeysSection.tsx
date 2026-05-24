@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import {
   Tooltip,
   TooltipContent,
@@ -246,9 +247,9 @@ export function ApiKeysSection({
               <label className="text-secondary mb-1.5 block text-sm">
                 Key name
               </label>
-              <input
+              <Input
                 autoFocus
-                className="border-input bg-background text-foreground placeholder:text-muted-foreground focus:ring-action w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
+                className="rounded-lg"
                 onChange={(e) => setNewKeyName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {

@@ -15,6 +15,7 @@ import {
 } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { LoadingState } from '@/components/ui/loading-state'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { cn, sortEnvironments } from '@/lib/utils'
@@ -415,9 +416,9 @@ function BranchPicker({
   return (
     <div className="grid grid-cols-2 gap-3">
       <div className="flex flex-col gap-2">
-        <input
+        <Input
           aria-label="Filter branches"
-          className="border-secondary placeholder:text-tertiary focus:border-action rounded-md border bg-transparent px-2 py-1 text-sm focus:outline-none"
+          className="h-8"
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder="Filter branches…"
           type="text"
