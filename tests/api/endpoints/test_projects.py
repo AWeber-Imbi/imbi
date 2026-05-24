@@ -739,6 +739,53 @@ class ProjectEndpointsTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_patch_project_team_and_type_use_merge(self) -> None:
+        """OWNED_BY and TYPE edges use MERGE so retries cannot duplicate."""
+        existing = self._project_data()
+        updated = self._project_data(name='Renamed API')
+
+        self.mock_db.execute.side_effect = [
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+            [{'slug': 'backend'}],
+            [{'pt_slug': 'worker', 'found': True}],
+            [{'project': updated, 'outbound_count': 0, 'inbound_count': 0}],
+        ]
+
+        with (
+            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            mock_get_model.return_value = models.Project
+            response = self.client.patch(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/team_slug',
+                        'value': 'backend',
+                    },
+                    {
+                        'op': 'replace',
+                        'path': '/project_type_slugs',
+                        'value': ['worker'],
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+
+        update_query = next(
+            call.args[0]
+            for call in self.mock_db.execute.call_args_list
+            if 'old_own:OWNED_BY' in call.args[0]
+        )
+        self.assertIn('MERGE (p)-[:OWNED_BY]->(new_t)', update_query)
+        self.assertNotIn('CREATE (p)-[:OWNED_BY]', update_query)
+        self.assertIn('MERGE (p)-[:TYPE]->(new_pt)', update_query)
+        self.assertNotIn('CREATE (p)-[:TYPE]', update_query)
+
     def test_patch_project_invalid_team(self) -> None:
         """Patch with a non-existent team slug returns 422."""
         existing = self._project_data()

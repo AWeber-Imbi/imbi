@@ -1690,15 +1690,21 @@ def _build_update_clauses(
     """
     rel_clauses: str = ''
     if data.team_slug:
+        # MERGE (not CREATE) so the retry loop in
+        # _execute_project_update cannot accumulate duplicate edges
+        # if AGE rolls back the SET phase but not the edge write.
         rel_clauses += """
     WITH p, o
     MATCH (new_t:Team {{slug: {new_team_slug}}})
           -[:BELONGS_TO]->(o)
     OPTIONAL MATCH (p)-[old_own:OWNED_BY]->(:Team)
     DELETE old_own
-    CREATE (p)-[:OWNED_BY]->(new_t)
+    MERGE (p)-[:OWNED_BY]->(new_t)
     """
     if data.project_type_slugs is not None:
+        # MERGE (not CREATE) so the retry loop in
+        # _execute_project_update cannot accumulate duplicate edges
+        # if AGE rolls back the SET phase but not the edge write.
         rel_clauses += """
     WITH DISTINCT p, o
     OPTIONAL MATCH (p)-[old_type:TYPE]->(:ProjectType)
@@ -1707,7 +1713,7 @@ def _build_update_clauses(
     UNWIND {new_type_slugs} AS new_pt_slug
     MATCH (new_pt:ProjectType {{slug: new_pt_slug}})
           -[:BELONGS_TO]->(o)
-    CREATE (p)-[:TYPE]->(new_pt)
+    MERGE (p)-[:TYPE]->(new_pt)
     """
     new_env_entries = [
         {'slug': s, **ep} for s, ep in (data.environments or {}).items()
