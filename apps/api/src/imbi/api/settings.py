@@ -99,10 +99,6 @@ class Auth(settings.Auth):  # type: ignore[misc]
     password_require_digit: bool = True
     password_require_special: bool = True
 
-    # Session Configuration
-    session_timeout_seconds: int = 86400  # 24 hours
-    max_concurrent_sessions: int = 5
-
     # API Key Configuration
     api_key_max_lifetime_days: int = 365
 

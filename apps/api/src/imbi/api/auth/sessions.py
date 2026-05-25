@@ -1,102 +1,20 @@
 """Session management and enforcement (Phase 5).
 
-This module provides functions for managing user sessions, enforcing
-concurrent session limits, and tracking session activity.
+The original Phase 5 design wrote ``Session`` nodes alongside JWTs and
+gated them with a concurrent-session limit + a per-request activity
+stamp. The shipped auth stack tracks session state on
+``TokenMetadata`` instead, so the original limit/activity helpers
+were never called and have been removed (see code review H3). Only
+the periodic cleanup helper remains for any leftover rows from earlier
+schemas.
 """
 
 import datetime
 import logging
-import typing
 
 from imbi_common import graph
 
-from imbi_api import settings
-
 LOGGER = logging.getLogger(__name__)
-
-
-async def enforce_session_limit(
-    db: graph.Graph,
-    email: str,
-    auth_settings: settings.Auth,
-) -> None:
-    """Enforce maximum concurrent sessions by removing oldest.
-
-    When a user has more than the maximum allowed concurrent sessions,
-    this function removes the oldest sessions (by last_activity
-    timestamp) to bring the count within the limit.
-
-    Args:
-        db: Graph database connection.
-        email: Email of the user to enforce session limit for.
-        auth_settings: Auth settings containing
-            max_concurrent_sessions.
-
-    """
-    query = (
-        'MATCH (u:User {{email: {email}}})'
-        '<-[:SESSION_FOR]-(s:Session) '
-        'WITH s ORDER BY s.last_activity DESC SKIP {limit} '
-        'DETACH DELETE s '
-        'RETURN count(s) AS removed'
-    )
-    records = await db.execute(
-        query,
-        {
-            'email': email,
-            'limit': auth_settings.max_concurrent_sessions,
-        },
-        columns=['removed'],
-    )
-    raw = graph.parse_agtype(records[0].get('removed') if records else None)
-    removed = raw if isinstance(raw, int) else 0
-
-    if removed > 0:
-        LOGGER.info(
-            'Removed %d old sessions for user %s',
-            removed,
-            email,
-        )
-
-
-async def update_session_activity(
-    db: graph.Graph,
-    session_id: str,
-    auth_settings: settings.Auth,
-) -> None:
-    """Update last activity timestamp for session.
-
-    Skips the write atomically when the existing ``last_activity`` is
-    newer than ``auth_settings.last_used_throttle_seconds`` ago.
-    Authentication runs on every request, so without throttling this
-    would book a graph write per request even though we only need
-    minute-scale accuracy.
-
-    Args:
-        db: Graph database connection.
-        session_id: Session ID to update.
-        auth_settings: Auth settings (reads
-            ``last_used_throttle_seconds``).
-
-    """
-    now = datetime.datetime.now(datetime.UTC)
-    threshold = now - datetime.timedelta(
-        seconds=max(0, auth_settings.last_used_throttle_seconds)
-    )
-    query: typing.LiteralString = (
-        'MATCH (s:Session {{session_id: {session_id}}}) '
-        'WHERE s.last_activity IS NULL OR s.last_activity < {threshold} '
-        'SET s.last_activity = {now} RETURN s'
-    )
-    await db.execute(
-        query,
-        {
-            'session_id': session_id,
-            'now': now.isoformat(),
-            'threshold': threshold.isoformat(),
-        },
-        columns=['s'],
-    )
 
 
 async def delete_expired_sessions(db: graph.Graph) -> int:
