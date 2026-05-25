@@ -94,8 +94,8 @@ class AuthProvidersEndpointTestCase(unittest.TestCase):
         settings._auth_settings = None
         self.test_app = app.create_app()
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
         self.client = testclient.TestClient(self.test_app)
         login_providers.invalidate_cache()
@@ -198,8 +198,8 @@ class OAuthFlowTestCase(unittest.TestCase):
         self.test_app = app.create_app()
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -332,8 +332,8 @@ class LoginPasswordRehashTestCase(unittest.TestCase):
         self.test_app = app.create_app()
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -411,8 +411,8 @@ class LoginMFATestCase(unittest.TestCase):
         self.test_app = app.create_app()
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -654,8 +654,40 @@ class LoginMFATestCase(unittest.TestCase):
             response.json()['detail'],
         )
 
+    def test_login_unknown_user_still_runs_argon2(self) -> None:
+        """H4: verify_password runs against the dummy hash on unknown email.
+
+        Without this, response time leaks user existence.
+        """
+        self.mock_db.match.return_value = []
+
+        with mock.patch(
+            'imbi_api.auth.password.verify_password',
+            return_value=False,
+        ) as mock_verify:
+            response = self.client.post(
+                '/auth/login',
+                json={
+                    'email': 'unknown@example.com',
+                    'password': 'whatever',
+                },
+            )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(mock_verify.call_count, 1)
+        # The supplied password is verified against *some* hash (the
+        # module-level dummy) so timing matches the real-user path.
+        called_password, called_hash = mock_verify.call_args.args
+        self.assertEqual(called_password, 'whatever')
+        self.assertTrue(called_hash.startswith('$argon2'))
+
     def test_login_oauth_only_user(self) -> None:
-        """Test login for OAuth-only user (no password)."""
+        """Test login for OAuth-only user (no password).
+
+        Returns a generic 401 instead of leaking that the user exists
+        but has no password configured (H4 — login timing/user-existence
+        oracle defense).
+        """
         from imbi_api import models
 
         oauth_user = models.User(
@@ -678,7 +710,7 @@ class LoginMFATestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 401)
         self.assertIn(
-            'Password authentication not available',
+            'Invalid credentials',
             response.json()['detail'],
         )
 
@@ -721,8 +753,8 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
         self.test_app = app.create_app()
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -1352,8 +1384,8 @@ class TokenRefreshTestCase(unittest.TestCase):
         self.test_app = app.create_app()
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -1597,8 +1629,8 @@ class LogoutTestCase(unittest.TestCase):
         self.test_app = app.create_app()
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -1765,8 +1797,8 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
         self.test_app = app.create_app()
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -1795,7 +1827,12 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
     def test_service_account_blocked_from_password_login(
         self,
     ) -> None:
-        """POST /auth/login with SA returns 403."""
+        """POST /auth/login with a service account returns generic 401.
+
+        After H4 we collapse every login failure mode to a single 401
+        with constant timing so an attacker can't distinguish service
+        accounts (or any other category) from unknown emails.
+        """
         self.mock_db.match.return_value = [self.sa_user]
 
         response = self.client.post(
@@ -1806,9 +1843,9 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
             },
         )
 
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 401)
         self.assertIn(
-            'Service accounts cannot use password login',
+            'Invalid credentials',
             response.json()['detail'],
         )
 
@@ -2129,8 +2166,8 @@ class IdentityPluginLoginFlowTestCase(unittest.TestCase):
         settings._auth_settings = None
         self.test_app = app.create_app()
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
         self.client = testclient.TestClient(self.test_app)
 

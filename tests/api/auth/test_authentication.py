@@ -149,8 +149,8 @@ class LoginEndpointTestCase(unittest.TestCase):
         self.client = fastapi.testclient.TestClient(self.application)
         self.mock_db = mock.AsyncMock()
         # Override graph dependency
-        self.application.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.application.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
         # Reset rate limiter to avoid 429 errors across tests
         rate_limit.limiter.reset()
@@ -257,7 +257,11 @@ class LoginEndpointTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
 
     def test_login_no_password_hash(self) -> None:
-        """Test login for user without password authentication."""
+        """Test login for user without password authentication.
+
+        Returns a generic 401 so the response doesn't distinguish
+        OAuth-only accounts from other failure modes (H4).
+        """
         oauth_user = models.User(
             email='oauth@example.com',
             display_name='OAuth User',
@@ -279,7 +283,7 @@ class LoginEndpointTestCase(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 401)
-        self.assertIn('not available', response.json()['detail'])
+        self.assertIn('Invalid credentials', response.json()['detail'])
 
 
 class TokenRefreshEndpointTestCase(unittest.TestCase):
@@ -290,8 +294,8 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
         self.application = app.create_app()
         self.client = fastapi.testclient.TestClient(self.application)
         self.mock_db = mock.AsyncMock()
-        self.application.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.application.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
         # Reset rate limiter to avoid 429 errors across tests
         rate_limit.limiter.reset()
@@ -432,8 +436,8 @@ class LogoutEndpointTestCase(unittest.TestCase):
         self.application = app.create_app()
         self.client = fastapi.testclient.TestClient(self.application)
         self.mock_db = mock.AsyncMock()
-        self.application.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.application.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
         # Reset rate limiter to avoid 429 errors across tests
         rate_limit.limiter.reset()

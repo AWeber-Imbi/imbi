@@ -1,5 +1,6 @@
 """User management endpoints."""
 
+import asyncio
 import logging
 import typing
 from urllib import parse as urlparse
@@ -200,7 +201,9 @@ async def create_user(
     # Hash password if provided
     password_hash = None
     if user_create.password:
-        password_hash = password.hash_password(user_create.password)
+        password_hash = await asyncio.to_thread(
+            password.hash_password, user_create.password
+        )
 
     # Prevent non-admins from creating admin users
     if user_create.is_admin and not auth.require_user.is_admin:
@@ -744,8 +747,10 @@ async def change_password(
                 status_code=400,
                 detail='Current password is required',
             )
-        if not user.password_hash or not password.verify_password(
-            password_change.current_password, user.password_hash
+        if not user.password_hash or not await asyncio.to_thread(
+            password.verify_password,
+            password_change.current_password,
+            user.password_hash,
         ):
             raise fastapi.HTTPException(
                 status_code=401,
@@ -753,8 +758,8 @@ async def change_password(
             )
 
     # Update password
-    user.password_hash = password.hash_password(
-        password_change.new_password,
+    user.password_hash = await asyncio.to_thread(
+        password.hash_password, password_change.new_password
     )
     await db.merge(user, match_on=['email'])
 

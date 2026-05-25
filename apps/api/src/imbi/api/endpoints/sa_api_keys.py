@@ -5,6 +5,7 @@ accounts. It mirrors the user API key endpoints but associates keys
 with a ServiceAccount node instead of a User node.
 """
 
+import asyncio
 import datetime
 import logging
 import secrets
@@ -103,7 +104,7 @@ async def create_sa_api_key(
     # Generate key: format ik_<16chars>_<32chars>
     key_id = f'ik_{secrets.token_hex(16)}'
     key_secret = secrets.token_urlsafe(32)
-    key_hash = password.hash_password(key_secret)
+    key_hash = await asyncio.to_thread(password.hash_password, key_secret)
 
     # Validate expiration
     expires_at = None
@@ -342,7 +343,7 @@ async def rotate_sa_api_key(
 
     # Generate new secret and update atomically
     new_secret = secrets.token_urlsafe(32)
-    new_key_hash = password.hash_password(new_secret)
+    new_key_hash = await asyncio.to_thread(password.hash_password, new_secret)
     now_str = datetime.datetime.now(datetime.UTC).isoformat()
 
     update_query: typing.LiteralString = """

@@ -1,5 +1,6 @@
 """Permission checking and authorization dependencies."""
 
+import asyncio
 import collections.abc
 import datetime
 import logging
@@ -429,7 +430,9 @@ async def authenticate_api_key(
             )
 
     # Verify key secret (hashed)
-    if not password.verify_password(key_secret, api_key_data['key_hash']):
+    if not await asyncio.to_thread(
+        password.verify_password, key_secret, api_key_data['key_hash']
+    ):
         raise fastapi.HTTPException(
             status_code=401, detail='Invalid or revoked API key'
         )

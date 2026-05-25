@@ -5,6 +5,7 @@ that enable service accounts to authenticate using the client
 credentials grant flow.
 """
 
+import asyncio
 import datetime
 import logging
 import secrets
@@ -102,7 +103,9 @@ async def create_client_credential(
     # Generate client_id and secret
     client_id = f'cc_{secrets.token_urlsafe(16)}'
     client_secret = secrets.token_urlsafe(32)
-    secret_hash = password.hash_password(client_secret)
+    secret_hash = await asyncio.to_thread(
+        password.hash_password, client_secret
+    )
 
     # Validate expiration
     expires_at = None
@@ -351,7 +354,7 @@ async def rotate_client_credential(
 
     # Generate new secret and update atomically with ownership
     new_secret = secrets.token_urlsafe(32)
-    new_hash = password.hash_password(new_secret)
+    new_hash = await asyncio.to_thread(password.hash_password, new_secret)
     now_str = datetime.datetime.now(datetime.UTC).isoformat()
 
     update_query: typing.LiteralString = """

@@ -5,6 +5,7 @@ apps like Google Authenticator, Authy, 1Password, etc. Includes backup codes
 for account recovery.
 """
 
+import asyncio
 import base64
 import datetime
 import io
@@ -161,9 +162,12 @@ async def setup_mfa(
 
     # Generate 10 backup codes (8-character hex strings)
     backup_codes = [secrets.token_hex(4) for _ in range(10)]
-    hashed_backup_codes = [
-        password.hash_password(code) for code in backup_codes
-    ]
+    hashed_backup_codes = await asyncio.gather(
+        *(
+            asyncio.to_thread(password.hash_password, code)
+            for code in backup_codes
+        )
+    )
 
     # First, delete any existing TOTP secret
     delete_query: typing.LiteralString = """
@@ -280,7 +284,9 @@ async def verify_and_enable_mfa(
     else:
         # Try backup codes
         for backup_hash in backup_codes:
-            if password.verify_password(verify_request.code, backup_hash):
+            if await asyncio.to_thread(
+                password.verify_password, verify_request.code, backup_hash
+            ):
                 is_valid = True
                 used_backup_code = True
                 # Remove used backup code
@@ -371,7 +377,8 @@ async def disable_mfa(
                 status_code=401,
                 detail='Password required to disable MFA',
             )
-        if not password.verify_password(
+        if not await asyncio.to_thread(
+            password.verify_password,
             current_password,
             auth.require_user.password_hash,
         ):
@@ -433,7 +440,9 @@ async def disable_mfa(
             # Try backup codes
             backup_codes = totp_data.get('backup_codes', [])
             for backup_hash in backup_codes:
-                if password.verify_password(mfa_code, backup_hash):
+                if await asyncio.to_thread(
+                    password.verify_password, mfa_code, backup_hash
+                ):
                     is_valid = True
                     break
 

@@ -1,8 +1,10 @@
 """Authentication endpoints for login, token refresh, and logout."""
 
+import asyncio
 import datetime
 import json
 import logging
+import secrets
 import typing
 from urllib import parse as urlparse
 
@@ -32,6 +34,12 @@ from imbi_api.middleware import rate_limit
 from imbi_api.scoring import OptionalValkeyClient
 
 LOGGER = logging.getLogger(__name__)
+
+# Pre-computed dummy Argon2 hash used to keep login timing constant when
+# the supplied email does not match an authenticable user. Without this,
+# the existence of a user (vs. service-account, OAuth-only, or unknown
+# email) could be inferred from the response time.
+_DUMMY_PASSWORD_HASH = password_auth.hash_password(secrets.token_hex(32))
 
 auth_router = fastapi.APIRouter(prefix='/auth', tags=['Authentication'])
 
@@ -162,8 +170,10 @@ async def token(
             )
 
     # Verify secret
-    if not password_auth.verify_password(
-        client_secret, cred_data['client_secret_hash']
+    if not await asyncio.to_thread(
+        password_auth.verify_password,
+        client_secret,
+        cred_data['client_secret_hash'],
     ):
         raise fastapi.HTTPException(
             status_code=401,
@@ -274,49 +284,40 @@ async def login(
     results = await db.match(models.User, {'email': email})
     user = results[0] if results else None
 
-    if not user or not user.is_active:
-        LOGGER.warning(
-            'Login failed for email %s: user not found or inactive',
-            email,
-        )
+    # Always run Argon2 verification — against the real hash if the user
+    # is eligible for password login, otherwise against a fixed dummy
+    # hash. This collapses every failure mode (unknown email, inactive,
+    # service-account, OAuth-only, wrong password) to the same generic
+    # 401 with constant timing, eliminating the user-enumeration oracle.
+    eligible = bool(
+        user
+        and user.is_active
+        and not user.is_service_account
+        and user.password_hash
+    )
+    hash_to_check = (
+        user.password_hash
+        if eligible and user is not None and user.password_hash
+        else _DUMMY_PASSWORD_HASH
+    )
+    password_valid = await asyncio.to_thread(
+        password_auth.verify_password, password, hash_to_check
+    )
+
+    if not eligible or not password_valid or user is None:
+        LOGGER.warning('Login failed for email %s', email)
         raise fastapi.HTTPException(
             status_code=401,
             detail='Invalid credentials',
         )
 
-    if user.is_service_account:
-        LOGGER.warning(
-            'Login failed for email %s: service accounts '
-            'cannot use password login',
-            email,
-        )
-        raise fastapi.HTTPException(
-            status_code=403,
-            detail='Service accounts cannot use password login',
-        )
-
-    # Check if user has password authentication enabled
-    if not user.password_hash:
-        LOGGER.warning(
-            'Login failed for email %s: password authentication not enabled',
-            email,
-        )
-        raise fastapi.HTTPException(
-            status_code=401,
-            detail='Password authentication not available for this account',
-        )
-
-    # Verify password
-    if not password_auth.verify_password(password, user.password_hash):
-        LOGGER.warning('Login failed for email %s: invalid password', email)
-        raise fastapi.HTTPException(
-            status_code=401,
-            detail='Invalid credentials',
-        )
+    user_hash = typing.cast(str, user.password_hash)
 
     # Check if password needs rehashing
-    if password_auth.needs_rehash(user.password_hash):
-        user.password_hash = password_auth.hash_password(password)
+    if await asyncio.to_thread(password_auth.needs_rehash, user_hash):
+        user.password_hash = await asyncio.to_thread(
+            password_auth.hash_password, password
+        )
         await db.merge(user, match_on=['email'])
         LOGGER.info('Rehashed password for user %s', user.email)
 
@@ -388,7 +389,9 @@ async def login(
                 valid_backup = False
 
                 for i, hashed_code in enumerate(backup_codes):
-                    if password_auth.verify_password(mfa_code, hashed_code):
+                    if await asyncio.to_thread(
+                        password_auth.verify_password, mfa_code, hashed_code
+                    ):
                         # Remove used backup code
                         backup_codes.pop(i)
                         update_q2: typing.LiteralString = """
