@@ -1,8 +1,22 @@
-"""Runtime plugin installation via uv pip."""
+"""Runtime plugin installation via uv pip.
+
+Plugin installation invokes ``uv pip install`` against a package name
+supplied by the caller. To keep that surface narrow we:
+
+* allow only package names matching ``^imbi-plugin-[a-z0-9_-]+$`` — no
+  general PyPI specifiers, no ``pkg --index-url=…`` injection;
+* require the version string (when provided) to match a normal PEP-440
+  release shape so it cannot smuggle arguments through the spec;
+* pin the index URL via ``IMBI_PLUGINS_INDEX_URL`` (defaults to PyPI)
+  rather than inheriting whatever the host environment configured;
+* pass ``--no-deps`` so installation can never pull transitive
+  packages that aren't themselves allowlisted.
+"""
 
 import asyncio
 import logging
 import os
+import re
 
 from imbi_common.plugins.registry import (
     LoadResult,
@@ -15,10 +29,41 @@ _INSTALL_TIMEOUT = int(os.environ.get('IMBI_PLUGINS_INSTALL_TIMEOUT', '120'))
 _INSTALL_ENABLED = (
     os.environ.get('IMBI_PLUGINS_INSTALL_ENABLED', 'true').lower() != 'false'
 )
+_INDEX_URL = os.environ.get(
+    'IMBI_PLUGINS_INDEX_URL',
+    'https://pypi.org/simple',
+)
+
+_PACKAGE_NAME = re.compile(r'^imbi-plugin-[a-z0-9_-]+$')
+# Lenient PEP 440 release-segment match — `1`, `1.2`, `1.2.3`,
+# `1.2.3.post4`, `1.2.3a1`, `1.2.3rc2`, `1.2.3+local.tag`. Rejects
+# whitespace and shell metacharacters that could change the meaning
+# of the resulting spec passed to uv.
+_VERSION = re.compile(r'^[A-Za-z0-9.+!_-]+$')
 
 
 class InstallError(Exception):
     """Raised when uv pip install fails."""
+
+
+def _validate_name(name: str) -> str:
+    if not _PACKAGE_NAME.match(name):
+        raise InstallError(
+            f'Refusing to install package {name!r}: not in the '
+            "'imbi-plugin-*' allowlist"
+        )
+    return name
+
+
+def _validate_version(version: str | None) -> str | None:
+    if version is None:
+        return None
+    if not _VERSION.match(version):
+        raise InstallError(
+            f'Refusing to install with version {version!r}: '
+            'must match PEP 440 release shape'
+        )
+    return version
 
 
 async def install_package(name: str, version: str | None = None) -> LoadResult:
@@ -28,11 +73,16 @@ async def install_package(name: str, version: str | None = None) -> LoadResult:
             'Runtime plugin installation is disabled '
             '(IMBI_PLUGINS_INSTALL_ENABLED=false)'
         )
+    name = _validate_name(name)
+    version = _validate_version(version)
     spec = f'{name}=={version}' if version else name
     proc = await asyncio.create_subprocess_exec(
         'uv',
         'pip',
         'install',
+        '--no-deps',
+        '--index-url',
+        _INDEX_URL,
         spec,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -61,6 +111,7 @@ async def uninstall_package(name: str) -> LoadResult:
     """Uninstall a plugin package at runtime."""
     if not _INSTALL_ENABLED:
         raise InstallError('Runtime plugin installation is disabled')
+    name = _validate_name(name)
     proc = await asyncio.create_subprocess_exec(
         'uv',
         'pip',
