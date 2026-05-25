@@ -352,7 +352,6 @@ async def get_user_contributions(
     Release, Upload, Conversation) into one daily map keyed by the
     requested ``tz``.
     """
-    email = urllib.parse.unquote(email)
     await _ensure_user_exists(db, email)
     zone = _resolve_tz(tz)
     start, end = _resolve_window(since, until)
@@ -513,7 +512,6 @@ async def get_user_stats(
 ) -> StatsResponse:
     """Return summary deployment / project tiles for the profile page."""
     _resolve_tz(tz)  # validate even though stats does not bucket by tz
-    email = urllib.parse.unquote(email)
     await _ensure_user_exists(db, email)
     start, end = _resolve_window(since, until)
     subjects = await _resolve_user_subjects(db, email)
@@ -593,7 +591,6 @@ async def get_user_identities(
     ],
 ) -> IdentitiesResponse:
     """Return the user's linked OAuth identities (no tokens)."""
-    email = urllib.parse.unquote(email)
     await _ensure_user_exists(db, email)
 
     rows = await db.execute(
@@ -1005,7 +1002,6 @@ async def get_user_activity(
             status_code=400,
             detail=f'limit must be 1..{MAX_ACTIVITY_LIMIT}',
         )
-    email = urllib.parse.unquote(email)
     await _ensure_user_exists(db, email)
 
     before = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1)

@@ -10,6 +10,7 @@ See ``docs/deployments-plan.md`` for the full design.
 """
 
 import datetime
+import functools
 import importlib.resources
 import itertools
 import json
@@ -1501,11 +1502,14 @@ async def _upsert_release_node(
 _PROMPT_COMMIT_CAP = 150
 _SEMVER_RE = re.compile(r'^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$')
 
-_RELEASE_NOTES_SYSTEM = (
-    importlib.resources.files('imbi_api.prompts')
-    .joinpath('release_notes_system.md')
-    .read_text(encoding='utf-8')
-)
+
+@functools.cache
+def _release_notes_system() -> str:
+    return (
+        importlib.resources.files('imbi_api.prompts')
+        .joinpath('release_notes_system.md')
+        .read_text(encoding='utf-8')
+    )
 
 
 def _bump_semver(last_tag: str | None, bump: SemverBump) -> str:
@@ -1636,7 +1640,7 @@ async def draft_release_notes(
         ),
         schema=DraftReleaseNotes,
         fallback=fallback,
-        system=_RELEASE_NOTES_SYSTEM,
+        system=_release_notes_system(),
         cache_system_prompt=True,
     )
     notes = completion.data

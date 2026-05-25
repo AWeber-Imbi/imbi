@@ -330,16 +330,22 @@ class _PluginPatchPayload(pydantic.BaseModel):
 async def _set_widget_text_override(
     db: graph.Graph, slug: str, value: str | None
 ) -> None:
+    # ``MERGE`` on its own creates a node with no ``enabled`` flag when
+    # an override is set before ``_seed_registrations`` has run; mirror
+    # the seed query's ``coalesce`` so the row's enabled state is always
+    # defined.
     if value is None or value == '':
         query: typing.LiteralString = (
             'MERGE (r:PluginRegistration {{slug: {slug}}}) '
+            'SET r.enabled = coalesce(r.enabled, false) '
             'REMOVE r.widget_text_override'
         )
         await db.execute(query, {'slug': slug}, [])
         return
     query = (
         'MERGE (r:PluginRegistration {{slug: {slug}}}) '
-        'SET r.widget_text_override = {value}'
+        'SET r.enabled = coalesce(r.enabled, false), '
+        'r.widget_text_override = {value}'
     )
     await db.execute(query, {'slug': slug, 'value': value}, [])
 
