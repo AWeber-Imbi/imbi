@@ -194,6 +194,10 @@ async def get_upload(
     upload_id: str,
     storage_client: storage.InjectStorageClient,
     db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('upload:read')),
+    ],
 ) -> fastapi.responses.Response:
     """Serve the uploaded file.
 
@@ -242,6 +246,10 @@ async def get_upload(
 async def get_upload_meta(
     upload_id: str,
     db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('upload:read')),
+    ],
 ) -> UploadResponse:
     """Return upload metadata as JSON.
 
@@ -267,6 +275,10 @@ async def get_upload_thumbnail(
     upload_id: str,
     storage_client: storage.InjectStorageClient,
     db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('upload:read')),
+    ],
 ) -> fastapi.responses.Response:
     """Serve the upload thumbnail.
 

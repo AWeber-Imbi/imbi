@@ -372,6 +372,50 @@ class UploadEndpointsTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 404)
 
+    def test_read_paths_require_upload_read_permission(self) -> None:
+        """GET / GET-meta / GET-thumbnail all require upload:read."""
+        from imbi_api.auth import permissions
+
+        non_admin_user = models.User(
+            email='basic@example.com',
+            display_name='Basic User',
+            is_active=True,
+            is_admin=False,
+            is_service_account=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        non_admin_ctx = permissions.AuthContext(
+            user=non_admin_user,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions=set(),
+        )
+
+        async def _non_admin():
+            return non_admin_ctx
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            _non_admin
+        )
+        try:
+            for path in (
+                '/uploads/test-uuid-1234',
+                '/uploads/test-uuid-1234/meta',
+                '/uploads/test-uuid-1234/thumbnail',
+            ):
+                response = self.client.get(path)
+                self.assertEqual(
+                    response.status_code, 403, f'expected 403 for {path}'
+                )
+        finally:
+
+            async def _restore():
+                return self.auth_context
+
+            self.test_app.dependency_overrides[
+                permissions.get_current_user
+            ] = _restore
+
     def test_requires_authentication(self) -> None:
         """Test that upload endpoints reject unauthenticated."""
         from imbi_api.auth import permissions

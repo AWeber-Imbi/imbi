@@ -475,6 +475,14 @@ async def grant_permission(
             status_code=404,
             detail=f'Role with slug {slug!r} not found',
         )
+    if role.is_system:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail=(
+                f'Role {slug!r} is a system role; its permissions are '
+                'managed by the seed and cannot be changed via the API'
+            ),
+        )
 
     # Check if permission exists
     perm_results = await db.match(
@@ -538,6 +546,14 @@ async def revoke_permission(
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Role with slug {slug!r} not found',
+        )
+    if role.is_system:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail=(
+                f'Role {slug!r} is a system role; its permissions are '
+                'managed by the seed and cannot be changed via the API'
+            ),
         )
 
     # Delete GRANTS relationship

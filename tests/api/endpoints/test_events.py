@@ -212,6 +212,25 @@ class GlobalListTests(_EventsTestBase):
         response = self.client.get('/events/', params={'since': 'garbage'})
         self.assertEqual(response.status_code, 400)
 
+    def test_non_admin_without_event_permission_denied(self) -> None:
+        """Non-admin users without admin:events:read get 403."""
+        non_admin = api_models.User(
+            email='basic@example.com',
+            display_name='Basic',
+            is_active=True,
+            is_admin=False,
+            is_service_account=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.auth = api_permissions.AuthContext(
+            user=non_admin,
+            session_id='s',
+            auth_method='jwt',
+            permissions={'project:read'},
+        )
+        response = self.client.get('/events/')
+        self.assertEqual(response.status_code, 403)
+
     def test_list_with_invalid_limit_returns_400(self) -> None:
         response = self.client.get('/events/', params={'limit': 0})
         self.assertEqual(response.status_code, 400)

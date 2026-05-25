@@ -397,6 +397,13 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'identities:revoke',
         "Force-revoke another user's identity connection",
     ),
+    # Cross-organization event feed
+    (
+        'admin:events:read',
+        'admin',
+        'events:read',
+        'List events across every organization (audit / support)',
+    ),
 ]
 
 # Default role definitions.

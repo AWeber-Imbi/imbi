@@ -201,10 +201,10 @@ async def _list_impl(
 @events_router.get('/', response_model=EventsPage)
 async def list_events(
     request: fastapi.Request,
-    auth: typing.Annotated[
+    _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
-            permissions.require_permission('project:read'),
+            permissions.require_permission('admin:events:read'),
         ),
     ],
     limit: int = DEFAULT_LIMIT,
@@ -215,7 +215,13 @@ async def list_events(
     since: str | None = None,
     until: str | None = None,
 ) -> fastapi.Response:
-    """List events (newest first, keyset paginated)."""
+    """List events across every organization (admin / audit feed).
+
+    Per-project event access lives on the org-scoped router; this
+    endpoint is gated on ``admin:events:read`` because the unscoped
+    cursor would otherwise expose events for projects the caller has
+    no permission on.
+    """
     return await _list_impl(
         request=request,
         limit=limit,

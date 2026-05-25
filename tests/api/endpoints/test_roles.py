@@ -298,6 +298,41 @@ class RoleEndpointsTestCase(unittest.TestCase):
             response.json()['detail'],
         )
 
+    def test_grant_permission_on_system_role_denied(self) -> None:
+        """Grant against a system role is rejected with 403."""
+        system_role = models.Role(
+            name='Administrator',
+            slug='admin',
+            priority=1000,
+            is_system=True,
+        )
+        self.mock_db.match.return_value = [system_role]
+
+        response = self.client.post(
+            '/roles/admin/permissions',
+            json={'permission_name': 'blueprint:read'},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('system role', response.json()['detail'])
+
+    def test_revoke_permission_on_system_role_denied(self) -> None:
+        """Revoke against a system role is rejected with 403."""
+        system_role = models.Role(
+            name='Administrator',
+            slug='admin',
+            priority=1000,
+            is_system=True,
+        )
+        self.mock_db.match.return_value = [system_role]
+
+        response = self.client.delete(
+            '/roles/admin/permissions/blueprint:read'
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('system role', response.json()['detail'])
+
     def test_revoke_permission_success(self) -> None:
         """Test revoking permission from role."""
         self.mock_db.match.return_value = [self.test_role]
