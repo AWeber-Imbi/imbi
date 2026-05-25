@@ -15,6 +15,14 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { UserDisplay } from '@/components/ui/user-display'
 import { useLoginToEmail } from '@/hooks/useLoginToEmail'
 import { relTime } from '@/lib/formatDate'
@@ -192,79 +200,77 @@ export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-border border-b">
-              <th className="text-tertiary w-16 px-4 py-2 text-left text-xs font-medium tracking-wide uppercase">
-                #
-              </th>
-              <th className="text-tertiary px-4 py-2 text-left text-xs font-medium tracking-wide uppercase">
-                Title
-              </th>
-              <th className="text-tertiary w-24 px-4 py-2 text-center text-xs font-medium tracking-wide uppercase">
-                State
-              </th>
-              <th className="text-tertiary w-40 px-4 py-2 text-center text-xs font-medium tracking-wide uppercase">
-                Author
-              </th>
-              <th className="text-tertiary w-14 px-4 py-2 text-center text-xs font-medium tracking-wide uppercase">
-                Files
-              </th>
-              <th className="text-tertiary w-36 px-4 py-2 text-center text-xs font-medium tracking-wide uppercase">
-                Diff
-              </th>
-              <th className="text-tertiary w-20 px-4 py-2 text-right text-xs font-medium tracking-wide uppercase">
-                Updated
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {hasError ? (
-              <tr>
-                <td className="px-4 py-8 text-center" colSpan={7}>
-                  <div className="text-danger text-sm">
-                    Failed to load pull requests.
-                  </div>
-                  <button
-                    className="text-action mt-2 text-xs hover:underline"
-                    onClick={handleRefresh}
-                    type="button"
-                  >
-                    Retry
-                  </button>
-                </td>
-              </tr>
-            ) : isLoading && allPRs.length === 0 ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <tr className="border-border border-b" key={i}>
-                  <td className="px-4 py-3" colSpan={7}>
-                    <Skeleton className="h-4" />
-                  </td>
-                </tr>
-              ))
-            ) : filtered.length === 0 ? (
-              <tr>
-                <td
-                  className="text-tertiary px-4 py-12 text-center"
-                  colSpan={7}
+      <Table>
+        <TableHeader>
+          <TableRow className="border-border hover:bg-transparent">
+            <TableHead className="text-tertiary h-auto w-16 py-2 text-xs font-medium tracking-wide uppercase">
+              #
+            </TableHead>
+            <TableHead className="text-tertiary h-auto py-2 text-xs font-medium tracking-wide uppercase">
+              Title
+            </TableHead>
+            <TableHead className="text-tertiary h-auto w-24 py-2 text-center text-xs font-medium tracking-wide uppercase">
+              State
+            </TableHead>
+            <TableHead className="text-tertiary h-auto w-40 py-2 text-center text-xs font-medium tracking-wide uppercase">
+              Author
+            </TableHead>
+            <TableHead className="text-tertiary h-auto w-14 py-2 text-center text-xs font-medium tracking-wide uppercase">
+              Files
+            </TableHead>
+            <TableHead className="text-tertiary h-auto w-36 py-2 text-center text-xs font-medium tracking-wide uppercase">
+              Diff
+            </TableHead>
+            <TableHead className="text-tertiary h-auto w-20 py-2 text-right text-xs font-medium tracking-wide uppercase">
+              Updated
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {hasError ? (
+            <TableRow className="hover:bg-transparent">
+              <TableCell className="px-4 py-8 text-center" colSpan={7}>
+                <div className="text-danger text-sm">
+                  Failed to load pull requests.
+                </div>
+                <button
+                  className="text-action mt-2 text-xs hover:underline"
+                  onClick={handleRefresh}
+                  type="button"
                 >
-                  No pull requests found.
-                </td>
-              </tr>
-            ) : (
-              filtered.map((pr) => (
-                <PrRow
-                  displayNames={displayNames}
-                  key={pr.pr_id}
-                  loginToEmail={loginToEmail}
-                  pr={pr}
-                />
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+                  Retry
+                </button>
+              </TableCell>
+            </TableRow>
+          ) : isLoading && allPRs.length === 0 ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              <TableRow className="border-border hover:bg-transparent" key={i}>
+                <TableCell className="px-4 py-3" colSpan={7}>
+                  <Skeleton className="h-4" />
+                </TableCell>
+              </TableRow>
+            ))
+          ) : filtered.length === 0 ? (
+            <TableRow className="hover:bg-transparent">
+              <TableCell
+                className="text-tertiary px-4 py-12 text-center"
+                colSpan={7}
+              >
+                No pull requests found.
+              </TableCell>
+            </TableRow>
+          ) : (
+            filtered.map((pr) => (
+              <PrRow
+                displayNames={displayNames}
+                key={pr.pr_id}
+                loginToEmail={loginToEmail}
+                pr={pr}
+              />
+            ))
+          )}
+        </TableBody>
+      </Table>
     </Card>
   )
 }
@@ -294,14 +300,14 @@ function PrRow({
   const email = loginToEmail.get(pr.author)
 
   return (
-    <tr className="border-border hover:bg-secondary/30 border-b transition-colors last:border-b-0">
-      <td className="px-4 py-3">
+    <TableRow className="border-border hover:bg-secondary/30">
+      <TableCell className="px-4 py-3">
         <span className="text-tertiary flex items-center gap-1.5 text-xs">
           <PrIcon className={`size-3.5 shrink-0 ${iconColor}`} />
           {pr.pr_number}
         </span>
-      </td>
-      <td className="max-w-0 px-4 py-3">
+      </TableCell>
+      <TableCell className="max-w-0 px-4 py-3">
         <a
           className="text-primary hover:text-action inline-flex max-w-full items-center gap-1.5 font-medium transition-colors"
           href={pr.url}
@@ -311,28 +317,28 @@ function PrRow({
           <span className="truncate">{pr.title}</span>
           <ExternalLink className="text-tertiary size-3 shrink-0" />
         </a>
-      </td>
-      <td className="px-4 py-3">
+      </TableCell>
+      <TableCell className="px-4 py-3">
         <PrStateBadge pr={pr} />
-      </td>
-      <td className="px-4 py-3 text-center">
+      </TableCell>
+      <TableCell className="px-4 py-3 text-center">
         <UserDisplay
           displayNames={email ? displayNames : undefined}
           email={email ?? pr.author}
           linkToProfile={!!email}
           textClassName="text-sm"
         />
-      </td>
-      <td className="text-secondary px-4 py-3 text-right">
+      </TableCell>
+      <TableCell className="text-secondary px-4 py-3 text-right">
         {pr.changed_files}
-      </td>
-      <td className="px-4 py-3 text-right">
+      </TableCell>
+      <TableCell className="px-4 py-3 text-right">
         <DiffBar additions={pr.additions} deletions={pr.deletions} />
-      </td>
-      <td className="text-tertiary px-4 py-3 text-right text-xs tabular-nums">
+      </TableCell>
+      <TableCell className="text-tertiary px-4 py-3 text-right text-xs tabular-nums">
         {relTime(pr.updated_at)}
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   )
 }
 
