@@ -5,6 +5,7 @@ import { Building2, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -91,9 +92,9 @@ export function OrgMembershipsCard({
           <div className="border-input bg-secondary mb-4 rounded-lg border p-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Organization
-                </label>
+                </Label>
                 <Select onValueChange={setNewOrgSlug} value={newOrgSlug}>
                   <SelectTrigger aria-label="Organization">
                     <SelectValue placeholder="Select..." />
@@ -108,9 +109,9 @@ export function OrgMembershipsCard({
                 </Select>
               </div>
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Role
-                </label>
+                </Label>
                 {rolesLoading ? (
                   <p className="text-secondary text-sm">Loading roles...</p>
                 ) : rolesError ? (

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 interface LocalLoginFormProps {
   error?: string
@@ -92,9 +93,9 @@ export function LocalLoginForm({
       )}
 
       <div>
-        <label className="mb-1.5 block text-sm text-gray-700" htmlFor="email">
+        <Label className="mb-1.5 block text-sm text-gray-700" htmlFor="email">
           Email Address
-        </label>
+        </Label>
         <Input
           autoComplete="email"
           autoFocus
@@ -117,12 +118,12 @@ export function LocalLoginForm({
       </div>
 
       <div>
-        <label
+        <Label
           className="mb-1.5 block text-sm text-gray-700"
           htmlFor="password"
         >
           Password
-        </label>
+        </Label>
         <Input
           autoComplete="current-password"
           disabled={isLoading}

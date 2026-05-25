@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -124,9 +125,9 @@ export function NewProjectDialog({
           <div className="space-y-6">
             {/* Team */}
             <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="new-project-team">
+              <Label className="text-sm font-medium" htmlFor="new-project-team">
                 Team <RequiredAsterisk />
-              </label>
+              </Label>
               <Combobox
                 onChange={setTeamSlug}
                 options={teams.map((t) => ({
@@ -143,9 +144,9 @@ export function NewProjectDialog({
 
             {/* Project Type */}
             <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="new-project-type">
+              <Label className="text-sm font-medium" htmlFor="new-project-type">
                 Project Type <RequiredAsterisk />
-              </label>
+              </Label>
               <Combobox
                 onChange={setProjectTypeSlug}
                 options={projectTypes.map((pt) => ({
@@ -162,9 +163,9 @@ export function NewProjectDialog({
 
             {/* Name */}
             <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="new-project-name">
+              <Label className="text-sm font-medium" htmlFor="new-project-name">
                 Name <RequiredAsterisk />
-              </label>
+              </Label>
               <Input
                 id="new-project-name"
                 onChange={(e) => handleNameChange(e.target.value)}
@@ -178,9 +179,9 @@ export function NewProjectDialog({
 
             {/* Slug */}
             <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="new-project-slug">
+              <Label className="text-sm font-medium" htmlFor="new-project-slug">
                 Slug <RequiredAsterisk />
-              </label>
+              </Label>
               <Input
                 id="new-project-slug"
                 onChange={(e) => setSlug(e.target.value)}
@@ -194,12 +195,12 @@ export function NewProjectDialog({
 
             {/* Description */}
             <div className="space-y-2">
-              <label
+              <Label
                 className="text-sm font-medium"
                 htmlFor="new-project-description"
               >
                 Description
-              </label>
+              </Label>
               <Textarea
                 className="min-h-30 resize-none"
                 id="new-project-description"
@@ -212,7 +213,7 @@ export function NewProjectDialog({
             {/* Environments */}
             {environments.length > 0 && (
               <div className="space-y-2">
-                <label className="text-sm font-medium">Environments</label>
+                <Label className="text-sm font-medium">Environments</Label>
                 <div className="flex flex-wrap gap-2">
                   {environments.map((env) => (
                     <button

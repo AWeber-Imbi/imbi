@@ -1,6 +1,7 @@
 import { Plus, X } from 'lucide-react'
 
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -35,7 +36,7 @@ export function BlueprintUiMapEditor({
   return (
     <div key={mapType}>
       <div className="mb-1 flex items-center justify-between">
-        <label className="text-secondary text-xs">{mapLabel}</label>
+        <Label className="text-secondary text-xs">{mapLabel}</Label>
         <button
           className={
             'text-info hover:text-info/80 flex items-center gap-1 text-xs'

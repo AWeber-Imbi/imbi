@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EnvironmentBadge } from '@/components/ui/environment-badge'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { SavedIndicator } from '@/components/ui/saved-indicator'
 import {
   Select,
@@ -142,12 +143,12 @@ export function EditEnvironmentsCard({
               ) : (
                 dynamicFields.map((field) => (
                   <div className="flex items-center gap-3" key={field}>
-                    <label
+                    <Label
                       className="text-tertiary w-20 shrink-0 text-xs font-medium"
                       htmlFor={`env-${env.slug}-${field}`}
                     >
                       {toLabel(field)}
-                    </label>
+                    </Label>
                     <div className="relative flex-1">
                       <Input
                         className="pr-8 text-sm"

@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -166,9 +167,9 @@ export function NewOpsLogDialog({
           <div className="space-y-6">
             {/* Project */}
             <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="new-ops-project">
+              <Label className="text-sm font-medium" htmlFor="new-ops-project">
                 Project <RequiredAsterisk />
-              </label>
+              </Label>
               <Combobox
                 onChange={(val) => {
                   setProjectId(val)
@@ -185,12 +186,12 @@ export function NewOpsLogDialog({
 
             {/* Environment */}
             <div className="space-y-2">
-              <label
+              <Label
                 className="text-sm font-medium"
                 htmlFor="new-ops-environment"
               >
                 Environment <RequiredAsterisk />
-              </label>
+              </Label>
               <Combobox
                 disabled={
                   !projectId ||
@@ -220,12 +221,12 @@ export function NewOpsLogDialog({
 
             {/* Entry Type */}
             <div className="space-y-2">
-              <label
+              <Label
                 className="text-sm font-medium"
                 htmlFor="new-ops-entry-type"
               >
                 Entry Type <RequiredAsterisk />
-              </label>
+              </Label>
               <Combobox
                 onChange={(val) => setEntryType(val as OperationsLogEntryType)}
                 options={OPERATIONS_LOG_ENTRY_TYPES.map((t) => ({
@@ -239,12 +240,12 @@ export function NewOpsLogDialog({
 
             {/* Description */}
             <div className="space-y-2">
-              <label
+              <Label
                 className="text-sm font-medium"
                 htmlFor="new-ops-description"
               >
                 Description <RequiredAsterisk />
-              </label>
+              </Label>
               <Textarea
                 className="min-h-24 resize-none"
                 id="new-ops-description"
@@ -256,9 +257,9 @@ export function NewOpsLogDialog({
 
             {/* Version */}
             <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="new-ops-version">
+              <Label className="text-sm font-medium" htmlFor="new-ops-version">
                 Version
-              </label>
+              </Label>
               <Input
                 id="new-ops-version"
                 onChange={(e) => setVersion(e.target.value)}
@@ -269,9 +270,9 @@ export function NewOpsLogDialog({
 
             {/* Link */}
             <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="new-ops-link">
+              <Label className="text-sm font-medium" htmlFor="new-ops-link">
                 Link
-              </label>
+              </Label>
               <Input
                 id="new-ops-link"
                 onChange={(e) => setLink(e.target.value)}
@@ -283,9 +284,9 @@ export function NewOpsLogDialog({
 
             {/* Ticket */}
             <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="new-ops-ticket">
+              <Label className="text-sm font-medium" htmlFor="new-ops-ticket">
                 Ticket
-              </label>
+              </Label>
               <Input
                 id="new-ops-ticket"
                 onChange={(e) => setTicketSlug(e.target.value)}
@@ -296,9 +297,9 @@ export function NewOpsLogDialog({
 
             {/* Notes */}
             <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="new-ops-notes">
+              <Label className="text-sm font-medium" htmlFor="new-ops-notes">
                 Notes
-              </label>
+              </Label>
               <Textarea
                 className="min-h-24 resize-none"
                 id="new-ops-notes"

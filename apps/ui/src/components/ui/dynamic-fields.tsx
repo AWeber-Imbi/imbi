@@ -6,6 +6,7 @@ import { AlertCircle } from 'lucide-react'
 import type { DynamicFieldSchema, DynamicSchema } from '@/api/endpoints'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -89,10 +90,10 @@ export function DynamicFormFields({
         if (field.enum) {
           return (
             <div key={key}>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 {label}
                 {isRequired && <span className="text-red-500"> *</span>}
-              </label>
+              </Label>
               <Select
                 disabled={isLoading}
                 onValueChange={(v) =>
@@ -140,12 +141,12 @@ export function DynamicFormFields({
                 id={`dynamic-${key}`}
                 onCheckedChange={(checked) => onChange(key, checked === true)}
               />
-              <label
+              <Label
                 className="text-secondary text-sm"
                 htmlFor={`dynamic-${key}`}
               >
                 {label}
-              </label>
+              </Label>
               {field.description && (
                 <span className="text-tertiary text-xs">
                   — {field.description}
@@ -157,10 +158,10 @@ export function DynamicFormFields({
 
         return (
           <div key={key}>
-            <label className="text-secondary mb-1.5 block text-sm">
+            <Label className="text-secondary mb-1.5 block text-sm">
               {label}
               {isRequired && <span className="text-red-500"> *</span>}
-            </label>
+            </Label>
             <Input
               className={` ${fieldError ? 'border-red-500' : ''}`}
               disabled={isLoading}

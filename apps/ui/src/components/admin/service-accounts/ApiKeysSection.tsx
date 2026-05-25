@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Tooltip,
   TooltipContent,
@@ -244,9 +245,9 @@ export function ApiKeysSection({
           </DialogHeader>
           <div className="space-y-3 p-6">
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Key name
-              </label>
+              </Label>
               <Input
                 autoFocus
                 className="rounded-lg"

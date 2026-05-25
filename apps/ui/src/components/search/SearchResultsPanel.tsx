@@ -10,6 +10,7 @@ import {
   type SearchResult,
 } from '@/api/search'
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible'
+import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -324,9 +325,9 @@ export function SearchResultsPanel({
           </div>
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <label className="text-muted-foreground mb-1.5 block text-xs">
+              <Label className="text-muted-foreground mb-1.5 block text-xs">
                 Similarity threshold
-              </label>
+              </Label>
               <Slider
                 max={1.0}
                 min={0.1}
@@ -339,9 +340,9 @@ export function SearchResultsPanel({
               </span>
             </div>
             <div>
-              <label className="text-muted-foreground mb-1.5 block text-xs">
+              <Label className="text-muted-foreground mb-1.5 block text-xs">
                 Max results
-              </label>
+              </Label>
               <Slider
                 max={100}
                 min={5}

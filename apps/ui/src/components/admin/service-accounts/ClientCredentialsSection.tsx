@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import {
   Tooltip,
@@ -304,12 +305,12 @@ export function ClientCredentialsSection({
           </DialogHeader>
           <div className="space-y-3 p-6">
             <div>
-              <label
+              <Label
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="credential-name"
               >
                 Name <RequiredAsterisk />
-              </label>
+              </Label>
               <Input
                 autoFocus
                 id="credential-name"
@@ -319,12 +320,12 @@ export function ClientCredentialsSection({
               />
             </div>
             <div>
-              <label
+              <Label
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="credential-description"
               >
                 Description
-              </label>
+              </Label>
               <Input
                 id="credential-description"
                 onChange={(e) => setCredentialDescription(e.target.value)}
@@ -333,13 +334,13 @@ export function ClientCredentialsSection({
               />
             </div>
             <div>
-              <label
+              <Label
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="credential-scopes"
               >
                 Scopes{' '}
                 <span className="text-tertiary text-xs">(comma-separated)</span>
-              </label>
+              </Label>
               <Input
                 id="credential-scopes"
                 onChange={(e) => setCredentialScopes(e.target.value)}
@@ -348,7 +349,7 @@ export function ClientCredentialsSection({
               />
             </div>
             <div>
-              <label
+              <Label
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="credential-expires-days"
               >
@@ -356,7 +357,7 @@ export function ClientCredentialsSection({
                 <span className="text-tertiary text-xs">
                   (leave empty for no expiration)
                 </span>
-              </label>
+              </Label>
               <Input
                 id="credential-expires-days"
                 min="1"

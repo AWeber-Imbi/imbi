@@ -14,6 +14,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { LoadingState } from '@/components/ui/loading-state'
 import { Textarea } from '@/components/ui/textarea'
 import { extractApiErrorDetail } from '@/lib/apiError'
@@ -329,11 +330,11 @@ export function PromoteTab({
           Step 2 — Tag & release notes
         </p>
         <div className="grid grid-cols-[160px_160px_1fr] gap-3">
-          <label className="text-tertiary flex flex-col gap-1 text-xs">
+          <Label className="text-tertiary flex flex-col gap-1 text-xs">
             Current
             <Input className="font-mono" disabled value={lastTag ?? ''} />
-          </label>
-          <label className="text-tertiary flex flex-col gap-1 text-xs">
+          </Label>
+          <Label className="text-tertiary flex flex-col gap-1 text-xs">
             New tag
             <Input
               aria-invalid={!tagValid && tag.length > 0}
@@ -345,7 +346,7 @@ export function PromoteTab({
               placeholder="vX.Y.Z"
               value={tag}
             />
-          </label>
+          </Label>
           <div className="flex flex-col gap-1 text-xs">
             <span className="text-tertiary">AI suggestion</span>
             <div className="border-accent bg-accent/10 text-accent flex min-h-10 items-start gap-2 rounded-md border p-2">

@@ -2,6 +2,7 @@ import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
 
 import { Check } from 'lucide-react'
 
+import { Label } from '@/components/ui/label'
 import { useTheme } from '@/contexts/ThemeContext'
 import { deriveChipColors, hexToRgb } from '@/lib/chip-colors'
 
@@ -119,7 +120,7 @@ export function ColorPicker({
 
   return (
     <div className="space-y-3">
-      <label
+      <Label
         className="text-secondary mb-1.5 block text-sm"
         htmlFor="color-picker-swatches"
       >
@@ -127,7 +128,7 @@ export function ColorPicker({
         <span className="text-tertiary ml-1 text-xs">
           · used on chips wherever this {objectType} appears
         </span>
-      </label>
+      </Label>
 
       <div className="bg-tertiary max-w-md rounded-md p-3.5">
         {/* Swatch radio group */}
@@ -191,7 +192,7 @@ export function ColorPicker({
 
         {/* Hex input group */}
         <div className="border-tertiary bg-primary focus-within:border-secondary flex items-center gap-1 rounded-md border p-1 transition-colors">
-          <label
+          <Label
             aria-label="Open OS color picker"
             className="border-tertiary relative size-7 shrink-0 cursor-pointer rounded-md border"
             style={{ backgroundColor: pipBackground }}
@@ -203,7 +204,7 @@ export function ColorPicker({
               type="color"
               value={isValidHex ? hexInput : '#000000'}
             />
-          </label>
+          </Label>
           <input
             aria-label="Hex color"
             className="text-primary placeholder:text-tertiary flex-1 border-0 bg-transparent px-2 font-mono text-[13px] outline-none"

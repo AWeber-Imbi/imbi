@@ -22,6 +22,7 @@ import {
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { LoadingState } from '@/components/ui/loading-state'
 import { Textarea } from '@/components/ui/textarea'
 import { extractApiErrorDetail } from '@/lib/apiError'
@@ -339,7 +340,7 @@ export function PluginPackageDetail({
                     </div>
                   </div>
                   <div className="grid gap-3 md:grid-cols-2">
-                    <label className="block text-sm">
+                    <Label className="block text-sm">
                       <span className="text-secondary">Display name</span>
                       <Input
                         onChange={(e) =>
@@ -357,8 +358,8 @@ export function PluginPackageDetail({
                       <p className="text-tertiary mt-1 text-xs">
                         Page header / detail title.
                       </p>
-                    </label>
-                    <label className="block text-sm">
+                    </Label>
+                    <Label className="block text-sm">
                       <span className="text-secondary">Sidebar label</span>
                       <Input
                         onChange={(e) =>
@@ -376,9 +377,9 @@ export function PluginPackageDetail({
                       <p className="text-tertiary mt-1 text-xs">
                         Defaults to display name when empty.
                       </p>
-                    </label>
+                    </Label>
                   </div>
-                  <label className="block text-sm">
+                  <Label className="block text-sm">
                     <span className="text-secondary">Description</span>
                     <Textarea
                       onChange={(e) =>
@@ -394,7 +395,7 @@ export function PluginPackageDetail({
                       rows={2}
                       value={draft.description}
                     />
-                  </label>
+                  </Label>
                   <div className="flex items-center gap-2">
                     <Button
                       disabled={!dirty || patchMutation.isPending}

@@ -41,6 +41,7 @@ import { Checkbox } from './ui/checkbox'
 import { EnvironmentBadge } from './ui/environment-badge'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from './ui/hover-card'
 import { Input } from './ui/input'
+import { Label } from './ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { ScoreBadge } from './ui/score-badge'
 
@@ -990,7 +991,7 @@ function FilterPopover({
         </p>
         <div className="space-y-0.5">
           {options.map((opt) => (
-            <label
+            <Label
               className="hover:bg-secondary flex cursor-pointer items-center gap-2 rounded px-1 py-1.5"
               key={opt.slug}
             >
@@ -999,7 +1000,7 @@ function FilterPopover({
                 onCheckedChange={() => onToggle(opt.slug)}
               />
               <span className="text-primary text-sm">{opt.label}</span>
-            </label>
+            </Label>
           ))}
         </div>
       </PopoverContent>

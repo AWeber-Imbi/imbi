@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import type { ProjectRelationship } from '@/types'
 
@@ -195,7 +196,7 @@ export function EditRelationshipsDialog({
                   .join(', ')
 
                 return (
-                  <label
+                  <Label
                     className={`flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-slate-50 hover:dark:bg-slate-700 ${
                       isChanged ? 'bg-amber-50 dark:bg-amber-900/30' : ''
                     }`}
@@ -213,7 +214,7 @@ export function EditRelationshipsDialog({
                         {typeLabel}
                       </span>
                     )}
-                  </label>
+                  </Label>
                 )
               })
             )}

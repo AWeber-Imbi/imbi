@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Gravatar } from '@/components/ui/gravatar'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -276,9 +277,9 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
             <div className="border-input bg-secondary mb-4 rounded-lg border p-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-secondary mb-1.5 block text-sm">
+                  <Label className="text-secondary mb-1.5 block text-sm">
                     Organization
-                  </label>
+                  </Label>
                   <Select onValueChange={setNewOrgSlug} value={newOrgSlug}>
                     <SelectTrigger aria-label="Organization">
                       <SelectValue placeholder="Select..." />
@@ -293,9 +294,9 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
                   </Select>
                 </div>
                 <div>
-                  <label className="text-secondary mb-1.5 block text-sm">
+                  <Label className="text-secondary mb-1.5 block text-sm">
                     Role
-                  </label>
+                  </Label>
                   <Select onValueChange={setNewRoleSlug} value={newRoleSlug}>
                     <SelectTrigger aria-label="Role">
                       <SelectValue placeholder="Select..." />

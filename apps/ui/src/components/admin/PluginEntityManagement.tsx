@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/dialog'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { LoadingState } from '@/components/ui/loading-state'
 import {
   Table,
@@ -341,7 +342,7 @@ export function PluginEntityManagement({
 
           <div className="space-y-3 p-6">
             {properties.map(({ key, prop, required }) => (
-              <label className="block text-sm" key={key}>
+              <Label className="block text-sm" key={key}>
                 <span className="text-secondary">
                   {prop.title || toTitleCase(key)}
                   {required && <span className="text-red-500"> *</span>}
@@ -357,7 +358,7 @@ export function PluginEntityManagement({
                     {prop.description}
                   </p>
                 )}
-              </label>
+              </Label>
             ))}
           </div>
 
