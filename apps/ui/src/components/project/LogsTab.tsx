@@ -741,8 +741,9 @@ export function LogsTab({
         {/* Date picker */}
         <Popover onOpenChange={setDatePickerOpen} open={datePickerOpen}>
           <PopoverTrigger asChild>
-            <button
-              className={`bg-primary text-primary hover:border-primary flex items-center gap-1.5 rounded border px-2.5 py-1.5 font-mono text-xs transition-colors ${datePickerOpen ? 'ring-action/20 border-action ring-1' : ''}`}
+            <Button
+              className={`bg-primary text-primary hover:border-primary h-auto gap-1.5 rounded px-2.5 py-1.5 font-mono text-xs font-normal ${datePickerOpen ? 'ring-action/20 border-action ring-1' : ''}`}
+              variant="outline"
             >
               <Calendar className="text-tertiary" size={12} />
               {customStart && customEnd
@@ -751,7 +752,7 @@ export function LogsTab({
                     customEnd.toISOString(),
                   )
                 : fmtRangeLabel(datetimes.start, datetimes.end)}
-            </button>
+            </Button>
           </PopoverTrigger>
           <PopoverContent align="start" className="min-w-72 p-3">
             <div className="text-tertiary mb-2 text-[10px] font-semibold tracking-wide uppercase">

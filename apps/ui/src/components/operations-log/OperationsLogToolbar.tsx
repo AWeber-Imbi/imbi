@@ -17,6 +17,7 @@ import {
   Search,
 } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -93,22 +94,22 @@ function toggle<T>(arr: T[], value: T): T[] {
 }
 
 // Radix's DropdownMenuTrigger (used with `asChild`) composes its ref and
-// event handlers onto the direct child. Using forwardRef and spreading
-// the received props lets Radix wire open/close, focus, and a11y
-// attributes onto the real <button>.
+// event handlers onto the direct child. forwardRef + spread lets Radix
+// wire open/close, focus, and a11y onto the underlying <Button>.
 const TriggerButton = forwardRef<HTMLButtonElement, TriggerButtonProps>(
   function TriggerButton(
     { className, count, icon, label, value, ...props },
     ref,
   ) {
     return (
-      <button
+      <Button
         className={cn(
-          'inline-flex h-9 items-center gap-2 rounded-md border border-tertiary bg-primary px-3 text-sm text-secondary transition-colors hover:bg-secondary hover:text-primary',
+          'h-9 gap-2 border-tertiary bg-primary px-3 font-normal text-secondary hover:bg-secondary hover:text-primary',
           className,
         )}
         ref={ref}
         type="button"
+        variant="outline"
         {...props}
       >
         <span className="text-tertiary flex size-4 items-center justify-center">
@@ -121,7 +122,7 @@ const TriggerButton = forwardRef<HTMLButtonElement, TriggerButtonProps>(
           </span>
         ) : null}
         <ChevronDown className="text-tertiary size-3.5" />
-      </button>
+      </Button>
     )
   },
 )
