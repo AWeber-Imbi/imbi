@@ -37,6 +37,11 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from '@/components/ui/segmented-control'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
   IconTooltip,
   Tooltip,
   TooltipContent,
@@ -718,25 +723,26 @@ export function LogsTab({
         </div>
 
         {/* Range presets */}
-        <div className="bg-primary flex items-center gap-px rounded border p-0.5">
+        <SegmentedControl
+          ariaLabel="Time range"
+          className="bg-primary"
+          onValueChange={(v) => {
+            setRange(v as RelativeRange)
+            setCustomStart(undefined)
+            setCustomEnd(undefined)
+          }}
+          value={customStart ? '' : range}
+        >
           {RANGES.map((r) => (
-            <button
-              className={`rounded px-2.5 py-1 font-mono text-xs transition-colors ${
-                range === r.key && !customStart
-                  ? 'bg-secondary text-primary border font-medium shadow-sm'
-                  : 'text-secondary hover:text-primary'
-              }`}
+            <SegmentedControlItem
+              className="font-mono"
               key={r.key}
-              onClick={() => {
-                setRange(r.key)
-                setCustomStart(undefined)
-                setCustomEnd(undefined)
-              }}
+              value={r.key}
             >
               {r.label}
-            </button>
+            </SegmentedControlItem>
           ))}
-        </div>
+        </SegmentedControl>
 
         {/* Date picker */}
         <Popover onOpenChange={setDatePickerOpen} open={datePickerOpen}>
@@ -1482,34 +1488,33 @@ function LogRow({
           onClick={(e) => e.stopPropagation()}
         >
           <div className="border-tertiary mb-3 flex items-center border-b">
-            {(
-              [
-                { id: 'table', label: 'Table' },
-                { id: 'json', label: 'JSON' },
-                ...(exception ? [{ id: 'stack', label: 'Stack trace' }] : []),
-              ] as { id: DetailTab; label: string }[]
-            ).map((tab) => (
-              <button
-                className={`border-0 bg-transparent pt-1 pr-4 pb-2 text-xs ${
-                  detailTab === tab.id
-                    ? 'text-primary font-medium'
-                    : 'text-tertiary hover:text-secondary'
-                }`}
-                key={tab.id}
-                onClick={() => setDetailTab(tab.id)}
-                style={
-                  detailTab === tab.id
-                    ? {
-                        borderBottom:
-                          '2px solid var(--background-color-action)',
-                        marginBottom: '-1px',
-                      }
-                    : {}
-                }
-              >
-                {tab.label}
-              </button>
-            ))}
+            <Tabs
+              onValueChange={(v) => setDetailTab(v as DetailTab)}
+              value={detailTab}
+            >
+              <TabsList className="h-auto border-0 bg-transparent p-0">
+                <TabsTrigger
+                  className="text-tertiary hover:text-secondary aria-selected:text-primary px-0 pt-1 pr-4 pb-2 text-xs aria-selected:font-medium"
+                  value="table"
+                >
+                  Table
+                </TabsTrigger>
+                <TabsTrigger
+                  className="text-tertiary hover:text-secondary aria-selected:text-primary px-0 pt-1 pr-4 pb-2 text-xs aria-selected:font-medium"
+                  value="json"
+                >
+                  JSON
+                </TabsTrigger>
+                {exception && (
+                  <TabsTrigger
+                    className="text-tertiary hover:text-secondary aria-selected:text-primary px-0 pt-1 pr-4 pb-2 text-xs aria-selected:font-medium"
+                    value="stack"
+                  >
+                    Stack trace
+                  </TabsTrigger>
+                )}
+              </TabsList>
+            </Tabs>
             <div className="flex-1" />
             <button
               className="text-tertiary hover:text-secondary flex items-center gap-1 pt-1 pb-2 text-xs"
