@@ -12,6 +12,7 @@ import {
 import { getProjectPullRequests } from '@/api/endpoints'
 import { DiffBar } from '@/components/pull-requests/DiffBar'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { UserDisplay } from '@/components/ui/user-display'
@@ -176,17 +177,17 @@ export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
           <span className="text-tertiary text-xs">
             {filtered.length} of {counts.all}
           </span>
-          <button
+          <Button
             aria-label="Refresh pull requests"
-            className="text-tertiary hover:text-primary rounded p-1.5 transition-colors"
+            className="text-tertiary hover:text-primary size-7"
             disabled={isLoading}
             onClick={handleRefresh}
+            size="icon"
             type="button"
+            variant="ghost"
           >
-            <RefreshCw
-              className={`size-4 ${isLoading ? 'animate-spin' : ''}`}
-            />
-          </button>
+            <RefreshCw className={isLoading ? 'animate-spin' : ''} />
+          </Button>
         </div>
       </div>
 

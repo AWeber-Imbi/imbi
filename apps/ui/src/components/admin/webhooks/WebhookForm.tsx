@@ -40,6 +40,7 @@ interface WebhookFormProps {
   webhook: null | Webhook
 }
 
+// fallow-ignore-next-line complexity
 export function WebhookForm({
   defaultServiceSlug,
   error,
@@ -629,34 +630,30 @@ export function WebhookForm({
                     <div className="flex items-start gap-3">
                       {/* Order controls */}
                       <div className="flex flex-col gap-1 pt-1">
-                        <button
+                        <Button
                           aria-label={`Move rule ${index + 1} up`}
-                          className={`rounded p-1 transition-colors ${
-                            index === 0
-                              ? 'cursor-not-allowed opacity-30'
-                              : 'text-tertiary hover:bg-secondary'
-                          }`}
+                          className="text-tertiary size-6"
                           disabled={index === 0 || isLoading}
                           onClick={() => moveRule(index, 'up')}
+                          size="icon"
                           title={`Move rule ${index + 1} up`}
                           type="button"
+                          variant="ghost"
                         >
                           <ArrowUp className="size-3" />
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           aria-label={`Move rule ${index + 1} down`}
-                          className={`rounded p-1 transition-colors ${
-                            index === rules.length - 1
-                              ? 'cursor-not-allowed opacity-30'
-                              : 'text-tertiary hover:bg-secondary'
-                          }`}
+                          className="text-tertiary size-6"
                           disabled={index === rules.length - 1 || isLoading}
                           onClick={() => moveRule(index, 'down')}
+                          size="icon"
                           title={`Move rule ${index + 1} down`}
                           type="button"
+                          variant="ghost"
                         >
                           <ArrowDown className="size-3" />
-                        </button>
+                        </Button>
                       </div>
 
                       {/* Rule number */}
@@ -768,16 +765,18 @@ export function WebhookForm({
                       </div>
 
                       {/* Delete */}
-                      <button
+                      <Button
                         aria-label={`Delete rule ${index + 1}`}
-                        className="text-danger hover:bg-danger rounded p-1.5 transition-colors"
+                        className="text-danger hover:bg-danger size-8"
                         disabled={isLoading}
                         onClick={() => removeRule(index)}
+                        size="icon"
                         title={`Delete rule ${index + 1}`}
                         type="button"
+                        variant="ghost"
                       >
                         <Trash2 className="size-4" />
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ))}

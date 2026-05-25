@@ -705,12 +705,15 @@ export function LogsTab({
             value={query}
           />
           {query && (
-            <button
-              className="text-tertiary hover:text-primary"
+            <Button
+              aria-label="Clear search"
+              className="text-tertiary hover:text-primary size-4 [&_svg]:size-2.5"
               onClick={() => setQuery('')}
+              size="icon"
+              variant="ghost"
             >
-              <X size={11} />
-            </button>
+              <X />
+            </Button>
           )}
         </div>
 
@@ -867,23 +870,24 @@ export function LogsTab({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
-                className="bg-primary text-secondary hover:border-primary hover:text-primary flex items-center gap-1.5 rounded border px-2.5 py-1.5 text-xs"
+              <Button
+                aria-label="Refresh"
+                className="bg-primary hover:border-primary hover:text-primary size-7 border [&_svg]:size-3"
                 disabled={isFetching}
                 onClick={() => void refetch()}
+                size="icon"
+                variant="ghost"
               >
-                <RefreshCw
-                  className={isFetching ? 'animate-spin' : ''}
-                  size={12}
-                />
-              </button>
+                <RefreshCw className={isFetching ? 'animate-spin' : ''} />
+              </Button>
             </TooltipTrigger>
             <TooltipContent>Refresh</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
-                className="bg-primary text-secondary hover:border-primary hover:text-primary rounded border p-1.5"
+              <Button
+                aria-label="Copy link"
+                className="bg-primary hover:border-primary hover:text-primary size-7 border [&_svg]:size-3"
                 onClick={() => {
                   void navigator.clipboard
                     .writeText(window.location.href)
@@ -891,19 +895,27 @@ export function LogsTab({
                       toast.success('Link copied to clipboard')
                     })
                 }}
+                size="icon"
+                variant="ghost"
               >
-                <Share2 size={12} />
-              </button>
+                <Share2 />
+              </Button>
             </TooltipTrigger>
             <TooltipContent>Copy link</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button className="bg-primary text-secondary hover:border-primary hover:text-primary rounded border p-1.5">
-                <Download size={12} />
-              </button>
+              <Button
+                aria-label="Export"
+                className="bg-primary hover:border-primary hover:text-primary size-7 border [&_svg]:size-3"
+                disabled
+                size="icon"
+                variant="ghost"
+              >
+                <Download />
+              </Button>
             </TooltipTrigger>
-            <TooltipContent>Export</TooltipContent>
+            <TooltipContent>Export coming soon</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </div>
@@ -917,14 +929,17 @@ export function LogsTab({
               key={f}
             >
               {f}
-              <button
-                className="text-tertiary hover:text-primary"
+              <Button
+                aria-label={`Remove ${f}`}
+                className="text-tertiary hover:text-primary size-4 [&_svg]:size-2.5"
                 onClick={() =>
                   setFieldFilters((prev) => prev.filter((cur) => cur !== f))
                 }
+                size="icon"
+                variant="ghost"
               >
-                <X size={10} />
-              </button>
+                <X />
+              </Button>
             </span>
           ))}
           <button

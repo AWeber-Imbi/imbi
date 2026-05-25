@@ -1,5 +1,6 @@
 import { Plus, X } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -111,17 +112,20 @@ export function BlueprintUiMapEditor({
                   value={eVal}
                 />
               )}
-              <button
-                className={'text-tertiary hover:text-danger shrink-0'}
+              <Button
+                aria-label="Remove entry"
+                className="text-tertiary hover:text-danger size-7 shrink-0"
                 onClick={() => {
                   const next = entries.filter((_, i) => i !== idx)
                   setEntries(next)
                   commit(next)
                 }}
+                size="icon"
                 type="button"
+                variant="ghost"
               >
                 <X className="size-3.5" />
-              </button>
+              </Button>
             </div>
           ))}
         </div>

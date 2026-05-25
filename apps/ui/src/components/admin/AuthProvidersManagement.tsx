@@ -629,16 +629,18 @@ function AuthProviderCreateDialog({
                       key={d}
                     >
                       {d}
-                      <button
+                      <Button
                         aria-label={`Remove ${d}`}
-                        className="text-tertiary hover:text-primary"
+                        className="text-tertiary hover:text-primary size-4"
                         disabled={isSaving}
                         onClick={() => removeDomain(d)}
                         onMouseDown={(e) => e.preventDefault()}
+                        size="icon"
                         type="button"
+                        variant="ghost"
                       >
                         <X className="size-3" />
-                      </button>
+                      </Button>
                     </span>
                   ))}
                   <input
@@ -977,16 +979,18 @@ function AuthProviderEditDialog({
                       key={d}
                     >
                       {d}
-                      <button
+                      <Button
                         aria-label={`Remove ${d}`}
-                        className="text-tertiary hover:text-primary"
+                        className="text-tertiary hover:text-primary size-4"
                         disabled={isSaving}
                         onClick={() => removeDomain(d)}
                         onMouseDown={(e) => e.preventDefault()}
+                        size="icon"
                         type="button"
+                        variant="ghost"
                       >
                         <X className="size-3" />
-                      </button>
+                      </Button>
                     </span>
                   ))}
                   <input

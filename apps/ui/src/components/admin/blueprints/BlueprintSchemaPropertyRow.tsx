@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -40,6 +41,7 @@ interface BlueprintSchemaPropertyRowProps {
   updateProperty: (id: string, updates: Partial<SchemaProperty>) => void
 }
 
+// fallow-ignore-next-line complexity
 export function BlueprintSchemaPropertyRow({
   enumRawText,
   index,
@@ -63,19 +65,17 @@ export function BlueprintSchemaPropertyRow({
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="inline-flex">
-                  <button
+                  <Button
                     aria-label="Move property up"
-                    className={`rounded p-0.5 ${
-                      index === 0
-                        ? 'cursor-not-allowed opacity-30'
-                        : 'text-secondary hover:bg-secondary'
-                    }`}
+                    className="size-5"
                     disabled={index === 0}
                     onClick={() => moveProperty(index, 'up')}
+                    size="icon"
                     type="button"
+                    variant="ghost"
                   >
                     <ChevronUp className="size-3" />
-                  </button>
+                  </Button>
                 </span>
               </TooltipTrigger>
               <TooltipContent>
@@ -87,19 +87,17 @@ export function BlueprintSchemaPropertyRow({
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="inline-flex">
-                  <button
+                  <Button
                     aria-label="Move property down"
-                    className={`rounded p-0.5 ${
-                      index === totalCount - 1
-                        ? 'cursor-not-allowed opacity-30'
-                        : 'text-secondary hover:bg-secondary'
-                    }`}
+                    className="size-5"
                     disabled={index === totalCount - 1}
                     onClick={() => moveProperty(index, 'down')}
+                    size="icon"
                     type="button"
+                    variant="ghost"
                   >
                     <ChevronDown className="size-3" />
-                  </button>
+                  </Button>
                 </span>
               </TooltipTrigger>
               <TooltipContent>
@@ -179,22 +177,24 @@ export function BlueprintSchemaPropertyRow({
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
                 aria-label={
                   isExpanded
                     ? 'Collapse advanced options'
                     : 'Expand advanced options'
                 }
-                className="text-secondary hover:bg-secondary rounded p-1.5 text-xs"
+                className="size-7"
                 onClick={() => toggleExpandProp(prop.id)}
+                size="icon"
                 type="button"
+                variant="ghost"
               >
                 {isExpanded ? (
                   <ChevronUp className="size-3.5" />
                 ) : (
                   <ChevronDown className="size-3.5" />
                 )}
-              </button>
+              </Button>
             </TooltipTrigger>
             <TooltipContent>
               <p>Advanced options</p>
@@ -205,14 +205,16 @@ export function BlueprintSchemaPropertyRow({
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
                 aria-label="Remove property"
-                className="text-danger hover:bg-danger rounded p-1.5"
+                className="text-danger hover:bg-danger size-7"
                 onClick={() => removeProperty(prop.id)}
+                size="icon"
                 type="button"
+                variant="ghost"
               >
                 <Trash2 className="size-3.5" />
-              </button>
+              </Button>
             </TooltipTrigger>
             <TooltipContent>
               <p>Remove property</p>
