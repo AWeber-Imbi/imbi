@@ -1559,35 +1559,38 @@ function LogRow({
                     <span className="min-w-0 break-all">{v}</span>
                     <span className="flex gap-0.5 opacity-0 group-hover:opacity-100">
                       <IconTooltip label="Filter for value">
-                        <button
+                        <Button
                           aria-label="Filter for value"
-                          className="border-secondary text-secondary hover:border-action hover:text-primary rounded border px-1 py-px font-mono text-[10px]"
+                          className="border-secondary text-secondary hover:border-action hover:text-primary h-auto rounded px-1 py-px font-mono text-[10px] hover:bg-transparent"
                           onClick={() => onAddFilter(k as string, v as string)}
+                          variant="outline"
                         >
                           +
-                        </button>
+                        </Button>
                       </IconTooltip>
                       <IconTooltip label="Filter out value">
-                        <button
+                        <Button
                           aria-label="Filter out value"
-                          className="border-secondary text-secondary hover:border-danger hover:text-danger rounded border px-1 py-px font-mono text-[10px]"
+                          className="border-secondary text-secondary hover:border-danger hover:text-danger h-auto rounded px-1 py-px font-mono text-[10px] hover:bg-transparent"
                           onClick={() =>
                             onAddFilter(`-${k as string}`, v as string)
                           }
+                          variant="outline"
                         >
                           −
-                        </button>
+                        </Button>
                       </IconTooltip>
                       <IconTooltip label="Copy value">
-                        <button
+                        <Button
                           aria-label="Copy value"
-                          className="border-secondary text-secondary hover:text-primary rounded border px-1 py-px font-mono text-[10px]"
+                          className="border-secondary text-secondary hover:text-primary h-auto rounded px-1 py-px font-mono text-[10px] hover:bg-transparent"
                           onClick={() =>
                             navigator.clipboard.writeText(v as string)
                           }
+                          variant="outline"
                         >
                           <Copy size={8} />
-                        </button>
+                        </Button>
                       </IconTooltip>
                     </span>
                   </div>
