@@ -10,6 +10,7 @@ import { SettingsConnections } from './settings/SettingsConnections'
 import { SettingsNotifications } from './settings/SettingsNotifications'
 import { SettingsSecurity } from './settings/SettingsSecurity'
 import { Card } from './ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 
 type SettingsTab =
   | 'account'
@@ -40,8 +41,8 @@ export function Settings() {
     }
   }, [tab, navigate])
 
-  const handleTabChange = (tabId: SettingsTab) => {
-    navigate(`/settings/${tabId}`, { replace: true })
+  const handleTabChange = (tabId: string) => {
+    if (isSettingsTab(tabId)) navigate(`/settings/${tabId}`, { replace: true })
   }
 
   return (
@@ -54,41 +55,52 @@ export function Settings() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_13fr]">
+      <Tabs
+        className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_13fr]"
+        onValueChange={handleTabChange}
+        orientation="vertical"
+        value={activeTab}
+      >
         {/* Sidebar navigation */}
         <div>
           <Card className="p-2" style={{ borderWidth: '0.5px' }}>
-            <nav className="space-y-1">
+            <TabsList className="flex h-auto w-full flex-col items-stretch gap-1 border-0 bg-transparent p-0">
               {tabs.map((t) => {
                 const Icon = t.icon
                 return (
-                  <button
-                    className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-[13.5px] transition-colors ${
-                      activeTab === t.id
-                        ? 'bg-warning text-warning'
-                        : 'text-secondary hover:bg-secondary'
-                    }`}
+                  <TabsTrigger
+                    className="text-secondary hover:bg-secondary aria-selected:bg-warning aria-selected:text-warning justify-start gap-3 rounded-lg border-0 px-4 py-3 text-[13.5px] data-[state=active]:shadow-none"
                     key={t.id}
-                    onClick={() => handleTabChange(t.id)}
+                    value={t.id}
                   >
                     <Icon className="size-[18px]" />
                     <span>{t.label}</span>
-                  </button>
+                  </TabsTrigger>
                 )
               })}
-            </nav>
+            </TabsList>
           </Card>
         </div>
 
         {/* Content area */}
         <div>
-          {activeTab === 'account' && <SettingsAccount />}
-          {activeTab === 'connections' && <SettingsConnections />}
-          {activeTab === 'notifications' && <SettingsNotifications />}
-          {activeTab === 'api-keys' && <SettingsApiKeys />}
-          {activeTab === 'security' && <SettingsSecurity />}
+          <TabsContent value="account">
+            <SettingsAccount />
+          </TabsContent>
+          <TabsContent value="connections">
+            <SettingsConnections />
+          </TabsContent>
+          <TabsContent value="notifications">
+            <SettingsNotifications />
+          </TabsContent>
+          <TabsContent value="api-keys">
+            <SettingsApiKeys />
+          </TabsContent>
+          <TabsContent value="security">
+            <SettingsSecurity />
+          </TabsContent>
         </div>
-      </div>
+      </Tabs>
     </div>
   )
 }
