@@ -211,27 +211,17 @@ export function OperationsLogToolbar({
     <div className="mb-4 flex flex-wrap items-center gap-2">
       {hideTimeRange ? null : (
         <>
-          <div
-            aria-label="Time range"
-            className="border-tertiary bg-secondary inline-flex items-center rounded-md border p-0.5"
-            role="group"
+          <SegmentedControl
+            ariaLabel="Time range"
+            onValueChange={(v) => onRange(v as TimeRange)}
+            value={range}
           >
             {RANGES.map((r) => (
-              <button
-                className={cn(
-                  'rounded px-2.5 py-1 text-xs font-medium transition-colors',
-                  range === r.key
-                    ? 'bg-primary text-primary shadow-sm'
-                    : 'text-secondary hover:text-primary',
-                )}
-                key={r.key}
-                onClick={() => onRange(r.key)}
-                type="button"
-              >
+              <SegmentedControlItem key={r.key} value={r.key}>
                 {r.label}
-              </button>
+              </SegmentedControlItem>
             ))}
-          </div>
+          </SegmentedControl>
 
           <span aria-hidden className="bg-tertiary mx-1 h-6 w-px" />
         </>

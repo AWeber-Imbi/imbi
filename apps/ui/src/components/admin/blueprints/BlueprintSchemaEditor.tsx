@@ -3,6 +3,10 @@ import { useState } from 'react'
 import { AlertCircle, Code, List, Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from '@/components/ui/segmented-control'
 import { Textarea } from '@/components/ui/textarea'
 import type { SchemaProperty } from '@/types'
 
@@ -66,30 +70,20 @@ export function BlueprintSchemaEditor({
     <div className="border-border bg-card rounded-lg border p-6">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-primary text-sm font-medium">JSON Schema</h3>
-        <div className="border-input flex items-center rounded-lg border">
-          <button
-            className={`flex items-center gap-1.5 rounded-l-lg px-3 py-1.5 text-sm transition-colors ${
-              editorMode === 'visual'
-                ? 'bg-info text-info'
-                : 'text-secondary hover:text-primary'
-            }`}
-            onClick={() => handleEditorModeSwitch('visual')}
-          >
+        <SegmentedControl
+          ariaLabel="Editor mode"
+          onValueChange={(v) => handleEditorModeSwitch(v as 'code' | 'visual')}
+          value={editorMode}
+        >
+          <SegmentedControlItem className="px-3 py-1.5 text-sm" value="visual">
             <List className="size-3.5" />
             Visual
-          </button>
-          <button
-            className={`flex items-center gap-1.5 rounded-r-lg px-3 py-1.5 text-sm transition-colors ${
-              editorMode === 'code'
-                ? 'bg-info text-info'
-                : 'text-secondary hover:text-primary'
-            }`}
-            onClick={() => handleEditorModeSwitch('code')}
-          >
+          </SegmentedControlItem>
+          <SegmentedControlItem className="px-3 py-1.5 text-sm" value="code">
             <Code className="size-3.5" />
             Code
-          </button>
-        </div>
+          </SegmentedControlItem>
+        </SegmentedControl>
       </div>
 
       {/* Schema Error */}

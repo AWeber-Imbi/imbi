@@ -6,6 +6,10 @@ import { API_BASE_URL } from '@/api/client'
 import { FormHeader } from '@/components/admin/form-header'
 import { Input } from '@/components/ui/input'
 import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from '@/components/ui/segmented-control'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -14,7 +18,7 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/hooks/useAuth'
-import { slugify } from '@/lib/utils'
+import { cn, slugify } from '@/lib/utils'
 import type {
   ServiceApplication,
   ServiceApplicationCreate,
@@ -323,22 +327,30 @@ export function OAuth2ApplicationForm({
         {isEdit && canManageAuthProviders && initialUsage === 'integration' && (
           <div>
             <label className={labelClass}>Usage</label>
-            <div className="border-input inline-flex rounded-md border">
-              <button
-                className={`px-3 py-1.5 text-sm ${usage === 'integration' ? 'bg-amber-bg text-amber-text' : 'text-secondary'}`}
-                onClick={() => setUsage('integration')}
-                type="button"
+            <SegmentedControl
+              ariaLabel="Usage"
+              onValueChange={(v) => setUsage(v as 'both' | 'integration')}
+              value={usage}
+            >
+              <SegmentedControlItem
+                className={cn(
+                  'px-3 py-1.5 text-sm',
+                  usage === 'integration' && 'bg-amber-bg text-amber-text',
+                )}
+                value="integration"
               >
                 Integration
-              </button>
-              <button
-                className={`px-3 py-1.5 text-sm ${usage === 'both' ? 'bg-amber-bg text-amber-text' : 'text-secondary'}`}
-                onClick={() => setUsage('both')}
-                type="button"
+              </SegmentedControlItem>
+              <SegmentedControlItem
+                className={cn(
+                  'px-3 py-1.5 text-sm',
+                  usage === 'both' && 'bg-amber-bg text-amber-text',
+                )}
+                value="both"
               >
                 Both
-              </button>
-            </div>
+              </SegmentedControlItem>
+            </SegmentedControl>
             <p className="text-tertiary mt-1 text-xs">
               Promote to "Both" to also expose this application as a login
               provider. Demoting "Both" → "Login" must be done from the Auth
