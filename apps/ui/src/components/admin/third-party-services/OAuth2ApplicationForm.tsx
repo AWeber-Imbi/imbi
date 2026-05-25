@@ -5,6 +5,7 @@ import { AlertCircle } from 'lucide-react'
 import { API_BASE_URL } from '@/api/client'
 import { FormHeader } from '@/components/admin/form-header'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   SegmentedControl,
   SegmentedControlItem,
@@ -233,7 +234,7 @@ export function OAuth2ApplicationForm({
       <div className="border-border bg-card space-y-4 rounded-lg border p-6">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className={labelClass}>Name *</label>
+            <Label className={labelClass}>Name *</Label>
             <Input
               className={inputClass}
               onChange={(e) => handleNameChange(e.target.value)}
@@ -242,7 +243,7 @@ export function OAuth2ApplicationForm({
             />
           </div>
           <div>
-            <label className={labelClass}>Slug *</label>
+            <Label className={labelClass}>Slug *</Label>
             <Input
               className={inputClass}
               disabled={isEdit}
@@ -254,7 +255,7 @@ export function OAuth2ApplicationForm({
         </div>
 
         <div>
-          <label className={labelClass}>Description</label>
+          <Label className={labelClass}>Description</Label>
           <Input
             className={inputClass}
             onChange={(e) => setDescription(e.target.value)}
@@ -265,7 +266,7 @@ export function OAuth2ApplicationForm({
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <label className={labelClass}>Application URL</label>
+            <Label className={labelClass}>Application URL</Label>
             <Input
               className={inputClass}
               onChange={(e) => setApplicationUrl(e.target.value)}
@@ -274,7 +275,7 @@ export function OAuth2ApplicationForm({
             />
           </div>
           <div>
-            <label className={labelClass}>Callback URL</label>
+            <Label className={labelClass}>Callback URL</Label>
             <Input
               className={inputClass}
               onChange={(e) => handleCallbackUrlChange(e.target.value)}
@@ -286,7 +287,7 @@ export function OAuth2ApplicationForm({
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className={labelClass}>Application Type *</label>
+            <Label className={labelClass}>Application Type *</Label>
             <Select
               disabled={isEdit}
               onValueChange={setAppType}
@@ -305,7 +306,7 @@ export function OAuth2ApplicationForm({
             </Select>
           </div>
           <div>
-            <label className={labelClass}>Status</label>
+            <Label className={labelClass}>Status</Label>
             <Select
               onValueChange={(v) =>
                 setStatus(v as 'active' | 'inactive' | 'revoked')
@@ -326,7 +327,7 @@ export function OAuth2ApplicationForm({
 
         {isEdit && canManageAuthProviders && initialUsage === 'integration' && (
           <div>
-            <label className={labelClass}>Usage</label>
+            <Label className={labelClass}>Usage</Label>
             <SegmentedControl
               ariaLabel="Usage"
               onValueChange={(v) => setUsage(v as 'both' | 'integration')}
@@ -361,7 +362,7 @@ export function OAuth2ApplicationForm({
 
         {isEdit && initialUsage === 'both' && (
           <div>
-            <label className={labelClass}>Usage</label>
+            <Label className={labelClass}>Usage</Label>
             <p className="text-secondary text-sm">
               Integration + Login. Demote from the Auth Providers screen to drop
               the login face.
@@ -370,7 +371,7 @@ export function OAuth2ApplicationForm({
         )}
 
         <div>
-          <label className={labelClass}>Client ID *</label>
+          <Label className={labelClass}>Client ID *</Label>
           <Input
             className={inputClass}
             onChange={(e) => setClientId(e.target.value)}
@@ -380,7 +381,7 @@ export function OAuth2ApplicationForm({
         </div>
 
         <div>
-          <label className={labelClass}>Scopes</label>
+          <Label className={labelClass}>Scopes</Label>
           <Input
             className={inputClass}
             onChange={(e) => setScopes(e.target.value)}
@@ -399,7 +400,7 @@ export function OAuth2ApplicationForm({
             </div>
 
             <div>
-              <label className={labelClass}>Client Secret *</label>
+              <Label className={labelClass}>Client Secret *</Label>
               <Input
                 className={inputClass}
                 onChange={(e) => setClientSecret(e.target.value)}
@@ -411,7 +412,7 @@ export function OAuth2ApplicationForm({
 
             {extraSecretFields.includes('webhook_secret') && (
               <div>
-                <label className={labelClass}>Webhook Secret</label>
+                <Label className={labelClass}>Webhook Secret</Label>
                 <Input
                   className={inputClass}
                   onChange={(e) => setWebhookSecret(e.target.value)}
@@ -424,7 +425,7 @@ export function OAuth2ApplicationForm({
 
             {extraSecretFields.includes('private_key') && (
               <div>
-                <label className={labelClass}>Private Key (PEM)</label>
+                <Label className={labelClass}>Private Key (PEM)</Label>
                 <Textarea
                   className="font-mono"
                   onChange={(e) => setPrivateKey(e.target.value)}
@@ -437,7 +438,7 @@ export function OAuth2ApplicationForm({
 
             {extraSecretFields.includes('signing_secret') && (
               <div>
-                <label className={labelClass}>Signing Secret</label>
+                <Label className={labelClass}>Signing Secret</Label>
                 <Input
                   className={inputClass}
                   onChange={(e) => setSigningSecret(e.target.value)}

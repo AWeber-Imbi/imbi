@@ -12,6 +12,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import {
   Select,
@@ -267,9 +268,9 @@ export function WebhookForm({
         <Card>
           <CardContent className="space-y-4 pt-6">
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Name <RequiredAsterisk />
-              </label>
+              </Label>
               <Input
                 className={` ${errors.name ? 'border-red-500' : ''}`}
                 disabled={isLoading}
@@ -296,12 +297,12 @@ export function WebhookForm({
             {/* Slug — only shown and editable when editing an existing webhook */}
             {isEditing && (
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Slug{' '}
                   <span className="text-tertiary text-xs">
                     (auto-regenerated when service changes; editable)
                   </span>
-                </label>
+                </Label>
                 <Input
                   className={` ${errors.slug ? 'border-red-500' : ''}`}
                   disabled={isLoading}
@@ -326,10 +327,10 @@ export function WebhookForm({
             {isEditing && webhook && (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label className="text-secondary mb-1.5 block text-sm">
+                  <Label className="text-secondary mb-1.5 block text-sm">
                     ID{' '}
                     <span className="text-tertiary text-xs">(read-only)</span>
-                  </label>
+                  </Label>
                   <div className="border-input bg-muted rounded-lg border px-3 py-2">
                     <code className="text-muted-foreground text-sm">
                       {webhook.id}
@@ -337,10 +338,10 @@ export function WebhookForm({
                   </div>
                 </div>
                 <div>
-                  <label className="text-secondary mb-1.5 block text-sm">
+                  <Label className="text-secondary mb-1.5 block text-sm">
                     Notification Path{' '}
                     <span className="text-tertiary text-xs">(read-only)</span>
-                  </label>
+                  </Label>
                   <div className="border-input bg-muted rounded-lg border px-3 py-2">
                     <code className="text-muted-foreground text-sm">
                       {webhook.notification_path}
@@ -351,14 +352,14 @@ export function WebhookForm({
             )}
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Secret{' '}
                 {isEditing && (
                   <span className="text-tertiary text-xs">
                     (leave blank to keep current)
                   </span>
                 )}
-              </label>
+              </Label>
               <Input
                 className=""
                 disabled={isLoading}
@@ -372,9 +373,9 @@ export function WebhookForm({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Description
-              </label>
+              </Label>
               <Textarea
                 className="resize-none rounded-lg"
                 disabled={isLoading}
@@ -386,9 +387,9 @@ export function WebhookForm({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Icon
-              </label>
+              </Label>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <p className="text-tertiary mb-1.5 text-xs">Pick an icon</p>
@@ -434,12 +435,12 @@ export function WebhookForm({
 
             <div className="space-y-4">
               <div>
-                <label
+                <Label
                   className="text-secondary mb-1.5 block text-sm"
                   htmlFor="webhook-tps"
                 >
                   Third-Party Service
-                </label>
+                </Label>
                 {/* Radix disallows '' as a SelectItem value, so 'none' is
                     the empty sentinel and gets translated at the boundary. */}
                 <Select
@@ -466,9 +467,9 @@ export function WebhookForm({
               {tpsSlug && (
                 <>
                   <div>
-                    <label className="text-secondary mb-1.5 block text-sm">
+                    <Label className="text-secondary mb-1.5 block text-sm">
                       Identifier Selector (JSON Path)
-                    </label>
+                    </Label>
                     <Input
                       className={`font-mono text-sm ${
                         errors.identifier_selector ? 'border-red-500' : ''
@@ -495,9 +496,9 @@ export function WebhookForm({
                   </div>
 
                   <div>
-                    <label className="text-secondary mb-1.5 block text-sm">
+                    <Label className="text-secondary mb-1.5 block text-sm">
                       User Subject Selector (JSON Pointer)
-                    </label>
+                    </Label>
                     <Input
                       className={`font-mono text-sm ${
                         errors.user_subject_selector ? 'border-red-500' : ''
@@ -525,10 +526,10 @@ export function WebhookForm({
                   </div>
 
                   <div>
-                    <label className="text-secondary mb-1.5 block text-sm">
+                    <Label className="text-secondary mb-1.5 block text-sm">
                       Identity Plugin Slug{' '}
                       <span className="text-tertiary text-xs">(optional)</span>
-                    </label>
+                    </Label>
                     <Input
                       className={`font-mono text-sm ${
                         errors.identity_plugin_slug ? 'border-red-500' : ''
@@ -556,10 +557,10 @@ export function WebhookForm({
                   </div>
 
                   <div>
-                    <label className="text-secondary mb-1.5 block text-sm">
+                    <Label className="text-secondary mb-1.5 block text-sm">
                       Event Type Selector{' '}
                       <span className="text-tertiary text-xs">(optional)</span>
-                    </label>
+                    </Label>
                     <Input
                       className={`font-mono text-sm ${
                         errors.event_type_selector ? 'border-red-500' : ''
@@ -665,9 +666,9 @@ export function WebhookForm({
                       <div className="flex-1 space-y-3">
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                           <div>
-                            <label className="text-secondary mb-1 block text-xs">
+                            <Label className="text-secondary mb-1 block text-xs">
                               Filter Expression (CEL) <RequiredAsterisk />
-                            </label>
+                            </Label>
                             <Input
                               className={`font-mono text-sm ${
                                 errors[`rule_${index}_filter`]
@@ -697,9 +698,9 @@ export function WebhookForm({
                             )}
                           </div>
                           <div>
-                            <label className="text-secondary mb-1 block text-xs">
+                            <Label className="text-secondary mb-1 block text-xs">
                               Handler <RequiredAsterisk />
-                            </label>
+                            </Label>
                             <Input
                               className={`font-mono text-sm ${
                                 errors[`rule_${index}_handler`]
@@ -730,9 +731,9 @@ export function WebhookForm({
                           </div>
                         </div>
                         <div>
-                          <label className="text-secondary mb-1 block text-xs">
+                          <Label className="text-secondary mb-1 block text-xs">
                             Handler Config (JSON)
-                          </label>
+                          </Label>
                           <Textarea
                             className={`resize-y rounded-lg font-mono ${
                               errors[`rule_${index}_config`]

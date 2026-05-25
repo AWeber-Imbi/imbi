@@ -8,6 +8,7 @@ import { FormHeader } from '@/components/admin/form-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import {
   Select,
@@ -301,9 +302,9 @@ export function ServiceAccountForm({
           <div className="grid grid-cols-2 gap-4">
             {/* Display Name */}
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Display Name <RequiredAsterisk />
-              </label>
+              </Label>
               <Input
                 disabled={isLoading}
                 onBlur={() => {
@@ -328,9 +329,9 @@ export function ServiceAccountForm({
 
             {/* Slug */}
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Slug <RequiredAsterisk />
-              </label>
+              </Label>
               <Input
                 disabled={isLoading}
                 onBlur={() => {
@@ -356,12 +357,12 @@ export function ServiceAccountForm({
 
           {/* Description */}
           <div>
-            <label className="text-secondary mb-1.5 flex items-center justify-between text-sm">
+            <Label className="text-secondary mb-1.5 flex items-center justify-between text-sm">
               <span>Description</span>
               <span className="text-tertiary text-xs">
                 {description.length}/500
               </span>
-            </label>
+            </Label>
             <Textarea
               disabled={isLoading}
               maxLength={500}
@@ -393,12 +394,12 @@ export function ServiceAccountForm({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label
+              <Label
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="service-account-org"
               >
                 Organization <RequiredAsterisk />
-              </label>
+              </Label>
               <Select
                 disabled={isLoading || organizations.length === 1}
                 onValueChange={(v) => {
@@ -427,12 +428,12 @@ export function ServiceAccountForm({
             </div>
 
             <div>
-              <label
+              <Label
                 className="text-secondary mb-1.5 block text-sm"
                 htmlFor="service-account-role"
               >
                 Role <RequiredAsterisk />
-              </label>
+              </Label>
               {rolesLoading ? (
                 <p className="text-secondary text-sm">Loading roles...</p>
               ) : rolesError ? (
@@ -677,9 +678,9 @@ function IdentityCardEdit({
         {/* Display name + slug in one row */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-secondary mb-1.5 block text-sm">
+            <Label className="text-secondary mb-1.5 block text-sm">
               Display name <RequiredAsterisk />
-            </label>
+            </Label>
             <Input
               disabled={isLoading}
               onBlur={onBlurDisplayName}
@@ -694,12 +695,12 @@ function IdentityCardEdit({
             )}
           </div>
           <div>
-            <label className="text-secondary mb-1.5 flex items-center justify-between text-sm">
+            <Label className="text-secondary mb-1.5 flex items-center justify-between text-sm">
               <span>Slug</span>
               <span className="text-tertiary text-xs">
                 URL identifier · read-only
               </span>
-            </label>
+            </Label>
             <Input
               className="text-tertiary font-mono"
               disabled
@@ -710,12 +711,12 @@ function IdentityCardEdit({
 
         {/* Description */}
         <div>
-          <label className="text-secondary mb-1.5 flex items-center justify-between text-sm">
+          <Label className="text-secondary mb-1.5 flex items-center justify-between text-sm">
             <span>Description</span>
             <span className="text-tertiary text-xs">
               {description.length}/500
             </span>
-          </label>
+          </Label>
           <Textarea
             disabled={isLoading}
             maxLength={500}
@@ -728,7 +729,7 @@ function IdentityCardEdit({
 
         {/* Avatar */}
         <div>
-          <label className="text-secondary mb-1.5 block text-sm">Avatar</label>
+          <Label className="text-secondary mb-1.5 block text-sm">Avatar</Label>
           <div className="flex items-center gap-3">
             <AvatarUpload
               avatarUrl={account.avatar_url}

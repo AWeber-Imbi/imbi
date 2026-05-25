@@ -37,6 +37,7 @@ import {
 } from '@/components/ui/dialog'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { LoadingState } from '@/components/ui/loading-state'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import {
@@ -502,9 +503,9 @@ function AuthProviderCreateDialog({
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 p-6">
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 OAuth Type <RequiredAsterisk />
-              </label>
+              </Label>
               <Select
                 disabled={isSaving}
                 onValueChange={(v) => setAppType(v as OAuthAppType)}
@@ -522,9 +523,9 @@ function AuthProviderCreateDialog({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Redirect URL
-              </label>
+              </Label>
               <div className="flex items-center gap-2">
                 <Input
                   className="flex-1 font-mono text-xs"
@@ -547,9 +548,9 @@ function AuthProviderCreateDialog({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Client ID <RequiredAsterisk />
-              </label>
+              </Label>
               <Input
                 disabled={isSaving}
                 onChange={(e) => setClientId(e.target.value)}
@@ -563,9 +564,9 @@ function AuthProviderCreateDialog({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Client Secret <RequiredAsterisk />
-              </label>
+              </Label>
               <Input
                 autoComplete="new-password"
                 disabled={isSaving}
@@ -582,9 +583,9 @@ function AuthProviderCreateDialog({
 
             {showIssuerUrl && (
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Issuer URL <RequiredAsterisk />
-                </label>
+                </Label>
                 <Input
                   disabled={isSaving}
                   onChange={(e) => setIssuerUrl(e.target.value)}
@@ -600,9 +601,9 @@ function AuthProviderCreateDialog({
             )}
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Scopes
-              </label>
+              </Label>
               <Input
                 disabled={isSaving}
                 onChange={(e) => setScopes(e.target.value)}
@@ -613,9 +614,9 @@ function AuthProviderCreateDialog({
 
             {showAllowedDomains && (
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Allowed Email Domains
-                </label>
+                </Label>
                 <div
                   className={
                     'border-input bg-background flex flex-wrap items-center gap-2 rounded-lg border p-2'
@@ -673,7 +674,7 @@ function AuthProviderCreateDialog({
               </div>
             )}
 
-            <label className="text-secondary flex w-full items-center gap-2 text-sm">
+            <Label className="text-secondary flex w-full items-center gap-2 text-sm">
               <Checkbox
                 checked={enableIntegration}
                 disabled={isSaving}
@@ -682,7 +683,7 @@ function AuthProviderCreateDialog({
                 }
               />
               Enable Integration
-            </label>
+            </Label>
           </div>
 
           <DialogFooter>
@@ -821,9 +822,9 @@ function AuthProviderEditDialog({
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 p-6">
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Display Name <RequiredAsterisk />
-              </label>
+              </Label>
               <Input
                 disabled={isSaving}
                 onChange={(e) => setName(e.target.value)}
@@ -835,9 +836,9 @@ function AuthProviderEditDialog({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 OAuth Type <RequiredAsterisk />
-              </label>
+              </Label>
               <Select
                 disabled={isSaving}
                 onValueChange={(v) => setAppType(v as OAuthAppType)}
@@ -855,9 +856,9 @@ function AuthProviderEditDialog({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Client ID <RequiredAsterisk />
-              </label>
+              </Label>
               <Input
                 disabled={isSaving}
                 onChange={(e) => setClientId(e.target.value)}
@@ -871,9 +872,9 @@ function AuthProviderEditDialog({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Client Secret
-              </label>
+              </Label>
               {provider.has_secret && !replaceSecret ? (
                 <div
                   className={
@@ -932,9 +933,9 @@ function AuthProviderEditDialog({
 
             {showIssuerUrl && (
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Issuer URL <RequiredAsterisk />
-                </label>
+                </Label>
                 <Input
                   disabled={isSaving}
                   onChange={(e) => setIssuerUrl(e.target.value)}
@@ -950,9 +951,9 @@ function AuthProviderEditDialog({
             )}
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Scopes
-              </label>
+              </Label>
               <Input
                 disabled={isSaving}
                 onChange={(e) => setScopes(e.target.value)}
@@ -963,9 +964,9 @@ function AuthProviderEditDialog({
 
             {showAllowedDomains && (
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Allowed Email Domains
-                </label>
+                </Label>
                 <div
                   className={
                     'border-input bg-background flex flex-wrap items-center gap-2 rounded-lg border p-2'
@@ -1023,7 +1024,7 @@ function AuthProviderEditDialog({
               </div>
             )}
 
-            <label className="text-secondary flex w-full items-center gap-2 text-sm">
+            <Label className="text-secondary flex w-full items-center gap-2 text-sm">
               <Checkbox
                 checked={enableIntegration}
                 disabled={isSaving}
@@ -1032,7 +1033,7 @@ function AuthProviderEditDialog({
                 }
               />
               Enable Integration
-            </label>
+            </Label>
           </div>
 
           <DialogFooter>

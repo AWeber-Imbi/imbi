@@ -19,6 +19,7 @@ import {
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Tooltip,
@@ -267,9 +268,9 @@ export function ApplicationSecretsPanel({
 
           {visibleFields.map((field) => (
             <div key={field}>
-              <label className="text-secondary mb-1 block text-sm font-medium">
+              <Label className="text-secondary mb-1 block text-sm font-medium">
                 {FIELD_LABELS[field]}
-              </label>
+              </Label>
               {field === 'private_key' ? (
                 <Textarea
                   className="font-mono"

@@ -9,6 +9,7 @@ import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { Input } from '@/components/ui/input'
 import { KeyValueEditor } from '@/components/ui/key-value-editor'
+import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import {
   Select,
@@ -212,9 +213,9 @@ export function ThirdPartyServiceForm({
 
           <div className="space-y-4">
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Managing Team
-              </label>
+              </Label>
               {/* Radix disallows '' as a SelectItem value, so 'none' is the
                   empty sentinel and gets translated at the boundary. */}
               <Select
@@ -240,9 +241,9 @@ export function ThirdPartyServiceForm({
               className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
             >
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Service Name <RequiredAsterisk />
-                </label>
+                </Label>
                 <Input
                   className={` ${errors.name ? 'border-danger' : ''}`}
                   disabled={isLoading}
@@ -264,9 +265,9 @@ export function ThirdPartyServiceForm({
 
               {!isEditing && (
                 <div>
-                  <label className="text-secondary mb-1.5 block text-sm">
+                  <Label className="text-secondary mb-1.5 block text-sm">
                     Slug <RequiredAsterisk />
-                  </label>
+                  </Label>
                   <Input
                     className={` ${errors.slug ? 'border-danger' : ''}`}
                     disabled={isLoading}
@@ -290,9 +291,9 @@ export function ThirdPartyServiceForm({
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Vendor <RequiredAsterisk />
-                </label>
+                </Label>
                 <Input
                   className={` ${errors.vendor ? 'border-danger' : ''}`}
                   disabled={isLoading}
@@ -313,9 +314,9 @@ export function ThirdPartyServiceForm({
               </div>
 
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Category
-                </label>
+                </Label>
                 <Input
                   className=""
                   disabled={isLoading}
@@ -328,9 +329,9 @@ export function ThirdPartyServiceForm({
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Service URL
-                </label>
+                </Label>
                 <Input
                   className={` ${errors.service_url ? 'border-danger' : ''}`}
                   disabled={isLoading}
@@ -351,9 +352,9 @@ export function ThirdPartyServiceForm({
               </div>
 
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Status
-                </label>
+                </Label>
                 <Select
                   disabled={isLoading}
                   onValueChange={(v) =>
@@ -378,9 +379,9 @@ export function ThirdPartyServiceForm({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Description
-              </label>
+              </Label>
               <Textarea
                 className="resize-none rounded-lg"
                 disabled={isLoading}
@@ -392,9 +393,9 @@ export function ThirdPartyServiceForm({
             </div>
 
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 Icon
-              </label>
+              </Label>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <p className="text-tertiary mb-1.5 text-xs">Pick an icon</p>
@@ -436,9 +437,9 @@ export function ThirdPartyServiceForm({
 
           <div className="space-y-4">
             <div>
-              <label className="text-secondary mb-1.5 block text-sm">
+              <Label className="text-secondary mb-1.5 block text-sm">
                 API Endpoint
-              </label>
+              </Label>
               <Input
                 className={errors.api_endpoint ? 'border-danger' : ''}
                 disabled={isLoading}
@@ -456,9 +457,9 @@ export function ThirdPartyServiceForm({
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Authorization Endpoint
-                </label>
+                </Label>
                 <Input
                   className={
                     errors.authorization_endpoint ? 'border-danger' : ''
@@ -477,9 +478,9 @@ export function ThirdPartyServiceForm({
               </div>
 
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Token Endpoint
-                </label>
+                </Label>
                 <Input
                   className={errors.token_endpoint ? 'border-danger' : ''}
                   disabled={isLoading}
@@ -498,9 +499,9 @@ export function ThirdPartyServiceForm({
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Revoke Endpoint
-                </label>
+                </Label>
                 <Input
                   className={errors.revoke_endpoint ? 'border-danger' : ''}
                   disabled={isLoading}
@@ -517,9 +518,9 @@ export function ThirdPartyServiceForm({
               </div>
 
               <div className="flex flex-col justify-center">
-                <label className="text-secondary mb-1.5 block text-sm">
+                <Label className="text-secondary mb-1.5 block text-sm">
                   Use PKCE
-                </label>
+                </Label>
                 <Select
                   disabled={isLoading}
                   onValueChange={(v) =>
