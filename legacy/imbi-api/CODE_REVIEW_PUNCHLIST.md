@@ -117,7 +117,7 @@ Severity legend: **C** Critical · **H** High · **M** Medium · **L** Low
 - [~] **L2.** `app.py:43-46` hardcodes `/status`, `/api/status` ignoring `api_prefix`. _(Re-examined: existing comment documents this as deliberate — middleware lists both paths so it's deployment-agnostic regardless of the runtime `IMBI_API_URL` prefix.)_
 - [~] **L3.** `middleware/rate_limit.py:51` uses private `slowapi._rate_limit_exceeded_handler`. _(Re-examined: slowapi exposes no public alias for this handler, and rolling our own would also need the private `Limiter._inject_headers` to keep the countdown headers. Leaving the private import — no public API exists to migrate to.)_
 - [ ] **L4.** Mark `parse_scopes` deprecated and document migration deadline — `models.py:82-104`.
-- [x] **L5.** `LocalAuthConfig.updated_at: datetime | None` has a factory that always returns `datetime` — `domain/models.py:189-192`. Dropped the `| None` so the type matches the factory's guarantee. — landed on `main`.
+- [~] **L5.** `LocalAuthConfig.updated_at: datetime | None` has a factory that always returns `datetime` — `domain/models.py:189-192`. _(Re-examined: narrowing to `datetime` triggered `reportIncompatibleVariableOverride` against the `GraphModel` parent — pydantic mutable fields can't be narrowed past the parent. Reverted to `datetime | None` with a comment explaining the invariance constraint.)_
 - [ ] **L6.** `endpoints/status.py:19-21` is unauthenticated and exposes the `version` string.
 - [x] **L7.** Tag slug derivation accepts blank name (empty slug) — `endpoints/tags.py:77`. Add `Field(min_length=1)`. — PR #339.
 - [x] **L8.** `db.merge(blueprint)` without explicit `match_on` in create path — `endpoints/blueprints.py:99` (cf. line 288). — PR #339.

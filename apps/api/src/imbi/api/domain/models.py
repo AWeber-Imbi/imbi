@@ -187,7 +187,13 @@ class LocalAuthConfig(models.GraphModel):
 
     key: typing.Literal['global'] = 'global'
     enabled: bool = True
-    updated_at: datetime.datetime = pydantic.Field(
+    # Keep ``| None`` to stay invariant-compatible with
+    # ``GraphModel.updated_at`` — pydantic mutable fields can't be
+    # narrowed past the parent (basedpyright strict flags it as
+    # ``reportIncompatibleVariableOverride``). The default_factory
+    # always produces a datetime so callers still see a non-None
+    # value in practice.
+    updated_at: datetime.datetime | None = pydantic.Field(
         default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
 
@@ -1156,7 +1162,7 @@ class WebhookResponse(pydantic.BaseModel):
                 config: dict[str, typing.Any] | list[typing.Any]
                 try:
                     config = json.loads(raw_config) if raw_config else {}
-                except (json.JSONDecodeError, TypeError):
+                except json.JSONDecodeError, TypeError:
                     config = {}
                 rules.append(
                     WebhookRuleResponse(
