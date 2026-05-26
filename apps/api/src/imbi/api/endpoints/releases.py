@@ -40,6 +40,19 @@ _DEPLOYMENT_STATUS = typing.Literal[
     'rolled_back',
 ]
 
+#: Cap on concurrent upstream calls during release-train hydration.
+#: ``_hydrate_release_train`` fans out ``get_deployment_status`` and
+#: ``get_check_status`` per environment; when several requests land
+#: concurrently the unbounded gather would otherwise stack 2*envs *
+#: concurrent_requests in-flight against the plugin (GitHub's secondary
+#: rate limit is the binding constraint). Process-wide so two
+#: simultaneous page loads share the budget instead of each spawning
+#: its own.
+_RELEASE_HYDRATION_CONCURRENCY = 5
+_RELEASE_HYDRATION_SEMAPHORE = asyncio.Semaphore(
+    _RELEASE_HYDRATION_CONCURRENCY,
+)
+
 
 # -- Request / Response models ------------------------------------------
 
@@ -276,6 +289,60 @@ _RUN_STATUS_TO_EVENT_STATUS: dict[str, _DEPLOYMENT_STATUS] = {
 }
 
 
+async def _gather_release_hydration(
+    handler: typing.Any,
+    ctx: typing.Any,
+    credentials: typing.Any,
+    in_flight: list[tuple[str, str, str, models.DeploymentEvent]],
+    deployed: list[tuple[str, str]],
+) -> tuple[list[typing.Any], list[typing.Any]]:
+    """Run the per-env deploy-status + per-committish CI calls.
+
+    Wraps every call in ``_RELEASE_HYDRATION_SEMAPHORE`` so a flurry
+    of concurrent page loads cannot saturate the upstream rate limit,
+    and dedupes identical committishes across environments (a promoted
+    release that landed in N envs would otherwise pay ``get_check_status``
+    N times). The returned ``ci_results`` list keeps the original
+    one-per-env shape so callers iterate in lockstep with ``deployed``.
+    """
+
+    async def _bounded_run(event: models.DeploymentEvent) -> typing.Any:
+        async with _RELEASE_HYDRATION_SEMAPHORE:
+            return await call_with_timeout(
+                handler.get_deployment_status(
+                    ctx, credentials, run_id=str(event.external_run_id)
+                )
+            )
+
+    async def _bounded_check(committish: str) -> typing.Any:
+        async with _RELEASE_HYDRATION_SEMAPHORE:
+            return await call_with_timeout(
+                handler.get_check_status(
+                    ctx, credentials, committish=committish
+                )
+            )
+
+    run_results = await asyncio.gather(
+        *(_bounded_run(event) for _, _, _, event in in_flight),
+        return_exceptions=True,
+    )
+    unique_committishes: list[str] = []
+    committish_index: dict[str, int] = {}
+    for _, committish in deployed:
+        if committish not in committish_index:
+            committish_index[committish] = len(unique_committishes)
+            unique_committishes.append(committish)
+    unique_ci_results = await asyncio.gather(
+        *(_bounded_check(c) for c in unique_committishes),
+        return_exceptions=True,
+    )
+    ci_results: list[typing.Any] = [
+        unique_ci_results[committish_index[committish]]
+        for _, committish in deployed
+    ]
+    return list(run_results), ci_results
+
+
 async def _hydrate_release_train(
     db: graph.Graph,
     org_slug: str,
@@ -343,27 +410,8 @@ async def _hydrate_release_train(
         return {}
     handler = _handler(resolved)
 
-    run_results = await asyncio.gather(
-        *(
-            call_with_timeout(
-                handler.get_deployment_status(
-                    ctx, credentials, run_id=str(event.external_run_id)
-                )
-            )
-            for _, _, _, event in in_flight
-        ),
-        return_exceptions=True,
-    )
-    ci_results = await asyncio.gather(
-        *(
-            call_with_timeout(
-                handler.get_check_status(
-                    ctx, credentials, committish=committish
-                )
-            )
-            for _, committish in deployed
-        ),
-        return_exceptions=True,
+    run_results, ci_results = await _gather_release_hydration(
+        handler, ctx, credentials, in_flight, deployed
     )
 
     for (slug, release_id, _committish, event), result in zip(
