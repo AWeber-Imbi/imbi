@@ -9,6 +9,7 @@ upsert (Phase 2).
 See ``docs/deployments-plan.md`` for the full design.
 """
 
+import asyncio
 import datetime
 import functools
 import importlib.resources
@@ -1690,7 +1691,7 @@ RETURN e{{.slug, .name, .sort_order}} AS env,
 
 
 @project_deployments_router.get('/promotion-options')
-async def list_promotion_options(
+async def list_promotion_options(  # noqa: C901
     org_slug: str,
     project_id: str,
     db: graph.Pool,
@@ -1781,44 +1782,68 @@ async def list_promotion_options(
     )
     handler = _handler(resolved)
 
-    options: list[PromotionOption] = []
+    # Collect every adjacent-env pair first so we can fan the
+    # ``compare()`` calls out with ``asyncio.gather`` instead of
+    # awaiting them serially — the popover blocks on this for the
+    # length of the slowest plugin RTT times N envs.
+    pairs: list[tuple[dict[str, typing.Any], dict[str, typing.Any]]] = []
     for from_item, to_item in itertools.pairwise(ordered):
-        from_release = from_item['release']
-        to_release = to_item['release']
-        if not from_release:
+        if not from_item['release']:
             continue
-        from_committish = str(from_release.get('committish') or '')
-        from_tag = from_release.get('tag')
-        from_display = str(from_tag) if from_tag else (from_committish or None)
-        if to_release:
-            to_committish = str(to_release.get('committish') or '')
-            to_tag = to_release.get('tag')
-            to_display = str(to_tag) if to_tag else (to_committish or None)
-        else:
-            to_committish = ''
-            to_display = None
-        commits_pending: int | None = None
-        if (
+        pairs.append((from_item, to_item))
+
+    async def _compare_or_none(
+        from_committish: str, to_committish: str
+    ) -> int | None:
+        if not (
             to_committish
             and from_committish
             and to_committish != from_committish
         ):
-            try:
-                cmp_result = await call_with_timeout(
-                    handler.compare(
-                        ctx,
-                        credentials,
-                        base=to_committish,
-                        head=from_committish,
-                    )
+            return None
+        try:
+            cmp_result = await call_with_timeout(
+                handler.compare(
+                    ctx,
+                    credentials,
+                    base=to_committish,
+                    head=from_committish,
                 )
-                commits_pending = cmp_result.ahead
-            except Exception:  # noqa: BLE001
-                LOGGER.debug(
-                    'compare failed for %s..%s',
-                    to_committish,
-                    from_committish,
-                )
+            )
+        except Exception:  # noqa: BLE001
+            LOGGER.debug(
+                'compare failed for %s..%s', to_committish, from_committish
+            )
+            return None
+        return cmp_result.ahead
+
+    pair_committishes: list[tuple[str, str]] = []
+    for from_item, to_item in pairs:
+        from_committish = str(from_item['release'].get('committish') or '')
+        to_committish = (
+            str(to_item['release'].get('committish') or '')
+            if to_item['release']
+            else ''
+        )
+        pair_committishes.append((from_committish, to_committish))
+
+    commits_pending_per_pair = await asyncio.gather(
+        *(_compare_or_none(fc, tc) for fc, tc in pair_committishes)
+    )
+
+    options: list[PromotionOption] = []
+    for (from_item, to_item), (from_committish, to_committish), pending in zip(
+        pairs, pair_committishes, commits_pending_per_pair, strict=True
+    ):
+        from_release = from_item['release']
+        to_release = to_item['release']
+        from_tag = from_release.get('tag')
+        from_display = str(from_tag) if from_tag else (from_committish or None)
+        if to_release:
+            to_tag = to_release.get('tag')
+            to_display = str(to_tag) if to_tag else (to_committish or None)
+        else:
+            to_display = None
         options.append(
             PromotionOption(
                 from_environment=from_item['env']['slug'],
@@ -1827,7 +1852,7 @@ async def list_promotion_options(
                 to_version=to_display,
                 from_sha=from_committish or None,
                 to_sha=to_committish or None,
-                commits_pending=commits_pending,
+                commits_pending=pending,
             )
         )
     return options
