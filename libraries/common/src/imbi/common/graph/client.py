@@ -692,6 +692,7 @@ class Graph:
         query_template: str,
         params: dict[str, typing.Any] | None = None,
         columns: list[str] | None = None,
+        raw: bool = False,
     ) -> sql.Composed:
         """Build the full SQL for an AGE ``cypher()`` call.
 
@@ -717,12 +718,21 @@ class Graph:
             )
             for c in columns
         )
-        literal_params = {
-            k: self._cypher_param(v) for k, v in (params or {}).items()
-        }
-        query = sql.SQL(query_template).format(
-            **literal_params,
-        )
+        # ``sql.SQL.format`` parses the whole template, treating any
+        # ``{...}`` as a placeholder and unescaping ``{{``/``}}`` to
+        # ``{``/``}``. Templated callers rely on this: they double
+        # their literal braces and reference params as ``{name}``.
+        # Raw user Cypher (the admin workbench) uses single braces for
+        # map literals (e.g. ``{name: 'x'}``) and must bypass the
+        # formatter entirely so its braces pass through untouched.
+        query: sql.Composable
+        if raw:
+            query = sql.SQL(query_template)
+        else:
+            literal_params = {
+                k: self._cypher_param(v) for k, v in (params or {}).items()
+            }
+            query = sql.SQL(query_template).format(**literal_params)
         # Render once to pick a dollar-quote tag that cannot
         # appear in the Cypher body, then reuse the already
         # composed ``query`` directly.
@@ -747,6 +757,7 @@ class Graph:
         query_template: str,
         params: dict[str, typing.Any] | None = None,
         columns: list[str] | None = None,
+        raw: bool = False,
     ) -> list[dict[str, typing.Any]]:
         """Execute a single Cypher query on a connection."""
         cypher_sql = self._build_cypher_sql(
@@ -754,6 +765,7 @@ class Graph:
             query_template,
             params,
             columns,
+            raw,
         )
         async with conn.cursor(
             row_factory=rows.dict_row,
@@ -766,13 +778,21 @@ class Graph:
         query_template: str,
         params: dict[str, typing.Any] | None = None,
         columns: list[str] | None = None,
+        raw: bool = False,
     ) -> list[dict[str, typing.Any]]:
         """Wrap a Cypher query in SQL and execute it.
 
         Parameters in *params* are serialized via
         ``_cypher_param()`` using Cypher-compatible escaping
         and interpolated into *query_template* via
-        ``sql.SQL.format()``.
+        ``sql.SQL.format()``.  Templated callers double their
+        literal braces (``{{``/``}}``) and reference params as
+        ``{name}``.
+
+        Pass *raw* ``True`` to execute *query_template* as
+        literal Cypher with no ``format()`` pass — required for
+        arbitrary user-entered queries whose map literals use
+        single braces.  *params* is ignored when *raw* is set.
 
         The Cypher query is wrapped in AGE's ``cypher()``
         function.  *columns* defines the ``AS (...)`` clause
@@ -790,4 +810,5 @@ class Graph:
                 query_template,
                 params,
                 columns,
+                raw,
             )

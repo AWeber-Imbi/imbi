@@ -212,6 +212,59 @@ class BuildCypherSqlTests(unittest.IsolatedAsyncioTestCase):
         # And the Cypher property-map braces are still present.
         self.assertIn('{name: ', rendered)
 
+    async def test_raw_cypher_map_literal(self) -> None:
+        """Raw Cypher with an un-escaped map literal.
+
+        This is the admin Graph Query workbench path: the user types
+        Cypher directly, braces and all, with ``raw=True``. The
+        formatter must be skipped entirely — otherwise psycopg parses
+        ``{name: "RabbitMQ"}`` as a placeholder with a format spec and
+        raises ``ValueError('no format specification supported by SQL')``.
+        """
+        g = graph.Graph()
+        await g.open()
+        try:
+            async with g.pool.connection() as conn:
+                built = g._build_cypher_sql(
+                    conn,
+                    'MATCH (p:Project {name: "RabbitMQ"}) RETURN p',
+                    None,
+                    columns=['p'],
+                    raw=True,
+                )
+                rendered = built.as_string(conn)
+        finally:
+            await g.close()
+        self.assertIn('{name: "RabbitMQ"}', rendered)
+
+    async def test_templated_query_without_params_unescapes_braces(
+        self,
+    ) -> None:
+        """Param-less templated query still runs through ``format()``.
+
+        Internal callers double their literal braces (``a{{.*}}``) and
+        may pass an empty params dict (e.g. a ``RETURN a{{.*}}`` list
+        query). The formatter must still run to unescape ``{{``/``}}``
+        back to single braces; skipping it leaves doubled braces that
+        AGE rejects with ``syntax error at or near "{"``.
+        """
+        g = graph.Graph()
+        await g.open()
+        try:
+            async with g.pool.connection() as conn:
+                built = g._build_cypher_sql(
+                    conn,
+                    'MATCH (a:App) RETURN a{{.*}} AS app',
+                    {},
+                    columns=['app'],
+                )
+                rendered = built.as_string(conn)
+        finally:
+            await g.close()
+        # Doubled braces collapse to single — and no doubles remain.
+        self.assertIn('a{.*} AS app', rendered)
+        self.assertNotIn('{{', rendered)
+
 
 class GraphInitTests(unittest.TestCase):
     def test_pool_not_opened_on_init(self) -> None:
