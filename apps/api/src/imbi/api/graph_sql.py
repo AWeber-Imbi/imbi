@@ -21,8 +21,13 @@ def escape_prop(name: str) -> str:
     return '`' + name.replace('`', '``') + '`'
 
 
-def props_template(props: dict[str, typing.Any]) -> str:
+def props_template(props: dict[str, typing.Any]) -> typing.LiteralString:
     """Build a Cypher property-map template with double-escaped braces.
+
+    The return type is ``LiteralString`` because the builder accepts
+    only validated identifier keys (see ``_check_identifier``) and a
+    fixed template body, so the result is safe to feed into
+    ``db.execute(query: LiteralString, ...)``.
 
     Raises:
         ValueError: if any key is not a bare identifier.
@@ -32,11 +37,19 @@ def props_template(props: dict[str, typing.Any]) -> str:
     for k in props:
         _check_identifier(k)
     pairs = [f'{escape_prop(k)}: {{{k}}}' for k in props]
-    return '{{' + ', '.join(pairs) + '}}'
+    return typing.cast(  # type: ignore[redundant-cast]
+        typing.LiteralString, '{{' + ', '.join(pairs) + '}}'
+    )
 
 
-def set_clause(alias: str, props: dict[str, typing.Any]) -> str:
+def set_clause(
+    alias: str, props: dict[str, typing.Any]
+) -> typing.LiteralString:
     """Build a Cypher SET clause from a property dict.
+
+    Returns a ``LiteralString`` for the same reason as
+    :func:`props_template` — the builder only accepts validated
+    identifier keys.
 
     Raises:
         ValueError: if any key is not a bare identifier.
@@ -48,4 +61,6 @@ def set_clause(alias: str, props: dict[str, typing.Any]) -> str:
     assignments = ', '.join(
         f'{alias}.{escape_prop(k)} = {{{k}}}' for k in props
     )
-    return f'SET {assignments}'
+    return typing.cast(  # type: ignore[redundant-cast]
+        typing.LiteralString, f'SET {assignments}'
+    )

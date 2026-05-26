@@ -160,7 +160,7 @@ async def create_service_plugin(
     if data.service_application_slug is not None:
         # Same-service guard is enforced atomically: the
         # ServiceApplication must REGISTERED_IN the same service.
-        create_query: str = (
+        create_query: typing.LiteralString = (
             'MATCH (s:ThirdPartyService {{slug: {svc_slug}}})'
             ' -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})'
             ' MATCH (a:ServiceApplication {{slug: {app_slug}}})'
@@ -324,7 +324,7 @@ async def update_service_plugin(
         props['used_as_login'] = data.used_as_login
     set_stmt = set_clause('p', props)
 
-    update_query: str = (
+    update_query: typing.LiteralString = (
         'MATCH (p:Plugin {{id: {plugin_id}}})'
         '<-[:HAS_PLUGIN]-(s:ThirdPartyService {{slug: {svc_slug}}})'
         ' -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})'
@@ -850,7 +850,7 @@ async def replace_plugin_assignments(
                 },
                 [],
             )
-        create_query: str = (
+        create_query: typing.LiteralString = (
             'MATCH (pt:ProjectType {{slug: {pt_slug}}})'
             ' -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})'
             ' MATCH (p:Plugin {{id: {plugin_id}}})'
