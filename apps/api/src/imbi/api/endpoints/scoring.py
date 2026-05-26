@@ -459,7 +459,6 @@ async def score_history_feed(
         return []
     where: list[str] = [
         'project_id IN {project_ids:Array(String)}',
-        "change_reason != ''",
     ]
     params: dict[str, typing.Any] = {'project_ids': list(project_info)}
     if from_ is not None:
