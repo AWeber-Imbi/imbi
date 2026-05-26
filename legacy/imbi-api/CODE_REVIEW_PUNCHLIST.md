@@ -22,12 +22,12 @@ Severity legend: **C** Critical · **H** High · **M** Medium · **L** Low
 
 ## High — Auth / Authz
 
-- [ ] **H1.** Refresh-token reuse doesn't invalidate the whole chain — `src/imbi_api/endpoints/auth.py:496-522`.
+- [x] **H1.** Refresh-token reuse doesn't invalidate the whole chain — `src/imbi_api/endpoints/auth.py:496-522`. Refresh pairs now carry a `family_id`; on detected reuse the handler cascades a single Cypher `MATCH … SET revoked = true` across every un-revoked sibling. Legacy rows without `family_id` log ERROR and skip the cascade. — PR #347.
 - [~] **H2.** SSRF in OIDC discovery — `src/imbi_api/auth/oauth.py:21-63`. Enforce HTTPS, block RFC1918 / link-local addresses. — PR #345 (open).
 - [x] **H3.** Session-limit feature is dead code — `src/imbi_api/auth/sessions.py:18, 86-99` has no callers. Removed `enforce_session_limit`, `update_session_activity`, `max_concurrent_sessions`, `session_timeout_seconds` along with their tests. — landed on `main` (f0f15eb).
 - [x] **H4.** Login timing oracle — `src/imbi_api/endpoints/auth.py:272-313`. Login now always runs Argon2 (against the real hash or a module-level dummy hash) and collapses every 401-class failure to a single generic message. — PR #344.
 - [x] **H5.** Argon2 blocks the event loop — `src/imbi_api/auth/password.py`. Every production call site (login, API-key auth, MFA setup/verify/disable, password change, user/key/credential create + rotate) now wraps Argon2 in `asyncio.to_thread`; the 10 MFA backup-code hashes run via `asyncio.gather`. — PR #344.
-- [ ] **H6.** MFA backup-code reuse race — `src/imbi_api/endpoints/auth.py:386-403`, `src/imbi_api/endpoints/mfa.py:281-289`. Replace read-modify-write with a single atomic Cypher `SET t.backup_codes = [x IN t.backup_codes WHERE x <> {hash}]`.
+- [x] **H6.** MFA backup-code reuse race — `src/imbi_api/endpoints/auth.py:386-403`, `src/imbi_api/endpoints/mfa.py:281-289`. Both backup-code paths fold verify-and-consume into a single atomic Cypher statement (`WHERE {used_hash} IN t.backup_codes SET t.backup_codes = [c IN ... WHERE c <> {used_hash}]`); empty result = race-lost, treated as 401. Also drops the stale `json.dumps(backup_codes)` write that was coercing the AGE list to a JSON string. — PR #346.
 - [x] **H7.** `roles.grant_permission` / `revoke_permission` don't check `is_system` — `src/imbi_api/endpoints/roles.py:448-567` allows privilege escalation by mutating system roles. — PR #343.
 - [x] **H8.** Upload read paths are unauthenticated — `src/imbi_api/endpoints/uploads.py:192-262` (`get_upload`, `get_upload_meta`, `get_upload_thumbnail`). Add `require_permission('upload:read')`. — PR #343.
 - [x] **H9.** `/events` cursor leaks across projects — `src/imbi_api/endpoints/events.py:201-264`. Now gated on new seeded `admin:events:read` permission; org-scoped variant stays on `project:read`. — PR #343.
