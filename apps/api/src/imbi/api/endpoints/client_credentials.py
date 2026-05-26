@@ -100,6 +100,10 @@ async def create_client_credential(
 
     auth_settings = settings.get_auth_settings()
 
+    # L27: reject bogus scopes at write time so audit logs and the
+    # client-credentials UI never show typos that silently grant nothing.
+    await permissions.validate_scopes(db, credential_request.scopes)
+
     # Generate client_id and secret
     client_id = f'cc_{secrets.token_urlsafe(16)}'
     client_secret = secrets.token_urlsafe(32)

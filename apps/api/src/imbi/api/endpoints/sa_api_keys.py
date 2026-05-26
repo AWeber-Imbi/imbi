@@ -101,6 +101,10 @@ async def create_sa_api_key(
 
     auth_settings = settings.get_auth_settings()
 
+    # L27: reject bogus scopes at write time so audit logs and the
+    # SA key UI never show typos that silently grant nothing.
+    await permissions.validate_scopes(db, key_request.scopes)
+
     # Generate key: format ik_<16chars>_<32chars>
     key_id = f'ik_{secrets.token_hex(16)}'
     key_secret = secrets.token_urlsafe(32)

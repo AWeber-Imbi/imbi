@@ -125,7 +125,12 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
     def test_create_api_key_with_scopes(self) -> None:
         """Test API key creation with scopes."""
         self.mock_db.merge.return_value = None
-        self.mock_db.execute.return_value = []
+        # validate_scopes (L27) queries Permission nodes; return the
+        # requested scopes as known so creation succeeds.
+        self.mock_db.execute.side_effect = [
+            [{'name': 'project:read'}, {'name': 'project:write'}],
+            [],
+        ]
 
         with mock.patch(
             'imbi_api.settings.get_auth_settings',
@@ -137,8 +142,8 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
                 json={
                     'name': 'Scoped Key',
                     'scopes': [
-                        'read:projects',
-                        'write:projects',
+                        'project:read',
+                        'project:write',
                     ],
                 },
             )
@@ -147,8 +152,31 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
             data = response.json()
             self.assertEqual(
                 data['scopes'],
-                ['read:projects', 'write:projects'],
+                ['project:read', 'project:write'],
             )
+
+    def test_create_api_key_rejects_unknown_scope(self) -> None:
+        """L27: unknown scopes are rejected with 400."""
+        self.mock_db.merge.return_value = None
+        # Only ``project:read`` is seeded; ``bogus:scope`` is not.
+        self.mock_db.execute.return_value = [{'name': 'project:read'}]
+
+        with mock.patch(
+            'imbi_api.settings.get_auth_settings',
+        ) as mock_settings:
+            mock_settings.return_value = self.auth_settings
+
+            response = self.client.post(
+                '/api-keys',
+                json={
+                    'name': 'Bogus Key',
+                    'scopes': ['project:read', 'bogus:scope'],
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('bogus:scope', response.json()['detail'])
+        self.assertIn('Unknown scope', response.json()['detail'])
 
     def test_create_api_key_expiration_exceeds_max(
         self,

@@ -87,6 +87,53 @@ _ALLOWED_PRINCIPAL_SELECTORS: frozenset[
 )
 
 
+async def load_all_permission_names(db: graph.Graph) -> set[str]:
+    """Return the set of seeded ``Permission.name`` values.
+
+    Used to validate API-key / SA-key / client-credential scope lists
+    at creation time — a scope that doesn't correspond to a seeded
+    permission would silently grant nothing (the auth path
+    intersects scopes with the principal's actual permissions), but
+    persisting bogus scopes pollutes the audit trail and hides
+    typos.
+    """
+    records = await db.execute(
+        'MATCH (p:Permission) RETURN p.name AS name',
+        {},
+        columns=['name'],
+    )
+    names: set[str] = set()
+    for row in records:
+        raw = graph.parse_agtype(row.get('name'))
+        if isinstance(raw, str) and raw:
+            names.add(raw)
+    return names
+
+
+async def validate_scopes(
+    db: graph.Graph, scopes: collections.abc.Iterable[str]
+) -> None:
+    """Raise ``HTTPException(400)`` if any scope isn't a seeded Permission.
+
+    An empty / all-scopes list (``[]``) is treated as "no restriction"
+    by callers and passes validation trivially.
+    """
+    requested = {s for s in scopes if s}
+    if not requested:
+        return
+    known = await load_all_permission_names(db)
+    unknown = sorted(requested - known)
+    if unknown:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                'Unknown scope(s): '
+                + ', '.join(unknown)
+                + '. Scopes must match seeded Permission names.'
+            ),
+        )
+
+
 async def load_principal_permissions(
     db: graph.Graph,
     label: PrincipalLabel,
