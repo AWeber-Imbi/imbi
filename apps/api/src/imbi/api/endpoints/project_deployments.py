@@ -527,12 +527,15 @@ async def _release_id_for(
     deployment-audit writer. AGE doesn't expose NULL equality, so
     tag-matching is COALESCEd through a sentinel.
     """
+    # Fetch all matching ids so a duplicate ``(committish, tag)`` row
+    # is visible in the logs instead of being silently masked by
+    # ``LIMIT 1`` — the schema doesn't enforce uniqueness on this pair
+    # and a stuck retry path is exactly how we'd accumulate dupes.
     query: typing.LiteralString = """
     MATCH (:Project {{id: {project_id}}})
         -[:HAS_RELEASE]->(r:Release {{committish: {committish}}})
     WHERE COALESCE(r.tag, '') = COALESCE({tag}, '')
     RETURN r.id AS rid
-    LIMIT 1
     """
     rows = await db.execute(
         query,
@@ -545,6 +548,14 @@ async def _release_id_for(
     )
     if not rows:
         return None
+    if len(rows) > 1:
+        LOGGER.warning(
+            'Multiple Release nodes for project=%s committish=%s tag=%r; '
+            'using the first',
+            project_id,
+            committish,
+            tag,
+        )
     rid = graph.parse_agtype(rows[0].get('rid'))
     return str(rid) if rid else None
 
