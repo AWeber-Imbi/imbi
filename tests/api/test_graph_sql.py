@@ -42,5 +42,29 @@ class SetClauseTestCase(unittest.TestCase):
         self.assertIn('n.`b` = {b}', result)
 
 
+class IdentifierValidationTestCase(unittest.TestCase):
+    """Both helpers must reject keys that aren't bare identifiers."""
+
+    def test_set_clause_rejects_dotted_key(self) -> None:
+        with self.assertRaises(ValueError):
+            set_clause('n', {'a.b': 1})
+
+    def test_set_clause_rejects_brace_key(self) -> None:
+        with self.assertRaises(ValueError):
+            set_clause('n', {'a}; DROP': 1})
+
+    def test_set_clause_rejects_dash(self) -> None:
+        with self.assertRaises(ValueError):
+            set_clause('n', {'a-b': 1})
+
+    def test_props_template_rejects_dotted_key(self) -> None:
+        with self.assertRaises(ValueError):
+            props_template({'a.b': 1})
+
+    def test_props_template_rejects_leading_digit(self) -> None:
+        with self.assertRaises(ValueError):
+            props_template({'1foo': 1})
+
+
 if __name__ == '__main__':
     unittest.main()
