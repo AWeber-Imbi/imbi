@@ -40,11 +40,11 @@ Severity legend: **C** Critical · **H** High · **M** Medium · **L** Low
 
 ## High — Performance / Hot Path
 
-- [ ] **H13.** Audit / event writes run inline on PATCH / deploy — `src/imbi_api/endpoints/projects.py:2089`, `src/imbi_api/endpoints/project_deployments.py:444`. Move to `BackgroundTasks`.
+- [x] **H13.** Audit / event writes run inline on PATCH / deploy — `src/imbi_api/endpoints/projects.py:2089`, `src/imbi_api/endpoints/project_deployments.py:444`. Move to `BackgroundTasks`. ``patch_project`` schedules ``_emit_change_events`` via ``fastapi.BackgroundTasks`` and ``trigger_deployment`` threads ``background`` through ``_handle_deploy`` / ``_handle_promote`` so both audit sites schedule ``_record_deployment_audit`` instead of awaiting it. — PR #372.
 - [ ] **H14.** `list_current_releases` fires 2N upstream HTTP calls per project page with no cap — `src/imbi_api/endpoints/releases.py:346-367`. Add a shared semaphore and per-request `(project_id, committish)` cache.
 - [ ] **H15.** `backfill_embeddings.py:54-57` unconditionally re-embeds every node serially, calls private `_auto_embed`, no rate limiting. Add idempotency check, batching, and `asyncio.Semaphore`.
 - [x] **H16.** OpenAPI `_schema_cache` regenerates concurrently under cold load — `src/imbi_api/openapi.py:202-280`. Wrap with `asyncio.Lock` or precompute at startup. Wrapped the check + build in a ``threading.Lock`` with double-check; pulled the build body into ``_build_schema`` so the locked section is straight-line. ``clear_schema_cache`` also takes the lock so an in-flight build can't re-populate after a clear. — PR #366.
-- [ ] **H17.** Per-call ClickHouse insert in lifecycle dispatch — `src/imbi_api/plugins/lifecycle_dispatch.py:240-268`. Batch or use the existing event writer queue.
+- [x] **H17.** Per-call ClickHouse insert in lifecycle dispatch — `src/imbi_api/plugins/lifecycle_dispatch.py:240-268`. Batch or use the existing event writer queue. ``dispatch_lifecycle`` now collects every invocation into a single ``_emit_events_batch`` insert at the end of the loop instead of one ``_emit_event`` per plugin — N round trips → 1. — PR #373.
 
 ## High — Boot / Lifespans
 
@@ -82,7 +82,7 @@ Severity legend: **C** Critical · **H** High · **M** Medium · **L** Low
 - [x] **M17.** `dispatch_lifecycle` ignores plugin `enabled` flag — `plugins/lifecycle_dispatch.py:79-101`, `plugins/resolution.py:228`. Moved the enabled check into the resolver: `resolve_plugin` raises `PluginUnavailableError` when the chosen plugin's PluginRegistration is disabled; `resolve_all_plugins` issues a single `get_enabled_map` round-trip and silently skips disabled plugins with an INFO log. — PR #355.
 - [x] **M18.** `revoke_connection` swallows IdP-side failures — `identity/flows.py:417-434`. Now returns a structured `RevokeOutcome(idp_revoked, idp_error)`; the disconnect endpoint switches from 204 to 200 OK with a JSON body containing the IdP error message when local revoke succeeds but the IdP rejects the call. — PR #359.
 - [ ] **M19.** `patch_plugin_configuration` is last-writer-wins — `plugins/credentials.py:196-225`. Take a Valkey lock or single-query merge.
-- [ ] **M20.** `rescore_all` fires N parallel Valkey calls — `endpoints/scoring.py:578-586`. Pipeline / Lua.
+- [x] **M20.** `rescore_all` fires N parallel Valkey calls — `endpoints/scoring.py:578-586`. Pipeline / Lua. Added ``score_queue.enqueue_recompute_bulk`` that pipelines N ``SET NX EX`` debounce checks and N ``XADD`` calls into two round trips; the rescore endpoint replaced its ``asyncio.gather`` loop with the bulk helper. — PR #371.
 - [ ] **M21.** `score_history_by_team` builds a `project_id IN [...10k...]` clause — `endpoints/scoring.py:358-427`. Denormalize team_slug or use a CH dictionary.
 - [~] **M22.** `link_definitions` count uses substring match — `endpoints/link_definitions.py:188-196, 244-247, 336-339`. _(Re-examined: the current pattern is `p.links CONTAINS ('"' + ld.slug + '":')`, which anchors on the closing quote + colon and so does not let `foo` match `foobar`. No action needed.)_
 - [x] **M23.** `compute_score` exception silently swallowed — `endpoints/projects.py:1374-1375`. Replaced `pass` with `LOGGER.warning(..., exc_info=True)`. — landed on `main`.
