@@ -180,9 +180,24 @@ async def start_flow(
     return authorization_url, state_token, request.polling
 
 
+_LOCAL_HOSTS = frozenset({'localhost', '127.0.0.1', '::1'})
+
+
 def _replace_state(url: str, state_token: str) -> str:
-    """Return ``url`` with its ``state`` param set to ``state_token``."""
+    """Return ``url`` with its ``state`` param set to ``state_token``.
+
+    Refuses to rewrite non-HTTPS authorization URLs (except for the
+    local-loopback hosts that dev / test fixtures legitimately use).
+    The state JWT carries signed flow context we don't want round-
+    tripped over an unencrypted redirect, and a misconfigured plugin
+    manifest pointing at ``http://idp.example.com`` would otherwise
+    silently expose it to anyone on the network path.
+    """
     parts = urllib.parse.urlsplit(url)
+    if parts.scheme != 'https' and parts.hostname not in _LOCAL_HOSTS:
+        raise ValueError(
+            f'Identity-flow authorization URL must use https; got {url!r}'
+        )
     query = urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
     rewritten = [(k, state_token if k == 'state' else v) for k, v in query]
     if not any(k == 'state' for k, _ in query):

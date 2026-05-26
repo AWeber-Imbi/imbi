@@ -178,6 +178,45 @@ class StartFlowTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIs(polling, request.polling)
 
 
+class ReplaceStateTestCase(unittest.TestCase):
+    """Verify _replace_state enforces HTTPS on non-loopback hosts."""
+
+    def test_https_url_is_rewritten(self) -> None:
+        url = flows._replace_state(
+            'https://idp.example.com/auth?client_id=cid&state=nonce',
+            'state-token',
+        )
+        self.assertEqual(
+            url,
+            'https://idp.example.com/auth?client_id=cid&state=state-token',
+        )
+
+    def test_appends_state_when_absent(self) -> None:
+        url = flows._replace_state(
+            'https://idp.example.com/auth?client_id=cid', 'state-token'
+        )
+        self.assertIn('state=state-token', url)
+
+    def test_localhost_http_allowed_for_dev(self) -> None:
+        url = flows._replace_state(
+            'http://localhost:8080/auth?state=x', 'state-token'
+        )
+        self.assertEqual(url, 'http://localhost:8080/auth?state=state-token')
+
+    def test_loopback_ip_http_allowed(self) -> None:
+        url = flows._replace_state(
+            'http://127.0.0.1:8080/auth?state=x', 'state-token'
+        )
+        self.assertIn('state=state-token', url)
+
+    def test_non_https_remote_rejected(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            flows._replace_state(
+                'http://idp.example.com/auth?state=x', 'state-token'
+            )
+        self.assertIn('must use https', str(ctx.exception))
+
+
 class CompleteFlowTestCase(unittest.IsolatedAsyncioTestCase):
     """Verify complete_flow persists the connection on success."""
 
