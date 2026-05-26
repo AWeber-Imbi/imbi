@@ -378,3 +378,63 @@ class BackfillNodeIdsTestCase(unittest.TestCase):
         self.assertIn('Failed to connect to PostgreSQL', result.output)
         # Should not have attempted any queries.
         self.mock_graph.execute.assert_not_awaited()
+
+
+class CreateAdminUserTestCase(unittest.IsolatedAsyncioTestCase):
+    """Test cases for the _create_admin_user helper."""
+
+    def _make_db(
+        self, *, user_rows: list[dict], membership_rows: list[dict]
+    ) -> mock.AsyncMock:
+        db = mock.AsyncMock()
+        db.execute.side_effect = [user_rows, membership_rows]
+        return db
+
+    async def test_user_create_failure_raises(self) -> None:
+        db = self._make_db(user_rows=[], membership_rows=[])
+        with self.assertRaises(RuntimeError) as ctx:
+            await entrypoint._create_admin_user(
+                db,
+                email='admin@example.com',
+                display_name='Admin',
+                password='s3cret',
+                org_slug='default',
+            )
+        self.assertIn('Failed to create user', str(ctx.exception))
+        # MERGE for the user fired, membership query never ran.
+        self.assertEqual(db.execute.await_count, 1)
+
+    async def test_membership_failure_raises(self) -> None:
+        db = self._make_db(
+            user_rows=[{'n': 'user-row'}],
+            membership_rows=[],
+        )
+        with self.assertRaises(RuntimeError) as ctx:
+            await entrypoint._create_admin_user(
+                db,
+                email='admin@example.com',
+                display_name='Admin',
+                password='s3cret',
+                org_slug='missing',
+            )
+        msg = str(ctx.exception)
+        self.assertIn("'admin@example.com'", msg)
+        self.assertIn("'missing'", msg)
+        self.assertIn('organization not found', msg)
+        self.assertEqual(db.execute.await_count, 2)
+
+    async def test_happy_path_returns_user(self) -> None:
+        db = self._make_db(
+            user_rows=[{'n': 'user-row'}],
+            membership_rows=[{'m': 'edge-row'}],
+        )
+        user = await entrypoint._create_admin_user(
+            db,
+            email='admin@example.com',
+            display_name='Admin',
+            password='s3cret',
+            org_slug='default',
+        )
+        self.assertEqual(user.email, 'admin@example.com')
+        self.assertTrue(user.is_admin)
+        self.assertEqual(db.execute.await_count, 2)

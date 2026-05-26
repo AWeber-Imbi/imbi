@@ -458,10 +458,18 @@ async def _create_admin_user(
         "SET m.role = 'admin' "
         'RETURN m'
     )
-    await db.execute(
+    membership_records = await db.execute(
         membership_query,
         {'email': email, 'org_slug': org_slug},
         columns=['m'],
     )
+    if not membership_records:
+        # Empty result = the User/Organization MATCH didn't bind, so the
+        # MERGE never fired. Fail fast rather than leaving an admin with
+        # no organization membership.
+        raise RuntimeError(
+            f'Failed to grant {email!r} admin membership in '
+            f'organization {org_slug!r}: organization not found'
+        )
 
     return user
