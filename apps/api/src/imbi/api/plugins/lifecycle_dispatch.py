@@ -219,8 +219,17 @@ def _extract_http_detail(exc: fastapi.HTTPException) -> str:
         detail_dict = typing.cast(dict[str, object], detail)
         error = str(detail_dict.get('error') or 'http_error')
         plugin_id = detail_dict.get('plugin_id')
+        # ``identity_required`` carries a ``start_url`` the UI needs to
+        # surface; preserve it in the formatted string so the lifecycle
+        # event log can reproduce the original re-auth handoff.
+        start_url = detail_dict.get('start_url')
+        parts: list[str] = []
         if plugin_id:
-            return f'{error} (plugin_id={plugin_id})'
+            parts.append(f'plugin_id={plugin_id}')
+        if start_url:
+            parts.append(f'start_url={start_url}')
+        if parts:
+            return f'{error} ({", ".join(parts)})'
         return error
     return str(detail)
 
