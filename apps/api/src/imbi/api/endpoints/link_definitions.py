@@ -12,7 +12,7 @@ from imbi_common import blueprints, graph, models
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.graph_sql import props_template, set_clause
-from imbi_api.relationships import build_relationships
+from imbi_api.relationships import RelationshipSpec, build_relationships
 
 LOGGER = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ def _projects_relationship(
     """
     return build_relationships(
         '',
-        {'projects': ('', project_count)},
+        {'projects': RelationshipSpec('', project_count)},
     )
 
 

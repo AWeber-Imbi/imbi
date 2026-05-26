@@ -26,7 +26,7 @@ from imbi_api.plugins.lifecycle_dispatch import (
     LifecycleInvocation,
     dispatch_lifecycle,
 )
-from imbi_api.relationships import build_relationships
+from imbi_api.relationships import RelationshipSpec, build_relationships
 from imbi_api.scoring import OptionalValkeyClient
 from imbi_api.scoring import queue as score_queue
 
@@ -1005,8 +1005,8 @@ def _attach_project_relationships(
         build_relationships(
             '',
             {
-                'team': (team_url, 1 if team_slug else 0),
-                'environments': (
+                'team': RelationshipSpec(team_url, 1 if team_slug else 0),
+                'environments': RelationshipSpec(
                     f'{project_url}/environments',
                     len(project.get('environments') or []),
                 ),

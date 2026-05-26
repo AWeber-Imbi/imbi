@@ -19,7 +19,7 @@ from imbi_common import graph, models
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
-from imbi_api.relationships import build_relationships
+from imbi_api.relationships import RelationshipSpec, build_relationships
 
 LOGGER = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ def _tag_relationships(
         request.app.url_path_for(
             'get_tag', org_slug=org_slug, tag_slug=tag_slug
         ),
-        {'documents': ('/documents', document_count)},
+        {'documents': RelationshipSpec('/documents', document_count)},
     )
 
 

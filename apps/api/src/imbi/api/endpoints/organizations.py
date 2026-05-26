@@ -11,7 +11,7 @@ from imbi_common import graph, models
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
-from imbi_api.relationships import build_relationships
+from imbi_api.relationships import RelationshipSpec, build_relationships
 
 from .document_templates import document_templates_router
 from .documents import documents_project_router, documents_router
@@ -183,9 +183,9 @@ async def create_organization(
     result['relationships'] = build_relationships(
         request.app.url_path_for('get_organization', slug=slug),
         {
-            'teams': ('/teams', 0),
-            'members': ('/members', 0),
-            'projects': ('/projects', 0),
+            'teams': RelationshipSpec('/teams', 0),
+            'members': RelationshipSpec('/members', 0),
+            'projects': RelationshipSpec('/projects', 0),
         },
     )
     return result
@@ -235,9 +235,9 @@ async def list_organizations(
         org_data['relationships'] = build_relationships(
             request.app.url_path_for('get_organization', slug=slug),
             {
-                'teams': ('/teams', team_count),
-                'members': ('/members', member_count),
-                'projects': ('/projects', project_count),
+                'teams': RelationshipSpec('/teams', team_count),
+                'members': RelationshipSpec('/members', member_count),
+                'projects': RelationshipSpec('/projects', project_count),
             },
         )
         organizations.append(org_data)
@@ -296,15 +296,15 @@ async def get_organization(
     org_data['relationships'] = build_relationships(
         request.app.url_path_for('get_organization', slug=slug),
         {
-            'teams': (
+            'teams': RelationshipSpec(
                 '/teams',
                 graph.parse_agtype(records[0]['team_count']),
             ),
-            'members': (
+            'members': RelationshipSpec(
                 '/members',
                 graph.parse_agtype(records[0]['member_count']),
             ),
-            'projects': (
+            'projects': RelationshipSpec(
                 '/projects',
                 graph.parse_agtype(records[0]['project_count']),
             ),
@@ -386,15 +386,15 @@ async def _persist_organization(
     org_dict['relationships'] = build_relationships(
         request.app.url_path_for('get_organization', slug=org.slug),
         {
-            'teams': (
+            'teams': RelationshipSpec(
                 '/teams',
                 graph.parse_agtype(counts.get('team_count', 0)),
             ),
-            'members': (
+            'members': RelationshipSpec(
                 '/members',
                 graph.parse_agtype(counts.get('member_count', 0)),
             ),
-            'projects': (
+            'projects': RelationshipSpec(
                 '/projects',
                 graph.parse_agtype(counts.get('project_count', 0)),
             ),
