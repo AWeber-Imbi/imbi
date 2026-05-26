@@ -334,15 +334,56 @@ async def _persist_organization(
         HTTPException 404: Organization vanished between fetch and update.
 
     """
-    update_query: typing.LiteralString = (
-        'MATCH (n:Organization {{slug: {original_slug}}})'
-        ' SET n.name = {name},'
-        ' n.slug = {slug},'
-        ' n.description = {description},'
-        ' n.icon = {icon},'
-        ' n.updated_at = {updated_at}'
-        ' RETURN n'
-    )
+    # L9: when the slug changes, capture the old one so future lookups
+    # can redirect the stale URL. Fetched here as a pre-step (one
+    # extra round-trip on the rename path only) so the SET below
+    # gets a fully-formed list parameter and we don't have to ask
+    # AGE to do list-concat in Cypher (which is finicky).
+    previous_slugs: list[str] | None = None
+    if org.slug != original_slug:
+        existing_records = await db.execute(
+            'MATCH (n:Organization {{slug: {original_slug}}})'
+            ' RETURN n.previous_slugs AS previous_slugs',
+            {'original_slug': original_slug},
+            columns=['previous_slugs'],
+        )
+        if not existing_records:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f'Organization with slug {original_slug!r} not found',
+            )
+        prior_raw = graph.parse_agtype(existing_records[0]['previous_slugs'])
+        prior: list[str] = (
+            [str(s) for s in typing.cast(list[object], prior_raw)]
+            if isinstance(prior_raw, list)
+            else []
+        )
+        if original_slug not in prior:
+            prior.append(original_slug)
+        previous_slugs = prior
+
+    update_query: typing.LiteralString
+    if previous_slugs is not None:
+        update_query = (
+            'MATCH (n:Organization {{slug: {original_slug}}})'
+            ' SET n.name = {name},'
+            ' n.slug = {slug},'
+            ' n.description = {description},'
+            ' n.icon = {icon},'
+            ' n.updated_at = {updated_at},'
+            ' n.previous_slugs = {previous_slugs}'
+            ' RETURN n'
+        )
+    else:
+        update_query = (
+            'MATCH (n:Organization {{slug: {original_slug}}})'
+            ' SET n.name = {name},'
+            ' n.slug = {slug},'
+            ' n.description = {description},'
+            ' n.icon = {icon},'
+            ' n.updated_at = {updated_at}'
+            ' RETURN n'
+        )
     props = org.model_dump(mode='json')
     params: dict[str, typing.Any] = {
         'original_slug': original_slug,
@@ -352,6 +393,8 @@ async def _persist_organization(
         'icon': props.get('icon'),
         'updated_at': props['updated_at'],
     }
+    if previous_slugs is not None:
+        params['previous_slugs'] = previous_slugs
     try:
         records = await db.execute(update_query, params)
     except psycopg.errors.UniqueViolation as e:

@@ -309,9 +309,12 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
     def test_patch_organization_slug_conflict(self) -> None:
         """Test slug rename to conflicting slug returns 409."""
         self.mock_db.match.return_value = [self.test_org]
-        self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation(
-            'Duplicate'
-        )
+        # First call fetches existing previous_slugs (L9), then the
+        # actual SET raises the unique-violation we're testing for.
+        self.mock_db.execute.side_effect = [
+            [{'previous_slugs': None}],
+            psycopg.errors.UniqueViolation('Duplicate'),
+        ]
 
         response = self.client.patch(
             '/organizations/engineering',
@@ -342,3 +345,81 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+
+    def test_patch_organization_rename_captures_previous_slug(self) -> None:
+        """L9: renaming an org appends the old slug to previous_slugs."""
+        self.mock_db.match.return_value = [self.test_org]
+        # 1st execute = fetch previous_slugs (none yet); 2nd execute
+        # = SET; 3rd execute = the count query in _persist_organization.
+        renamed_org = {
+            'id': self.test_org.id,
+            'name': self.test_org.name,
+            'slug': 'eng',
+            'description': self.test_org.description,
+            'icon': self.test_org.icon,
+            'created_at': self.test_org.created_at.isoformat(),
+            'updated_at': self.test_org.updated_at,
+            'previous_slugs': ['engineering'],
+        }
+        self.mock_db.execute.side_effect = [
+            [{'previous_slugs': None}],
+            [{'n': renamed_org}],
+            [
+                {
+                    'team_count': 0,
+                    'member_count': 0,
+                    'project_count': 0,
+                }
+            ],
+        ]
+
+        response = self.client.patch(
+            '/organizations/engineering',
+            json=[{'op': 'replace', 'path': '/slug', 'value': 'eng'}],
+        )
+
+        self.assertEqual(response.status_code, 200)
+        # The SET call (call_args_list[1]) should have received the
+        # original slug as the new previous_slugs entry.
+        set_call = self.mock_db.execute.call_args_list[1]
+        params = set_call.args[1]
+        self.assertEqual(params['previous_slugs'], ['engineering'])
+        self.assertEqual(params['slug'], 'eng')
+        self.assertEqual(params['original_slug'], 'engineering')
+
+    def test_patch_organization_no_rename_skips_previous_slugs(
+        self,
+    ) -> None:
+        """L9: a non-slug update does not touch previous_slugs."""
+        self.mock_db.match.return_value = [self.test_org]
+        renamed_org = {
+            'id': self.test_org.id,
+            'name': 'New Name',
+            'slug': self.test_org.slug,
+            'description': self.test_org.description,
+            'icon': self.test_org.icon,
+            'created_at': self.test_org.created_at.isoformat(),
+            'updated_at': self.test_org.updated_at,
+        }
+        # No previous_slugs fetch on the non-rename path: just SET then
+        # the count query.
+        self.mock_db.execute.side_effect = [
+            [{'n': renamed_org}],
+            [
+                {
+                    'team_count': 0,
+                    'member_count': 0,
+                    'project_count': 0,
+                }
+            ],
+        ]
+
+        response = self.client.patch(
+            '/organizations/engineering',
+            json=[{'op': 'replace', 'path': '/name', 'value': 'New Name'}],
+        )
+
+        self.assertEqual(response.status_code, 200)
+        set_call = self.mock_db.execute.call_args_list[0]
+        params = set_call.args[1]
+        self.assertNotIn('previous_slugs', params)
