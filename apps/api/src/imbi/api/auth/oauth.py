@@ -1,8 +1,14 @@
 """OAuth2/OIDC integration helpers."""
 
+import asyncio
+import ipaddress
+import logging
+import os
 import secrets
+import socket
 import time
 import typing
+from urllib import parse as urlparse
 
 import httpx
 import jwt
@@ -12,10 +18,88 @@ from imbi_common.auth import encryption
 from imbi_api import settings
 from imbi_api.auth import login_providers, models
 
+LOGGER = logging.getLogger(__name__)
+
 # Cache for OIDC discovery documents with TTL
 # Format: {issuer_url: (discovery_data, timestamp)}
 _oidc_discovery_cache: dict[str, tuple[dict[str, typing.Any], float]] = {}
 _OIDC_CACHE_TTL_SECONDS = 86400  # 24 hours
+
+
+def _insecure_urls_allowed() -> bool:
+    """True iff the dev escape hatch ``IMBI_OAUTH_ALLOW_INSECURE_URLS`` is on.
+
+    When set, ``_validate_external_url`` skips its scheme and IP-range
+    checks *only* for hostnames in ``{'localhost', '127.0.0.1', '::1'}``.
+    Intended only for local dev against mock OIDC providers on
+    ``http://localhost``; never set in production.
+    """
+    return os.environ.get('IMBI_OAUTH_ALLOW_INSECURE_URLS', '').lower() in {
+        '1',
+        'true',
+        'yes',
+    }
+
+
+async def _validate_external_url(url: str, *, field: str) -> None:
+    """Reject URLs that point at non-HTTPS or private network addresses.
+
+    Used on every URL that this module is about to fetch (OIDC issuer,
+    discovered token/userinfo endpoints) to close the SSRF channel an
+    admin-configurable ``issuer_url`` would otherwise open. The
+    ``IMBI_OAUTH_ALLOW_INSECURE_URLS=true`` dev escape hatch only
+    bypasses validation for ``localhost``/``127.0.0.1``/``::1``; every
+    other host is still validated normally.
+
+    Raises:
+        ValueError: If scheme is not ``https`` or hostname resolves to a
+            loopback, link-local, private (RFC1918), multicast, or
+            reserved address.
+    """
+    parsed = urlparse.urlparse(url)
+    if _insecure_urls_allowed() and parsed.hostname in {
+        'localhost',
+        '127.0.0.1',
+        '::1',
+    }:
+        return
+
+    if parsed.scheme != 'https':
+        raise ValueError(
+            f'{field} must use https:// (got scheme {parsed.scheme!r})'
+        )
+    if not parsed.hostname:
+        raise ValueError(f'{field} is missing a hostname')
+
+    try:
+        infos = await asyncio.to_thread(
+            socket.getaddrinfo,
+            parsed.hostname,
+            None,
+            0,
+            socket.SOCK_STREAM,
+        )
+    except socket.gaierror as err:
+        raise ValueError(
+            f'{field} hostname does not resolve: {parsed.hostname}'
+        ) from err
+
+    for info in infos:
+        sockaddr = info[4]
+        ip_str = sockaddr[0]
+        ip = ipaddress.ip_address(ip_str)
+        if (
+            ip.is_loopback
+            or ip.is_link_local
+            or ip.is_private
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            raise ValueError(
+                f'{field} resolves to a non-public address '
+                f'({parsed.hostname} -> {ip_str})'
+            )
 
 
 async def _discover_oidc_endpoints(issuer_url: str) -> dict[str, typing.Any]:
@@ -28,7 +112,8 @@ async def _discover_oidc_endpoints(issuer_url: str) -> dict[str, typing.Any]:
         Discovery document with token_endpoint, userinfo_endpoint, etc.
 
     Raises:
-        ValueError: If discovery fails
+        ValueError: If discovery fails or any URL involved would target
+            a non-public network address (SSRF defense).
 
     """
     if issuer_url in _oidc_discovery_cache:
@@ -38,11 +123,15 @@ async def _discover_oidc_endpoints(issuer_url: str) -> dict[str, typing.Any]:
             return discovery_data
         del _oidc_discovery_cache[issuer_url]
 
+    await _validate_external_url(issuer_url, field='OIDC issuer URL')
+
     issuer = issuer_url.rstrip('/')
     discovery_url = f'{issuer}/.well-known/openid-configuration'
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(
+            timeout=10.0, follow_redirects=False
+        ) as client:
             response = await client.get(discovery_url)
     except httpx.HTTPError as e:
         raise ValueError(f'OIDC discovery request failed: {e}') from e
@@ -58,6 +147,16 @@ async def _discover_oidc_endpoints(issuer_url: str) -> dict[str, typing.Any]:
         raise ValueError('OIDC discovery missing token_endpoint')
     if 'userinfo_endpoint' not in discovery_data:
         raise ValueError('OIDC discovery missing userinfo_endpoint')
+
+    # The discovered endpoints can be set by whoever controls the
+    # issuer's discovery document; revalidate so an HTTPS issuer cannot
+    # point token/userinfo at an internal host.
+    await _validate_external_url(
+        discovery_data['token_endpoint'], field='OIDC token_endpoint'
+    )
+    await _validate_external_url(
+        discovery_data['userinfo_endpoint'], field='OIDC userinfo_endpoint'
+    )
 
     _oidc_discovery_cache[issuer_url] = (discovery_data, time.time())
     return discovery_data
@@ -150,7 +249,11 @@ async def exchange_oauth_code(
     """
     token_url, client_id, client_secret = await _get_provider_config(slug, db)
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    await _validate_external_url(token_url, field='OAuth token_url')
+
+    async with httpx.AsyncClient(
+        timeout=30.0, follow_redirects=False
+    ) as client:
         response = await client.post(
             token_url,
             data={
@@ -194,7 +297,11 @@ async def fetch_oauth_profile(
     app = await _load_active_login_app(slug, db)
     userinfo_url = await _get_userinfo_url(slug, db)
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    await _validate_external_url(userinfo_url, field='OAuth userinfo_url')
+
+    async with httpx.AsyncClient(
+        timeout=30.0, follow_redirects=False
+    ) as client:
         response = await client.get(
             userinfo_url,
             headers={'Authorization': f'Bearer {access_token}'},
