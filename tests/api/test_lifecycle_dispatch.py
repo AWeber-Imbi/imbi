@@ -140,6 +140,19 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         )
         insert.assert_awaited_once()
 
+    def test_emits_one_clickhouse_call_for_multiple_plugins(self) -> None:
+        """H17: N plugins → 1 ClickHouse insert (rows batched)."""
+        entries = [
+            _resolved(_make_lifecycle_entry(f'gh-{i}')) for i in range(3)
+        ]
+        results, insert = self._run(entries)
+        self.assertEqual(len(results), 3)
+        insert.assert_awaited_once()
+        args = insert.call_args.args
+        self.assertEqual(args[0], 'events')
+        rows = args[1]
+        self.assertEqual(len(rows), 3)
+
     def test_unarchive_not_implemented_is_skipped(self) -> None:
         entry = _make_lifecycle_entry('gh')
         results, _ = self._run([_resolved(entry)], event='unarchived')

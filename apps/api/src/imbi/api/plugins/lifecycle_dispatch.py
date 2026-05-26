@@ -97,7 +97,12 @@ async def dispatch_lifecycle(
         )
         invocation = await _invoke_one(db, ctx, resolved, event, auth)
         results.append(invocation)
-        await _emit_event(project_id, event, invocation, auth)
+    # H17: emit all per-plugin events in a single ClickHouse insert
+    # rather than one round-trip per plugin. The dispatch loop hits N
+    # plugins serially, so a project assigned to a handful of plugins
+    # was paying N CH round trips on every lifecycle tick.
+    if results:
+        await _emit_events_batch(project_id, event, results, auth)
     return results
 
 
@@ -234,50 +239,59 @@ def _extract_http_detail(exc: fastapi.HTTPException) -> str:
     return str(detail)
 
 
-async def _emit_event(
+_EVENT_COLUMNS = [
+    'id',
+    'project_id',
+    'recorded_at',
+    'type',
+    'third_party_service',
+    'attributed_to',
+    'metadata',
+    'payload',
+]
+
+
+async def _emit_events_batch(
     project_id: str,
     event: LifecycleEvent,
-    invocation: LifecycleInvocation,
+    invocations: list[LifecycleInvocation],
     auth: permissions.AuthContext,
 ) -> None:
-    """Log a per-plugin lifecycle event to ClickHouse.
+    """Log all per-plugin lifecycle events in one ClickHouse insert.
 
     Errors here never bubble — the operator action already succeeded
-    and a ClickHouse hiccup must not poison the response.
+    and a ClickHouse hiccup must not poison the response. H17: this
+    replaces the per-invocation insert that was paying N round trips
+    for an N-plugin lifecycle dispatch.
     """
+    if not invocations:
+        return
+    now = datetime.datetime.now(datetime.UTC)
+    principal = auth.principal_name
+    rows: list[list[typing.Any]] = [
+        [
+            nanoid.generate(),
+            project_id,
+            now,
+            f'plugin.lifecycle.{event}',
+            invocation.plugin_slug,
+            principal,
+            {'plugin_id': invocation.plugin_id},
+            {
+                'status': invocation.status,
+                'message': invocation.message,
+                'artifacts': invocation.artifacts,
+            },
+        ]
+        for invocation in invocations
+    ]
     try:
         await ch_client.Clickhouse.get_instance().insert(
-            'events',
-            [
-                [
-                    nanoid.generate(),
-                    project_id,
-                    datetime.datetime.now(datetime.UTC),
-                    f'plugin.lifecycle.{event}',
-                    invocation.plugin_slug,
-                    auth.principal_name,
-                    {'plugin_id': invocation.plugin_id},
-                    {
-                        'status': invocation.status,
-                        'message': invocation.message,
-                        'artifacts': invocation.artifacts,
-                    },
-                ]
-            ],
-            [
-                'id',
-                'project_id',
-                'recorded_at',
-                'type',
-                'third_party_service',
-                'attributed_to',
-                'metadata',
-                'payload',
-            ],
+            'events', rows, _EVENT_COLUMNS
         )
     except Exception:
         LOGGER.exception(
-            'Failed to emit lifecycle event for plugin %s on project %s',
-            invocation.plugin_slug,
+            'Failed to emit %d lifecycle events for project %s',
+            len(rows),
             project_id,
         )
