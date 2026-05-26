@@ -121,6 +121,11 @@ config-file = "mkdocs.yml"
 deprecateTypingAliases = true
 reportMissingSuperCall = "hint"
 typeCheckingMode = "strict"
+# ``@warnings.deprecated`` markers are intentional signals that a
+# helper is on its way out; we want IDE / type-checker visibility but
+# don't want every legacy call site to block CI until the migration
+# is complete. See CODE_REVIEW_PUNCHLIST entry L4 (parse_scopes).
+reportDeprecated = "warning"
 
 [[tool.pyright.executionEnvironments]]
 root = "src/imbi_api/assistant"

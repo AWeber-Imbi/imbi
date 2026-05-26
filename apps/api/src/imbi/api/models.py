@@ -9,6 +9,7 @@ from imbi_api.domain for a single import path:
 
 import json
 import typing
+import warnings
 
 from imbi_common import models as _common
 
@@ -79,6 +80,15 @@ UserCreate = _domain.UserCreate
 UserResponse = _domain.UserResponse
 
 
+@warnings.deprecated(
+    'parse_scopes is a compatibility shim for legacy AGE rows that '
+    "stored list properties as PostgreSQL-array strings (e.g. '{a,b}')."
+    ' Cypher writes have stored lists as JSON since the list-'
+    'serialization fix; callers should switch to ``graph.parse_agtype``'
+    ' once every legacy scope row has been rewritten. Plan to remove '
+    'this helper alongside that backfill -- see CODE_REVIEW_PUNCHLIST '
+    'L4 for the open migration deadline.'
+)
 def parse_scopes(value: typing.Any) -> list[str]:
     """Convert AGE scope values to a Python list.
 
