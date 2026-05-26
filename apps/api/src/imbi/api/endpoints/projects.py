@@ -421,23 +421,44 @@ async def _resolve_display_names(
     }
 
 
-def _parse_deployment_events(
+def _latest_deployment_event(
     raw: typing.Any,
-) -> list[models.DeploymentEvent]:
-    """Parse the JSON-encoded ``deployments`` edge property."""
+) -> tuple[datetime.datetime, str | None] | None:
+    """Return ``(timestamp, performed_by)`` of the latest event, or ``None``.
+
+    The ``deployments`` edge property is a JSON-encoded list of
+    ``DeploymentEvent``-shaped objects.  ``_fetch_current_releases``
+    only needs the most recent ``(timestamp, performed_by)`` per
+    ``(project, environment)`` pair, so we parse straight off the dicts
+    and skip the per-entry Pydantic validation that
+    ``_parse_deployment_events`` used to pay for.
+    """
     if not raw:
-        return []
+        return None
     data = json.loads(raw) if isinstance(raw, str) else raw
     if not isinstance(data, list):
-        return []
-    items: list[typing.Any] = data  # type: ignore[assignment]
-    out: list[models.DeploymentEvent] = []
-    for item in items:
-        try:
-            out.append(models.DeploymentEvent.model_validate(item))
-        except pydantic.ValidationError:
+        return None
+    latest_ts: datetime.datetime | None = None
+    latest_by: str | None = None
+    for entry in data:  # type: ignore[reportUnknownVariableType]
+        if not isinstance(entry, dict):
             continue
-    return out
+        ts = entry.get('timestamp')  # type: ignore[reportUnknownMemberType]
+        if not isinstance(ts, str):
+            continue
+        try:
+            parsed = datetime.datetime.fromisoformat(ts)
+        except ValueError:
+            continue
+        if latest_ts is None or parsed > latest_ts:
+            latest_ts = parsed
+            performed_by = entry.get(  # type: ignore[reportUnknownMemberType]
+                'performed_by'
+            )
+            latest_by = performed_by if isinstance(performed_by, str) else None
+    if latest_ts is None:
+        return None
+    return latest_ts, latest_by
 
 
 async def _lookup_ops_log_performed_by(
@@ -547,25 +568,20 @@ async def _fetch_current_releases(
         env_slug = graph.parse_agtype(row.get('env_slug'))
         if not isinstance(pid, str) or not isinstance(env_slug, str):
             continue
-        events = _parse_deployment_events(
+        latest_event = _latest_deployment_event(
             graph.parse_agtype(row.get('deployments'))
         )
-        if not events:
+        if latest_event is None:
             continue
-        event = max(events, key=lambda e: e.timestamp)
+        event_ts, performed_by = latest_event
         tag_val = graph.parse_agtype(row.get('tag'))
         committish_val = graph.parse_agtype(row.get('committish'))
         tag = str(tag_val) if tag_val else None
         committish = str(committish_val) if committish_val else None
         key = (pid, env_slug)
         existing = latest.get(key)
-        if existing is None or event.timestamp > existing[2]:
-            latest[key] = (
-                tag,
-                committish,
-                event.timestamp,
-                event.performed_by,
-            )
+        if existing is None or event_ts > existing[2]:
+            latest[key] = (tag, committish, event_ts, performed_by)
 
     # Backfill performed_by from operations_log for events whose
     # AGE edge left it null (in-product deploy/promote path).
