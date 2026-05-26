@@ -80,6 +80,65 @@ async def enqueue_recompute(
     return True
 
 
+async def enqueue_recompute_bulk(
+    client: valkey.Valkey | None,
+    project_ids: abc.Iterable[str],
+    reason: ChangeReason,
+    requested_by: str | None = None,
+) -> int:
+    """Pipeline-batched version of :func:`enqueue_recompute`.
+
+    Sends every debounce ``SET NX EX`` in one pipeline round trip,
+    then sends every ``XADD`` for the acquired ids in a second
+    pipeline. Returns the count of newly-enqueued jobs (the ones
+    whose debounce SET succeeded).
+
+    Designed for the admin-initiated bulk rescore path where
+    ``project_ids`` may be in the thousands — the previous
+    ``asyncio.gather`` over per-id calls produced 2N round trips
+    plus N debounce-fail rejections taking a full round trip each.
+    """
+    ids = list(project_ids)
+    if client is None or not ids:
+        return 0
+    requester = requested_by or 'system'
+    try:
+        async with client.pipeline(transaction=False) as pipe:
+            for pid in ids:
+                pipe.set(  # pyright: ignore[reportUnknownMemberType]
+                    f'{DEBOUNCE_PREFIX}:{pid}',
+                    b'1',
+                    ex=DEBOUNCE_SECONDS,
+                    nx=True,
+                )
+            # ``execute()`` is typed as ``list[Unknown]`` by valkey-py
+            # — cast to the concrete shape we actually get from ``SET
+            # NX EX``: ``True`` on acquire, ``None`` on conflict.
+            set_results = typing.cast(
+                'list[bool | None]', await pipe.execute()
+            )
+        accepted = [
+            pid for pid, ok in zip(ids, set_results, strict=True) if ok
+        ]
+        if not accepted:
+            return 0
+        async with client.pipeline(transaction=False) as pipe:
+            for pid in accepted:
+                pipe.xadd(  # pyright: ignore[reportUnknownMemberType]
+                    STREAM,
+                    {
+                        'project_id': pid,
+                        'reason': reason,
+                        'requested_by': requester,
+                    },
+                )
+            await pipe.execute()
+    except Exception:
+        LOGGER.exception('enqueue_recompute_bulk failed (%d ids)', len(ids))
+        return 0
+    return len(accepted)
+
+
 async def ensure_group(client: valkey.Valkey) -> None:
     try:
         await client.xgroup_create(STREAM, GROUP, id='$', mkstream=True)

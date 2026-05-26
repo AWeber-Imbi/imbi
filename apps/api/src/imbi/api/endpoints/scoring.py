@@ -574,12 +574,12 @@ async def rescore(
             db, body.project_type_slug
         )
     requested_by = auth.user.email if auth.user else auth.principal_name
-    results = await asyncio.gather(
-        *[
-            score_queue.enqueue_recompute(
-                valkey_client, pid, 'bulk_rescore', requested_by=requested_by
-            )
-            for pid in project_ids
-        ]
+    # M20: pipeline the per-id SET NX + XADD pairs into two round
+    # trips instead of 2N parallel gathers.
+    enqueued = await score_queue.enqueue_recompute_bulk(
+        valkey_client,
+        project_ids,
+        'bulk_rescore',
+        requested_by=requested_by,
     )
-    return scoring_models.RescoreResponse(enqueued=sum(results))
+    return scoring_models.RescoreResponse(enqueued=enqueued)

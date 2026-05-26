@@ -13,6 +13,44 @@ from imbi_api import app, models
 from imbi_api import scoring as scoring_di
 
 
+class _PipelineProxy:
+    """Test stand-in for a Valkey async pipeline.
+
+    M20: the rescore endpoint now talks to Valkey through
+    ``client.pipeline(transaction=False)``. We replay each queued
+    command through the underlying ``mock_valkey`` mock so existing
+    assertions (``mock_valkey.xadd.await_count``,
+    ``mock_valkey.set.side_effect = [...]``) keep working without
+    each test having to mock the pipeline protocol itself.
+    """
+
+    def __init__(self, client: mock.AsyncMock) -> None:
+        self._client = client
+        self._queued: list[tuple[str, tuple, dict]] = []
+
+    async def __aenter__(self) -> _PipelineProxy:
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        return None
+
+    def set(self, *args: object, **kwargs: object) -> _PipelineProxy:
+        self._queued.append(('set', args, kwargs))
+        return self
+
+    def xadd(self, *args: object, **kwargs: object) -> _PipelineProxy:
+        self._queued.append(('xadd', args, kwargs))
+        return self
+
+    async def execute(self) -> list[object]:
+        results: list[object] = []
+        for method, args, kwargs in self._queued:
+            fn = getattr(self._client, method)
+            results.append(await fn(*args, **kwargs))
+        self._queued = []
+        return results
+
+
 class ScoringEndpointsTestCase(unittest.TestCase):
     def setUp(self) -> None:
         from imbi_api.auth import permissions
@@ -45,6 +83,12 @@ class ScoringEndpointsTestCase(unittest.TestCase):
         self.mock_valkey = mock.AsyncMock()
         self.mock_valkey.set = mock.AsyncMock(return_value=True)
         self.mock_valkey.xadd = mock.AsyncMock()
+        # M20: rescore now uses pipeline(); the proxy replays each
+        # queued command through ``mock_valkey.set`` / ``xadd`` so
+        # the per-call assertions in existing tests keep working.
+        self.mock_valkey.pipeline = mock.MagicMock(
+            side_effect=lambda **_kw: _PipelineProxy(self.mock_valkey)
+        )
 
         self.test_app.dependency_overrides[graph._inject_graph] = (
             lambda: self.mock_db
