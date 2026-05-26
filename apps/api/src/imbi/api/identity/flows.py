@@ -22,9 +22,14 @@ from imbi_api.plugins import credentials as plugin_credentials
 LOGGER = logging.getLogger(__name__)
 
 
+PluginRefKind = typing.Literal['auto', 'id', 'slug']
+
+
 async def _load_plugin_handler(
     db: graph.Graph,
     plugin_id: str,
+    *,
+    lookup: PluginRefKind = 'auto',
 ) -> tuple[
     str, RegistryEntry, IdentityPlugin, dict[str, str], dict[str, typing.Any]
 ]:
@@ -34,6 +39,15 @@ async def _load_plugin_handler(
     service-attached plugin instance) or a manifest slug (the
     user-driven Connections page sends the slug because the catalog
     surface doesn't expose node ids).
+
+    ``lookup`` declares which form the caller is providing:
+
+    * ``'id'`` — match only the ``:Plugin.id`` property;
+    * ``'slug'`` — match only the ``:Plugin.plugin_slug`` property;
+    * ``'auto'`` (default, for back-compat) — try ``id`` first, then
+      ``slug``. Emits an INFO log when the fallback fires so a caller
+      that's silently relying on the implicit disambiguation is
+      visible in production logs (M44).
 
     When a ``:Plugin`` node matches, its ``options`` JSON is parsed and
     returned for the caller to thread through ``PluginContext``.
@@ -49,15 +63,23 @@ async def _load_plugin_handler(
         'RETURN p.id AS id, p.plugin_slug AS slug, p.options AS options '
         'LIMIT 1'
     )
-    rows = await db.execute(
-        by_id, {'plugin_id': plugin_id}, ['id', 'slug', 'options']
+    by_slug: typing.LiteralString = (
+        'MATCH (p:Plugin {{plugin_slug: {plugin_id}}}) '
+        'RETURN p.id AS id, p.plugin_slug AS slug, p.options AS options '
+        'LIMIT 1'
     )
-    if not rows:
-        by_slug: typing.LiteralString = (
-            'MATCH (p:Plugin {{plugin_slug: {plugin_id}}}) '
-            'RETURN p.id AS id, p.plugin_slug AS slug, p.options AS options '
-            'LIMIT 1'
+    rows: list[dict[str, typing.Any]] = []
+    if lookup in ('auto', 'id'):
+        rows = await db.execute(
+            by_id, {'plugin_id': plugin_id}, ['id', 'slug', 'options']
         )
+    if not rows and lookup in ('auto', 'slug'):
+        if lookup == 'auto':
+            LOGGER.info(
+                'Plugin lookup fell back from id to slug match for %r;'
+                ' caller should pass lookup="slug" if this is expected',
+                plugin_id,
+            )
         rows = await db.execute(
             by_slug, {'plugin_id': plugin_id}, ['id', 'slug', 'options']
         )

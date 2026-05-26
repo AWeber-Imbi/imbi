@@ -107,6 +107,30 @@ class LoadPluginHandlerTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result[3], {'client_id': 'cid'})
         self.assertEqual(result[4], {})
 
+    async def test_lookup_id_skips_slug_fallback(self) -> None:
+        """M44: ``lookup='id'`` must not fall back to the slug query."""
+        db = mock.AsyncMock()
+        db.execute.return_value = []
+        with self.assertRaises(PluginNotFoundError):
+            await flows._load_plugin_handler(db, 'plugin-1', lookup='id')
+        # Only the by-id query should have run; with 'auto' there would
+        # be a second call against ``plugin_slug``.
+        self.assertEqual(db.execute.await_count, 1)
+
+    async def test_lookup_slug_skips_id_query(self) -> None:
+        """M44: ``lookup='slug'`` must skip the by-id query entirely."""
+        db = mock.AsyncMock()
+        db.execute.return_value = []
+        # Use a slug that's guaranteed unregistered in any environment
+        # so the post-lookup ``get_plugin`` raises before reaching
+        # ``get_plugin_credentials`` (CI has real plugins loaded that
+        # would otherwise surface a different error first).
+        with self.assertRaises(PluginNotFoundError):
+            await flows._load_plugin_handler(
+                db, 'nonexistent-test-slug-xyz', lookup='slug'
+            )
+        self.assertEqual(db.execute.await_count, 1)
+
 
 class StartFlowTestCase(unittest.IsolatedAsyncioTestCase):
     """Verify start_flow returns auth URL + state token."""
