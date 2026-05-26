@@ -3,8 +3,6 @@ import typing
 import fastapi
 import pydantic
 
-from imbi_api import version
-
 status_router = fastapi.APIRouter()
 
 
@@ -12,7 +10,6 @@ class StatusResponse(pydantic.BaseModel):
     """Service operational status"""
 
     service: str = 'imbi'
-    version: str = version
     status: typing.Literal['ok', 'initializing', 'error']
 
 

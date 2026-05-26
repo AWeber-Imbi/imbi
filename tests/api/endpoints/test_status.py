@@ -3,7 +3,7 @@ import unittest
 
 from fastapi import testclient
 
-from imbi_api import app, version
+from imbi_api import app
 from imbi_api.endpoints import status
 
 _StatusLiteral = typing.Literal['ok', 'initializing', 'error']
@@ -16,8 +16,10 @@ class StatusResponseModelTestCase(unittest.TestCase):
         """Test creating a StatusResponse model."""
         response = status.StatusResponse(status='ok')
         self.assertEqual(response.service, 'imbi')
-        self.assertEqual(response.version, version)
         self.assertEqual(response.status, 'ok')
+        # Version is no longer exposed on the unauthenticated /status
+        # response surface (L6); confirm the model has no such field.
+        self.assertFalse(hasattr(response, 'version'))
 
     def test_status_response_with_different_status(self) -> None:
         """Test StatusResponse with different status values."""
@@ -46,8 +48,9 @@ class StatusEndpointTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data['service'], 'imbi')
-        self.assertEqual(data['version'], version)
         self.assertEqual(data['status'], 'ok')
+        # Unauthenticated /status must not expose the build version (L6).
+        self.assertNotIn('version', data)
 
     def test_get_status_response_model(self) -> None:
         """Test GET /status endpoint returns valid StatusResponse."""
