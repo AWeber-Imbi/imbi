@@ -1,16 +1,20 @@
-import { lazy, Suspense, useMemo } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 
-import { ChevronDown, ChevronRight, X } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { useGraphQuery } from '@/contexts/GraphQueryContext'
+import { inspectRow } from '@/lib/graphInspection'
 import type {
   GraphQueryCard,
   GraphQueryCardTab,
   GraphQueryCell,
   GraphQueryCellEdge,
   GraphQueryCellNode,
+  GraphQueryInspection,
 } from '@/types'
+
+import { DetailDrawer } from './DetailDrawer'
 
 const ResultGraph = lazy(() =>
   import('./ResultGraph').then((m) => ({ default: m.ResultGraph })),
@@ -27,7 +31,8 @@ const TABS: { id: GraphQueryCardTab; label: string }[] = [
 ]
 
 export function ResultCard({ card }: ResultCardProps) {
-  const { dismissCard, setCardTab, toggleCardCollapsed } = useGraphQuery()
+  const { setCardTab, toggleCardCollapsed } = useGraphQuery()
+  const [inspected, setInspected] = useState<GraphQueryInspection | null>(null)
 
   const recordCount = card.result?.rows.length ?? 0
   const isError = card.status === 'error'
@@ -63,15 +68,6 @@ export function ResultCard({ card }: ResultCardProps) {
         >
           {card.query}
         </code>
-        <Button
-          aria-label="Dismiss result"
-          className="text-secondary hover:text-primary size-6 shrink-0"
-          onClick={() => dismissCard(card.id)}
-          size="icon"
-          variant="ghost"
-        >
-          <X className="size-4" />
-        </Button>
       </div>
 
       {!card.collapsed && (
@@ -102,25 +98,38 @@ export function ResultCard({ card }: ResultCardProps) {
           </div>
 
           {/* Body */}
-          <div className="h-120 overflow-hidden">
-            {isError ? (
-              <ErrorBody card={card} />
-            ) : (
-              <>
-                {card.tab === 'table' && <TableTab result={card.result!} />}
-                {card.tab === 'graph' && (
-                  <Suspense
-                    fallback={
-                      <div className="text-tertiary flex h-full items-center justify-center text-xs">
-                        Loading graph…
-                      </div>
-                    }
-                  >
-                    <ResultGraph result={card.result!} />
-                  </Suspense>
-                )}
-                {card.tab === 'raw' && <RawTab result={card.result!} />}
-              </>
+          <div className="flex h-120 overflow-hidden">
+            <div className="min-w-0 flex-1">
+              {isError ? (
+                <ErrorBody card={card} />
+              ) : (
+                <>
+                  {card.tab === 'table' && (
+                    <TableTab onInspect={setInspected} result={card.result!} />
+                  )}
+                  {card.tab === 'graph' && (
+                    <Suspense
+                      fallback={
+                        <div className="text-tertiary flex h-full items-center justify-center text-xs">
+                          Loading graph…
+                        </div>
+                      }
+                    >
+                      <ResultGraph
+                        onInspect={setInspected}
+                        result={card.result!}
+                      />
+                    </Suspense>
+                  )}
+                  {card.tab === 'raw' && <RawTab result={card.result!} />}
+                </>
+              )}
+            </div>
+            {inspected && (
+              <DetailDrawer
+                inspected={inspected}
+                onClose={() => setInspected(null)}
+              />
             )}
           </div>
 
@@ -252,8 +261,10 @@ function RawTab({ result }: { result: NonNullable<GraphQueryCard['result']> }) {
 }
 
 function TableTab({
+  onInspect,
   result,
 }: {
+  onInspect: (item: GraphQueryInspection) => void
   result: NonNullable<GraphQueryCard['result']>
 }) {
   if (result.rows.length === 0) {
@@ -282,8 +293,9 @@ function TableTab({
         <tbody>
           {result.rows.map((row, rowIdx) => (
             <tr
-              className="border-tertiary border-b last:border-b-0"
+              className="border-tertiary hover:bg-secondary cursor-pointer border-b last:border-b-0"
               key={rowIdx}
+              onClick={() => onInspect(inspectRow(result.columns, row))}
               style={{ borderBottomWidth: '0.5px' }}
             >
               {result.columns.map((col) => (

@@ -11,13 +11,11 @@ import {
   useState,
 } from 'react'
 
-import { ApiError } from '@/api/client'
 import { executeGraphQuery } from '@/api/endpoints'
+import { extractGraphQueryError } from '@/lib/graphQueryError'
 import type {
   GraphQueryCard,
   GraphQueryCardTab,
-  GraphQueryError,
-  GraphQueryErrorEnvelope,
   GraphQueryHistoryEntry,
   GraphQueryResult,
 } from '@/types'
@@ -179,7 +177,7 @@ export function GraphQueryProvider({ children }: { children: ReactNode }) {
         card: {
           collapsed: false,
           elapsedMs: Date.now() - startedAt,
-          error: extractErrorFromApi(err),
+          error: extractGraphQueryError(err),
           id: cardId,
           query: trimmed,
           startedAt,
@@ -240,20 +238,6 @@ export function useGraphQuery() {
     throw new Error('useGraphQuery must be used within a GraphQueryProvider')
   }
   return ctx
-}
-
-function extractErrorFromApi(err: unknown): GraphQueryError {
-  if (err instanceof ApiError) {
-    const data = err.data as GraphQueryErrorEnvelope | undefined
-    if (data && typeof data === 'object' && 'error' in data && data.error) {
-      return data.error
-    }
-    return { message: err.message || `HTTP ${err.status}` }
-  }
-  if (err instanceof Error) {
-    return { message: err.message }
-  }
-  return { message: 'Unknown error' }
 }
 
 function generateCardId(): string {

@@ -1,16 +1,24 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 
 import { darkTheme, GraphCanvas, lightTheme } from 'reagraph'
-import type { GraphEdge, GraphNode } from 'reagraph'
+import type { GraphEdge, GraphNode, InternalGraphEdge } from 'reagraph'
+import type { InternalGraphNode } from 'reagraph'
 
 import { useTheme } from '@/contexts/ThemeContext'
-import type { GraphQueryResult } from '@/types'
+import { inspectEdge, inspectNode } from '@/lib/graphInspection'
+import type {
+  GraphQueryEdge,
+  GraphQueryInspection,
+  GraphQueryNode,
+  GraphQueryResult,
+} from '@/types'
 
 interface ResultGraphProps {
+  onInspect: (item: GraphQueryInspection) => void
   result: GraphQueryResult
 }
 
-export function ResultGraph({ result }: ResultGraphProps) {
+export function ResultGraph({ onInspect, result }: ResultGraphProps) {
   const { isDarkMode } = useTheme()
 
   const nodes = useMemo<GraphNode[]>(
@@ -24,12 +32,12 @@ export function ResultGraph({ result }: ResultGraphProps) {
           n.id
         return {
           data: n,
-          fill: nodeColor(n.labels),
+          fill: nodeColor(n.labels, isDarkMode),
           id: n.id,
           label: String(labelText),
         }
       }),
-    [result.nodes],
+    [result.nodes, isDarkMode],
   )
 
   const edges = useMemo<GraphEdge[]>(
@@ -42,6 +50,18 @@ export function ResultGraph({ result }: ResultGraphProps) {
         target: e.end,
       })),
     [result.edges],
+  )
+
+  const handleNodeClick = useCallback(
+    (node: InternalGraphNode) =>
+      onInspect(inspectNode(node.data as GraphQueryNode)),
+    [onInspect],
+  )
+
+  const handleEdgeClick = useCallback(
+    (edge: InternalGraphEdge) =>
+      onInspect(inspectEdge(edge.data as GraphQueryEdge)),
+    [onInspect],
   )
 
   if (nodes.length === 0) {
@@ -62,6 +82,8 @@ export function ResultGraph({ result }: ResultGraphProps) {
         labelType="nodes"
         layoutType="forceDirected2d"
         nodes={nodes}
+        onEdgeClick={handleEdgeClick}
+        onNodeClick={handleNodeClick}
         theme={isDarkMode ? darkTheme : lightTheme}
       />
     </div>
@@ -76,8 +98,14 @@ function hashHue(value: string): number {
   return h % 360
 }
 
-function nodeColor(labels: string[]): string {
+// Keep a distinct hue per label, but tune lightness/saturation to the active
+// theme so every hue stays legible: deeper on the light (#fff) background,
+// brighter on the dark (#1E2026) background. Empty-label nodes fall back to
+// the same slate the projects graph uses. NOTE: reagraph passes fills to
+// three.js, whose color parser only understands comma-separated hsl() — the
+// space-separated CSS form silently renders white, so keep the commas.
+function nodeColor(labels: string[], isDarkMode: boolean): string {
   if (labels.length === 0) return '#64748b'
   const hue = hashHue(labels[0])
-  return `hsl(${hue} 55% 55%)`
+  return isDarkMode ? `hsl(${hue}, 60%, 64%)` : `hsl(${hue}, 58%, 42%)`
 }

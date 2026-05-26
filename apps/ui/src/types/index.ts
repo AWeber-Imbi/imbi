@@ -651,6 +651,17 @@ export interface GraphQueryHistoryEntry {
   query: string
 }
 
+/**
+ * A node, edge, or table row selected in a result card and shown in the
+ * detail drawer as a flat list of key/value pairs.
+ */
+export interface GraphQueryInspection {
+  entries: Array<[string, unknown]>
+  heading: string
+  id?: string
+  kind: 'edge' | 'node' | 'row'
+}
+
 export interface GraphQueryNode {
   id: string
   labels: string[]

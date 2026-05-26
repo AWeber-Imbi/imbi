@@ -126,41 +126,43 @@ export function GraphQueryWorkbench() {
       )}
 
       {/* Workbench */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* Sticky editor */}
-        <div
-          className="border-tertiary bg-primary sticky top-0 z-20 border-b p-3"
-          style={{ borderBottomWidth: '0.5px' }}
-        >
-          <div className="flex items-start gap-2">
-            <div className="flex-1">
-              <CypherEditor
-                autoFocus
-                maxHeight="160px"
-                minHeight="32px"
-                onChange={setEditorValue}
-                onSubmit={handleRun}
-                value={editorValue}
-              />
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <span className="text-tertiary font-mono text-[11px]">⌘⏎</span>
-              <Button
-                className="border-amber-border bg-amber-bg text-amber-text h-8 gap-1.5 border font-medium"
-                disabled={!editorValue.trim() || isRunning}
-                onClick={handleRun}
-                size="sm"
-                style={{ borderWidth: '0.5px' }}
-              >
-                <Play className="size-3.5" />
-                {isRunning ? 'Running…' : 'Run'}
-              </Button>
+      <div className="bg-tertiary flex min-w-0 flex-1 flex-col">
+        {/* Editor card — aligned with the result cards below */}
+        <div className="px-3 pt-3">
+          <div
+            className="border-tertiary bg-primary rounded-md border p-3"
+            style={{ borderWidth: '0.5px' }}
+          >
+            <div className="flex items-start gap-2">
+              <div className="flex-1">
+                <CypherEditor
+                  autoFocus
+                  maxHeight="160px"
+                  minHeight="32px"
+                  onChange={setEditorValue}
+                  onSubmit={handleRun}
+                  value={editorValue}
+                />
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="text-tertiary font-mono text-[11px]">⌘⏎</span>
+                <Button
+                  className="border-amber-border bg-amber-bg text-amber-text h-8 gap-1.5 border font-medium"
+                  disabled={!editorValue.trim() || isRunning}
+                  onClick={handleRun}
+                  size="sm"
+                  style={{ borderWidth: '0.5px' }}
+                >
+                  <Play className="size-3.5" />
+                  {isRunning ? 'Running…' : 'Run'}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Result cards */}
-        <div className="bg-tertiary flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto">
           {cards.length === 0 ? (
             <div className="flex h-full items-center justify-center p-8">
               <div className="max-w-md text-center">
