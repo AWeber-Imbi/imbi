@@ -140,33 +140,6 @@ class StorageClient:
         )
         LOGGER.debug('Deleted %s', key)
 
-    async def presigned_url(
-        self,
-        key: str,
-        expires_in: int = 3600,
-    ) -> str:
-        """Generate a presigned GET URL for an S3 object.
-
-        Args:
-            key: S3 object key
-            expires_in: URL expiration time in seconds
-
-        Returns:
-            Presigned URL string
-
-        """
-        if self._s3 is None:
-            raise RuntimeError('StorageClient not initialized')
-        url: str = await self._s3.generate_presigned_url(
-            'get_object',
-            Params={
-                'Bucket': self._settings.bucket,
-                'Key': key,
-            },
-            ExpiresIn=expires_in,
-        )
-        return url
-
     async def _ensure_bucket(self) -> None:
         """Create the S3 bucket if it does not exist."""
         try:

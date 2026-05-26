@@ -92,29 +92,6 @@ class StorageClientOperationsTestCase(
             Key='test/key',
         )
 
-    async def test_presigned_url(self) -> None:
-        """Test generating a presigned URL."""
-        mock_s3 = mock.AsyncMock()
-        mock_s3.generate_presigned_url.return_value = (
-            'https://s3.example.com/signed'
-        )
-        self.client._s3 = mock_s3
-
-        url = await self.client.presigned_url(
-            'test/key',
-            3600,
-        )
-
-        self.assertEqual(url, 'https://s3.example.com/signed')
-        mock_s3.generate_presigned_url.assert_called_once_with(
-            'get_object',
-            Params={
-                'Bucket': self.client._settings.bucket,
-                'Key': 'test/key',
-            },
-            ExpiresIn=3600,
-        )
-
     async def test_aclose(self) -> None:
         """Test that aclose resets initialization state."""
         self.client._initialized = True
@@ -131,8 +108,6 @@ class StorageClientOperationsTestCase(
             await self.client.download('k')
         with self.assertRaises(RuntimeError):
             await self.client.delete('k')
-        with self.assertRaises(RuntimeError):
-            await self.client.presigned_url('k', 3600)
 
 
 class _AsyncContextManager:
