@@ -2,6 +2,7 @@
 
 import datetime
 import logging
+import re
 import typing
 import uuid
 
@@ -16,6 +17,18 @@ from imbi_api.auth import permissions
 from imbi_api.storage import thumbnails, validation
 
 LOGGER = logging.getLogger(__name__)
+
+# Chars safe to embed in an S3 key path segment without URL-encoding
+# surprises or directory-escape tricks. Everything else collapses to a
+# single hyphen; a totally empty result falls back to ``'file'`` so the
+# upload still resolves through the read endpoints.
+_S3_KEY_SAFE_RE = re.compile(r'[^A-Za-z0-9._-]+')
+
+
+def _safe_s3_basename(filename: str) -> str:
+    cleaned = _S3_KEY_SAFE_RE.sub('-', filename).strip('.-') or 'file'
+    return cleaned[:128]
+
 
 uploads_router = fastapi.APIRouter(
     prefix='/uploads',
@@ -92,7 +105,7 @@ async def create_upload(
         ) from err
 
     upload_id = str(uuid.uuid4())
-    s3_key = f'uploads/{upload_id}/{filename}'
+    s3_key = f'uploads/{upload_id}/{_safe_s3_basename(filename)}'
 
     # Upload original file
     await storage_client.upload(s3_key, data, content_type)

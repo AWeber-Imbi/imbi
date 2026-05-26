@@ -3,12 +3,23 @@
 import asyncio
 import io
 import logging
+import warnings
 
+import PIL
 import PIL.Image
 
 from imbi_api import settings
 
 LOGGER = logging.getLogger(__name__)
+
+# Pillow's built-in decompression-bomb guard is 178956970 pixels (~178MP)
+# and only emits a warning by default. Tighten the cap to 64MP — large
+# enough for any legitimate user-uploaded image, small enough to keep a
+# crafted PNG from exhausting memory during ``Image.open`` — and turn
+# the warning into an exception so the upload pipeline rejects the
+# request instead of silently allocating gigabytes.
+PIL.Image.MAX_IMAGE_PIXELS = 64 * 1024 * 1024
+warnings.simplefilter('error', PIL.Image.DecompressionBombWarning)
 
 _THUMBNAIL_TYPES = frozenset(
     {
@@ -83,8 +94,16 @@ def _generate_thumbnail_sync(
         Thumbnail image as WEBP bytes
 
     """
-    with PIL.Image.open(io.BytesIO(data)) as img:
-        img.thumbnail((max_size, max_size))
-        buffer = io.BytesIO()
-        img.save(buffer, format='WEBP', quality=quality)
-        return buffer.getvalue()
+    try:
+        with PIL.Image.open(io.BytesIO(data)) as img:
+            img.thumbnail((max_size, max_size))
+            buffer = io.BytesIO()
+            img.save(buffer, format='WEBP', quality=quality)
+            return buffer.getvalue()
+    except (
+        PIL.UnidentifiedImageError,
+        PIL.Image.DecompressionBombError,
+        PIL.Image.DecompressionBombWarning,
+        OSError,
+    ) as err:
+        raise ValueError(f'Cannot generate thumbnail: {err}') from err
