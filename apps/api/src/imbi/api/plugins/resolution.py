@@ -230,6 +230,16 @@ async def resolve_plugin(
     except PluginNotFoundError as exc:
         raise PluginUnavailableError(plugin_slug) from exc
 
+    # Treat a disabled PluginRegistration the same as a missing-from-
+    # registry plugin so admin-driven disable is honored at the resolve
+    # layer, not just by ``dispatch_lifecycle`` downstream. Importing
+    # lazily avoids a circular ``resolution -> lifecycle -> resolution``
+    # at module load.
+    from imbi_api.plugins.lifecycle import is_plugin_enabled
+
+    if not await is_plugin_enabled(db, plugin_slug):
+        raise PluginUnavailableError(plugin_slug)
+
     identity_plugin_id = _select_identity_plugin_id(chosen)
     env_payloads = _merge_env_payloads(
         chosen.get('pt_edge_env_payloads'),
@@ -335,11 +345,25 @@ async def resolve_all_plugins(
         else:
             merged[pid] = p
 
+    # Single query for admin-managed enabled flags so the fan-out below
+    # doesn't issue N round-trips. Imported lazily to avoid the
+    # ``resolution -> lifecycle -> resolution`` cycle at module load.
+    from imbi_api.plugins.lifecycle import get_enabled_map
+
+    enabled_map = await get_enabled_map(db)
+
     resolved: list[ResolvedPlugin] = []
     for chosen in merged.values():
         plugin_id = chosen.get('id')
         plugin_slug = chosen.get('slug')
         if not plugin_id or not plugin_slug:
+            continue
+        if not enabled_map.get(plugin_slug, False):
+            LOGGER.info(
+                'Skipping disabled plugin %r (id=%s) during fan-out',
+                plugin_slug,
+                plugin_id,
+            )
             continue
         plugin_defaults: dict[str, typing.Any] = parse_options(
             chosen.get('plugin_options')

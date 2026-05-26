@@ -431,8 +431,14 @@ class ResolutionTestCase(unittest.TestCase):
             }
         ]
         entry = _make_registry_entry('ssm')
-        with mock.patch(
-            'imbi_api.plugins.resolution.get_plugin', return_value=entry
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin', return_value=entry
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                new=mock.AsyncMock(return_value=True),
+            ),
         ):
             resolved = asyncio.run(
                 resolve_plugin(mock_db, 'proj1', 'configuration', None)
@@ -473,9 +479,15 @@ class ResolutionTestCase(unittest.TestCase):
                 ),
             }
         ]
-        with mock.patch(
-            'imbi_api.plugins.resolution.get_plugin',
-            return_value=_make_registry_entry('ssm'),
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin',
+                return_value=_make_registry_entry('ssm'),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                new=mock.AsyncMock(return_value=True),
+            ),
         ):
             resolved = asyncio.run(
                 resolve_plugin(mock_db, 'proj1', 'configuration', None)
@@ -545,9 +557,15 @@ class ResolutionTestCase(unittest.TestCase):
                 ),
             }
         ]
-        with mock.patch(
-            'imbi_api.plugins.resolution.get_plugin',
-            return_value=_make_registry_entry('ssm'),
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin',
+                return_value=_make_registry_entry('ssm'),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                new=mock.AsyncMock(return_value=True),
+            ),
         ):
             resolved = asyncio.run(
                 resolve_plugin(mock_db, 'proj1', 'configuration', None)
@@ -581,9 +599,15 @@ class ResolutionTestCase(unittest.TestCase):
                 ),
             }
         ]
-        with mock.patch(
-            'imbi_api.plugins.resolution.get_plugin',
-            return_value=_make_registry_entry('ssm'),
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin',
+                return_value=_make_registry_entry('ssm'),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                new=mock.AsyncMock(return_value=True),
+            ),
         ):
             resolved = asyncio.run(
                 resolve_plugin(mock_db, 'proj1', 'configuration', 'p2')
@@ -652,6 +676,85 @@ class ResolutionTestCase(unittest.TestCase):
                     resolve_plugin(mock_db, 'proj1', 'configuration', None)
                 )
 
+    def test_disabled_plugin_raises_unavailable(self) -> None:
+        from imbi_common.plugins.errors import PluginUnavailableError
+
+        from imbi_api.plugins.resolution import resolve_plugin
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {
+                'proj_plugins': '[]',
+                'pt_plugins': json.dumps(
+                    [
+                        {
+                            'id': 'p1',
+                            'slug': 'ssm',
+                            'options': '{}',
+                            'default': True,
+                            'src': 'project_type',
+                        }
+                    ]
+                ),
+            }
+        ]
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin',
+                return_value=_make_registry_entry('ssm'),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                new=mock.AsyncMock(return_value=False),
+            ),
+        ):
+            with self.assertRaises(PluginUnavailableError):
+                asyncio.run(
+                    resolve_plugin(mock_db, 'proj1', 'configuration', None)
+                )
+
+    def test_resolve_all_skips_disabled_plugins(self) -> None:
+        from imbi_api.plugins.resolution import resolve_all_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {
+                'proj_plugins': '[]',
+                'pt_plugins': json.dumps(
+                    [
+                        {
+                            'id': 'p1',
+                            'slug': 'on',
+                            'options': '{}',
+                            'default': True,
+                            'src': 'project_type',
+                        },
+                        {
+                            'id': 'p2',
+                            'slug': 'off',
+                            'options': '{}',
+                            'default': True,
+                            'src': 'project_type',
+                        },
+                    ]
+                ),
+            }
+        ]
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin',
+                side_effect=lambda slug: _make_registry_entry(slug),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.get_enabled_map',
+                new=mock.AsyncMock(return_value={'on': True, 'off': False}),
+            ),
+        ):
+            resolved = asyncio.run(
+                resolve_all_plugins(mock_db, 'proj1', 'configuration')
+            )
+        self.assertEqual({r.plugin_slug for r in resolved}, {'on'})
+
 
 class ResolveAllPluginsTestCase(unittest.TestCase):
     """Branch coverage for ``resolve_all_plugins`` (lifecycle fan-out)."""
@@ -706,9 +809,20 @@ class ResolveAllPluginsTestCase(unittest.TestCase):
         entry_a = _make_registry_entry('github-lifecycle')
         entry_b = _make_registry_entry('aws-lifecycle')
         entries = {'github-lifecycle': entry_a, 'aws-lifecycle': entry_b}
-        with mock.patch(
-            'imbi_api.plugins.resolution.get_plugin',
-            side_effect=lambda slug: entries[slug],
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin',
+                side_effect=lambda slug: entries[slug],
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.get_enabled_map',
+                new=mock.AsyncMock(
+                    return_value={
+                        'github-lifecycle': True,
+                        'aws-lifecycle': True,
+                    }
+                ),
+            ),
         ):
             result = asyncio.run(
                 resolve_all_plugins(mock_db, 'proj1', 'lifecycle')
@@ -755,9 +869,17 @@ class ResolveAllPluginsTestCase(unittest.TestCase):
                 return entry
             raise PluginNotFoundError(slug)
 
-        with mock.patch(
-            'imbi_api.plugins.resolution.get_plugin',
-            side_effect=_get,
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin',
+                side_effect=_get,
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.get_enabled_map',
+                new=mock.AsyncMock(
+                    return_value={'present': True, 'gone': True}
+                ),
+            ),
         ):
             result = asyncio.run(
                 resolve_all_plugins(mock_db, 'proj1', 'lifecycle')
@@ -798,8 +920,14 @@ class ResolveAllPluginsTestCase(unittest.TestCase):
             }
         ]
         entry = _make_registry_entry('github-lifecycle')
-        with mock.patch(
-            'imbi_api.plugins.resolution.get_plugin', return_value=entry
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin', return_value=entry
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.get_enabled_map',
+                new=mock.AsyncMock(return_value={'github-lifecycle': True}),
+            ),
         ):
             result = asyncio.run(
                 resolve_all_plugins(mock_db, 'proj1', 'lifecycle')
