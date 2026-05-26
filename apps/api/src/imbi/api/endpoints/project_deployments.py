@@ -18,6 +18,7 @@ import json
 import logging
 import re
 import typing
+import urllib.parse
 
 import fastapi
 import httpx
@@ -389,6 +390,31 @@ def _resolve_credentials(
     return fallback
 
 
+_SAFE_AUDIT_URL_SCHEMES: frozenset[str] = frozenset({'http', 'https'})
+
+
+def _safe_audit_url(value: str | None) -> str | None:
+    """Drop plugin-supplied URLs that aren't plain http(s).
+
+    Both ``run_url`` and ``release_url`` are surfaced by deployment
+    plugins and rendered as ``<a href>`` in the operations-log UI.
+    A malicious or buggy plugin could return a ``javascript:`` or
+    ``data:`` URL that, if echoed verbatim into the DOM, would land
+    as XSS. The UI already escapes attribute values, but defense in
+    depth: drop anything that isn't ``http(s)://`` server-side so
+    every consumer of the audit row sees a known-safe scheme.
+    """
+    if value is None:
+        return None
+    parsed = urllib.parse.urlsplit(value)
+    if parsed.scheme.lower() not in _SAFE_AUDIT_URL_SCHEMES:
+        LOGGER.warning(
+            'Dropping audit URL with unsupported scheme %r', parsed.scheme
+        )
+        return None
+    return value
+
+
 async def _record_deployment_audit(
     *,
     project_id: str,
@@ -415,13 +441,19 @@ async def _record_deployment_audit(
     ``OperationLog.version`` is populated with ``tag if tag else
     committish`` — a single human-friendly display string that the
     operations-log UI can render directly.
+
+    Plugin-supplied URLs (``run_url`` / ``release_url``) are filtered
+    through ``_safe_audit_url`` so non-http(s) schemes never reach the
+    audit JSON — see L22.
     """
+    safe_run_url = _safe_audit_url(run_url)
+    safe_release_url = _safe_audit_url(release_url)
     description = json.dumps(
         {
             'action': action,
             'plugin_slug': plugin_slug,
-            'run_url': run_url,
-            'release_url': release_url,
+            'run_url': safe_run_url,
+            'release_url': safe_release_url,
             'from_environment': from_environment,
         },
         sort_keys=True,
@@ -436,7 +468,7 @@ async def _record_deployment_audit(
         environment_slug=environment_slug,
         entry_type='Deployed',
         description=description,
-        link=run_url,
+        link=safe_run_url,
         version=tag or committish,
         plugin_slug=plugin_slug,
         external_run_id=external_run_id,
