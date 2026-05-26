@@ -272,6 +272,46 @@ class CreateCustomOpenapiTestCase(unittest.TestCase):
 
         self.assertIs(schema1, schema2)
 
+    def test_concurrent_cold_calls_build_once(self) -> None:
+        """H16: two threads hitting a cold cache must build only once."""
+        import threading
+
+        openapi._blueprint_models = {}
+        openapi._schema_cache = None
+
+        app = fastapi.FastAPI(title='Test', version='1.0.0')
+        custom_openapi_fn = openapi.create_custom_openapi(app)
+
+        build_count = 0
+        original_build = openapi._build_schema
+
+        def counting_build(a: fastapi.FastAPI) -> dict:
+            nonlocal build_count
+            build_count += 1
+            return original_build(a)
+
+        results: list[dict] = []
+        barrier = threading.Barrier(4)
+
+        def worker() -> None:
+            barrier.wait()
+            results.append(custom_openapi_fn())
+
+        with unittest.mock.patch.object(
+            openapi, '_build_schema', side_effect=counting_build
+        ):
+            threads = [threading.Thread(target=worker) for _ in range(4)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+        self.assertEqual(build_count, 1)
+        self.assertEqual(len(results), 4)
+        # All callers observe the same cached schema instance.
+        for r in results[1:]:
+            self.assertIs(r, results[0])
+
     def test_path_schema_rewriting(self) -> None:
         """Test list endpoints get array response schemas."""
         import fastapi

@@ -17,6 +17,7 @@ Usage:
 """
 
 import logging
+import threading
 import typing
 
 import fastapi.openapi.utils
@@ -43,6 +44,16 @@ _edge_models: dict[str, type[pydantic.BaseModel]] = {}
 
 # Cache for the generated OpenAPI schema
 _schema_cache: dict[str, typing.Any] | None = None
+
+# Lock serializing schema regeneration. ``custom_openapi`` is sync and
+# called from FastAPI's openapi route handler; within a single worker
+# the event loop already serializes sync code, but FastAPI also
+# exposes ``app.openapi`` to tooling that may call it from a thread
+# pool (Stoplight rendering, schema export scripts, custom routes).
+# The lock keeps the build path single-threaded so two cold callers
+# don't both pay the full regeneration cost — and protects against
+# half-built schemas being observed mid-population.
+_schema_cache_lock = threading.Lock()
 
 # Mapping of API paths to their model types
 PATH_MODEL_MAPPING: dict[str, str] = {
@@ -205,81 +216,96 @@ def create_custom_openapi(
         if _schema_cache is not None:
             return _schema_cache
 
-        openapi_schema = fastapi.openapi.utils.get_openapi(
-            title=app.title,
-            version=app.version,
-            openapi_version=app.openapi_version,
-            summary=app.summary,
-            description=app.description,
-            routes=app.routes,
-            tags=app.openapi_tags,
-            servers=app.servers,
-            terms_of_service=app.terms_of_service,
-            contact=app.contact,
-            license_info=app.license_info,
-        )
+        with _schema_cache_lock:
+            # Double-check under the lock: a concurrent caller may have
+            # populated the cache while we were waiting.
+            if _schema_cache is not None:
+                return _schema_cache
+            _schema_cache = _build_schema(app)
+            return _schema_cache
 
-        if 'components' not in openapi_schema:
-            openapi_schema['components'] = {}
-        if 'schemas' not in openapi_schema['components']:
-            openapi_schema['components']['schemas'] = {}
+    return custom_openapi
 
-        schemas = typing.cast(
-            dict[str, typing.Any],
-            openapi_schema['components']['schemas'],
-        )
 
-        if _blueprint_models:
-            for model_name in _blueprint_models:
-                write_model = _blueprint_models[model_name]
-                resp_model = _response_models[model_name]
+def _build_schema(app: fastapi.FastAPI) -> dict[str, typing.Any]:
+    """Generate the OpenAPI schema with blueprint-enhanced models.
 
-                # Write schema (for request bodies)
-                write_name = f'{model_name}Request'
-                try:
-                    schemas[write_name] = write_model.model_json_schema(
-                        ref_template=('#/components/schemas/{model}')
-                    )
-                except Exception:
-                    LOGGER.exception(
-                        'Failed to generate write schema for %s',
-                        model_name,
-                    )
+    Pulled out of ``custom_openapi`` so the locked build path is a
+    single straight-line function — easier to reason about than a
+    nested closure straddling the lock.
+    """
+    openapi_schema = fastapi.openapi.utils.get_openapi(
+        title=app.title,
+        version=app.version,
+        openapi_version=app.openapi_version,
+        summary=app.summary,
+        description=app.description,
+        routes=app.routes,
+        tags=app.openapi_tags,
+        servers=app.servers,
+        terms_of_service=app.terms_of_service,
+        contact=app.contact,
+        license_info=app.license_info,
+    )
 
-                # Response schema (with relationships)
-                resp_name = f'{model_name}Response'
-                try:
-                    schemas[resp_name] = resp_model.model_json_schema(
-                        ref_template=('#/components/schemas/{model}')
-                    )
-                except Exception:
-                    LOGGER.exception(
-                        'Failed to generate response schema for %s',
-                        model_name,
-                    )
+    if 'components' not in openapi_schema:
+        openapi_schema['components'] = {}
+    if 'schemas' not in openapi_schema['components']:
+        openapi_schema['components']['schemas'] = {}
 
-            _hoist_defs_to_components(schemas)
-            _rewrite_path_schemas(openapi_schema)
+    schemas = typing.cast(
+        dict[str, typing.Any],
+        openapi_schema['components']['schemas'],
+    )
 
-        for edge_name, edge_model in _edge_models.items():
-            schema_name = f'{edge_name}EdgeProperties'
+    if _blueprint_models:
+        for model_name in _blueprint_models:
+            write_model = _blueprint_models[model_name]
+            resp_model = _response_models[model_name]
+
+            # Write schema (for request bodies)
+            write_name = f'{model_name}Request'
             try:
-                schemas[schema_name] = edge_model.model_json_schema(
+                schemas[write_name] = write_model.model_json_schema(
                     ref_template=('#/components/schemas/{model}')
                 )
             except Exception:
                 LOGGER.exception(
-                    'Failed to generate edge schema for %s',
-                    edge_name,
+                    'Failed to generate write schema for %s',
+                    model_name,
                 )
 
-        if _edge_models:
-            _hoist_defs_to_components(schemas)
+            # Response schema (with relationships)
+            resp_name = f'{model_name}Response'
+            try:
+                schemas[resp_name] = resp_model.model_json_schema(
+                    ref_template=('#/components/schemas/{model}')
+                )
+            except Exception:
+                LOGGER.exception(
+                    'Failed to generate response schema for %s',
+                    model_name,
+                )
 
-        _schema_cache = openapi_schema
-        return openapi_schema
+        _hoist_defs_to_components(schemas)
+        _rewrite_path_schemas(openapi_schema)
 
-    return custom_openapi
+    for edge_name, edge_model in _edge_models.items():
+        schema_name = f'{edge_name}EdgeProperties'
+        try:
+            schemas[schema_name] = edge_model.model_json_schema(
+                ref_template=('#/components/schemas/{model}')
+            )
+        except Exception:
+            LOGGER.exception(
+                'Failed to generate edge schema for %s',
+                edge_name,
+            )
+
+    if _edge_models:
+        _hoist_defs_to_components(schemas)
+
+    return openapi_schema
 
 
 def _hoist_defs_to_components(
@@ -407,9 +433,14 @@ def _rewrite_response_schemas(
 
 
 def clear_schema_cache() -> None:
-    """Clear the cached OpenAPI schema."""
+    """Clear the cached OpenAPI schema.
+
+    Acquires ``_schema_cache_lock`` so a concurrent in-flight build
+    cannot win the race and re-populate the cache after we clear it.
+    """
     global _schema_cache
-    _schema_cache = None
+    with _schema_cache_lock:
+        _schema_cache = None
     LOGGER.debug('Cleared OpenAPI schema cache')
 
 
