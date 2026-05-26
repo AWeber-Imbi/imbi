@@ -24,7 +24,10 @@ LOGGER = logging.getLogger(__name__)
 
 POLL_INTERVAL_SECONDS = 60
 LOOKAHEAD_SECONDS = 300
-LOCK_TTL_SECONDS = 10
+# Lock long enough to cover a slow IdP roundtrip but never longer than
+# the poll interval, so a stuck refresh can't permanently wedge the
+# row out of the sweep rotation.
+LOCK_TTL_SECONDS = 60
 
 
 def _lock_key(plugin_id: str, user_id: str) -> str:

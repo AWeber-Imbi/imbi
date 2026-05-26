@@ -32,6 +32,12 @@ LOGGER = logging.getLogger(__name__)
 #: org with O(100) projects.
 _TPS_RESYNC_CONCURRENCY = 5
 
+# Process-wide semaphore so two concurrent admin clicks share the same
+# budget instead of each spawning 5 parallel resyncs. ``asyncio.Semaphore``
+# no longer binds to a loop at construction (3.10+) so module-level is
+# safe across worker startups.
+_TPS_RESYNC_SEMAPHORE = asyncio.Semaphore(_TPS_RESYNC_CONCURRENCY)
+
 
 _SERVICE_JSON_FIELDS: dict[str, list[str] | dict[str, typing.Any]] = {
     'links': {},
@@ -571,10 +577,9 @@ async def resync_service_deployments(
     aggregate = ResyncSummary()
     if not project_ids:
         return aggregate
-    semaphore = asyncio.Semaphore(_TPS_RESYNC_CONCURRENCY)
 
     async def _run(project_id: str) -> ResyncSummary:
-        async with semaphore:
+        async with _TPS_RESYNC_SEMAPHORE:
             try:
                 return await resync_for_project(
                     db,
