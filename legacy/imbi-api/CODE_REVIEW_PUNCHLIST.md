@@ -35,14 +35,14 @@ Severity legend: **C** Critical · **H** High · **M** Medium · **L** Low
 ## High — Cypher / DB Correctness
 
 - [x] **H10.** AGE retry reuses `CREATE` for `OWNED_BY` / `TYPE` — `src/imbi_api/endpoints/projects.py:1699, 1710, 1913-1935`. Switch to `MERGE` so retries are idempotent (mirror the `DEPLOYED_IN` fix at 1718). — PR #338.
-- [ ] **H11.** Plugin assignment replace is non-transactional — `src/imbi_api/endpoints/project_plugins.py:160-203`, `src/imbi_api/endpoints/project_type_plugins.py:130-169`, `src/imbi_api/endpoints/service_plugins.py:815-867`. Wrap in a transaction or batch with `UNWIND ... CREATE`.
+- [~] **H11.** Plugin assignment replace is non-transactional — `src/imbi_api/endpoints/project_plugins.py:160-203`, `src/imbi_api/endpoints/project_type_plugins.py:130-169`, `src/imbi_api/endpoints/service_plugins.py:815-867`. Wrap in a transaction or batch with `UNWIND ... CREATE`. — PR #379 collapses the project + project-type replace flows into a single ``UNWIND``-driven detach-and-recreate executed inside a `db.transaction()`; the `service_plugins` half still needs the same treatment.
 - [ ] **H12.** `service_plugins.replace_plugin_assignments` skips `validate_one_default_per_tab` (compare `project_plugins.py:117-124`).
 
 ## High — Performance / Hot Path
 
 - [x] **H13.** Audit / event writes run inline on PATCH / deploy — `src/imbi_api/endpoints/projects.py:2089`, `src/imbi_api/endpoints/project_deployments.py:444`. Move to `BackgroundTasks`. ``patch_project`` schedules ``_emit_change_events`` via ``fastapi.BackgroundTasks`` and ``trigger_deployment`` threads ``background`` through ``_handle_deploy`` / ``_handle_promote`` so both audit sites schedule ``_record_deployment_audit`` instead of awaiting it. — PR #372.
-- [ ] **H14.** `list_current_releases` fires 2N upstream HTTP calls per project page with no cap — `src/imbi_api/endpoints/releases.py:346-367`. Add a shared semaphore and per-request `(project_id, committish)` cache.
-- [ ] **H15.** `backfill_embeddings.py:54-57` unconditionally re-embeds every node serially, calls private `_auto_embed`, no rate limiting. Add idempotency check, batching, and `asyncio.Semaphore`.
+- [x] **H14.** `list_current_releases` fires 2N upstream HTTP calls per project page with no cap — `src/imbi_api/endpoints/releases.py:346-367`. Add a shared semaphore and per-request `(project_id, committish)` cache. — PR #377 added a module-level `asyncio.Semaphore` cap and de-duplicated `(project_id, committish)` lookups so a paginated release-train fetch makes at most N capped upstream calls instead of 2N unbounded ones.
+- [x] **H15.** `backfill_embeddings.py:54-57` unconditionally re-embeds every node serially, calls private `_auto_embed`, no rate limiting. Add idempotency check, batching, and `asyncio.Semaphore`. — PR #378 added a `--force` flag, a `SELECT DISTINCT node_id FROM public.embeddings` skip-set for resumability, an `asyncio.Semaphore(--concurrency)` cap shared across all node types, and `psycopg.Error` swallowing so one bad node no longer aborts the run.
 - [x] **H16.** OpenAPI `_schema_cache` regenerates concurrently under cold load — `src/imbi_api/openapi.py:202-280`. Wrap with `asyncio.Lock` or precompute at startup. Wrapped the check + build in a ``threading.Lock`` with double-check; pulled the build body into ``_build_schema`` so the locked section is straight-line. ``clear_schema_cache`` also takes the lock so an in-flight build can't re-populate after a clear. — PR #366.
 - [x] **H17.** Per-call ClickHouse insert in lifecycle dispatch — `src/imbi_api/plugins/lifecycle_dispatch.py:240-268`. Batch or use the existing event writer queue. ``dispatch_lifecycle`` now collects every invocation into a single ``_emit_events_batch`` insert at the end of the loop instead of one ``_emit_event`` per plugin — N round trips → 1. — PR #373.
 
@@ -69,7 +69,7 @@ Severity legend: **C** Critical · **H** High · **M** Medium · **L** Low
 - [ ] **M7.** Consolidate TOTP verification, duplicated in `endpoints/auth.py:344-417`, `endpoints/mfa.py:230-291`, `endpoints/mfa.py:389-443`.
 - [ ] **M8.** Consolidate API-key creation between `endpoints/api_keys.py:99-195` and `endpoints/sa_api_keys.py:64-169`; `client_credentials.py:97-172` repeats it again.
 - [ ] **M9.** Consolidate three definitions of `parse_options` / `_parse_options` (`plugins/__init__`, `plugins/assignments.py`, `identity/flows.py`).
-- [ ] **M10.** Extract plugin-assignment writer (`plugins/assignment_writer.py`) — see H11/H12 for bugs this would prevent.
+- [x] **M10.** Extract plugin-assignment writer (`plugins/assignment_writer.py`) — see H11/H12 for bugs this would prevent. — PR #379 added `src/imbi_api/plugins/assignment_writer.py` with a shared transactional `replace_assignments` helper and routed the project and project-type endpoints through it, eliminating the duplicated multi-Cypher dance.
 
 ## Medium — Correctness
 
