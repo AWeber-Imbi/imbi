@@ -581,6 +581,49 @@ def require_permission(
     return check_permission
 
 
+# Explicit map from a permission ``resource_type`` (the snake-case
+# slug used in permission strings like ``project:read``) to the AGE
+# vertex label that identifies the node in the graph. Kept explicit
+# rather than derived from ``''.join(w.capitalize() ...)`` because
+# the naive conversion would map e.g. ``project_logs`` → ``ProjectLogs``
+# even though no such label exists, silently denying every request
+# instead of surfacing a configuration bug.
+_RESOURCE_LABEL_MAP: dict[str, str] = {
+    'blueprint': 'Blueprint',
+    'document': 'Document',
+    'document_template': 'DocumentTemplate',
+    'environment': 'Environment',
+    'identity_connection': 'IdentityConnection',
+    'link_definition': 'LinkDefinition',
+    'organization': 'Organization',
+    'plugin': 'Plugin',
+    'project': 'Project',
+    'project_type': 'ProjectType',
+    'release': 'Release',
+    'role': 'Role',
+    'service_application': 'ServiceApplication',
+    'tag': 'Tag',
+    'team': 'Team',
+    'third_party_service': 'ThirdPartyService',
+}
+
+
+def _resolve_resource_label(resource_type: str) -> str:
+    """Return the AGE label for a permission resource type.
+
+    Raises ``KeyError`` so a missing mapping shows up as a 500 on the
+    affected endpoint instead of a silent 403 — the latter would be a
+    classic "works on the dev's box, denied in prod" footgun.
+    """
+    try:
+        return _RESOURCE_LABEL_MAP[resource_type]
+    except KeyError as exc:
+        raise KeyError(
+            f'Unknown resource_type {resource_type!r}: add it to'
+            ' _RESOURCE_LABEL_MAP'
+        ) from exc
+
+
 async def check_resource_permission(
     db: graph.Graph,
     email: str,
@@ -678,9 +721,7 @@ def require_resource_access(
 
         # Check resource-level permission (users only)
         if auth.user:
-            label = ''.join(
-                word.capitalize() for word in resource_type.split('_')
-            )
+            label = _resolve_resource_label(resource_type)
             has_access = await check_resource_permission(
                 db, auth.user.email, label, slug, action
             )

@@ -569,3 +569,23 @@ class ResourceAccessDependencyTestCase(
 
         self.assertEqual(ctx.exception.status_code, 403)
         self.assertIn('Access denied', str(ctx.exception.detail))
+
+    async def test_require_resource_access_unknown_resource_type(
+        self,
+    ) -> None:
+        """M36: unmapped resource_type surfaces as a hard KeyError."""
+        user_context = permissions.AuthContext(
+            user=self.regular_user,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions=set(),
+        )
+        mock_db = mock.AsyncMock()
+
+        check_fn = permissions.require_resource_access('bogus_type', 'read')
+
+        with self.assertRaises(KeyError) as ctx:
+            await check_fn('test-slug', user_context, mock_db)
+
+        self.assertIn('bogus_type', str(ctx.exception))
+        self.assertIn('_RESOURCE_LABEL_MAP', str(ctx.exception))
