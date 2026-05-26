@@ -123,7 +123,7 @@ class RefreshEndpointTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class DisconnectEndpointTestCase(unittest.IsolatedAsyncioTestCase):
-    """Cover the disconnect endpoint's success path."""
+    """Cover the disconnect endpoint's success and partial-failure paths."""
 
     async def test_returns_204_after_revoke(self) -> None:
         db = mock.AsyncMock()
@@ -132,11 +132,35 @@ class DisconnectEndpointTestCase(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(
             endpoints.flows,
             'revoke_connection',
-            new=mock.AsyncMock(),
+            new=mock.AsyncMock(
+                return_value={'idp_revoked': True, 'idp_error': None}
+            ),
         ) as revoke:
             response = await endpoints.disconnect('p', db, auth)
         self.assertEqual(response.status_code, 204)
         revoke.assert_awaited_once()
+
+    async def test_returns_200_with_warning_on_idp_failure(self) -> None:
+        import json
+
+        db = mock.AsyncMock()
+        auth = mock.MagicMock()
+        auth.require_user = mock.MagicMock(id='user-1')
+        with mock.patch.object(
+            endpoints.flows,
+            'revoke_connection',
+            new=mock.AsyncMock(
+                return_value={
+                    'idp_revoked': False,
+                    'idp_error': 'RuntimeError: idp boom',
+                }
+            ),
+        ):
+            response = await endpoints.disconnect('p', db, auth)
+        self.assertEqual(response.status_code, 200)
+        body = json.loads(bytes(response.body))
+        self.assertIn('idp_error', body)
+        self.assertIn('idp boom', body['idp_error'])
 
 
 class StartConnectEndpointTestCase(unittest.IsolatedAsyncioTestCase):

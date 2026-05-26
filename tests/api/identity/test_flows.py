@@ -540,8 +540,13 @@ class RevokeConnectionTestCase(unittest.IsolatedAsyncioTestCase):
                 new=mock.AsyncMock(),
             ) as revoke,
         ):
-            await flows.revoke_connection(db, plugin_id='p', actor_user_id='u')
+            outcome = await flows.revoke_connection(
+                db, plugin_id='p', actor_user_id='u'
+            )
         revoke.assert_awaited_once_with(db, 'p', 'u')
+        self.assertFalse(outcome['idp_revoked'])
+        self.assertIn('idp boom', outcome['idp_error'] or '')
+        self.assertIn('RuntimeError', outcome['idp_error'] or '')
 
     async def test_happy_path_revokes_at_idp_and_locally(self) -> None:
         db = mock.AsyncMock()
@@ -567,6 +572,10 @@ class RevokeConnectionTestCase(unittest.IsolatedAsyncioTestCase):
                 new=mock.AsyncMock(),
             ) as revoke,
         ):
-            await flows.revoke_connection(db, plugin_id='p', actor_user_id='u')
+            outcome = await flows.revoke_connection(
+                db, plugin_id='p', actor_user_id='u'
+            )
         handler.revoke.assert_awaited_once()
         revoke.assert_awaited_once_with(db, 'p', 'u')
+        self.assertTrue(outcome['idp_revoked'])
+        self.assertIsNone(outcome['idp_error'])

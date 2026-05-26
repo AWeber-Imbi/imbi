@@ -406,16 +406,36 @@ async def refresh_connection(
     return new_credentials
 
 
+class RevokeOutcome(typing.TypedDict):
+    """Outcome of :func:`revoke_connection`.
+
+    ``idp_revoked`` is False when the IdP-side revoke call raised; the
+    local connection is still revoked in that case but the caller
+    needs to surface the partial state so the user knows the IdP
+    still holds live credentials.
+    """
+
+    idp_revoked: bool
+    idp_error: str | None
+
+
 async def revoke_connection(
     db: graph.Graph,
     *,
     plugin_id: str,
     actor_user_id: str,
-) -> None:
+) -> RevokeOutcome:
     """First DELETE on an active connection: best-effort revoke at the
     IdP, then mark the connection revoked.  Subsequent DELETE on an
     already revoked / expired connection: hard-delete the node so the
     "Forget" action removes the row from the UI.
+
+    Returns a :class:`RevokeOutcome` so the caller can distinguish a
+    clean revoke from "we revoked locally but the IdP rejected our
+    call." Cases where there's nothing to revoke at the IdP (plugin
+    uninstalled, status was already non-active, no connection on
+    file) are reported as ``idp_revoked=True`` because nothing
+    *needed* IdP-side action.
     """
     try:
         (
@@ -429,19 +449,20 @@ async def revoke_connection(
         # Plugin uninstalled out from under us.  Nothing to revoke at
         # the IdP; just hard-delete whatever's left so the UI can clear.
         await repository.delete_connection(db, plugin_id, actor_user_id)
-        return
+        return {'idp_revoked': True, 'idp_error': None}
 
     status = await repository.connection_status(db, resolved_id, actor_user_id)
     if status is None:
-        return
+        return {'idp_revoked': True, 'idp_error': None}
     if status != 'active':
         # Already revoked / expired — second DELETE means "forget."
         await repository.delete_connection(db, resolved_id, actor_user_id)
-        return
+        return {'idp_revoked': True, 'idp_error': None}
 
     connection = await repository.load_connection(
         db, resolved_id, actor_user_id
     )
+    idp_error: str | None = None
     if connection is not None:
         try:
             ctx = PluginContext(
@@ -452,7 +473,7 @@ async def revoke_connection(
                 assignment_options=options,
             )
             await handler.revoke(ctx, creds, connection.access_token)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             LOGGER.warning(
                 'IdP revoke failed for plugin_id=%s user_id=%s; '
                 'marking connection revoked anyway',
@@ -460,4 +481,6 @@ async def revoke_connection(
                 actor_user_id,
                 exc_info=True,
             )
+            idp_error = f'{type(exc).__name__}: {exc}'
     await repository.revoke(db, resolved_id, actor_user_id)
+    return {'idp_revoked': idp_error is None, 'idp_error': idp_error}

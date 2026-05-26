@@ -271,10 +271,30 @@ async def disconnect(
             permissions.require_permission('me:identities:manage'),
         ),
     ],
-) -> fastapi.Response:
-    """Revoke + delete the actor's connection for ``plugin_id``."""
+) -> fastapi.responses.Response:
+    """Revoke + delete the actor's connection for ``plugin_id``.
+
+    Returns ``204 No Content`` when both local and IdP revocation
+    succeed (or no IdP call was needed). When the IdP-side revoke
+    fails the local state is still recorded as revoked, but the
+    response is ``200 OK`` with a JSON body so the UI can flag the
+    partial state — the user needs to know the IdP still has live
+    credentials and may need manual cleanup.
+    """
     user = auth.require_user
-    await flows.revoke_connection(
+    outcome = await flows.revoke_connection(
         db, plugin_id=plugin_id, actor_user_id=user.id
     )
+    if not outcome['idp_revoked']:
+        return fastapi.responses.JSONResponse(
+            status_code=200,
+            content={
+                'detail': (
+                    'Connection revoked locally, but the IdP rejected '
+                    'the revocation call. The remote credentials may '
+                    'still be valid until the IdP expires them.'
+                ),
+                'idp_error': outcome['idp_error'],
+            },
+        )
     return fastapi.Response(status_code=204)
