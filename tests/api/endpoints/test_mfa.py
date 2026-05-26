@@ -11,6 +11,7 @@ from imbi_common import graph
 
 from imbi_api import app, models, settings
 from imbi_api.auth import password, permissions
+from imbi_api.middleware import rate_limit
 
 
 class MFAEndpointsTestCase(unittest.TestCase):
@@ -18,6 +19,10 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         """Set up test fixtures."""
+        # Reset the slowapi limiter so the new /mfa/verify 5/min cap
+        # doesn't bleed across tests in this suite (TestClient reuses
+        # 127.0.0.1, which is the limiter key).
+        rate_limit.limiter.reset()
         self.test_app = app.create_app()
 
         # Create test user

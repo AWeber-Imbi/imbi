@@ -22,6 +22,7 @@ from imbi_common.auth import encryption
 
 from imbi_api import models, settings
 from imbi_api.auth import password, permissions
+from imbi_api.middleware import rate_limit
 
 LOGGER = logging.getLogger(__name__)
 
@@ -209,7 +210,9 @@ async def setup_mfa(
 
 
 @mfa_router.post('/verify', status_code=204)
+@rate_limit.limiter.limit('5/minute')  # type: ignore[untyped-decorator]
 async def verify_and_enable_mfa(
+    request: fastapi.Request,
     verify_request: MFAVerifyRequest,
     db: graph.Pool,
     auth: typing.Annotated[

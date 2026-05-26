@@ -692,7 +692,9 @@ async def refresh_token(
 
 
 @auth_router.post('/logout', status_code=204)
+@rate_limit.limiter.limit('30/minute')  # type: ignore[untyped-decorator]
 async def logout(
+    request: fastapi.Request,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -926,7 +928,9 @@ async def oauth_login(
 
 
 @auth_router.get('/oauth/{provider}/callback')
+@rate_limit.limiter.limit('10/minute')  # type: ignore[untyped-decorator]
 async def oauth_callback(
+    request: fastapi.Request,
     db: graph.Pool,
     provider: str,
     valkey_client: OptionalValkeyClient,
