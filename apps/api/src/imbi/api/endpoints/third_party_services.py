@@ -706,9 +706,22 @@ async def list_service_applications(
     Defaults to the "integration" view: apps registered in this org's
     instance of the service AND any app with ``usage IN
     ('login','both')`` from any org (rendered ``is_global=True``).
+
+    ``usage='login'`` is deliberately cross-org: login providers are
+    inherently global (any user reaching ``/api/auth/login/<slug>``
+    can already discover which providers exist), so the response only
+    exposes names and slugs that are reachable through public auth
+    endpoints. ``ServiceApplication.client_secret`` is *not* surfaced
+    here -- see ``ServiceApplicationResponse``. ``org_slug`` still
+    gates the *route* (callers without ``third_party_service:read``
+    on the org cannot reach this handler at all), and the
+    ``owner_slug`` on each row preserves attribution. If a future
+    product surface needs to restrict cross-org visibility, add a
+    dedicated ``auth_provider:list_global`` permission and branch on
+    it here.
     """
     if usage == 'login':
-        # Login view ignores org boundaries entirely.
+        # Login view ignores org boundaries entirely -- see docstring.
         query: typing.LiteralString = """
         MATCH (a:ServiceApplication)-[:REGISTERED_IN]->
               (s:ThirdPartyService {{slug: {slug}}})
