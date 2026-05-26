@@ -11,9 +11,7 @@ from imbi_common.plugins.registry import (
 )
 from valkey import asyncio as _valkey_asyncio
 
-from imbi_api.plugins.lifecycle import (
-    _audit_unavailable,  # pyright: ignore[reportPrivateUsage]
-)
+from imbi_api.plugins.lifecycle import audit_unavailable
 
 LOGGER = logging.getLogger(__name__)
 
@@ -40,7 +38,7 @@ async def _subscribe_reload(
             if msg is not None:
                 LOGGER.info('Plugin reload triggered via pub/sub')
                 reload_plugins()
-                await _audit_unavailable(db)
+                await audit_unavailable(db)
     except asyncio.CancelledError:
         pass
     finally:

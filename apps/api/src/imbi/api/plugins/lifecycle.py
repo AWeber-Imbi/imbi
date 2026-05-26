@@ -37,11 +37,11 @@ async def startup_load_plugins(db: graph.Graph) -> None:
         raise
 
     await _seed_registrations(db)
-    await _audit_unavailable(db)
+    await audit_unavailable(db)
     await audit_plugin_schemas()
 
 
-async def _audit_unavailable(db: graph.Graph) -> None:
+async def audit_unavailable(db: graph.Graph) -> None:
     """Log any Plugin nodes whose slug is not in the registry."""
     registered = {e.manifest.slug for e in list_plugins()}
     query: typing.LiteralString = (

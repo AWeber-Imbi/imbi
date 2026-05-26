@@ -138,7 +138,7 @@ class LifecycleTestCase(unittest.TestCase):
             'imbi_api.plugins.lifecycle.list_plugins',
             return_value=[],
         ):
-            asyncio.run(lifecycle._audit_unavailable(mock_db))
+            asyncio.run(lifecycle.audit_unavailable(mock_db))
 
 
 class ReloadHookTestCase(unittest.TestCase):
@@ -970,7 +970,7 @@ class ReloadSubscriberTestCase(unittest.TestCase):
                 ),
                 mock.patch.object(reload_mod, 'reload_plugins') as reload_p,
                 mock.patch.object(
-                    reload_mod, '_audit_unavailable', mock.AsyncMock()
+                    reload_mod, 'audit_unavailable', mock.AsyncMock()
                 ) as audit,
             ):
                 await reload_mod._subscribe_reload(client, mock_db, stop)

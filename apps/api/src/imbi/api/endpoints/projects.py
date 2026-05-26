@@ -1372,7 +1372,11 @@ async def get_project(
                 response.score = score
                 response.breakdown = bd
         except ValueError:
-            pass
+            LOGGER.warning(
+                'compute_score failed for project %s',
+                project_id,
+                exc_info=True,
+            )
     return response
 
 

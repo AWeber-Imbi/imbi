@@ -32,12 +32,12 @@ async def _on_graph_startup(db: graph.Graph) -> None:
     _graph = db
     try:
         await openapi.refresh_blueprint_models(db)
-    except Exception as err:  # noqa: BLE001
-        LOGGER.warning('Failed to refresh blueprint models: %s', err)
+    except Exception:
+        LOGGER.exception('Failed to refresh blueprint models')
     try:
         await plugin_lifecycle.startup_load_plugins(db)
-    except Exception as err:  # noqa: BLE001
-        LOGGER.warning('Failed to load plugins: %s', err)
+    except Exception:
+        LOGGER.exception('Failed to load plugins')
 
 
 graph.set_on_startup(_on_graph_startup)
