@@ -141,6 +141,11 @@ async def _resolve_target_org(db: graph.Graph) -> str | None:
     if len(slugs) == 1:
         return slugs[0]
     if 'default' in slugs:
+        LOGGER.info(
+            'Multiple organizations exist (%d); falling back to the '
+            "seeded 'default' org for auto-membership assignment",
+            len(slugs),
+        )
         return 'default'
     return None
 
