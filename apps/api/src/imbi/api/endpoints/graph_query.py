@@ -415,7 +415,9 @@ async def run_graph_query(
 
     start = time.monotonic()
     try:
-        raw_rows = await db.execute(query, body.params, columns=columns)
+        raw_rows = await db.execute(
+            query, body.params, columns=columns, raw=True
+        )
     except psycopg.Error as exc:
         LOGGER.info(
             'Graph query failed: principal=%s error=%s',
