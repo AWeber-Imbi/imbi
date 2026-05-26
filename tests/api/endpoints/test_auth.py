@@ -86,6 +86,37 @@ def _patch_providers(
     )
 
 
+class RedactEmailTestCase(unittest.TestCase):
+    """Test cases for the _redact_email log helper."""
+
+    def test_keeps_first_char_and_domain(self) -> None:
+        from imbi_api.endpoints.auth import _redact_email
+
+        self.assertEqual(
+            _redact_email('admin@example.com'), 'a***@example.com'
+        )
+
+    def test_handles_single_char_local(self) -> None:
+        from imbi_api.endpoints.auth import _redact_email
+
+        self.assertEqual(_redact_email('x@example.com'), 'x***@example.com')
+
+    def test_handles_empty_local(self) -> None:
+        from imbi_api.endpoints.auth import _redact_email
+
+        self.assertEqual(_redact_email('@example.com'), '***@example.com')
+
+    def test_handles_no_at_sign(self) -> None:
+        from imbi_api.endpoints.auth import _redact_email
+
+        self.assertEqual(_redact_email('not-an-email'), '<redacted>')
+
+    def test_handles_empty_string(self) -> None:
+        from imbi_api.endpoints.auth import _redact_email
+
+        self.assertEqual(_redact_email(''), '<redacted>')
+
+
 class AuthProvidersEndpointTestCase(unittest.TestCase):
     """Test cases for GET /auth/providers endpoint."""
 

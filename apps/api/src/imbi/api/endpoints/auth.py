@@ -40,6 +40,22 @@ LOGGER = logging.getLogger(__name__)
 # email) could be inferred from the response time.
 _DUMMY_PASSWORD_HASH = password_auth.hash_password(secrets.token_hex(32))
 
+
+def _redact_email(email: str) -> str:
+    """Return a log-safe representation of an email address.
+
+    Preserves the domain and the first character of the local part so
+    failures can still be triaged (e.g. all-from-one-domain scans) while
+    keeping the local part — which is user-supplied PII on the failure
+    path — out of the log stream.
+    """
+    if not email or '@' not in email:
+        return '<redacted>'
+    local, _, domain = email.partition('@')
+    prefix = local[:1] if local else ''
+    return f'{prefix}***@{domain}'
+
+
 auth_router = fastapi.APIRouter(prefix='/auth', tags=['Authentication'])
 
 
@@ -304,7 +320,7 @@ async def login(
     )
 
     if not eligible or not password_valid or user is None:
-        LOGGER.warning('Login failed for email %s', email)
+        LOGGER.warning('Login failed for email %s', _redact_email(email))
         raise fastapi.HTTPException(
             status_code=401,
             detail='Invalid credentials',
@@ -318,7 +334,7 @@ async def login(
             password_auth.hash_password, password
         )
         await db.merge(user, match_on=['email'])
-        LOGGER.info('Rehashed password for user %s', user.email)
+        LOGGER.info('Rehashed password for user %s', _redact_email(user.email))
 
     # Phase 5: Check if MFA is enabled
     totp_query: typing.LiteralString = """
@@ -448,7 +464,7 @@ async def login(
     user.last_login = meta['issued_at']
     await db.merge(user, match_on=['email'])
 
-    LOGGER.info('User %s logged in successfully', user.email)
+    LOGGER.info('User %s logged in successfully', _redact_email(user.email))
 
     return auth_models.TokenResponse(
         access_token=access_token,
