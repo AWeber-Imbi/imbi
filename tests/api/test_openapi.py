@@ -285,7 +285,9 @@ class CreateCustomOpenapiTestCase(unittest.TestCase):
         build_count = 0
         original_build = openapi._build_schema
 
-        def counting_build(a: fastapi.FastAPI) -> dict:
+        def counting_build(
+            a: fastapi.FastAPI,
+        ) -> tuple[dict, bool]:
             nonlocal build_count
             build_count += 1
             return original_build(a)
@@ -311,6 +313,26 @@ class CreateCustomOpenapiTestCase(unittest.TestCase):
         # All callers observe the same cached schema instance.
         for r in results[1:]:
             self.assertIs(r, results[0])
+
+    def test_partial_failure_does_not_pin_cache(self) -> None:
+        """L14: a per-model failure must not pin a broken schema."""
+        broken = unittest.mock.MagicMock(spec=pydantic.BaseModel)
+        broken.model_json_schema.side_effect = ValueError('boom-for-test')
+        # Stuff the registry with a broken write model so generation
+        # raises on the first ``model_json_schema`` call.
+        openapi._blueprint_models = {'Team': broken}
+        openapi._response_models = {'Team': broken}
+        openapi._edge_models = {}
+
+        app = fastapi.FastAPI(title='Test', version='1.0.0')
+        custom_openapi_fn = openapi.create_custom_openapi(app)
+
+        schema = custom_openapi_fn()
+        # Schema still returned (best-effort) so /openapi.json keeps
+        # working for the unaffected paths...
+        self.assertIsInstance(schema, dict)
+        # ...but the cache stays empty so the next request retries.
+        self.assertIsNone(openapi._schema_cache)
 
     def test_path_schema_rewriting(self) -> None:
         """Test list endpoints get array response schemas."""

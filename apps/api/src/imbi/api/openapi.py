@@ -221,18 +221,36 @@ def create_custom_openapi(
             # populated the cache while we were waiting.
             if _schema_cache is not None:
                 return _schema_cache
-            _schema_cache = _build_schema(app)
-            return _schema_cache
+            schema, had_failure = _build_schema(app)
+            # L14: pin the result only when every per-model schema
+            # generated cleanly. A partial result is returned to the
+            # caller so ``/openapi.json`` doesn't fail outright, but the
+            # next request retries from scratch instead of seeing a
+            # broken schema for the lifetime of the worker.
+            if not had_failure:
+                _schema_cache = schema
+            else:
+                LOGGER.warning(
+                    'OpenAPI schema generated with partial failures; '
+                    'refusing to cache so the next request can retry'
+                )
+            return schema
 
     return custom_openapi
 
 
-def _build_schema(app: fastapi.FastAPI) -> dict[str, typing.Any]:
+def _build_schema(
+    app: fastapi.FastAPI,
+) -> tuple[dict[str, typing.Any], bool]:
     """Generate the OpenAPI schema with blueprint-enhanced models.
 
     Pulled out of ``custom_openapi`` so the locked build path is a
     single straight-line function — easier to reason about than a
     nested closure straddling the lock.
+
+    Returns ``(schema, had_failure)``. The flag is ``True`` when any
+    per-model ``model_json_schema`` call raised; the caller uses it
+    to decide whether the result is safe to cache.
     """
     openapi_schema = fastapi.openapi.utils.get_openapi(
         title=app.title,
@@ -258,6 +276,8 @@ def _build_schema(app: fastapi.FastAPI) -> dict[str, typing.Any]:
         openapi_schema['components']['schemas'],
     )
 
+    had_failure = False
+
     if _blueprint_models:
         for model_name in _blueprint_models:
             write_model = _blueprint_models[model_name]
@@ -274,6 +294,7 @@ def _build_schema(app: fastapi.FastAPI) -> dict[str, typing.Any]:
                     'Failed to generate write schema for %s',
                     model_name,
                 )
+                had_failure = True
 
             # Response schema (with relationships)
             resp_name = f'{model_name}Response'
@@ -286,6 +307,7 @@ def _build_schema(app: fastapi.FastAPI) -> dict[str, typing.Any]:
                     'Failed to generate response schema for %s',
                     model_name,
                 )
+                had_failure = True
 
         _hoist_defs_to_components(schemas)
         _rewrite_path_schemas(openapi_schema)
@@ -301,11 +323,12 @@ def _build_schema(app: fastapi.FastAPI) -> dict[str, typing.Any]:
                 'Failed to generate edge schema for %s',
                 edge_name,
             )
+            had_failure = True
 
     if _edge_models:
         _hoist_defs_to_components(schemas)
 
-    return openapi_schema
+    return openapi_schema, had_failure
 
 
 def _hoist_defs_to_components(
