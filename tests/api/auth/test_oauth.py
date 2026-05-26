@@ -537,6 +537,43 @@ class OIDCDiscoveryTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn('userinfo_endpoint', str(context.exception).lower())
 
+    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
+    async def test_discover_oidc_cache_is_bounded(
+        self, mock_client_class: mock.Mock
+    ) -> None:
+        """Test that the OIDC discovery cache evicts oldest entries."""
+        fresh = {
+            'token_endpoint': 'https://new.example.com/token',
+            'userinfo_endpoint': 'https://new.example.com/userinfo',
+        }
+        mock_response = mock.Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = fresh
+        mock_client = mock.AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        # Pre-load the cache with one more than the max so the next
+        # successful discovery has to evict.
+        max_entries = oauth._OIDC_CACHE_MAX_ENTRIES
+        for i in range(max_entries):
+            oauth._oidc_discovery_cache[f'https://idp-{i}.example.com'] = (
+                {'token_endpoint': 't', 'userinfo_endpoint': 'u'},
+                time.time() - (max_entries - i),  # idp-0 is the oldest
+            )
+        self.assertEqual(len(oauth._oidc_discovery_cache), max_entries)
+
+        await oauth._discover_oidc_endpoints('https://new.example.com')
+
+        self.assertEqual(len(oauth._oidc_discovery_cache), max_entries)
+        # The oldest pre-loaded entry should have been evicted.
+        self.assertNotIn(
+            'https://idp-0.example.com', oauth._oidc_discovery_cache
+        )
+        self.assertIn('https://new.example.com', oauth._oidc_discovery_cache)
+
 
 class _DBProviderTestBase(unittest.IsolatedAsyncioTestCase):
     """Base class for tests that need a stub DB returning provider rows."""

@@ -20,10 +20,25 @@ from imbi_api.auth import login_providers, models
 
 LOGGER = logging.getLogger(__name__)
 
-# Cache for OIDC discovery documents with TTL
-# Format: {issuer_url: (discovery_data, timestamp)}
+# Cache for OIDC discovery documents with TTL.
+# Format: {issuer_url: (discovery_data, timestamp)}.
+# Bounded to ``_OIDC_CACHE_MAX_ENTRIES`` so a deployment with many
+# configured IdPs (or a misbehaving caller passing junk issuers) can't
+# grow the cache without limit. When full, the oldest entry by insertion
+# timestamp is evicted on the next miss.
 _oidc_discovery_cache: dict[str, tuple[dict[str, typing.Any], float]] = {}
 _OIDC_CACHE_TTL_SECONDS = 86400  # 24 hours
+_OIDC_CACHE_MAX_ENTRIES = 64
+
+
+def _bound_oidc_cache() -> None:
+    """Drop the oldest cache entry while over the size cap."""
+    while len(_oidc_discovery_cache) > _OIDC_CACHE_MAX_ENTRIES:
+        oldest_key = min(
+            _oidc_discovery_cache,
+            key=lambda k: _oidc_discovery_cache[k][1],
+        )
+        del _oidc_discovery_cache[oldest_key]
 
 
 def _insecure_urls_allowed() -> bool:
@@ -159,6 +174,7 @@ async def _discover_oidc_endpoints(issuer_url: str) -> dict[str, typing.Any]:
     )
 
     _oidc_discovery_cache[issuer_url] = (discovery_data, time.time())
+    _bound_oidc_cache()
     return discovery_data
 
 
