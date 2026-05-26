@@ -285,12 +285,19 @@ class GraphSchemaEndpointTestCase(unittest.TestCase):
 
         # Build an async-context-manager chain for db.pool.connection()
         # → conn.cursor() → cursor.fetchall()
+        # ``_load_label_counts`` enumerates labels with one query, then
+        # runs a ``count(*)`` per label table — so ``fetchall`` yields
+        # ``(name, kind)`` pairs and ``fetchone`` yields the counts in
+        # label order.
         self.mock_cursor = mock.AsyncMock()
         self.mock_cursor.fetchall.return_value = [
-            ('User', 'v', 42),
-            ('Project', 'v', 17),
-            ('KNOWS', 'e', 100),
+            ('User', 'v'),
+            ('Project', 'v'),
+            ('KNOWS', 'e'),
         ]
+        self.mock_cursor.fetchone = mock.AsyncMock(
+            side_effect=[(42,), (17,), (100,)],
+        )
 
         cursor_ctx = mock.MagicMock()
         cursor_ctx.__aenter__ = mock.AsyncMock(return_value=self.mock_cursor)

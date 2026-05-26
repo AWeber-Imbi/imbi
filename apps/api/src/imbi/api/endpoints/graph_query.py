@@ -465,54 +465,48 @@ async def run_graph_query(
 async def _load_label_counts(
     db: graph.Graph,
 ) -> tuple[list[LabelCount], list[EdgeTypeCount]]:
-    """Enumerate vertex/edge labels via ``ag_catalog.ag_label``.
+    """Enumerate vertex/edge labels and count rows in each.
 
-    AGE creates one row per label (``kind = 'v'`` for vertices,
-    ``'e'`` for edges) plus the bookkeeping ``_ag_label_vertex`` /
-    ``_ag_label_edge`` rows which are filtered out.
+    AGE creates one row in ``ag_catalog.ag_label`` per label
+    (``kind = 'v'`` for vertices, ``'e'`` for edges) plus the
+    bookkeeping ``_ag_label_vertex`` / ``_ag_label_edge`` rows which
+    are filtered out. Each label is stored in its own table under the
+    graph's schema, so the count is a plain ``count(*)`` per table.
 
-    Counts are pulled from ``pg_class.reltuples`` (the planner's
-    estimate) so the schema endpoint stays fast even on large
-    graphs. The estimate can drift between vacuums but is good
-    enough for an admin overview; a precise count would require a
-    full ``MATCH (n:Label) RETURN count(n)`` per label and could
-    easily time out.
+    Counts are exact rather than estimated. ``pg_class.reltuples``
+    would be cheaper but reports ``-1`` for any table not yet
+    ``ANALYZE``d (PostgreSQL 14+), which surfaced as ``0`` for every
+    lightly-written label (User, Team, Organization, ...). The graph
+    is small enough that exact counts stay cheap.
     """
-    query = sql.SQL(
+    labels_query = sql.SQL(
         """
-        SELECT l.name AS name,
-               l.kind AS kind,
-               COALESCE(c.reltuples, 0)::bigint AS row_count
+        SELECT l.name AS name, l.kind AS kind
           FROM ag_catalog.ag_label l
           JOIN ag_catalog.ag_graph g ON l.graph = g.graphid
-          LEFT JOIN pg_class c
-                 ON c.oid = (
-                    quote_ident(g.name) || '.'
-                    || quote_ident(l.name)
-                 )::regclass
          WHERE g.name = {graph}
            AND l.name NOT LIKE '\\_ag\\_label\\_%' ESCAPE '\\'
          ORDER BY l.name
         """,
     ).format(graph=sql.Literal(db.settings.graph_name))
 
-    async with db.pool.connection() as conn:
-        async with conn.cursor() as cursor:
-            await cursor.execute(query)
-            records = await cursor.fetchall()
-
     node_labels: list[LabelCount] = []
     edge_types: list[EdgeTypeCount] = []
-    for row in records:
-        name, kind, count = row
-        if kind == 'v':
-            node_labels.append(
-                LabelCount(label=name, count=max(int(count), 0)),
-            )
-        elif kind == 'e':
-            edge_types.append(
-                EdgeTypeCount(type=name, count=max(int(count), 0)),
-            )
+    async with db.pool.connection() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(labels_query)
+            labels = await cursor.fetchall()
+            for name, kind in labels:
+                count_query = sql.SQL('SELECT count(*) FROM {table}').format(
+                    table=sql.Identifier(db.settings.graph_name, name),
+                )
+                await cursor.execute(count_query)
+                row = await cursor.fetchone()
+                count = int(row[0]) if row else 0
+                if kind == 'v':
+                    node_labels.append(LabelCount(label=name, count=count))
+                elif kind == 'e':
+                    edge_types.append(EdgeTypeCount(type=name, count=count))
     return node_labels, edge_types
 
 
