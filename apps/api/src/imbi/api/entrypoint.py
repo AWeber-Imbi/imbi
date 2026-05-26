@@ -10,6 +10,7 @@ from imbi_common import clickhouse, graph, server
 from imbi_api import models
 from imbi_api.auth import password as password_auth
 from imbi_api.auth import seed
+from imbi_api.graph_sql import set_clause
 
 main = typer.Typer(no_args_is_help=True)
 main.command('serve')(server.bind_entrypoint('imbi_api.app:create_app'))
@@ -424,29 +425,24 @@ async def _create_admin_user(
         created_at=datetime.datetime.now(datetime.UTC),
     )
 
-    # Create user in graph (AGE has no ON CREATE/MATCH SET)
-    query = (
+    # Create user in graph (AGE has no ON CREATE/MATCH SET).
+    # L12: use ``set_clause`` so the property-name → placeholder
+    # plumbing is centralized + identifier-validated rather than
+    # hand-typed.
+    fields: dict[str, typing.Any] = {
+        'display_name': user.display_name,
+        'password_hash': user.password_hash,
+        'is_active': user.is_active,
+        'is_admin': user.is_admin,
+        'is_service_account': user.is_service_account,
+        'created_at': user.created_at.isoformat(),
+    }
+    query: typing.LiteralString = (
         'MERGE (n:User {{email: {email}}}) '
-        'SET n.display_name = {display_name}, '
-        'n.password_hash = {password_hash}, '
-        'n.is_active = {is_active}, '
-        'n.is_admin = {is_admin}, '
-        'n.is_service_account = {is_service_account}, '
-        'n.created_at = {created_at} '
-        'RETURN n'
+        + set_clause('n', fields)
+        + ' RETURN n'
     )
-    records = await db.execute(
-        query,
-        {
-            'email': user.email,
-            'display_name': user.display_name,
-            'password_hash': user.password_hash,
-            'is_active': user.is_active,
-            'is_admin': user.is_admin,
-            'is_service_account': user.is_service_account,
-            'created_at': user.created_at.isoformat(),
-        },
-    )
+    records = await db.execute(query, {'email': user.email, **fields})
     if not records:
         raise RuntimeError('Failed to create user')
 
