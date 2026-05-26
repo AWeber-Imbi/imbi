@@ -106,10 +106,15 @@ async def replace_assignments(
 
     rows_tpl, row_params = _assignment_rows_template(rows)
     if rows:
+        # ``count(old)`` collapses the post-DELETE rows back to one row
+        # per parent. Without it, ``OPTIONAL MATCH`` emits one row per
+        # pre-existing edge, and the following ``UNWIND`` would then run
+        # once per old edge -- creating ``K x N`` edges when the parent
+        # already had ``K`` assignments.
         query = (
             parent_match + ' OPTIONAL MATCH (parent)-[old:USES_PLUGIN]->()'
             ' DELETE old'
-            ' WITH parent'
+            ' WITH parent, count(old) AS _del'
             f' UNWIND {rows_tpl} AS row'
             ' MATCH (p:Plugin {{id: row.plugin_id}})'
             ' CREATE (parent)-[:USES_PLUGIN {{tab: row.tab,'

@@ -89,6 +89,9 @@ class ReplaceAssignmentsQueryTestCase(unittest.TestCase):
         self.assertIn('UNWIND', query)
         self.assertIn('CREATE (parent)-[:USES_PLUGIN', query)
         self.assertIn(':Team', query)
+        # The post-DELETE rows must be collapsed before the UNWIND, else
+        # a parent with K prior edges yields K x N duplicate edges.
+        self.assertIn('count(old)', query)
         self.assertEqual(params['parent_value'], 'proj-1')
         self.assertEqual(params['org_slug'], 'myorg')
         self.assertEqual(params['asgn_0_plugin_id'], 'p1')

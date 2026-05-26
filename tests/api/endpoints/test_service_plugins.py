@@ -41,8 +41,8 @@ class ServicePluginsEndpointTestCase(unittest.TestCase):
         )
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
 
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
     def test_list_plugins_empty(self) -> None:
@@ -956,3 +956,219 @@ class ServicePluginsEndpointTestCase(unittest.TestCase):
             'not registered to service',
             response.json()['detail'],
         )
+
+
+class ReplacePluginAssignmentsTestCase(unittest.TestCase):
+    """Tests for ``PUT /{plugin_id}/assignments`` (fused replace)."""
+
+    BASE = (
+        '/organizations/myorg/third-party-services/github/plugins/'
+        'abc123/assignments'
+    )
+
+    def setUp(self) -> None:
+        self.test_app = app.create_app()
+        self.test_user = models.User(
+            email='admin@example.com',
+            display_name='Admin User',
+            is_active=True,
+            is_admin=True,
+            password_hash=password.hash_password('testpassword123'),
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.auth_context = permissions.AuthContext(
+            user=self.test_user,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions={
+                'third_party_service:read',
+                'third_party_service:update',
+            },
+        )
+
+        async def mock_get_current_user() -> permissions.AuthContext:
+            return self.auth_context
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            mock_get_current_user
+        )
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
+        )
+
+    @staticmethod
+    def _entry() -> object:
+        from imbi_common.plugins.base import (
+            ConfigurationPlugin,
+            PluginManifest,
+        )
+        from imbi_common.plugins.registry import RegistryEntry
+
+        class _Fake(ConfigurationPlugin):
+            manifest = PluginManifest(
+                slug='ssm', name='SSM', plugin_type='configuration'
+            )
+
+            async def list_keys(self, ctx, credentials):  # type: ignore[override]
+                return []
+
+            async def get_values(self, ctx, credentials, keys=None):  # type: ignore[override]
+                return []
+
+            async def set_value(self, ctx, credentials, key, value):  # type: ignore[override]
+                raise NotImplementedError
+
+            async def delete_key(self, ctx, credentials, key):  # type: ignore[override]
+                return None
+
+        return RegistryEntry(
+            handler_cls=_Fake,
+            manifest=_Fake.manifest,
+            package_name='imbi-plugin-ssm',
+            package_version='1.0.0',
+        )
+
+    def _fused_call(self) -> tuple[str, dict[str, object]]:
+        """Return (query, params) of the single columns=[] write call."""
+        calls = [
+            c
+            for c in self.mock_db.execute.call_args_list
+            if len(c.args) >= 3 and c.args[2] == []
+        ]
+        self.assertEqual(len(calls), 1)
+        return calls[0].args[0], calls[0].args[1]
+
+    def test_replace_emits_single_fused_write(self) -> None:
+        # _ensure -> slug, validate pt -> found, fused write -> [], list -> []
+        self.mock_db.execute.side_effect = [
+            [{'slug': 'ssm'}],
+            [{'found': 1}],
+            [],
+            [],
+        ]
+        with mock.patch(
+            'imbi_api.endpoints.service_plugins.get_plugin',
+            return_value=self._entry(),
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.put(
+                    self.BASE,
+                    json=[
+                        {
+                            'project_type_slug': 'web',
+                            'tab': 'configuration',
+                            'default': True,
+                            'options': {'k': 'v'},
+                        }
+                    ],
+                )
+        self.assertEqual(response.status_code, 200)
+        query, params = self._fused_call()
+        self.assertIn('UNWIND', query)
+        self.assertIn('DELETE old', query)
+        # Collapsed before the UNWIND so K prior edges can't multiply.
+        self.assertIn('count(old)', query)
+        # Default-demotion runs after the CREATEs.
+        self.assertIn('SET sibling.default = false', query)
+        self.assertEqual(params['asgn_0_pt'], 'web')
+        self.assertEqual(params['asgn_0_options'], json.dumps({'k': 'v'}))
+
+    def test_replace_empty_body_is_delete_only(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'slug': 'ssm'}],
+            [],
+            [],
+        ]
+        with mock.patch(
+            'imbi_api.endpoints.service_plugins.get_plugin',
+            return_value=self._entry(),
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.put(self.BASE, json=[])
+        self.assertEqual(response.status_code, 200)
+        query, _ = self._fused_call()
+        self.assertIn('DELETE old', query)
+        self.assertNotIn('UNWIND', query)
+
+    def test_replace_rejects_tab_mismatch(self) -> None:
+        self.mock_db.execute.side_effect = [[{'slug': 'ssm'}]]
+        with mock.patch(
+            'imbi_api.endpoints.service_plugins.get_plugin',
+            return_value=self._entry(),
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.put(
+                    self.BASE,
+                    json=[
+                        {
+                            'project_type_slug': 'web',
+                            'tab': 'logs',
+                            'default': True,
+                            'options': {},
+                        }
+                    ],
+                )
+        self.assertEqual(response.status_code, 400)
+
+    def test_replace_rejects_duplicate_pt_tab(self) -> None:
+        self.mock_db.execute.side_effect = [[{'slug': 'ssm'}]]
+        row = {
+            'project_type_slug': 'web',
+            'tab': 'configuration',
+            'default': True,
+            'options': {},
+        }
+        with mock.patch(
+            'imbi_api.endpoints.service_plugins.get_plugin',
+            return_value=self._entry(),
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.put(self.BASE, json=[row, dict(row)])
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Duplicate', response.json()['detail'])
+
+    def test_replace_rejects_invalid_project_type(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'slug': 'ssm'}],
+            [{'found': 0}],
+        ]
+        with mock.patch(
+            'imbi_api.endpoints.service_plugins.get_plugin',
+            return_value=self._entry(),
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.put(
+                    self.BASE,
+                    json=[
+                        {
+                            'project_type_slug': 'nope',
+                            'tab': 'configuration',
+                            'default': True,
+                            'options': {},
+                        }
+                    ],
+                )
+        self.assertEqual(response.status_code, 404)
+
+
+class AssignmentRowsTemplateTestCase(unittest.TestCase):
+    def test_template_serializes_and_collapses(self) -> None:
+        from imbi_api.endpoints.service_plugins import (
+            _assignment_rows_template,
+            _AssignmentInput,
+        )
+
+        a = _AssignmentInput(
+            project_type_slug='web',
+            tab='configuration',
+            default=True,
+            options={'k': 'v'},
+            identity_plugin_id='',
+        )
+        tpl, params = _assignment_rows_template([a])
+        self.assertIn('{asgn_0_pt}', tpl)
+        self.assertEqual(params['asgn_0_pt'], 'web')
+        self.assertEqual(params['asgn_0_options'], json.dumps({'k': 'v'}))
+        # Empty identity_plugin_id collapses to null.
+        self.assertIsNone(params['asgn_0_idp'])

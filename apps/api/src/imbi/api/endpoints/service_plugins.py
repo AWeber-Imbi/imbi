@@ -17,7 +17,7 @@ from imbi_common.plugins.registry import (
 
 from imbi_api.auth import login_providers, permissions
 from imbi_api.domain import models
-from imbi_api.graph_sql import props_template, set_clause
+from imbi_api.graph_sql import escape_prop, props_template, set_clause
 from imbi_api.plugins import parse_options as _parse_options
 from imbi_api.plugins.assignments import (
     coerce_identity_plugin_id,
@@ -669,6 +669,45 @@ class _AssignmentRow(pydantic.BaseModel):
     identity_plugin_id: str | None = None
 
 
+_ASSIGNMENT_ROW_FIELDS: tuple[tuple[str, str], ...] = (
+    ('project_type_slug', 'pt'),
+    ('tab', 'tab'),
+    ('default', 'default'),
+    ('options', 'options'),
+    ('identity_plugin_id', 'idp'),
+)
+
+
+def _assignment_rows_template(
+    body: list[_AssignmentInput],
+) -> tuple[str, dict[str, typing.Any]]:
+    """Build an inline Cypher list of maps for the UNWIND + its params.
+
+    Mirrors the indexed-placeholder pattern in
+    ``plugins/assignment_writer.py`` so the rendered query is safe to
+    feed through ``sql.SQL.format``. ``options`` is JSON-encoded and
+    ``identity_plugin_id`` collapses to null when empty, so every row in
+    the UNWIND has the same shape.
+    """
+    maps: list[str] = []
+    params: dict[str, typing.Any] = {}
+    for i, a in enumerate(body):
+        values: dict[str, typing.Any] = {
+            'pt': a.project_type_slug,
+            'tab': a.tab,
+            'default': a.default,
+            'options': json.dumps(a.options),
+            'idp': a.identity_plugin_id or None,
+        }
+        pairs: list[str] = []
+        for key, short in _ASSIGNMENT_ROW_FIELDS:
+            placeholder = f'asgn_{i}_{short}'
+            pairs.append(f'{escape_prop(key)}: {{{placeholder}}}')
+            params[placeholder] = values[short]
+        maps.append('{{' + ', '.join(pairs) + '}}')
+    return '[' + ', '.join(maps) + ']', params
+
+
 async def _list_assignments(
     db: graph.Graph, org_slug: str, plugin_id: str
 ) -> list[_AssignmentRow]:
@@ -812,58 +851,63 @@ async def replace_plugin_assignments(
             ),
         )
 
-    delete_query: typing.LiteralString = """
-    MATCH (pt:ProjectType)
-          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    MATCH (pt)-[e:USES_PLUGIN]->(p:Plugin {{id: {plugin_id}}})
-    DELETE e
-    """
+    # Fuse delete + recreate + default-demotion into one Cypher statement
+    # so AGE wraps the whole replace in a single server-side transaction:
+    # a mid-replace failure rolls the DELETE back too, instead of leaving
+    # the plugin with a partially dropped assignment set (punchlist H11).
+    #
+    # ``count(old)`` collapses the post-DELETE rows back to one row per
+    # plugin; without it the ``OPTIONAL MATCH`` would emit one row per
+    # pre-existing edge and the ``UNWIND`` would multiply the CREATEs.
+    #
+    # The trailing demotion runs after the CREATEs: for every (pt, tab)
+    # where this plugin is now default, any *other* plugin that was
+    # default on the same tab is demoted. Plain ``MATCH``/``SET`` only --
+    # a zero-row match (no default edges, or no competing siblings) is a
+    # harmless no-op and the already-applied CREATEs still commit.
+    if not body:
+        delete_query: typing.LiteralString = """
+        MATCH (p:Plugin {{id: {plugin_id}}})
+        OPTIONAL MATCH (:Organization {{slug: {org_slug}}})<-[:BELONGS_TO]-
+                       (dpt:ProjectType)-[old:USES_PLUGIN]->(p)
+        DELETE old
+        """
+        await db.execute(
+            delete_query,
+            {'plugin_id': plugin_id, 'org_slug': org_slug},
+            [],
+        )
+        return await _list_assignments(db, org_slug, plugin_id)
+
+    rows_tpl, row_params = _assignment_rows_template(body)
+    replace_query = (
+        'MATCH (p:Plugin {{id: {plugin_id}}})'
+        ' OPTIONAL MATCH (:Organization {{slug: {org_slug}}})'
+        '<-[:BELONGS_TO]-(dpt:ProjectType)-[old:USES_PLUGIN]->(p)'
+        ' DELETE old'
+        ' WITH p, count(old) AS _del'
+        f' UNWIND {rows_tpl} AS row'
+        ' MATCH (:Organization {{slug: {org_slug}}})<-[:BELONGS_TO]-'
+        '(cpt:ProjectType {{slug: row.project_type_slug}})'
+        ' CREATE (cpt)-[:USES_PLUGIN {{tab: row.tab,'
+        ' default: row.default, options: row.options,'
+        ' identity_plugin_id: row.identity_plugin_id}}]->(p)'
+        ' WITH p, count(cpt) AS _new'
+        ' MATCH (mpt:ProjectType)-[mine:USES_PLUGIN]->(p)'
+        ' WHERE mine.default = true'
+        ' MATCH (mpt)-[sibling:USES_PLUGIN]->(other:Plugin)'
+        ' WHERE other.id <> {plugin_id} AND sibling.tab = mine.tab'
+        ' AND sibling.default = true'
+        ' SET sibling.default = false'
+    )
     await db.execute(
-        delete_query,
-        {'org_slug': org_slug, 'plugin_id': plugin_id},
+        replace_query,
+        {
+            'plugin_id': plugin_id,
+            'org_slug': org_slug,
+            **row_params,
+        },
         [],
     )
-
-    clear_default_query: typing.LiteralString = """
-    MATCH (pt:ProjectType {{slug: {pt_slug}}})
-          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    MATCH (pt)-[e:USES_PLUGIN]->(:Plugin)
-    WHERE e.tab = {tab} AND e.default = true
-    SET e.default = false
-    """
-
-    for a in body:
-        edge_props: dict[str, typing.Any] = {
-            'tab': a.tab,
-            'default': a.default,
-            'options': json.dumps(a.options),
-        }
-        if a.identity_plugin_id:
-            edge_props['identity_plugin_id'] = a.identity_plugin_id
-        if a.default:
-            await db.execute(
-                clear_default_query,
-                {
-                    'pt_slug': a.project_type_slug,
-                    'org_slug': org_slug,
-                    'tab': a.tab,
-                },
-                [],
-            )
-        create_query: typing.LiteralString = (
-            'MATCH (pt:ProjectType {{slug: {pt_slug}}})'
-            ' -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})'
-            ' MATCH (p:Plugin {{id: {plugin_id}}})'
-            f' CREATE (pt)-[:USES_PLUGIN {props_template(edge_props)}]->(p)'
-        )
-        await db.execute(
-            create_query,
-            {
-                'pt_slug': a.project_type_slug,
-                'org_slug': org_slug,
-                'plugin_id': plugin_id,
-                **edge_props,
-            },
-        )
 
     return await _list_assignments(db, org_slug, plugin_id)
