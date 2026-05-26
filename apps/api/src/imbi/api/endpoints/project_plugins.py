@@ -1,6 +1,5 @@
 """Plugin assignment endpoints for projects."""
 
-import json
 import typing
 
 import fastapi
@@ -8,7 +7,7 @@ from imbi_common import graph
 
 from imbi_api.auth import permissions
 from imbi_api.domain import models
-from imbi_api.graph_sql import props_template
+from imbi_api.plugins.assignment_writer import replace_assignments
 from imbi_api.plugins.assignments import (
     PluginAssignmentRow,
     build_assignment_response,
@@ -159,47 +158,15 @@ async def replace_project_plugins(
 
     # Scope mutations to the org via the project's team→org chain so a
     # caller from another org can't modify edges by guessing project_id.
-    delete_query: typing.LiteralString = """
-    MATCH (proj:Project {{id: {project_id}}})
-          -[:OWNED_BY]->(:Team)-[:BELONGS_TO]->
-          (:Organization {{slug: {org_slug}}})
-    OPTIONAL MATCH (proj)-[e:USES_PLUGIN]->()
-    DELETE e
-    RETURN count(e) AS deleted
-    """
-    await db.execute(
-        delete_query,
-        {'project_id': project_id, 'org_slug': org_slug},
-        ['deleted'],
+    # ``replace_assignments`` fuses delete + creates into a single
+    # Cypher statement so a mid-replace failure rolls back atomically.
+    await replace_assignments(
+        db,
+        parent_label='Project',
+        parent_key='id',
+        parent_value=project_id,
+        org_slug=org_slug,
+        rows=rows,
     )
-
-    for row in rows:
-        edge_props: dict[str, typing.Any] = {
-            'tab': row['tab'],
-            'default': row['default'],
-            'options': json.dumps(row['options']),
-        }
-        identity_id = row.get('identity_plugin_id')
-        if identity_id:
-            edge_props['identity_plugin_id'] = identity_id
-        env_payloads = row.get('env_payloads')
-        if env_payloads:
-            edge_props['env_payloads'] = json.dumps(env_payloads)
-        create_query: str = (
-            'MATCH (proj:Project {{id: {project_id}}})'
-            ' -[:OWNED_BY]->(:Team)-[:BELONGS_TO]->'
-            ' (:Organization {{slug: {org_slug}}})'
-            ' MATCH (p:Plugin {{id: {plugin_id}}})'
-            f' CREATE (proj)-[:USES_PLUGIN {props_template(edge_props)}]->(p)'
-        )
-        await db.execute(
-            create_query,
-            {
-                'project_id': project_id,
-                'org_slug': org_slug,
-                'plugin_id': row['plugin_id'],
-                **edge_props,
-            },
-        )
 
     return await get_project_plugins(org_slug, project_id, db, auth)

@@ -1,6 +1,5 @@
 """Plugin assignment endpoints for project types."""
 
-import json
 import typing
 
 import fastapi
@@ -8,7 +7,7 @@ from imbi_common import graph
 
 from imbi_api.auth import permissions
 from imbi_api.domain import models
-from imbi_api.graph_sql import props_template
+from imbi_api.plugins.assignment_writer import replace_assignments
 from imbi_api.plugins.assignments import (
     PluginAssignmentRow,
     build_assignment_response,
@@ -127,45 +126,15 @@ async def replace_project_type_plugins(
             ),
         )
 
-    delete_query: typing.LiteralString = """
-    MATCH (pt:ProjectType {{slug: {pt_slug}}})
-          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    OPTIONAL MATCH (pt)-[e:USES_PLUGIN]->()
-    DELETE e
-    RETURN count(e) AS deleted
-    """
-    await db.execute(
-        delete_query,
-        {'pt_slug': pt_slug, 'org_slug': org_slug},
-        ['deleted'],
+    # ``replace_assignments`` fuses delete + creates into a single
+    # Cypher statement so a mid-replace failure rolls back atomically.
+    await replace_assignments(
+        db,
+        parent_label='ProjectType',
+        parent_key='slug',
+        parent_value=pt_slug,
+        org_slug=org_slug,
+        rows=rows,
     )
-
-    for row in rows:
-        edge_props: dict[str, typing.Any] = {
-            'tab': row['tab'],
-            'default': row['default'],
-            'options': json.dumps(row['options']),
-        }
-        identity_id = row.get('identity_plugin_id')
-        if identity_id:
-            edge_props['identity_plugin_id'] = identity_id
-        env_payloads = row.get('env_payloads')
-        if env_payloads:
-            edge_props['env_payloads'] = json.dumps(env_payloads)
-        merge_query: str = (
-            'MATCH (pt:ProjectType {{slug: {pt_slug}}})'
-            ' -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})'
-            ' MATCH (p:Plugin {{id: {plugin_id}}})'
-            f' CREATE (pt)-[:USES_PLUGIN {props_template(edge_props)}]->(p)'
-        )
-        await db.execute(
-            merge_query,
-            {
-                'pt_slug': pt_slug,
-                'org_slug': org_slug,
-                'plugin_id': row['plugin_id'],
-                **edge_props,
-            },
-        )
 
     return await list_project_type_plugins(org_slug, pt_slug, db, auth)
