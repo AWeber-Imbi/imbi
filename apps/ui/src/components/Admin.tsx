@@ -14,6 +14,7 @@ import {
   KeyRound,
   Layers,
   Link2,
+  Network,
   Puzzle,
   Shield,
   StickyNote,
@@ -30,6 +31,7 @@ import { AuthProvidersManagement } from './admin/AuthProvidersManagement'
 import { BlueprintManagement } from './admin/BlueprintManagement'
 import { DocumentTemplateManagement } from './admin/DocumentTemplateManagement'
 import { EnvironmentManagement } from './admin/EnvironmentManagement'
+import { GraphQueryManagement } from './admin/GraphQueryManagement'
 import { LinkDefinitionManagement } from './admin/LinkDefinitionManagement'
 import { OrganizationManagement } from './admin/OrganizationManagement'
 import { PluginPackageDetail } from './admin/PluginPackageDetail'
@@ -47,6 +49,7 @@ type AdminSection =
   | 'blueprints'
   | 'document-templates'
   | 'environments'
+  | 'graph-query'
   | 'link-definitions'
   | 'oauth'
   | 'organizations'
@@ -63,6 +66,7 @@ type AdminSection =
 const VALID_SECTIONS: AdminSection[] = [
   'blueprints',
   'environments',
+  'graph-query',
   'link-definitions',
   'document-templates',
   'oauth',
@@ -184,6 +188,13 @@ export function Admin() {
       icon: KeyRound,
       id: 'oauth',
       label: 'Auth Providers',
+      scope: 'system',
+    },
+    {
+      description: 'Run ad-hoc Cypher queries against the graph database',
+      icon: Network,
+      id: 'graph-query',
+      label: 'Graph Query',
       scope: 'system',
     },
     {
@@ -363,6 +374,7 @@ export function Admin() {
               <ScoringPolicyManagement />
             )}
             {currentSection === 'oauth' && <AuthProvidersManagement />}
+            {currentSection === 'graph-query' && <GraphQueryManagement />}
             {currentSection === 'plugins' && !slug && <PluginsManagement />}
             {currentSection === 'plugins' && slug && (
               <PluginPackageDetail
