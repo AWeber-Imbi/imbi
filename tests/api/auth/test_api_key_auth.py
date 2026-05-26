@@ -17,6 +17,9 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self) -> None:
         """Set up test fixtures."""
+        # M15: the LRU cache lives at module scope; clear it per test
+        # so cached AuthContexts from one case don't pollute another.
+        permissions.clear_api_key_cache()
         self.auth_settings = settings.Auth(
             jwt_secret='test-secret-key-min-32-chars-long',
         )
@@ -346,12 +349,92 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('read:projects', auth_context.permissions)
         self.assertNotIn('write:projects', auth_context.permissions)
 
+    async def test_second_call_with_same_key_skips_db(self) -> None:
+        """M15: cached auth short-circuits the DB + Argon2 path."""
+        mock_db = mock.AsyncMock()
+        user_dict = self.test_user.model_dump(mode='json')
+
+        def execute_side_effect(query, params=None, columns=None):
+            if 'APIKey' in query and 'OWNED_BY' in query:
+                return [
+                    {
+                        'k': self.api_key_data,
+                        'u': user_dict,
+                        's': None,
+                    }
+                ]
+            elif 'last_used' in query:
+                return []
+            elif (
+                'Permission' in query
+                or 'GRANTS' in query
+                or 'MEMBER_OF' in query
+            ):
+                return [{'permissions': ['read:projects']}]
+            return []
+
+        mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            first = await permissions.authenticate_api_key(
+                mock_db, self.full_key, self.auth_settings
+            )
+            calls_after_first = mock_db.execute.await_count
+            second = await permissions.authenticate_api_key(
+                mock_db, self.full_key, self.auth_settings
+            )
+        self.assertEqual(mock_db.execute.await_count, calls_after_first)
+        # Cache returns the same AuthContext instance.
+        self.assertIs(second, first)
+
+    async def test_clear_api_key_cache_forces_refetch(self) -> None:
+        """M15: clear_api_key_cache makes the next call hit the DB."""
+        mock_db = mock.AsyncMock()
+        user_dict = self.test_user.model_dump(mode='json')
+
+        def execute_side_effect(query, params=None, columns=None):
+            if 'APIKey' in query and 'OWNED_BY' in query:
+                return [
+                    {
+                        'k': self.api_key_data,
+                        'u': user_dict,
+                        's': None,
+                    }
+                ]
+            elif 'last_used' in query:
+                return []
+            elif (
+                'Permission' in query
+                or 'GRANTS' in query
+                or 'MEMBER_OF' in query
+            ):
+                return [{'permissions': []}]
+            return []
+
+        mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            await permissions.authenticate_api_key(
+                mock_db, self.full_key, self.auth_settings
+            )
+            calls_after_first = mock_db.execute.await_count
+            permissions.clear_api_key_cache()
+            await permissions.authenticate_api_key(
+                mock_db, self.full_key, self.auth_settings
+            )
+        self.assertGreater(mock_db.execute.await_count, calls_after_first)
+
 
 class GetCurrentUserTestCase(unittest.IsolatedAsyncioTestCase):
     """Test get_current_user function with API key."""
 
     def setUp(self) -> None:
         """Set up test fixtures."""
+        permissions.clear_api_key_cache()
         self.auth_settings = settings.Auth(
             jwt_secret='test-secret-key-min-32-chars-long',
         )

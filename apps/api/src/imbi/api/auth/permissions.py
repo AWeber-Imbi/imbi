@@ -1,9 +1,12 @@
 """Permission checking and authorization dependencies."""
 
 import asyncio
+import collections
 import collections.abc
 import datetime
+import hashlib
 import logging
+import time
 import typing
 
 import fastapi
@@ -72,6 +75,60 @@ class AuthContext(pydantic.BaseModel):
                 403, 'This endpoint requires user authentication'
             )
         return self.user
+
+
+# M15: bounded per-process cache for successful API-key auth so a
+# hot path (CI bot hammering the API with the same key) doesn't pay
+# the full Argon2 verify + graph round-trip on every request. The
+# cache value is a fully-formed AuthContext; the key is the SHA-256
+# of the raw API key string so we don't keep the plaintext key in
+# memory. TTL is short so revocations / scope changes propagate
+# within a minute.
+_API_KEY_CACHE_TTL_SECONDS = 60
+_API_KEY_CACHE_MAX_ENTRIES = 1024
+_api_key_cache: collections.OrderedDict[str, tuple[float, AuthContext]] = (
+    collections.OrderedDict()
+)
+
+
+def _api_key_cache_key(key: str) -> str:
+    return hashlib.sha256(key.encode('utf-8')).hexdigest()
+
+
+def _api_key_cache_lookup(key: str) -> AuthContext | None:
+    """Return a cached AuthContext if present and unexpired."""
+    h = _api_key_cache_key(key)
+    entry = _api_key_cache.get(h)
+    if entry is None:
+        return None
+    expires, ctx = entry
+    if time.monotonic() > expires:
+        _api_key_cache.pop(h, None)
+        return None
+    # Refresh LRU recency on hit.
+    _api_key_cache.move_to_end(h)
+    return ctx
+
+
+def _api_key_cache_store(key: str, ctx: AuthContext) -> None:
+    """Store an AuthContext in the bounded LRU cache."""
+    h = _api_key_cache_key(key)
+    while len(_api_key_cache) >= _API_KEY_CACHE_MAX_ENTRIES:
+        _api_key_cache.popitem(last=False)
+    _api_key_cache[h] = (
+        time.monotonic() + _API_KEY_CACHE_TTL_SECONDS,
+        ctx,
+    )
+
+
+def clear_api_key_cache() -> None:
+    """Drop every cached API-key AuthContext.
+
+    Tests use this to keep cases independent; callers that rotate /
+    revoke a key in-process can also use it for instant invalidation
+    instead of waiting on the TTL.
+    """
+    _api_key_cache.clear()
 
 
 PrincipalLabel = typing.Literal['User', 'ServiceAccount']
@@ -432,6 +489,16 @@ async def authenticate_api_key(
     key_id = f'ik_{parts[1]}'
     key_secret = parts[2]
 
+    # M15: fast path — a hot key (e.g. a CI bot looping requests)
+    # would otherwise re-run Argon2 + 2 graph round-trips per call.
+    # The cache short-circuits the whole thing for up to
+    # ``_API_KEY_CACHE_TTL_SECONDS``; revocations propagate at the
+    # next miss. ``_stamp_api_key_last_used`` is still invoked on a
+    # miss, so ``last_used`` updates at most once per TTL window.
+    cached = _api_key_cache_lookup(key)
+    if cached is not None:
+        return cached
+
     # Fetch API key and owner (User or ServiceAccount)
     query = (
         'MATCH (k:APIKey {{key_id: {key_id}}}) '
@@ -504,12 +571,14 @@ async def authenticate_api_key(
         # Update last_used only after all validation passes
         await _stamp_api_key_last_used(db, key_id, auth_settings)
 
-        return AuthContext(
+        ctx = AuthContext(
             service_account=sa,
             session_id=key_id,
             auth_method='api_key',
             permissions=filtered,
         )
+        _api_key_cache_store(key, ctx)
+        return ctx
 
     user = models.User(**user_data)
     if not user.is_active:
@@ -526,13 +595,15 @@ async def authenticate_api_key(
     # Update last_used only after all validation passes
     await _stamp_api_key_last_used(db, key_id, auth_settings)
 
-    return AuthContext(
+    ctx = AuthContext(
         user=user,
         session_id=key_id,
         auth_method='api_key',
         permissions=filtered,
         identities=identities,
     )
+    _api_key_cache_store(key, ctx)
+    return ctx
 
 
 async def get_current_user(
