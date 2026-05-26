@@ -33,6 +33,7 @@ _USER_CREATE: typing.LiteralString = (
     'id: {access_id}, '
     'jti: {access_jti}, '
     "token_type: 'access', "
+    'family_id: {family_id}, '
     'issued_at: {issued_at}, '
     'expires_at: {access_exp}, '
     'created_at: {issued_at}, '
@@ -42,6 +43,7 @@ _USER_CREATE: typing.LiteralString = (
     'id: {refresh_id}, '
     'jti: {refresh_jti}, '
     "token_type: 'refresh', "
+    'family_id: {family_id}, '
     'issued_at: {issued_at}, '
     'expires_at: {refresh_exp}, '
     'created_at: {issued_at}, '
@@ -55,6 +57,7 @@ _SERVICE_ACCOUNT_CREATE: typing.LiteralString = (
     'id: {access_id}, '
     'jti: {access_jti}, '
     "token_type: 'access', "
+    'family_id: {family_id}, '
     'issued_at: {issued_at}, '
     'expires_at: {access_exp}, '
     'created_at: {issued_at}, '
@@ -64,6 +67,7 @@ _SERVICE_ACCOUNT_CREATE: typing.LiteralString = (
     'id: {refresh_id}, '
     'jti: {refresh_jti}, '
     "token_type: 'refresh', "
+    'family_id: {family_id}, '
     'issued_at: {issued_at}, '
     'expires_at: {refresh_exp}, '
     'created_at: {issued_at}, '
@@ -93,6 +97,7 @@ async def issue_token_pair(
     principal_id: str,
     auth_settings: settings.Auth,
     extra_claims: dict[str, typing.Any] | None = None,
+    family_id: str | None = None,
 ) -> tuple[str, str, dict[str, typing.Any]]:
     """Mint an access+refresh pair and persist TokenMetadata nodes.
 
@@ -104,17 +109,27 @@ async def issue_token_pair(
     write (avoiding the TOCTOU gap of a separate existence query)
     and fails closed if a principal is removed mid-flight.
 
+    ``family_id`` ties an access+refresh pair to the refresh-token
+    chain it descends from. ``/auth/refresh`` passes the parent
+    refresh's ``family_id`` so the whole chain can be revoked when
+    reuse is detected (H1 in the code-review punchlist). Login,
+    OAuth, and client-credentials issuance pass ``None`` so each new
+    session starts a fresh chain.
+
     Args:
         db: Graph database connection.
         principal_type: ``'user'`` or ``'service_account'``.
         principal_id: Email for users, slug for service accounts.
         auth_settings: Auth settings for JWT configuration.
         extra_claims: Optional additional JWT claims.
+        family_id: Optional pre-assigned family id. ``None`` mints a
+            fresh chain.
 
     Returns:
         ``(access_token, refresh_token, meta)`` where ``meta``
-        contains ``access_jti``, ``refresh_jti``, ``issued_at``,
-        ``access_expires_at``, and ``refresh_expires_at``.
+        contains ``access_jti``, ``refresh_jti``, ``family_id``,
+        ``issued_at``, ``access_expires_at``, and
+        ``refresh_expires_at``.
 
     Raises:
         PrincipalNotFoundError: No principal matched ``principal_id``.
@@ -122,6 +137,8 @@ async def issue_token_pair(
 
     """
     create_query = _PRINCIPAL_QUERIES[principal_type]
+    if family_id is None:
+        family_id = nanoid.generate()
 
     access_token = core.create_access_token(
         principal_id,
@@ -153,6 +170,7 @@ async def issue_token_pair(
             'access_jti': access_claims['jti'],
             'refresh_id': nanoid.generate(),
             'refresh_jti': refresh_claims['jti'],
+            'family_id': family_id,
             'issued_at': now.isoformat(),
             'access_exp': access_expires_at.isoformat(),
             'refresh_exp': refresh_expires_at.isoformat(),
@@ -192,6 +210,7 @@ async def issue_token_pair(
         {
             'access_jti': access_claims['jti'],
             'refresh_jti': refresh_claims['jti'],
+            'family_id': family_id,
             'issued_at': now,
             'access_expires_at': access_expires_at,
             'refresh_expires_at': refresh_expires_at,

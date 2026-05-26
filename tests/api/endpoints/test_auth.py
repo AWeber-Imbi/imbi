@@ -1471,11 +1471,12 @@ class TokenRefreshTestCase(unittest.TestCase):
         # only the user match remains.
         self.mock_db.match.return_value = [test_user]
         # execute() is called twice: first for the atomic revoke
-        # (revoked_count=1 means the row was unrevoked and is now
-        # revoked), then for the MATCH/CREATE inside issue_token_pair
-        # that persists token metadata and returns principal_count.
+        # (returns the parent's family_id so the rotated pair can
+        # inherit it), then for the MATCH/CREATE inside
+        # issue_token_pair that persists token metadata and returns
+        # principal_count.
         self.mock_db.execute.side_effect = [
-            [{'revoked_count': 1}],
+            [{'family_id': 'fam-test'}],
             [{'principal_count': 1}],
         ]
 
@@ -1496,6 +1497,11 @@ class TokenRefreshTestCase(unittest.TestCase):
                 data['refresh_token'],
                 refresh_token,
             )
+            # The rotated pair must inherit the parent's family_id;
+            # otherwise the chain would split and a cascade revoke on
+            # reuse would miss every descendant minted from this call.
+            second_call_params = self.mock_db.execute.call_args_list[1][0][1]
+            self.assertEqual(second_call_params['family_id'], 'fam-test')
 
     def test_refresh_token_expired(self) -> None:
         """Test token refresh with expired token."""
@@ -1606,9 +1612,16 @@ class TokenRefreshTestCase(unittest.TestCase):
             auth_settings=auth_settings,
         )
 
-        # Atomic revoke returns 0 when the token is already revoked
-        # (or the jti doesn't match any TokenMetadata vertex).
-        self.mock_db.execute.return_value = [{'revoked_count': 0}]
+        # Atomic revoke returns no rows when the token is already
+        # revoked or unknown. The reuse-detect handler then issues a
+        # lookup (returns the token's revoked/family_id) followed by
+        # the family cascade (returns the count of sibling tokens it
+        # revoked).
+        self.mock_db.execute.side_effect = [
+            [],
+            [{'revoked': True, 'family_id': 'fam-test'}],
+            [{'revoked_count': 0}],
+        ]
 
         with mock.patch(
             'imbi_api.settings.get_auth_settings',
@@ -1648,10 +1661,10 @@ class TokenRefreshTestCase(unittest.TestCase):
             auth_settings=auth_settings,
         )
 
-        # Atomic revoke succeeds (token is valid), then the user
-        # match returns the inactive user.
+        # Atomic revoke succeeds (returns the parent's family_id),
+        # then the user match returns the inactive user.
         self.mock_db.match.return_value = [test_user]
-        self.mock_db.execute.return_value = [{'revoked_count': 1}]
+        self.mock_db.execute.return_value = [{'family_id': 'fam-test'}]
 
         with mock.patch(
             'imbi_api.settings.get_auth_settings',
@@ -1667,6 +1680,53 @@ class TokenRefreshTestCase(unittest.TestCase):
                 'inactive',
                 response.json()['detail'].lower(),
             )
+
+    def test_refresh_token_reuse_cascades_family_revocation(self) -> None:
+        """Reusing a revoked refresh kills every sibling in the family.
+
+        Simulates the H1 reuse scenario: an attacker (or honest client
+        replaying a stale token) presents a refresh whose ``revoked =
+        false`` MATCH yields no rows. The handler then queries the
+        token's stored state, sees it's already revoked, and fans a
+        family-wide cascade SET that turns every un-revoked
+        ``TokenMetadata`` for the chain into revoked rows.
+        """
+        from imbi_common.auth import core
+
+        auth_settings = settings.Auth(
+            jwt_secret='test-secret-key-min-32-chars-long',
+        )
+        refresh_token = core.create_refresh_token(
+            'test@example.com',
+            auth_settings=auth_settings,
+        )
+
+        self.mock_db.execute.side_effect = [
+            # Atomic revoke matches nothing (already revoked).
+            [],
+            # Reuse lookup finds the row revoked w/ family_id.
+            [{'revoked': True, 'family_id': 'fam-leak'}],
+            # Family cascade reports the count of siblings revoked.
+            [{'revoked_count': 3}],
+        ]
+
+        with mock.patch(
+            'imbi_api.settings.get_auth_settings',
+            return_value=auth_settings,
+        ):
+            response = self.client.post(
+                '/auth/token/refresh',
+                json={'refresh_token': refresh_token},
+            )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertIn('revoked', response.json()['detail'].lower())
+        # 3 execute() calls: atomic SET, reuse lookup, family cascade.
+        self.assertEqual(self.mock_db.execute.call_count, 3)
+        # The third call carries the family_id we returned from the
+        # lookup, proving the cascade fired with the right scope.
+        third_call_params = self.mock_db.execute.call_args_list[2][0][1]
+        self.assertEqual(third_call_params['family_id'], 'fam-leak')
 
 
 class LogoutTestCase(unittest.TestCase):

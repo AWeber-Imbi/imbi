@@ -406,14 +406,21 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
         self.assertIn('type', response.json()['detail'].lower())
 
     def test_token_refresh_revoked(self) -> None:
-        """Test refresh with revoked token."""
+        """Test refresh with revoked token.
+
+        The atomic revoke returns no rows when the token is already
+        revoked; the reuse-detect handler then issues a lookup and a
+        family cascade.
+        """
         refresh_token = core.create_refresh_token(
             self.test_user.email, auth_settings=self.auth_settings
         )
 
-        # Atomic revoke returns 0 when the token is already revoked
-        # (or the jti doesn't match any TokenMetadata vertex).
-        self.mock_db.execute.return_value = [{'revoked_count': 0}]
+        self.mock_db.execute.side_effect = [
+            [],
+            [{'revoked': True, 'family_id': 'fam-test'}],
+            [{'revoked_count': 0}],
+        ]
 
         with mock.patch(
             'imbi_api.settings.get_auth_settings'

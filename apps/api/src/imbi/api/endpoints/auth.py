@@ -457,6 +457,74 @@ async def login(
     )
 
 
+async def _handle_refresh_reuse(
+    db: graph.Graph, *, jti: str, revoked_at_iso: str
+) -> None:
+    """Detect and respond to refresh-token reuse.
+
+    Called from the refresh handler when the atomic ``MATCH ... WHERE
+    revoked = false ... SET revoked = true`` returned no rows. Two
+    cases:
+
+    1. The token doesn't exist — forged or expired-and-pruned jti.
+       Nothing to revoke; log and return.
+    2. The token exists with ``revoked = true`` — canonical
+       refresh-reuse signal. Revoke every un-revoked
+       ``TokenMetadata`` sharing the same ``family_id`` so an
+       attacker who already rotated tokens is logged out alongside
+       the victim.
+    """
+    lookup: typing.LiteralString = (
+        'MATCH (n:TokenMetadata {{jti: {jti}}}) '
+        'RETURN n.revoked AS revoked, n.family_id AS family_id'
+    )
+    rows = await db.execute(
+        lookup, {'jti': jti}, columns=['revoked', 'family_id']
+    )
+    if not rows:
+        LOGGER.warning('Token refresh failed: token not found (jti=%s)', jti)
+        return
+    revoked_val = graph.parse_agtype(rows[0].get('revoked'))
+    family_id_val = graph.parse_agtype(rows[0].get('family_id'))
+    if not revoked_val:
+        # Lost the race for some non-revoked reason (e.g. wrong
+        # token_type). Caller already logs; no cascade to fire.
+        return
+    if not isinstance(family_id_val, str) or not family_id_val:
+        # Legacy token issued before family_id existed. Without a
+        # family we can't trace the chain — log the reuse but skip
+        # the cascade so we never accidentally revoke unrelated
+        # tokens.
+        LOGGER.error(
+            'Refresh-token reuse detected for legacy token (no '
+            'family_id, jti=%s)',
+            jti,
+        )
+        return
+    cascade: typing.LiteralString = (
+        'MATCH (t:TokenMetadata {{family_id: {family_id}}}) '
+        'WHERE t.revoked = false '
+        'SET t.revoked = true, t.revoked_at = {revoked_at} '
+        'RETURN count(t) AS revoked_count'
+    )
+    cascade_rows = await db.execute(
+        cascade,
+        {'family_id': family_id_val, 'revoked_at': revoked_at_iso},
+        columns=['revoked_count'],
+    )
+    cascaded = 0
+    if cascade_rows:
+        raw = graph.parse_agtype(cascade_rows[0].get('revoked_count'))
+        cascaded = int(raw or 0)
+    LOGGER.error(
+        'Refresh-token reuse detected (jti=%s, family_id=%s); '
+        'revoked %d sibling tokens',
+        jti,
+        family_id_val,
+        cascaded,
+    )
+
+
 @auth_router.post('/token/refresh', response_model=auth_models.TokenResponse)
 @rate_limit.limiter.limit('10/minute')  # type: ignore[untyped-decorator]
 async def refresh_token(
@@ -506,40 +574,45 @@ async def refresh_token(
             status_code=401, detail='Invalid token type'
         )
 
-    # Atomically revoke the refresh token. Matching on
-    # ``revoked = false`` in the same statement as the SET closes
-    # the TOCTOU gap between the check and the write: when two
-    # refreshes race on the same token, only the first matches, so
-    # the second gets ``revoked_count = 0`` and a clean 401 instead
-    # of AGE raising ``Entity failed to be updated: 3`` on the
-    # concurrently-updated vertex.
+    # Atomically revoke the refresh token AND capture its family_id
+    # for the rotated pair. Matching on ``revoked = false`` in the
+    # same statement as the SET closes the TOCTOU gap between the
+    # check and the write: when two refreshes race on the same token
+    # only the first matches; the second gets an empty result and
+    # falls through to the reuse-detect branch below.
+    revoked_at_iso = datetime.datetime.now(datetime.UTC).isoformat()
     revoke_query: typing.LiteralString = (
         'MATCH (n:TokenMetadata {{jti: {jti}}}) '
         "WHERE n.revoked = false AND n.token_type = 'refresh' "
         'SET n.revoked = true, n.revoked_at = {revoked_at} '
-        'RETURN count(n) AS revoked_count'
+        'RETURN n.family_id AS family_id'
     )
     revoke_records = await db.execute(
         revoke_query,
         {
             'jti': payload['jti'],
-            'revoked_at': datetime.datetime.now(datetime.UTC).isoformat(),
+            'revoked_at': revoked_at_iso,
         },
-        columns=['revoked_count'],
+        columns=['family_id'],
     )
-    revoked = 0
-    if revoke_records:
-        raw = graph.parse_agtype(revoke_records[0].get('revoked_count'))
-        revoked = int(raw or 0)
-    if revoked == 0:
-        LOGGER.warning(
-            'Token refresh failed: token revoked or not found (jti=%s)',
-            payload['jti'],
+    if not revoke_records:
+        # Either the token doesn't exist, was already revoked, or has
+        # the wrong token_type. If it exists and was already revoked,
+        # that's refresh-token reuse — the canonical signal of a
+        # leaked/stolen refresh. Kill every un-revoked token in the
+        # same family so an attacker who already rotated tokens is
+        # logged out alongside the victim.
+        await _handle_refresh_reuse(
+            db, jti=payload['jti'], revoked_at_iso=revoked_at_iso
         )
         raise fastapi.HTTPException(
             status_code=401,
             detail='Refresh token has been revoked',
         )
+    family_id_raw = graph.parse_agtype(revoke_records[0].get('family_id'))
+    parent_family_id = (
+        family_id_raw if isinstance(family_id_raw, str) else None
+    )
 
     # Resolve principal (user or service account)
     subject = payload['sub']
@@ -578,13 +651,16 @@ async def refresh_token(
         principal_type = 'user'
         principal_id = user.email
 
-    # Mint rotated access+refresh pair
+    # Mint rotated access+refresh pair, inheriting the parent's
+    # family_id so a future reuse of any token in this chain can be
+    # detected and the whole chain revoked.
     access_token, new_refresh_token, _ = await tokens.issue_token_pair(
         db,
         principal_type=principal_type,
         principal_id=principal_id,
         auth_settings=auth_settings,
         extra_claims=extra_claims,
+        family_id=parent_family_id,
     )
 
     LOGGER.info(

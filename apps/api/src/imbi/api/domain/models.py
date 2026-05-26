@@ -264,6 +264,7 @@ class TokenMetadata(models.GraphModel):
 
     jti: str
     token_type: typing.Literal['access', 'refresh']
+    family_id: str | None = None
     issued_at: datetime.datetime
     expires_at: datetime.datetime
     revoked: bool = False
