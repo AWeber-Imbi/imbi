@@ -76,6 +76,43 @@ class AssignmentsTestCase(unittest.TestCase):
             validate_one_default_per_tab(rows)
 
 
+class ParseOptionsTestCase(unittest.TestCase):
+    """The unified ``parse_options`` subsumes every input layer."""
+
+    def test_none_yields_empty_dict(self) -> None:
+        from imbi_api.plugins import parse_options
+
+        self.assertEqual(parse_options(None), {})
+
+    def test_dict_passes_through(self) -> None:
+        from imbi_api.plugins import parse_options
+
+        self.assertEqual(parse_options({'k': 'v'}), {'k': 'v'})
+
+    def test_single_encoded_json_string(self) -> None:
+        from imbi_api.plugins import parse_options
+
+        self.assertEqual(parse_options(json.dumps({'k': 'v'})), {'k': 'v'})
+
+    def test_raw_agtype_double_encoded_string(self) -> None:
+        # AGE returns a string property as a JSON-quoted string, so a
+        # stored ``'{"k": "v"}'`` round-trips as ``'"{\\"k\\": \\"v\\"}"'``.
+        from imbi_api.plugins import parse_options
+
+        raw = json.dumps(json.dumps({'k': 'v'}))
+        self.assertEqual(parse_options(raw), {'k': 'v'})
+
+    def test_malformed_json_yields_empty_dict(self) -> None:
+        from imbi_api.plugins import parse_options
+
+        self.assertEqual(parse_options('{not json'), {})
+
+    def test_non_object_json_yields_empty_dict(self) -> None:
+        from imbi_api.plugins import parse_options
+
+        self.assertEqual(parse_options(json.dumps([1, 2, 3])), {})
+
+
 class LifecycleTestCase(unittest.TestCase):
     def test_startup_load_plugins_logs(self) -> None:
         from imbi_common.plugins.registry import LoadResult

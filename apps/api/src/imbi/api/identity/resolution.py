@@ -137,7 +137,7 @@ async def load_plugin_options(
     rows = await db.execute(query, {'plugin_id': plugin_id}, ['options'])
     if not rows:
         return {}
-    return parse_options(graph.parse_agtype(rows[0]['options']))
+    return parse_options(rows[0]['options'])
 
 
 def is_active(connection_expires_at: datetime.datetime | None) -> bool:

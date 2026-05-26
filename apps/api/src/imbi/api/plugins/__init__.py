@@ -7,6 +7,7 @@ import typing
 from collections.abc import Awaitable
 
 import fastapi
+from imbi_common import graph
 
 PLUGIN_TIMEOUT_SECONDS = float(
     os.environ.get('IMBI_PLUGIN_TIMEOUT_SECONDS', '10')
@@ -14,15 +15,26 @@ PLUGIN_TIMEOUT_SECONDS = float(
 
 
 def parse_options(raw: typing.Any) -> dict[str, typing.Any]:
-    """Parse a Plugin/edge ``options`` value to a dict.
+    """Decode a Plugin/edge ``options`` value into a dict.
 
-    AGE returns property maps as JSON strings on round-trip; for nested
-    dict properties we serialize on write and decode here on read.
+    Handles every layer these values arrive at: raw agtype column
+    values (decoded via :func:`graph.parse_agtype`), the single
+    JSON-encoded strings AGE returns for nested map properties, and
+    already-parsed dicts. Anything that does not resolve to a dict
+    (``None``, malformed JSON, a non-object) yields an empty dict so a
+    bad ``options`` value never crashes a read path.
     """
-    if isinstance(raw, str):
-        parsed: dict[str, typing.Any] = json.loads(raw)
-        return parsed
-    return raw or {}
+    if raw is None:
+        return {}
+    parsed = graph.parse_agtype(raw)
+    if isinstance(parsed, str):
+        try:
+            parsed = json.loads(parsed)
+        except json.JSONDecodeError:
+            return {}
+    if isinstance(parsed, dict):
+        return typing.cast('dict[str, typing.Any]', parsed)
+    return {}
 
 
 async def call_with_timeout[T](coro: Awaitable[T]) -> T:

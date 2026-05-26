@@ -1,6 +1,5 @@
 """High-level identity-flow operations: start, complete, refresh."""
 
-import json
 import logging
 import typing
 import urllib.parse
@@ -18,6 +17,7 @@ from valkey import asyncio as valkey
 
 from imbi_api.identity import errors, repository, state
 from imbi_api.plugins import credentials as plugin_credentials
+from imbi_api.plugins import parse_options
 
 LOGGER = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ async def _load_plugin_handler(
     if rows:
         resolved_id = graph.parse_agtype(rows[0]['id'])
         slug = graph.parse_agtype(rows[0]['slug'])
-        options = _parse_options(rows[0].get('options'))
+        options = parse_options(rows[0].get('options'))
     else:
         resolved_id = plugin_id
         slug = plugin_id
@@ -104,28 +104,6 @@ async def _load_plugin_handler(
         db, resolved_id, entry
     )
     return resolved_id, entry, handler, creds, options
-
-
-def _parse_options(raw: typing.Any) -> dict[str, typing.Any]:
-    """Decode the ``Plugin.options`` agtype value into a dict.
-
-    Stored as a JSON-encoded string per ``service_plugins.create``;
-    accept dicts defensively for backward compatibility.
-    """
-    if raw is None:
-        return {}
-    parsed = graph.parse_agtype(raw)
-    if isinstance(parsed, dict):
-        return typing.cast('dict[str, typing.Any]', parsed)
-    if isinstance(parsed, str):
-        try:
-            decoded = json.loads(parsed)
-        except json.JSONDecodeError:
-            return {}
-        if isinstance(decoded, dict):
-            return typing.cast('dict[str, typing.Any]', decoded)
-        return {}
-    return {}
 
 
 async def start_flow(
