@@ -203,6 +203,7 @@ class Storage(pydantic_settings.BaseSettings):
 # Module-level singletons for extended settings
 _auth_settings: Auth | None = None
 _server_config: ServerConfig | None = None
+_storage_settings: Storage | None = None
 
 
 def get_auth_settings() -> Auth:
@@ -237,6 +238,33 @@ def get_server_config() -> ServerConfig:
         except (FileNotFoundError, OSError, ValueError, TypeError):
             _server_config = ServerConfig()
     return _server_config
+
+
+def get_storage_settings() -> Storage:
+    """Get the singleton Storage settings instance.
+
+    Mirrors :func:`get_server_config` — prefers a TOML ``[storage]``
+    section when one is present, falling back to env-only defaults.
+    """
+    global _storage_settings
+    if _storage_settings is None:
+        try:
+            _storage_settings = load_config().storage
+        except (FileNotFoundError, OSError, ValueError, TypeError):
+            _storage_settings = Storage()
+    return _storage_settings
+
+
+def clear_caches() -> None:
+    """Reset the module-level singletons.
+
+    Test-only escape hatch — production code should call the getters,
+    which lazily initialize once per process.
+    """
+    global _auth_settings, _server_config, _storage_settings
+    _auth_settings = None
+    _server_config = None
+    _storage_settings = None
 
 
 def oauth_callback_url(provider_slug: str) -> str:

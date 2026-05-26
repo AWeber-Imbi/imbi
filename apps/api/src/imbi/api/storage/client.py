@@ -26,7 +26,7 @@ class StorageClient:
     """
 
     def __init__(self) -> None:
-        self._settings = settings.Storage()
+        self._settings = settings.get_storage_settings()
         self._session = aioboto3.Session(
             aws_access_key_id=self._settings.access_key or None,
             aws_secret_access_key=self._settings.secret_key or None,

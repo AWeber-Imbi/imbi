@@ -46,7 +46,7 @@ def validate_upload(
 
     """
     if storage_settings is None:
-        storage_settings = settings.Storage()
+        storage_settings = settings.get_storage_settings()
 
     _validate_content_type(declared_content_type, storage_settings)
     _validate_file_size(data, storage_settings)

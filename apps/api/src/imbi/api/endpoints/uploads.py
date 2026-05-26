@@ -77,7 +77,7 @@ async def create_upload(
     content_type = file.content_type or 'application/octet-stream'
     filename = file.filename or 'unnamed'
 
-    storage_settings = settings.Storage()
+    storage_settings = settings.get_storage_settings()
 
     try:
         validation.validate_upload(

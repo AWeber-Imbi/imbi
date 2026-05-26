@@ -55,7 +55,7 @@ async def generate_thumbnail(
 
     """
     if storage_settings is None:
-        storage_settings = settings.Storage()
+        storage_settings = settings.get_storage_settings()
 
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(

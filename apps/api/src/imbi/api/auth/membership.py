@@ -41,10 +41,14 @@ _USER_HAS_MEMBERSHIP_QUERY: typing.LiteralString = (
 # idempotent only for the same role value — fine here because the
 # caller invokes this helper only when the user has zero memberships
 # of any kind.
+# The Role MATCH ensures we never create a MEMBER_OF edge whose
+# ``role`` property points at a non-existent Role node; if the role is
+# missing the query yields no rows and the helper returns ``None``.
 _CREATE_MEMBERSHIP_QUERY: typing.LiteralString = (
     'MATCH (u:User {{email: {email}}}), '
-    '(o:Organization {{slug: {org_slug}}}) '
-    'MERGE (u)-[:MEMBER_OF {{role: {role_slug}}}]->(o) '
+    '(o:Organization {{slug: {org_slug}}}), '
+    '(r:Role {{slug: {role_slug}}}) '
+    'MERGE (u)-[:MEMBER_OF {{role: r.slug}}]->(o) '
     'RETURN u.email AS email'
 )
 
