@@ -110,7 +110,7 @@ class ApplicationLifespanTestCase(unittest.TestCase):
         )
 
     def test_openapi_refresh_blueprint_failure(self) -> None:
-        failure = RuntimeError()
+        failure = RuntimeError('blueprint refresh failed')
         with (
             unittest.mock.patch(
                 'imbi_api.lifespans.openapi.refresh_blueprint_models',
@@ -120,16 +120,24 @@ class ApplicationLifespanTestCase(unittest.TestCase):
             ) as refresh_blueprint_models,
             self.assertLogs(
                 lifespans.LOGGER,
-                level='WARNING',
+                level='ERROR',
             ) as cm,
         ):
             with testclient.TestClient(app.create_app()):
                 pass
 
         refresh_blueprint_models.assert_awaited_once()
-        self.assertIn(
-            f'WARNING:imbi_api.lifespans:'
-            f'Failed to refresh blueprint'
-            f' models: {failure}',
+        # ``LOGGER.exception`` logs at ERROR and appends the traceback
+        # after the message. Match on the message + class name so the
+        # assertion is stable across Python tracebacks.
+        self.assertTrue(
+            any(
+                line.startswith(
+                    'ERROR:imbi_api.lifespans:'
+                    'Failed to refresh blueprint models'
+                )
+                and 'RuntimeError' in line
+                for line in cm.output
+            ),
             cm.output,
         )
