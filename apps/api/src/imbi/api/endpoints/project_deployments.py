@@ -1096,18 +1096,27 @@ async def _handle_deploy(
         if result is not None:
             matched_tag = try_tag
             break
-    await _record_deployment_audit(
-        project_id=project_id,
-        project_slug=ctx.project_slug,
-        environment_slug=body.environment,
-        recorded_by=auth.principal_name,
-        action=body.action,
-        tag=matched_tag if result is not None else candidate_tag,
-        committish=committish_short,
-        plugin_slug=resolved.plugin_slug,
-        run_url=run.run_url,
-        external_run_id=str(run.run_id) if run.run_id else None,
-    )
+    if result is None:
+        LOGGER.warning(
+            'Deploy triggered for project=%s committish=%s tag=%s but no'
+            ' matching Release node was found; audit row suppressed',
+            project_id,
+            committish_short,
+            candidate_tag,
+        )
+    else:
+        await _record_deployment_audit(
+            project_id=project_id,
+            project_slug=ctx.project_slug,
+            environment_slug=body.environment,
+            recorded_by=auth.principal_name,
+            action=body.action,
+            tag=matched_tag,
+            committish=committish_short,
+            plugin_slug=resolved.plugin_slug,
+            run_url=run.run_url,
+            external_run_id=str(run.run_id) if run.run_id else None,
+        )
     return DeploymentTriggerResponse(
         run=run,
         plugin_id=resolved.plugin_id,

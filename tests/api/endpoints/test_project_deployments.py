@@ -997,6 +997,16 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         )
 
     def test_deploy_writes_operations_log_audit(self) -> None:
+        self.mocks['append_deployment_event'].return_value = mock.Mock()
+        # Mock _release_id_for so the deploy flow finds a Release node —
+        # the audit row is only written when a deploy ties back to a
+        # known Release (see L24).
+        self._start(
+            mock.patch(
+                f'{_MODULE}._release_id_for',
+                return_value='matched-release-id',
+            )
+        )
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
                 '/organizations/myorg/projects/proj1/deployments',
@@ -1049,6 +1059,25 @@ class ProjectDeploymentsTestCase(unittest.TestCase):
         self.assertEqual(row['environment_slug'], 'staging')
         self.assertEqual(row['version'], 'v6.4.0')
         self.assertEqual(row['plugin_slug'], 'github-deployment')
+
+    def test_deploy_suppresses_audit_when_no_release_matches(self) -> None:
+        # L24: when ``_release_id_for`` returns no match, the workflow
+        # was still dispatched but we cannot tie it to a Release node,
+        # so the audit row is suppressed to keep operations_log clean.
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'deploy',
+                    'environment': 'testing',
+                    'committish': 'abc1234',
+                    'ref_label': 'main',
+                },
+            )
+        self.assertEqual(response.status_code, 202)
+        self.assertFalse(response.json()['recorded'])
+        ch = self.mocks['clickhouse'].return_value
+        ch.insert.assert_not_called()
 
 
 class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
