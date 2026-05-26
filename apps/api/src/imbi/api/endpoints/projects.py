@@ -1968,6 +1968,7 @@ async def patch_project(
     project_id: str,
     operations: list[json_patch.PatchOperation],
     request: fastapi.Request,
+    background: fastapi.BackgroundTasks,
     db: graph.Pool,
     valkey_client: OptionalValkeyClient,
     auth: typing.Annotated[
@@ -2096,7 +2097,12 @@ async def patch_project(
     await score_queue.enqueue_recompute(
         valkey_client, project_id, 'attribute_change'
     )
-    await _emit_change_events(
+    # H13: ClickHouse insert is non-critical for the response, so move
+    # it off the hot path. The graph write already succeeded; the
+    # events row exists to feed the activity log and can lag by
+    # milliseconds without anyone noticing.
+    background.add_task(
+        _emit_change_events,
         project_id,
         auth.principal_name,
         before_snapshot,

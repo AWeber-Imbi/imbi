@@ -875,6 +875,7 @@ async def trigger_deployment(
     org_slug: str,
     project_id: str,
     body: DeploymentRequestBody,
+    background: fastapi.BackgroundTasks,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -898,10 +899,22 @@ async def trigger_deployment(
     """
     if body.action == 'promote':
         return await _handle_promote(
-            db, org_slug, project_id, auth, body, source=source
+            db,
+            org_slug,
+            project_id,
+            auth,
+            body,
+            background=background,
+            source=source,
         )
     return await _handle_deploy(
-        db, org_slug, project_id, auth, body, source=source
+        db,
+        org_slug,
+        project_id,
+        auth,
+        body,
+        background=background,
+        source=source,
     )
 
 
@@ -984,6 +997,7 @@ async def _handle_deploy(
     auth: permissions.AuthContext,
     body: DeployActionRequest,
     *,
+    background: fastapi.BackgroundTasks,
     source: str | None,
 ) -> DeploymentTriggerResponse:
     env_flags = await _load_env_flags(
@@ -1105,7 +1119,12 @@ async def _handle_deploy(
             candidate_tag,
         )
     else:
-        await _record_deployment_audit(
+        # H13: defer the operations_log ClickHouse insert until after
+        # the response goes out. The graph write that establishes the
+        # DeploymentEvent already succeeded; the audit row only feeds
+        # the activity history and can lag by milliseconds.
+        background.add_task(
+            _record_deployment_audit,
             project_id=project_id,
             project_slug=ctx.project_slug,
             environment_slug=body.environment,
@@ -1234,6 +1253,7 @@ async def _handle_promote(
     auth: permissions.AuthContext,
     body: PromoteActionRequest,
     *,
+    background: fastapi.BackgroundTasks,
     source: str | None,
 ) -> DeploymentTriggerResponse:
     env_flags = await _load_env_flags(
@@ -1397,7 +1417,10 @@ async def _handle_promote(
         ctx.actor_user_id,
         run.run_id,
     )
-    await _record_deployment_audit(
+    # H13: defer the operations_log ClickHouse insert until after the
+    # response goes out (same rationale as the deploy path above).
+    background.add_task(
+        _record_deployment_audit,
         project_id=project_id,
         project_slug=ctx.project_slug,
         environment_slug=body.to_environment,
