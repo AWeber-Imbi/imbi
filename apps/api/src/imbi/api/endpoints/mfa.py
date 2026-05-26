@@ -9,7 +9,6 @@ import asyncio
 import base64
 import datetime
 import io
-import json
 import logging
 import secrets
 import typing
@@ -275,7 +274,7 @@ async def verify_and_enable_mfa(
     )
 
     is_valid = False
-    used_backup_code = False
+    matched_backup_hash: str | None = None
     backup_codes = typing.cast(list[str], totp_data.get('backup_codes', []))
 
     # First try TOTP verification (allow 1 time step for skew)
@@ -288,9 +287,7 @@ async def verify_and_enable_mfa(
                 password.verify_password, verify_request.code, backup_hash
             ):
                 is_valid = True
-                used_backup_code = True
-                # Remove used backup code
-                backup_codes.remove(backup_hash)
+                matched_backup_hash = backup_hash
                 break
 
     if not is_valid:
@@ -298,23 +295,40 @@ async def verify_and_enable_mfa(
 
     now_str = datetime.datetime.now(datetime.UTC).isoformat()
 
-    # Enable MFA and update backup codes if one was used
-    if used_backup_code:
+    # Enable MFA and atomically remove the used backup code. The
+    # ``WHERE {used_hash} IN t.backup_codes`` + list-comprehension
+    # filter is the race fix (H6): if a parallel verify already
+    # consumed this code, the WHERE rejects this query so the SET
+    # never fires and the hash can't be reused. We detect that case
+    # via the empty result set and surface it as a 401, matching the
+    # behavior the user would have seen if they'd raced themselves.
+    if matched_backup_hash is not None:
         update_query: typing.LiteralString = """
         MATCH (u:User {{email: {email}}})
               <-[:MFA_FOR]-(t:TOTPSecret)
+        WHERE {used_hash} IN t.backup_codes
         SET t.enabled = true,
             t.last_used = {now},
-            t.backup_codes = {backup_codes}
+            t.backup_codes = [c IN t.backup_codes WHERE c <> {used_hash}]
+        RETURN size(t.backup_codes) AS remaining
         """
-        await db.execute(
+        records = await db.execute(
             update_query,
             {
                 'email': auth.require_user.email,
-                'backup_codes': json.dumps(backup_codes),
+                'used_hash': matched_backup_hash,
                 'now': now_str,
             },
+            columns=['remaining'],
         )
+        if not records:
+            LOGGER.warning(
+                'MFA backup code already consumed for user %s (race)',
+                auth.require_user.email,
+            )
+            raise fastapi.HTTPException(
+                status_code=401, detail='Invalid MFA code'
+            )
         LOGGER.info(
             'MFA enabled for user %s (used backup code)',
             auth.require_user.email,

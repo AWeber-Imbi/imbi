@@ -1162,7 +1162,7 @@ class WebhookResponse(pydantic.BaseModel):
                 config: dict[str, typing.Any] | list[typing.Any]
                 try:
                     config = json.loads(raw_config) if raw_config else {}
-                except json.JSONDecodeError, TypeError:
+                except (json.JSONDecodeError, TypeError):
                     config = {}
                 rules.append(
                     WebhookRuleResponse(

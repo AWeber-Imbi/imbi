@@ -2,7 +2,6 @@
 
 import asyncio
 import datetime
-import json
 import logging
 import secrets
 import typing
@@ -388,31 +387,47 @@ async def login(
                 backup_codes = totp_data.get('backup_codes', [])
                 valid_backup = False
 
-                for i, hashed_code in enumerate(backup_codes):
-                    if await asyncio.to_thread(
+                for hashed_code in backup_codes:
+                    if not await asyncio.to_thread(
                         password_auth.verify_password, mfa_code, hashed_code
                     ):
-                        # Remove used backup code
-                        backup_codes.pop(i)
-                        update_q2: typing.LiteralString = """
-                        MATCH (u:User {{email: {email}}})
-                              <-[:MFA_FOR]-(t:TOTPSecret)
-                        SET t.backup_codes = {backup_codes}
-                        """
-                        await db.execute(
-                            update_q2,
-                            {
-                                'email': user.email,
-                                'backup_codes': json.dumps(backup_codes),
-                            },
-                        )
-
-                        valid_backup = True
-                        LOGGER.info(
-                            'MFA verified via backup code for user %s',
+                        continue
+                    # Atomically remove the matched backup code. The
+                    # ``WHERE {used_hash} IN t.backup_codes`` guard plus
+                    # list-comprehension SET is the H6 race fix: if a
+                    # parallel login already consumed this hash, the
+                    # WHERE rejects so the SET never fires and the same
+                    # code can't be used twice. An empty result set means
+                    # the race happened — treat it as failed auth.
+                    update_q2: typing.LiteralString = """
+                    MATCH (u:User {{email: {email}}})
+                          <-[:MFA_FOR]-(t:TOTPSecret)
+                    WHERE {used_hash} IN t.backup_codes
+                    SET t.backup_codes =
+                        [c IN t.backup_codes WHERE c <> {used_hash}]
+                    RETURN size(t.backup_codes) AS remaining
+                    """
+                    update_records = await db.execute(
+                        update_q2,
+                        {
+                            'email': user.email,
+                            'used_hash': hashed_code,
+                        },
+                        columns=['remaining'],
+                    )
+                    if not update_records:
+                        LOGGER.warning(
+                            'MFA backup code already consumed for user '
+                            '%s (race)',
                             user.email,
                         )
-                        break
+                        continue
+                    valid_backup = True
+                    LOGGER.info(
+                        'MFA verified via backup code for user %s',
+                        user.email,
+                    )
+                    break
 
                 if not valid_backup:
                     raise fastapi.HTTPException(

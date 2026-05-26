@@ -565,12 +565,13 @@ class LoginMFATestCase(unittest.TestCase):
         }
 
         self.mock_db.match.return_value = [test_user]
-        # execute(): TOTP fetch, backup_codes update, then the atomic
-        # MATCH/CREATE inside issue_token_pair that returns
-        # principal_count.
+        # execute(): TOTP fetch, atomic backup-code consume (returns the
+        # remaining count post-removal so the caller knows the hash
+        # really was still present), then the atomic MATCH/CREATE inside
+        # issue_token_pair that returns principal_count.
         self.mock_db.execute.side_effect = [
             [{'n': totp_data}],
-            [],
+            [{'remaining': 1}],
             [{'principal_count': 1}],
         ]
         self.mock_db.merge.return_value = None
@@ -592,6 +593,55 @@ class LoginMFATestCase(unittest.TestCase):
             data = response.json()
             self.assertIn('access_token', data)
             self.assertIn('refresh_token', data)
+
+    def test_login_mfa_backup_code_race_returns_401(self) -> None:
+        """Argon2 verifies but the atomic SET says the hash is gone.
+
+        Simulates the H6 race: another concurrent login consumed the
+        same backup code between our read and our SET. The atomic
+        ``WHERE {used_hash} IN t.backup_codes`` filter excludes the row
+        on this side, so ``db.execute`` returns no rows and login must
+        fail with the same 401 the user would have seen if they'd
+        raced themselves.
+        """
+        from imbi_api import models
+        from imbi_api.auth import password
+
+        test_user = models.User(
+            email='test@example.com',
+            display_name='Test User',
+            is_active=True,
+            password_hash=password.hash_password('password123'),
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        backup_code = 'racy-bk1'
+        hashed_backup = password.hash_password(backup_code)
+        totp_data = {
+            'secret': 'JBSWY3DPEHPK3PXP',
+            'enabled': True,
+            'backup_codes': [hashed_backup],
+        }
+        self.mock_db.match.return_value = [test_user]
+        # TOTP fetch returns the row containing the hash; the atomic
+        # update returns no rows (race lost).
+        self.mock_db.execute.side_effect = [
+            [{'n': totp_data}],
+            [],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(
+                '/auth/login',
+                json={
+                    'email': 'test@example.com',
+                    'password': 'password123',
+                    'mfa_code': backup_code,
+                },
+            )
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['detail'], 'Invalid MFA code')
 
     def test_login_mfa_invalid_code(self) -> None:
         """Test login with invalid MFA code."""

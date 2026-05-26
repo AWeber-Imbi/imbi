@@ -577,6 +577,48 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
             self.assertEqual(response.status_code, 204)
 
+    def test_verify_mfa_with_backup_code_race_returns_401(self) -> None:
+        """The atomic SET reports zero rows when another verifier won.
+
+        Simulates the H6 race during ``POST /mfa/verify``: the in-memory
+        Argon2 loop matches one of the stored hashes, but by the time
+        the ``WHERE {used_hash} IN t.backup_codes`` SET fires the row
+        has already had its codes rewritten by a parallel verify.
+        """
+        secret = 'JBSWY3DPEHPK3PXP'
+        backup_code_plain = 'racybk12'
+        backup_code_hash = password.hash_password(backup_code_plain)
+        totp_data = {
+            'secret': secret,
+            'enabled': False,
+            'backup_codes': [backup_code_hash],
+            'created_at': datetime.datetime.now(datetime.UTC),
+        }
+        # First execute() = TOTP read (returns the row); second = the
+        # atomic update (returns no rows = race lost).
+        self.mock_db.execute.side_effect = [
+            [{'n': totp_data}],
+            [],
+        ]
+
+        with (
+            mock.patch(
+                'imbi_api.settings.get_auth_settings',
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            mock_settings.return_value = self.auth_settings
+            response = self.client.post(
+                '/mfa/verify',
+                json={'code': backup_code_plain},
+            )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['detail'], 'Invalid MFA code')
+
     def test_disable_mfa_password_required(self) -> None:
         """Test MFA disable requires password."""
         with (
