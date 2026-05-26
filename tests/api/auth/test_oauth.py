@@ -52,14 +52,17 @@ def _patch_encryptor() -> typing.Any:
     )
 
 
-class OAuthStateTestCase(unittest.TestCase):
+class OAuthStateTestCase(unittest.IsolatedAsyncioTestCase):
     """Test cases for OAuth state generation and verification."""
 
     def setUp(self) -> None:
-        """Set up test auth settings."""
+        """Set up test auth settings and a fresh-nonce Valkey stub."""
         self.auth_settings = settings.Auth(
             jwt_secret='test-secret-key-for-oauth-state'
         )
+        # Default: ``set`` returns truthy, meaning nonce was newly recorded.
+        self.valkey = mock.AsyncMock()
+        self.valkey.set = mock.AsyncMock(return_value=True)
 
     def test_generate_oauth_state(self) -> None:
         """Test generating OAuth state token."""
@@ -77,7 +80,7 @@ class OAuthStateTestCase(unittest.TestCase):
         self.assertTrue(len(state_data.nonce) > 0)
         self.assertIsInstance(state_data.timestamp, int)
 
-    def test_verify_oauth_state_success(self) -> None:
+    async def test_verify_oauth_state_success(self) -> None:
         """Test verifying valid OAuth state token."""
         # Generate state
         state_token, original_data = oauth.generate_oauth_state(
@@ -85,8 +88,8 @@ class OAuthStateTestCase(unittest.TestCase):
         )
 
         # Verify state
-        verified_data = oauth.verify_oauth_state(
-            state_token, self.auth_settings
+        verified_data = await oauth.verify_oauth_state(
+            state_token, self.auth_settings, valkey_client=self.valkey
         )
 
         # Should match original data
@@ -96,8 +99,13 @@ class OAuthStateTestCase(unittest.TestCase):
         )
         self.assertEqual(verified_data.nonce, original_data.nonce)
         self.assertEqual(verified_data.timestamp, original_data.timestamp)
+        # Nonce was consumed via SET NX EX.
+        self.valkey.set.assert_awaited_once()
+        args, kwargs = self.valkey.set.await_args
+        self.assertTrue(args[0].startswith('imbi:oauth:state-nonce:'))
+        self.assertEqual(kwargs.get('nx'), True)
 
-    def test_verify_oauth_state_expired(self) -> None:
+    async def test_verify_oauth_state_expired(self) -> None:
         """Test verifying expired OAuth state token."""
         # Generate state with old timestamp
         state_data = models.OAuthStateData(
@@ -113,30 +121,59 @@ class OAuthStateTestCase(unittest.TestCase):
             algorithm=self.auth_settings.jwt_algorithm,
         )
 
-        # Verify should fail due to age
+        # Verify should fail due to age, before any nonce consume.
         with self.assertRaises(ValueError) as context:
-            oauth.verify_oauth_state(state_token, self.auth_settings)
+            await oauth.verify_oauth_state(
+                state_token, self.auth_settings, valkey_client=self.valkey
+            )
 
         self.assertIn('expired', str(context.exception).lower())
+        self.valkey.set.assert_not_awaited()
 
-    def test_verify_oauth_state_invalid_signature(self) -> None:
+    async def test_verify_oauth_state_invalid_signature(self) -> None:
         """Test verifying OAuth state with wrong secret."""
-        # Generate state with different secret
         wrong_settings = settings.Auth(jwt_secret='wrong-secret')
         state_token, _ = oauth.generate_oauth_state(
             'google', '/dashboard', wrong_settings
         )
 
-        # Verify with correct secret should fail
         with self.assertRaises(ValueError) as context:
-            oauth.verify_oauth_state(state_token, self.auth_settings)
+            await oauth.verify_oauth_state(
+                state_token, self.auth_settings, valkey_client=self.valkey
+            )
 
         self.assertIn('invalid', str(context.exception).lower())
 
-    def test_verify_oauth_state_malformed(self) -> None:
+    async def test_verify_oauth_state_malformed(self) -> None:
         """Test verifying malformed OAuth state token."""
         with self.assertRaises(ValueError):
-            oauth.verify_oauth_state('not-a-valid-jwt', self.auth_settings)
+            await oauth.verify_oauth_state(
+                'not-a-valid-jwt',
+                self.auth_settings,
+                valkey_client=self.valkey,
+            )
+
+    async def test_verify_oauth_state_replay_rejected(self) -> None:
+        """Second use of the same state token must be rejected."""
+        self.valkey.set = mock.AsyncMock(return_value=None)
+        state_token, _ = oauth.generate_oauth_state(
+            'google', '/dashboard', self.auth_settings
+        )
+        with self.assertRaises(ValueError) as context:
+            await oauth.verify_oauth_state(
+                state_token, self.auth_settings, valkey_client=self.valkey
+            )
+        self.assertIn('replay', str(context.exception).lower())
+
+    async def test_verify_oauth_state_requires_valkey(self) -> None:
+        """No Valkey client -> fail closed."""
+        state_token, _ = oauth.generate_oauth_state(
+            'google', '/dashboard', self.auth_settings
+        )
+        with self.assertRaises(RuntimeError):
+            await oauth.verify_oauth_state(
+                state_token, self.auth_settings, valkey_client=None
+            )
 
 
 class OAuthProfileNormalizationTestCase(unittest.TestCase):

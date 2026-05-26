@@ -994,8 +994,13 @@ async def oauth_callback(
                 valkey_client,
             )
 
-        # Verify state parameter
-        state_data = oauth.verify_oauth_state(state, auth_settings)
+        # Verify state parameter + atomically mark the nonce consumed
+        # so a captured state cannot be replayed within its TTL.
+        state_data = await oauth.verify_oauth_state(
+            state,
+            auth_settings,
+            valkey_client=valkey_client,
+        )
 
         if state_data.provider != provider:
             raise ValueError('Provider mismatch')
@@ -1099,6 +1104,11 @@ async def oauth_callback(
         jwt.InvalidTokenError,
         httpx.HTTPError,
         fastapi.HTTPException,
+        # verify_oauth_state raises RuntimeError when the Valkey replay-
+        # protection backend is unavailable; surface that as the normal
+        # auth-failed redirect so a missing dependency doesn't return a
+        # bare 500.
+        RuntimeError,
     ) as err:
         LOGGER.exception('OAuth callback failed: %s', err)
         return fastapi.responses.RedirectResponse(

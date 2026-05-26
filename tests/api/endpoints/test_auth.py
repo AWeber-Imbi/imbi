@@ -957,7 +957,7 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
             _patch_providers([_stub_provider('google')]),
             mock.patch(
                 'imbi_api.auth.oauth.verify_oauth_state',
-                return_value=mock_state_data,
+                new=mock.AsyncMock(return_value=mock_state_data),
             ),
             mock.patch(
                 'imbi_api.auth.oauth.exchange_oauth_code',
@@ -1055,7 +1055,7 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
             _patch_providers([_stub_provider('google')]),
             mock.patch(
                 'imbi_api.auth.oauth.verify_oauth_state',
-                return_value=mock_state_data,
+                new=mock.AsyncMock(return_value=mock_state_data),
             ),
             mock.patch(
                 'imbi_api.auth.oauth.exchange_oauth_code',
@@ -1142,7 +1142,7 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
             ),
             mock.patch(
                 'imbi_api.auth.oauth.verify_oauth_state',
-                return_value=mock_state_data,
+                new=mock.AsyncMock(return_value=mock_state_data),
             ),
             mock.patch(
                 'imbi_api.auth.oauth.exchange_oauth_code',
@@ -1246,7 +1246,7 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
             _patch_providers([_stub_provider('google')]),
             mock.patch(
                 'imbi_api.auth.oauth.verify_oauth_state',
-                return_value=mock_state_data,
+                new=mock.AsyncMock(return_value=mock_state_data),
             ),
             mock.patch(
                 'imbi_api.auth.oauth.exchange_oauth_code',
@@ -1320,7 +1320,7 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
             _patch_providers([_stub_provider('google')]),
             mock.patch(
                 'imbi_api.auth.oauth.verify_oauth_state',
-                return_value=mock_state_data,
+                new=mock.AsyncMock(return_value=mock_state_data),
             ),
             mock.patch(
                 'imbi_api.auth.oauth.exchange_oauth_code',
@@ -1359,7 +1359,7 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
             _patch_providers([_stub_provider('google')]),
             mock.patch(
                 'imbi_api.auth.oauth.verify_oauth_state',
-                return_value=mock_state_data,
+                new=mock.AsyncMock(return_value=mock_state_data),
             ),
             mock.patch(
                 'imbi_api.auth.oauth.exchange_oauth_code',
@@ -1433,7 +1433,7 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
         with (
             mock.patch(
                 'imbi_api.auth.oauth.verify_oauth_state',
-                return_value=mock_state_data,
+                new=mock.AsyncMock(return_value=mock_state_data),
             ),
             mock.patch(
                 'imbi_api.auth.oauth.exchange_oauth_code',

@@ -14,9 +14,12 @@ import httpx
 import jwt
 from imbi_common import graph
 from imbi_common.auth import encryption
+from valkey import asyncio as valkey_module
 
 from imbi_api import settings
 from imbi_api.auth import login_providers, models
+
+_OAUTH_STATE_NONCE_PREFIX = 'imbi:oauth:state-nonce:'
 
 LOGGER = logging.getLogger(__name__)
 
@@ -208,22 +211,34 @@ def generate_oauth_state(
     return state_token, state_data
 
 
-def verify_oauth_state(
-    state_token: str, auth_settings: settings.Auth, max_age_seconds: int = 600
+async def verify_oauth_state(
+    state_token: str,
+    auth_settings: settings.Auth,
+    *,
+    valkey_client: valkey_module.Valkey | None,
+    max_age_seconds: int = 600,
 ) -> models.OAuthStateData:
-    """Verify and decode OAuth state parameter.
+    """Verify, decode, and single-use-consume an OAuth state parameter.
+
+    Verifies the JWT signature and the 10-minute timestamp window, then
+    atomically marks the embedded nonce as consumed in Valkey (SET NX
+    EX) so a captured token cannot be replayed inside its TTL.
 
     Args:
         state_token: State token from OAuth callback
         auth_settings: Auth settings instance
+        valkey_client: Valkey client used for the nonce consume.
+            ``None`` means OAuth replay protection is unavailable and
+            verification fails closed.
         max_age_seconds: Maximum age for state token (default 10 minutes)
 
     Returns:
         Decoded state data
 
     Raises:
-        ValueError: If state is invalid or expired
-
+        ValueError: If state is invalid, expired, or already consumed.
+        RuntimeError: If no Valkey client is configured (replay
+            protection must fail closed).
     """
     try:
         payload = jwt.decode(
@@ -238,6 +253,19 @@ def verify_oauth_state(
     age = int(time.time()) - state_data.timestamp
     if age > max_age_seconds:
         raise ValueError(f'OAuth state expired (age: {age}s)')
+
+    if valkey_client is None:
+        raise RuntimeError(
+            'OAuth replay protection requires Valkey; no client is configured'
+        )
+    key = f'{_OAUTH_STATE_NONCE_PREFIX}{state_data.nonce}'
+    fresh = await valkey_client.set(  # pyright: ignore[reportUnknownMemberType]
+        key, '1', nx=True, ex=max_age_seconds
+    )
+    if not fresh:
+        raise ValueError(
+            'OAuth state already consumed; possible replay attempt'
+        )
 
     return state_data
 
