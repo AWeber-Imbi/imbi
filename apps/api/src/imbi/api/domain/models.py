@@ -683,7 +683,7 @@ class ThirdPartyServiceUpdate(pydantic.BaseModel):
 class ThirdPartyServiceResponse(pydantic.BaseModel):
     """Response model for a third-party service."""
 
-    model_config = pydantic.ConfigDict(extra='allow')
+    model_config = pydantic.ConfigDict(extra='ignore')
 
     name: str
     slug: str
@@ -926,7 +926,7 @@ class ConfigKeyValueResponse(ConfigKeyResponse):
 class LogEntryResponse(pydantic.BaseModel):
     """Response model for a single log entry."""
 
-    model_config = pydantic.ConfigDict(extra='allow')
+    model_config = pydantic.ConfigDict(extra='ignore')
 
     timestamp: datetime.datetime
     message: str
@@ -1130,7 +1130,7 @@ class WebhookRuleResponse(pydantic.BaseModel):
 class WebhookResponse(pydantic.BaseModel):
     """Response model for a webhook."""
 
-    model_config = pydantic.ConfigDict(extra='allow')
+    model_config = pydantic.ConfigDict(extra='ignore')
 
     id: str
     name: str
