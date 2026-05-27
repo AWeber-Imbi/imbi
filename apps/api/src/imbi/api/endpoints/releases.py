@@ -23,6 +23,7 @@ from imbi_common import graph, models
 from imbi_common.plugins.base import CheckStatus
 
 from imbi_api import patch as json_patch
+from imbi_api import sbom
 from imbi_api.auth import permissions
 from imbi_api.endpoints.operations_log import complete_opslog_entry
 from imbi_api.plugins import call_with_timeout
@@ -1351,3 +1352,175 @@ async def get_deployment_edge(
             ),
         )
     return _edge_to_response(env, deployments)
+
+
+# -- SBoM ingest / dependency listing ---------------------------------
+
+
+class ReleaseDependencyIdentifier(pydantic.BaseModel):
+    """One ``(kind, value)`` pair on a component in the GET response."""
+
+    kind: str
+    value: str
+
+
+class ReleaseDependencyComponent(pydantic.BaseModel):
+    """One row in the dependency listing for a release.
+
+    ``scope`` and ``groups`` are per-release usage facts populated
+    from the ``USES_COMPONENT_RELEASE`` edge — a given component
+    version can be ``required`` in one release and a dev group in
+    another. See ADR 0015 for the producer-side semantics.
+    """
+
+    purl_name: str
+    name: str
+    ecosystem: str
+    description: str | None = None
+    version: str
+    license: str | None = None
+    supplier: str | None = None
+    hashes: dict[str, str] = pydantic.Field(default_factory=dict)
+    identifiers: list[ReleaseDependencyIdentifier] = pydantic.Field(
+        default_factory=list,
+    )
+    scope: typing.Literal['required', 'optional', 'excluded'] | None = None
+    groups: list[str] = pydantic.Field(default_factory=list)
+
+
+class ReleaseDependenciesResponse(pydantic.BaseModel):
+    """Response body for ``GET .../releases/{release_id}/dependencies``."""
+
+    release_id: str
+    components: list[ReleaseDependencyComponent] = pydantic.Field(
+        default_factory=list,
+    )
+
+
+def _coerce_scope(
+    raw: str | None,
+) -> typing.Literal['required', 'optional', 'excluded'] | None:
+    """Narrow the graph-side scope string to the response literal.
+
+    The graph layer types ``scope`` as ``str | None`` (it stores
+    whatever the producer sent). Anything outside the
+    CycloneDX-spec'd vocabulary collapses to ``None`` rather than
+    surfacing in the API, so older / non-conformant SBoMs don't
+    leak unexpected strings into the UI.
+    """
+    if raw == 'required':
+        return 'required'
+    if raw == 'optional':
+        return 'optional'
+    if raw == 'excluded':
+        return 'excluded'
+    return None
+
+
+@releases_router.put(
+    '/{release_id}/sbom',
+    status_code=204,
+    responses={
+        204: {'description': 'SBoM ingested successfully.'},
+        400: {'description': 'Payload is not a valid CycloneDX document.'},
+        404: {'description': 'Project or release not found.'},
+        415: {'description': 'Unsupported CycloneDX specVersion.'},
+    },
+)
+async def put_release_sbom(
+    org_slug: str,
+    project_id: str,
+    release_id: str,
+    body: dict[str, typing.Any],
+    db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:write'),
+        ),
+    ],
+) -> fastapi.Response:
+    """Ingest a CycloneDX 1.7 SBoM for a release.
+
+    The payload is the verbatim CycloneDX document — no envelope.
+    The PUT is idempotent: existing dependency edges from this
+    release are dropped and rebuilt from the new SBoM, while
+    ``Component`` / ``ComponentRelease`` / ``ComponentIdentifier``
+    nodes are MERGE-ed so other projects keep their references.
+    """
+    if await _fetch_release(db, org_slug, project_id, release_id) is None:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=(
+                f'Release {release_id!r} for project {project_id!r} not found'
+            ),
+        )
+    try:
+        components = sbom.parse(body)
+    except sbom.UnsupportedSpecVersionError as exc:
+        raise fastapi.HTTPException(
+            status_code=415,
+            detail=str(exc),
+        ) from exc
+    except sbom.MalformedSBomError as exc:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+    await sbom.replace_release_components(db, release_id, components)
+    return fastapi.Response(status_code=204)
+
+
+@releases_router.get(
+    '/{release_id}/dependencies',
+    response_model=ReleaseDependenciesResponse,
+)
+async def list_release_dependencies(
+    org_slug: str,
+    project_id: str,
+    release_id: str,
+    db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:read'),
+        ),
+    ],
+) -> ReleaseDependenciesResponse:
+    """List the components ingested for a release.
+
+    Returns an empty ``components`` list when no SBoM has been
+    ingested yet — the release existing without an SBoM is the
+    common bootstrap case, not an error. ``404`` is returned only
+    when the release itself is unknown.
+    """
+    if await _fetch_release(db, org_slug, project_id, release_id) is None:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=(
+                f'Release {release_id!r} for project {project_id!r} not found'
+            ),
+        )
+    rows = await sbom.list_release_components(db, release_id)
+    return ReleaseDependenciesResponse(
+        release_id=release_id,
+        components=[
+            ReleaseDependencyComponent(
+                purl_name=row.purl_name,
+                name=row.name,
+                ecosystem=row.ecosystem,
+                description=row.description,
+                version=row.version,
+                license=row.license,
+                supplier=row.supplier,
+                hashes=row.hashes,
+                identifiers=[
+                    ReleaseDependencyIdentifier(kind=i.kind, value=i.value)
+                    for i in row.identifiers
+                ],
+                scope=_coerce_scope(row.scope),
+                groups=row.groups,
+            )
+            for row in rows
+        ],
+    )
