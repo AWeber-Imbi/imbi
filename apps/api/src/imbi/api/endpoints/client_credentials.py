@@ -5,7 +5,6 @@ that enable service accounts to authenticate using the client
 credentials grant flow.
 """
 
-import asyncio
 import datetime
 import logging
 import secrets
@@ -15,7 +14,12 @@ import fastapi
 from imbi_common import graph
 
 from imbi_api import models, settings
-from imbi_api.auth import password, permissions
+from imbi_api.auth import permissions
+from imbi_api.endpoints._credentials import (
+    compute_expires_at,
+    create_service_account_owned_node,
+    generate_secret,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -106,28 +110,12 @@ async def create_client_credential(
 
     # Generate client_id and secret
     client_id = f'cc_{secrets.token_urlsafe(16)}'
-    client_secret = secrets.token_urlsafe(32)
-    secret_hash = await asyncio.to_thread(
-        password.hash_password, client_secret
-    )
+    client_secret, secret_hash = await generate_secret()
 
-    # Validate expiration
-    expires_at = None
-    if credential_request.expires_in_days:
-        if (
-            credential_request.expires_in_days
-            > auth_settings.api_key_max_lifetime_days
-        ):
-            raise fastapi.HTTPException(
-                status_code=400,
-                detail='Expiration exceeds maximum allowed'
-                ' lifetime'
-                f' of {auth_settings.api_key_max_lifetime_days}'
-                ' days',
-            )
-        expires_at = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
-            days=credential_request.expires_in_days
-        )
+    expires_at = compute_expires_at(
+        credential_request.expires_in_days,
+        auth_settings.api_key_max_lifetime_days,
+    )
 
     # Create ClientCredential model
     credential = models.ClientCredential(
@@ -143,20 +131,15 @@ async def create_client_credential(
         revoked_at=None,
     )
 
-    # Store in graph with relationship to ServiceAccount
+    # Store in graph with relationship to ServiceAccount.
+    # scopes stays as a list — _cypher_param handles list
+    # serialization for Cypher.
     props = credential.model_dump(mode='json')
     props.pop('service_account', None)
-    # scopes stays as a list — _cypher_param handles
-    # list serialization for Cypher
-    keys = list(props.keys())
-    prop_map = ', '.join(f'{k}: {{{k}}}' for k in keys)
-    records = await db.execute(
-        f'MATCH (s:ServiceAccount {{{{slug: {{slug}}}}}})'
-        f' CREATE (c:ClientCredential {{{{{prop_map}}}}})'
-        f'-[:OWNED_BY]->(s) RETURN c',
-        {**props, 'slug': slug},
+    created = await create_service_account_owned_node(
+        db, label='ClientCredential', props=props, slug=slug
     )
-    if not records:
+    if not created:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Service account {slug!r} not found',
@@ -357,8 +340,7 @@ async def rotate_client_credential(
         )
 
     # Generate new secret and update atomically with ownership
-    new_secret = secrets.token_urlsafe(32)
-    new_hash = await asyncio.to_thread(password.hash_password, new_secret)
+    new_secret, new_hash = await generate_secret()
     now_str = datetime.datetime.now(datetime.UTC).isoformat()
 
     update_query: typing.LiteralString = """

@@ -5,7 +5,6 @@ accounts. It mirrors the user API key endpoints but associates keys
 with a ServiceAccount node instead of a User node.
 """
 
-import asyncio
 import datetime
 import logging
 import secrets
@@ -15,8 +14,13 @@ import fastapi
 from imbi_common import graph
 
 from imbi_api import models, settings
-from imbi_api.auth import password, permissions
+from imbi_api.auth import permissions
 from imbi_api.endpoints import api_keys
+from imbi_api.endpoints._credentials import (
+    compute_expires_at,
+    create_service_account_owned_node,
+    generate_secret,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -107,26 +111,12 @@ async def create_sa_api_key(
 
     # Generate key: format ik_<16chars>_<32chars>
     key_id = f'ik_{secrets.token_hex(16)}'
-    key_secret = secrets.token_urlsafe(32)
-    key_hash = await asyncio.to_thread(password.hash_password, key_secret)
+    key_secret, key_hash = await generate_secret()
 
-    # Validate expiration
-    expires_at = None
-    if key_request.expires_in_days:
-        if (
-            key_request.expires_in_days
-            > auth_settings.api_key_max_lifetime_days
-        ):
-            raise fastapi.HTTPException(
-                status_code=400,
-                detail='Expiration exceeds maximum allowed'
-                f' lifetime of'
-                f' {auth_settings.api_key_max_lifetime_days}'
-                ' days',
-            )
-        expires_at = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
-            days=key_request.expires_in_days
-        )
+    expires_at = compute_expires_at(
+        key_request.expires_in_days,
+        auth_settings.api_key_max_lifetime_days,
+    )
 
     # Create API key model
     api_key = models.APIKey(
@@ -139,20 +129,15 @@ async def create_sa_api_key(
         revoked=False,
     )
 
-    # Create API key node with relationship to ServiceAccount
+    # Create API key node with relationship to ServiceAccount.
+    # scopes stays as a list — _cypher_param handles list
+    # serialization for Cypher.
     props = api_key.model_dump(mode='json')
     props.pop('user', None)
-    # scopes stays as a list — _cypher_param handles
-    # list serialization for Cypher
-    keys = list(props.keys())
-    prop_map = ', '.join(f'{k}: {{{k}}}' for k in keys)
-    records = await db.execute(
-        f'MATCH (s:ServiceAccount {{{{slug: {{slug}}}}}})'
-        f' CREATE (k:APIKey {{{{{prop_map}}}}})'
-        f'-[:OWNED_BY]->(s) RETURN k',
-        {**props, 'slug': slug},
+    created = await create_service_account_owned_node(
+        db, label='APIKey', props=props, slug=slug
     )
-    if not records:
+    if not created:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Service account {slug!r} not found',
@@ -346,8 +331,7 @@ async def rotate_sa_api_key(
         )
 
     # Generate new secret and update atomically
-    new_secret = secrets.token_urlsafe(32)
-    new_key_hash = await asyncio.to_thread(password.hash_password, new_secret)
+    new_secret, new_key_hash = await generate_secret()
     now_str = datetime.datetime.now(datetime.UTC).isoformat()
 
     update_query: typing.LiteralString = """
