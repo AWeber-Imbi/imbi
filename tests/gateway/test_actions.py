@@ -1252,3 +1252,616 @@ class StatusMapTests(helpers.TestCase):
                 self.assertEqual(
                     imbi_status, await self._capture_status(github_state)
                 )
+
+
+def _sbom_envelope(
+    version: str = '1.2.3', *, sbom: dict[str, typing.Any] | None = None
+) -> dict[str, typing.Any]:
+    """Build a fake webhook envelope wrapping a CycloneDX document."""
+    return {
+        'repository': 'org/repo',
+        'version': version,
+        'sbom': sbom
+        or {
+            'bomFormat': 'CycloneDX',
+            'specVersion': '1.7',
+            'version': 1,
+            'components': [],
+        },
+    }
+
+
+class IngestSbomConfigTests(unittest.TestCase):
+    """Pydantic validation of the handler-config JSON."""
+
+    def test_minimal_config(self) -> None:
+        config = actions.IngestSbomConfig.model_validate_json(
+            '{"version_expression": "version"}'
+        )
+        self.assertEqual(config.version_expression, 'version')
+        # Empty pointer defaults to the entire payload.
+        self.assertEqual(str(config.sbom_selector), '')
+
+    def test_sbom_selector_pointer(self) -> None:
+        config = actions.IngestSbomConfig.model_validate_json(
+            '{"version_expression": "version", "sbom_selector": "/sbom"}'
+        )
+        self.assertEqual(str(config.sbom_selector), '/sbom')
+
+    def test_missing_required_version_expression(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            actions.IngestSbomConfig.model_validate_json('{}')
+
+
+class IngestSbomTests(helpers.TestCase):
+    """Behavior of ``actions.ingest_sbom`` end-to-end (mocking the API)."""
+
+    def _config(self, sbom_pointer: str = '/sbom') -> actions.IngestSbomConfig:
+        return actions.IngestSbomConfig.model_validate_json(
+            json.dumps(
+                {
+                    'version_expression': 'version',
+                    'sbom_selector': sbom_pointer,
+                }
+            )
+        )
+
+    async def test_resolves_release_then_puts_sbom(self) -> None:
+        envelope = _sbom_envelope(version='2.0.0')
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'list_releases',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=[{'id': 'rel-1', 'tag': '2.0.0'}],
+            ) as mock_list,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'put_sbom',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(204),
+            ) as mock_put,
+        ):
+            await actions.ingest_sbom(
+                ctx=_ctx(org_slug='myorg', project_id='proj-1'),
+                credentials={},
+                external_identifier='',
+                action_config=self._config(),
+                payload=envelope,
+            )
+
+        mock_list.assert_awaited_once_with('myorg', 'proj-1', tag='2.0.0')
+        mock_put.assert_awaited_once_with(
+            'myorg', 'proj-1', 'rel-1', envelope['sbom']
+        )
+
+    async def test_drops_sbom_when_release_missing(self) -> None:
+        envelope = _sbom_envelope()
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'list_releases',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=[],
+            ) as mock_list,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'put_sbom',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_put,
+        ):
+            await actions.ingest_sbom(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=self._config(),
+                payload=envelope,
+            )
+
+        mock_list.assert_awaited_once()
+        mock_put.assert_not_awaited()
+
+    async def test_does_not_raise_on_api_error(self) -> None:
+        # The action should NOT propagate non-2xx — the gateway is a
+        # forwarder, and the API is responsible for surfacing the
+        # detail. Mirrors the existing add_deployment_event behavior.
+        envelope = _sbom_envelope()
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'list_releases',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=[{'id': 'rel-1'}],
+            ),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'put_sbom',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(
+                    415, text='Unsupported spec version'
+                ),
+            ),
+        ):
+            # No assertion needed beyond "doesn't raise" — the call
+            # returns normally and the caller can inspect logs.
+            await actions.ingest_sbom(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=self._config(),
+                payload=envelope,
+            )
+
+    async def test_skips_when_sbom_is_not_an_object(self) -> None:
+        envelope = {'version': '1.0.0', 'sbom': 'not a dict'}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'list_releases',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_list,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'put_sbom',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_put,
+        ):
+            await actions.ingest_sbom(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=self._config(),
+                payload=envelope,
+            )
+
+        mock_list.assert_not_awaited()
+        mock_put.assert_not_awaited()
+
+    async def test_conditional_version_expression_main_uses_short_sha(
+        self,
+    ) -> None:
+        # The driving GitHub-Actions use case: deploys from ``main``
+        # ship as short-SHA-tagged images (matching the deployment
+        # image tag), while deploys from a release branch / tag ship
+        # under that ref's name. The CEL ternary captures both.
+        envelope: dict[str, typing.Any] = {
+            'ref_name': 'main',
+            'sha': 'deadbeef1234567890deadbeef1234567890dead',
+            'sbom': {
+                'bomFormat': 'CycloneDX',
+                'specVersion': '1.7',
+                'version': 1,
+                'components': [],
+            },
+        }
+        config = actions.IngestSbomConfig.model_validate_json(
+            json.dumps(
+                {
+                    'version_expression': (
+                        'ref_name == "main" ? substring(sha, 0, 7) : ref_name'
+                    ),
+                    'sbom_selector': '/sbom',
+                }
+            )
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'list_releases',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=[{'id': 'rel-1', 'tag': 'deadbee'}],
+            ) as mock_list,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'put_sbom',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(204),
+            ),
+        ):
+            await actions.ingest_sbom(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload=envelope,
+            )
+
+        mock_list.assert_awaited_once_with('org', 'proj', tag='deadbee')
+
+    async def test_conditional_version_expression_branch_uses_ref_name(
+        self,
+    ) -> None:
+        # Same config, the non-main branch arm — the SBoM lands
+        # under ``release/2.0.x`` rather than the short SHA.
+        envelope: dict[str, typing.Any] = {
+            'ref_name': 'release/2.0.x',
+            'sha': 'deadbeef1234567890deadbeef1234567890dead',
+            'sbom': {
+                'bomFormat': 'CycloneDX',
+                'specVersion': '1.7',
+                'version': 1,
+                'components': [],
+            },
+        }
+        config = actions.IngestSbomConfig.model_validate_json(
+            json.dumps(
+                {
+                    'version_expression': (
+                        'ref_name == "main" ? substring(sha, 0, 7) : ref_name'
+                    ),
+                    'sbom_selector': '/sbom',
+                }
+            )
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'list_releases',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=[{'id': 'rel-1'}],
+            ) as mock_list,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'put_sbom',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(204),
+            ),
+        ):
+            await actions.ingest_sbom(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload=envelope,
+            )
+
+        mock_list.assert_awaited_once_with('org', 'proj', tag='release/2.0.x')
+
+    async def test_drops_when_version_expression_evaluates_null(self) -> None:
+        # CEL ``null`` (e.g. a field that doesn't exist with the ?
+        # navigation operator) means we have no release identity and
+        # must not call list_releases.
+        envelope = {'ref_name': None, 'sbom': {'specVersion': '1.7'}}
+        config = actions.IngestSbomConfig.model_validate_json(
+            json.dumps(
+                {'version_expression': 'ref_name', 'sbom_selector': '/sbom'}
+            )
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'list_releases',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_list,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'put_sbom',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_put,
+        ):
+            await actions.ingest_sbom(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                payload=envelope,
+            )
+
+        mock_list.assert_not_awaited()
+        mock_put.assert_not_awaited()
+
+
+class IngestSbomAutoCreateTests(helpers.TestCase):
+    """Behaviour of ``ingest_sbom`` when ``committish_expression`` is set."""
+
+    def _config(
+        self, *, title_selector: str | None = None
+    ) -> actions.IngestSbomConfig:
+        config: dict[str, str] = {
+            'version_expression': 'version',
+            'sbom_selector': '/sbom',
+            'committish_expression': 'committish',
+        }
+        if title_selector is not None:
+            config['title_selector'] = title_selector
+        return actions.IngestSbomConfig.model_validate_json(json.dumps(config))
+
+    def _envelope(
+        self,
+        *,
+        committish: str | None = 'abc1234567890def',
+        title: str | None = None,
+        version: str = '1.2.3',
+    ) -> dict[str, typing.Any]:
+        envelope = _sbom_envelope(version=version)
+        if committish is not None:
+            envelope['committish'] = committish
+        if title is not None:
+            envelope['title'] = title
+        return envelope
+
+    async def test_creates_release_when_committish_resolves(self) -> None:
+        envelope = self._envelope()
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'list_releases',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=[],
+            ) as mock_list,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201, json={'id': 'rel-new'}),
+            ) as mock_create,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'put_sbom',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(204),
+            ) as mock_put,
+        ):
+            await actions.ingest_sbom(
+                ctx=_ctx(org_slug='myorg', project_id='proj-1'),
+                credentials={},
+                external_identifier='',
+                action_config=self._config(),
+                payload=envelope,
+            )
+
+        mock_list.assert_awaited_once_with('myorg', 'proj-1', tag='1.2.3')
+        mock_create.assert_awaited_once_with(
+            'myorg',
+            'proj-1',
+            {
+                'committish': 'abc1234',
+                'title': 'Release 1.2.3',
+                'tag': '1.2.3',
+            },
+        )
+        mock_put.assert_awaited_once_with(
+            'myorg', 'proj-1', 'rel-new', envelope['sbom']
+        )
+
+    async def test_lowercases_and_truncates_committish(self) -> None:
+        # Producers commonly emit the full 40-char SHA from
+        # ``$GITHUB_SHA`` — the gateway is responsible for trimming it
+        # to the 7-char short SHA the API requires.
+        envelope = self._envelope(
+            committish='ABCDEF1234567890ABCDEF1234567890ABCDEF12'
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'list_releases',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=[],
+            ),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201, json={'id': 'rel-1'}),
+            ) as mock_create,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'put_sbom',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(204),
+            ),
+        ):
+            await actions.ingest_sbom(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=self._config(),
+                payload=envelope,
+            )
+
+        body = mock_create.call_args.args[2]
+        self.assertEqual(body['committish'], 'abcdef1')
+
+    async def test_uses_title_selector_when_present(self) -> None:
+        envelope = self._envelope(title='2026.05.26 build')
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'list_releases',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=[],
+            ),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201, json={'id': 'rel-1'}),
+            ) as mock_create,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'put_sbom',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(204),
+            ),
+        ):
+            await actions.ingest_sbom(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=self._config(title_selector='/title'),
+                payload=envelope,
+            )
+
+        self.assertEqual(
+            mock_create.call_args.args[2]['title'], '2026.05.26 build'
+        )
+
+    async def test_drops_when_committish_expression_cannot_resolve(
+        self,
+    ) -> None:
+        # The envelope helper omits the field when ``committish`` is
+        # ``None`` — so the CEL ``"committish"`` raises CELEvalError
+        # for an undeclared reference rather than evaluating to null.
+        # The auto-create branch must treat both as "can't resolve"
+        # and drop, not 500.
+        envelope = self._envelope(committish=None)
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'list_releases',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=[],
+            ),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_create,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'put_sbom',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_put,
+        ):
+            await actions.ingest_sbom(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=self._config(),
+                payload=envelope,
+            )
+
+        mock_create.assert_not_awaited()
+        mock_put.assert_not_awaited()
+
+    async def test_handles_409_by_refetching(self) -> None:
+        # Two webhook deliveries land in parallel: list_releases is
+        # empty on both, the first wins create_release with 201 and
+        # the second loses with 409. The losing run must re-list and
+        # PUT against the winning release id rather than dropping.
+        envelope = self._envelope()
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'list_releases',
+                new_callable=unittest.mock.AsyncMock,
+                side_effect=[[], [{'id': 'rel-winning'}]],
+            ),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(409, text='exists'),
+            ),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'put_sbom',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(204),
+            ) as mock_put,
+        ):
+            await actions.ingest_sbom(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=self._config(),
+                payload=envelope,
+            )
+
+        mock_put.assert_awaited_once_with(
+            'org', 'proj', 'rel-winning', envelope['sbom']
+        )
+
+    async def test_drops_on_create_release_error(self) -> None:
+        envelope = self._envelope()
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'list_releases',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=[],
+            ),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(422, text='invalid committish'),
+            ),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'put_sbom',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_put,
+        ):
+            await actions.ingest_sbom(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=self._config(),
+                payload=envelope,
+            )
+
+        mock_put.assert_not_awaited()
+
+
+class ImbiClientPutSbomTests(helpers.TestCase):
+    """``ImbiClient.put_sbom`` URL/auth correctness."""
+
+    async def test_url_includes_release_id(self) -> None:
+        sbom_doc = {'bomFormat': 'CycloneDX', 'specVersion': '1.7'}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'put',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(204),
+            ) as mock_put,
+        ):
+            async with actions.ImbiClient() as client:
+                response = await client.put_sbom(
+                    'myorg', 'proj-1', 'rel-1', sbom_doc
+                )
+
+        self.assertEqual(response.status_code, 204)
+        mock_put.assert_awaited_once_with(
+            '/organizations/myorg/projects/proj-1/releases/rel-1/sbom',
+            json=sbom_doc,
+        )
+
+    async def test_error_response_logs_warning(self) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'put',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(415, text='Unsupported'),
+            ),
+            self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
+        ):
+            async with actions.ImbiClient() as client:
+                response = await client.put_sbom(
+                    'org',
+                    'proj',
+                    'rel',
+                    {'bomFormat': 'CycloneDX', 'specVersion': '1.5'},
+                )
+
+        self.assertEqual(response.status_code, 415)
+        self.assertTrue(
+            any('Failed to put SBoM' in line for line in cm.output)
+        )
