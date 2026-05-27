@@ -7,9 +7,8 @@ Three concrete subclasses share one base and differ only by host:
 * :class:`GitHubEnterpriseServerPlugin` — operator-managed GHES; the
   hostname comes from a manifest option.
 
-Phase 1 implements the OAuth App flow only.  GitHub App installation
-tokens (org-scoped automation) are deferred — service principals
-continue to use the legacy ``ServiceApplication`` model.
+The plugins implement the OAuth App flow: the access token from the
+OAuth grant is passed straight to GitHub APIs as a ``Bearer`` token.
 """
 
 from __future__ import annotations

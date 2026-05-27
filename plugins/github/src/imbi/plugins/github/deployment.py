@@ -580,7 +580,7 @@ class _DeploymentBase(DeploymentPlugin):
                 deletions=deletions,
             )
 
-    # -- Tags / Releases (Phase 2 — implemented here for completeness) -----
+    # -- Tags / Releases ----------------------------------------------------
 
     async def create_tag(
         self,

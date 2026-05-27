@@ -14,9 +14,9 @@ projects to the right backend.
 
 ### Identity
 
-Phase 1 ships the OAuth App flow only; GitHub App installation tokens are
-deferred. The access token returned by the OAuth grant is passed straight
-to GitHub APIs as a `Bearer` token, so `materialize()` is a no-op.
+Implements the OAuth App flow. The access token returned by the OAuth
+grant is passed straight to GitHub APIs as a `Bearer` token, so
+`materialize()` is a no-op.
 
 ### Deployment
 
@@ -49,7 +49,7 @@ requires admin permission on the target organization.
 | Option           | Required  | Description                                                                |
 | ---------------- | --------- | -------------------------------------------------------------------------- |
 | `host`           | GHEC/GHES | Tenant or appliance host (e.g. `tenant.ghe.com`, `github.example.com`).    |
-| `default_scopes` | no        | Space-separated default OAuth scopes (default: `read:user user:email`).    |
+| `default_scopes` | no        | Space-separated default OAuth scopes (default: `read:user user:email repo workflow`). |
 
 ## Credentials (identity)
 
