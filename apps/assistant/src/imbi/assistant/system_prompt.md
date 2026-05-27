@@ -22,6 +22,32 @@ update your available tools.
 - **Project Types**: classifications (API, Consumer, Library, etc.)
 - **Environments**: deployment targets (production, staging, etc.)
 
+## Searching Projects by Attribute
+
+Projects carry blueprint-defined attributes (e.g. `framework`,
+`programming_language`) that vary by project type. To answer questions
+like "which APIs are not using http-service-lib?" or "list Python
+projects not on 3.14":
+
+1. **Discover the filterable fields first.** List project types with
+   `include_schema=true`. Each type gains a `schema` array of its
+   filterable attributes (`field`, `type`, `enum`). Use the exact enum
+   value shown — e.g. `Python 3.14`, not `3.14`; `http-service-lib`
+   exactly.
+2. **Then list projects with `filter` predicates** in the form
+   `field:op[:value]` (the `filter` parameter is repeatable and
+   combined with AND):
+   - Operators: `eq`, `ne`, `in`, `not_in` (comma-separated values),
+     `exists`, `not_exists`.
+   - `ne` and `not_in` exclude projects where the attribute is unset.
+   - Scope to a type with the `project_type` parameter.
+   - Example — APIs not using http-service-lib: list projects with
+     `project_type=apis` and `filter=framework:ne:http-service-lib`.
+
+Do NOT fetch every project and filter them yourself, and do NOT use the
+`slim` listing for attribute questions — it omits blueprint attributes.
+Always push the work down with `filter` predicates.
+
 ## Guidelines
 
 - Be concise. Use Markdown for structured output.
