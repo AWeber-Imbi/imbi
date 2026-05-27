@@ -154,7 +154,7 @@ Severity legend: **C** Critical · **H** High · **M** Medium · **L** Low
 - [ ] **T4.** Add integration test fixture against a real PostgreSQL+AGE container. Current ~30% coverage gap is almost entirely Cypher-template validation.
 - [ ] **T5.** Stop mocking `validate_upload` — `test_uploads.py:81-82, 111-112, 148`. Cover bad-magic-byte uploads end-to-end.
 - [ ] **T6.** Add cross-org IDOR tests, especially `pull_requests.py:186-194` org-scope boundary.
-- [ ] **T7.** Cover `search.py:135-169` batch-growth retry loop (currently 100% mocked).
+- [x] **T7.** Cover `search.py:135-169` batch-growth retry loop (currently 100% mocked). — The loop's growth, exhaustion, inner-`limit`-break, and while-exit paths were already covered by `test_paged_loop_fetches_more_when_needed`, `test_stops_when_result_set_exhausted`, `test_limit_reached_mid_batch_stops_inner_loop`, and `test_while_exits_at_condition_after_full_batch`. The only remaining gap was the cross-batch `seen`-dedup `continue` (search.py:147). Added `test_duplicate_node_id_across_batches_deduped` (an in-org node recurs in the second growth batch and is emitted once), taking `endpoints/search.py` to **100%** line+branch coverage.
 - [ ] **T8.** Cover `project_configuration` plugin-credentials-missing path, audit-on-failure, and cache invalidation behavior.
 
 ---

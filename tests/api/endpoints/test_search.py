@@ -373,6 +373,33 @@ class SearchEndpointTestCase(unittest.TestCase):
         # Only one search call needed because the limit was met in the batch.
         self.assertEqual(self.mock_db.search.await_count, 1)
 
+    def test_duplicate_node_id_across_batches_deduped(self) -> None:
+        """A node seen in an earlier batch is skipped if it recurs.
+
+        The handler tracks emitted ``node_id``s in ``seen`` so the same
+        node returned across two growth batches is counted once. Batch 1
+        emits ``a`` then fills the rest with out-of-org rows (so the batch
+        is full and a second fetch is triggered); batch 2 returns ``a``
+        again (deduped) plus ``b`` to reach the limit.
+        """
+        from imbi_api.endpoints.search import _INITIAL_BATCH
+
+        self._setup_org(node_ids=['a', 'b'])
+        batch_one = [self._make_result(node_id='a', distance=0.01)] + [
+            self._make_result(node_id=f'out-{i}', distance=float(i + 1) / 10)
+            for i in range(_INITIAL_BATCH - 1)
+        ]
+        batch_two = [
+            self._make_result(node_id='a', distance=0.01),
+            self._make_result(node_id='b', distance=0.02),
+        ]
+        self.mock_db.search.side_effect = [batch_one, batch_two]
+        response = self.client.get(f'{_BASE_URL}?q=test&limit=2')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual([r['node_id'] for r in data], ['a', 'b'])
+        self.assertEqual(self.mock_db.search.await_count, 2)
+
     def test_project_falsy_nid_skipped(self) -> None:
         """A falsy nid from the Project query is skipped."""
         self.mock_db.execute.side_effect = [
