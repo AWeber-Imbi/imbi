@@ -10,15 +10,12 @@ import {
   Search,
   Send,
   Sparkles,
+  Square,
   X,
 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 
-import {
-  createConversation,
-  getConversation,
-  sendMessageSSE,
-} from '@/api/assistant'
+import { createConversation, sendMessageSSE } from '@/api/assistant'
 import { getConfidenceLabel, searchOrg, type SearchResult } from '@/api/search'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -34,8 +31,7 @@ import { queryClient } from '@/lib/queryClient'
 import { getQueryKeysForResource } from '@/lib/queryKeys'
 import { useAssistantStore } from '@/stores/assistantStore'
 
-import { ConversationHistory } from './assistant/ConversationHistory'
-import { SessionEntry } from './assistant/MessageBubble'
+import { ImbiMark, SessionEntry } from './assistant/MessageBubble'
 import { ToolUseIndicator } from './assistant/ToolUseIndicator'
 import { SearchResultsPanel } from './search/SearchResultsPanel'
 
@@ -68,6 +64,7 @@ export function CommandBar() {
     addPendingToolUse,
     appendStreamingContent,
     clearConversation,
+    clearStreamingContent,
     currentConversationId,
     finishStreaming,
     isExpanded,
@@ -86,6 +83,7 @@ export function CommandBar() {
       addPendingToolUse: s.addPendingToolUse,
       appendStreamingContent: s.appendStreamingContent,
       clearConversation: s.clearConversation,
+      clearStreamingContent: s.clearStreamingContent,
       currentConversationId: s.currentConversationId,
       finishStreaming: s.finishStreaming,
       isExpanded: s.isExpanded,
@@ -170,35 +168,6 @@ export function CommandBar() {
     },
     [mode, isExpanded, setExpanded],
   )
-
-  const handleSelectConversation = useCallback(
-    async (id: string) => {
-      try {
-        const conv = await getConversation(id)
-        setCurrentConversation(id)
-        setMessages(
-          conv.messages.map((m) => ({
-            content: m.content,
-            id: m.id,
-            role: m.role,
-            timestamp: new Date(m.created_at),
-            toolUse: m.tool_use?.map((t) => ({
-              id: t.id,
-              input: JSON.stringify(t.input),
-              name: t.name,
-            })),
-          })),
-        )
-      } catch (err) {
-        console.error('[Assistant] Failed to load conversation:', err)
-      }
-    },
-    [setCurrentConversation, setMessages],
-  )
-
-  const handleNewConversation = useCallback(() => {
-    clearConversation()
-  }, [clearConversation])
 
   const sendAssistantMessage = useCallback(
     // fallow-ignore-next-line complexity
@@ -297,6 +266,9 @@ export function CommandBar() {
               }
             },
             onToolUseStart: (id, name) => {
+              // Discard any pre-tool "thinking" narration so the final
+              // answer streams in fresh rather than appended to it.
+              clearStreamingContent()
               setActiveToolUse({ id, input: '', name })
             },
           },
@@ -321,12 +293,35 @@ export function CommandBar() {
       selectedOrganization,
       startStreaming,
       appendStreamingContent,
+      clearStreamingContent,
       setActiveToolUse,
       addPendingToolUse,
       finishStreaming,
       navigate,
     ],
   )
+
+  const handleRetry = useCallback(
+    (assistantId: string) => {
+      if (isStreaming) return
+      const msgs = useAssistantStore.getState().messages
+      const userIdx = precedingUserIndex(msgs, assistantId)
+      if (userIdx === -1) return
+      const question = msgs[userIdx].content
+      // Drop the question, its answer, and anything after, then re-ask.
+      setMessages(msgs.slice(0, userIdx))
+      void sendAssistantMessage(question, question)
+    },
+    [isStreaming, setMessages, sendAssistantMessage],
+  )
+
+  const handleStop = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort()
+    }
+    // Settle the stream: keep whatever was generated so far as a message.
+    finishStreaming(Date.now().toString())
+  }, [finishStreaming])
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -453,11 +448,6 @@ export function CommandBar() {
                   >
                     <HelpCircle className="size-3.5" />
                   </Button>
-                  <ConversationHistory
-                    currentConversationId={currentConversationId}
-                    onNewConversation={handleNewConversation}
-                    onSelectConversation={handleSelectConversation}
-                  />
                   {messages.length > 0 && (
                     <Button
                       className="text-tertiary hover:bg-secondary hover:text-secondary h-auto rounded px-2 py-0.5 font-mono text-xs"
@@ -515,7 +505,13 @@ export function CommandBar() {
                     <SessionEntry
                       content={message.content}
                       key={message.id}
+                      onRetry={
+                        message.role === 'assistant'
+                          ? () => handleRetry(message.id)
+                          : undefined
+                      }
                       role={message.role}
+                      showActions
                     />
                   ))}
                   {isStreaming && (
@@ -529,11 +525,7 @@ export function CommandBar() {
                           role="assistant"
                         />
                       )}
-                      {!streamingContent && !activeToolUse && (
-                        <div className="text-tertiary pl-4 font-mono text-sm">
-                          <span className="animate-pulse">...</span>
-                        </div>
-                      )}
+                      <ImbiMark pulse />
                     </>
                   )}
                 </>
@@ -585,15 +577,29 @@ export function CommandBar() {
               type="text"
               value={input}
             />
-            {input.trim() && !(mode === 'assistant' && isStreaming) && (
+            {mode === 'assistant' && isStreaming ? (
               <Button
-                className="text-tertiary hover:text-secondary size-auto rounded p-1 transition-colors"
+                aria-label="Stop generating"
+                className="text-tertiary hover:text-danger size-auto rounded p-1 transition-colors"
+                onClick={handleStop}
                 size="icon"
-                type="submit"
+                title="Stop"
+                type="button"
                 variant="ghost"
               >
-                <Send className="size-3.5" />
+                <Square className="size-3.5 fill-current" />
               </Button>
+            ) : (
+              input.trim() && (
+                <Button
+                  className="text-tertiary hover:text-secondary size-auto rounded p-1 transition-colors"
+                  size="icon"
+                  type="submit"
+                  variant="ghost"
+                >
+                  <Send className="size-3.5" />
+                </Button>
+              )
             )}
           </div>
           <div className="flex items-center justify-between px-1 pt-1">
@@ -651,6 +657,22 @@ function buildUserContext(
   if (user.roles?.length) parts.push(`Roles: ${user.roles.join(', ')}`)
   if (org) parts.push(`Organization: ${org.name} (${org.slug})`)
   return `<context>\n${parts.join('\n')}\n</context>\n\n`
+}
+
+/**
+ * Index of the user question that produced the assistant answer with
+ * `assistantId`, or -1 if either is not found.
+ */
+function precedingUserIndex(
+  messages: { id: string; role: string }[],
+  assistantId: string,
+): number {
+  const idx = messages.findIndex((m) => m.id === assistantId)
+  if (idx === -1) return -1
+  for (let i = idx - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') return i
+  }
+  return -1
 }
 
 function useDebounced<T>(value: T, ms: number): T {

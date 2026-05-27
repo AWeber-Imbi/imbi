@@ -211,6 +211,7 @@
   /* --- Animation --- */
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-imbi-pulse: imbi-pulse 1.4s ease-in-out infinite;
 
   /* WorkerBee amber brand tokens (per-utility to avoid shadowing Tailwind's amber scale) */
   --background-color-amber-bg: #faeeda;
@@ -455,6 +456,16 @@
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+@keyframes imbi-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
   }
 }
 

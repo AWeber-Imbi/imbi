@@ -21,6 +21,7 @@ interface AssistantStore {
   addPendingToolUse: (tool: ActiveToolUse) => void
   appendStreamingContent: (text: string) => void
   clearConversation: () => void
+  clearStreamingContent: () => void
   currentConversationId: null | string
   finishStreaming: (messageId: string) => void
 
@@ -59,6 +60,7 @@ export const useAssistantStore = create<AssistantStore>()((set, get) => ({
       pendingToolUses: [],
       streamingContent: '',
     }),
+  clearStreamingContent: () => set({ streamingContent: '' }),
   currentConversationId: null,
   finishStreaming: (messageId) => {
     const state = get()
