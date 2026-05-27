@@ -36,9 +36,10 @@ async def audit_plugin_schemas() -> list[dict[str, typing.Any]]:
             declared.add(vlabel.name)
 
     core_labels = _core_vlabel_names()
+    model_labels = _model_vlabel_names()
     age_labels = await _ag_label_names()
 
-    orphaned = sorted(age_labels - core_labels - declared)
+    orphaned = sorted(age_labels - core_labels - model_labels - declared)
     if orphaned:
         LOGGER.error(
             'Unavailable plugin-declared schemas (in AGE but not '
@@ -70,7 +71,10 @@ async def _ag_label_names() -> set[str]:
             exc_info=True,
         )
         return set()
-    return {row[0] for row in rows}
+    # ``_ag_label_vertex`` / ``_ag_label_edge`` are AGE's built-in
+    # inheritance-parent labels, present in every graph by construction;
+    # they are never plugin- or model-declared, so exclude them.
+    return {row[0] for row in rows if not row[0].startswith('_ag_label_')}
 
 
 def _core_vlabel_names() -> set[str]:
@@ -78,3 +82,30 @@ def _core_vlabel_names() -> set[str]:
     pkg_dir = pathlib.Path(imbi_common.graph.__file__).resolve().parent
     schemata = tomllib.loads((pkg_dir / 'schemata.toml').read_text())
     return set(schemata.get('vlabels', {}).get('name', []))
+
+
+def _model_vlabel_names() -> set[str]:
+    """Return vlabels backed by a registered ``GraphModel`` subclass.
+
+    AGE vertex labels are the model class name (the graph client always
+    derives the label as ``type(node).__name__``), so any ``GraphModel``
+    subclass defined in the shared or API-local model modules is a
+    legitimate, non-plugin vlabel that may be created lazily on first
+    write (e.g. ``Document``, ``Tag``, ``LocalAuthConfig``) and must not
+    be reported as orphaned.
+    """
+    from imbi_common import models as common_models
+
+    from imbi_api.domain import models as domain_models
+
+    base = common_models.GraphModel
+    names: set[str] = set()
+    for module in (common_models, domain_models):
+        for obj in vars(module).values():
+            if (
+                isinstance(obj, type)
+                and issubclass(obj, base)
+                and obj is not base
+            ):
+                names.add(obj.__name__)
+    return names
