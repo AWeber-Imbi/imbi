@@ -15,6 +15,7 @@ from imbi_assistant import (
     auth,
     client,
     client_tools,
+    external_mcp,
     mcp,
     models,
     settings,
@@ -334,10 +335,12 @@ def _build_tools_and_system(
     """Build the Anthropic tool payload and system prompt from
     the current MCP, server, and client tool sets.
     """
+    ext_manager = external_mcp.get_manager()
     all_tools = (
         mcp_manager.get_tools()
         + mcp.get_server_tools()
         + client_tools.get_tools()
+        + ext_manager.get_tools()
     )
     system = system_prompt.build_system_prompt(
         auth_ctx,
@@ -345,9 +348,161 @@ def _build_tools_and_system(
             *mcp_manager.get_tool_names(),
             mcp.REFRESH_TOOL_NAME,
             *client_tools.get_tool_names(),
+            *ext_manager.get_tool_names(),
         ],
     )
     return (all_tools or None), system
+
+
+async def _run_external_tool(
+    ext_manager: external_mcp.ExternalMCPManager,
+    tb: dict[str, typing.Any],
+    tool_results: list[dict[str, typing.Any]],
+) -> collections.abc.AsyncIterator[str]:
+    """Execute an external MCP tool, appending its result."""
+    yield _sse_event(
+        'tool_executing',
+        {'id': tb['id'], 'name': tb['name']},
+    )
+    result_text = await ext_manager.execute_tool(tb['name'], tb['input'])
+    tool_results.append(
+        {
+            'type': 'tool_result',
+            'tool_use_id': tb['id'],
+            'content': result_text,
+        }
+    )
+    yield _sse_event(
+        'tool_result',
+        {'id': tb['id'], 'name': tb['name']},
+    )
+
+
+async def _run_openapi_tool(
+    mcp_manager: mcp.MCPManager,
+    tb: dict[str, typing.Any],
+    tool_results: list[dict[str, typing.Any]],
+    auth_token: str | None,
+) -> collections.abc.AsyncIterator[str]:
+    """Execute an OpenAPI-backed tool, appending its result."""
+    yield _sse_event(
+        'tool_executing',
+        {'id': tb['id'], 'name': tb['name']},
+    )
+    result_text = await mcp_manager.execute_tool(
+        tb['name'], tb['input'], auth_token
+    )
+    tool_results.append(
+        {
+            'type': 'tool_result',
+            'tool_use_id': tb['id'],
+            'content': result_text,
+        }
+    )
+    yield _sse_event(
+        'tool_result',
+        {'id': tb['id'], 'name': tb['name']},
+    )
+
+
+async def _run_server_tool(
+    mcp_manager: mcp.MCPManager,
+    tb: dict[str, typing.Any],
+    tool_results: list[dict[str, typing.Any]],
+    auth_ctx: auth.AuthContext,
+    rebuild: dict[str, typing.Any],
+) -> collections.abc.AsyncIterator[str]:
+    """Handle the OpenAPI-refresh server tool."""
+    yield _sse_event(
+        'tool_executing',
+        {'id': tb['id'], 'name': tb['name']},
+    )
+    try:
+        success, tool_count = await mcp_manager.reinitialize()
+    except Exception as exc:
+        LOGGER.exception('OpenAPI tool refresh failed')
+        tool_results.append(
+            {
+                'type': 'tool_result',
+                'tool_use_id': tb['id'],
+                'content': json.dumps({'success': False, 'error': str(exc)}),
+            }
+        )
+        yield _sse_event(
+            'tool_result',
+            {'id': tb['id'], 'name': tb['name']},
+        )
+        return
+    if success:
+        # Carry the refreshed tools/system back so later rounds in
+        # this stream see the updated endpoints.
+        tools, system = _build_tools_and_system(mcp_manager, auth_ctx)
+        rebuild['tools'], rebuild['system'] = tools, system
+    tool_results.append(
+        {
+            'type': 'tool_result',
+            'tool_use_id': tb['id'],
+            'content': json.dumps(
+                {'success': success, 'tool_count': tool_count}
+            ),
+        }
+    )
+    yield _sse_event(
+        'tool_result',
+        {'id': tb['id'], 'name': tb['name']},
+    )
+
+
+def _client_tool_event(
+    tb: dict[str, typing.Any],
+    tool_results: list[dict[str, typing.Any]],
+) -> str:
+    """Emit a client-action event and record its tool result."""
+    tool_results.append(
+        {
+            'type': 'tool_result',
+            'tool_use_id': tb['id'],
+            'content': json.dumps({'success': True, 'action': tb['name']}),
+        }
+    )
+    return _sse_event(
+        'client_action',
+        {'id': tb['id'], 'action': tb['name'], 'params': tb['input']},
+    )
+
+
+async def _dispatch_tool_uses(
+    tool_use_blocks: list[dict[str, typing.Any]],
+    tool_results: list[dict[str, typing.Any]],
+    mcp_manager: mcp.MCPManager,
+    ext_manager: external_mcp.ExternalMCPManager,
+    auth_ctx: auth.AuthContext,
+    auth_token: str | None,
+    rebuild: dict[str, typing.Any],
+) -> collections.abc.AsyncIterator[str]:
+    """Dispatch each tool_use block to the owning handler.
+
+    Populates ``tool_results`` and, on an OpenAPI refresh, stores the
+    rebuilt ``tools``/``system`` in ``rebuild``.
+    """
+    for tb in tool_use_blocks:
+        if mcp.is_server_tool(tb['name']):
+            async for chunk in _run_server_tool(
+                mcp_manager, tb, tool_results, auth_ctx, rebuild
+            ):
+                yield chunk
+        elif client_tools.is_client_tool(tb['name']):
+            yield _client_tool_event(tb, tool_results)
+        elif ext_manager.has_tool(tb['name']):
+            async for chunk in _run_external_tool(
+                ext_manager, tb, tool_results
+            ):
+                yield chunk
+        else:
+            async for chunk in _run_openapi_tool(
+                mcp_manager, tb, tool_results, auth_token
+            ):
+                yield chunk
 
 
 async def _stream_response(
@@ -368,6 +523,7 @@ async def _stream_response(
     assistant_settings = settings.get_assistant_settings()
     max_rounds = assistant_settings.max_tool_rounds
     mcp_manager = mcp.get_manager()
+    ext_manager = external_mcp.get_manager()
     accumulated_text = ''
 
     state: dict[str, typing.Any] = {
@@ -429,83 +585,19 @@ async def _stream_response(
         )
 
         tool_results: list[dict[str, typing.Any]] = []
-        for tb in tool_use_blocks:
-            if mcp.is_server_tool(tb['name']):
-                yield _sse_event(
-                    'tool_executing',
-                    {'id': tb['id'], 'name': tb['name']},
-                )
-                success, tool_count = await mcp_manager.reinitialize()
-                if success:
-                    # Rebuild so later rounds in this stream see
-                    # the refreshed endpoints.
-                    tools, system = _build_tools_and_system(
-                        mcp_manager, auth_ctx
-                    )
-                tool_results.append(
-                    {
-                        'type': 'tool_result',
-                        'tool_use_id': tb['id'],
-                        'content': json.dumps(
-                            {
-                                'success': success,
-                                'tool_count': tool_count,
-                            }
-                        ),
-                    }
-                )
-                yield _sse_event(
-                    'tool_result',
-                    {'id': tb['id'], 'name': tb['name']},
-                )
-            elif client_tools.is_client_tool(tb['name']):
-                yield _sse_event(
-                    'client_action',
-                    {
-                        'id': tb['id'],
-                        'action': tb['name'],
-                        'params': tb['input'],
-                    },
-                )
-                tool_results.append(
-                    {
-                        'type': 'tool_result',
-                        'tool_use_id': tb['id'],
-                        'content': json.dumps(
-                            {
-                                'success': True,
-                                'action': tb['name'],
-                            }
-                        ),
-                    }
-                )
-            else:
-                yield _sse_event(
-                    'tool_executing',
-                    {
-                        'id': tb['id'],
-                        'name': tb['name'],
-                    },
-                )
-                result_text = await mcp_manager.execute_tool(
-                    tb['name'],
-                    tb['input'],
-                    auth_token,
-                )
-                tool_results.append(
-                    {
-                        'type': 'tool_result',
-                        'tool_use_id': tb['id'],
-                        'content': result_text,
-                    }
-                )
-                yield _sse_event(
-                    'tool_result',
-                    {
-                        'id': tb['id'],
-                        'name': tb['name'],
-                    },
-                )
+        rebuild: dict[str, typing.Any] = {}
+        async for chunk in _dispatch_tool_uses(
+            tool_use_blocks,
+            tool_results,
+            mcp_manager,
+            ext_manager,
+            auth_ctx,
+            auth_token,
+            rebuild,
+        ):
+            yield chunk
+        if 'tools' in rebuild:
+            tools, system = rebuild['tools'], rebuild['system']
 
         await age_ops.add_message(
             db,

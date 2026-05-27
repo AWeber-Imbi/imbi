@@ -68,6 +68,45 @@ class GetConversationTestCase(
         self.assertIsNone(conv)
 
 
+class GetEnabledMCPServersTestCase(
+    unittest.IsolatedAsyncioTestCase,
+):
+    async def test_returns_empty(self) -> None:
+        db = mock_db()
+        servers = await age_ops.get_enabled_mcp_servers(db)
+        self.assertEqual(servers, [])
+
+    async def test_parses_servers(self) -> None:
+        db = mock_db([{'s': {'raw': 'data'}}])
+        with mock.patch('imbi_common.graph.parse_agtype') as mc:
+            mc.return_value = {
+                'name': 'Example',
+                'slug': 'example',
+                'url': 'https://mcp.example.com/mcp',
+                'enabled': True,
+            }
+            servers = await age_ops.get_enabled_mcp_servers(db)
+        self.assertEqual(len(servers), 1)
+        self.assertEqual(servers[0].slug, 'example')
+        self.assertEqual(str(servers[0].url), 'https://mcp.example.com/mcp')
+
+    async def test_skips_invalid_rows(self) -> None:
+        db = mock_db([{'s': {'raw': 'bad'}}, {'s': {'raw': 'good'}}])
+        valid = {
+            'name': 'Example',
+            'slug': 'example',
+            'url': 'https://mcp.example.com/mcp',
+            'enabled': True,
+        }
+        with mock.patch('imbi_common.graph.parse_agtype') as mc:
+            # First row is missing required fields and fails validation;
+            # the loader must skip it and still return the valid one.
+            mc.side_effect = [{'enabled': True}, valid]
+            servers = await age_ops.get_enabled_mcp_servers(db)
+        self.assertEqual(len(servers), 1)
+        self.assertEqual(servers[0].slug, 'example')
+
+
 class ListConversationsTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):

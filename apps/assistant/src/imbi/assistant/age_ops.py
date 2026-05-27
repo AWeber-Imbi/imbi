@@ -6,11 +6,32 @@ import logging
 import typing
 import uuid
 
+import pydantic
 from imbi_common import graph
+from imbi_common import models as common_models
 
 from imbi_assistant import models
 
 LOGGER = logging.getLogger(__name__)
+
+
+async def get_enabled_mcp_servers(
+    db: graph.Graph,
+) -> list[common_models.MCPServer]:
+    """Return all enabled external MCP server nodes."""
+    query = """
+    MATCH (s:MCPServer {{enabled: true}})
+    RETURN s
+    """
+    records = await db.execute(query, {}, ['s'])
+    servers: list[common_models.MCPServer] = []
+    for record in records:
+        data = graph.parse_agtype(record['s'])
+        try:
+            servers.append(common_models.MCPServer(**data))
+        except pydantic.ValidationError as err:
+            LOGGER.warning('Skipping invalid MCPServer row: %s', err)
+    return servers
 
 
 async def create_conversation(

@@ -1,6 +1,7 @@
 """Tests for assistant endpoints module."""
 
 import datetime
+import json
 import unittest
 from unittest import mock
 
@@ -9,7 +10,9 @@ import fastapi
 from imbi_assistant import (
     auth,
     client,
+    client_tools,
     endpoints,
+    external_mcp,
     mcp,
     models,
     settings,
@@ -694,18 +697,32 @@ def _make_mock_mcp_manager() -> mock.MagicMock:
     return manager
 
 
+def _make_mock_external_manager() -> mock.MagicMock:
+    """Create a mock ExternalMCPManager."""
+    manager = mock.MagicMock(spec=external_mcp.ExternalMCPManager)
+    manager.get_tools.return_value = []
+    manager.get_tool_names.return_value = []
+    manager.has_tool.return_value = False
+    manager.execute_tool = mock.AsyncMock(return_value='{}')
+    manager.is_initialized = False
+    return manager
+
+
 class SendMessageEndpointTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     def setUp(self) -> None:
         self._original_client = client._client
         self._original_manager = mcp._manager
+        self._original_ext = external_mcp._manager
         mcp._manager = _make_mock_mcp_manager()
+        external_mcp._manager = _make_mock_external_manager()
         settings._assistant_settings = None
 
     def tearDown(self) -> None:
         client._client = self._original_client
         mcp._manager = self._original_manager
+        external_mcp._manager = self._original_ext
         settings._assistant_settings = None
 
     async def test_send_message_assistant_unavailable(
@@ -843,12 +860,15 @@ class StreamResponseTestCase(
     def setUp(self) -> None:
         self._original_client = client._client
         self._original_manager = mcp._manager
+        self._original_ext = external_mcp._manager
         mcp._manager = _make_mock_mcp_manager()
+        external_mcp._manager = _make_mock_external_manager()
         settings._assistant_settings = None
 
     def tearDown(self) -> None:
         client._client = self._original_client
         mcp._manager = self._original_manager
+        external_mcp._manager = self._original_ext
         settings._assistant_settings = None
 
     @staticmethod
@@ -1027,3 +1047,199 @@ class StreamResponseTestCase(
 
         self.assertEqual(len(chunks), 1)
         self.assertIn('event: error', chunks[0])
+
+
+class BuildToolsAndSystemTestCase(unittest.IsolatedAsyncioTestCase):
+    """_build_tools_and_system aggregates external MCP tools."""
+
+    def setUp(self) -> None:
+        self._original_manager = mcp._manager
+        self._original_ext = external_mcp._manager
+        settings._assistant_settings = None
+
+    def tearDown(self) -> None:
+        mcp._manager = self._original_manager
+        external_mcp._manager = self._original_ext
+        settings._assistant_settings = None
+
+    def test_external_tools_included(self) -> None:
+        mcp_manager = _make_mock_mcp_manager()
+        ext_manager = _make_mock_external_manager()
+        ext_manager.get_tools.return_value = [
+            {
+                'name': 'mcp_svc_thing',
+                'description': 'd',
+                'input_schema': {},
+            }
+        ]
+        ext_manager.get_tool_names.return_value = ['mcp_svc_thing']
+        mcp._manager = mcp_manager
+        external_mcp._manager = ext_manager
+        with mock.patch.dict('os.environ', {}, clear=True):
+            tools, system = endpoints._build_tools_and_system(
+                mcp_manager, _make_auth_context()
+            )
+        assert tools is not None
+        names = [t['name'] for t in tools]
+        self.assertIn('mcp_svc_thing', names)
+        self.assertIn('mcp_svc_thing', system)
+
+
+class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
+    """_dispatch_tool_uses routes to the external manager."""
+
+    def setUp(self) -> None:
+        self._original_ext = external_mcp._manager
+        external_mcp._manager = _make_mock_external_manager()
+        settings._assistant_settings = None
+
+    def tearDown(self) -> None:
+        external_mcp._manager = self._original_ext
+        settings._assistant_settings = None
+
+    async def test_external_tool_routed(self) -> None:
+        mcp_manager = _make_mock_mcp_manager()
+        ext_manager = _make_mock_external_manager()
+        ext_manager.has_tool.return_value = True
+        ext_manager.execute_tool = mock.AsyncMock(
+            return_value='{"result": 1}',
+        )
+        tool_results: list = []
+        tb = {'id': 't1', 'name': 'mcp_svc_thing', 'input': {'a': 1}}
+        chunks = []
+        async for chunk in endpoints._dispatch_tool_uses(
+            [tb],
+            tool_results,
+            mcp_manager,
+            ext_manager,
+            _make_auth_context(),
+            auth_token=None,
+            rebuild={},
+        ):
+            chunks.append(chunk)
+        ext_manager.execute_tool.assert_awaited_once_with(
+            'mcp_svc_thing', {'a': 1}
+        )
+        # OpenAPI manager not consulted for an external tool.
+        mcp_manager.execute_tool.assert_not_called()
+        self.assertEqual(len(tool_results), 1)
+        self.assertEqual(tool_results[0]['content'], '{"result": 1}')
+        self.assertTrue(any('event: tool_result' in c for c in chunks))
+
+    async def test_openapi_fallback(self) -> None:
+        mcp_manager = _make_mock_mcp_manager()
+        mcp_manager.execute_tool = mock.AsyncMock(return_value='{}')
+        ext_manager = _make_mock_external_manager()
+        ext_manager.has_tool.return_value = False
+        tool_results: list = []
+        tb = {'id': 't1', 'name': 'api_tool', 'input': {}}
+        async for _ in endpoints._dispatch_tool_uses(
+            [tb],
+            tool_results,
+            mcp_manager,
+            ext_manager,
+            _make_auth_context(),
+            auth_token='tok',
+            rebuild={},
+        ):
+            pass
+        mcp_manager.execute_tool.assert_awaited_once_with(
+            'api_tool', {}, 'tok'
+        )
+
+    async def test_server_refresh_tool_rebuilds(self) -> None:
+        mcp_manager = _make_mock_mcp_manager()
+        mcp_manager.reinitialize = mock.AsyncMock(return_value=(True, 3))
+        ext_manager = _make_mock_external_manager()
+        tool_results: list = []
+        rebuild: dict = {}
+        tb = {'id': 't1', 'name': mcp.REFRESH_TOOL_NAME, 'input': {}}
+        with mock.patch.dict('os.environ', {}, clear=True):
+            async for _ in endpoints._dispatch_tool_uses(
+                [tb],
+                tool_results,
+                mcp_manager,
+                ext_manager,
+                _make_auth_context(),
+                auth_token=None,
+                rebuild=rebuild,
+            ):
+                pass
+        mcp_manager.reinitialize.assert_awaited_once()
+        self.assertIn('tools', rebuild)
+        self.assertIn('system', rebuild)
+        payload = json.loads(tool_results[0]['content'])
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['tool_count'], 3)
+
+    async def test_server_refresh_tool_no_rebuild_on_failure(
+        self,
+    ) -> None:
+        mcp_manager = _make_mock_mcp_manager()
+        mcp_manager.reinitialize = mock.AsyncMock(return_value=(False, 0))
+        ext_manager = _make_mock_external_manager()
+        tool_results: list = []
+        rebuild: dict = {}
+        tb = {'id': 't1', 'name': mcp.REFRESH_TOOL_NAME, 'input': {}}
+        async for _ in endpoints._dispatch_tool_uses(
+            [tb],
+            tool_results,
+            mcp_manager,
+            ext_manager,
+            _make_auth_context(),
+            auth_token=None,
+            rebuild=rebuild,
+        ):
+            pass
+        self.assertNotIn('tools', rebuild)
+
+    async def test_server_refresh_tool_handles_exception(self) -> None:
+        mcp_manager = _make_mock_mcp_manager()
+        mcp_manager.reinitialize = mock.AsyncMock(
+            side_effect=RuntimeError('boom')
+        )
+        ext_manager = _make_mock_external_manager()
+        tool_results: list = []
+        rebuild: dict = {}
+        tb = {'id': 't1', 'name': mcp.REFRESH_TOOL_NAME, 'input': {}}
+        chunks = []
+        async for chunk in endpoints._dispatch_tool_uses(
+            [tb],
+            tool_results,
+            mcp_manager,
+            ext_manager,
+            _make_auth_context(),
+            auth_token=None,
+            rebuild=rebuild,
+        ):
+            chunks.append(chunk)
+        # The stream continues with a tool_result rather than aborting.
+        self.assertNotIn('tools', rebuild)
+        self.assertEqual(len(tool_results), 1)
+        payload = json.loads(tool_results[0]['content'])
+        self.assertFalse(payload['success'])
+        self.assertIn('boom', payload['error'])
+        self.assertTrue(any('event: tool_result' in c for c in chunks))
+
+    async def test_client_tool_routed(self) -> None:
+        mcp_manager = _make_mock_mcp_manager()
+        ext_manager = _make_mock_external_manager()
+        tool_results: list = []
+        tb = {
+            'id': 't1',
+            'name': client_tools.get_tool_names()[0],
+            'input': {'x': 1},
+        }
+        chunks = []
+        async for chunk in endpoints._dispatch_tool_uses(
+            [tb],
+            tool_results,
+            mcp_manager,
+            ext_manager,
+            _make_auth_context(),
+            auth_token=None,
+            rebuild={},
+        ):
+            chunks.append(chunk)
+        self.assertTrue(any('event: client_action' in c for c in chunks))
+        self.assertEqual(len(tool_results), 1)
