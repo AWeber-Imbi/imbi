@@ -26,6 +26,7 @@ from imbi_common.plugins.base import (
     PluginOption,
     PluginVertexLabel,
     PollingDescriptor,
+    RepositoryRelocation,
     WebhookActionCallable,
     WebhookActionPlugin,
 )
@@ -90,6 +91,7 @@ __all__ = [
     'PluginVertexLabel',
     'PollingDescriptor',
     'RegistryEntry',
+    'RepositoryRelocation',
     'WebhookActionCallable',
     'WebhookActionPlugin',
     'apply_plugin_schemas',

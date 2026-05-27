@@ -30,6 +30,7 @@ from imbi_common.plugins.base import (
     RefInfo,
     ReleaseInfo,
     RemoteDeployment,
+    RepositoryRelocation,
     WorkflowFile,
 )
 
@@ -525,6 +526,40 @@ class PluginContextEnvironmentConfigTestCase(unittest.TestCase):
         restored = PluginContext.model_validate(ctx.model_dump())
         self.assertEqual(restored.environment_config['action'], 'dispatch')
         self.assertEqual(restored.environment_config['inputs'], {'foo': 'bar'})
+
+
+class RepositoryRelocationTestCase(unittest.TestCase):
+    def test_relocation_defaults_none_on_context(self) -> None:
+        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
+        self.assertIsNone(ctx.repository_relocation)
+
+    def test_relocation_round_trip(self) -> None:
+        ctx = PluginContext(
+            project_id='p',
+            project_slug='p',
+            org_slug='o',
+            repository_relocation=RepositoryRelocation(
+                link_key='github-repository',
+                new_url='https://github.com/octo/new-name',
+                old_owner_repo='octo/old-name',
+                new_owner_repo='octo/new-name',
+            ),
+        )
+        restored = PluginContext.model_validate(ctx.model_dump())
+        reloc = restored.repository_relocation
+        assert reloc is not None
+        self.assertEqual(reloc.link_key, 'github-repository')
+        self.assertEqual(reloc.new_url, 'https://github.com/octo/new-name')
+        self.assertEqual(reloc.old_owner_repo, 'octo/old-name')
+        self.assertEqual(reloc.new_owner_repo, 'octo/new-name')
+
+    def test_relocation_optional_fields_default_none(self) -> None:
+        reloc = RepositoryRelocation(
+            link_key='github-repository',
+            new_url='https://github.com/octo/new-name',
+        )
+        self.assertIsNone(reloc.old_owner_repo)
+        self.assertIsNone(reloc.new_owner_repo)
 
 
 class PluginManifestWebhookTypeTestCase(unittest.TestCase):

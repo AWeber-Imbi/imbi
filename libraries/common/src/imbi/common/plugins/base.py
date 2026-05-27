@@ -207,6 +207,29 @@ class AuthorizationRequest(pydantic.BaseModel):
     registered_credentials: dict[str, str] | None = None
 
 
+class RepositoryRelocation(pydantic.BaseModel):
+    """A remote repository moved out from under its stored reference.
+
+    Set by a deployment / lifecycle plugin on :class:`PluginContext` when
+    the remote reports that the repository has permanently moved -- e.g.
+    GitHub answers a request to a renamed repo with a ``301`` to the
+    canonical ``/repositories/{id}`` location.  The host reads this after
+    the call returns and self-heals the project's stored link
+    (``link_key`` -> ``new_url``) so later calls skip the redirect and the
+    UI shows the current name.  Plugins only ever *write* this field; it is
+    not part of the inbound context the host populates.
+    """
+
+    #: Which ``PluginContext.project_links`` key the host should rewrite.
+    link_key: str
+    #: Canonical URL (e.g. GitHub ``html_url``) to store under ``link_key``.
+    new_url: str
+    #: ``<owner>/<repo>`` the call started from -- informational / logging.
+    old_owner_repo: str | None = None
+    #: ``<owner>/<repo>`` the remote redirected to -- informational.
+    new_owner_repo: str | None = None
+
+
 class PluginContext(pydantic.BaseModel):
     project_id: str
     project_slug: str
@@ -233,6 +256,13 @@ class PluginContext(pydantic.BaseModel):
     environment_config: dict[str, typing.Any] = {}
     actor_user_id: str | None = None
     identity: IdentityCredentials | None = None
+    # Output side-channel: a deployment / lifecycle plugin sets this when
+    # the remote reports the repository has permanently moved (e.g. a
+    # GitHub 301 after a rename).  The host reads it after the call to
+    # self-heal the project's stored link so later calls skip the
+    # redirect.  Plugins never read it -- it is write-only from the
+    # plugin's perspective and ``None`` on every inbound context.
+    repository_relocation: RepositoryRelocation | None = None
 
 
 class ConfigValue(pydantic.BaseModel):

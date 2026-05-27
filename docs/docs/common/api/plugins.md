@@ -17,6 +17,8 @@ plugin variations and the contract each must satisfy.
 
 ::: imbi_common.plugins.PluginContext
 
+::: imbi_common.plugins.RepositoryRelocation
+
 ## Configuration Plugins
 
 The `configuration` variation models a typed key/value store scoped to
