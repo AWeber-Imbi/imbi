@@ -99,6 +99,57 @@ class Auth(pydantic_settings.BaseSettings):
         return self
 
 
+class ConfigSecrets(pydantic_settings.BaseSettings):
+    """Encryption settings for persisted configuration secrets.
+
+    Provides a dedicated Fernet key, separate from :class:`Auth`, used to
+    encrypt sensitive configuration values (e.g. external MCP server
+    credentials) at rest. Keeping it distinct from the JWT/token encryption
+    key lets the two be rotated independently.
+
+    """
+
+    model_config = base_settings_config(env_prefix='IMBI_CONFIG_')
+
+    encryption_key: str | None = pydantic.Field(
+        default=None,
+        description='Base64-encoded Fernet key for config value encryption',
+    )
+
+    @pydantic.model_validator(mode='after')
+    def validate_secrets(self) -> ConfigSecrets:
+        """Enforce an explicit key outside development; auto-generate in dev.
+
+        When ``ENVIRONMENT`` is anything other than ``development`` (the
+        default), ``IMBI_CONFIG_ENCRYPTION_KEY`` must be configured
+        explicitly: booting with an auto-generated per-process value would
+        silently make every encrypted configuration value undecryptable on
+        the next restart, so it is refused. In development the historical
+        auto-generation behavior is preserved.
+
+        ``model_fields_set`` distinguishes an explicitly-supplied value
+        (env var, config file, or kwarg) from a default, and is inspected
+        before the dev-mode auto-generation below mutates it.
+        """
+        if os.getenv('ENVIRONMENT', 'development').lower() != 'development':
+            if 'encryption_key' not in self.model_fields_set:
+                raise ValueError(
+                    'IMBI_CONFIG_ENCRYPTION_KEY must be set explicitly when '
+                    'ENVIRONMENT is not "development"'
+                )
+
+        if self.encryption_key is None:
+            from cryptography import fernet
+
+            self.encryption_key = fernet.Fernet.generate_key().decode('ascii')
+            LOGGER.warning(
+                'Config encryption key auto-generated. Set '
+                'IMBI_CONFIG_ENCRYPTION_KEY in production for a stable key '
+                'across restarts.'
+            )
+        return self
+
+
 class Clickhouse(pydantic_settings.BaseSettings):
     model_config = base_settings_config(env_prefix='CLICKHOUSE_')
 
@@ -373,3 +424,24 @@ def get_auth_settings() -> Auth:
     if _auth_settings is None:
         _auth_settings = Auth()
     return _auth_settings
+
+
+# Module-level singleton for config-secret settings to ensure a stable key
+_config_settings: ConfigSecrets | None = None
+
+
+def get_config_settings() -> ConfigSecrets:
+    """Get the singleton ConfigSecrets settings instance.
+
+    This ensures the config encryption key remains stable across requests
+    when auto-generated (i.e., when IMBI_CONFIG_ENCRYPTION_KEY is not set in
+    env).
+
+    Returns:
+        The singleton ConfigSecrets settings instance.
+
+    """
+    global _config_settings
+    if _config_settings is None:
+        _config_settings = ConfigSecrets()
+    return _config_settings

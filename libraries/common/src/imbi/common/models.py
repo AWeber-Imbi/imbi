@@ -24,6 +24,7 @@ __all__ = [
     'GraphModel',
     'IdentityConnection',
     'LinkDefinition',
+    'MCPServer',
     'Node',
     'OperationLog',
     'Organization',
@@ -365,6 +366,82 @@ class IdentityConnection(GraphModel):
     status: typing.Literal['active', 'revoked', 'expired'] = 'active'
     last_used_at: datetime.datetime | None = None
     metadata: dict[str, typing.Any] = {}
+
+
+class MCPServer(Node):
+    """An external MCP server reachable over streamable HTTP.
+
+    The ``*_encrypted`` fields store the *ciphertext* (Fernet via
+    :mod:`imbi_common.auth.encryption`, keyed off
+    ``IMBI_CONFIG_ENCRYPTION_KEY``). Plaintext secrets must never be
+    assigned to these fields; encryption and decryption happen in the
+    repository/consumer layer, never on the model.
+    """
+
+    url: pydantic.HttpUrl
+    enabled: bool = True
+    tool_prefix: str | None = None
+    timeout: int = 30
+    verify_ssl: bool = True
+    ignored_tools: list[str] = []
+    auth_type: typing.Literal['none', 'static', 'oauth_client_credentials'] = (
+        'none'
+    )
+    static_header: str | None = None
+    static_value_encrypted: str | None = None
+    oauth_token_url: pydantic.HttpUrl | None = None
+    oauth_client_id: str | None = None
+    oauth_client_secret_encrypted: str | None = None
+    oauth_scope: str | None = None
+
+    @pydantic.field_validator('ignored_tools', mode='before')
+    @classmethod
+    def _parse_json_list(cls, value: object) -> object:
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
+
+    @pydantic.model_validator(mode='after')
+    def _validate_auth_fields(self) -> typing.Self:
+        """Require the fields each ``auth_type`` depends on.
+
+        Validates the persisted shape: secret presence is checked via the
+        ``*_encrypted`` fields, so this holds equally for a freshly built
+        node and for a node assembled by merging a partial update onto an
+        existing one.
+        """
+        if self.auth_type == 'static':
+            missing = [
+                name
+                for name, value in (
+                    ('static_header', self.static_header),
+                    ('static_value', self.static_value_encrypted),
+                )
+                if not value
+            ]
+            if missing:
+                raise ValueError(
+                    "auth_type 'static' requires: " + ', '.join(missing)
+                )
+        elif self.auth_type == 'oauth_client_credentials':
+            missing = [
+                name
+                for name, value in (
+                    ('oauth_token_url', self.oauth_token_url),
+                    ('oauth_client_id', self.oauth_client_id),
+                    (
+                        'oauth_client_secret',
+                        self.oauth_client_secret_encrypted,
+                    ),
+                )
+                if not value
+            ]
+            if missing:
+                raise ValueError(
+                    "auth_type 'oauth_client_credentials' requires: "
+                    + ', '.join(missing)
+                )
+        return self
 
 
 class LinkDefinition(Node):

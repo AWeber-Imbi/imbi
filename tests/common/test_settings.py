@@ -148,6 +148,61 @@ class AuthSettingsTestCase(unittest.TestCase):
         self.assertTrue(config.encryption_key)
 
 
+class ConfigSecretsSettingsTestCase(unittest.TestCase):
+    """Test config-secret encryption settings configuration."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        settings._config_settings = None
+
+    def tearDown(self) -> None:
+        settings._config_settings = None
+        super().tearDown()
+
+    def test_development_auto_generates_key(self) -> None:
+        """Development (the default) auto-generates the encryption key."""
+        with unittest.mock.patch.dict(os.environ, {}, clear=True):
+            config = settings.ConfigSecrets(_env_file=None)
+        self.assertIsNotNone(config.encryption_key)
+        self.assertGreater(len(config.encryption_key), 0)
+
+    def test_production_requires_key(self) -> None:
+        """Non-dev ENVIRONMENT refuses to boot with an unset key."""
+        with unittest.mock.patch.dict(
+            os.environ, {'ENVIRONMENT': 'production'}, clear=True
+        ):
+            with self.assertRaises(pydantic.ValidationError):
+                settings.ConfigSecrets(_env_file=None)
+
+    def test_production_accepts_explicit_key(self) -> None:
+        """An explicitly-provided key satisfies the non-dev guard."""
+        with unittest.mock.patch.dict(
+            os.environ, {'ENVIRONMENT': 'production'}, clear=True
+        ):
+            config = settings.ConfigSecrets(
+                _env_file=None, encryption_key='k' * 32
+            )
+        self.assertEqual(config.encryption_key, 'k' * 32)
+
+    def test_env_prefix(self) -> None:
+        """IMBI_CONFIG_ENCRYPTION_KEY populates the key field."""
+        with unittest.mock.patch.dict(
+            os.environ,
+            {'IMBI_CONFIG_ENCRYPTION_KEY': 'k' * 32},
+            clear=True,
+        ):
+            config = settings.ConfigSecrets(_env_file=None)
+        self.assertEqual(config.encryption_key, 'k' * 32)
+
+    def test_get_config_settings_is_singleton(self) -> None:
+        """get_config_settings returns a stable singleton instance."""
+        with unittest.mock.patch.dict(os.environ, {}, clear=True):
+            first = settings.get_config_settings()
+            second = settings.get_config_settings()
+        self.assertIs(first, second)
+        self.assertIsNotNone(first.encryption_key)
+
+
 class ReleasesSettingsTestCase(unittest.TestCase):
     """Test cases for Releases settings."""
 

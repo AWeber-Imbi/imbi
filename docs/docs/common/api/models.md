@@ -64,6 +64,8 @@ await db.create(team)
 
 ::: imbi_common.models.Project
 
+::: imbi_common.models.MCPServer
+
 ### Blueprint Models
 
 ::: imbi_common.models.Blueprint

@@ -17,6 +17,7 @@ name = [
   "Environment",
   "IdentityConnection",
   "LinkDefinition",
+  "MCPServer",
   "Message",
   "OAuthIdentity",
   "Organization",
@@ -90,6 +91,11 @@ attributes = ["expires_at"]
 
 [[vlabel_indexes]]
 vlabel = "LinkDefinition"
+attributes = ["slug"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "MCPServer"
 attributes = ["slug"]
 unique = true
 

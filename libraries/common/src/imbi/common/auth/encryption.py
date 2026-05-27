@@ -154,6 +154,114 @@ class TokenEncryption:
             return None
 
 
+class ConfigEncryption:
+    """Encrypt/decrypt persisted configuration secrets using Fernet.
+
+    Mirrors :class:`TokenEncryption` but is keyed off the dedicated
+    ``IMBI_CONFIG_ENCRYPTION_KEY`` (via
+    :func:`imbi_common.settings.get_config_settings`) so configuration
+    secrets and auth tokens can be rotated independently.
+    """
+
+    _instance: typing.ClassVar[ConfigEncryption | None] = None
+    _fernet: fernet.Fernet
+
+    def __init__(self, encryption_key: str) -> None:
+        """Initialize with base64-encoded Fernet key.
+
+        Args:
+            encryption_key: Base64-encoded Fernet encryption key
+
+        Raises:
+            ValueError: If encryption key format is invalid
+        """
+        try:
+            key_bytes = encryption_key.encode('ascii')
+            self._fernet = fernet.Fernet(key_bytes)
+        except Exception as err:
+            LOGGER.error('Invalid config encryption key format: %s', err)
+            raise ValueError('Invalid encryption key') from err
+
+    @classmethod
+    def get_instance(cls) -> ConfigEncryption:
+        """Get singleton instance of ConfigEncryption.
+
+        Returns:
+            ConfigEncryption: The singleton instance
+
+        Raises:
+            RuntimeError: If config encryption key not configured in settings
+        """
+        if cls._instance is None:
+            config_settings = settings.get_config_settings()
+            if not config_settings.encryption_key:
+                raise RuntimeError('Encryption key not configured')
+            cls._instance = cls(config_settings.encryption_key)
+        return cls._instance
+
+    @classmethod
+    def reset_instance(cls) -> None:
+        """Reset singleton instance (for testing)."""
+        cls._instance = None
+
+    def encrypt(self, plaintext: str | None) -> str | None:
+        """Encrypt a configuration value.
+
+        Args:
+            plaintext: Value to encrypt, or None
+
+        Returns:
+            Base64-encoded encrypted value, or None if input is None
+
+        Raises:
+            Exception: If encryption fails
+        """
+        if plaintext is None:
+            return None
+
+        try:
+            encrypted_bytes: bytes = self._fernet.encrypt(
+                plaintext.encode('utf-8')
+            )
+            return encrypted_bytes.decode('ascii')
+        except Exception as err:
+            LOGGER.exception('Config encryption failed: %s', err)
+            raise
+
+    def decrypt(self, ciphertext: str | None) -> str | None:
+        """Decrypt a configuration value.
+
+        Args:
+            ciphertext: Base64-encoded encrypted value, or None
+
+        Returns:
+            Decrypted plaintext value, or None if input is None or
+                decryption fails
+
+        Note:
+            Returns None instead of raising on decryption failure to handle
+            corrupted/invalid ciphertext gracefully.
+        """
+        if ciphertext is None:
+            return None
+
+        try:
+            encrypted_bytes = ciphertext.encode('ascii')
+            plaintext_bytes: bytes = self._fernet.decrypt(encrypted_bytes)
+            return plaintext_bytes.decode('utf-8')
+        except (
+            fernet.InvalidToken,
+            binascii.Error,
+            ValueError,
+            UnicodeDecodeError,
+        ):
+            LOGGER.warning(
+                'Failed to decrypt config value - invalid or corrupt '
+                'ciphertext'
+            )
+            return None
+
+
 # Module-level convenience functions
 def get_fernet(auth_settings: settings.Auth | None = None) -> fernet.Fernet:
     """Get Fernet instance for encryption/decryption.
@@ -211,3 +319,80 @@ def decrypt_token(
     f = get_fernet(auth_settings)
     plaintext_bytes: bytes = f.decrypt(ciphertext.encode('ascii'))
     return plaintext_bytes.decode('utf-8')
+
+
+def get_config_fernet(
+    config_settings: settings.ConfigSecrets | None = None,
+) -> fernet.Fernet:
+    """Get Fernet instance for configuration-secret encryption.
+
+    Args:
+        config_settings: Optional config settings (uses singleton if not
+            provided)
+
+    Returns:
+        Fernet instance configured with the config encryption key
+
+    Raises:
+        RuntimeError: If the config encryption key is not configured
+
+    """
+    if config_settings is None:
+        config_settings = settings.get_config_settings()
+
+    if not config_settings.encryption_key:
+        raise RuntimeError('Encryption key not configured')
+
+    return fernet.Fernet(config_settings.encryption_key.encode('ascii'))
+
+
+def encrypt_config_value(plaintext: str | None) -> str | None:
+    """Encrypt a configuration secret value.
+
+    Args:
+        plaintext: Value to encrypt, or None
+
+    Returns:
+        Base64-encoded ciphertext, or None if input is None
+
+    Raises:
+        RuntimeError: If the config encryption key is not configured
+
+    """
+    if plaintext is None:
+        return None
+    f = get_config_fernet()
+    encrypted_bytes: bytes = f.encrypt(plaintext.encode('utf-8'))
+    return encrypted_bytes.decode('ascii')
+
+
+def decrypt_config_value(ciphertext: str | None) -> str | None:
+    """Decrypt a configuration secret value.
+
+    Args:
+        ciphertext: Base64-encoded ciphertext, or None
+
+    Returns:
+        Decrypted plaintext, or None if input is None or the ciphertext is
+        invalid/corrupt.
+
+    Raises:
+        RuntimeError: If the config encryption key is not configured
+
+    """
+    if ciphertext is None:
+        return None
+    f = get_config_fernet()
+    try:
+        plaintext_bytes: bytes = f.decrypt(ciphertext.encode('ascii'))
+        return plaintext_bytes.decode('utf-8')
+    except (
+        fernet.InvalidToken,
+        binascii.Error,
+        ValueError,
+        UnicodeDecodeError,
+    ):
+        LOGGER.warning(
+            'Failed to decrypt config value - invalid or corrupt ciphertext'
+        )
+        return None

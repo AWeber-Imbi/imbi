@@ -1091,3 +1091,122 @@ class PluginEdgeTestCase(unittest.TestCase):
         self.assertNotIn(
             'service_application', models.ThirdPartyService.model_fields
         )
+
+
+class MCPServerModelTestCase(unittest.TestCase):
+    """Test the MCPServer model."""
+
+    def test_defaults(self) -> None:
+        """Test MCPServer default field values."""
+        server = models.MCPServer(
+            name='Example',
+            slug='example',
+            url='https://mcp.example.com/mcp',
+        )
+        self.assertEqual(str(server.url), 'https://mcp.example.com/mcp')
+        self.assertTrue(server.enabled)
+        self.assertIsNone(server.tool_prefix)
+        self.assertEqual(server.timeout, 30)
+        self.assertTrue(server.verify_ssl)
+        self.assertEqual(server.ignored_tools, [])
+        self.assertEqual(server.auth_type, 'none')
+        self.assertIsNone(server.static_header)
+        self.assertIsNone(server.static_value_encrypted)
+        self.assertIsNone(server.oauth_token_url)
+        self.assertIsNone(server.oauth_client_id)
+        self.assertIsNone(server.oauth_client_secret_encrypted)
+        self.assertIsNone(server.oauth_scope)
+
+    def test_url_rejects_non_url(self) -> None:
+        """url must be a valid HTTP(S) URL, not an arbitrary string."""
+        with self.assertRaises(pydantic.ValidationError):
+            models.MCPServer(name='Example', slug='example', url='not-a-url')
+
+    def test_oauth_token_url_rejects_non_url(self) -> None:
+        """oauth_token_url must be a valid HTTP(S) URL when provided."""
+        with self.assertRaises(pydantic.ValidationError):
+            models.MCPServer(
+                name='Example',
+                slug='example',
+                url='https://mcp.example.com/mcp',
+                auth_type='oauth_client_credentials',
+                oauth_token_url='not-a-url',
+                oauth_client_id='client',
+                oauth_client_secret_encrypted='ciphertext',
+            )
+
+    def test_ignored_tools_from_json_string(self) -> None:
+        """ignored_tools parses an AGE JSON-string into a list."""
+        server = models.MCPServer(
+            name='Example',
+            slug='example',
+            url='https://mcp.example.com/mcp',
+            ignored_tools=json.dumps(['drop_table', 'rm_rf']),
+        )
+        self.assertEqual(server.ignored_tools, ['drop_table', 'rm_rf'])
+
+    def test_ignored_tools_from_list(self) -> None:
+        """ignored_tools accepts a native list unchanged."""
+        server = models.MCPServer(
+            name='Example',
+            slug='example',
+            url='https://mcp.example.com/mcp',
+            ignored_tools=['drop_table'],
+        )
+        self.assertEqual(server.ignored_tools, ['drop_table'])
+
+    def test_auth_type_rejects_unknown_value(self) -> None:
+        """auth_type only accepts the known literal values."""
+        with self.assertRaises(pydantic.ValidationError):
+            models.MCPServer(
+                name='Example',
+                slug='example',
+                url='https://mcp.example.com/mcp',
+                auth_type='basic',
+            )
+
+    def test_static_auth_requires_header_and_value(self) -> None:
+        """auth_type 'static' requires header and (encrypted) value."""
+        with self.assertRaises(pydantic.ValidationError):
+            models.MCPServer(
+                name='Example',
+                slug='example',
+                url='https://mcp.example.com/mcp',
+                auth_type='static',
+            )
+
+    def test_static_auth_valid(self) -> None:
+        """A fully specified static auth config validates."""
+        server = models.MCPServer(
+            name='Example',
+            slug='example',
+            url='https://mcp.example.com/mcp',
+            auth_type='static',
+            static_header='Authorization',
+            static_value_encrypted='ciphertext',
+        )
+        self.assertEqual(server.auth_type, 'static')
+
+    def test_oauth_auth_requires_all_fields(self) -> None:
+        """auth_type 'oauth_client_credentials' requires its fields."""
+        with self.assertRaises(pydantic.ValidationError):
+            models.MCPServer(
+                name='Example',
+                slug='example',
+                url='https://mcp.example.com/mcp',
+                auth_type='oauth_client_credentials',
+                oauth_token_url='https://auth.example.com/token',
+            )
+
+    def test_oauth_auth_valid(self) -> None:
+        """A fully specified oauth config validates."""
+        server = models.MCPServer(
+            name='Example',
+            slug='example',
+            url='https://mcp.example.com/mcp',
+            auth_type='oauth_client_credentials',
+            oauth_token_url='https://auth.example.com/token',
+            oauth_client_id='client',
+            oauth_client_secret_encrypted='ciphertext',
+        )
+        self.assertEqual(server.auth_type, 'oauth_client_credentials')

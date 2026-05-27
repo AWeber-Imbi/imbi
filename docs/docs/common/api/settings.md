@@ -31,6 +31,8 @@ auth_config = settings.Auth()
 
 ::: imbi_common.settings.get_auth_settings
 
+::: imbi_common.settings.get_config_settings
+
 ::: imbi_common.settings.Configuration
 
 ::: imbi_common.settings.Postgres
@@ -38,5 +40,7 @@ auth_config = settings.Auth()
 ::: imbi_common.settings.Clickhouse
 
 ::: imbi_common.settings.Auth
+
+::: imbi_common.settings.ConfigSecrets
 
 ::: imbi_common.settings.SSL

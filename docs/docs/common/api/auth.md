@@ -9,6 +9,8 @@ by any service in the Imbi ecosystem:
 
 - **JWT Tokens**: Access and refresh token creation/verification
 - **Token Encryption**: Fernet encryption for sensitive data at rest
+- **Config Encryption**: Fernet encryption for persisted configuration
+  secrets, keyed separately from token encryption
 
 ## JWT Tokens
 
@@ -47,6 +49,24 @@ encrypted = encryption.encrypt_token("sensitive_oauth_token")
 decrypted = encryption.decrypt_token(encrypted)
 ```
 
+## Config Encryption
+
+Persisted configuration secrets (e.g. external MCP server credentials) are
+encrypted with a dedicated key sourced from `IMBI_CONFIG_ENCRYPTION_KEY`,
+separate from the token-encryption key, so the two can be rotated
+independently. `decrypt_config_value` returns `None` for `None` or
+invalid/corrupt ciphertext.
+
+```python
+from imbi_common.auth import encryption
+
+# Encrypt a configuration secret
+encrypted = encryption.encrypt_config_value("client-secret")
+
+# Decrypt (None on invalid ciphertext)
+decrypted = encryption.decrypt_config_value(encrypted)
+```
+
 ## API Reference
 
 ### Core Functions
@@ -66,3 +86,11 @@ decrypted = encryption.decrypt_token(encrypted)
 ::: imbi_common.auth.encryption.encrypt_token
 
 ::: imbi_common.auth.encryption.decrypt_token
+
+::: imbi_common.auth.encryption.ConfigEncryption
+
+::: imbi_common.auth.encryption.get_config_fernet
+
+::: imbi_common.auth.encryption.encrypt_config_value
+
+::: imbi_common.auth.encryption.decrypt_config_value
