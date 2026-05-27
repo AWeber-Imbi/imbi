@@ -11,7 +11,6 @@ import fastapi
 import httpx
 import jwt
 import pydantic
-import pyotp
 from imbi_common import graph
 from imbi_common.auth import core, encryption
 from imbi_common.plugins import errors as plugin_errors
@@ -27,6 +26,7 @@ from imbi_api.auth import (
 )
 from imbi_api.auth import models as auth_models
 from imbi_api.auth import password as password_auth
+from imbi_api.auth.totp import fetch_totp_secret, verify_totp_code
 from imbi_api.identity import flows as identity_flows
 from imbi_api.identity import repository as identity_repository
 from imbi_api.middleware import rate_limit
@@ -337,119 +337,80 @@ async def login(
         LOGGER.info('Rehashed password for user %s', _redact_email(user.email))
 
     # Phase 5: Check if MFA is enabled
-    totp_query: typing.LiteralString = """
-    MATCH (u:User {{email: {email}}})
-          <-[:MFA_FOR]-(t:TOTPSecret)
-    RETURN t AS n
-    """
-    totp_records = await db.execute(
-        totp_query,
-        {'email': user.email},
-    )
+    totp_data = await fetch_totp_secret(db, user.email)
 
-    if totp_records:
-        totp_data = graph.parse_agtype(totp_records[0]['n'])
-
-        if totp_data.get('enabled', False):
-            # MFA is enabled - code is required
-            if not mfa_code:
-                raise fastapi.HTTPException(
-                    status_code=401,
-                    detail='MFA code required',
-                    headers={'X-MFA-Required': 'true'},
-                )
-
-            auth_settings = settings.get_auth_settings()
-
-            # Decrypt TOTP secret
-            encryptor = encryption.TokenEncryption.get_instance()
-            try:
-                secret = encryptor.decrypt(totp_data['secret'])
-                if secret is None:
-                    raise ValueError('Decryption returned None')
-            except (ValueError, TypeError) as err:
-                LOGGER.error('Failed to decrypt TOTP secret: %s', err)
-                raise fastapi.HTTPException(
-                    status_code=500,
-                    detail='Failed to decrypt MFA secret',
-                ) from err
-
-            totp = pyotp.TOTP(
-                secret,
-                interval=auth_settings.mfa_totp_period,
-                digits=auth_settings.mfa_totp_digits,
+    if totp_data and totp_data.get('enabled', False):
+        # MFA is enabled - code is required
+        if not mfa_code:
+            raise fastapi.HTTPException(
+                status_code=401,
+                detail='MFA code required',
+                headers={'X-MFA-Required': 'true'},
             )
 
-            # Try TOTP verification first (with clock skew)
-            if totp.verify(mfa_code, valid_window=1):
-                # Update last used timestamp
-                now_str = datetime.datetime.now(datetime.UTC).isoformat()
-                update_q: typing.LiteralString = """
-                MATCH (u:User {{email: {email}}})
-                      <-[:MFA_FOR]-(t:TOTPSecret)
-                SET t.last_used = {now}
-                """
-                await db.execute(
-                    update_q,
-                    {'email': user.email, 'now': now_str},
+        auth_settings = settings.get_auth_settings()
+        is_valid, matched_backup_hash = await verify_totp_code(
+            totp_data,
+            mfa_code,
+            period=auth_settings.mfa_totp_period,
+            digits=auth_settings.mfa_totp_digits,
+        )
+        if not is_valid:
+            raise fastapi.HTTPException(
+                status_code=401,
+                detail='Invalid MFA code',
+            )
+
+        now_str = datetime.datetime.now(datetime.UTC).isoformat()
+        if matched_backup_hash is None:
+            # TOTP path: refresh last_used.
+            update_q: typing.LiteralString = """
+            MATCH (u:User {{email: {email}}})
+                  <-[:MFA_FOR]-(t:TOTPSecret)
+            SET t.last_used = {now}
+            """
+            await db.execute(
+                update_q,
+                {'email': user.email, 'now': now_str},
+            )
+            LOGGER.info(
+                'MFA verified via TOTP for user %s',
+                _redact_email(user.email),
+            )
+        else:
+            # Backup-code path: atomically remove the used code. The
+            # ``WHERE {used_hash} IN t.backup_codes`` guard + list
+            # comprehension is the H6 race fix -- if a parallel login
+            # already consumed this hash the SET never fires; the empty
+            # result is detected and we fail closed with a 401 (a
+            # submitted code matches at most one hash, so there is no
+            # other code to fall through to).
+            update_q2: typing.LiteralString = """
+            MATCH (u:User {{email: {email}}})
+                  <-[:MFA_FOR]-(t:TOTPSecret)
+            WHERE {used_hash} IN t.backup_codes
+            SET t.backup_codes =
+                [c IN t.backup_codes WHERE c <> {used_hash}]
+            RETURN size(t.backup_codes) AS remaining
+            """
+            update_records = await db.execute(
+                update_q2,
+                {'email': user.email, 'used_hash': matched_backup_hash},
+                columns=['remaining'],
+            )
+            if not update_records:
+                LOGGER.warning(
+                    'MFA backup code already consumed for user %s (race)',
+                    _redact_email(user.email),
                 )
-
-                LOGGER.info(
-                    'MFA verified via TOTP for user %s',
-                    user.email,
+                raise fastapi.HTTPException(
+                    status_code=401,
+                    detail='Invalid MFA code',
                 )
-            else:
-                # Try backup codes
-                backup_codes = totp_data.get('backup_codes', [])
-                valid_backup = False
-
-                for hashed_code in backup_codes:
-                    if not await asyncio.to_thread(
-                        password_auth.verify_password, mfa_code, hashed_code
-                    ):
-                        continue
-                    # Atomically remove the matched backup code. The
-                    # ``WHERE {used_hash} IN t.backup_codes`` guard plus
-                    # list-comprehension SET is the H6 race fix: if a
-                    # parallel login already consumed this hash, the
-                    # WHERE rejects so the SET never fires and the same
-                    # code can't be used twice. An empty result set means
-                    # the race happened — treat it as failed auth.
-                    update_q2: typing.LiteralString = """
-                    MATCH (u:User {{email: {email}}})
-                          <-[:MFA_FOR]-(t:TOTPSecret)
-                    WHERE {used_hash} IN t.backup_codes
-                    SET t.backup_codes =
-                        [c IN t.backup_codes WHERE c <> {used_hash}]
-                    RETURN size(t.backup_codes) AS remaining
-                    """
-                    update_records = await db.execute(
-                        update_q2,
-                        {
-                            'email': user.email,
-                            'used_hash': hashed_code,
-                        },
-                        columns=['remaining'],
-                    )
-                    if not update_records:
-                        LOGGER.warning(
-                            'MFA backup code already consumed for user '
-                            '%s (race)',
-                            user.email,
-                        )
-                        continue
-                    valid_backup = True
-                    LOGGER.info(
-                        'MFA verified via backup code for user %s',
-                        user.email,
-                    )
-                    break
-
-                if not valid_backup:
-                    raise fastapi.HTTPException(
-                        status_code=401,
-                        detail='Invalid MFA code',
-                    )
+            LOGGER.info(
+                'MFA verified via backup code for user %s',
+                _redact_email(user.email),
+            )
 
     # Create tokens
     auth_settings = settings.get_auth_settings()

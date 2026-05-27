@@ -58,8 +58,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
         # Set up mock graph database
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -961,4 +961,70 @@ class MFAEndpointsTestCase(unittest.TestCase):
             self.assertIn(
                 'Failed to decrypt MFA secret',
                 response.json()['detail'],
+            )
+
+    def test_disable_mfa_oauth_user_pending_setup_not_enabled(
+        self,
+    ) -> None:
+        """OAuth user cannot disable via a pending (enabled=False) setup."""
+        oauth_user = models.User(
+            email='oauth@example.com',
+            display_name='OAuth User',
+            is_active=True,
+            password_hash=None,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        self.auth_context = permissions.AuthContext(
+            user=oauth_user,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions=set(),
+        )
+
+        async def mock_get_current_user():
+            return self.auth_context
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            mock_get_current_user
+        )
+
+        secret = 'JBSWY3DPEHPK3PXP'
+        totp = pyotp.TOTP(secret)
+        valid_code = totp.now()
+
+        totp_data = {
+            'secret': secret,
+            'enabled': False,
+            'backup_codes': [],
+            'created_at': datetime.datetime.now(
+                datetime.UTC,
+            ),
+        }
+
+        self.mock_db.execute.return_value = [
+            {'n': totp_data},
+        ]
+
+        with (
+            mock.patch(
+                'imbi_api.settings.get_auth_settings',
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            mock_settings.return_value = self.auth_settings
+
+            response = self.client.request(
+                'DELETE',
+                '/mfa/disable',
+                json={'mfa_code': valid_code},
+            )
+
+            self.assertEqual(response.status_code, 404)
+            self.assertEqual(
+                response.json()['detail'],
+                'MFA not enabled',
             )

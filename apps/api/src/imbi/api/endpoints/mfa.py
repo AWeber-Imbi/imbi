@@ -22,6 +22,7 @@ from imbi_common.auth import encryption
 
 from imbi_api import models, settings
 from imbi_api.auth import password, permissions
+from imbi_api.auth.totp import fetch_totp_secret, verify_totp_code
 from imbi_api.middleware import rate_limit
 
 LOGGER = logging.getLogger(__name__)
@@ -236,63 +237,19 @@ async def verify_and_enable_mfa(
     """
     auth_settings = settings.get_auth_settings()
 
-    # Fetch TOTP secret from graph
-    query: typing.LiteralString = """
-    MATCH (u:User {{email: {email}}})
-          <-[:MFA_FOR]-(t:TOTPSecret)
-    RETURN t AS n
-    """
-    records = await db.execute(
-        query,
-        {'email': auth.require_user.email},
-    )
-
-    if not records:
+    totp_data = await fetch_totp_secret(db, auth.require_user.email)
+    if totp_data is None:
         raise fastapi.HTTPException(
             status_code=404,
             detail='MFA not setup for this user',
         )
 
-    totp_data = graph.parse_agtype(records[0]['n'])
-    encrypted_secret = totp_data['secret']
-
-    # Decrypt TOTP secret
-    encryptor = encryption.TokenEncryption.get_instance()
-    try:
-        secret = encryptor.decrypt(encrypted_secret)
-        if secret is None:
-            raise ValueError('Decryption returned None')
-    except (ValueError, TypeError) as err:
-        LOGGER.error('Failed to decrypt TOTP secret: %s', err)
-        raise fastapi.HTTPException(
-            status_code=500,
-            detail='Failed to decrypt MFA secret',
-        ) from err
-
-    # Verify TOTP code or backup code
-    totp = pyotp.TOTP(
-        secret,
-        interval=auth_settings.mfa_totp_period,
+    is_valid, matched_backup_hash = await verify_totp_code(
+        totp_data,
+        verify_request.code,
+        period=auth_settings.mfa_totp_period,
         digits=auth_settings.mfa_totp_digits,
     )
-
-    is_valid = False
-    matched_backup_hash: str | None = None
-    backup_codes = typing.cast(list[str], totp_data.get('backup_codes', []))
-
-    # First try TOTP verification (allow 1 time step for skew)
-    if totp.verify(verify_request.code, valid_window=1):
-        is_valid = True
-    else:
-        # Try backup codes
-        for backup_hash in backup_codes:
-            if await asyncio.to_thread(
-                password.verify_password, verify_request.code, backup_hash
-            ):
-                is_valid = True
-                matched_backup_hash = backup_hash
-                break
-
     if not is_valid:
         raise fastapi.HTTPException(status_code=401, detail='Invalid MFA code')
 
@@ -411,57 +368,18 @@ async def disable_mfa(
             )
 
         # Fetch and verify MFA code
-        totp_query: typing.LiteralString = """
-        MATCH (u:User {{email: {email}}})
-              <-[:MFA_FOR]-(t:TOTPSecret)
-        RETURN t AS n
-        """
-        totp_records = await db.execute(
-            totp_query,
-            {'email': auth.require_user.email},
-        )
-
-        if not totp_records:
+        totp_data = await fetch_totp_secret(db, auth.require_user.email)
+        if totp_data is None or not totp_data.get('enabled', False):
             raise fastapi.HTTPException(
                 status_code=404, detail='MFA not enabled'
             )
 
-        totp_data = graph.parse_agtype(totp_records[0]['n'])
-
-        # Decrypt TOTP secret
-        encryptor = encryption.TokenEncryption.get_instance()
-        try:
-            secret = encryptor.decrypt(totp_data['secret'])
-            if secret is None:
-                raise ValueError('Decryption returned None')
-        except (ValueError, TypeError) as err:
-            LOGGER.error('Failed to decrypt TOTP secret: %s', err)
-            raise fastapi.HTTPException(
-                status_code=500,
-                detail='Failed to decrypt MFA secret',
-            ) from err
-
-        # Verify MFA code
-        totp = pyotp.TOTP(
-            secret,
-            interval=auth_settings.mfa_totp_period,
+        is_valid, _ = await verify_totp_code(
+            totp_data,
+            mfa_code,
+            period=auth_settings.mfa_totp_period,
             digits=auth_settings.mfa_totp_digits,
         )
-
-        is_valid = False
-
-        # Try TOTP first
-        if totp.verify(mfa_code, valid_window=1):
-            is_valid = True
-        else:
-            # Try backup codes
-            backup_codes = totp_data.get('backup_codes', [])
-            for backup_hash in backup_codes:
-                if await asyncio.to_thread(
-                    password.verify_password, mfa_code, backup_hash
-                ):
-                    is_valid = True
-                    break
 
         if not is_valid:
             raise fastapi.HTTPException(
