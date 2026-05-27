@@ -12,6 +12,7 @@ from imbi_api import app, settings
 from imbi_api.auth import local_auth, login_providers
 from imbi_api.auth import models as auth_models
 from imbi_api.domain import models as domain_models
+from imbi_api.endpoints import auth as auth_endpoints
 from imbi_api.middleware import rate_limit
 
 
@@ -84,6 +85,79 @@ def _patch_providers(
         list_login_apps=fake_list,
         get_login_app=fake_get,
     )
+
+
+class IsSafeRedirectURITestCase(unittest.TestCase):
+    """Unit tests for the OAuth redirect_uri allow-list (C2)."""
+
+    _ALLOWED: typing.ClassVar[list[str]] = [
+        'https://imbi.example.com',
+        'http://localhost:5173',
+    ]
+
+    def _ok(self, uri: str) -> None:
+        self.assertTrue(
+            auth_endpoints._is_safe_redirect_uri(uri, self._ALLOWED), uri
+        )
+
+    def _bad(self, uri: str) -> None:
+        self.assertFalse(
+            auth_endpoints._is_safe_redirect_uri(uri, self._ALLOWED), uri
+        )
+
+    def test_relative_paths_allowed(self) -> None:
+        self._ok('/dashboard')
+        self._ok('/projects/42?tab=overview')
+
+    def test_absolute_url_in_allowlist_allowed(self) -> None:
+        self._ok('https://imbi.example.com/dashboard')
+        self._ok('http://localhost:5173/')
+
+    def test_absolute_url_not_in_allowlist_rejected(self) -> None:
+        self._bad('https://evil.example/steal')
+        self._bad('https://imbi.example.com.evil.example/')
+
+    def test_scheme_relative_and_backslash_rejected(self) -> None:
+        self._bad('//evil.example/path')
+        self._bad('/\\evil.example')
+
+    def test_non_http_schemes_rejected(self) -> None:
+        self._bad('javascript:alert(1)')
+        self._bad('data:text/html,<script>')
+
+    def test_empty_and_whitespace_rejected(self) -> None:
+        self._bad('')
+        self._bad('/path\nwith-newline')
+        self._bad(' /leading-space')
+
+
+class RefreshCookiePathTestCase(unittest.TestCase):
+    """The refresh cookie must be scoped under the public API prefix (C2).
+
+    The auth router lives at ``/auth`` inside the app, but the browser
+    sees it behind ``IMBI_API_URL``'s prefix (``/api`` in deployment). A
+    cookie scoped to a bare ``/auth`` is never sent to
+    ``/api/auth/token/refresh``, silently breaking token refresh.
+    """
+
+    def _path_for(self, api_url: str) -> str:
+        with mock.patch.dict('os.environ', {'IMBI_API_URL': api_url}):
+            cfg = settings.ServerConfig(_env_file=None)
+        with mock.patch.object(
+            auth_endpoints.settings, 'get_server_config', return_value=cfg
+        ):
+            return auth_endpoints._refresh_cookie_path()
+
+    def test_path_includes_deployment_prefix(self) -> None:
+        self.assertEqual(
+            self._path_for('https://imbi.example.com/api'), '/api/auth'
+        )
+
+    def test_path_is_bare_auth_without_prefix(self) -> None:
+        self.assertEqual(self._path_for('https://imbi.example.com'), '/auth')
+
+    def test_path_is_bare_auth_in_dev_loopback(self) -> None:
+        self.assertEqual(self._path_for(''), '/auth')
 
 
 class RedactEmailTestCase(unittest.TestCase):
@@ -226,6 +300,7 @@ class OAuthFlowTestCase(unittest.TestCase):
     def setUp(self) -> None:
         """Set up test client."""
         settings._auth_settings = None
+        rate_limit.limiter.reset()
         self.test_app = app.create_app()
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
@@ -238,6 +313,7 @@ class OAuthFlowTestCase(unittest.TestCase):
     def tearDown(self) -> None:
         """Reset settings singleton after tests."""
         settings._auth_settings = None
+        rate_limit.limiter.reset()
 
     def test_oauth_login_invalid_provider(self) -> None:
         """Test OAuth login with unknown provider slug."""
@@ -286,6 +362,36 @@ class OAuthFlowTestCase(unittest.TestCase):
         location = response.headers['location']
         self.assertIn('github.com/login/oauth/authorize', location)
         self.assertIn('client_id=github-id', location)
+
+    def test_oauth_login_rejects_offsite_redirect_uri(self) -> None:
+        """An off-origin redirect_uri is refused before the provider hop."""
+        with _patch_providers([_stub_provider('google', client_id='id')]):
+            response = self.client.get(
+                '/auth/oauth/google?redirect_uri=https://evil.example/x',
+                follow_redirects=False,
+            )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Invalid redirect_uri', response.json()['detail'])
+
+    def test_oauth_login_allows_same_origin_absolute_callback(self) -> None:
+        """The SPA's absolute same-origin callback URL is accepted.
+
+        imbi-ui sends ``redirect_uri=<api-origin>/auth/callback`` (an
+        absolute URL), and UI+API share a host, so the API's own public
+        origin must satisfy the allow-list even with no CORS origins set.
+        """
+        from urllib import parse as _urlparse
+
+        cfg = settings.get_server_config()
+        origin = _urlparse.urlparse(cfg.public_base_url)
+        callback = f'{origin.scheme}://{origin.netloc}/auth/callback'
+        with _patch_providers([_stub_provider('google', client_id='id')]):
+            response = self.client.get(
+                f'/auth/oauth/google?redirect_uri={callback}',
+                follow_redirects=False,
+            )
+        self.assertEqual(response.status_code, 307)
+        self.assertIn('accounts.google.com', response.headers['location'])
 
     def test_oauth_callback_error_handling(self) -> None:
         """Test OAuth callback handles provider errors."""
@@ -981,7 +1087,13 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
             location = response.headers['location']
             self.assertIn('/dashboard#', location)
             self.assertIn('access_token=', location)
-            self.assertIn('refresh_token=', location)
+            # Refresh token is an HttpOnly cookie now, not in the fragment (C2)
+            self.assertNotIn('refresh_token=', location)
+            set_cookie = response.headers.get('set-cookie', '')
+            self.assertIn('imbi_refresh_token=', set_cookie)
+            self.assertIn('HttpOnly', set_cookie)
+            self.assertIn('SameSite=strict', set_cookie)
+            self.assertIn('Path=/auth', set_cookie)
             self.assertIn('token_type=bearer', location)
             self.assertIn('expires_in=', location)
 
@@ -1079,7 +1191,13 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
             location = response.headers['location']
             self.assertIn('/dashboard#', location)
             self.assertIn('access_token=', location)
-            self.assertIn('refresh_token=', location)
+            # Refresh token moved to an HttpOnly cookie (C2)
+            self.assertNotIn('refresh_token=', location)
+            set_cookie = response.headers.get('set-cookie', '')
+            self.assertIn('imbi_refresh_token=', set_cookie)
+            self.assertIn('HttpOnly', set_cookie)
+            self.assertIn('SameSite=strict', set_cookie)
+            self.assertIn('Path=/auth', set_cookie)
 
             # Verify merge was called for user + identity
             self.assertTrue(self.mock_db.merge.called)
@@ -1533,6 +1651,58 @@ class TokenRefreshTestCase(unittest.TestCase):
             # reuse would miss every descendant minted from this call.
             second_call_params = self.mock_db.execute.call_args_list[1][0][1]
             self.assertEqual(second_call_params['family_id'], 'fam-test')
+
+    def test_refresh_token_via_cookie(self) -> None:
+        """Refresh succeeds from the HttpOnly cookie with no request body."""
+        from imbi_common.auth import core
+
+        from imbi_api import models
+
+        auth_settings = settings.Auth(
+            jwt_secret='test-secret-key-min-32-chars-long',
+        )
+        test_user = models.User(
+            email='test@example.com',
+            display_name='Test User',
+            is_active=True,
+            password_hash=None,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        refresh = core.create_refresh_token(
+            test_user.email, auth_settings=auth_settings
+        )
+        self.mock_db.match.return_value = [test_user]
+        self.mock_db.execute.side_effect = [
+            [{'family_id': 'fam-test'}],
+            [{'principal_count': 1}],
+        ]
+        with mock.patch(
+            'imbi_api.settings.get_auth_settings',
+            return_value=auth_settings,
+        ):
+            response = self.client.post(
+                '/auth/token/refresh',
+                cookies={'imbi_refresh_token': refresh},
+            )
+        self.assertEqual(response.status_code, 200)
+        # The rotated token is written back to the cookie.
+        set_cookie = response.headers.get('set-cookie', '')
+        self.assertIn('imbi_refresh_token=', set_cookie)
+        self.assertIn('HttpOnly', set_cookie)
+        self.assertIn('SameSite=strict', set_cookie)
+        self.assertIn('Path=/auth', set_cookie)
+
+    def test_refresh_token_missing_returns_401(self) -> None:
+        """No cookie and no body yields 401 rather than a 422."""
+        auth_settings = settings.Auth(
+            jwt_secret='test-secret-key-min-32-chars-long',
+        )
+        with mock.patch(
+            'imbi_api.settings.get_auth_settings',
+            return_value=auth_settings,
+        ):
+            response = self.client.post('/auth/token/refresh')
+        self.assertEqual(response.status_code, 401)
 
     def test_refresh_token_expired(self) -> None:
         """Test token refresh with expired token."""
@@ -2446,10 +2616,15 @@ class IdentityPluginLoginFlowTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 307)
         location = response.headers['location']
-        # Tokens land in the URL fragment, not the query string.
+        # Access token in the fragment; refresh token in an HttpOnly cookie.
         self.assertIn('/projects#', location)
         self.assertIn('access_token=', location)
-        self.assertIn('refresh_token=', location)
+        self.assertNotIn('refresh_token=', location)
+        set_cookie = response.headers.get('set-cookie', '')
+        self.assertIn('imbi_refresh_token=', set_cookie)
+        self.assertIn('HttpOnly', set_cookie)
+        self.assertIn('SameSite=strict', set_cookie)
+        self.assertIn('Path=/auth', set_cookie)
         upsert_mock.assert_awaited_once()
         # Verify the new user was upserted into the graph.
         merged = [c.args[0] for c in self.mock_db.merge.call_args_list]
