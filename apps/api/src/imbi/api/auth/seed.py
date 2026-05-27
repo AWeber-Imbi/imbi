@@ -88,6 +88,31 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'delete',
         'Delete link definitions',
     ),
+    # MCP server management
+    (
+        'mcp_server:create',
+        'mcp_server',
+        'create',
+        'Create MCP servers',
+    ),
+    (
+        'mcp_server:read',
+        'mcp_server',
+        'read',
+        'View MCP servers',
+    ),
+    (
+        'mcp_server:update',
+        'mcp_server',
+        'update',
+        'Update MCP servers',
+    ),
+    (
+        'mcp_server:delete',
+        'mcp_server',
+        'delete',
+        'Delete MCP servers',
+    ),
     # Environment management
     (
         'environment:create',

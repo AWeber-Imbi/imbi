@@ -27,7 +27,7 @@ dependencies = [
   "fastapi",
   "filetype",
   "httpx>=0.28.1,<1",
-  "imbi-common[databases,llm,sentry,server]>=2.6.0",
+  "imbi-common[databases,llm,sentry,server]>=2.6.1",
   "jinja2",
   "jsonpatch>=1.33",
   "nanoid>=2.0.0",
@@ -233,3 +233,6 @@ exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
+
+[tool.uv.sources]
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }
