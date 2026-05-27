@@ -3,6 +3,7 @@ Apache AGE Database Interface
 
 """
 
+import collections.abc
 import dataclasses
 import functools
 import json
@@ -326,6 +327,7 @@ class Graph:
         model_name: str = 'text',
         node_label: str | None = None,
         attribute: str | None = None,
+        node_ids: collections.abc.Collection[str] | None = None,
         limit: int = 10,
         distance_threshold: float | None = None,
     ) -> list[SearchResult]:
@@ -335,6 +337,12 @@ class Graph:
         performs a cosine similarity search against the
         ``embeddings`` table.  Results are ordered by
         distance (ascending = most similar).
+
+        When *node_ids* is provided the search is restricted to those
+        node ids in SQL (``node_id = ANY(...)``), so callers can scope
+        results (e.g. to a single organization) without fetching and
+        post-filtering a wider result set. An empty collection matches
+        nothing.
 
         """
         if not self.opened:
@@ -378,6 +386,11 @@ class Graph:
             query_sql += sql.SQL(
                 ' AND attribute = {attribute}',
             ).format(attribute=sql.Placeholder('attribute'))
+        if node_ids is not None:
+            params['node_ids'] = list(node_ids)
+            query_sql += sql.SQL(
+                ' AND node_id = ANY({node_ids})',
+            ).format(node_ids=sql.Placeholder('node_ids'))
         if distance_threshold is not None:
             params['threshold'] = distance_threshold
             query_sql += sql.SQL(

@@ -111,6 +111,42 @@ class AuthSettingsTestCase(unittest.TestCase):
         self.assertIsNotNone(config.encryption_key)
         self.assertGreater(len(config.encryption_key), 0)
 
+    def test_production_requires_secrets(self) -> None:
+        """Non-dev ENVIRONMENT refuses to boot with unset secrets."""
+        with unittest.mock.patch.dict(
+            os.environ, {'ENVIRONMENT': 'production'}, clear=True
+        ):
+            with self.assertRaises(pydantic.ValidationError):
+                settings.Auth(_env_file=None)
+
+    def test_production_requires_both_secrets(self) -> None:
+        """A non-dev env still refuses when only jwt_secret is provided."""
+        with unittest.mock.patch.dict(
+            os.environ, {'ENVIRONMENT': 'production'}, clear=True
+        ):
+            with self.assertRaises(pydantic.ValidationError):
+                settings.Auth(_env_file=None, jwt_secret='x' * 32)
+
+    def test_production_accepts_explicit_secrets(self) -> None:
+        """Explicitly-provided secrets satisfy the non-dev guard."""
+        with unittest.mock.patch.dict(
+            os.environ, {'ENVIRONMENT': 'production'}, clear=True
+        ):
+            config = settings.Auth(
+                _env_file=None,
+                jwt_secret='x' * 32,
+                encryption_key='k' * 32,
+            )
+        self.assertEqual(config.jwt_secret, 'x' * 32)
+        self.assertEqual(config.encryption_key, 'k' * 32)
+
+    def test_development_auto_generates_when_unset(self) -> None:
+        """Development (the default) still auto-generates both secrets."""
+        with unittest.mock.patch.dict(os.environ, {}, clear=True):
+            config = settings.Auth(_env_file=None)
+        self.assertTrue(config.jwt_secret)
+        self.assertTrue(config.encryption_key)
+
 
 class ReleasesSettingsTestCase(unittest.TestCase):
     """Test cases for Releases settings."""

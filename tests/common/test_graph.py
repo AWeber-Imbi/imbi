@@ -2,6 +2,7 @@
 
 import datetime
 import json
+import typing
 import unittest
 from unittest import mock
 
@@ -651,3 +652,78 @@ class SearchNodesDeserializationTests(
             org.created_at,
             datetime.datetime.fromisoformat(iso),
         )
+
+
+class SearchNodeIdScopingTests(unittest.IsolatedAsyncioTestCase):
+    """Verify search() pushes node_id scoping into the SQL."""
+
+    async def _capture_search(self, **kwargs: object) -> dict[str, object]:
+        g = graph.Graph()
+        g.opened = True
+        captured: dict[str, object] = {}
+
+        class FakeCursor:
+            async def __aenter__(self) -> typing.Self:
+                return self
+
+            async def __aexit__(self, *exc: object) -> bool:
+                return False
+
+            async def execute(
+                self, query: object, params: object = None
+            ) -> None:
+                captured['query'] = query
+                captured['params'] = params
+
+            async def fetchall(self) -> list[dict[str, object]]:
+                return []
+
+        class FakeConn:
+            def cursor(self, *a: object, **k: object) -> FakeCursor:
+                return FakeCursor()
+
+            async def __aenter__(self) -> typing.Self:
+                return self
+
+            async def __aexit__(self, *exc: object) -> bool:
+                return False
+
+        class FakePool:
+            def connection(self) -> FakeConn:
+                return FakeConn()
+
+        g.pool = FakePool()  # type: ignore[assignment]
+
+        async def fake_embed(query: str, model_name: str) -> list[float]:
+            return [0.1, 0.2, 0.3]
+
+        with (
+            mock.patch(
+                'imbi_common.graph.embeddings.aembed_one',
+                side_effect=fake_embed,
+            ),
+            mock.patch(
+                'imbi_common.graph.embeddings.get_dimensions',
+                return_value=3,
+            ),
+        ):
+            await g.search('q', **kwargs)  # type: ignore[arg-type]
+        return captured
+
+    async def test_node_ids_adds_scope_clause(self) -> None:
+        captured = await self._capture_search(node_ids=['a', 'b'])
+        params = typing.cast('dict[str, object]', captured['params'])
+        self.assertEqual(params['node_ids'], ['a', 'b'])
+        rendered = typing.cast(
+            'client.sql.Composed', captured['query']
+        ).as_string(None)
+        self.assertIn('node_id = ANY', rendered)
+
+    async def test_no_node_ids_omits_scope_clause(self) -> None:
+        captured = await self._capture_search()
+        params = typing.cast('dict[str, object]', captured['params'])
+        self.assertNotIn('node_ids', params)
+        rendered = typing.cast(
+            'client.sql.Composed', captured['query']
+        ).as_string(None)
+        self.assertNotIn('node_id = ANY', rendered)

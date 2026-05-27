@@ -1,4 +1,5 @@
 import logging
+import os
 import pathlib
 import secrets
 import tomllib
@@ -60,13 +61,33 @@ class Auth(pydantic_settings.BaseSettings):
     )
 
     @pydantic.model_validator(mode='after')
-    def generate_encryption_key_if_missing(self) -> Auth:
-        """Generate encryption key if not provided (Phase 5).
+    def validate_secrets(self) -> Auth:
+        """Enforce explicit secrets outside development; auto-generate in dev.
 
-        Auto-generates a Fernet encryption key if IMBI_AUTH_ENCRYPTION_KEY
-        is not set in the environment. Logs a warning since this key should
-        be stable across restarts in production.
+        When ``ENVIRONMENT`` is anything other than ``development`` (the
+        default), both ``IMBI_AUTH_JWT_SECRET`` and
+        ``IMBI_AUTH_ENCRYPTION_KEY`` must be configured explicitly: booting
+        with auto-generated per-process values would silently invalidate
+        every issued token (and make every encrypted value undecryptable)
+        on the next restart, so it is refused. In development the historical
+        auto-generation behavior is preserved.
+
+        ``model_fields_set`` distinguishes an explicitly-supplied value
+        (env var, config file, or kwarg) from a default, and is inspected
+        before the dev-mode auto-generation below mutates it.
         """
+        if os.getenv('ENVIRONMENT', 'development').lower() != 'development':
+            missing = sorted(
+                name
+                for name in ('jwt_secret', 'encryption_key')
+                if name not in self.model_fields_set
+            )
+            if missing:
+                raise ValueError(
+                    'These IMBI_AUTH_ settings must be set explicitly when '
+                    'ENVIRONMENT is not "development": ' + ', '.join(missing)
+                )
+
         if self.encryption_key is None:
             from cryptography import fernet
 
