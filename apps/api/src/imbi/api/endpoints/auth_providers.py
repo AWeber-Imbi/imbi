@@ -82,7 +82,11 @@ def _row_to_response(
 class AuthProviderResponse(pydantic.BaseModel):
     """Response model for an auth provider row."""
 
-    model_config = pydantic.ConfigDict(extra='allow')
+    # extra='ignore' (M13/M12): the underlying ServiceApplication row
+    # carries the encrypted ``client_secret``; dropping undeclared keys
+    # ensures it can never leak into the wire shape even if a future
+    # caller constructs this from a raw row instead of _row_to_response.
+    model_config = pydantic.ConfigDict(extra='ignore')
 
     slug: str
     name: str

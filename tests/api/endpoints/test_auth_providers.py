@@ -125,6 +125,41 @@ class AuthProvidersEndpointTestCase(unittest.TestCase):
         body = response.json()
         self.assertEqual({r['slug'] for r in body}, {'google', 'github'})
 
+    def test_list_response_never_leaks_client_secret(self) -> None:
+        # _row() seeds an encrypted client_secret on the raw graph row;
+        # the response must expose only has_secret, never the secret (M13).
+        self.db.execute.return_value = [_row('google')]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.get('/admin/auth-providers')
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertNotIn('client_secret', body[0])
+        self.assertTrue(body[0]['has_secret'])
+
+    def test_get_response_never_leaks_client_secret(self) -> None:
+        self.db.execute.return_value = [_row('google')]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.get('/admin/auth-providers/google')
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('client_secret', response.json())
+
+    def test_response_model_drops_injected_secret(self) -> None:
+        # Defense-in-depth: even if a future caller constructs the model
+        # from a raw row, extra='ignore' strips the secret (M13/M12).
+        from imbi_api.endpoints.auth_providers import AuthProviderResponse
+
+        resp = AuthProviderResponse(
+            slug='x',
+            name='X',
+            usage='login',
+            client_secret='enc:leak',  # type: ignore[call-arg]
+        )
+        self.assertNotIn('client_secret', resp.model_dump())
+
     def test_get_missing_returns_404(self) -> None:
         self.db.execute.return_value = []
         with mock.patch(
