@@ -341,7 +341,12 @@ async def disable_mfa(
             credential provided
 
     """
-    auth_settings = settings.get_auth_settings()
+    # MFA must actually be enabled to disable it. Checked once, ahead of
+    # both verification paths, so the password and OAuth-only flows agree
+    # (and so the OAuth path can reuse this fetch).
+    totp_data = await fetch_totp_secret(db, auth.require_user.email)
+    if totp_data is None or not totp_data.get('enabled', False):
+        raise fastapi.HTTPException(status_code=404, detail='MFA not enabled')
 
     # Verify identity based on account type
     if auth.require_user.password_hash:
@@ -367,20 +372,13 @@ async def disable_mfa(
                 detail='MFA code required to disable MFA (OAuth-only account)',
             )
 
-        # Fetch and verify MFA code
-        totp_data = await fetch_totp_secret(db, auth.require_user.email)
-        if totp_data is None or not totp_data.get('enabled', False):
-            raise fastapi.HTTPException(
-                status_code=404, detail='MFA not enabled'
-            )
-
+        auth_settings = settings.get_auth_settings()
         is_valid, _ = await verify_totp_code(
             totp_data,
             mfa_code,
             period=auth_settings.mfa_totp_period,
             digits=auth_settings.mfa_totp_digits,
         )
-
         if not is_valid:
             raise fastapi.HTTPException(
                 status_code=401, detail='Invalid MFA code'

@@ -357,7 +357,9 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
     def test_disable_mfa_success(self) -> None:
         """Test MFA disable with valid password."""
-        self.mock_db.execute.return_value = []
+        self.mock_db.execute.return_value = [
+            {'n': {'secret': 'x', 'enabled': True, 'backup_codes': []}},
+        ]
 
         with (
             mock.patch(
@@ -380,6 +382,10 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
     def test_disable_mfa_invalid_password(self) -> None:
         """Test MFA disable with invalid password."""
+        self.mock_db.execute.return_value = [
+            {'n': {'secret': 'x', 'enabled': True, 'backup_codes': []}},
+        ]
+
         with (
             mock.patch(
                 'imbi_api.settings.get_auth_settings',
@@ -428,6 +434,10 @@ class MFAEndpointsTestCase(unittest.TestCase):
             mock_get_current_user
         )
 
+        self.mock_db.execute.return_value = [
+            {'n': {'secret': 'x', 'enabled': True, 'backup_codes': []}},
+        ]
+
         with (
             mock.patch(
                 'imbi_api.settings.get_auth_settings',
@@ -450,6 +460,34 @@ class MFAEndpointsTestCase(unittest.TestCase):
                 response.json()['detail'],
                 'MFA code required to disable MFA (OAuth-only account)',
             )
+
+    def test_disable_mfa_password_user_not_enabled(self) -> None:
+        """Password user gets 404 when MFA was never enabled.
+
+        Mirrors the OAuth-only path: a pending (or absent) TOTPSecret
+        cannot be disabled even with a valid password.
+        """
+        self.mock_db.execute.return_value = []
+
+        with (
+            mock.patch(
+                'imbi_api.settings.get_auth_settings',
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            mock_settings.return_value = self.auth_settings
+
+            response = self.client.request(
+                'DELETE',
+                '/mfa/disable',
+                json={'current_password': 'testpassword123'},
+            )
+
+            self.assertEqual(response.status_code, 404)
+            self.assertEqual(response.json()['detail'], 'MFA not enabled')
 
     def test_verify_mfa_decryption_failure(self) -> None:
         """Test MFA verification when decryption fails."""
