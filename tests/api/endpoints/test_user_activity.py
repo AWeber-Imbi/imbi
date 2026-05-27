@@ -113,16 +113,16 @@ class WindowAndCursorTests(unittest.TestCase):
 
     def test_cursor_round_trip(self) -> None:
         ts = datetime.datetime(2026, 4, 1, 12, 0, tzinfo=datetime.UTC)
-        encoded = user_activity._encode_cursor(ts, 'evt-1')
-        decoded = user_activity._decode_cursor(encoded)
+        encoded = user_activity.encode_cursor(ts, 'evt-1')
+        decoded = user_activity.decode_cursor(encoded)
         self.assertIsNotNone(decoded)
         assert decoded is not None
         self.assertEqual(decoded[0], ts)
         self.assertEqual(decoded[1], 'evt-1')
 
     def test_cursor_decode_invalid(self) -> None:
-        self.assertIsNone(user_activity._decode_cursor(''))
-        self.assertIsNone(user_activity._decode_cursor('not-base64-!@#$'))
+        self.assertIsNone(user_activity.decode_cursor(''))
+        self.assertIsNone(user_activity.decode_cursor('not-base64-!@#$'))
 
     def test_resolve_tz_valid(self) -> None:
         zone = user_activity._resolve_tz('UTC')

@@ -159,9 +159,9 @@ class CursorCodecTests(unittest.TestCase):
             2026, 4, 17, 14, 22, 31, 412000, tzinfo=datetime.UTC
         )
         entry_id = 'V1StGXR8_Z5jdHi6B-myT'
-        encoded = operations_log._encode_cursor(ts, entry_id)
+        encoded = operations_log.encode_cursor(ts, entry_id)
         self.assertIsInstance(encoded, str)
-        decoded = operations_log._decode_cursor(encoded)
+        decoded = operations_log.decode_cursor(encoded)
         self.assertIsNotNone(decoded)
         assert decoded is not None
         decoded_ts, decoded_id = decoded
@@ -169,16 +169,16 @@ class CursorCodecTests(unittest.TestCase):
         self.assertEqual(decoded_id, entry_id)
 
     def test_decode_malformed_returns_none(self) -> None:
-        self.assertIsNone(operations_log._decode_cursor('!!!not-base64!!!'))
+        self.assertIsNone(operations_log.decode_cursor('!!!not-base64!!!'))
 
     def test_decode_wrong_format_returns_none(self) -> None:
         import base64
 
         payload = base64.urlsafe_b64encode(b'missing-separator').decode()
-        self.assertIsNone(operations_log._decode_cursor(payload))
+        self.assertIsNone(operations_log.decode_cursor(payload))
 
     def test_decode_empty_string_returns_none(self) -> None:
-        self.assertIsNone(operations_log._decode_cursor(''))
+        self.assertIsNone(operations_log.decode_cursor(''))
 
 
 class PostOperationLogTests(_OpsLogTestBase):
@@ -304,7 +304,7 @@ class ListEntriesTests(_OpsLogTestBase):
         match = re.search(r'<[^>]*cursor=([^&>]+)[^>]*>;\s*rel="next"', link)
         assert match is not None, link
         cursor = match.group(1)
-        decoded = operations_log._decode_cursor(cursor)
+        decoded = operations_log.decode_cursor(cursor)
         self.assertIsNotNone(decoded)
         assert decoded is not None
         ts, entry_id = decoded

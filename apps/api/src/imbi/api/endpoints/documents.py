@@ -7,11 +7,9 @@ by tag; ``documents_project_router`` handles CRUD scoped to a single
 project.
 """
 
-import base64
 import datetime
 import logging
 import typing
-import urllib.parse
 
 import fastapi
 import fastapi.responses
@@ -21,6 +19,11 @@ from imbi_common import graph
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
+from imbi_api.endpoints._pagination import (
+    build_link_header,
+    decode_cursor,
+    encode_cursor,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -71,57 +74,6 @@ class DocumentCreate(pydantic.BaseModel):
 
 class DocumentListResponse(pydantic.BaseModel):
     data: list[DocumentResponse]
-
-
-def _encode_cursor(created_at: datetime.datetime, document_id: str) -> str:
-    payload = f'{created_at.isoformat()}|{document_id}'.encode()
-    return base64.urlsafe_b64encode(payload).rstrip(b'=').decode('ascii')
-
-
-def _decode_cursor(
-    cursor: str,
-) -> tuple[datetime.datetime, str] | None:
-    if not cursor:
-        return None
-    padding = '=' * (-len(cursor) % 4)
-    try:
-        raw = base64.urlsafe_b64decode(cursor + padding).decode('utf-8')
-    except (ValueError, UnicodeDecodeError):
-        return None
-    if '|' not in raw:
-        return None
-    ts_str, _, document_id = raw.partition('|')
-    if not document_id:
-        return None
-    try:
-        ts = datetime.datetime.fromisoformat(ts_str)
-    except ValueError:
-        return None
-    if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=datetime.UTC)
-    return ts.astimezone(datetime.UTC), document_id
-
-
-def _build_link_header(
-    request: fastapi.Request, next_cursor: str | None
-) -> str:
-    url = request.url
-    base_params = {
-        k: v for k, v in request.query_params.multi_items() if k != 'cursor'
-    }
-
-    def _url_with(params: dict[str, str]) -> str:
-        base = f'{url.scheme}://{url.netloc}{url.path}'
-        if not params:
-            return base
-        return f'{base}?{urllib.parse.urlencode(params)}'
-
-    links = [f'<{_url_with(base_params)}>; rel="first"']
-    if next_cursor is not None:
-        next_params = dict(base_params)
-        next_params['cursor'] = next_cursor
-        links.append(f'<{_url_with(next_params)}>; rel="next"')
-    return ', '.join(links)
 
 
 def _parse_document_row(
@@ -335,7 +287,7 @@ async def _list_documents_impl(
 
     cursor_clause = ''
     if cursor is not None:
-        decoded = _decode_cursor(cursor)
+        decoded = decode_cursor(cursor)
         if decoded is None:
             raise fastapi.HTTPException(
                 status_code=400, detail='Invalid cursor'
@@ -374,7 +326,7 @@ async def _list_documents_impl(
         last_ts = last['created_at']
         if isinstance(last_ts, str):
             last_ts = datetime.datetime.fromisoformat(last_ts)
-        next_cursor = _encode_cursor(last_ts, last['id'])
+        next_cursor = encode_cursor(last_ts, last['id'])
 
     adapter = pydantic.TypeAdapter(list[DocumentResponse])
     response = fastapi.responses.JSONResponse(
@@ -385,7 +337,7 @@ async def _list_documents_impl(
             )
         }
     )
-    response.headers['Link'] = _build_link_header(request, next_cursor)
+    response.headers['Link'] = build_link_header(request, next_cursor)
     return response
 
 

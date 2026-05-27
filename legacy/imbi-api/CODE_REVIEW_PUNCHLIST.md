@@ -60,7 +60,7 @@ Severity legend: **C** Critical · **H** High · **M** Medium · **L** Low
 
 (Highest LOC-reduction ROI.)
 
-- [ ] **M1.** Extract pagination helpers (`_encode_cursor`, `_decode_cursor`, `_build_link_header`, `_parse_iso`) into `_helpers.py` / new `_pagination.py`. Duplicated verbatim across `src/imbi_api/endpoints/user_activity.py:661-710`, `operations_log.py:107-135, 337-357`, `documents.py:77+`, `events.py:48+`.
+- [x] **M1.** Extract pagination helpers (`_encode_cursor`, `_decode_cursor`, `_build_link_header`, `_parse_iso`) into `_helpers.py` / new `_pagination.py`. Duplicated verbatim across `src/imbi_api/endpoints/user_activity.py:661-710`, `operations_log.py:107-135, 337-357`, `documents.py:77+`, `events.py:48+`. — Added `src/imbi_api/endpoints/_pagination.py` with `encode_cursor`/`decode_cursor`/`parse_iso`/`build_link_header`; `events.py`, `documents.py`, `operations_log.py`, and `user_activity.py` now import them (dropping their orphaned `base64`/`urllib.parse`/`json` imports). New `tests/endpoints/test_pagination.py` covers the canonical module; the existing per-endpoint cursor tests were repointed at the shared names. Also collapsed the Python-2-style `except ValueError, UnicodeDecodeError:` clauses that lived in the removed copies (cf. C1).
 - [ ] **M2.** Extract `fetch_or_404` helper. Cloned in `releases.py:238`, `third_party_services.py:1015`, `documents.py:444`, `document_templates.py:204`, `plugin_entities.py:173`.
 - [ ] **M3.** Wrap `psycopg.errors.UniqueViolation → 409` in a decorator (26+ duplicates).
 - [ ] **M4.** Extract `_serialize_json_fields` / `_deserialize_json_fields` (defined in `third_party_services.py:56-83`); re-implemented ad hoc in `projects.py:873-878, 1873-1875` and `documents.py`.

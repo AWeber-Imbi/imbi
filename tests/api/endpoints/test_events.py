@@ -79,8 +79,8 @@ class _EventsTestBase(unittest.TestCase):
 class CursorCodecTests(unittest.TestCase):
     def test_round_trip(self) -> None:
         ts = datetime.datetime(2026, 4, 1, 12, 0, tzinfo=datetime.UTC)
-        encoded = events._encode_cursor(ts, 'evt-1')
-        decoded = events._decode_cursor(encoded)
+        encoded = events.encode_cursor(ts, 'evt-1')
+        decoded = events.decode_cursor(encoded)
         self.assertIsNotNone(decoded)
         assert decoded is not None
         decoded_ts, decoded_id = decoded
@@ -88,14 +88,14 @@ class CursorCodecTests(unittest.TestCase):
         self.assertEqual(decoded_id, 'evt-1')
 
     def test_decode_empty_returns_none(self) -> None:
-        self.assertIsNone(events._decode_cursor(''))
+        self.assertIsNone(events.decode_cursor(''))
 
     def test_decode_invalid_base64_returns_none(self) -> None:
         # Non-utf8 bytes via raw b64
         import base64
 
         bad = base64.urlsafe_b64encode(b'\xff\xfe\xfd').rstrip(b'=').decode()
-        self.assertIsNone(events._decode_cursor(bad))
+        self.assertIsNone(events.decode_cursor(bad))
 
     def test_decode_missing_separator_returns_none(self) -> None:
         import base64
@@ -103,7 +103,7 @@ class CursorCodecTests(unittest.TestCase):
         payload = (
             base64.urlsafe_b64encode(b'no-separator').rstrip(b'=').decode()
         )
-        self.assertIsNone(events._decode_cursor(payload))
+        self.assertIsNone(events.decode_cursor(payload))
 
     def test_decode_empty_id_returns_none(self) -> None:
         import base64
@@ -113,7 +113,7 @@ class CursorCodecTests(unittest.TestCase):
             .rstrip(b'=')
             .decode()
         )
-        self.assertIsNone(events._decode_cursor(payload))
+        self.assertIsNone(events.decode_cursor(payload))
 
     def test_decode_invalid_timestamp_returns_none(self) -> None:
         import base64
@@ -123,7 +123,7 @@ class CursorCodecTests(unittest.TestCase):
             .rstrip(b'=')
             .decode()
         )
-        self.assertIsNone(events._decode_cursor(payload))
+        self.assertIsNone(events.decode_cursor(payload))
 
     def test_naive_timestamp_gets_utc(self) -> None:
         import base64
@@ -133,7 +133,7 @@ class CursorCodecTests(unittest.TestCase):
             .rstrip(b'=')
             .decode()
         )
-        decoded = events._decode_cursor(payload)
+        decoded = events.decode_cursor(payload)
         assert decoded is not None
         ts, _ = decoded
         self.assertEqual(ts.tzinfo, datetime.UTC)
@@ -144,11 +144,11 @@ class ParseIsoTests(unittest.TestCase):
         import fastapi
 
         with self.assertRaises(fastapi.HTTPException) as ctx:
-            events._parse_iso('garbage', 'since')
+            events.parse_iso('garbage', 'since')
         self.assertEqual(ctx.exception.status_code, 400)
 
     def test_naive_treated_as_utc(self) -> None:
-        result = events._parse_iso('2026-04-01T12:00:00', 'since')
+        result = events.parse_iso('2026-04-01T12:00:00', 'since')
         self.assertEqual(result.tzinfo, datetime.UTC)
 
 
@@ -266,7 +266,7 @@ class GlobalListTests(_EventsTestBase):
 
     def test_list_with_valid_cursor_filters_query(self) -> None:
         self.mock_query.return_value = []
-        cursor = events._encode_cursor(
+        cursor = events.encode_cursor(
             datetime.datetime(2026, 4, 1, tzinfo=datetime.UTC), 'evt-x'
         )
         response = self.client.get('/events/', params={'cursor': cursor})
