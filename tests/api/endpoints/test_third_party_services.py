@@ -2,6 +2,7 @@
 
 import datetime
 import json
+import typing
 import unittest
 from unittest import mock
 
@@ -922,6 +923,91 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(
             response.json()[0]['third_party_service'],
+        )
+
+    @staticmethod
+    def _record(webhook_id: str, name: str) -> dict[str, typing.Any]:
+        return {
+            'webhook': {
+                'id': webhook_id,
+                'name': name,
+                'slug': name.lower(),
+                'notification_path': f'/{webhook_id}',
+            },
+            'tps': {'name': 'GitHub', 'slug': 'github'},
+            'identifier_selector': None,
+            'rules': [],
+        }
+
+    def test_list_service_webhooks_next_link_when_more(self) -> None:
+        # limit=1 with two rows returned -> one kept + a "next" link.
+        self.mock_db.execute.return_value = [
+            self._record('wh_a', 'Alpha'),
+            self._record('wh_b', 'Bravo'),
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(self.base_url, params={'limit': 1})
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['slug'], 'alpha')
+        link = response.headers['Link']
+        self.assertIn('rel="next"', link)
+        self.assertIn('cursor=', link)
+        # The query received the keyset params (row_limit = limit + 1).
+        self.assertEqual(
+            self.mock_db.execute.call_args.args[1]['row_limit'], 2
+        )
+
+    def test_list_service_webhooks_first_link_only_when_no_more(self) -> None:
+        self.mock_db.execute.return_value = [self._record('wh_a', 'Alpha')]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(self.base_url, params={'limit': 50})
+
+        self.assertEqual(response.status_code, 200)
+        link = response.headers['Link']
+        self.assertIn('rel="first"', link)
+        self.assertNotIn('rel="next"', link)
+
+    def test_list_service_webhooks_cursor_passed_to_query(self) -> None:
+        from imbi_api.endpoints._pagination import encode_keyset
+
+        cursor = encode_keyset('Alpha', 'wh_a')
+        self.mock_db.execute.return_value = []
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                self.base_url, params={'cursor': cursor}
+            )
+
+        self.assertEqual(response.status_code, 200)
+        params = self.mock_db.execute.call_args.args[1]
+        self.assertEqual(params['cursor_name'], 'Alpha')
+        self.assertEqual(params['cursor_id'], 'wh_a')
+
+    def test_list_service_webhooks_invalid_cursor_400(self) -> None:
+        response = self.client.get(
+            self.base_url, params={'cursor': '!!!not-valid!!!'}
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_list_service_webhooks_limit_out_of_range_400(self) -> None:
+        self.assertEqual(
+            self.client.get(self.base_url, params={'limit': 0}).status_code,
+            400,
+        )
+        self.assertEqual(
+            self.client.get(self.base_url, params={'limit': 501}).status_code,
+            400,
         )
 
 

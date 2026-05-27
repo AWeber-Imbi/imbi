@@ -7,6 +7,7 @@ import logging
 import typing
 
 import fastapi
+import fastapi.responses
 import nanoid
 import psycopg
 import pydantic
@@ -16,6 +17,11 @@ from imbi_common.auth import encryption
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.domain import models
+from imbi_api.endpoints._pagination import (
+    build_link_header,
+    decode_keyset,
+    encode_keyset,
+)
 from imbi_api.endpoints.project_deployments import (
     ResyncProjectError,
     ResyncSummary,
@@ -24,6 +30,9 @@ from imbi_api.endpoints.project_deployments import (
 from imbi_api.graph_sql import props_template, set_clause
 
 LOGGER = logging.getLogger(__name__)
+
+WEBHOOK_DEFAULT_LIMIT: int = 50
+WEBHOOK_MAX_LIMIT: int = 500
 
 #: Cap on concurrent per-project resync calls when fanning out from a
 #: TPS-wide trigger.  Keeps a single admin click from saturating the
@@ -628,8 +637,10 @@ async def resync_service_deployments(
 
 @third_party_services_router.get(
     '/{slug}/webhooks/',
+    response_model=list[models.WebhookResponse],
 )
 async def list_service_webhooks(
+    request: fastapi.Request,
     org_slug: str,
     slug: str,
     db: graph.Pool,
@@ -639,13 +650,48 @@ async def list_service_webhooks(
             permissions.require_permission('webhook:read'),
         ),
     ],
-) -> list[models.WebhookResponse]:
-    """List webhooks linked to a third-party service."""
-    query: typing.LiteralString = """
+    limit: int = WEBHOOK_DEFAULT_LIMIT,
+    cursor: str | None = None,
+) -> fastapi.Response:
+    """List webhooks linked to a third-party service.
+
+    Keyset-paginated on ``(name, id)`` with an RFC 8288 ``Link`` header;
+    the body remains a bare JSON array of webhooks.
+    """
+    if limit < 1 or limit > WEBHOOK_MAX_LIMIT:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'limit must be 1..{WEBHOOK_MAX_LIMIT}',
+        )
+
+    params: dict[str, typing.Any] = {
+        'slug': slug,
+        'org_slug': org_slug,
+        'row_limit': limit + 1,
+    }
+    cursor_clause = ''
+    if cursor is not None:
+        decoded = decode_keyset(cursor)
+        if decoded is None:
+            raise fastapi.HTTPException(
+                status_code=400, detail='Invalid cursor'
+            )
+        cursor_name, cursor_id = decoded
+        cursor_clause = (
+            ' WHERE w.name > {cursor_name}'
+            ' OR (w.name = {cursor_name} AND w.id > {cursor_id})'
+        )
+        params['cursor_name'] = cursor_name
+        params['cursor_id'] = cursor_id
+
+    query: str = (
+        """
     MATCH (w:Webhook)-[impl:IMPLEMENTED_BY]->
           (tps:ThirdPartyService {{slug: {slug}}})
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    MATCH (w)-[:BELONGS_TO]->(o)
+    MATCH (w)-[:BELONGS_TO]->(o)"""
+        + cursor_clause
+        + """
     OPTIONAL MATCH (r:WebhookRule)-[:ACTIONS]->(w)
     WITH w, tps, impl, r
     ORDER BY r.ordinal
@@ -663,11 +709,13 @@ async def list_service_webhooks(
             | x {{.filter_expression, .handler,
                   .handler_config}}]
                AS rules
-    ORDER BY w.name
+    ORDER BY w.name, w.id
+    LIMIT {row_limit}
     """
+    )
     records = await db.execute(
         query,
-        {'slug': slug, 'org_slug': org_slug},
+        params,
         [
             'webhook',
             'tps',
@@ -676,7 +724,19 @@ async def list_service_webhooks(
             'rules',
         ],
     )
-    return [models.WebhookResponse.from_graph_record(r) for r in records]
+    responses = [models.WebhookResponse.from_graph_record(r) for r in records]
+    next_cursor: str | None = None
+    if len(responses) > limit:
+        responses = responses[:limit]
+        last = responses[-1]
+        next_cursor = encode_keyset(last.name, last.id)
+
+    adapter = pydantic.TypeAdapter(list[models.WebhookResponse])
+    response = fastapi.responses.JSONResponse(
+        adapter.dump_python(responses, mode='json')
+    )
+    response.headers['Link'] = build_link_header(request, next_cursor)
+    return response
 
 
 # --- Service Application endpoints ---

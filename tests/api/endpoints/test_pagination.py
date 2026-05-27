@@ -46,6 +46,34 @@ class CursorTests(unittest.TestCase):
         self.assertIsNone(_pagination.decode_cursor(payload.decode('ascii')))
 
 
+class KeysetTests(unittest.TestCase):
+    def test_round_trip(self) -> None:
+        cursor = _pagination.encode_keyset('Alpha', 'wh_a')
+        self.assertEqual(_pagination.decode_keyset(cursor), ('Alpha', 'wh_a'))
+
+    def test_sort_value_with_pipe_survives(self) -> None:
+        cursor = _pagination.encode_keyset('a|b|c', 'wh_a')
+        self.assertEqual(_pagination.decode_keyset(cursor), ('a|b|c', 'wh_a'))
+
+    def test_decode_empty_returns_none(self) -> None:
+        self.assertIsNone(_pagination.decode_keyset(''))
+
+    def test_decode_invalid_base64_returns_none(self) -> None:
+        self.assertIsNone(_pagination.decode_keyset('!!!nope!!!'))
+
+    def test_decode_missing_separator_returns_none(self) -> None:
+        import base64
+
+        payload = base64.urlsafe_b64encode(b'noseparator').rstrip(b'=')
+        self.assertIsNone(_pagination.decode_keyset(payload.decode('ascii')))
+
+    def test_decode_empty_id_returns_none(self) -> None:
+        import base64
+
+        payload = base64.urlsafe_b64encode(b'name|').rstrip(b'=')
+        self.assertIsNone(_pagination.decode_keyset(payload.decode('ascii')))
+
+
 class ParseIsoTests(unittest.TestCase):
     def test_naive_treated_as_utc(self) -> None:
         parsed = _pagination.parse_iso('2026-05-26T12:00:00', 'since')

@@ -50,6 +50,35 @@ def decode_cursor(
     return ts.astimezone(datetime.UTC), entry_id
 
 
+def encode_keyset(sort_value: str, entry_id: str) -> str:
+    """Encode a generic ``(sort_value, id)`` string keyset cursor.
+
+    Unlike :func:`encode_cursor`, the sort key is an opaque string (e.g.
+    a name) rather than a timestamp; no UTC normalization is applied.
+    """
+    payload = f'{sort_value}|{entry_id}'.encode()
+    return base64.urlsafe_b64encode(payload).rstrip(b'=').decode('ascii')
+
+
+def decode_keyset(cursor: str) -> tuple[str, str] | None:
+    """Decode a generic ``(sort_value, id)`` cursor; None if malformed.
+
+    Splits on the final ``|`` so a sort value containing ``|`` survives
+    the round trip — the id (a ``|``-free nanoid) is always the tail.
+    """
+    if not cursor:
+        return None
+    padding = '=' * (-len(cursor) % 4)
+    try:
+        raw = base64.urlsafe_b64decode(cursor + padding).decode('utf-8')
+    except ValueError, UnicodeDecodeError:
+        return None
+    sort_value, sep, entry_id = raw.rpartition('|')
+    if not sep or not entry_id:
+        return None
+    return sort_value, entry_id
+
+
 def parse_iso(value: str, field_name: str) -> datetime.datetime:
     """Parse an ISO-8601 query-param value, raising HTTP 400 on failure.
 
@@ -98,6 +127,8 @@ def build_link_header(
 __all__ = [
     'build_link_header',
     'decode_cursor',
+    'decode_keyset',
     'encode_cursor',
+    'encode_keyset',
     'parse_iso',
 ]
