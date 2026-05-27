@@ -1223,6 +1223,100 @@ class ProjectEndpointsTestCase(unittest.TestCase):
         query = self.mock_db.execute.call_args.args[0]
         self.assertNotIn('coalesce(p.archived, false)', query)
 
+    # -- Attribute filtering -------------------------------------------
+
+    def _framework_blueprint(self) -> models.Blueprint:
+        return models.Blueprint(
+            name='API Facts',
+            slug='apis-facts',
+            type='Project',
+            json_schema=models.Schema.model_validate(
+                {
+                    'type': 'object',
+                    'properties': {
+                        'framework': {
+                            'type': 'string',
+                            'enum': ['FastAPI', 'http-service-lib'],
+                        },
+                    },
+                }
+            ),
+        )
+
+    def _list_with_filter(self, query_string: str) -> typing.Any:
+        self.mock_db.match.return_value = [self._framework_blueprint()]
+        self.mock_db.execute.return_value = []
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            return self.client.get(
+                f'/organizations/engineering/projects/?{query_string}',
+            )
+
+    def test_filter_ne_excludes_unset(self) -> None:
+        """``ne`` builds a plain inequality (unset rows excluded)."""
+        response = self._list_with_filter(
+            'filter=framework:ne:http-service-lib'
+        )
+        self.assertEqual(response.status_code, 200)
+        query = self.mock_db.execute.call_args.args[0]
+        params = self.mock_db.execute.call_args.args[1]
+        self.assertIn('p.framework <> {f0_0}', query)
+        self.assertNotIn('IS NULL', query)
+        self.assertEqual(params['f0_0'], 'http-service-lib')
+
+    def test_filter_eq_builds_equality(self) -> None:
+        response = self._list_with_filter('filter=framework:eq:FastAPI')
+        self.assertEqual(response.status_code, 200)
+        query = self.mock_db.execute.call_args.args[0]
+        self.assertIn('p.framework = {f0_0}', query)
+
+    def test_filter_exists(self) -> None:
+        response = self._list_with_filter('filter=framework:exists')
+        self.assertEqual(response.status_code, 200)
+        query = self.mock_db.execute.call_args.args[0]
+        self.assertIn('p.framework IS NOT NULL', query)
+
+    def test_filter_not_in_uses_and_of_inequalities(self) -> None:
+        response = self._list_with_filter(
+            'filter=framework:not_in:FastAPI,http-service-lib'
+        )
+        self.assertEqual(response.status_code, 200)
+        query = self.mock_db.execute.call_args.args[0]
+        self.assertIn(
+            '(p.framework <> {f0_0} AND p.framework <> {f0_1})', query
+        )
+
+    def test_filter_unknown_field_rejected(self) -> None:
+        response = self._list_with_filter('filter=bogus:eq:x')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('not filterable', response.json()['detail'])
+
+    def test_filter_unknown_operator_rejected(self) -> None:
+        response = self._list_with_filter('filter=framework:like:x')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Unknown filter operator', response.json()['detail'])
+
+    def test_filter_malformed_rejected(self) -> None:
+        response = self._list_with_filter('filter=framework')
+        self.assertEqual(response.status_code, 400)
+
+    def test_filter_exists_with_value_rejected(self) -> None:
+        response = self._list_with_filter('filter=framework:exists:x')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('does not accept a value', response.json()['detail'])
+
+    def test_filter_eq_without_value_rejected(self) -> None:
+        response = self._list_with_filter('filter=framework:eq')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('requires a value', response.json()['detail'])
+
+    def test_filter_ne_without_value_rejected(self) -> None:
+        response = self._list_with_filter('filter=framework:ne')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('requires a value', response.json()['detail'])
+
 
 class _RelationshipsTestBase(unittest.TestCase):
     """Shared setup for relationship endpoint tests."""

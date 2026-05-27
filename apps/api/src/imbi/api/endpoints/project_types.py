@@ -9,6 +9,7 @@ import psycopg.errors
 import pydantic
 from imbi_common import blueprints, graph, models
 
+from imbi_api import blueprint_attributes
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.graph_sql import props_template, set_clause
@@ -145,11 +146,17 @@ async def list_project_types(
             permissions.require_permission('project_type:read'),
         ),
     ],
+    include_schema: bool = False,
 ) -> list[dict[str, typing.Any]]:
     """List all project types in an organization.
 
     Parameters:
         org_slug: Organization slug from URL path.
+        include_schema: When true, each project type gains a
+            ``schema`` key listing the blueprint-defined attributes
+            (``field``, ``type``, ``format``, ``enum``) that projects
+            of that type can be filtered on via the project listing's
+            ``filter`` parameter.
 
     Returns:
         Project types ordered by name, each including their
@@ -170,6 +177,11 @@ async def list_project_types(
         {'org_slug': org_slug},
         columns=['pt', 'o', 'project_count'],
     )
+    bps = (
+        await blueprint_attributes.project_blueprints(db)
+        if include_schema
+        else []
+    )
     for record in records:
         pt = graph.parse_agtype(record['pt'])
         org = graph.parse_agtype(record['o'])
@@ -178,6 +190,13 @@ async def list_project_types(
         pt['relationships'] = _project_type_relationships(
             request, org_slug, pt['slug'], pc or 0
         )
+        if include_schema:
+            pt['schema'] = [
+                attr.model_dump()
+                for attr in blueprint_attributes.resolve(
+                    bps, pt['slug']
+                ).values()
+            ]
         project_types.append(pt)
     return project_types
 

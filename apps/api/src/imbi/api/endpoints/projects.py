@@ -8,6 +8,7 @@ import asyncio
 import datetime
 import json
 import logging
+import re
 import typing
 
 import fastapi
@@ -18,6 +19,7 @@ from imbi_common import blueprints, graph, models
 from imbi_common.clickhouse import client as ch_client
 from imbi_common.scoring import compute_score
 
+from imbi_api import blueprint_attributes
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.domain import scoring as scoring_models
@@ -1075,6 +1077,95 @@ async def _resolve_release_display_names(
             env_map[slug] = info.model_copy(update={'performed_by': name})
 
 
+_FILTER_FIELD_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+_FILTER_OPS = frozenset({'eq', 'ne', 'in', 'not_in', 'exists', 'not_exists'})
+
+
+def _build_attribute_filter(
+    filters: list[str],
+    whitelist: dict[str, blueprint_attributes.FilterableAttribute],
+) -> tuple[str, dict[str, typing.Any]]:
+    """Translate ``field:op[:value]`` predicates into a Cypher WHERE.
+
+    Returns ``(fragment, params)`` where ``fragment`` is empty or a
+    ``WHERE`` clause (predicates joined by AND) referencing the ``p``
+    project node, and ``params`` holds the bound values. ``ne`` and
+    ``not_in`` use plain inequality, so projects without the attribute
+    set are excluded.
+
+    Field names are validated against ``whitelist`` (and an identifier
+    pattern) before being interpolated; values are always bound as
+    query parameters. Raises ``HTTPException`` (400) on malformed
+    predicates, unknown operators, or non-filterable fields.
+    """
+    clauses: list[str] = []
+    params: dict[str, typing.Any] = {}
+    for index, raw in enumerate(filters):
+        field, _, rest = raw.partition(':')
+        op, _, value = rest.partition(':')
+        if not field or not op:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=f'Invalid filter {raw!r}; expected field:op[:value]',
+            )
+        if op not in _FILTER_OPS:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=(
+                    f'Unknown filter operator {op!r}; valid operators are '
+                    f'{", ".join(sorted(_FILTER_OPS))}'
+                ),
+            )
+        if field not in whitelist or not _FILTER_FIELD_RE.match(field):
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=(
+                    f'Attribute {field!r} is not filterable for this '
+                    'project type'
+                ),
+            )
+        if op in ('exists', 'not_exists'):
+            if value:
+                raise fastapi.HTTPException(
+                    status_code=400,
+                    detail=(
+                        f'Filter {raw!r} does not accept a value for '
+                        f'operator {op!r}'
+                    ),
+                )
+            null_op = 'IS NOT NULL' if op == 'exists' else 'IS NULL'
+            clauses.append(f'p.{field} {null_op}')
+            continue
+        if op in ('eq', 'ne') and value == '':
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=f'Filter {raw!r} requires a value',
+            )
+        values = (
+            [v for v in value.split(',') if v]
+            if op in ('in', 'not_in')
+            else [value]
+        )
+        if not values:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=f'Filter {raw!r} requires a value',
+            )
+        comparator = '=' if op in ('eq', 'in') else '<>'
+        joiner = ' OR ' if op in ('eq', 'in') else ' AND '
+        terms: list[str] = []
+        for value_index, item in enumerate(values):
+            key = f'f{index}_{value_index}'
+            params[key] = item
+            terms.append(f'p.{field} {comparator} {{{key}}}')
+        clauses.append(
+            terms[0] if len(terms) == 1 else '(' + joiner.join(terms) + ')'
+        )
+    if not clauses:
+        return '', params
+    return 'WHERE ' + ' AND '.join(clauses), params
+
+
 @projects_router.get('/', name='list_projects')
 async def list_projects(
     org_slug: str,
@@ -1089,11 +1180,31 @@ async def list_projects(
     project_type: str | None = None,
     include_archived: bool = False,
     slim: bool = False,
+    filters: typing.Annotated[
+        list[str] | None,
+        fastapi.Query(
+            alias='filter',
+            description=(
+                'Filter projects by blueprint attribute, as '
+                '``field:op[:value]`` (repeatable; combined with AND). '
+                'Operators: eq, ne, in, not_in (comma-separated values), '
+                'exists, not_exists. ne/not_in exclude projects where the '
+                'attribute is unset. Valid fields and enum values per '
+                'project type come from the project-type listing with '
+                '``include_schema=true``. Example: '
+                'framework:ne:http-service-lib'
+            ),
+        ),
+    ] = None,
 ) -> list[ProjectListItem] | list[ProjectResponse]:
     """List projects in the organization.
 
     By default archived projects are excluded.  Pass
     ``include_archived=true`` to include them.
+
+    ``filter`` predicates match against blueprint-defined attributes
+    stored on the project (e.g. ``framework``, ``programming_language``)
+    using the field/operator grammar described on the parameter.
 
     ``slim=true`` returns a stripped payload tailored to the
     projects-list UI: only the fields the list view reads (id, name,
@@ -1116,7 +1227,16 @@ async def list_projects(
     return_fragment: typing.LiteralString = (
         _SLIM_RETURN_FRAGMENT if slim else _RETURN_FRAGMENT
     )
-    query: typing.LiteralString = (
+    attr_filter = ''
+    attr_params: dict[str, typing.Any] = {}
+    if filters:
+        whitelist = blueprint_attributes.resolve(
+            await blueprint_attributes.project_blueprints(db),
+            project_type,
+        )
+        fragment, attr_params = _build_attribute_filter(filters, whitelist)
+        attr_filter = '\n    ' + fragment + '\n' if fragment else ''
+    query: str = (
         """
     MATCH (p:Project)-[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
@@ -1126,6 +1246,7 @@ async def list_projects(
     WITH DISTINCT p, o
     """
         + type_filter
+        + attr_filter
         + return_fragment
         + """
     ORDER BY p.name
@@ -1139,6 +1260,7 @@ async def list_projects(
         {
             'org_slug': org_slug,
             'project_type': project_type,
+            **attr_params,
         },
         columns,
     )

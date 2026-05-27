@@ -50,8 +50,8 @@ class ProjectTypeEndpointsTestCase(unittest.TestCase):
         )
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -225,6 +225,87 @@ class ProjectTypeEndpointsTestCase(unittest.TestCase):
             data[1]['relationships']['projects']['count'],
             8,
         )
+
+    def test_list_project_types_include_schema(self) -> None:
+        """``include_schema=true`` attaches filterable attributes."""
+        self.mock_db.execute.return_value = [
+            {
+                'pt': {'name': 'API Service', 'slug': 'apis'},
+                'o': {'name': 'Engineering', 'slug': 'engineering'},
+                'project_count': 1,
+            },
+            {
+                'pt': {'name': 'Consumer', 'slug': 'consumers'},
+                'o': {'name': 'Engineering', 'slug': 'engineering'},
+                'project_count': 0,
+            },
+        ]
+        self.mock_db.match.return_value = [
+            models.Blueprint(
+                name='API Facts',
+                slug='apis-facts',
+                type='Project',
+                filter={'project_type': ['apis']},  # type: ignore[arg-type]
+                json_schema=models.Schema.model_validate(
+                    {
+                        'type': 'object',
+                        'properties': {
+                            'framework': {
+                                'type': 'string',
+                                'enum': ['FastAPI', 'http-service-lib'],
+                            }
+                        },
+                    }
+                ),
+            )
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                '/organizations/engineering/project-types/'
+                '?include_schema=true',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(
+            data[0]['schema'],
+            [
+                {
+                    'field': 'framework',
+                    'type': 'string',
+                    'format': None,
+                    'enum': ['FastAPI', 'http-service-lib'],
+                }
+            ],
+        )
+        # The blueprint is filtered to ``apis``; ``consumers`` gets nothing.
+        self.assertEqual(data[1]['schema'], [])
+
+    def test_list_project_types_omits_schema_by_default(self) -> None:
+        """Without the flag, no ``schema`` key and no blueprint fetch."""
+        self.mock_db.execute.return_value = [
+            {
+                'pt': {'name': 'API Service', 'slug': 'apis'},
+                'o': {'name': 'Engineering', 'slug': 'engineering'},
+                'project_count': 1,
+            }
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                '/organizations/engineering/project-types/',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('schema', response.json()[0])
+        self.mock_db.match.assert_not_called()
 
     def test_get_project_type(self) -> None:
         """Test retrieving a single project type."""
