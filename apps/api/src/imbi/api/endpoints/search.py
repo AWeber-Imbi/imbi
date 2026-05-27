@@ -137,6 +137,7 @@ async def search(
             q,
             model_name=model,
             node_label=node_label,
+            attribute=attribute,
             limit=batch_size,
             distance_threshold=threshold,
         )
@@ -146,8 +147,6 @@ async def search(
                 continue
             seen.add(r.node_id)
             if r.node_id not in org_node_ids:
-                continue
-            if attribute is not None and r.attribute != attribute:
                 continue
             out.append(
                 SearchResult(

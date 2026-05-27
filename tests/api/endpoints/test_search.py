@@ -132,18 +132,29 @@ class SearchEndpointTestCase(unittest.TestCase):
         call_kwargs = self.mock_db.search.call_args.kwargs
         self.assertEqual(call_kwargs['node_label'], 'Team')
 
-    def test_attribute_filter(self) -> None:
-        """attribute is post-filtered after org-scoping."""
-        self._setup_org(node_ids=['a', 'b'])
+    def test_attribute_filter_pushed_to_db_search(self) -> None:
+        """attribute is pushed into db.search, not post-filtered."""
+        self._setup_org(node_ids=['a'])
+        # db.search does the attribute filtering server-side, so the mock
+        # returns only the matching row.
         self.mock_db.search.return_value = [
             self._make_result(node_id='a', attribute='name'),
-            self._make_result(node_id='b', attribute='description'),
         ]
         response = self.client.get(f'{_BASE_URL}?q=foo&attribute=name')
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['node_id'], 'a')
+        self.assertEqual(
+            self.mock_db.search.call_args.kwargs['attribute'], 'name'
+        )
+
+    def test_attribute_defaults_to_none(self) -> None:
+        """No attribute query param passes attribute=None to db.search."""
+        self._setup_org()
+        self.mock_db.search.return_value = []
+        self.client.get(f'{_BASE_URL}?q=foo')
+        self.assertIsNone(self.mock_db.search.call_args.kwargs['attribute'])
 
     def test_initial_batch_at_least_limit(self) -> None:
         """First db.search call uses at least limit rows."""
