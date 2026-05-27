@@ -5,7 +5,11 @@ import { fireEvent, render, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
-import type { ArchiveProjectResponse, Project } from '@/types'
+import type {
+  ArchiveProjectResponse,
+  PluginAssignmentResponse,
+  Project,
+} from '@/types'
 
 import { ProjectSettingsTab } from '../ProjectSettingsTab'
 
@@ -48,9 +52,14 @@ vi.mock('@/components/project/ProjectPluginsSection', () => ({
 vi.mock('@/contexts/OrganizationContext', () => ({
   useOrganization: () => ({ selectedOrganization: { slug: 'acme' } }),
 }))
+// Mutable so individual tests can vary admin status / permissions.
+let mockAuthUser: { is_admin: boolean; permissions: string[] } = {
+  is_admin: false,
+  permissions: [],
+}
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({ user: { is_admin: false, permissions: [] } }),
+  useAuth: () => ({ user: mockAuthUser }),
 }))
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/hooks/useProjectPatch', () => ({
@@ -68,6 +77,17 @@ const ARCHIVED_PROJECT = {
   slug: 'demo',
   team: { name: 'Team', organization: { name: 'Acme', slug: 'acme' } },
 } as Project
+
+const DEPLOYMENT_PLUGIN = {
+  default: true,
+  label: 'Deploy',
+  options: {},
+  plugin_id: 'dep-1',
+  plugin_slug: 'github-deploy',
+  source: 'project',
+  supports_deployment_sync: true,
+  tab: 'deployment',
+} as PluginAssignmentResponse
 
 function renderTab() {
   const client = new QueryClient({
@@ -90,6 +110,7 @@ describe('ProjectSettingsTab archive lifecycle results', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
+    mockAuthUser = { is_admin: false, permissions: [] }
     vi.mocked(endpoints.listEnvironments).mockResolvedValue([])
     vi.mocked(endpoints.listLinkDefinitions).mockResolvedValue([])
     vi.mocked(endpoints.listProjectPlugins).mockResolvedValue([])
@@ -141,5 +162,58 @@ describe('ProjectSettingsTab archive lifecycle results', () => {
       expect(toast.success).toHaveBeenCalledWith('Project restored')
     })
     expect(toast.error).not.toHaveBeenCalled()
+  })
+})
+
+describe('ProjectSettingsTab utility functions gating', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAuthUser = { is_admin: false, permissions: [] }
+    vi.mocked(endpoints.listEnvironments).mockResolvedValue([])
+    vi.mocked(endpoints.listLinkDefinitions).mockResolvedValue([])
+    vi.mocked(endpoints.listProjectPlugins).mockResolvedValue([])
+  })
+
+  it('hides the card when the user has neither permission', async () => {
+    vi.mocked(endpoints.listProjectPlugins).mockResolvedValue([
+      DEPLOYMENT_PLUGIN,
+    ])
+    const { queryByText } = renderTab()
+    await waitFor(() => expect(endpoints.listProjectPlugins).toHaveBeenCalled())
+    expect(queryByText('Utility Functions')).not.toBeInTheDocument()
+  })
+
+  it('shows the card with only Recompute Score for rescore permission', async () => {
+    mockAuthUser = { is_admin: false, permissions: ['scoring_policy:rescore'] }
+    const { queryByRole, queryByText } = renderTab()
+    await waitFor(() =>
+      expect(queryByText('Utility Functions')).toBeInTheDocument(),
+    )
+    expect(
+      queryByRole('button', { name: 'Recompute Score' }),
+    ).toBeInTheDocument()
+    expect(
+      queryByRole('button', { name: 'Sync Deployments' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows Sync Deployments for project:deployment:write without admin', async () => {
+    mockAuthUser = {
+      is_admin: false,
+      permissions: ['project:deployment:write'],
+    }
+    vi.mocked(endpoints.listProjectPlugins).mockResolvedValue([
+      DEPLOYMENT_PLUGIN,
+    ])
+    const { queryByRole, queryByText } = renderTab()
+    await waitFor(() =>
+      expect(queryByText('Utility Functions')).toBeInTheDocument(),
+    )
+    expect(
+      queryByRole('button', { name: 'Sync Deployments' }),
+    ).toBeInTheDocument()
+    expect(
+      queryByRole('button', { name: 'Recompute Score' }),
+    ).not.toBeInTheDocument()
   })
 })
