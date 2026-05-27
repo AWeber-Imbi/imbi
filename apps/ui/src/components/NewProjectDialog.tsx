@@ -84,10 +84,10 @@ export function NewProjectDialog({
   const handleSave = () => {
     if (!orgSlug || !canProceed || createMutation.isPending) return
     const projectData: ProjectCreate = {
-      description: description || null,
+      description: description.trim() || null,
       environment_slugs:
         selectedEnvSlugs.length > 0 ? selectedEnvSlugs : undefined,
-      name,
+      name: name.trim(),
       project_type_slugs: [projectTypeSlug],
       slug,
       team_slug: teamSlug,
