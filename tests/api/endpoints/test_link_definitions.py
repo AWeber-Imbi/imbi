@@ -328,6 +328,63 @@ class LinkDefinitionEndpointsTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_patch_preserves_string_icon_byte_for_byte(self) -> None:
+        """Patching a non-icon field must not mutate a string ``icon``.
+
+        ``icon`` is an ``HttpUrl | str`` union. Under pydantic smart-union
+        mode a string value binds to the ``str`` arm and is left untouched,
+        so the ``model_dump(mode='json')`` round-trip in the patch path is
+        byte-stable. A bare-domain URL (no trailing slash) is the canary:
+        if a future pydantic upgrade switched to left-to-right union
+        resolution, the string would be coerced to ``HttpUrl`` and gain a
+        trailing slash. This guards M11.
+        """
+        from imbi_common import models as common_models
+
+        bare_icon = 'https://example.com'
+        existing_ld = {
+            'name': 'Repo',
+            'slug': 'repo',
+            'description': None,
+            'icon': bare_icon,
+            'url_template': 'https://github.com/{}',
+        }
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'ld': existing_ld,
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                }
+            ],
+            [
+                {
+                    'ld': {**existing_ld, 'name': 'Repository'},
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                    'project_count': 0,
+                }
+            ],
+        ]
+
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+                return_value=common_models.LinkDefinition,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/link-definitions/repo',
+                json=[
+                    {'op': 'replace', 'path': '/name', 'value': 'Repository'}
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        persist_params = self.mock_db.execute.call_args_list[1].args[1]
+        self.assertEqual(persist_params['icon'], bare_icon)
+
     def test_patch_link_definition_not_found(self) -> None:
         """Test patching non-existent link definition returns 404."""
         from imbi_common import models as common_models
