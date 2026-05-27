@@ -24,7 +24,6 @@ export function useAuth(): UseAuthReturn {
   // tick would otherwise re-render every consumer of useAuth, which sits at
   // the app root and would cascade through the whole tree.
   const accessToken = useAuthStore((s) => s.accessToken)
-  const refreshToken = useAuthStore((s) => s.refreshToken)
   const clearTokens = useAuthStore((s) => s.clearTokens)
   const setTokens = useAuthStore((s) => s.setTokens)
   const getUsername = useAuthStore((s) => s.getUsername)
@@ -69,7 +68,7 @@ export function useAuth(): UseAuthReturn {
       console.error('[Auth] Login failed:', error)
     },
     onSuccess: async (data) => {
-      setTokens(data.access_token, data.refresh_token)
+      setTokens(data.access_token)
       queryClient.invalidateQueries({ queryKey: ['organizations'] })
 
       try {
@@ -106,12 +105,7 @@ export function useAuth(): UseAuthReturn {
   })
 
   const refreshTokenMutation = useMutation({
-    mutationFn: async () => {
-      if (!refreshToken) {
-        throw new Error('No refresh token available')
-      }
-      return refreshTokenApi(refreshToken)
-    },
+    mutationFn: () => refreshTokenApi(),
     onError: () => {
       clearTokens()
       if (location.pathname !== '/login') {
@@ -122,7 +116,7 @@ export function useAuth(): UseAuthReturn {
       }
     },
     onSuccess: async (data) => {
-      setTokens(data.access_token, data.refresh_token)
+      setTokens(data.access_token)
       await refetch()
     },
   })

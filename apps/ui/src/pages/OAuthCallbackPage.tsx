@@ -15,8 +15,9 @@ export function OAuthCallbackPage() {
   const { error, user } = useAuth()
 
   useEffect(() => {
-    // The API callback redirects with tokens in the URL fragment:
-    //   /auth/callback#access_token=...&refresh_token=...&token_type=bearer
+    // The API callback redirects with the access token in the URL fragment:
+    //   /auth/callback#access_token=...&token_type=bearer
+    // The refresh token is delivered out-of-band as an HttpOnly cookie (C2).
     // Errors come through as ?error=... on the search params instead.
     const search = new URLSearchParams(window.location.search)
     const errorParam = search.get('error')
@@ -32,16 +33,21 @@ export function OAuthCallbackPage() {
       ? window.location.hash.slice(1)
       : ''
     const params = new URLSearchParams(fragment)
-    const accessToken = params.get('access_token')
-    const refreshToken = params.get('refresh_token')
+    const accessTokenParam = params.get('access_token')
 
-    if (!accessToken || !refreshToken) {
-      console.error('[OAuth] Missing tokens in callback URL')
-      navigate('/login?error=no_token', { replace: true })
+    if (!accessTokenParam) {
+      // Under React StrictMode the effect runs twice in development; the
+      // first run consumes the fragment via replaceState below, so the
+      // second run sees an empty hash. That is benign as long as we already
+      // captured a token — only a genuinely tokenless callback is an error.
+      if (!useAuthStore.getState().accessToken) {
+        console.error('[OAuth] Missing access token in callback URL')
+        navigate('/login?error=no_token', { replace: true })
+      }
       return
     }
 
-    setTokens(accessToken, refreshToken)
+    setTokens(accessTokenParam)
     queryClient.invalidateQueries({ queryKey: ['organizations'] })
 
     window.history.replaceState({}, '', '/auth/callback')

@@ -62,15 +62,10 @@ function LocationProbe() {
   return null
 }
 
-function setExpiredAccess({
-  refreshToken = 'rt',
-}: {
-  refreshToken?: null | string
-} = {}) {
+function setExpiredAccess() {
   const token = makeJwt({ exp: Math.floor(Date.now() / 1000) - 3600 })
   useAuthStore.setState({
     accessToken: token,
-    refreshToken,
     tokenExpiry: Date.now() - 1000,
   })
   return token
@@ -102,7 +97,6 @@ function setValidAccess() {
   const token = makeJwt({ exp })
   useAuthStore.setState({
     accessToken: token,
-    refreshToken: 'rt',
     tokenExpiry: exp * 1000,
   })
   return token
@@ -162,23 +156,22 @@ describe('useAuth', () => {
 
   // ── Bootstrap matrix ────────────────────────────────────────────────
 
-  it('no tokens on /login: no redirect, no API calls', async () => {
+  it('no tokens on /login: cookie refresh attempted, fails, no redirect', async () => {
+    vi.mocked(endpoints.refreshToken).mockRejectedValue(new Error('no cookie'))
     const { Wrapper } = setupEnv('/login')
     const { result } = renderHook(() => useAuth(), { wrapper: Wrapper })
 
-    // Let React Query drain its microtask queue.
-    await act(async () => {
-      await Promise.resolve()
-    })
+    // Let the bootstrap refresh attempt settle.
+    await waitFor(() => expect(endpoints.refreshToken).toHaveBeenCalled())
 
-    expect(endpoints.refreshToken).not.toHaveBeenCalled()
     expect(endpoints.getUserByUsername).not.toHaveBeenCalled()
     expect(sessionStorage.getItem('imbi_redirect_after_login')).toBeNull()
     expect(latestLocation.pathname).toBe('/login')
     expect(result.current.isAuthenticated).toBe(false)
   })
 
-  it('no tokens on a protected path: redirects to /login, saves path, no API calls', async () => {
+  it('no tokens on a protected path: cookie refresh fails, redirects to /login, saves path', async () => {
+    vi.mocked(endpoints.refreshToken).mockRejectedValue(new Error('no cookie'))
     const { Wrapper } = setupEnv('/projects')
     renderHook(() => useAuth(), { wrapper: Wrapper })
 
@@ -186,7 +179,7 @@ describe('useAuth', () => {
     expect(sessionStorage.getItem('imbi_redirect_after_login')).toBe(
       '/projects',
     )
-    expect(endpoints.refreshToken).not.toHaveBeenCalled()
+    expect(endpoints.refreshToken).toHaveBeenCalledOnce()
     expect(endpoints.getUserByUsername).not.toHaveBeenCalled()
   })
 
@@ -223,11 +216,9 @@ describe('useAuth', () => {
 
     await waitFor(() => expect(result.current.isAuthenticated).toBe(true))
     expect(endpoints.refreshToken).toHaveBeenCalledTimes(1)
-    expect(endpoints.refreshToken).toHaveBeenCalledWith('rt')
     expect(endpoints.getUserByUsername).toHaveBeenCalled()
     expect(latestLocation.pathname).toBe('/dashboard')
     expect(useAuthStore.getState().accessToken).toBe(newToken)
-    expect(useAuthStore.getState().refreshToken).toBe('rt-new')
   })
 
   it('expired access + valid refresh fails: clears tokens, redirects with saved path (including search)', async () => {
@@ -245,14 +236,15 @@ describe('useAuth', () => {
     expect(endpoints.getUserByUsername).not.toHaveBeenCalled()
   })
 
-  it('expired access + no refresh token: redirects, saves path, no refresh API call', async () => {
-    setExpiredAccess({ refreshToken: null })
+  it('expired access + no valid cookie: refresh attempted, redirects, saves path', async () => {
+    setExpiredAccess()
+    vi.mocked(endpoints.refreshToken).mockRejectedValue(new Error('no cookie'))
 
     const { Wrapper } = setupEnv('/projects')
     renderHook(() => useAuth(), { wrapper: Wrapper })
 
     await waitFor(() => expect(latestLocation.pathname).toBe('/login'))
-    expect(endpoints.refreshToken).not.toHaveBeenCalled()
+    expect(endpoints.refreshToken).toHaveBeenCalledOnce()
     expect(sessionStorage.getItem('imbi_redirect_after_login')).toBe(
       '/projects',
     )
@@ -354,7 +346,6 @@ describe('useAuth', () => {
       password: 'pw',
     })
     expect(useAuthStore.getState().accessToken).toBe(token)
-    expect(useAuthStore.getState().refreshToken).toBe('rt-new')
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ['organizations'],
     })
@@ -364,6 +355,8 @@ describe('useAuth', () => {
   it('login failure: error exposed via hook return, user stays null', async () => {
     const err = new Error('invalid credentials')
     vi.mocked(endpoints.loginWithPassword).mockRejectedValue(err)
+    // No valid session cookie on the login page: bootstrap refresh must fail.
+    vi.mocked(endpoints.refreshToken).mockRejectedValue(new Error('no cookie'))
 
     const { Wrapper } = setupEnv('/login')
     const { result } = renderHook(() => useAuth(), { wrapper: Wrapper })
@@ -438,9 +431,8 @@ describe('useAuth', () => {
       await result.current.refreshToken()
     })
 
-    expect(endpoints.refreshToken).toHaveBeenCalledWith('rt')
+    expect(endpoints.refreshToken).toHaveBeenCalledOnce()
     expect(useAuthStore.getState().accessToken).toBe(newToken)
-    expect(useAuthStore.getState().refreshToken).toBe('rt-new')
   })
 
   it('refreshToken mutation failure on a protected route: clears tokens, redirects with saved path', async () => {
@@ -467,18 +459,16 @@ describe('useAuth', () => {
   // ── Redirect-key invariant (HB-2) ───────────────────────────────────
 
   it('HB-2: does not write imbi_redirect_after_login when already on /login', async () => {
-    setExpiredAccess({ refreshToken: null })
+    setExpiredAccess()
+    vi.mocked(endpoints.refreshToken).mockRejectedValue(new Error('no cookie'))
 
     const { Wrapper } = setupEnv('/login')
     renderHook(() => useAuth(), { wrapper: Wrapper })
 
-    // Let the bootstrap queryFn run to completion.
-    await act(async () => {
-      await Promise.resolve()
-    })
+    // Let the bootstrap refresh attempt settle.
+    await waitFor(() => expect(endpoints.refreshToken).toHaveBeenCalled())
 
     expect(sessionStorage.getItem('imbi_redirect_after_login')).toBeNull()
     expect(latestLocation.pathname).toBe('/login')
-    expect(endpoints.refreshToken).not.toHaveBeenCalled()
   })
 })

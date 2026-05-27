@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { useLocation, useNavigate } from 'react-router-dom'
 
@@ -17,8 +17,17 @@ export function BootstrapGate({ children, fallback }: BootstrapGateProps) {
   const location = useLocation()
   const navigate = useNavigate()
   const [ready, setReady] = useState(false)
+  // React StrictMode double-invokes effects in development. Bootstrap must
+  // fire only once: it calls /auth/token/refresh, the API rotates the refresh
+  // token on first use and treats the second (concurrent) call as token reuse,
+  // revoking the whole token family and logging the user straight back out.
+  // The ref persists across StrictMode's re-invocation but is per-instance, so
+  // it does not leak between tests the way module state would.
+  const didBootstrap = useRef(false)
 
   useEffect(() => {
+    if (didBootstrap.current) return
+    didBootstrap.current = true
     const store = useAuthStore.getState()
     bootstrapAuth({
       accessToken: store.accessToken,
@@ -26,7 +35,6 @@ export function BootstrapGate({ children, fallback }: BootstrapGateProps) {
       isTokenExpired: store.isTokenExpired,
       onRedirect: () => navigate('/login', { replace: true }),
       pathname: location.pathname,
-      refreshToken: store.refreshToken,
       refreshTokenApi,
       search: location.search,
       setTokens: store.setTokens,

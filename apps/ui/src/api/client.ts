@@ -46,17 +46,10 @@ async function refreshAccessToken(): Promise<string> {
 
   refreshPromise = (async () => {
     try {
-      const authStore = useAuthStore.getState()
-      const currentRefreshToken = authStore.refreshToken
-
-      if (!currentRefreshToken) {
-        throw new Error('No refresh token available')
-      }
-
+      // The refresh token rides along as an HttpOnly cookie (C2), sent
+      // automatically via credentials:'include'; no request body needed.
       const response = await fetch(`${API_BASE_URL}/auth/token/refresh`, {
-        body: JSON.stringify({ refresh_token: currentRefreshToken }),
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
         method: 'POST',
       })
 
@@ -64,9 +57,8 @@ async function refreshAccessToken(): Promise<string> {
         throw new ApiError(response.status, response.statusText)
       }
 
-      const { access_token, refresh_token } =
-        (await response.json()) as TokenResponse
-      authStore.setTokens(access_token, refresh_token)
+      const { access_token } = (await response.json()) as TokenResponse
+      useAuthStore.getState().setTokens(access_token)
 
       return access_token
     } catch (error) {

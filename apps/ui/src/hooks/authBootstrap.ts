@@ -6,27 +6,23 @@ export interface BootstrapDeps {
   isTokenExpired: () => boolean
   onRedirect: () => void
   pathname: string
-  refreshToken: null | string
-  refreshTokenApi: (rt: string) => Promise<TokenResponse>
+  refreshTokenApi: () => Promise<TokenResponse>
   search: string
-  setTokens: (access: string, refresh: string) => void
+  setTokens: (access: string) => void
 }
 
-// Direct port of the previous `['authInit']` queryFn, minus the throws (which
-// were only used as dead signalling). Resolves on every outcome; callers wait
-// for the returned promise, then render.
+// Resolves on every outcome; callers wait for the returned promise, then
+// render. The refresh token lives in an HttpOnly cookie (C2), so we always
+// attempt a refresh and let the API decide whether the session is still
+// valid. BootstrapGate guarantees this runs at most once (see its dedupe
+// guard), so the API's refresh-token rotation/reuse detection is never
+// tripped by a duplicate bootstrap.
 export async function bootstrapAuth(deps: BootstrapDeps): Promise<void> {
   if (deps.accessToken && !deps.isTokenExpired()) return
 
-  if (!deps.refreshToken) {
-    deps.clearTokens()
-    triggerRedirect(deps)
-    return
-  }
-
   try {
-    const response = await deps.refreshTokenApi(deps.refreshToken)
-    deps.setTokens(response.access_token, response.refresh_token)
+    const response = await deps.refreshTokenApi()
+    deps.setTokens(response.access_token)
   } catch (error) {
     console.error('[Auth] Token refresh failed during initialization:', error)
     deps.clearTokens()

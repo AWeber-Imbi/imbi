@@ -124,10 +124,9 @@ export const getAuthProviders = (signal?: AbortSignal) =>
 export const loginWithPassword = (credentials: LoginRequest) =>
   apiClient.post<TokenResponse>('/auth/login', credentials)
 
-export const refreshToken = (refreshToken: string) =>
-  apiClient.post<TokenResponse>('/auth/token/refresh', {
-    refresh_token: refreshToken,
-  })
+// The refresh token is sent as an HttpOnly cookie (C2), not in the body.
+export const refreshToken = () =>
+  apiClient.post<TokenResponse>('/auth/token/refresh')
 
 export const logoutAuth = () => apiClient.post<void>('/auth/logout', {})
 

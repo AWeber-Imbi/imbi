@@ -8,9 +8,8 @@ interface AuthStore {
   getUsername: () => null | string
 
   isTokenExpired: () => boolean
-  refreshToken: null | string
   setAccessToken: (token: string) => void
-  setTokens: (accessToken: string, refreshToken: string) => void
+  setTokens: (accessToken: string) => void
   tokenExpiry: null | number
 }
 
@@ -25,7 +24,7 @@ export const useAuthStore = create<AuthStore>()(
     (set, get) => ({
       accessToken: null,
       clearTokens: () => {
-        set({ accessToken: null, refreshToken: null, tokenExpiry: null })
+        set({ accessToken: null, tokenExpiry: null })
       },
       getUsername: () => {
         const { accessToken } = get()
@@ -44,8 +43,6 @@ export const useAuthStore = create<AuthStore>()(
         return Date.now() > tokenExpiry - 5 * 60 * 1000
       },
 
-      refreshToken: null,
-
       setAccessToken: (token: string) => {
         try {
           const decoded = jwtDecode<JwtPayload>(token)
@@ -58,17 +55,16 @@ export const useAuthStore = create<AuthStore>()(
         }
       },
 
-      setTokens: (accessToken: string, refreshToken: string) => {
+      setTokens: (accessToken: string) => {
         try {
           const decoded = jwtDecode<JwtPayload>(accessToken)
           const tokenExpiry = decoded.exp * 1000
           set({
             accessToken,
-            refreshToken,
             tokenExpiry,
           })
         } catch {
-          set({ accessToken: null, refreshToken: null, tokenExpiry: null })
+          set({ accessToken: null, tokenExpiry: null })
         }
       },
 
