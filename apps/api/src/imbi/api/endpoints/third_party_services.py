@@ -2,7 +2,6 @@
 
 import asyncio
 import collections.abc
-import json
 import logging
 import typing
 
@@ -17,6 +16,11 @@ from imbi_common.auth import encryption
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.domain import models
+from imbi_api.endpoints._json_fields import (
+    JSONFields,
+    deserialize_json_fields,
+    serialize_json_fields,
+)
 from imbi_api.endpoints._pagination import (
     build_link_header,
     decode_keyset,
@@ -48,11 +52,11 @@ _TPS_RESYNC_CONCURRENCY = 5
 _TPS_RESYNC_SEMAPHORE = asyncio.Semaphore(_TPS_RESYNC_CONCURRENCY)
 
 
-_SERVICE_JSON_FIELDS: dict[str, list[str] | dict[str, typing.Any]] = {
+_SERVICE_JSON_FIELDS: JSONFields = {
     'links': {},
     'identifiers': {},
 }
-_APP_JSON_FIELDS: dict[str, list[str] | dict[str, typing.Any]] = {
+_APP_JSON_FIELDS: JSONFields = {
     'scopes': [],
     'settings': {},
     'allowed_domains': [],
@@ -64,38 +68,8 @@ def _build_service_response(
 ) -> models.ThirdPartyServiceResponse:
     """Build a ThirdPartyServiceResponse from a graph record."""
     service = graph.parse_agtype(record['service'])
-    service = _deserialize_json_fields(service, _SERVICE_JSON_FIELDS)
+    service = deserialize_json_fields(service, _SERVICE_JSON_FIELDS)
     return models.ThirdPartyServiceResponse(**service)
-
-
-def _serialize_json_fields(
-    props: dict[str, typing.Any],
-    fields: dict[str, list[str] | dict[str, typing.Any]],
-) -> dict[str, typing.Any]:
-    """Serialize list/dict fields to JSON strings for graph."""
-    result = dict(props)
-    for key in fields:
-        if key in result and not isinstance(result[key], str):
-            result[key] = json.dumps(result[key])
-    return result
-
-
-def _deserialize_json_fields(
-    record: dict[str, typing.Any],
-    fields: dict[str, list[str] | dict[str, typing.Any]],
-) -> dict[str, typing.Any]:
-    """Deserialize JSON string fields back to Python objects."""
-    obj = dict(record)
-    for key, default in fields.items():
-        val = obj.get(key)
-        if isinstance(val, str):
-            try:
-                obj[key] = json.loads(val)
-            except json.JSONDecodeError, TypeError:
-                obj[key] = default
-        elif val is None:
-            obj[key] = default
-    return obj
 
 
 def _strip_secrets(
@@ -194,7 +168,7 @@ async def create_third_party_service(
         'identifiers': data.identifiers,
     }
 
-    graph_props = _serialize_json_fields(props, _SERVICE_JSON_FIELDS)
+    graph_props = serialize_json_fields(props, _SERVICE_JSON_FIELDS)
     create_tpl = props_template(graph_props)
 
     if data.team_slug is not None:
@@ -390,7 +364,7 @@ async def patch_third_party_service(
         )
 
     service = graph.parse_agtype(records[0]['service'])
-    service = _deserialize_json_fields(service, _SERVICE_JSON_FIELDS)
+    service = deserialize_json_fields(service, _SERVICE_JSON_FIELDS)
 
     team = service.get('team')
     patchable: dict[str, typing.Any] = {
@@ -814,7 +788,7 @@ async def list_service_applications(
     for record in records:
         app = graph.parse_agtype(record['app'])
         owner = graph.parse_agtype(record.get('owner_slug'))
-        app = _deserialize_json_fields(app, _APP_JSON_FIELDS)
+        app = deserialize_json_fields(app, _APP_JSON_FIELDS)
         _strip_secrets(app)
         app['is_global'] = owner != org_slug and app.get('usage') in (
             'login',
@@ -936,7 +910,7 @@ async def create_service_application(
             props['signing_secret'],
         )
 
-    graph_props = _serialize_json_fields(props, _APP_JSON_FIELDS)
+    graph_props = serialize_json_fields(props, _APP_JSON_FIELDS)
     app_tpl = props_template(graph_props)
 
     create_query: str = (
@@ -963,7 +937,7 @@ async def create_service_application(
         )
 
     app = graph.parse_agtype(records[0]['app'])
-    app = _deserialize_json_fields(app, _APP_JSON_FIELDS)
+    app = deserialize_json_fields(app, _APP_JSON_FIELDS)
     _strip_secrets(app)
     return models.ServiceApplicationResponse(**app)
 
@@ -1024,7 +998,7 @@ async def _execute_service_update(
         'identifiers': update_data.identifiers,
     }
 
-    graph_props = _serialize_json_fields(props, _SERVICE_JSON_FIELDS)
+    graph_props = serialize_json_fields(props, _SERVICE_JSON_FIELDS)
     set_stmt = set_clause('s', graph_props)
 
     if update_data.team_slug:
@@ -1122,7 +1096,7 @@ async def _fetch_application(
             ),
         )
     app = graph.parse_agtype(records[0]['app'])
-    return _deserialize_json_fields(app, _APP_JSON_FIELDS)
+    return deserialize_json_fields(app, _APP_JSON_FIELDS)
 
 
 @third_party_services_router.get(
@@ -1319,7 +1293,7 @@ async def patch_service_application(
 
     props = validated.model_dump(mode='json')
 
-    graph_props = _serialize_json_fields(props, _APP_JSON_FIELDS)
+    graph_props = serialize_json_fields(props, _APP_JSON_FIELDS)
     app_set = set_clause('a', graph_props)
 
     update_query: str = (
@@ -1357,7 +1331,7 @@ async def patch_service_application(
         )
 
     app = graph.parse_agtype(updated[0]['app'])
-    app = _deserialize_json_fields(app, _APP_JSON_FIELDS)
+    app = deserialize_json_fields(app, _APP_JSON_FIELDS)
     _strip_secrets(app)
     return models.ServiceApplicationResponse(**app)
 

@@ -21,6 +21,11 @@ from imbi_common.scoring import compute_score
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.domain import scoring as scoring_models
+from imbi_api.endpoints._json_fields import (
+    JSONFields,
+    deserialize_json_fields,
+    serialize_json_fields,
+)
 from imbi_api.graph_sql import escape_prop, props_template, set_clause
 from imbi_api.plugins.lifecycle_dispatch import (
     LifecycleInvocation,
@@ -696,6 +701,9 @@ _RESERVED_FIELDS = frozenset(
     }
 )
 
+#: Project node properties that AGE stores as JSON strings.
+_PROJECT_JSON_FIELDS: JSONFields = {'links': {}, 'identifiers': {}}
+
 
 _PROTECTED_ENV_KEYS = frozenset(
     {
@@ -887,10 +895,7 @@ async def create_project(
             'environments',
         },
     )
-    # Serialize dict/list fields to JSON strings for graph storage
-    for key in ('links', 'identifiers'):
-        if key in props and not isinstance(props[key], str):
-            props[key] = json.dumps(props[key])
+    props = serialize_json_fields(props, _PROJECT_JSON_FIELDS)
 
     # Pre-validate that all project type slugs exist before creating
     # anything, to avoid orphaned Project nodes when slugs are invalid.
@@ -1802,16 +1807,9 @@ async def _execute_project_update(
     )
 
     # Pre-parse JSON-string fields that the graph stores as strings.
-    raw_links: typing.Any = existing_p.get('links') or {}
-    existing_links: dict[str, typing.Any] = (
-        json.loads(raw_links) if isinstance(raw_links, str) else raw_links
-    )
-    raw_identifiers: typing.Any = existing_p.get('identifiers') or {}
-    existing_identifiers: dict[str, typing.Any] = (
-        json.loads(raw_identifiers)
-        if isinstance(raw_identifiers, str)
-        else raw_identifiers
-    )
+    existing_json = deserialize_json_fields(existing_p, _PROJECT_JSON_FIELDS)
+    existing_links: dict[str, typing.Any] = existing_json['links']
+    existing_identifiers: dict[str, typing.Any] = existing_json['identifiers']
 
     # Merge provided fields with existing values.
     merged = {
@@ -1895,10 +1893,7 @@ async def _execute_project_update(
             'environments',
         },
     )
-    # Serialize dict/list fields to JSON strings for graph storage.
-    for key in ('links', 'identifiers'):
-        if key in props and not isinstance(props[key], str):
-            props[key] = json.dumps(props[key])
+    props = serialize_json_fields(props, _PROJECT_JSON_FIELDS)
 
     # Pre-validate referenced slugs before mutating to prevent
     # partial writes (team, project types, environments).
@@ -2040,16 +2035,9 @@ async def patch_project(
     _flatten_edge_props(project_data)
 
     # Build patchable document from ProjectUpdate-compatible fields.
-    raw_links: typing.Any = project_data.get('links') or {}
-    parsed_links: dict[str, typing.Any] = (
-        json.loads(raw_links) if isinstance(raw_links, str) else raw_links
-    )
-    raw_identifiers: typing.Any = project_data.get('identifiers') or {}
-    parsed_identifiers: dict[str, typing.Any] = (
-        json.loads(raw_identifiers)
-        if isinstance(raw_identifiers, str)
-        else raw_identifiers
-    )
+    parsed_json = deserialize_json_fields(project_data, _PROJECT_JSON_FIELDS)
+    parsed_links: dict[str, typing.Any] = parsed_json['links']
+    parsed_identifiers: dict[str, typing.Any] = parsed_json['identifiers']
 
     team_data: typing.Any = project_data.get('team') or {}
     current_team_slug: str = typing.cast(str, team_data.get('slug') or '')
