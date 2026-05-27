@@ -77,10 +77,37 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
       mutationErrorHandler(
         action === 'unarchive' ? 'unarchive project' : 'archive project',
       )(error),
-    onSuccess: (_data, action) => {
-      toast.success(
-        action === 'unarchive' ? 'Project restored' : 'Project archived',
+    onSuccess: (data, action) => {
+      const base =
+        action === 'unarchive' ? 'Project restored' : 'Project archived'
+      // The Imbi state change always succeeds here; per-plugin lifecycle
+      // handlers (e.g. archiving the GitHub repo) can still fail without
+      // rolling it back. Surface those failures so they are not silent.
+      const failed = (data.lifecycle_results ?? []).filter(
+        (result) => result.status === 'failed',
       )
+      if (failed.length > 0) {
+        toast.error(
+          `${base}, but ${failed.length} integration${
+            failed.length > 1 ? 's' : ''
+          } failed`,
+          {
+            description: (
+              <ul className="mt-1 space-y-0.5">
+                {failed.map((result) => (
+                  <li key={result.plugin_id}>
+                    <span className="font-medium">{result.plugin_slug}</span>:{' '}
+                    {result.message ?? 'unknown error'}
+                  </li>
+                ))}
+              </ul>
+            ),
+            duration: 10000,
+          },
+        )
+      } else {
+        toast.success(base)
+      }
       setShowArchiveConfirm(false)
       invalidateProject()
       queryClient.invalidateQueries({ queryKey: ['projects', orgSlug] })

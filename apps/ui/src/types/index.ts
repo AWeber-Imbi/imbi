@@ -14,6 +14,12 @@ export interface AgeScoringPolicyCreate extends ScoringPolicyCreateBase {
   category: 'age'
 }
 
+// Response from POST .../archive and .../unarchive: the updated project
+// plus the per-plugin lifecycle results.
+export interface ArchiveProjectResponse extends Project {
+  lifecycle_results?: LifecycleInvocation[]
+}
+
 export interface AttributeScoringPolicy extends ScoringPolicyBase {
   attribute_name: string
   category: 'attribute'
@@ -58,6 +64,18 @@ export interface EnvironmentCreate {
   name: string
   slug: string
   sort_order?: null | number
+}
+
+// Per-plugin outcome returned by the archive / unarchive endpoints, one
+// entry per lifecycle plugin assigned to the project. `failed` is the
+// case worth surfacing — e.g. a GitHub repo transfer that left the repo
+// un-archived. Mirrors the API's `LifecycleInvocation`.
+export interface LifecycleInvocation {
+  artifacts: Record<string, string>
+  message: null | string
+  plugin_id: string
+  plugin_slug: string
+  status: 'failed' | 'ok' | 'skipped'
 }
 
 export type LinkDefinition = Schemas['LinkDefinitionResponse']

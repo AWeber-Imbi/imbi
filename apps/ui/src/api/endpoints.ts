@@ -10,6 +10,7 @@ import type {
   AdminUserCreate,
   ApiKey,
   ApiKeyCreated,
+  ArchiveProjectResponse,
   AuthProvider,
   Blueprint,
   BlueprintCreate,
@@ -321,12 +322,12 @@ export const deleteProject = (orgSlug: string, projectId: string) =>
   )
 
 export const archiveProject = (orgSlug: string, projectId: string) =>
-  apiClient.post<Project>(
+  apiClient.post<ArchiveProjectResponse>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/archive`,
   )
 
 export const unarchiveProject = (orgSlug: string, projectId: string) =>
-  apiClient.post<Project>(
+  apiClient.post<ArchiveProjectResponse>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/unarchive`,
   )
 
