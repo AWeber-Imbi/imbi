@@ -4,6 +4,7 @@ import json
 import logging
 import typing
 
+import fastapi
 from imbi_common import graph
 from imbi_common.auth.encryption import TokenEncryption
 from imbi_common.plugins.errors import (
@@ -14,6 +15,12 @@ from imbi_common.plugins.registry import (
 )
 
 LOGGER = logging.getLogger(__name__)
+
+# Bounded retries for the patch_plugin_configuration compare-and-swap
+# (M19). Each retry re-reads the committed blob and re-applies the
+# partial update on top, so concurrent patches converge; the cap only
+# fires under pathological sustained contention on the same plugin.
+_MAX_PATCH_RETRIES = 3
 
 
 async def get_plugin_credentials(
@@ -151,14 +158,18 @@ async def _get_application_credentials(
     return {'client_id': str(client_id), 'client_secret': client_secret}
 
 
-async def _read_plugin_configuration(
+async def _read_plugin_configuration_raw(
     db: graph.Graph, plugin_id: str
-) -> dict[str, typing.Any]:
-    """Internal: decrypt and return the plugin_configuration blob.
+) -> tuple[str | None, dict[str, typing.Any]]:
+    """Internal: decrypt the plugin_configuration blob with its ciphertext.
 
-    Returns ``{}`` when the blob is absent or empty. Raises
-    ``ValueError`` when the blob is present but cannot be decrypted or
-    parsed — callers must not silently overwrite a corrupted blob.
+    Returns ``(stored_blob, decrypted_dict)`` where ``stored_blob`` is
+    the raw encrypted value as persisted (or ``None`` when absent/empty)
+    — used as the compare-and-swap witness in
+    ``patch_plugin_configuration``. ``decrypted_dict`` is ``{}`` when the
+    blob is absent or empty. Raises ``ValueError`` when the blob is
+    present but cannot be decrypted or parsed — callers must not silently
+    overwrite a corrupted blob.
     """
     query: typing.LiteralString = """
     MATCH (p:Plugin {{id: {plugin_id}}})
@@ -167,10 +178,10 @@ async def _read_plugin_configuration(
     """
     records = await db.execute(query, {'plugin_id': plugin_id}, ['creds'])
     if not records or records[0].get('creds') is None:
-        return {}
+        return None, {}
     raw = graph.parse_agtype(records[0]['creds'])
     if not raw:
-        return {}
+        return None, {}
     try:
         plaintext = TokenEncryption.get_instance().decrypt(raw)
     except Exception as exc:
@@ -190,7 +201,20 @@ async def _read_plugin_configuration(
             f'plugin_configuration for plugin_id={plugin_id!r} is not'
             ' valid JSON; refusing to overwrite'
         ) from exc
-    return data if isinstance(data, dict) else {}  # pyright: ignore[reportUnknownVariableType]
+    return raw, (data if isinstance(data, dict) else {})  # pyright: ignore[reportUnknownVariableType]
+
+
+async def _read_plugin_configuration(
+    db: graph.Graph, plugin_id: str
+) -> dict[str, typing.Any]:
+    """Internal: decrypt and return the plugin_configuration blob.
+
+    Returns ``{}`` when the blob is absent or empty. Raises
+    ``ValueError`` when the blob is present but cannot be decrypted or
+    parsed — callers must not silently overwrite a corrupted blob.
+    """
+    _blob, data = await _read_plugin_configuration_raw(db, plugin_id)
+    return data
 
 
 async def patch_plugin_configuration(
@@ -204,25 +228,47 @@ async def patch_plugin_configuration(
     empty string) removes the field. Existing keys not present in
     ``updates`` are preserved. Returns the resulting set of populated
     keys (no plaintext values).
+
+    The read-modify-write is guarded by a compare-and-swap on the stored
+    ciphertext (M19): the encrypted blob is opaque to AGE so it cannot be
+    merged server-side, and a plain ``SET`` would let two concurrent
+    patches clobber each other. Each attempt re-reads the committed blob
+    and only writes when it is unchanged since the read; a lost CAS
+    re-reads and re-applies the partial update on top of the winner.
     """
-    current = await _read_plugin_configuration(db, plugin_id)
-    for key, value in updates.items():
-        if value is None or value == '':
-            current.pop(key, None)
-        else:
-            current[key] = value
-    encrypted = TokenEncryption.get_instance().encrypt(json.dumps(current))
-    query: typing.LiteralString = """
-    MATCH (p:Plugin {{id: {plugin_id}}})
-    SET p.plugin_configuration = {blob}
-    RETURN p
-    """
-    await db.execute(
-        query,
-        {'plugin_id': plugin_id, 'blob': encrypted},
-        [],
+    for _attempt in range(_MAX_PATCH_RETRIES):
+        expected_blob, current = await _read_plugin_configuration_raw(
+            db, plugin_id
+        )
+        for key, value in updates.items():
+            if value is None or value == '':
+                current.pop(key, None)
+            else:
+                current[key] = value
+        encrypted = TokenEncryption.get_instance().encrypt(json.dumps(current))
+        query: typing.LiteralString = """
+        MATCH (p:Plugin {{id: {plugin_id}}})
+        WHERE coalesce(p.plugin_configuration, '') = {expected}
+        SET p.plugin_configuration = {blob}
+        RETURN p
+        """
+        updated = await db.execute(
+            query,
+            {
+                'plugin_id': plugin_id,
+                'expected': expected_blob or '',
+                'blob': encrypted,
+            },
+            ['p'],
+        )
+        if updated:
+            return [k for k, v in current.items() if v]
+    raise fastapi.HTTPException(
+        status_code=409,
+        detail=(
+            'plugin_configuration was modified concurrently; please retry'
+        ),
     )
-    return [k for k, v in current.items() if v]
 
 
 async def get_plugin_configuration_keys(

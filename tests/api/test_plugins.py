@@ -8,6 +8,8 @@ import typing
 import unittest
 from unittest import mock
 
+import fastapi
+
 if typing.TYPE_CHECKING:
     from imbi_common.plugins.registry import RegistryEntry
 
@@ -1113,6 +1115,120 @@ class CredentialsTestCase(unittest.TestCase):
         with self.assertRaises(PluginCredentialsMissing) as ctx:
             asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
         self.assertIn('client_id or client_secret', str(ctx.exception))
+
+
+class PatchPluginConfigurationTestCase(unittest.IsolatedAsyncioTestCase):
+    """Compare-and-swap behavior of ``patch_plugin_configuration`` (M19)."""
+
+    def _encryptor(self, decrypted: str | None = None) -> mock.MagicMock:
+        enc = mock.MagicMock()
+        enc.encrypt.return_value = 'CIPHER'
+        if decrypted is not None:
+            enc.decrypt.return_value = decrypted
+        return enc
+
+    def _db_with(
+        self, *, read: list[dict[str, object]], writes: list[list[object]]
+    ) -> mock.AsyncMock:
+        """Build a mock graph whose execute branches on read vs CAS write.
+
+        ``read`` is the row list returned for the SELECT; ``writes`` is a
+        FIFO of the row lists returned for each CAS ``SET`` attempt.
+        """
+        pending = list(writes)
+
+        def fake_execute(query: str, params=None, columns=None):  # type: ignore[no-untyped-def]
+            if 'SET p.plugin_configuration' in query:
+                return pending.pop(0)
+            return read
+
+        db = mock.AsyncMock()
+        db.execute.side_effect = fake_execute
+        return db
+
+    async def test_first_attempt_success_no_prior_blob(self) -> None:
+        from imbi_api.plugins.credentials import patch_plugin_configuration
+
+        db = self._db_with(read=[{'creds': None}], writes=[[{'p': {}}]])
+        with mock.patch(
+            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
+            return_value=self._encryptor(),
+        ):
+            populated = await patch_plugin_configuration(
+                db, 'p1', {'token': 'abc'}
+            )
+        self.assertEqual(populated, ['token'])
+        write_call = next(
+            c
+            for c in db.execute.call_args_list
+            if 'SET p.plugin_configuration' in c.args[0]
+        )
+        self.assertEqual(write_call.args[1]['expected'], '')
+        self.assertEqual(write_call.args[1]['blob'], 'CIPHER')
+
+    async def test_merges_onto_existing_blob(self) -> None:
+        from imbi_api.plugins.credentials import patch_plugin_configuration
+
+        db = self._db_with(read=[{'creds': '"OLD"'}], writes=[[{'p': {}}]])
+        with mock.patch(
+            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
+            return_value=self._encryptor(decrypted=json.dumps({'a': '1'})),
+        ):
+            populated = await patch_plugin_configuration(db, 'p1', {'b': '2'})
+        self.assertEqual(sorted(populated), ['a', 'b'])
+        write_call = next(
+            c
+            for c in db.execute.call_args_list
+            if 'SET p.plugin_configuration' in c.args[0]
+        )
+        # CAS witness is the ciphertext we read, not a re-encryption.
+        self.assertEqual(write_call.args[1]['expected'], 'OLD')
+
+    async def test_empty_value_removes_field(self) -> None:
+        from imbi_api.plugins.credentials import patch_plugin_configuration
+
+        db = self._db_with(read=[{'creds': '"OLD"'}], writes=[[{'p': {}}]])
+        with mock.patch(
+            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
+            return_value=self._encryptor(
+                decrypted=json.dumps({'a': '1', 'b': '2'})
+            ),
+        ):
+            populated = await patch_plugin_configuration(
+                db, 'p1', {'a': None, 'b': ''}
+            )
+        self.assertEqual(populated, [])
+
+    async def test_lost_cas_retries_then_succeeds(self) -> None:
+        from imbi_api.plugins.credentials import patch_plugin_configuration
+
+        db = self._db_with(read=[{'creds': None}], writes=[[], [{'p': {}}]])
+        with mock.patch(
+            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
+            return_value=self._encryptor(),
+        ):
+            populated = await patch_plugin_configuration(
+                db, 'p1', {'token': 'abc'}
+            )
+        self.assertEqual(populated, ['token'])
+        writes = [
+            c
+            for c in db.execute.call_args_list
+            if 'SET p.plugin_configuration' in c.args[0]
+        ]
+        self.assertEqual(len(writes), 2)
+
+    async def test_exhausted_retries_raises_409(self) -> None:
+        from imbi_api.plugins.credentials import patch_plugin_configuration
+
+        db = self._db_with(read=[{'creds': None}], writes=[[], [], []])
+        with mock.patch(
+            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
+            return_value=self._encryptor(),
+        ):
+            with self.assertRaises(fastapi.HTTPException) as ctx:
+                await patch_plugin_configuration(db, 'p1', {'token': 'abc'})
+        self.assertEqual(ctx.exception.status_code, 409)
 
 
 class ReloadSubscriberTestCase(unittest.IsolatedAsyncioTestCase):
