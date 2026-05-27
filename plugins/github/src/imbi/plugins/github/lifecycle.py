@@ -20,6 +20,16 @@ On project archive the plugin:
 3. Archives the repo via ``PATCH /repos/{owner}/{repo}`` with
    ``{"archived": true}``.
 
+GitHub's repo transfer is asynchronous: ``POST .../transfer`` returns
+``202 Accepted`` and the repo is briefly unreachable at the
+destination owner.  A PATCH fired immediately after the transfer
+therefore 404s, leaving the repo transferred-but-not-archived (see
+the ``archives`` org incidents on the GHEC tenant).  The post-transfer
+archive is retried on 404 with a bounded backoff so the common case
+(transfer settles within a few seconds) succeeds, while a genuinely
+stuck transfer still fails fast enough to stay inside the dispatcher's
+per-plugin timeout and surface to the operator.
+
 On unarchive the plugin only flips ``archived`` back to ``false`` at
 the repo's current location — it does **not** attempt to transfer
 the repo back to its original org because the original owner is not
@@ -35,6 +45,7 @@ target organization.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import typing
 
@@ -55,6 +66,13 @@ from imbi_plugin_github._repos import resolve_owner_repo
 LOGGER = logging.getLogger(__name__)
 
 _HTTP_TIMEOUT_SECONDS = 10.0
+
+# Backoffs (seconds) between attempts to archive a freshly-transferred
+# repo while GitHub's async transfer settles.  len + 1 == total
+# attempts; the sum is kept well under the dispatcher's per-plugin
+# timeout (default 10s) so a stuck transfer fails fast rather than
+# hanging the operator's archive request.
+_TRANSFER_ARCHIVE_BACKOFFS: tuple[float, ...] = (0.5, 1.0, 2.0)
 
 
 async def _raise_on_401(response: httpx.Response) -> None:
@@ -172,8 +190,11 @@ class _LifecycleBase(LifecyclePlugin):
                 repo = str(transferred.get('name') or repo)
                 owner = target_org or current_owner
                 current_owner = owner
-
-            await self._set_archived(client, current_owner, repo, True)
+                # The repo may not be reachable at the destination
+                # owner yet; tolerate the transfer-settle 404 window.
+                await self._archive_after_transfer(client, current_owner, repo)
+            else:
+                await self._set_archived(client, current_owner, repo, True)
 
         return LifecycleResult(
             status='ok',
@@ -248,6 +269,36 @@ class _LifecycleBase(LifecyclePlugin):
             json={'archived': archived},
         )
         resp.raise_for_status()
+
+    async def _archive_after_transfer(
+        self,
+        client: httpx.AsyncClient,
+        owner: str,
+        repo: str,
+    ) -> None:
+        """Archive a freshly-transferred repo, retrying the 404 window.
+
+        GitHub's transfer is async: the repo is briefly unreachable at
+        the destination owner, so the archive PATCH 404s until the
+        transfer settles.  Retry only on 404 — any other status (auth,
+        permissions, validation) is a real failure and re-raises
+        immediately.
+        """
+        for backoff in (*_TRANSFER_ARCHIVE_BACKOFFS, None):
+            try:
+                await self._set_archived(client, owner, repo, True)
+                return
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code != 404 or backoff is None:
+                    raise
+                LOGGER.info(
+                    'Repo %s/%s not yet reachable after transfer; '
+                    'retrying archive in %ss',
+                    owner,
+                    repo,
+                    backoff,
+                )
+                await asyncio.sleep(backoff)
 
     async def _transfer(
         self,

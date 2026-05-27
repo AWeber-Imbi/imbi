@@ -8,6 +8,7 @@ from absent links, and the 401 -> PluginAuthenticationFailed path.
 """
 
 import unittest
+import unittest.mock
 
 import httpx
 import respx
@@ -178,6 +179,127 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
             result.artifacts['repo_url'],
             'https://github.com/octo-archive/demo',
         )
+
+    @respx.mock
+    async def test_archive_transfer_retries_settle_404(self) -> None:
+        # GitHub's transfer is async (202); the repo is briefly
+        # unreachable at the destination, so the first archive PATCH
+        # 404s.  The plugin must retry and succeed once it settles.
+        respx.get('https://api.github.com/repos/octo/demo').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'archived': False,
+                    'owner': {'login': 'octo'},
+                    'name': 'demo',
+                },
+            )
+        )
+        respx.post('https://api.github.com/repos/octo/demo/transfer').mock(
+            return_value=httpx.Response(
+                202,
+                json={'name': 'demo', 'owner': {'login': 'octo-archive'}},
+            )
+        )
+        archive_route = respx.patch(
+            'https://api.github.com/repos/octo-archive/demo'
+        ).mock(
+            side_effect=[
+                httpx.Response(404, json={'message': 'Not Found'}),
+                httpx.Response(404, json={'message': 'Not Found'}),
+                httpx.Response(200, json={}),
+            ]
+        )
+
+        plugin = GitHubLifecyclePlugin()
+        with unittest.mock.patch(
+            'imbi_plugin_github.lifecycle.asyncio.sleep'
+        ) as sleep:
+            result = await plugin.on_project_archived(
+                _ctx(options={'archive_target_org': 'octo-archive'}),
+                _CREDS,
+            )
+
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(archive_route.calls.call_count, 3)
+        # Two failed attempts → two backoff sleeps before success.
+        self.assertEqual(sleep.await_count, 2)
+
+    @respx.mock
+    async def test_archive_transfer_exhausts_retries_on_persistent_404(
+        self,
+    ) -> None:
+        # If the transfer never settles within the retry budget the
+        # final 404 must propagate so the dispatcher records a failure.
+        respx.get('https://api.github.com/repos/octo/demo').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'archived': False,
+                    'owner': {'login': 'octo'},
+                    'name': 'demo',
+                },
+            )
+        )
+        respx.post('https://api.github.com/repos/octo/demo/transfer').mock(
+            return_value=httpx.Response(
+                202,
+                json={'name': 'demo', 'owner': {'login': 'octo-archive'}},
+            )
+        )
+        archive_route = respx.patch(
+            'https://api.github.com/repos/octo-archive/demo'
+        ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
+
+        plugin = GitHubLifecyclePlugin()
+        with unittest.mock.patch(
+            'imbi_plugin_github.lifecycle.asyncio.sleep'
+        ) as sleep:
+            with self.assertRaises(httpx.HTTPStatusError):
+                await plugin.on_project_archived(
+                    _ctx(options={'archive_target_org': 'octo-archive'}),
+                    _CREDS,
+                )
+
+        # Three backoffs configured → four total attempts.
+        self.assertEqual(archive_route.calls.call_count, 4)
+        self.assertEqual(sleep.await_count, 3)
+
+    @respx.mock
+    async def test_archive_transfer_does_not_retry_non_404(self) -> None:
+        # A non-404 (e.g. permissions) is a real failure: raise at once.
+        respx.get('https://api.github.com/repos/octo/demo').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'archived': False,
+                    'owner': {'login': 'octo'},
+                    'name': 'demo',
+                },
+            )
+        )
+        respx.post('https://api.github.com/repos/octo/demo/transfer').mock(
+            return_value=httpx.Response(
+                202,
+                json={'name': 'demo', 'owner': {'login': 'octo-archive'}},
+            )
+        )
+        archive_route = respx.patch(
+            'https://api.github.com/repos/octo-archive/demo'
+        ).mock(return_value=httpx.Response(403, json={'message': 'Forbidden'}))
+
+        plugin = GitHubLifecyclePlugin()
+        with unittest.mock.patch(
+            'imbi_plugin_github.lifecycle.asyncio.sleep'
+        ) as sleep:
+            with self.assertRaises(httpx.HTTPStatusError):
+                await plugin.on_project_archived(
+                    _ctx(options={'archive_target_org': 'octo-archive'}),
+                    _CREDS,
+                )
+
+        self.assertEqual(archive_route.calls.call_count, 1)
+        self.assertEqual(sleep.await_count, 0)
 
     @respx.mock
     async def test_archive_transfer_when_already_archived(self) -> None:
