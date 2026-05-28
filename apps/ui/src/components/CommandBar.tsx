@@ -501,9 +501,13 @@ export function CommandBar() {
                 <div className="h-full" />
               ) : (
                 <>
-                  {messages.map((message) => (
+                  {messages.map((message, index) => (
                     <SessionEntry
                       content={message.content}
+                      // Only the trailing assistant message marks the
+                      // conversation's resting point; older ones drop
+                      // the Imbi logo so a new turn doesn't trail one.
+                      isLatest={!isStreaming && index === messages.length - 1}
                       key={message.id}
                       onRetry={
                         message.role === 'assistant'

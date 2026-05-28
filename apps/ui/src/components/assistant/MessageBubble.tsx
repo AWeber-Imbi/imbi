@@ -12,18 +12,31 @@ import { cn } from '@/lib/utils'
 interface MessageActionsProps {
   content: string
   onRetry?: () => void
+  /**
+   * Whether to render the resting Imbi mark beneath the actions. Only
+   * the latest assistant message should mark the conversation's resting
+   * point; older messages keep their copy/retry but drop the mark so a
+   * new user turn doesn't trail an obsolete logo.
+   */
+  showMark?: boolean
 }
 
 interface SessionEntryProps {
   content: string
+  /**
+   * Whether this is the most-recent message in the conversation. When
+   * true and the role is ``assistant`` with ``showActions``, the resting
+   * Imbi mark is rendered beneath the actions.
+   */
+  isLatest?: boolean
   /** Retry handler; when provided, a retry button is shown. */
   onRetry?: () => void
   role: 'assistant' | 'user'
   /**
-   * Show the finished-round affordances: the copy/retry actions and the
-   * Imbi mark that signals the round is complete. Only meaningful for
-   * the assistant role; pass for completed messages, not while
-   * streaming.
+   * Show the finished-round affordances: the copy/retry actions and
+   * (when this is also the latest message) the Imbi mark that signals
+   * the round is complete. Only meaningful for the assistant role; pass
+   * for completed messages, not while streaming.
    */
   showActions?: boolean
 }
@@ -46,6 +59,7 @@ export function ImbiMark({ pulse = false }: { pulse?: boolean }) {
 
 export function SessionEntry({
   content,
+  isLatest = false,
   onRetry,
   role,
   showActions = false,
@@ -75,13 +89,19 @@ export function SessionEntry({
           </Markdown>
         </div>
       </div>
-      {showActions && <MessageActions content={content} onRetry={onRetry} />}
+      {showActions && (
+        <MessageActions
+          content={content}
+          onRetry={onRetry}
+          showMark={isLatest}
+        />
+      )}
     </div>
   )
 }
 
-/** Copy/retry actions and the Imbi mark shown beneath a finished round. */
-function MessageActions({ content, onRetry }: MessageActionsProps) {
+/** Copy/retry actions and (optionally) the resting Imbi mark. */
+function MessageActions({ content, onRetry, showMark }: MessageActionsProps) {
   const { copied, copy } = useClipboard()
   return (
     <>
@@ -115,7 +135,7 @@ function MessageActions({ content, onRetry }: MessageActionsProps) {
           </Button>
         )}
       </div>
-      <ImbiMark />
+      {showMark && <ImbiMark />}
     </>
   )
 }
