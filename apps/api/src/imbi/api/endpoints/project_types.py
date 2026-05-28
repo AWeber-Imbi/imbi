@@ -5,13 +5,13 @@ import logging
 import typing
 
 import fastapi
-import psycopg.errors
 import pydantic
 from imbi_common import blueprints, graph, models
 
 from imbi_api import blueprint_attributes
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
+from imbi_api.endpoints._helpers import conflict_on_unique_violation
 from imbi_api.graph_sql import props_template, set_clause
 from imbi_api.relationships import relationship_link
 
@@ -106,19 +106,14 @@ async def create_project_type(
         f' RETURN pt, o'
     )
     params = {**props, 'org_slug': org_slug}
-    try:
+    with conflict_on_unique_violation(
+        f'Project type with slug {props["slug"]!r} already exists',
+    ):
         records = await db.execute(
             query,
             params,
             columns=['pt', 'o'],
         )
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(
-                f'Project type with slug {props["slug"]!r} already exists'
-            ),
-        ) from e
 
     if not records:
         raise fastapi.HTTPException(
@@ -325,21 +320,16 @@ async def _persist_project_type(
         f' RETURN pt, o, project_count'
     )
     params = {**props, 'slug': original_slug, 'org_slug': org_slug}
-    try:
+    with conflict_on_unique_violation(
+        f'Project type with slug'
+        f' {payload.get("slug", original_slug)!r}'
+        f' already exists',
+    ):
         updated = await db.execute(
             update_query,
             params,
             columns=['pt', 'o', 'project_count'],
         )
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(
-                f'Project type with slug'
-                f' {payload.get("slug", original_slug)!r}'
-                f' already exists'
-            ),
-        ) from e
 
     if not updated:
         raise fastapi.HTTPException(

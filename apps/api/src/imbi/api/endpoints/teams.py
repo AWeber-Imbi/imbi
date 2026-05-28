@@ -5,12 +5,12 @@ import logging
 import typing
 
 import fastapi
-import psycopg.errors
 import pydantic
 from imbi_common import blueprints, graph, models
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
+from imbi_api.endpoints._helpers import conflict_on_unique_violation
 from imbi_api.graph_sql import props_template, set_clause
 from imbi_api.relationships import relationship_link
 
@@ -109,17 +109,14 @@ async def create_team(
         f' RETURN t, o'
     )
     params = {**props, 'org_slug': org_slug}
-    try:
+    with conflict_on_unique_violation(
+        f'Team with slug {props["slug"]!r} already exists',
+    ):
         records = await db.execute(
             query,
             params,
             columns=['t', 'o'],
         )
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(f'Team with slug {props["slug"]!r} already exists'),
-        ) from e
 
     if not records:
         raise fastapi.HTTPException(
@@ -306,21 +303,16 @@ async def _persist_team(
         f' RETURN t, o, project_count, member_count'
     )
     params = {**props, 'slug': original_slug, 'org_slug': org_slug}
-    try:
+    with conflict_on_unique_violation(
+        f'Team with slug'
+        f' {payload.get("slug", original_slug)!r}'
+        f' already exists',
+    ):
         updated = await db.execute(
             update_query,
             params,
             columns=['t', 'o', 'project_count', 'member_count'],
         )
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(
-                f'Team with slug'
-                f' {payload.get("slug", original_slug)!r}'
-                f' already exists'
-            ),
-        ) from e
 
     if not updated:
         raise fastapi.HTTPException(

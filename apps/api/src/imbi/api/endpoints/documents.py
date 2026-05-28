@@ -19,6 +19,7 @@ from imbi_common import graph
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
+from imbi_api.endpoints._helpers import fetch_or_404
 from imbi_api.endpoints._pagination import (
     build_link_header,
     decode_cursor,
@@ -437,12 +438,14 @@ async def get_document(
     ],
 ) -> dict[str, typing.Any]:
     """Retrieve a single document."""
-    document = await _fetch_document(db, org_slug, project_id, document_id)
-    if document is None:
-        raise fastapi.HTTPException(
-            status_code=404, detail=f'Document {document_id!r} not found'
-        )
-    return document
+    return await fetch_or_404(
+        _fetch_document,
+        db,
+        org_slug,
+        project_id,
+        document_id,
+        detail=f'Document {document_id!r} not found',
+    )
 
 
 class DocumentUpdate(pydantic.BaseModel):

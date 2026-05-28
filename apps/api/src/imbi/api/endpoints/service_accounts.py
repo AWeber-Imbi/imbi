@@ -5,7 +5,6 @@ import logging
 import typing
 
 import fastapi
-import psycopg
 import pydantic
 from imbi_common import graph
 
@@ -45,13 +44,10 @@ async def create_service_account(
         created_at=datetime.datetime.now(datetime.UTC),
     )
 
-    try:
+    with _helpers.conflict_on_unique_violation(
+        f'Service account with slug {sa.slug!r} already exists',
+    ):
         await db.create(sa)
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(f'Service account with slug {sa.slug!r} already exists'),
-        ) from e
 
     # Create MEMBER_OF relationship to organization with role
     membership_query: typing.LiteralString = """

@@ -1,16 +1,59 @@
 """Shared helpers for endpoint handlers."""
 
+import collections.abc
+import contextlib
 import json
 import logging
 import typing
 
 import fastapi
+import psycopg
 from imbi_common import graph
 from imbi_common.plugins.base import PluginContext
 
 from imbi_api import patch as json_patch
 
 LOGGER = logging.getLogger(__name__)
+
+T = typing.TypeVar('T')
+
+
+async def fetch_or_404(
+    fetch: collections.abc.Callable[..., collections.abc.Awaitable[T | None]],
+    /,
+    *args: typing.Any,
+    detail: str,
+    **kwargs: typing.Any,
+) -> T:
+    """Await ``fetch`` and raise 404 when it returns ``None``.
+
+    Centralizes the ``await fetch(...) -> None -> raise 404`` pattern that
+    every ``get_<resource>`` endpoint duplicates. ``detail`` is passed to
+    the ``HTTPException`` unchanged.
+    """
+    result = await fetch(*args, **kwargs)
+    if result is None:
+        raise fastapi.HTTPException(status_code=404, detail=detail)
+    return result
+
+
+@contextlib.contextmanager
+def conflict_on_unique_violation(
+    detail: str,
+) -> collections.abc.Generator[None]:
+    """Translate ``psycopg.errors.UniqueViolation`` into a 409.
+
+    Replaces the boilerplate try/except → ``HTTPException(409, ...)`` block
+    that every create/update endpoint repeats around a single graph write
+    that could collide on a unique edge or property.
+    """
+    try:
+        yield
+    except psycopg.errors.UniqueViolation as exc:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=detail,
+        ) from exc
 
 
 _USER_UPDATE_ROLE_QUERY: typing.LiteralString = """

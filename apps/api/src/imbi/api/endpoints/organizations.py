@@ -5,12 +5,12 @@ import logging
 import typing
 
 import fastapi
-import psycopg.errors
 import pydantic
 from imbi_common import graph, models
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
+from imbi_api.endpoints._helpers import conflict_on_unique_violation
 from imbi_api.relationships import RelationshipSpec, build_relationships
 
 from .document_templates import document_templates_router
@@ -171,13 +171,10 @@ async def create_organization(
     now = datetime.datetime.now(datetime.UTC)
     org.created_at = now
     org.updated_at = now
-    try:
+    with conflict_on_unique_violation(
+        f'Organization with slug {org.slug!r} already exists',
+    ):
         created = await db.create(org)
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(f'Organization with slug {org.slug!r} already exists'),
-        ) from e
     result = created.model_dump()
     slug = result['slug']
     result['relationships'] = build_relationships(
@@ -395,13 +392,10 @@ async def _persist_organization(
     }
     if previous_slugs is not None:
         params['previous_slugs'] = previous_slugs
-    try:
+    with conflict_on_unique_violation(
+        f'Organization with slug {org.slug!r} already exists',
+    ):
         records = await db.execute(update_query, params)
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=f'Organization with slug {org.slug!r} already exists',
-        ) from e
     if not records:
         raise fastapi.HTTPException(
             status_code=404,

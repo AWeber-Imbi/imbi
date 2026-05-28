@@ -13,13 +13,13 @@ import logging
 import typing
 
 import fastapi
-import psycopg.errors
 import pydantic
 from imbi_common import graph, models
 from imbi_common.auth.encryption import encrypt_config_value
 
 from imbi_api import mcp_test
 from imbi_api.auth import permissions
+from imbi_api.endpoints._helpers import conflict_on_unique_violation
 from imbi_api.graph_sql import props_template, set_clause
 
 LOGGER = logging.getLogger(__name__)
@@ -244,13 +244,10 @@ async def create_mcp_server(
     node.updated_at = now
     props = node.model_dump(mode='json')
     query = f'CREATE (n:MCPServer {props_template(props)}) RETURN n'
-    try:
+    with conflict_on_unique_violation(
+        f'MCP server with slug {node.slug!r} already exists',
+    ):
         records = await db.execute(query, props, ['n'])
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=f'MCP server with slug {node.slug!r} already exists',
-        ) from e
     if not records:
         raise fastapi.HTTPException(
             status_code=500,
@@ -384,13 +381,10 @@ async def update_mcp_server(
     props = node.model_dump(mode='json', exclude={'id', 'created_at'})
     set_stmt = set_clause('n', props)
     query = f'MATCH (n:MCPServer {{{{id: {{id}}}}}}) {set_stmt} RETURN n'
-    try:
+    with conflict_on_unique_violation(
+        f'MCP server with slug {node.slug!r} already exists',
+    ):
         records = await db.execute(query, {**props, 'id': id}, ['n'])
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=f'MCP server with slug {node.slug!r} already exists',
-        ) from e
     if not records:
         raise fastapi.HTTPException(
             status_code=404,

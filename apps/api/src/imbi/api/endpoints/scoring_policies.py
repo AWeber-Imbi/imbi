@@ -8,7 +8,6 @@ import logging
 import typing
 
 import fastapi
-import psycopg.errors
 import pydantic
 from imbi_common import graph
 from imbi_common.scoring import models as scoring_common
@@ -16,6 +15,7 @@ from imbi_common.scoring import models as scoring_common
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.domain import scoring as scoring_models
+from imbi_api.endpoints._helpers import conflict_on_unique_violation
 from imbi_api.scoring import OptionalValkeyClient
 from imbi_api.scoring import queue as score_queue
 
@@ -240,13 +240,10 @@ async def create_policy(
     props = _serialize_props(_to_node_props(policy))
     set_pairs = ', '.join(f'{k}: {{{k}}}' for k in props)
     create_q = 'CREATE (sp:ScoringPolicy {{' + set_pairs + '}}) RETURN sp'
-    try:
+    with conflict_on_unique_violation(
+        f'Scoring policy {policy.slug!r} already exists',
+    ):
         await db.execute(create_q, props, ['sp'])  # type: ignore[arg-type]
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=f'Scoring policy {policy.slug!r} already exists',
-        ) from e
     if data.targets:
         await _create_target_edges(db, policy.slug, data.targets)
     refreshed = await load_policy(db, policy.slug)

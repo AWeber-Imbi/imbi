@@ -23,6 +23,7 @@ from imbi_api import blueprint_attributes
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.domain import scoring as scoring_models
+from imbi_api.endpoints._helpers import conflict_on_unique_violation
 from imbi_api.endpoints._json_fields import (
     JSONFields,
     deserialize_json_fields,
@@ -959,7 +960,9 @@ async def create_project(
             '\nWITH DISTINCT p, t, o'
         )
     query += _RETURN_FRAGMENT
-    try:
+    with conflict_on_unique_violation(
+        f'Project with id {project_id!r} already exists',
+    ):
         records = await db.execute(
             query,
             {
@@ -971,11 +974,6 @@ async def create_project(
             },
             ['project', 'outbound_count', 'inbound_count'],
         )
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(f'Project with id {project_id!r} already exists'),
-        ) from e
 
     if not records:
         raise fastapi.HTTPException(

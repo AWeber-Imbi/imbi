@@ -14,13 +14,13 @@ import typing
 
 import fastapi
 import nanoid
-import psycopg.errors
 import pydantic
 from imbi_common import graph
 from imbi_common.plugins.errors import PluginNotFoundError
 from imbi_common.plugins.registry import get_plugin
 
 from imbi_api.auth import permissions
+from imbi_api.endpoints._helpers import conflict_on_unique_violation
 from imbi_api.graph_sql import props_template, set_clause
 
 LOGGER = logging.getLogger(__name__)
@@ -268,13 +268,10 @@ async def create_entity(
     payload = validated.model_dump(mode='json')
     payload['id'] = nanoid.generate()
     query = f'CREATE (n:{vlabel} {props_template(payload)}) RETURN n'
-    try:
+    with conflict_on_unique_violation(
+        f'{vlabel} unique-index violation',
+    ):
         rows = await db.execute(query, payload, ['n'])
-    except psycopg.errors.UniqueViolation as exc:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=f'{vlabel} unique-index violation: {exc}',
-        ) from exc
     if not rows:
         raise fastapi.HTTPException(
             status_code=500, detail=f'{vlabel} create returned no rows'

@@ -13,6 +13,14 @@ from imbi_api import models as imbi_models
 from imbi_api import openapi
 
 
+def _reset_openapi_module_state() -> None:
+    """Wipe the openapi module's caches and singleton blueprint registries."""
+    openapi._blueprint_models = {}
+    openapi._response_models = {}
+    openapi._edge_models = {}
+    openapi._schema_cache = None
+
+
 class GenerateBlueprintModelsTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
@@ -20,12 +28,13 @@ class GenerateBlueprintModelsTestCase(
 
     async def asyncSetUp(self) -> None:
         """Reset module state before each test."""
-        openapi._blueprint_models = {}
-        openapi._response_models = {}
-        openapi._edge_models = {}
-        openapi._schema_cache = None
+        _reset_openapi_module_state()
         self.mock_db = unittest.mock.AsyncMock(spec=graph.Graph)
         self.mock_db.match.return_value = []
+
+    async def asyncTearDown(self) -> None:
+        """Restore module state so leakage cannot bleed across test files."""
+        _reset_openapi_module_state()
 
     async def test_generate_blueprint_models_no_blueprints(
         self,
@@ -147,12 +156,12 @@ class RefreshBlueprintModelsTestCase(
 
     async def asyncSetUp(self) -> None:
         """Reset module state before each test."""
-        openapi._blueprint_models = {}
-        openapi._response_models = {}
-        openapi._edge_models = {}
-        openapi._schema_cache = None
+        _reset_openapi_module_state()
         self.mock_db = unittest.mock.AsyncMock(spec=graph.Graph)
         self.mock_db.match.return_value = []
+
+    async def asyncTearDown(self) -> None:
+        _reset_openapi_module_state()
 
     async def test_refresh_updates_cache(self) -> None:
         """Test that refresh updates the cached models."""
@@ -203,10 +212,10 @@ class CreateCustomOpenapiTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         """Reset module state before each test."""
-        openapi._blueprint_models = {}
-        openapi._response_models = {}
-        openapi._edge_models = {}
-        openapi._schema_cache = None
+        _reset_openapi_module_state()
+
+    def tearDown(self) -> None:
+        _reset_openapi_module_state()
 
     def test_custom_openapi_includes_schemas(self) -> None:
         """Test OpenAPI schema includes request and response."""
@@ -442,7 +451,10 @@ class ClearSchemaCacheTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         """Reset module state before each test."""
-        openapi._schema_cache = None
+        _reset_openapi_module_state()
+
+    def tearDown(self) -> None:
+        _reset_openapi_module_state()
 
     def test_clear_schema_cache(self) -> None:
         """Test that clear_schema_cache clears the cache."""

@@ -131,7 +131,14 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
         )
 
     def test_list_organizations(self) -> None:
-        """Test listing all organizations."""
+        """Test listing all organizations.
+
+        ``parse_agtype`` is left unmocked: the helper already returns
+        non-string values unchanged, so the mocked ``execute`` returning
+        Python dicts/ints round-trips through the real parser the same
+        way it does in production — making this an actual exercise of
+        the endpoint plus parser instead of an identity-mock no-op.
+        """
         self.mock_db.execute.return_value = [
             {
                 'o': {
@@ -145,11 +152,7 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
             },
         ]
 
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            side_effect=lambda x: x,
-        ):
-            response = self.client.get('/organizations/')
+        response = self.client.get('/organizations/')
 
         self.assertEqual(response.status_code, 200)
         data = response.json()

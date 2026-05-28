@@ -24,6 +24,7 @@ from imbi_common.plugins.base import CheckStatus
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
+from imbi_api.endpoints._helpers import fetch_or_404
 from imbi_api.endpoints.operations_log import complete_opslog_entry
 from imbi_api.plugins import call_with_timeout
 
@@ -746,14 +747,16 @@ async def get_release(
     ],
 ) -> ReleaseResponse:
     """Get a single release by id."""
-    data = await _fetch_release(db, org_slug, project_id, release_id)
-    if data is None:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=(
-                f'Release {release_id!r} for project {project_id!r} not found'
-            ),
-        )
+    data = await fetch_or_404(
+        _fetch_release,
+        db,
+        org_slug,
+        project_id,
+        release_id,
+        detail=(
+            f'Release {release_id!r} for project {project_id!r} not found'
+        ),
+    )
     return _release_to_response(data, project_id)
 
 

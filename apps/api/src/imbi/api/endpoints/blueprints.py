@@ -5,13 +5,13 @@ import logging
 import typing
 
 import fastapi
-import psycopg.errors
 import pydantic
 from imbi_common import graph, models
 
 from imbi_api import openapi
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
+from imbi_api.endpoints._helpers import conflict_on_unique_violation
 from imbi_api.scoring import OptionalValkeyClient
 from imbi_api.scoring import queue as score_queue
 
@@ -99,13 +99,10 @@ async def create_blueprint(
         match_on = ['slug', 'kind']
     else:
         match_on = ['slug', 'type']
-    try:
+    with conflict_on_unique_violation(
+        f'Blueprint with name {blueprint.name!r} already exists',
+    ):
         await db.merge(blueprint, match_on=match_on)
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(f'Blueprint with name {blueprint.name!r} already exists'),
-        ) from e
     try:
         await openapi.refresh_blueprint_models(db)
     except Exception:

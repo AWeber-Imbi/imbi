@@ -12,13 +12,13 @@ import typing
 
 import fastapi
 import nanoid
-import psycopg.errors
 import pydantic
 import slugify
 from imbi_common import graph, models
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
+from imbi_api.endpoints._helpers import conflict_on_unique_violation
 from imbi_api.relationships import RelationshipSpec, build_relationships
 
 LOGGER = logging.getLogger(__name__)
@@ -98,13 +98,10 @@ async def create_tag(
     CREATE (t)-[:BELONGS_TO]->(o)
     RETURN t, o
     """
-    try:
+    with conflict_on_unique_violation(
+        f'Tag with slug {tag_slug!r} already exists',
+    ):
         records = await db.execute(query, params, columns=['t', 'o'])
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=f'Tag with slug {tag_slug!r} already exists',
-        ) from e
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
@@ -273,7 +270,9 @@ async def patch_tag(
     WITH t, o, count(DISTINCT n) AS document_count
     RETURN t, o, document_count
     """
-    try:
+    with conflict_on_unique_violation(
+        f'Tag with slug {new_slug!r} already exists',
+    ):
         updated = await db.execute(
             update_query,
             {
@@ -286,11 +285,6 @@ async def patch_tag(
             },
             columns=['t', 'o', 'document_count'],
         )
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=f'Tag with slug {new_slug!r} already exists',
-        ) from e
     if not updated:
         raise fastapi.HTTPException(
             status_code=404,
