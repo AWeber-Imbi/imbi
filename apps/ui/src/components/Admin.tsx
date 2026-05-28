@@ -17,6 +17,7 @@ import {
   Network,
   Puzzle,
   Shield,
+  Sparkles,
   StickyNote,
   Target,
   Users,
@@ -27,6 +28,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { useOrganization } from '@/contexts/OrganizationContext'
 
+import { AssistantManagement } from './admin/AssistantManagement'
 import { AuthProvidersManagement } from './admin/AuthProvidersManagement'
 import { BlueprintManagement } from './admin/BlueprintManagement'
 import { DocumentTemplateManagement } from './admin/DocumentTemplateManagement'
@@ -46,6 +48,7 @@ import { UserManagement } from './admin/UserManagement'
 import { WebhookManagement } from './admin/WebhookManagement'
 
 type AdminSection =
+  | 'assistant'
   | 'blueprints'
   | 'document-templates'
   | 'environments'
@@ -64,6 +67,7 @@ type AdminSection =
   | 'webhooks'
 
 const VALID_SECTIONS: AdminSection[] = [
+  'assistant',
   'blueprints',
   'environments',
   'graph-query',
@@ -181,6 +185,13 @@ export function Admin() {
       icon: Building2,
       id: 'organizations',
       label: 'Organizations',
+      scope: 'system',
+    },
+    {
+      description: 'Configure the AI assistant and its MCP servers',
+      icon: Sparkles,
+      id: 'assistant',
+      label: 'Assistant',
       scope: 'system',
     },
     {
@@ -373,6 +384,7 @@ export function Admin() {
             {currentSection === 'scoring-policies' && (
               <ScoringPolicyManagement />
             )}
+            {currentSection === 'assistant' && <AssistantManagement />}
             {currentSection === 'oauth' && <AuthProvidersManagement />}
             {currentSection === 'graph-query' && <GraphQueryManagement />}
             {currentSection === 'plugins' && !slug && <PluginsManagement />}

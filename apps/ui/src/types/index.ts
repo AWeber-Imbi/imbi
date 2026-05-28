@@ -863,6 +863,81 @@ export interface LogResultResponse {
   total: null | number
 }
 
+export interface MCPServer {
+  auth_type: MCPServerAuthType
+  created_at?: null | string
+  description?: null | string
+  enabled: boolean
+  has_oauth_client_secret: boolean
+  has_static_value: boolean
+  icon?: null | string
+  id: string
+  ignored_tools: string[]
+  last_error?: null | string
+  last_tested_at?: null | string
+  last_tested_latency_ms?: null | number
+  name: string
+  oauth_client_id?: null | string
+  oauth_scope?: null | string
+  oauth_token_url?: null | string
+  slug: string
+  static_header?: null | string
+  status: MCPServerStatus
+  timeout: number
+  tool_prefix?: null | string
+  tools_discovered?: null | number
+  updated_at?: null | string
+  url: string
+  verify_ssl: boolean
+}
+
+// MCP server admin types — mirror imbi_api/endpoints/mcp_servers.py. These
+// are hand-written because the codegen snapshot predates the endpoints;
+// regenerate via `npm run codegen:fetch` once the backend snapshot includes
+// /mcp-servers, then collapse these onto `Schemas['MCPServerResponse']`.
+export type MCPServerAuthType = 'none' | 'oauth_client_credentials' | 'static'
+
+export interface MCPServerCreate {
+  auth_type?: MCPServerAuthType
+  description?: null | string
+  enabled?: boolean
+  icon?: null | string
+  ignored_tools?: string[]
+  name: string
+  oauth_client_id?: null | string
+  oauth_client_secret?: null | string
+  oauth_scope?: null | string
+  oauth_token_url?: null | string
+  slug: string
+  static_header?: null | string
+  static_value?: null | string
+  timeout?: number
+  tool_prefix?: null | string
+  url: string
+  verify_ssl?: boolean
+}
+
+export type MCPServerStatus = 'degraded' | 'healthy' | 'unknown' | 'unreachable'
+
+// Body for POST /mcp-servers/test (test an unsaved config). name/slug are
+// optional server-side; the URL and auth fields are what matter.
+export type MCPServerTestConfig = Omit<MCPServerCreate, 'name' | 'slug'> & {
+  name?: string
+  slug?: string
+}
+
+export interface MCPServerTestResult {
+  error?: null | string
+  latency_ms: number
+  ok: boolean
+  status: 'degraded' | 'healthy' | 'unreachable'
+  tested_at: string
+  tools: string[]
+  tools_discovered: number
+}
+
+export type MCPServerUpdate = Partial<MCPServerCreate>
+
 // Auth provider types — mirror the consolidated `ServiceApplication`-backed
 // shape in imbi_api/endpoints/auth_providers.py.
 export type OAuthAppType = 'github' | 'google' | 'oidc'
