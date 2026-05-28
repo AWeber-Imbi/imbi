@@ -7,7 +7,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-05-19T16:28:14.76436Z"
+exclude-newer = "2026-05-21T13:08:27.976467Z"
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
@@ -1085,7 +1085,7 @@ requires-dist = [
   { name = "fastapi" },
   { name = "filetype" },
   { name = "httpx", specifier = ">=0.28.1,<1" },
-  { name = "imbi-common", extras = ["databases", "llm", "sentry", "server"], specifier = ">=2.6.0" },
+  { name = "imbi-common", extras = ["databases", "llm", "sentry", "server"], specifier = ">=2.7.0" },
   { name = "imbi-plugin-aws", marker = "extra == 'plugins'", specifier = ">=1.0.0" },
   { name = "imbi-plugin-github", marker = "extra == 'plugins'", specifier = ">=1.0.0" },
   { name = "imbi-plugin-logzio", marker = "extra == 'plugins'", specifier = ">=1.0.0" },
@@ -1137,7 +1137,7 @@ docs = [
 
 [[package]]
 name = "imbi-common"
-version = "2.6.0"
+version = "2.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
   { name = "cryptography" },
@@ -1153,9 +1153,9 @@ dependencies = [
   { name = "python-slugify" },
   { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cc/08/d574411419c425a48596d4bb252283b526fcdd940073b3ffea734ae19a8f/imbi_common-2.6.0.tar.gz", hash = "sha256:730f7bd3b3c2365ea3a0845f81fba4a5ab8f23c98749842dadff5464bc2dc71a", size = 293163, upload-time = "2026-05-26T21:19:43.795Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4b/b0/5f28ac0670d239c885822e5a7c9a94b2bb9c1ea205dccba82ac2ae36f329/imbi_common-2.7.0.tar.gz", hash = "sha256:723d2a7ecffef3f0cf86828173586a9721931b95068718c7b0c7cff768c7f764", size = 303583, upload-time = "2026-05-28T12:56:17.525Z" }
 wheels = [
-  { url = "https://files.pythonhosted.org/packages/49/3b/f5db4005675fd033454696599427d72d809f9534e2afcd0a6584bb3fb29e/imbi_common-2.6.0-py3-none-any.whl", hash = "sha256:875a057b4edcc2fecb35747927dcd853c602e58fd1c1f3c05063584360a86c83", size = 94110, upload-time = "2026-05-26T21:19:42.066Z" },
+  { url = "https://files.pythonhosted.org/packages/ce/33/e801c0e9d7ecfef434ca1f178291584f4dce1e55f34590c9425c2086c4f6/imbi_common-2.7.0-py3-none-any.whl", hash = "sha256:c475153119376753d5f09b18de686eb872464625fdaf073aa893fec38b3956ab", size = 98903, upload-time = "2026-05-28T12:56:16.147Z" },
 ]
 
 [package.optional-dependencies]
