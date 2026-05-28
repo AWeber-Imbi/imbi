@@ -113,6 +113,25 @@ def _edge_field_names(
     return frozenset(names)
 
 
+@functools.cache
+def _has_required_edge_field(
+    node_type: type[pydantic.BaseModel],
+) -> bool:
+    """Whether *node_type* has any required ``Edge``-annotated field.
+
+    Cached per model class. Used by ``_row_to_model`` to skip a
+    ``model_validate`` attempt that would always fail (e.g.
+    ``Project.team``) and go directly to ``model_construct``.
+
+    """
+    for info in node_type.model_fields.values():
+        if not info.is_required():
+            continue
+        if any(isinstance(md, models.Edge) for md in info.metadata):
+            return True
+    return False
+
+
 def _strip_edge_fields(
     node_type: type[pydantic.BaseModel],
     props: dict[str, typing.Any],
@@ -264,6 +283,13 @@ class Graph:
 
         """
         _strip_edge_fields(node_type, props)
+        if _has_required_edge_field(node_type):
+            # A required edge field (e.g. ``Project.team``) is never in
+            # the stripped vertex props, so ``model_validate`` would
+            # always raise. Skip straight to ``model_construct`` instead
+            # of paying the validate cost and logging a noisy
+            # ValidationError on every load.
+            return node_type.model_construct(**props)
         try:
             return node_type.model_validate(props)
         except pydantic.ValidationError as exc:

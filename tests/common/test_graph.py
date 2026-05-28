@@ -727,3 +727,59 @@ class SearchNodeIdScopingTests(unittest.IsolatedAsyncioTestCase):
             'client.sql.Composed', captured['query']
         ).as_string(None)
         self.assertNotIn('node_id = ANY', rendered)
+
+
+class _NoRequiredEdgeNode(models.Node):
+    """Test fixture: a Node with an Edge field that has a default,
+    so validate is the right code path.
+    """
+
+    peers: typing.Annotated[
+        list[models.Organization],
+        models.Edge(rel_type='LINKED_TO', direction='OUTGOING'),
+    ] = []  # noqa: RUF012 - Pydantic field default, not a class attribute
+
+
+class RowToModelTests(unittest.TestCase):
+    """``_row_to_model`` short-circuits when validate would be wasted."""
+
+    def test_required_edge_field_skips_validate(self) -> None:
+        """A ``Project`` row (which has a required ``team`` Edge field)
+        deserializes via ``model_construct`` and emits no
+        ValidationError DEBUG log — the previous behavior fired one on
+        every load.
+        """
+        props: dict[str, typing.Any] = {
+            'id': 'abc',
+            'name': 'demo',
+            'slug': 'demo',
+        }
+        with self.assertNoLogs('imbi_common.graph.client', level='DEBUG'):
+            project = client.Graph._row_to_model(models.Project, props)
+        self.assertEqual(project.id, 'abc')
+        self.assertEqual(project.name, 'demo')
+
+    def test_optional_edges_only_runs_validate(self) -> None:
+        """A model whose Edge fields all have defaults still goes
+        through ``model_validate`` so field validators run.
+        """
+        props: dict[str, typing.Any] = {
+            'id': 'n1',
+            'name': 'Demo',
+            'slug': 'demo',
+        }
+        with mock.patch.object(
+            _NoRequiredEdgeNode,
+            'model_validate',
+            wraps=_NoRequiredEdgeNode.model_validate,
+        ) as spy:
+            node = client.Graph._row_to_model(_NoRequiredEdgeNode, props)
+        spy.assert_called_once()
+        self.assertEqual(node.slug, 'demo')
+
+    def test_has_required_edge_field_classification(self) -> None:
+        """Project has a required Edge field; the test fixture does
+        not.
+        """
+        self.assertTrue(client._has_required_edge_field(models.Project))
+        self.assertFalse(client._has_required_edge_field(_NoRequiredEdgeNode))
