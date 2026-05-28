@@ -127,6 +127,47 @@ def _clear_refresh_cookie(response: fastapi.Response) -> None:
     response.delete_cookie(_REFRESH_COOKIE, path=_refresh_cookie_path())
 
 
+def _access_cookie_path() -> str:
+    """Browser-visible path the access cookie is scoped to.
+
+    Unlike the refresh cookie (scoped to ``/auth``), the access cookie must
+    reach the upload-serving GET endpoints (``{prefix}/uploads/...``) so the
+    browser includes it on ``<img>`` requests, which cannot carry an
+    ``Authorization`` header. Scope it to the whole API prefix (``/`` in the
+    dev-loopback case where the prefix is empty).
+    """
+    return settings.get_server_config().api_prefix or '/'
+
+
+def _set_access_cookie(response: fastapi.Response, access_token: str) -> None:
+    """Mirror the access token into a short-lived cookie.
+
+    The SPA still sends the access token as a Bearer header on fetch/XHR;
+    this cookie exists only so browser subresource requests (``<img src>``
+    to the upload-serving endpoints) carry credentials. Its lifetime
+    matches the access-token TTL and it is refreshed on every token
+    rotation. ``Secure`` outside development; ``SameSite=Strict`` is safe
+    because the UI and API share one origin behind the ingress.
+    """
+    auth_settings = settings.get_auth_settings()
+    response.set_cookie(
+        permissions.ACCESS_COOKIE_NAME,
+        access_token,
+        max_age=auth_settings.access_token_expire_seconds,
+        path=_access_cookie_path(),
+        httponly=True,
+        secure=settings.get_server_config().environment != 'development',
+        samesite='strict',
+    )
+
+
+def _clear_access_cookie(response: fastapi.Response) -> None:
+    """Remove the access-token cookie (logout)."""
+    response.delete_cookie(
+        permissions.ACCESS_COOKIE_NAME, path=_access_cookie_path()
+    )
+
+
 auth_router = fastapi.APIRouter(prefix='/auth', tags=['Authentication'])
 
 
@@ -500,6 +541,7 @@ async def login(
     LOGGER.info('User %s logged in successfully', _redact_email(user.email))
 
     _set_refresh_cookie(response, refresh_token)
+    _set_access_cookie(response, access_token)
     return auth_models.TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -729,6 +771,7 @@ async def refresh_token(
     )
 
     _set_refresh_cookie(response, new_refresh_token)
+    _set_access_cookie(response, access_token)
     return auth_models.TokenResponse(
         access_token=access_token,
         refresh_token=new_refresh_token,  # Phase 5: Return NEW
@@ -759,8 +802,9 @@ async def logout(
     """
     now_str = datetime.datetime.now(datetime.UTC).isoformat()
 
-    # Clear the browser refresh cookie (C2) regardless of revoke scope.
+    # Clear the browser refresh + access cookies regardless of revoke scope.
     _clear_refresh_cookie(response)
+    _clear_access_cookie(response)
 
     # Revoke current access token
     query: typing.LiteralString = """
@@ -1165,6 +1209,7 @@ async def oauth_callback(
         )
         redirect = fastapi.responses.RedirectResponse(url=redirect_url)
         _set_refresh_cookie(redirect, rt)
+        _set_access_cookie(redirect, at)
         return redirect
 
     except (
@@ -1297,6 +1342,7 @@ async def _identity_plugin_login_callback(
     )
     redirect = fastapi.responses.RedirectResponse(url=redirect_url)
     _set_refresh_cookie(redirect, rt)
+    _set_access_cookie(redirect, at)
     return redirect
 
 

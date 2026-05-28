@@ -505,6 +505,72 @@ class GetCurrentUserTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(auth_context.auth_method, 'api_key')
 
 
+class GetCurrentUserCookieFallbackTestCase(unittest.IsolatedAsyncioTestCase):
+    """Test ``get_current_user_cookie_fallback`` token resolution."""
+
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.auth_settings = settings.Auth(
+            jwt_secret='test-secret-key-min-32-chars-long',
+        )
+        self.ctx = permissions.AuthContext(auth_method='jwt')
+
+    def _request(self, cookies: dict[str, str]) -> fastapi.Request:
+        """Build a minimal Request carrying the given cookies."""
+        return mock.Mock(spec=fastapi.Request, cookies=cookies)
+
+    async def test_bearer_header_takes_precedence(self) -> None:
+        """A present Authorization header is used over any cookie."""
+        credentials = security.HTTPAuthorizationCredentials(
+            scheme='Bearer', credentials='header-token'
+        )
+        request = self._request({permissions.ACCESS_COOKIE_NAME: 'cookie'})
+        with (
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
+            mock.patch.object(
+                permissions, '_authenticate_token', new=mock.AsyncMock()
+            ) as mock_auth,
+        ):
+            mock_settings.return_value = self.auth_settings
+            mock_auth.return_value = self.ctx
+            result = await permissions.get_current_user_cookie_fallback(
+                mock.AsyncMock(), request, credentials
+            )
+        self.assertIs(result, self.ctx)
+        self.assertEqual(mock_auth.await_args.args[1], 'header-token')
+
+    async def test_falls_back_to_cookie(self) -> None:
+        """With no header, the access cookie supplies the token."""
+        request = self._request(
+            {permissions.ACCESS_COOKIE_NAME: 'cookie-token'}
+        )
+        with (
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
+            mock.patch.object(
+                permissions, '_authenticate_token', new=mock.AsyncMock()
+            ) as mock_auth,
+        ):
+            mock_settings.return_value = self.auth_settings
+            mock_auth.return_value = self.ctx
+            result = await permissions.get_current_user_cookie_fallback(
+                mock.AsyncMock(), request, None
+            )
+        self.assertIs(result, self.ctx)
+        self.assertEqual(mock_auth.await_args.args[1], 'cookie-token')
+
+    async def test_missing_header_and_cookie_raises_401(self) -> None:
+        """Neither a header nor a cookie yields a 401."""
+        request = self._request({})
+        with self.assertRaises(fastapi.HTTPException) as exc:
+            await permissions.get_current_user_cookie_fallback(
+                mock.AsyncMock(), request, None
+            )
+        self.assertEqual(exc.exception.status_code, 401)
+        self.assertEqual(
+            exc.exception.detail, 'Missing authentication credentials'
+        )
+
+
 class StampApiKeyLastUsedTestCase(unittest.IsolatedAsyncioTestCase):
     """Test ``_stamp_api_key_last_used`` throttling behavior."""
 

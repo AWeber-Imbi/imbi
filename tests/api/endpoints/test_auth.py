@@ -1091,6 +1091,7 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
             self.assertNotIn('refresh_token=', location)
             set_cookie = response.headers.get('set-cookie', '')
             self.assertIn('imbi_refresh_token=', set_cookie)
+            self.assertIn('imbi_access_token=', set_cookie)
             self.assertIn('HttpOnly', set_cookie)
             self.assertIn('SameSite=strict', set_cookie)
             self.assertIn('Path=/auth', set_cookie)
@@ -1195,6 +1196,7 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
             self.assertNotIn('refresh_token=', location)
             set_cookie = response.headers.get('set-cookie', '')
             self.assertIn('imbi_refresh_token=', set_cookie)
+            self.assertIn('imbi_access_token=', set_cookie)
             self.assertIn('HttpOnly', set_cookie)
             self.assertIn('SameSite=strict', set_cookie)
             self.assertIn('Path=/auth', set_cookie)
@@ -1691,6 +1693,9 @@ class TokenRefreshTestCase(unittest.TestCase):
         self.assertIn('HttpOnly', set_cookie)
         self.assertIn('SameSite=strict', set_cookie)
         self.assertIn('Path=/auth', set_cookie)
+        # The access cookie is refreshed too so <img> subresource loads of
+        # the upload-serving endpoints keep working after rotation.
+        self.assertIn('imbi_access_token=', set_cookie)
 
     def test_refresh_token_missing_returns_401(self) -> None:
         """No cookie and no body yields 401 rather than a 422."""

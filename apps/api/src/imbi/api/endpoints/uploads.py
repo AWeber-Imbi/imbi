@@ -196,7 +196,7 @@ async def list_uploads(
 
     uploads = await db.match(
         models.Upload,
-        parameters if parameters else None,
+        parameters or None,
         order_by='created_at',
     )
     return [_upload_response(u) for u in uploads]
@@ -209,7 +209,9 @@ async def get_upload(
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('upload:read')),
+        fastapi.Depends(
+            permissions.require_permission('upload:read', allow_cookie=True)
+        ),
     ],
 ) -> fastapi.responses.Response:
     """Serve the uploaded file.
@@ -290,7 +292,9 @@ async def get_upload_thumbnail(
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('upload:read')),
+        fastapi.Depends(
+            permissions.require_permission('upload:read', allow_cookie=True)
+        ),
     ],
 ) -> fastapi.responses.Response:
     """Serve the upload thumbnail.

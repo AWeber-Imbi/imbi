@@ -43,6 +43,12 @@ class UploadEndpointsTestCase(unittest.TestCase):
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             mock_get_current_user
         )
+        # The byte-serving GETs authenticate via the cookie-fallback
+        # resolver so they can be loaded as <img> subresources; override
+        # it too so those endpoints see the same test auth context.
+        self.test_app.dependency_overrides[
+            permissions.get_current_user_cookie_fallback
+        ] = mock_get_current_user
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
         self.test_app.dependency_overrides[graph._inject_graph] = (
@@ -397,6 +403,9 @@ class UploadEndpointsTestCase(unittest.TestCase):
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             _non_admin
         )
+        self.test_app.dependency_overrides[
+            permissions.get_current_user_cookie_fallback
+        ] = _non_admin
         try:
             for path in (
                 '/uploads/test-uuid-1234',
@@ -414,6 +423,9 @@ class UploadEndpointsTestCase(unittest.TestCase):
 
             self.test_app.dependency_overrides[
                 permissions.get_current_user
+            ] = _restore
+            self.test_app.dependency_overrides[
+                permissions.get_current_user_cookie_fallback
             ] = _restore
 
     def test_requires_authentication(self) -> None:

@@ -24,6 +24,14 @@ LOGGER = logging.getLogger(__name__)
 # OAuth2 scheme for extracting Bearer tokens from Authorization header
 oauth2_scheme = security.HTTPBearer(auto_error=False)
 
+# Name of the cookie that mirrors the access token. The SPA authenticates
+# with a Bearer header on fetch/XHR; this cookie exists solely so browser
+# subresource requests (``<img src>`` to the upload-serving endpoints),
+# which cannot set an Authorization header, still carry credentials. It is
+# set by the auth endpoints and honored only by the cookie-fallback
+# dependency below.
+ACCESS_COOKIE_NAME = 'imbi_access_token'
+
 
 class IdentityInfo(pydantic.BaseModel):
     """A single third-party identity connection for an authenticated user."""
@@ -634,19 +642,62 @@ async def get_current_user(
             detail='Missing authentication credentials',
             headers={'WWW-Authenticate': 'Bearer'},
         )
+    return await _authenticate_token(
+        db, credentials.credentials, settings.get_auth_settings()
+    )
 
-    auth_settings = settings.get_auth_settings()
-    token = credentials.credentials
 
-    # Detect API key format (ik_<id>_<secret>)
+async def _authenticate_token(
+    db: graph.Graph,
+    token: str,
+    auth_settings: settings.Auth,
+) -> AuthContext:
+    """Resolve an AuthContext from a raw bearer token.
+
+    Detects the API key format (``ik_<id>_<secret>``) and otherwise
+    treats the token as a JWT.
+    """
     if token.startswith('ik_'):
         return await authenticate_api_key(db, token, auth_settings)
-    else:
-        return await authenticate_jwt(db, token, auth_settings)
+    return await authenticate_jwt(db, token, auth_settings)
+
+
+async def get_current_user_cookie_fallback(
+    db: graph.Pool,
+    request: fastapi.Request,
+    credentials: security.HTTPAuthorizationCredentials
+    | None = fastapi.Depends(oauth2_scheme),  # noqa: B008
+) -> AuthContext:
+    """Like ``get_current_user`` but also accepts the access cookie.
+
+    Browser subresource requests (e.g. ``<img src>``) cannot set an
+    ``Authorization`` header, so for the upload-serving GET endpoints the
+    access token is also read from the :data:`ACCESS_COOKIE_NAME` cookie
+    when the header is absent. The Bearer header still takes precedence.
+
+    Raises:
+        fastapi.HTTPException: If neither a header nor cookie token is
+            present.
+
+    """
+    token = (
+        credentials.credentials
+        if credentials
+        else request.cookies.get(ACCESS_COOKIE_NAME)
+    )
+    if not token:
+        raise fastapi.HTTPException(
+            status_code=401,
+            detail='Missing authentication credentials',
+            headers={'WWW-Authenticate': 'Bearer'},
+        )
+    return await _authenticate_token(db, token, settings.get_auth_settings())
 
 
 def require_permission(
     permission: str,
+    *,
+    allow_cookie: bool = False,
 ) -> typing.Callable[[AuthContext], collections.abc.Awaitable[AuthContext]]:
     """
     Create a FastAPI dependency that enforces a specific permission.
@@ -659,6 +710,11 @@ def require_permission(
     Parameters:
         permission (str): Permission name to require (e.g.,
             "blueprint:read").
+        allow_cookie (bool): When True, the access token may also be
+            supplied via the :data:`ACCESS_COOKIE_NAME` cookie instead of
+            the Authorization header. Intended only for endpoints loaded
+            as browser subresources (``<img src>``), which cannot send a
+            Bearer header.
 
     Returns:
         Callable[[AuthContext], Awaitable[AuthContext]]: A dependency
@@ -669,9 +725,12 @@ def require_permission(
         fastapi.HTTPException: Raised with status code 403 if the
             current user lacks the required permission.
     """
+    resolver = (
+        get_current_user_cookie_fallback if allow_cookie else get_current_user
+    )
 
     async def check_permission(
-        auth: typing.Annotated[AuthContext, fastapi.Depends(get_current_user)],
+        auth: typing.Annotated[AuthContext, fastapi.Depends(resolver)],
     ) -> AuthContext:
         """Enforce that the principal has the required permission.
 
