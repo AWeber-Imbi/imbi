@@ -57,6 +57,36 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             self.mock_db
         )
 
+        # Stub ``dispatch_lifecycle`` so tests that don't care about
+        # plugin fan-out (the bulk of CRUD tests) aren't forced to seed
+        # an extra db.execute side-effect for ``resolve_all_plugins``.
+        # Tests that want to assert dispatch behaviour override this
+        # patch locally (see the archive / unarchive cases).
+        self._dispatch_patcher = mock.patch(
+            'imbi_api.endpoints.projects.dispatch_lifecycle',
+            new=mock.AsyncMock(return_value=[]),
+        )
+        self._dispatch_patcher.start()
+        self.addCleanup(self._dispatch_patcher.stop)
+
+        # ``delete_project`` reads the lifecycle context bundle before
+        # the DETACH DELETE; stub it so test fixtures don't need to
+        # provide three extra ``db.execute`` side-effects for the
+        # lookups.
+        self._bundle_patcher = mock.patch(
+            'imbi_api.endpoints.projects.build_lifecycle_context_bundle',
+            new=mock.AsyncMock(
+                return_value=mock.MagicMock(
+                    project_slug='my-api',
+                    team_slug='platform',
+                    project_links={},
+                    project_type_slugs=['api-service'],
+                ),
+            ),
+        )
+        self._bundle_patcher.start()
+        self.addCleanup(self._bundle_patcher.stop)
+
         self.client = TestClient(self.test_app)
 
     def _project_data(self, **overrides: typing.Any) -> dict:
@@ -1018,7 +1048,8 @@ class ProjectEndpointsTestCase(unittest.TestCase):
                 f'/organizations/engineering/projects/{PROJECT_ID}',
             )
 
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'lifecycle_results': []})
 
     def test_delete_not_found(self) -> None:
         """Test deleting nonexistent project."""
@@ -1316,6 +1347,148 @@ class ProjectEndpointsTestCase(unittest.TestCase):
         response = self._list_with_filter('filter=framework:ne')
         self.assertEqual(response.status_code, 400)
         self.assertIn('requires a value', response.json()['detail'])
+
+    # -- Lifecycle dispatch wiring ------------------------------------
+
+    def test_create_dispatches_lifecycle_created(self) -> None:
+        """``create_project`` fans out a ``created`` lifecycle event."""
+        record = self._project_data()
+        self.mock_db.execute.side_effect = [
+            [{'pt_slug': 'api-service', 'found': True}],
+            [
+                {
+                    'project': record,
+                    'outbound_count': 0,
+                    'inbound_count': 0,
+                },
+            ],
+        ]
+        # The setUp patcher is registered via addCleanup; nest a new
+        # ``mock.patch`` on the same target so its return value wins for
+        # the duration of this test without double-stopping the cleanup.
+        with (
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+            ) as mock_get_model,
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.projects.nanoid.generate',
+                return_value=PROJECT_ID,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                new=mock.AsyncMock(return_value=[]),
+            ) as mock_dispatch,
+        ):
+            mock_get_model.return_value = models.Project
+            response = self.client.post(
+                '/organizations/engineering/projects/',
+                json={
+                    'name': 'My API',
+                    'slug': 'my-api',
+                    'description': 'An example API',
+                    'team_slug': 'platform',
+                    'project_type_slugs': ['api-service'],
+                },
+            )
+
+        self.assertEqual(response.status_code, 201)
+        mock_dispatch.assert_awaited_once()
+        call = mock_dispatch.await_args
+        self.assertEqual(call.args[3], 'created')
+        self.assertEqual(call.kwargs['project_name'], 'My API')
+        self.assertEqual(call.kwargs['project_description'], 'An example API')
+
+    def test_patch_dispatches_lifecycle_on_slug_change(self) -> None:
+        """Slug change passes ``previous_project_slug`` to dispatch."""
+        existing = self._project_data()
+        updated = self._project_data(slug='my-api-v2')
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'project': existing,
+                    'outbound_count': 0,
+                    'inbound_count': 0,
+                },
+            ],
+            [{'slug': 'platform'}],
+            [{'pt_slug': 'api-service', 'found': True}],
+            [
+                {
+                    'project': updated,
+                    'outbound_count': 0,
+                    'inbound_count': 0,
+                },
+            ],
+        ]
+        # Nest a fresh ``dispatch_lifecycle`` patch over the setUp one --
+        # the inner mock.patch wins for the duration of the with-block
+        # and addCleanup handles teardown of the outer patcher.
+        with (
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+            ) as mock_get_model,
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                new=mock.AsyncMock(return_value=[]),
+            ) as mock_dispatch,
+        ):
+            mock_get_model.return_value = models.Project
+            response = self.client.patch(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/slug',
+                        'value': 'my-api-v2',
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        mock_dispatch.assert_awaited_once()
+        call = mock_dispatch.await_args
+        self.assertEqual(call.args[3], 'updated')
+        self.assertEqual(call.kwargs['previous_project_slug'], 'my-api')
+
+    def test_delete_with_delete_repository_false_skips_dispatch(
+        self,
+    ) -> None:
+        """``delete_repository=false`` short-circuits the dispatch."""
+        self.mock_db.execute.return_value = [{'deleted': 1}]
+        # Nest fresh patches over the setUp ones -- the inner mock.patch
+        # wins for the duration of the with-block; addCleanup handles
+        # teardown of the outer patchers without a double-stop.
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                new=mock.AsyncMock(return_value=[]),
+            ) as mock_dispatch,
+            mock.patch(
+                'imbi_api.endpoints.projects.build_lifecycle_context_bundle',
+                new=mock.AsyncMock(),
+            ) as mock_bundle,
+        ):
+            response = self.client.delete(
+                f'/organizations/engineering/projects/{PROJECT_ID}'
+                '?delete_repository=false',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'lifecycle_results': []})
+        mock_dispatch.assert_not_awaited()
+        mock_bundle.assert_not_awaited()
 
 
 class _RelationshipsTestBase(unittest.TestCase):

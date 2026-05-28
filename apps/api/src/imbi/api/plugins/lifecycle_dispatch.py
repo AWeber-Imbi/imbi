@@ -1,17 +1,21 @@
 """Lifecycle plugin fan-out for project state-change endpoints.
 
-When a project transitions to / from the archived state the API
-dispatches the change to every plugin assigned to ``tab='lifecycle'``
-(at the project or project-type level).  Plugins receive a normal
-:class:`PluginContext` with hydrated identity and return a
-:class:`LifecycleResult` describing their per-plugin outcome.
+When a project state changes -- create, update, archive, unarchive,
+delete, or relocate -- the API dispatches the event to every plugin
+assigned to ``tab='lifecycle'`` (at the project or project-type level).
+Plugins receive a :class:`PluginContext` with hydrated identity and
+return a :class:`LifecycleResult` describing their per-plugin outcome.
 
-Failure of one plugin never poisons the others and never rolls back
-the Imbi-side state change — the operator's intent is authoritative.
+Only ``on_project_archived`` is a required plugin hook; every other
+event's missing hook resolves to ``status='skipped'``.  Failure of one
+plugin never poisons the others and never rolls back the Imbi-side
+state change -- the operator's intent is authoritative.
 """
 
 from __future__ import annotations
 
+import asyncio
+import dataclasses
 import datetime
 import logging
 import typing
@@ -44,11 +48,83 @@ from imbi_api.plugins.resolution import ResolvedPlugin, resolve_all_plugins
 
 LOGGER = logging.getLogger(__name__)
 
-LifecycleEvent = typing.Literal['archived', 'unarchived']
+LifecycleEvent = typing.Literal[
+    'created',
+    'updated',
+    'archived',
+    'unarchived',
+    'deleted',
+    'relocated',
+]
+
+#: Map of lifecycle events to the matching ``LifecyclePlugin`` hook
+#: name.  Centralized here so both the dispatcher and any future
+#: capability checks read from the same source.
+_EVENT_METHOD: dict[LifecycleEvent, str] = {
+    'created': 'on_project_created',
+    'updated': 'on_project_updated',
+    'archived': 'on_project_archived',
+    'unarchived': 'on_project_unarchived',
+    'deleted': 'on_project_deleted',
+    'relocated': 'on_project_relocated',
+}
+
+
+@dataclasses.dataclass(slots=True)
+class LifecycleContextBundle:
+    """Pre-fetched project context for the lifecycle dispatcher.
+
+    The delete endpoint needs the project's slug / links / type slugs
+    *before* ``DETACH DELETE`` runs (otherwise the helpers would look
+    up a project that no longer exists).  Callers that already hold the
+    data -- including the rest of the lifecycle path that could
+    short-circuit a round trip -- pass a bundle through to
+    :func:`dispatch_lifecycle`.  Callers that don't hold it can let the
+    dispatcher fetch it implicitly (the archive / unarchive path still
+    does this for back-compat).
+    """
+
+    project_slug: str
+    team_slug: str | None
+    project_links: dict[str, str]
+    project_type_slugs: list[str]
+
+
+async def build_lifecycle_context_bundle(
+    db: graph.Graph, project_id: str
+) -> LifecycleContextBundle:
+    """Pre-fetch lifecycle context the dispatcher would otherwise look up.
+
+    Use this before a ``DETACH DELETE`` so the bundle survives the
+    write, and pass it as ``bundle=`` to :func:`dispatch_lifecycle`.
+    """
+    from imbi_api.endpoints._helpers import (
+        lookup_project_links,
+        lookup_project_slugs,
+        lookup_project_type_slugs,
+    )
+
+    # Three independent DB lookups; gather them concurrently so each
+    # lifecycle dispatch pays one round-trip latency rather than three.
+    (
+        (project_slug, team_slug),
+        project_links,
+        project_type_slugs,
+    ) = await asyncio.gather(
+        lookup_project_slugs(db, project_id),
+        lookup_project_links(db, project_id),
+        lookup_project_type_slugs(db, project_id),
+    )
+    return LifecycleContextBundle(
+        project_slug=project_slug,
+        team_slug=team_slug,
+        project_links=project_links,
+        project_type_slugs=project_type_slugs,
+    )
 
 
 class LifecycleInvocation(pydantic.BaseModel):
-    """Per-plugin outcome surfaced to the operator after archive/unarchive."""
+    """Per-plugin outcome surfaced to the operator after a lifecycle event."""
 
     plugin_id: str
     plugin_slug: str
@@ -63,6 +139,13 @@ async def dispatch_lifecycle(
     org_slug: str,
     event: LifecycleEvent,
     auth: permissions.AuthContext,
+    *,
+    bundle: LifecycleContextBundle | None = None,
+    previous_project_slug: str | None = None,
+    previous_project_type_slugs: list[str] | None = None,
+    project_name: str | None = None,
+    project_description: str | None = None,
+    project_ui_url: str | None = None,
 ) -> list[LifecycleInvocation]:
     """Invoke every lifecycle plugin assigned to ``project_id``.
 
@@ -70,31 +153,35 @@ async def dispatch_lifecycle(
     when no lifecycle plugins are assigned.  All exceptions are caught
     and translated into a ``status='failed'`` result so the caller can
     surface them without rolling back the Imbi state change.
-    """
-    from imbi_api.endpoints._helpers import (
-        lookup_project_links,
-        lookup_project_slugs,
-        lookup_project_type_slugs,
-    )
 
+    Pass ``bundle`` for events like ``'deleted'`` where the caller
+    needs to capture project context before a destructive write;
+    otherwise the dispatcher looks the data up.  The optional
+    ``previous_*`` fields populate :class:`PluginContext` for plugins
+    that need a before/after view (``'updated'`` / ``'relocated'``).
+    """
     resolved_plugins = await resolve_all_plugins(db, project_id, 'lifecycle')
     if not resolved_plugins:
         return []
 
-    project_slug, team_slug = await lookup_project_slugs(db, project_id)
-    project_links = await lookup_project_links(db, project_id)
-    project_type_slugs = await lookup_project_type_slugs(db, project_id)
+    if bundle is None:
+        bundle = await build_lifecycle_context_bundle(db, project_id)
 
     results: list[LifecycleInvocation] = []
     for resolved in resolved_plugins:
         ctx = PluginContext(
             project_id=project_id,
-            project_slug=project_slug,
+            project_slug=bundle.project_slug,
             org_slug=org_slug,
-            team_slug=team_slug,
+            team_slug=bundle.team_slug,
             assignment_options=resolved.options,
-            project_links=project_links,
-            project_type_slugs=project_type_slugs,
+            project_links=bundle.project_links,
+            project_type_slugs=bundle.project_type_slugs,
+            previous_project_slug=previous_project_slug,
+            previous_project_type_slugs=previous_project_type_slugs or [],
+            project_name=project_name,
+            project_description=project_description,
+            project_ui_url=project_ui_url,
         )
         invocation = await _invoke_one(db, ctx, resolved, event, auth)
         results.append(invocation)
@@ -117,16 +204,38 @@ async def _invoke_one(
     """Run a single plugin and return its :class:`LifecycleInvocation`.
 
     Failures from the plugin, missing credentials, missing identity,
-    timeouts, and ``NotImplementedError`` (for plugins without an
-    unarchive inverse) are all translated to a
+    timeouts, and ``NotImplementedError`` (for plugins without a hook
+    for this event) are all translated to a
     :class:`LifecycleInvocation` instead of bubbling.
     """
     handler = typing.cast(LifecyclePlugin, resolved.entry.handler_cls())
-    method_name = (
-        'on_project_archived'
-        if event == 'archived'
-        else 'on_project_unarchived'
-    )
+    method_name = _EVENT_METHOD[event]
+
+    # Detect a truly-unimplemented hook (the plugin inherits the base
+    # ``LifecyclePlugin`` stub) *before* we call into it.  This lets a
+    # real ``NotImplementedError`` raised by an implemented hook surface
+    # as ``status='failed'`` via the generic exception handler instead of
+    # being misreported as ``skipped``.  ``on_project_archived`` is the
+    # only required hook -- a missing impl there still maps to ``failed``.
+    method = getattr(handler, method_name)
+    base_method = getattr(LifecyclePlugin, method_name, None)
+    if (
+        base_method is not None
+        and getattr(method, '__func__', method) is base_method
+    ):
+        if event == 'archived':
+            return LifecycleInvocation(
+                plugin_id=resolved.plugin_id,
+                plugin_slug=resolved.plugin_slug,
+                status='failed',
+                message=f'Plugin does not implement {method_name}',
+            )
+        return LifecycleInvocation(
+            plugin_id=resolved.plugin_id,
+            plugin_slug=resolved.plugin_slug,
+            status='skipped',
+            message=f'Plugin does not implement {method_name}',
+        )
 
     # call_with_identity_retry re-attaches identity onto a fresh context
     # before invoking ``_call`` (attached defaults to False here), so the
@@ -146,23 +255,6 @@ async def _invoke_one(
     try:
         result = await call_with_identity_retry(
             db, ctx, resolved, auth, fn=_call
-        )
-    except NotImplementedError as exc:
-        # Only the unarchive inverse hook is optional; archive hooks are
-        # the plugin's primary contract, so a missing implementation is
-        # a real failure, not a skip.
-        if event == 'unarchived':
-            return LifecycleInvocation(
-                plugin_id=resolved.plugin_id,
-                plugin_slug=resolved.plugin_slug,
-                status='skipped',
-                message=f'Plugin does not implement {method_name}',
-            )
-        return LifecycleInvocation(
-            plugin_id=resolved.plugin_id,
-            plugin_slug=resolved.plugin_slug,
-            status='failed',
-            message=f'NotImplementedError: {exc}',
         )
     except fastapi.HTTPException as exc:
         return LifecycleInvocation(

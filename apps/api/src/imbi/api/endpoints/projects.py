@@ -32,11 +32,13 @@ from imbi_api.endpoints._json_fields import (
 from imbi_api.graph_sql import escape_prop, props_template, set_clause
 from imbi_api.plugins.lifecycle_dispatch import (
     LifecycleInvocation,
+    build_lifecycle_context_bundle,
     dispatch_lifecycle,
 )
 from imbi_api.relationships import RelationshipSpec, build_relationships
 from imbi_api.scoring import OptionalValkeyClient
 from imbi_api.scoring import queue as score_queue
+from imbi_api.settings import get_server_config
 
 LOGGER = logging.getLogger(__name__)
 
@@ -247,6 +249,52 @@ class ProjectResponse(pydantic.BaseModel):
         if isinstance(value, str):
             return json.loads(value)
         return value
+
+
+class ProjectMutationResponse(ProjectResponse):
+    """Response for any project mutation that triggers a lifecycle dispatch.
+
+    Mirrors :class:`ProjectResponse` and appends one
+    :class:`LifecycleInvocation` per assigned lifecycle plugin so the
+    UI can surface third-party outcomes (GitHub repo created /
+    renamed, archive succeeded, etc.) without a follow-up request.
+    Used by create / patch / archive / unarchive.  Empty when no
+    lifecycle plugins are assigned.
+    """
+
+    lifecycle_results: list[LifecycleInvocation] = []
+
+
+# Back-compat alias: pre-2.8 the archive / unarchive endpoints
+# returned ``ArchiveProjectResponse``.  The shape is now shared with
+# create / patch so the canonical name is ``ProjectMutationResponse``;
+# this alias keeps OpenAPI clients and existing tests building.
+ArchiveProjectResponse = ProjectMutationResponse
+
+
+class ProjectDeletedResponse(pydantic.BaseModel):
+    """Response for a successful project delete.
+
+    The project node is gone by the time the response is built, so
+    the body carries only the per-plugin lifecycle results -- empty
+    when ``delete_repository=false`` short-circuits the dispatch.
+    """
+
+    lifecycle_results: list[LifecycleInvocation] = []
+
+
+def _build_project_ui_url(org_slug: str, project_id: str) -> str | None:
+    """Resolve the canonical UI deep link for a project.
+
+    Returns ``None`` when ``IMBI_UI_URL`` is unset so lifecycle plugins
+    can skip writing the equivalent of a GitHub repo ``homepage``
+    without falling back to a localhost URL that would point at
+    nothing meaningful for a third party.
+    """
+    base = get_server_config().ui_url
+    if not base:
+        return None
+    return f'{base}/organizations/{org_slug}/projects/{project_id}'
 
 
 # -- Helpers ------------------------------------------------------------
@@ -834,7 +882,7 @@ async def create_project(
             permissions.require_permission('project:create'),
         ),
     ],
-) -> ProjectResponse:
+) -> ProjectMutationResponse:
     """Create a new project in an organization."""
     dynamic_model = await blueprints.get_model(
         db,
@@ -997,7 +1045,32 @@ async def create_project(
     await score_queue.enqueue_recompute(
         valkey_client, project_id, 'attribute_change'
     )
-    return ProjectResponse.model_validate(project_data)
+    # Fire the lifecycle ``created`` event so plugins (e.g. the
+    # GitHub lifecycle plugin) can provision the backing repo and
+    # write the resulting canonical link back via ``LinkWriteback``.
+    # The project node already committed; never let a dispatch hiccup
+    # turn a successful create into a 500.
+    lifecycle_results: list[LifecycleInvocation] = []
+    try:
+        lifecycle_results = await dispatch_lifecycle(
+            db,
+            project_id,
+            org_slug,
+            'created',
+            auth,
+            project_name=project.name,
+            project_description=project.description,
+            project_ui_url=_build_project_ui_url(org_slug, project_id),
+        )
+    except Exception:
+        LOGGER.exception(
+            'Lifecycle dispatch failed after creating project %s',
+            project_id,
+        )
+    return ProjectMutationResponse(
+        **ProjectResponse.model_validate(project_data).model_dump(),
+        lifecycle_results=lifecycle_results,
+    )
 
 
 def _attach_project_relationships(
@@ -2105,7 +2178,7 @@ async def patch_project(
             permissions.require_permission('project:write'),
         ),
     ],
-) -> ProjectResponse:
+) -> ProjectMutationResponse:
     """Partially update a project using JSON Patch (RFC 6902).
 
     Parameters:
@@ -2229,7 +2302,39 @@ async def patch_project(
         before_snapshot,
         patched,
     )
-    return response
+    # Only dispatch ``updated`` when the slug or description actually
+    # changed: lifecycle plugins translate those into remote rename /
+    # description writes, and firing on every PATCH (e.g. an icon
+    # change) would pay an HTTP round trip for nothing.  Name does not
+    # gate the dispatch because GitHub has no display-name field --
+    # the plugin would always no-op.
+    previous_slug = str(before_snapshot.get('slug') or '') or None
+    previous_description = before_snapshot.get('description')
+    slug_changed = previous_slug is not None and response.slug != previous_slug
+    description_changed = response.description != previous_description
+    lifecycle_results: list[LifecycleInvocation] = []
+    if slug_changed or description_changed:
+        try:
+            lifecycle_results = await dispatch_lifecycle(
+                db,
+                project_id,
+                org_slug,
+                'updated',
+                auth,
+                previous_project_slug=previous_slug if slug_changed else None,
+                project_name=response.name,
+                project_description=response.description,
+                project_ui_url=_build_project_ui_url(org_slug, project_id),
+            )
+        except Exception:
+            LOGGER.exception(
+                'Lifecycle dispatch failed after updating project %s',
+                project_id,
+            )
+    return ProjectMutationResponse(
+        **response.model_dump(),
+        lifecycle_results=lifecycle_results,
+    )
 
 
 async def _set_archived_state(
@@ -2280,18 +2385,6 @@ async def _set_archived_state(
         graph.parse_agtype(records[0]['inbound_count']),
     )
     return ProjectResponse.model_validate(project_data)
-
-
-class ArchiveProjectResponse(ProjectResponse):
-    """Response for archive / unarchive, with per-plugin lifecycle results.
-
-    Mirrors :class:`ProjectResponse` and appends one
-    :class:`LifecycleInvocation` per assigned lifecycle plugin so the
-    UI can surface third-party outcomes (GitHub archive succeeded,
-    AWS shutdown failed, ...) without a follow-up request.
-    """
-
-    lifecycle_results: list[LifecycleInvocation] = []
 
 
 @projects_router.post('/{project_id}/archive')
@@ -2364,7 +2457,7 @@ async def unarchive_project(
     )
 
 
-@projects_router.delete('/{project_id}', status_code=204)
+@projects_router.delete('/{project_id}')
 async def delete_project(
     org_slug: str,
     project_id: str,
@@ -2375,8 +2468,33 @@ async def delete_project(
             permissions.require_permission('project:delete'),
         ),
     ],
-) -> None:
-    """Delete a project."""
+    delete_repository: bool = True,
+) -> ProjectDeletedResponse:
+    """Delete a project.
+
+    When ``delete_repository`` is true (the default), each assigned
+    lifecycle plugin's ``on_project_deleted`` hook is also invoked so
+    the backing remote (e.g. a GitHub repo) is removed alongside the
+    Imbi project node.  Set ``delete_repository=false`` to keep the
+    remote in place -- useful when the repository has historical value
+    that should survive the project being retired.
+
+    Returns a 200 with the per-plugin :class:`LifecycleInvocation`
+    list rather than the bare 204 the pre-2.8 endpoint emitted.  An
+    empty ``lifecycle_results`` list means either no lifecycle plugins
+    were assigned, or ``delete_repository=false`` short-circuited the
+    dispatch.
+    """
+    # Capture the lifecycle context bundle *before* the DETACH DELETE
+    # so the project's links / slug / type slugs survive the write and
+    # the downstream dispatcher doesn't try to look them up against a
+    # node that no longer exists.
+    bundle = (
+        await build_lifecycle_context_bundle(db, project_id)
+        if delete_repository
+        else None
+    )
+
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
@@ -2397,3 +2515,25 @@ async def delete_project(
             status_code=404,
             detail=f'Project {project_id!r} not found',
         )
+
+    # Project node is gone; never let a dispatch hiccup turn a
+    # successful delete into a 500.  ``delete_repository=false`` skips
+    # the dispatch entirely so the operator can retire the project
+    # without nuking the remote.
+    lifecycle_results: list[LifecycleInvocation] = []
+    if delete_repository and bundle is not None:
+        try:
+            lifecycle_results = await dispatch_lifecycle(
+                db,
+                project_id,
+                org_slug,
+                'deleted',
+                auth,
+                bundle=bundle,
+            )
+        except Exception:
+            LOGGER.exception(
+                'Lifecycle dispatch failed after deleting project %s',
+                project_id,
+            )
+    return ProjectDeletedResponse(lifecycle_results=lifecycle_results)

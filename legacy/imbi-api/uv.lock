@@ -1095,7 +1095,7 @@ requires-dist = [
   { name = "fastapi" },
   { name = "filetype" },
   { name = "httpx", specifier = ">=0.28.1,<1" },
-  { name = "imbi-common", extras = ["databases", "llm", "sentry", "server"], git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main" },
+  { name = "imbi-common", extras = ["databases", "llm", "sentry", "server"], git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=d21cc8818f238cfe02625ac6f292091c526ed787" },
   { name = "imbi-plugin-aws", marker = "extra == 'plugins'", specifier = ">=1.0.0" },
   { name = "imbi-plugin-github", marker = "extra == 'plugins'", specifier = ">=1.0.0" },
   { name = "imbi-plugin-logzio", marker = "extra == 'plugins'", specifier = ">=1.0.0" },
@@ -1149,7 +1149,7 @@ docs = [
 [[package]]
 name = "imbi-common"
 version = "2.8.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main#d21cc8818f238cfe02625ac6f292091c526ed787" }
+source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=d21cc8818f238cfe02625ac6f292091c526ed787#d21cc8818f238cfe02625ac6f292091c526ed787" }
 dependencies = [
   { name = "cryptography" },
   { name = "httpx" },

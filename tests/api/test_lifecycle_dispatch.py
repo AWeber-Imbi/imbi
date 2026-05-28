@@ -6,6 +6,7 @@ event errors not poisoning the response.
 """
 
 import asyncio
+import typing
 import unittest
 import unittest.mock as mock
 
@@ -15,13 +16,16 @@ from imbi_common.plugins.base import (
     LifecyclePlugin,
     LifecycleResult,
     LinkWriteback,
+    PluginContext,
     PluginManifest,
 )
 from imbi_common.plugins.registry import RegistryEntry
 
 from imbi_api.plugins.lifecycle_dispatch import (
+    LifecycleContextBundle,
     LifecycleEvent,
     LifecycleInvocation,
+    build_lifecycle_context_bundle,
     dispatch_lifecycle,
 )
 from imbi_api.plugins.resolution import ResolvedPlugin
@@ -31,9 +35,19 @@ def _make_lifecycle_entry(
     slug: str,
     *,
     archive_status: str = 'ok',
-    unarchive_raises: type[BaseException] | None = NotImplementedError,
+    unarchive_raises: type[BaseException] | None = None,
     archive_raises: type[BaseException] | None = None,
 ) -> RegistryEntry:
+    """Build a registry entry for a synthetic lifecycle plugin.
+
+    ``unarchive_raises`` defaults to ``None`` so the fixture inherits the
+    base ``LifecyclePlugin.on_project_unarchived`` stub (which raises
+    :class:`NotImplementedError`); the dispatcher detects the missing
+    hook by identity and reports ``status='skipped'`` without invoking.
+    Pass an exception class to install an *implemented* override that
+    raises -- exercising the runtime-failure path.
+    """
+
     class _FakeLifecycle(LifecyclePlugin):
         manifest = PluginManifest(
             slug=slug,
@@ -50,10 +64,13 @@ def _make_lifecycle_entry(
                 artifacts={'repo_url': 'https://github.com/o/r'},
             )
 
-        async def on_project_unarchived(self, ctx, credentials):  # type: ignore[override]
-            if unarchive_raises is not None:
-                raise unarchive_raises('unarchive boom')
-            return LifecycleResult(status='ok')
+    if unarchive_raises is not None:
+        _exc = unarchive_raises
+
+        async def _on_unarchived(self, ctx, credentials):  # type: ignore[no-untyped-def]
+            raise _exc('unarchive boom')
+
+        _FakeLifecycle.on_project_unarchived = _on_unarchived  # type: ignore[method-assign]
 
     return RegistryEntry(
         handler_cls=_FakeLifecycle,
@@ -318,3 +335,271 @@ class ConfigurationPluginIsNotLifecycle(unittest.TestCase):
 
     def test_configuration_plugin_no_archive_method(self) -> None:
         self.assertFalse(hasattr(ConfigurationPlugin, 'on_project_archived'))
+
+
+class WidenedEventNotImplementedTestCase(unittest.TestCase):
+    """The new lifecycle events skip when a plugin doesn't implement them.
+
+    Only ``archived`` is a required hook on :class:`LifecyclePlugin`; the
+    rest of the events resolve to ``status='skipped'`` when the plugin
+    doesn't implement them, so plugins can opt into per-event support
+    incrementally without breaking the dispatch.
+    """
+
+    def _run_with_bare_plugin(
+        self, event: LifecycleEvent
+    ) -> LifecycleInvocation:
+        class _Bare(LifecyclePlugin):
+            manifest = PluginManifest(
+                slug='bare', name='bare', plugin_type='lifecycle'
+            )
+
+            async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+                return LifecycleResult(status='ok')
+
+            async def on_project_unarchived(self, ctx, credentials):  # type: ignore[override]
+                raise NotImplementedError
+
+        entry = RegistryEntry(
+            handler_cls=_Bare,
+            manifest=_Bare.manifest,
+            package_name='imbi-plugin-bare',
+            package_version='1.0.0',
+        )
+        resolved = ResolvedPlugin(
+            plugin_id='p1',
+            plugin_slug='bare',
+            entry=entry,
+            options={},
+            identity_plugin_id=None,
+        )
+        mock_db = mock.AsyncMock()
+        auth = _make_auth()
+        with (
+            mock.patch(
+                'imbi_api.plugins.lifecycle_dispatch.resolve_all_plugins',
+                mock.AsyncMock(return_value=[resolved]),
+            ),
+            mock.patch(
+                'imbi_api.endpoints._helpers.lookup_project_slugs',
+                mock.AsyncMock(return_value=('p', 't')),
+            ),
+            mock.patch(
+                'imbi_api.endpoints._helpers.lookup_project_links',
+                mock.AsyncMock(return_value={}),
+            ),
+            mock.patch(
+                'imbi_api.endpoints._helpers.lookup_project_type_slugs',
+                mock.AsyncMock(return_value=[]),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle_dispatch.call_with_identity_retry',
+                new=_passthrough_identity_retry,
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle_dispatch._resolve_credentials',
+                mock.AsyncMock(return_value={'access_token': 't'}),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
+                'get_instance'
+            ) as ch_get,
+        ):
+            ch_get.return_value.insert = mock.AsyncMock()
+            results = asyncio.run(
+                dispatch_lifecycle(mock_db, 'proj-1', 'org-1', event, auth)
+            )
+        return results[0]
+
+    def test_created_not_implemented_is_skipped(self) -> None:
+        inv = self._run_with_bare_plugin('created')
+        self.assertEqual(inv.status, 'skipped')
+        self.assertIn('on_project_created', inv.message or '')
+
+    def test_updated_not_implemented_is_skipped(self) -> None:
+        inv = self._run_with_bare_plugin('updated')
+        self.assertEqual(inv.status, 'skipped')
+        self.assertIn('on_project_updated', inv.message or '')
+
+    def test_deleted_not_implemented_is_skipped(self) -> None:
+        inv = self._run_with_bare_plugin('deleted')
+        self.assertEqual(inv.status, 'skipped')
+        self.assertIn('on_project_deleted', inv.message or '')
+
+    def test_relocated_not_implemented_is_skipped(self) -> None:
+        inv = self._run_with_bare_plugin('relocated')
+        self.assertEqual(inv.status, 'skipped')
+        self.assertIn('on_project_relocated', inv.message or '')
+
+
+class BundleAndContextPropagationTestCase(unittest.TestCase):
+    """The dispatcher honours pre-fetched bundles and the new ctx kwargs."""
+
+    def _capture_ctx(
+        self,
+        *,
+        event: LifecycleEvent,
+        bundle: LifecycleContextBundle | None = None,
+        **dispatch_kwargs: typing.Any,
+    ) -> mock.MagicMock:
+        captured: dict[str, PluginContext] = {}
+
+        class _Capture(LifecyclePlugin):
+            manifest = PluginManifest(
+                slug='cap', name='cap', plugin_type='lifecycle'
+            )
+
+            async def on_project_created(self, ctx, credentials):  # type: ignore[override]
+                captured['ctx'] = ctx
+                return LifecycleResult(status='ok')
+
+            async def on_project_updated(self, ctx, credentials):  # type: ignore[override]
+                captured['ctx'] = ctx
+                return LifecycleResult(status='ok')
+
+            async def on_project_deleted(self, ctx, credentials):  # type: ignore[override]
+                captured['ctx'] = ctx
+                return LifecycleResult(status='ok')
+
+            async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+                return LifecycleResult(status='ok')
+
+            async def on_project_unarchived(self, ctx, credentials):  # type: ignore[override]
+                raise NotImplementedError
+
+        entry = RegistryEntry(
+            handler_cls=_Capture,
+            manifest=_Capture.manifest,
+            package_name='imbi-plugin-cap',
+            package_version='1.0.0',
+        )
+        resolved = ResolvedPlugin(
+            plugin_id='p1',
+            plugin_slug='cap',
+            entry=entry,
+            options={},
+            identity_plugin_id=None,
+        )
+        mock_db = mock.AsyncMock()
+        auth = _make_auth()
+        slugs_lookup = mock.AsyncMock(return_value=('fetched', 'team-x'))
+        links_lookup = mock.AsyncMock(return_value={})
+        types_lookup = mock.AsyncMock(return_value=[])
+        with (
+            mock.patch(
+                'imbi_api.plugins.lifecycle_dispatch.resolve_all_plugins',
+                mock.AsyncMock(return_value=[resolved]),
+            ),
+            mock.patch(
+                'imbi_api.endpoints._helpers.lookup_project_slugs',
+                slugs_lookup,
+            ),
+            mock.patch(
+                'imbi_api.endpoints._helpers.lookup_project_links',
+                links_lookup,
+            ),
+            mock.patch(
+                'imbi_api.endpoints._helpers.lookup_project_type_slugs',
+                types_lookup,
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle_dispatch.call_with_identity_retry',
+                new=_passthrough_identity_retry,
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle_dispatch._resolve_credentials',
+                mock.AsyncMock(return_value={'access_token': 't'}),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
+                'get_instance'
+            ) as ch_get,
+        ):
+            ch_get.return_value.insert = mock.AsyncMock()
+            asyncio.run(
+                dispatch_lifecycle(
+                    mock_db,
+                    'proj-1',
+                    'org-1',
+                    event,
+                    auth,
+                    bundle=bundle,
+                    **dispatch_kwargs,
+                )
+            )
+        return mock.MagicMock(
+            ctx=captured.get('ctx'),
+            slugs_lookup=slugs_lookup,
+            links_lookup=links_lookup,
+            types_lookup=types_lookup,
+        )
+
+    def test_provided_bundle_bypasses_helper_lookups(self) -> None:
+        bundle = LifecycleContextBundle(
+            project_slug='captured-slug',
+            team_slug='captured-team',
+            project_links={'github-repository': 'https://x'},
+            project_type_slugs=['api-service'],
+        )
+        out = self._capture_ctx(event='deleted', bundle=bundle)
+        # Bundle short-circuits the three helpers entirely.
+        out.slugs_lookup.assert_not_called()
+        out.links_lookup.assert_not_called()
+        out.types_lookup.assert_not_called()
+        # And the captured ctx mirrors the bundle.
+        self.assertEqual(out.ctx.project_slug, 'captured-slug')
+        self.assertEqual(out.ctx.team_slug, 'captured-team')
+        self.assertEqual(
+            out.ctx.project_links, {'github-repository': 'https://x'}
+        )
+        self.assertEqual(out.ctx.project_type_slugs, ['api-service'])
+
+    def test_updated_propagates_previous_slug_and_metadata(self) -> None:
+        out = self._capture_ctx(
+            event='updated',
+            previous_project_slug='old-slug',
+            project_name='New Name',
+            project_description='New description',
+            project_ui_url='https://imbi.example.com/projects/proj-1',
+        )
+        self.assertEqual(out.ctx.previous_project_slug, 'old-slug')
+        self.assertEqual(out.ctx.project_name, 'New Name')
+        self.assertEqual(out.ctx.project_description, 'New description')
+        self.assertEqual(
+            out.ctx.project_ui_url,
+            'https://imbi.example.com/projects/proj-1',
+        )
+
+
+class BuildLifecycleContextBundleTestCase(unittest.TestCase):
+    """:func:`build_lifecycle_context_bundle` packages the three lookups."""
+
+    def test_packages_slug_team_links_and_type_slugs(self) -> None:
+        mock_db = mock.AsyncMock()
+        with (
+            mock.patch(
+                'imbi_api.endpoints._helpers.lookup_project_slugs',
+                mock.AsyncMock(return_value=('my-api', 'platform')),
+            ),
+            mock.patch(
+                'imbi_api.endpoints._helpers.lookup_project_links',
+                mock.AsyncMock(
+                    return_value={'github-repository': 'https://gh/o/r'},
+                ),
+            ),
+            mock.patch(
+                'imbi_api.endpoints._helpers.lookup_project_type_slugs',
+                mock.AsyncMock(return_value=['api-service', 'consumer']),
+            ),
+        ):
+            bundle = asyncio.run(
+                build_lifecycle_context_bundle(mock_db, 'proj-1')
+            )
+        self.assertEqual(bundle.project_slug, 'my-api')
+        self.assertEqual(bundle.team_slug, 'platform')
+        self.assertEqual(
+            bundle.project_links, {'github-repository': 'https://gh/o/r'}
+        )
+        self.assertEqual(
+            bundle.project_type_slugs, ['api-service', 'consumer']
+        )

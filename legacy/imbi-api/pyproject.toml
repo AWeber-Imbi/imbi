@@ -236,8 +236,9 @@ exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "
 url = "https://pypi.org/simple"
 default = true
 
-# Pinned to imbi-common main while 2.8.0 is unreleased — #138 has
-# merged but no PyPI release has been cut yet.  Remove this block when
+# Pinned to the imbi-common #138 merge commit while 2.8.0 is
+# unreleased.  An immutable rev is used (instead of branch = "main")
+# so the build is reproducible.  Remove this entire block when
 # imbi-common 2.8.0 ships to PyPI.
 [tool.uv.sources]
-imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", rev = "d21cc8818f238cfe02625ac6f292091c526ed787" }

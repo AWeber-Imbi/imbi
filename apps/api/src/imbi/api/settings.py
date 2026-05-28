@@ -61,8 +61,15 @@ class ServerConfig(pydantic_settings.BaseSettings):
     # runs work out of the box. The /docs and /openapi.json endpoints
     # are always served at the root regardless of the prefix.
     url: str = pydantic.Field(default='', validation_alias='IMBI_API_URL')
+    # Public URL of the Imbi UI (no path -- routes are appended by
+    # callers).  Used to build deep links the API hands to third
+    # parties: lifecycle plugins receive ``project_ui_url`` so they can
+    # populate the equivalent of a GitHub repo ``homepage``.  Falls
+    # back to the empty string, in which case ``project_ui_url`` is
+    # ``None`` and plugins skip the homepage write.
+    ui_url: str = pydantic.Field(default='', validation_alias='IMBI_UI_URL')
 
-    @pydantic.field_validator('url')
+    @pydantic.field_validator('url', 'ui_url')
     @classmethod
     def _normalize_url(cls, value: str) -> str:
         return value.rstrip('/')
