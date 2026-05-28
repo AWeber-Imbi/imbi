@@ -1,0 +1,58 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.7",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-05-01T00:00:00Z",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "@cyclonedx/cyclonedx-npm",
+          "version": "1.19.0"
+        }
+      ]
+    },
+    "component": {
+      "type": "application",
+      "name": "my-react-app",
+      "version": "1.4.0",
+      "purl": "pkg:npm/my-react-app@1.4.0"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/react@18.3.1",
+      "name": "react",
+      "version": "18.3.1",
+      "purl": "pkg:npm/react@18.3.1",
+      "licenses": [{"license": {"id": "MIT"}}],
+      "description": "React is a JavaScript library for building user interfaces."
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/react-dom@18.3.1",
+      "name": "react-dom",
+      "version": "18.3.1",
+      "purl": "pkg:npm/react-dom@18.3.1",
+      "licenses": [{"license": {"id": "MIT"}}]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/%40babel/runtime@7.24.0",
+      "name": "@babel/runtime",
+      "version": "7.24.0",
+      "purl": "pkg:npm/%40babel/runtime@7.24.0",
+      "licenses": [{"license": {"id": "MIT"}}]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/lodash@4.17.21",
+      "name": "lodash",
+      "version": "4.17.21",
+      "purl": "pkg:npm/lodash@4.17.21",
+      "licenses": [{"expression": "MIT"}]
+    }
+  ]
+}

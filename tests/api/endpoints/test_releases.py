@@ -1341,3 +1341,443 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
         # Status untouched (still in_progress); ci_status null.
         self.assertEqual(body['current_status'], 'in_progress')
         self.assertIsNone(body['ci_status'])
+
+
+def _tiny_sbom() -> dict[str, typing.Any]:
+    """Return a fresh minimal CycloneDX 1.7 document."""
+    return {
+        'bomFormat': 'CycloneDX',
+        'specVersion': '1.7',
+        'version': 1,
+        'components': [
+            {
+                'type': 'library',
+                'bom-ref': 'pkg:npm/express@4.18.2',
+                'name': 'express',
+                'version': '4.18.2',
+                'purl': 'pkg:npm/express@4.18.2',
+                'licenses': [{'license': {'id': 'MIT'}}],
+            }
+        ],
+    }
+
+
+class PutReleaseSbomTestCase(_ReleasesTestBase):
+    """PUT /releases/{release_id}/sbom"""
+
+    def test_put_success_returns_204(self) -> None:
+        # _fetch_release row, then CLEAR_RELEASE_COMPONENTS (no rows),
+        # then UPSERT_COMPONENT_AND_LINK (one row), then identifier
+        # upsert (no rows expected back).
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+            [],
+            [{'component_id': 'comp-1'}],
+            [],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.put(
+                self._url(f'/{RELEASE_ID}/sbom'),
+                json=_tiny_sbom(),
+            )
+        self.assertEqual(response.status_code, 204)
+        # First execute was _fetch_release; the second was the clear
+        # query — that's the load-bearing idempotence assertion.
+        clear_call = self.mock_db.execute.call_args_list[1]
+        self.assertIn(
+            'DELETE edge',
+            clear_call.args[0],
+        )
+        # The third call (UPSERT_COMPONENT_AND_LINK) carries the
+        # edge-attribution params for ReleaseComponentEdge — the
+        # tiny SBoM emits no scope and no group properties, so
+        # both come through as None / "[]" rather than absent.
+        upsert_call = self.mock_db.execute.call_args_list[2]
+        upsert_params = upsert_call.args[1]
+        self.assertIn('scope', upsert_params)
+        self.assertIn('groups', upsert_params)
+        self.assertIsNone(upsert_params['scope'])
+        self.assertEqual(upsert_params['groups'], '[]')
+
+    def test_put_unknown_release_returns_404(self) -> None:
+        self.mock_db.execute.side_effect = [[]]
+        response = self.client.put(
+            self._url(f'/{RELEASE_ID}/sbom'),
+            json=_tiny_sbom(),
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_put_wrong_spec_version_returns_415(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+        ]
+        bad = _tiny_sbom()
+        bad['specVersion'] = '1.5'
+        response = self.client.put(
+            self._url(f'/{RELEASE_ID}/sbom'),
+            json=bad,
+        )
+        self.assertEqual(response.status_code, 415)
+
+    def test_put_malformed_payload_returns_400(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+        ]
+        bad = _tiny_sbom()
+        bad['components'] = 'not a list'
+        response = self.client.put(
+            self._url(f'/{RELEASE_ID}/sbom'),
+            json=bad,
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_put_idempotent_clear_runs_twice_for_two_puts(self) -> None:
+        # Two PUTs in succession: each must run a CLEAR_RELEASE_COMPONENTS
+        # before re-linking — that is the durable contract.
+        for _ in range(2):
+            self.mock_db.execute.side_effect = [
+                [{'release': _release_row()}],
+                [],
+                [{'component_id': 'comp-1'}],
+                [],
+            ]
+            with mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ):
+                response = self.client.put(
+                    self._url(f'/{RELEASE_ID}/sbom'),
+                    json=_tiny_sbom(),
+                )
+            self.assertEqual(response.status_code, 204)
+            clear_call = self.mock_db.execute.call_args_list[1]
+            self.assertIn('DELETE edge', clear_call.args[0])
+            self.mock_db.execute.reset_mock()
+
+    def test_put_continues_past_per_component_failure(self) -> None:
+        # Two-component SBoM where one component's upsert raises.
+        # The action must log a warning for the failing component
+        # and still return 204 — partial graph state is more useful
+        # than an aborted ingest. The mock keys responses off the
+        # Cypher template + purl_name so the parallel-gather order
+        # is irrelevant.
+        two_component_sbom = {
+            'bomFormat': 'CycloneDX',
+            'specVersion': '1.7',
+            'version': 1,
+            'components': [
+                {
+                    'type': 'library',
+                    'bom-ref': 'pkg:npm/good@1.0.0',
+                    'name': 'good',
+                    'version': '1.0.0',
+                    'purl': 'pkg:npm/good@1.0.0',
+                },
+                {
+                    'type': 'library',
+                    'bom-ref': 'pkg:npm/broken@1.0.0',
+                    'name': 'broken',
+                    'version': '1.0.0',
+                    'purl': 'pkg:npm/broken@1.0.0',
+                },
+            ],
+        }
+
+        async def fake_execute(
+            query: str,
+            params: dict[str, typing.Any] | None = None,
+            columns: list[str] | None = None,
+        ) -> list[dict[str, typing.Any]]:
+            del columns
+            params = params or {}
+            if 'MATCH (p:Project' in query and 'RETURN r' in query:
+                return [{'release': _release_row()}]
+            if 'DELETE edge' in query:
+                return []
+            if 'MERGE (c:Component' in query:
+                if params['purl_name'] == 'pkg:npm/broken':
+                    raise RuntimeError('simulated AGE error')
+                return [{'component_id': f'comp-{params["purl_name"]}'}]
+            if 'MERGE (ci:ComponentIdentifier' in query:
+                return []
+            raise AssertionError(f'unexpected query in mock: {query[:60]!r}')
+
+        self.mock_db.execute.side_effect = fake_execute
+
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            self.assertLogs('imbi_api.sbom', level='WARNING') as cm,
+        ):
+            response = self.client.put(
+                self._url(f'/{RELEASE_ID}/sbom'),
+                json=two_component_sbom,
+            )
+
+        self.assertEqual(response.status_code, 204)
+        # The failing component must show up in the logs with its
+        # purl + version + release id so on-call can find it.
+        failure_lines = [
+            line for line in cm.output if 'pkg:npm/broken' in line
+        ]
+        self.assertEqual(
+            len(failure_lines), 1, msg=f'logs were: {cm.output!r}'
+        )
+        self.assertIn('1.0.0', failure_lines[0])
+        self.assertIn(RELEASE_ID, failure_lines[0])
+        self.assertIn('simulated AGE error', failure_lines[0])
+        # The healthy component must still have made its upsert
+        # call — that's the "some data > no data" contract.
+        upsert_purls = {
+            call.args[1]['purl_name']
+            for call in self.mock_db.execute.call_args_list
+            if 'MERGE (c:Component' in call.args[0]
+        }
+        self.assertEqual(upsert_purls, {'pkg:npm/good', 'pkg:npm/broken'})
+
+    def test_put_same_purl_versions_run_sequentially_in_same_bucket(
+        self,
+    ) -> None:
+        # Regression for the AGE "Entity failed to be updated: 3"
+        # conflict — two versions of the same package (sharing one
+        # purl_name and therefore one Component vertex) MUST be
+        # serialized in the same bucket. Across-bucket parallelism
+        # is fine; within-bucket parallelism deadlocks AGE.
+        multi_version_sbom = {
+            'bomFormat': 'CycloneDX',
+            'specVersion': '1.7',
+            'version': 1,
+            'components': [
+                {
+                    'type': 'library',
+                    'bom-ref': 'pkg:npm/react-is@17.0.2',
+                    'name': 'react-is',
+                    'version': '17.0.2',
+                    'purl': 'pkg:npm/react-is@17.0.2',
+                },
+                {
+                    'type': 'library',
+                    'bom-ref': 'pkg:npm/react-is@18.3.1',
+                    'name': 'react-is',
+                    'version': '18.3.1',
+                    'purl': 'pkg:npm/react-is@18.3.1',
+                },
+                # An unrelated package in a different bucket — it
+                # may interleave with the react-is bucket but
+                # MUST NOT serialize *between* the two react-is
+                # versions.
+                {
+                    'type': 'library',
+                    'bom-ref': 'pkg:npm/chalk@5.0.0',
+                    'name': 'chalk',
+                    'version': '5.0.0',
+                    'purl': 'pkg:npm/chalk@5.0.0',
+                },
+            ],
+        }
+
+        # Track which purl_names are mid-upsert so we can assert
+        # no two tasks ever hold the same Component vertex
+        # simultaneously. ``asyncio.sleep(0)`` inside the mock
+        # forces a scheduler yield so any latent within-bucket
+        # parallelism gets a chance to expose itself.
+        in_flight: set[str] = set()
+        overlapping_calls: list[str] = []
+
+        async def fake_execute(
+            query: str,
+            params: dict[str, typing.Any] | None = None,
+            columns: list[str] | None = None,
+        ) -> list[dict[str, typing.Any]]:
+            import asyncio as _asyncio
+
+            del columns
+            params = params or {}
+            if 'MATCH (p:Project' in query and 'RETURN r' in query:
+                return [{'release': _release_row()}]
+            if 'DELETE edge' in query:
+                return []
+            if 'MERGE (c:Component' in query:
+                purl = params['purl_name']
+                if purl in in_flight:
+                    overlapping_calls.append(purl)
+                in_flight.add(purl)
+                await _asyncio.sleep(0)
+                in_flight.discard(purl)
+                return [{'component_id': f'comp-{purl}'}]
+            if 'MERGE (ci:ComponentIdentifier' in query:
+                return []
+            raise AssertionError(f'unexpected query in mock: {query[:60]!r}')
+
+        self.mock_db.execute.side_effect = fake_execute
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.put(
+                self._url(f'/{RELEASE_ID}/sbom'),
+                json=multi_version_sbom,
+            )
+
+        self.assertEqual(response.status_code, 204)
+        # The load-bearing assertion: no two upserts on the same
+        # Component vertex ever overlapped. Anything in
+        # ``overlapping_calls`` is a regression that would
+        # reproduce the AGE "Entity failed to be updated: 3"
+        # error in production.
+        self.assertEqual(overlapping_calls, [])
+        # And both react-is versions still ended up upserted.
+        upsert_purls_with_versions = sorted(
+            (call.args[1]['purl_name'], call.args[1]['version'])
+            for call in self.mock_db.execute.call_args_list
+            if 'MERGE (c:Component' in call.args[0]
+        )
+        self.assertEqual(
+            upsert_purls_with_versions,
+            [
+                ('pkg:npm/chalk', '5.0.0'),
+                ('pkg:npm/react-is', '17.0.2'),
+                ('pkg:npm/react-is', '18.3.1'),
+            ],
+        )
+
+
+class GetReleaseDependenciesTestCase(_ReleasesTestBase):
+    """GET /releases/{release_id}/dependencies"""
+
+    def test_get_empty_release_returns_empty_components(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+            [],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                self._url(f'/{RELEASE_ID}/dependencies'),
+            )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body['release_id'], RELEASE_ID)
+        self.assertEqual(body['components'], [])
+
+    def test_get_unknown_release_returns_404(self) -> None:
+        self.mock_db.execute.side_effect = [[]]
+        response = self.client.get(
+            self._url(f'/{RELEASE_ID}/dependencies'),
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_get_populated_release_returns_components(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+            [
+                {
+                    'component_id': 'comp-1',
+                    'purl_name': 'pkg:npm/express',
+                    'name': 'express',
+                    'ecosystem': 'npm',
+                    'description': None,
+                    'component_release_id': 'cr-1',
+                    'version': '4.18.2',
+                    'license': 'MIT',
+                    'supplier': 'OpenJS Foundation',
+                    'hashes': '{}',
+                    'scope': 'optional',
+                    'groups': '["dev","test"]',
+                    'identifiers': [
+                        {'kind': 'purl', 'value': 'pkg:npm/express'},
+                    ],
+                },
+            ],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                self._url(f'/{RELEASE_ID}/dependencies'),
+            )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(len(body['components']), 1)
+        component = body['components'][0]
+        self.assertEqual(component['purl_name'], 'pkg:npm/express')
+        self.assertEqual(component['version'], '4.18.2')
+        self.assertEqual(component['license'], 'MIT')
+        self.assertEqual(component['supplier'], 'OpenJS Foundation')
+        self.assertEqual(
+            component['identifiers'],
+            [{'kind': 'purl', 'value': 'pkg:npm/express'}],
+        )
+        # ReleaseComponentEdge round-trip — these are per-release
+        # usage facts that the UI keys off to render scope/group
+        # chips.
+        self.assertEqual(component['scope'], 'optional')
+        self.assertEqual(component['groups'], ['dev', 'test'])
+        # AGE ``cypher()`` requires the SELECT AS column list to match
+        # the RETURN clause column count. The second execute call (the
+        # dependency listing) must pass the 13-column ``columns``
+        # parameter — without it AGE raises a DatatypeMismatch at run
+        # time even though our mock-based tests would still pass.
+        list_call = self.mock_db.execute.call_args_list[1]
+        self.assertEqual(
+            list_call.args[2],
+            [
+                'component_id',
+                'purl_name',
+                'name',
+                'ecosystem',
+                'description',
+                'component_release_id',
+                'version',
+                'license',
+                'supplier',
+                'hashes',
+                'scope',
+                'groups',
+                'identifiers',
+            ],
+        )
+
+    def test_get_release_with_missing_edge_attrs(self) -> None:
+        """Releases ingested before scope/groups were tracked must
+        still render — defaulting to null/empty rather than 500."""
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+            [
+                {
+                    'component_id': 'comp-1',
+                    'purl_name': 'pkg:npm/express',
+                    'name': 'express',
+                    'ecosystem': 'npm',
+                    'description': None,
+                    'component_release_id': 'cr-1',
+                    'version': '4.18.2',
+                    'license': None,
+                    'supplier': None,
+                    'hashes': '{}',
+                    'scope': None,
+                    'groups': None,
+                    'identifiers': [],
+                },
+            ],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                self._url(f'/{RELEASE_ID}/dependencies'),
+            )
+        self.assertEqual(response.status_code, 200)
+        component = response.json()['components'][0]
+        self.assertIsNone(component['scope'])
+        self.assertEqual(component['groups'], [])

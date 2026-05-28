@@ -24,10 +24,11 @@ dependencies = [
   "aiohttp",
   "argon2-cffi>=25.1.0",
   "authlib>=1.6.11",
+  "cyclonedx-python-lib>=11.7,<12",
   "fastapi",
   "filetype",
   "httpx>=0.28.1,<1",
-  "imbi-common[databases,llm,sentry,server]>=2.6.1",
+  "imbi-common[databases,llm,sentry,server]>=2.7.0",
   "jinja2",
   "jsonpatch>=1.33",
   "mcp>=1.26.0",
@@ -234,6 +235,3 @@ exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
-
-[tool.uv.sources]
-imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }
