@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.14"
 
 [options]
-exclude-newer = "2026-05-21T13:49:15.648448Z"
+exclude-newer = "2026-05-21T14:01:48.8992Z"
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
@@ -699,7 +699,7 @@ server = [
 
 [[package]]
 name = "imbi-gateway"
-version = "1.5.0"
+version = "1.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "cel-python" },
