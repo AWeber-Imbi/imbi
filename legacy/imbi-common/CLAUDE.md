@@ -83,6 +83,7 @@ just test tests/path/to/test_file.py::TestClass::test_method
 This is a published library — any change that consumers can observe (new public API, new middleware option, new scope/state key, changed log format, settings prefix, etc.) is user-visible and must be reflected in `docs/` in the same change. Specifically:
 
 - Update the relevant page under `docs/api/` (e.g. `docs/api/logging.md` for logging/access-log changes, `docs/api/auth.md` for auth, etc.). Add a new page and wire it into `mkdocs.yml` only when no existing page fits.
+- Plugin changes live under `docs/plugins/` — one page per variation (`configuration`, `logs`, `identity`, `deployment`, `lifecycle`, `webhook`) plus `index.md` for the shared manifest/context/registry/credentials/errors/templates surface. A new plugin type means a new page wired into `mkdocs.yml`; a contract change means updating that variation's page. Each page pairs hand-written contract prose with the generated `:::` reference, so any new public class must be exported from `imbi_common.plugins.__init__` for the reference to resolve under `--strict`.
 - Update the `Module map` table above when adding, removing, or materially repurposing a module.
 - Include a short code example for any new public hook or extension point.
 - Run `just docs` if you want to preview, but don't commit the generated `site/` directory.
