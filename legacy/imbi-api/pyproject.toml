@@ -30,6 +30,7 @@ dependencies = [
   "imbi-common[databases,llm,sentry,server]>=2.6.1",
   "jinja2",
   "jsonpatch>=1.33",
+  "mcp>=1.26.0",
   "nanoid>=2.0.0",
   "orjson>=3.11.6",
   "pydantic[email]",

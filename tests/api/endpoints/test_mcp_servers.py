@@ -11,6 +11,7 @@ from imbi_common import graph
 
 from imbi_api import app, models
 from imbi_api.auth import permissions
+from imbi_api.mcp_test import ConnectionTestResult
 
 
 class MCPServerEndpointsTestCase(unittest.TestCase):
@@ -386,6 +387,159 @@ class MCPServerEndpointsTestCase(unittest.TestCase):
         response = self.client.delete('/mcp-servers/missing')
         self.assertEqual(response.status_code, 404)
 
+    # -- Connection test -----------------------------------------------
+
+    def test_test_saved_server_persists_result(self) -> None:
+        """Testing a saved server records status/latency/tool count."""
+        self.mock_db.match.return_value = [self._model()]
+        self.mock_db.execute.return_value = [
+            {'n': self._server_props(status='healthy')}
+        ]
+        result = ConnectionTestResult(
+            ok=True,
+            status='healthy',
+            latency_ms=80,
+            tools=['list_repos', 'get_repo'],
+            error=None,
+        )
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi_api.endpoints.mcp_servers.mcp_test.test_connection',
+                new_callable=mock.AsyncMock,
+                return_value=result,
+            ) as tested,
+        ):
+            response = self.client.post('/mcp-servers/srv-1/test')
+        self.assertEqual(response.status_code, 200)
+        tested.assert_awaited_once()
+        data = response.json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['status'], 'healthy')
+        self.assertEqual(data['latency_ms'], 80)
+        self.assertEqual(data['tools'], ['list_repos', 'get_repo'])
+        self.assertEqual(data['tools_discovered'], 2)
+        # The outcome was persisted onto the node.
+        persisted = self.mock_db.execute.call_args.args[1]
+        self.assertEqual(persisted['status'], 'healthy')
+        self.assertEqual(persisted['tools_discovered'], 2)
+        self.assertIsNotNone(persisted['last_tested_at'])
+
+    def test_test_saved_server_failure_marks_unreachable(self) -> None:
+        """A failed test persists an unreachable status and the error."""
+        self.mock_db.match.return_value = [self._model()]
+        self.mock_db.execute.return_value = [
+            {'n': self._server_props(status='unreachable')}
+        ]
+        result = ConnectionTestResult(
+            ok=False,
+            status='unreachable',
+            latency_ms=4001,
+            tools=[],
+            error='Timed out after 4s',
+        )
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi_api.endpoints.mcp_servers.mcp_test.test_connection',
+                new_callable=mock.AsyncMock,
+                return_value=result,
+            ),
+        ):
+            response = self.client.post('/mcp-servers/srv-1/test')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data['ok'])
+        self.assertEqual(data['error'], 'Timed out after 4s')
+        persisted = self.mock_db.execute.call_args.args[1]
+        self.assertEqual(persisted['status'], 'unreachable')
+        self.assertEqual(persisted['last_error'], 'Timed out after 4s')
+
+    def test_test_saved_server_not_found(self) -> None:
+        """Testing a missing id returns 404."""
+        self.mock_db.match.return_value = []
+        response = self.client.post('/mcp-servers/missing/test')
+        self.assertEqual(response.status_code, 404)
+
+    def test_test_config_does_not_persist(self) -> None:
+        """Testing an unsaved config returns a result without writing."""
+        result = ConnectionTestResult(
+            ok=True,
+            status='healthy',
+            latency_ms=42,
+            tools=['search'],
+            error=None,
+        )
+        with (
+            mock.patch(
+                'imbi_api.endpoints.mcp_servers.encrypt_config_value',
+                side_effect=lambda v: None if v is None else f'enc:{v}',
+            ),
+            mock.patch(
+                'imbi_api.endpoints.mcp_servers.mcp_test.test_connection',
+                new_callable=mock.AsyncMock,
+                return_value=result,
+            ),
+        ):
+            response = self.client.post(
+                '/mcp-servers/test',
+                json={'url': 'https://mcp.example.com', 'auth_type': 'none'},
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['tools'], ['search'])
+        self.mock_db.execute.assert_not_called()
+
+    def test_test_config_invalid_returns_400(self) -> None:
+        """An incomplete config (static, no secret) is rejected."""
+        with mock.patch(
+            'imbi_api.endpoints.mcp_servers.encrypt_config_value',
+            side_effect=lambda v: None if v is None else f'enc:{v}',
+        ):
+            response = self.client.post(
+                '/mcp-servers/test',
+                json={
+                    'url': 'https://mcp.example.com',
+                    'auth_type': 'static',
+                },
+            )
+        self.assertEqual(response.status_code, 400)
+
+    # -- Status report -------------------------------------------------
+
+    def test_report_status_persists(self) -> None:
+        """A runtime status report updates status and last_error."""
+        self.mock_db.match.return_value = [self._model()]
+        self.mock_db.execute.return_value = [
+            {'n': self._server_props(status='degraded')}
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.post(
+                '/mcp-servers/srv-1/status',
+                json={'status': 'degraded', 'error': 'tool call failed'},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'degraded')
+        persisted = self.mock_db.execute.call_args.args[1]
+        self.assertEqual(persisted['status'], 'degraded')
+        self.assertEqual(persisted['last_error'], 'tool call failed')
+        self.assertIsNotNone(persisted['last_tested_at'])
+
+    def test_report_status_not_found(self) -> None:
+        """Reporting status for a missing id returns 404."""
+        self.mock_db.match.return_value = []
+        response = self.client.post(
+            '/mcp-servers/missing/status', json={'status': 'healthy'}
+        )
+        self.assertEqual(response.status_code, 404)
+
 
 class MCPServerPermissionTestCase(unittest.TestCase):
     """Non-admin permission enforcement for MCP server endpoints."""
@@ -450,3 +604,23 @@ class MCPServerPermissionTestCase(unittest.TestCase):
         self.mock_db.match.return_value = []
         response = self.client.get('/mcp-servers/')
         self.assertEqual(response.status_code, 200)
+
+    def test_test_config_denied(self) -> None:
+        """Testing an unsaved config without mcp_server:create is forbidden."""
+        response = self.client.post(
+            '/mcp-servers/test',
+            json={'url': 'https://mcp.example.com', 'auth_type': 'none'},
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_test_denied(self) -> None:
+        """Testing without mcp_server:update is forbidden."""
+        response = self.client.post('/mcp-servers/srv-1/test')
+        self.assertEqual(response.status_code, 403)
+
+    def test_status_report_denied(self) -> None:
+        """Reporting status without mcp_server:update is forbidden."""
+        response = self.client.post(
+            '/mcp-servers/srv-1/status', json={'status': 'healthy'}
+        )
+        self.assertEqual(response.status_code, 403)

@@ -18,6 +18,7 @@ import pydantic
 from imbi_common import graph, models
 from imbi_common.auth.encryption import encrypt_config_value
 
+from imbi_api import mcp_test
 from imbi_api.auth import permissions
 from imbi_api.graph_sql import props_template, set_clause
 
@@ -110,8 +111,45 @@ class MCPServerResponse(pydantic.BaseModel):
     oauth_client_id: str | None = None
     has_oauth_client_secret: bool = False
     oauth_scope: str | None = None
+    status: typing.Literal['unknown', 'healthy', 'degraded', 'unreachable'] = (
+        'unknown'
+    )
+    last_tested_at: datetime.datetime | None = None
+    last_tested_latency_ms: int | None = None
+    tools_discovered: int | None = None
+    last_error: str | None = None
     created_at: datetime.datetime | None = None
     updated_at: datetime.datetime | None = None
+
+
+class MCPServerTestConfig(MCPServerCreate):
+    """Request body for testing an unsaved configuration.
+
+    Same shape as :class:`MCPServerCreate`, but ``name`` and ``slug`` are
+    optional because the connection test only needs the URL and auth.
+    """
+
+    name: str = '__connection_test__'
+    slug: str = '__connection_test__'
+
+
+class MCPServerTestResult(pydantic.BaseModel):
+    """Outcome of an MCP server connection test."""
+
+    ok: bool
+    status: typing.Literal['healthy', 'degraded', 'unreachable']
+    latency_ms: int
+    tools: list[str]
+    tools_discovered: int
+    error: str | None = None
+    tested_at: datetime.datetime
+
+
+class MCPServerStatusReport(pydantic.BaseModel):
+    """Runtime status report, posted by the assistant on tool failure."""
+
+    status: typing.Literal['healthy', 'degraded', 'unreachable']
+    error: str | None = None
 
 
 def _to_response(node: models.MCPServer) -> MCPServerResponse:
@@ -137,6 +175,11 @@ def _to_response(node: models.MCPServer) -> MCPServerResponse:
             node.oauth_client_secret_encrypted is not None
         ),
         oauth_scope=node.oauth_scope,
+        status=node.status,
+        last_tested_at=node.last_tested_at,
+        last_tested_latency_ms=node.last_tested_latency_ms,
+        tools_discovered=node.tools_discovered,
+        last_error=node.last_error,
         created_at=node.created_at,
         updated_at=node.updated_at,
     )
@@ -384,6 +427,170 @@ async def delete_mcp_server(
             status_code=404,
             detail=f'MCP server with id {id!r} not found',
         )
+
+
+@mcp_servers_router.post('/{id}/test', response_model=MCPServerTestResult)
+async def test_mcp_server(
+    id: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('mcp_server:update')),
+    ],
+) -> MCPServerTestResult:
+    """Test connectivity to a saved MCP server and persist the result.
+
+    Opens a streamable-HTTP session using the server's stored
+    configuration and secrets, lists its tools, and records the outcome
+    (``status``, ``last_tested_at``, latency, tool count, and any error)
+    on the node.
+
+    Parameters:
+        id: The MCP server id.
+
+    Returns:
+        The test result, including discovered tool names.
+
+    Raises:
+        404: If no MCP server with the given id exists.
+
+    """
+    _ = auth
+    node = await _fetch(db, id)
+    result = await mcp_test.test_connection(node)
+    now = datetime.datetime.now(datetime.UTC)
+    node.status = result.status
+    node.last_tested_at = now
+    node.last_tested_latency_ms = result.latency_ms
+    node.tools_discovered = len(result.tools)
+    node.last_error = result.error
+    await _persist(db, node)
+    return MCPServerTestResult(
+        ok=result.ok,
+        status=result.status,
+        latency_ms=result.latency_ms,
+        tools=result.tools,
+        tools_discovered=len(result.tools),
+        error=result.error,
+        tested_at=now,
+    )
+
+
+@mcp_servers_router.post('/test', response_model=MCPServerTestResult)
+async def test_mcp_server_config(
+    data: MCPServerTestConfig,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('mcp_server:create')),
+    ],
+) -> MCPServerTestResult:
+    """Test an unsaved MCP server configuration without persisting it.
+
+    Used by the create form's "Test connection" action, where secrets are
+    supplied as plaintext in the request and no record exists yet.
+
+    Parameters:
+        data: The candidate configuration; secrets are plaintext.
+
+    Returns:
+        The test result, including discovered tool names.
+
+    Raises:
+        400: If the configuration is invalid for its ``auth_type``.
+
+    """
+    _ = auth
+    try:
+        node = models.MCPServer(
+            name=data.name,
+            slug=data.slug,
+            url=data.url,
+            enabled=data.enabled,
+            tool_prefix=data.tool_prefix,
+            timeout=data.timeout,
+            verify_ssl=data.verify_ssl,
+            ignored_tools=data.ignored_tools,
+            auth_type=data.auth_type,
+            static_header=data.static_header,
+            static_value_encrypted=encrypt_config_value(data.static_value),
+            oauth_token_url=data.oauth_token_url,
+            oauth_client_id=data.oauth_client_id,
+            oauth_client_secret_encrypted=encrypt_config_value(
+                data.oauth_client_secret
+            ),
+            oauth_scope=data.oauth_scope,
+        )
+    except pydantic.ValidationError as e:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'Validation error: {e.errors()}',
+        ) from e
+    result = await mcp_test.test_connection(node)
+    return MCPServerTestResult(
+        ok=result.ok,
+        status=result.status,
+        latency_ms=result.latency_ms,
+        tools=result.tools,
+        tools_discovered=len(result.tools),
+        error=result.error,
+        tested_at=datetime.datetime.now(datetime.UTC),
+    )
+
+
+@mcp_servers_router.post('/{id}/status', response_model=MCPServerResponse)
+async def report_mcp_server_status(
+    id: str,
+    data: MCPServerStatusReport,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('mcp_server:update')),
+    ],
+) -> MCPServerResponse:
+    """Record a runtime health observation for an MCP server.
+
+    Posted by the assistant when a live tool call against this server
+    succeeds or fails, so the admin list reflects real usage health
+    without a manual test. Updates ``status``, ``last_error``, and
+    ``last_tested_at``; leaves configuration untouched.
+
+    Parameters:
+        id: The MCP server id.
+        data: The observed status and optional error message.
+
+    Returns:
+        The updated MCP server, without any secret values.
+
+    Raises:
+        404: If no MCP server with the given id exists.
+
+    """
+    _ = auth
+    node = await _fetch(db, id)
+    node.status = data.status
+    node.last_error = data.error
+    node.last_tested_at = datetime.datetime.now(datetime.UTC)
+    return _to_response(await _persist(db, node))
+
+
+async def _persist(db: graph.Pool, node: models.MCPServer) -> models.MCPServer:
+    """Write a mutated node back to the graph and return the result.
+
+    ``id`` and ``created_at`` are preserved; every other property is
+    overwritten from ``node``. ``updated_at`` is refreshed to the current
+    UTC time so callers always observe fresh metadata.
+    """
+    node.updated_at = datetime.datetime.now(datetime.UTC)
+    props = node.model_dump(mode='json', exclude={'id', 'created_at'})
+    set_stmt = set_clause('n', props)
+    query = f'MATCH (n:MCPServer {{{{id: {{id}}}}}}) {set_stmt} RETURN n'
+    records = await db.execute(query, {**props, 'id': node.id}, ['n'])
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'MCP server with id {node.id!r} not found',
+        )
+    return _parse_node(records[0]['n'])
 
 
 def _parse_node(raw: typing.Any) -> models.MCPServer:
