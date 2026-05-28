@@ -1,7 +1,9 @@
 """Tests for assistant endpoints module."""
 
+import asyncio
 import datetime
 import json
+import typing
 import unittest
 from unittest import mock
 
@@ -1008,6 +1010,105 @@ class StreamResponseTestCase(
         mock_gen.assert_called_once()
         mock_update.assert_called_once()
         self.assertTrue(any('title_updated' in c for c in chunks))
+
+    async def test_persist_tool_round_writes_pair_in_order(self) -> None:
+        """``_persist_tool_round`` writes the assistant tool_use
+        message and its matching tool_result user message in order,
+        without any awaitable between them that could be cancelled.
+        """
+        db = mock.AsyncMock()
+        calls: list[dict[str, typing.Any]] = []
+
+        async def fake_add_message(
+            _db: typing.Any, **kwargs: typing.Any
+        ) -> None:
+            calls.append(kwargs)
+
+        with mock.patch(
+            'imbi_assistant.age_ops.add_message',
+            side_effect=fake_add_message,
+        ):
+            await endpoints._persist_tool_round(
+                db,
+                'conv-abc',
+                {'text': 'thinking...', 'usage': None},
+                [{'id': 't1', 'name': 'list', 'input': {}}],
+                [
+                    {
+                        'type': 'tool_result',
+                        'tool_use_id': 't1',
+                        'content': '{}',
+                    }
+                ],
+            )
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0]['role'], 'assistant')
+        self.assertEqual(
+            calls[0]['tool_use'], [{'id': 't1', 'name': 'list', 'input': {}}]
+        )
+        self.assertEqual(calls[1]['role'], 'user')
+        self.assertEqual(
+            calls[1]['tool_results'],
+            [{'type': 'tool_result', 'tool_use_id': 't1', 'content': '{}'}],
+        )
+
+    async def test_persist_tool_round_completes_after_cancellation(
+        self,
+    ) -> None:
+        """Cancellation of the awaiter must not tear the two writes
+        apart — the inner persist coroutine completes both writes
+        after its awaiter is cancelled, matching the production
+        ``asyncio.shield`` contract in ``_stream_response``.
+        """
+        db = mock.AsyncMock()
+        first_started = asyncio.Event()
+        completed: list[str] = []
+
+        async def fake_add_message(
+            _db: typing.Any, **kwargs: typing.Any
+        ) -> None:
+            role = kwargs['role']
+            if role == 'assistant':
+                first_started.set()
+                # Yield to the event loop so the canceller fires
+                # between the two writes.
+                await asyncio.sleep(0)
+            completed.append(role)
+
+        with mock.patch(
+            'imbi_assistant.age_ops.add_message',
+            side_effect=fake_add_message,
+        ):
+            inner = asyncio.create_task(
+                endpoints._persist_tool_round(
+                    db,
+                    'conv-xyz',
+                    {'text': '', 'usage': None},
+                    [{'id': 't1', 'name': 'list', 'input': {}}],
+                    [
+                        {
+                            'type': 'tool_result',
+                            'tool_use_id': 't1',
+                            'content': '{}',
+                        }
+                    ],
+                )
+            )
+
+            async def awaiter() -> None:
+                await asyncio.shield(inner)
+
+            waiter = asyncio.create_task(awaiter())
+            await first_started.wait()
+            # Simulate the SSE client disconnecting — the awaiter is
+            # cancelled but ``asyncio.shield`` keeps ``inner`` alive.
+            waiter.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await waiter
+            await inner
+
+        # Both writes ran to completion despite the cancellation.
+        self.assertEqual(completed, ['assistant', 'user'])
 
     async def test_stream_api_error(self) -> None:
         import anthropic

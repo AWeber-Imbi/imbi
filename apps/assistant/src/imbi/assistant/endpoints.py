@@ -1,5 +1,6 @@
 """FastAPI endpoints for the AI assistant."""
 
+import asyncio
 import json
 import logging
 import typing
@@ -542,6 +543,40 @@ async def _dispatch_tool_uses(
                 yield chunk
 
 
+async def _persist_tool_round(
+    db: graph.Graph,
+    conversation_id: str,
+    state: dict[str, typing.Any],
+    tool_use_blocks: list[dict[str, typing.Any]],
+    tool_results: list[dict[str, typing.Any]],
+) -> None:
+    """Write the assistant ``tool_use`` message and its matching
+    ``tool_result`` user message in order, with no awaitable in
+    between that could be cancelled.
+
+    Called inside ``asyncio.shield`` from ``_stream_response`` so a
+    client disconnect during the surrounding SSE stream can't leave
+    the conversation with an orphan ``tool_use`` — which would make
+    every future ``send_message`` 400 with "tool_use ids were found
+    without tool_result blocks immediately after".
+    """
+    await age_ops.add_message(
+        db,
+        conversation_id=conversation_id,
+        role='assistant',
+        content=state['text'],
+        tool_use=tool_use_blocks,
+        token_usage=(state['usage'] or None),
+    )
+    await age_ops.add_message(
+        db,
+        conversation_id=conversation_id,
+        role='user',
+        content='',
+        tool_results=tool_results,
+    )
+
+
 async def _stream_response(
     db: graph.Graph,
     conversation_id: str,
@@ -610,15 +645,6 @@ async def _stream_response(
         if state['stop_reason'] != 'tool_use' or not tool_use_blocks:
             break
 
-        await age_ops.add_message(
-            db,
-            conversation_id=conversation_id,
-            role='assistant',
-            content=state['text'],
-            tool_use=tool_use_blocks,
-            token_usage=(state['usage'] or None),
-        )
-
         api_messages.append(
             _build_assistant_message(state, tool_use_blocks),
         )
@@ -639,15 +665,25 @@ async def _stream_response(
         if 'tools' in rebuild:
             tools, system = rebuild['tools'], rebuild['system']
 
-        await age_ops.add_message(
-            db,
-            conversation_id=conversation_id,
-            role='user',
-            content='',
-            tool_results=tool_results,
-        )
         api_messages.append(
             {'role': 'user', 'content': tool_results},
+        )
+        # Persist the assistant tool_use and its matching tool_results
+        # as a pair. Anthropic rejects a conversation where a tool_use
+        # is not followed by a tool_result in the next message, so a
+        # client disconnect between these two writes would permanently
+        # break the conversation. ``asyncio.shield`` keeps the pair
+        # alive even if our async generator is cancelled at the next
+        # ``yield``; running them in a single coroutine keeps the
+        # write order intact.
+        await asyncio.shield(
+            _persist_tool_round(
+                db,
+                conversation_id,
+                state,
+                tool_use_blocks,
+                tool_results,
+            )
         )
 
     msg = await age_ops.add_message(
