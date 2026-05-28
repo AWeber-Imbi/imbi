@@ -125,14 +125,11 @@ class ProjectUpdate(pydantic.BaseModel):
     identifiers: dict[str, int | str] | None = None
 
 
-class ProjectRelationships(pydantic.BaseModel):
-    """Typed relationship links and counts for a project."""
-
-    team: models.RelationshipLink
-    environments: models.RelationshipLink
-    href: str
-    outbound_count: int = 0
-    inbound_count: int = 0
+# ProjectRelationships now lives in imbi_common.models so the OpenAPI
+# schema emitted from ``make_response_model(Project)`` matches the
+# runtime shape that this endpoint actually returns. Re-export under
+# the historical name for callers in this module.
+ProjectRelationships = models.ProjectRelationships
 
 
 class ReleaseInfo(pydantic.BaseModel):
