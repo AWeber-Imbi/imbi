@@ -421,6 +421,45 @@ async def get_user_by_identity(
     )
 
 
+@users_router.get('/me', response_model=models.CurrentUserResponse)
+async def get_current_user_profile(
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.get_current_user),
+    ],
+) -> models.CurrentUserResponse:
+    """Return the authenticated user's own profile and permissions.
+
+    Unlike ``GET /users/{email}``, this includes the caller's effective
+    permission set so the UI can gate features without a second request.
+    Requires a human user; service-account tokens receive HTTP 403.
+
+    Returns:
+        models.CurrentUserResponse: The caller's profile with loaded
+            organization memberships and effective permissions.
+
+    """
+    user = auth.require_user
+
+    memberships = await _load_user_memberships(db, user.email)
+    organizations = [models.OrgMembership(**m) for m in memberships]
+
+    return models.CurrentUserResponse(
+        email=user.email,
+        display_name=user.display_name,
+        is_active=user.is_active,
+        is_admin=user.is_admin,
+        is_service_account=user.is_service_account,
+        created_at=user.created_at,
+        last_login=user.last_login,
+        avatar_url=user.avatar_url,
+        email_notifications=user.email_notifications,
+        organizations=organizations,
+        permissions=sorted(auth.permissions),
+    )
+
+
 @users_router.get('/{email}', response_model=models.UserResponse)
 async def get_user(
     email: str,

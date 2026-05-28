@@ -437,6 +437,18 @@ class UserResponse(pydantic.BaseModel):
     organizations: list[OrgMembership] = []
 
 
+class CurrentUserResponse(UserResponse):
+    """Response model for the authenticated user's own profile.
+
+    Extends ``UserResponse`` with the caller's effective permission set
+    so the UI can gate features in a single request. Only exposed via
+    ``GET /users/me`` — the per-email endpoint deliberately omits
+    permissions to avoid disclosing one user's grants to another.
+    """
+
+    permissions: list[str] = []
+
+
 class PasswordChangeRequest(pydantic.BaseModel):
     """Request model for changing user passwords."""
 

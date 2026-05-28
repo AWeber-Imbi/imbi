@@ -317,6 +317,81 @@ class UserEndpointsTestCase(unittest.TestCase):
             'developer',
         )
 
+    def test_get_current_user_profile_success(self) -> None:
+        """GET /users/me returns the caller's profile and permissions."""
+        from imbi_api.auth import permissions
+
+        member_user = models.User(
+            email='member@example.com',
+            display_name='Member User',
+            is_active=True,
+            is_admin=False,
+            is_service_account=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        async def mock_get_current_user():
+            return permissions.AuthContext(
+                user=member_user,
+                session_id='test-session',
+                auth_method='jwt',
+                permissions={'scoring_policy:rescore', 'project:read'},
+            )
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            mock_get_current_user
+        )
+        self.mock_db.execute.return_value = [
+            {
+                'org_name': 'Default',
+                'org_slug': 'default',
+                'role': 'developer',
+            },
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get('/users/me')
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['email'], 'member@example.com')
+        self.assertFalse(data['is_admin'])
+        # Permissions are carried through and returned sorted.
+        self.assertEqual(
+            data['permissions'],
+            ['project:read', 'scoring_policy:rescore'],
+        )
+        self.assertEqual(len(data['organizations']), 1)
+
+    def test_get_current_user_profile_rejects_service_account(self) -> None:
+        """GET /users/me requires a human user, not a service account."""
+        from imbi_api.auth import permissions
+
+        service_account = models.ServiceAccount(
+            slug='ci-bot',
+            display_name='CI Bot',
+            is_active=True,
+        )
+
+        async def mock_get_current_user():
+            return permissions.AuthContext(
+                service_account=service_account,
+                session_id='test-session',
+                auth_method='client_credentials',
+                permissions={'project:read'},
+            )
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            mock_get_current_user
+        )
+
+        response = self.client.get('/users/me')
+
+        self.assertEqual(response.status_code, 403)
+
     def test_get_user_not_found(self) -> None:
         """Test retrieving non-existent user."""
         self.mock_db.match.return_value = []
