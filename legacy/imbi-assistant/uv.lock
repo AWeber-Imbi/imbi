@@ -798,7 +798,7 @@ wheels = [
 
 [[package]]
 name = "imbi-assistant"
-version = "1.2.0"
+version = "1.3.0"
 source = { editable = "." }
 dependencies = [
   { name = "anthropic" },
@@ -849,8 +849,8 @@ dev = [
 
 [[package]]
 name = "imbi-common"
-version = "2.6.1"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main#92025cb9812f3e850ec8cfb285969d5757c2539f" }
+version = "2.7.0"
+source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main#052a64ef91b7d94a5c0818c5604e84fac95bb26b" }
 dependencies = [
   { name = "cryptography" },
   { name = "httpx" },
