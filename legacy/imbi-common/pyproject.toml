@@ -1,6 +1,6 @@
 [project]
 name = "imbi-common"
-version = "2.6.1"
+version = "2.7.0"
 description = "Shared library for the Imbi ecosystem providing core data access, authentication primitives, and domain models"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -11,7 +11,7 @@ authors = [
   { name = "Dave Shawley", email = "daves@aweber.com" }
 ]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "Natural Language :: English",
   "Operating System :: OS Independent",
