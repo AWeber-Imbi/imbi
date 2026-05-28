@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27",
-  "imbi-common>=2.5.5",
+  "imbi-common>=2.6.1",
   "pydantic>=2",
 ]
 
@@ -127,3 +127,9 @@ exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
+
+# Track imbi-common from git until it is published with the next imbi
+# release; this carries the RepositoryRelocation contract the deployment
+# plugin reports. Revert to the PyPI release once it ships.
+[tool.uv.sources]
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }

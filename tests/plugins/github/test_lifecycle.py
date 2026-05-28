@@ -557,3 +557,179 @@ class GhecApiBaseTestCase(unittest.IsolatedAsyncioTestCase):
             result.artifacts['repo_url'],
             'https://tenant.ghe.com/octo/demo',
         )
+
+
+class RenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
+    """A repo renamed outside Imbi: the stale path 301s to the by-id form,
+    the client follows it, and the canonical owner/repo are adopted and
+    reported on ``ctx`` for the host to self-heal the link.
+    """
+
+    @respx.mock
+    async def test_archive_follows_rename_and_reports_relocation(
+        self,
+    ) -> None:
+        # Stale path 301s to the canonical /repositories/{id}; the repo's
+        # current name is ``renamed``.
+        respx.get('https://api.github.com/repos/octo/demo').mock(
+            return_value=httpx.Response(
+                301,
+                headers={
+                    'location': 'https://api.github.com/repositories/123'
+                },
+            )
+        )
+        respx.get('https://api.github.com/repositories/123').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'archived': False,
+                    'owner': {'login': 'octo'},
+                    'name': 'renamed',
+                    'html_url': 'https://github.com/octo/renamed',
+                },
+            )
+        )
+        # Archive targets the canonical name we adopted from the payload.
+        patch_route = respx.patch(
+            'https://api.github.com/repos/octo/renamed'
+        ).mock(return_value=httpx.Response(200, json={}))
+
+        ctx = _ctx()
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_archived(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(patch_route.calls.call_count, 1)
+        self.assertEqual(
+            result.artifacts['repo_url'], 'https://github.com/octo/renamed'
+        )
+        reloc = ctx.repository_relocation
+        assert reloc is not None
+        self.assertEqual(reloc.link_key, 'github-repository')
+        self.assertEqual(reloc.new_url, 'https://github.com/octo/renamed')
+        self.assertEqual(reloc.old_owner_repo, 'octo/demo')
+        self.assertEqual(reloc.new_owner_repo, 'octo/renamed')
+
+    @respx.mock
+    async def test_unarchive_follows_rename_and_reports_relocation(
+        self,
+    ) -> None:
+        respx.get('https://api.github.com/repos/octo/demo').mock(
+            return_value=httpx.Response(
+                301,
+                headers={
+                    'location': 'https://api.github.com/repositories/123'
+                },
+            )
+        )
+        respx.get('https://api.github.com/repositories/123').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'archived': True,
+                    'owner': {'login': 'octo'},
+                    'name': 'renamed',
+                    'html_url': 'https://github.com/octo/renamed',
+                },
+            )
+        )
+        patch_route = respx.patch(
+            'https://api.github.com/repos/octo/renamed'
+        ).mock(return_value=httpx.Response(200, json={}))
+
+        ctx = _ctx()
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_unarchived(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(patch_route.calls.call_count, 1)
+        reloc = ctx.repository_relocation
+        assert reloc is not None
+        self.assertEqual(reloc.new_owner_repo, 'octo/renamed')
+
+    @respx.mock
+    async def test_archive_skip_uses_canonical_owner_in_artifact(
+        self,
+    ) -> None:
+        # External rename moved the repo to a new owner *and* it is already
+        # archived, so we hit the skip path. The artifact URL must reflect
+        # the canonical owner/repo, not the stale link-derived owner.
+        respx.get('https://api.github.com/repos/octo/demo').mock(
+            return_value=httpx.Response(
+                301,
+                headers={
+                    'location': 'https://api.github.com/repositories/123'
+                },
+            )
+        )
+        respx.get('https://api.github.com/repositories/123').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'archived': True,
+                    'owner': {'login': 'octo-new'},
+                    'name': 'renamed',
+                    'html_url': 'https://github.com/octo-new/renamed',
+                },
+            )
+        )
+
+        ctx = _ctx()
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_archived(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'skipped')
+        self.assertEqual(
+            result.artifacts['repo_url'],
+            'https://github.com/octo-new/renamed',
+        )
+
+    @respx.mock
+    async def test_no_relocation_when_not_renamed(self) -> None:
+        respx.get('https://api.github.com/repos/octo/demo').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'archived': False,
+                    'owner': {'login': 'octo'},
+                    'name': 'demo',
+                },
+            )
+        )
+        respx.patch('https://api.github.com/repos/octo/demo').mock(
+            return_value=httpx.Response(200, json={})
+        )
+        ctx = _ctx()
+        plugin = GitHubLifecyclePlugin()
+        await plugin.on_project_archived(ctx, _CREDS)
+        self.assertIsNone(ctx.repository_relocation)
+
+    @respx.mock
+    async def test_intentional_transfer_is_not_reported_as_relocation(
+        self,
+    ) -> None:
+        # Repo is found at its stored location (no external rename), then
+        # we transfer it to the archive org. That intentional move must
+        # NOT be reported as a relocation.
+        respx.get('https://api.github.com/repos/octo/demo').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'archived': False,
+                    'owner': {'login': 'octo'},
+                    'name': 'demo',
+                },
+            )
+        )
+        respx.post('https://api.github.com/repos/octo/demo/transfer').mock(
+            return_value=httpx.Response(202, json={'name': 'demo'})
+        )
+        respx.patch('https://api.github.com/repos/archives/demo').mock(
+            return_value=httpx.Response(200, json={})
+        )
+        ctx = _ctx(options={'archive_target_org': 'archives'})
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_archived(ctx, _CREDS)
+        self.assertEqual(result.status, 'ok')
+        self.assertIsNone(ctx.repository_relocation)

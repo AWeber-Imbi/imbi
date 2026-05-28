@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import collections.abc
+import contextlib
 import datetime
 import hashlib
 import logging
@@ -50,6 +51,7 @@ from imbi_common.plugins.base import (
     RefInfo,
     ReleaseInfo,
     RemoteDeployment,
+    RepositoryRelocation,
     WorkflowFile,
 )
 from imbi_common.plugins.errors import PluginAuthenticationFailed
@@ -157,6 +159,30 @@ def _parse_iso(value: str | None) -> datetime.datetime | None:
         return datetime.datetime.fromisoformat(value)
     except ValueError:
         return None
+
+
+def _repo_root_from_redirect(location: str) -> str | None:
+    """Derive the canonical repo-root URL from a rename redirect target.
+
+    GitHub answers a request to a renamed repo with a ``301`` whose
+    ``Location`` points at the by-id form, e.g.
+    ``https://api.host/repositories/687046/commits``.  Strip the
+    sub-resource path back to ``https://api.host/repositories/687046`` so
+    we can ``GET`` it for the repo's current ``full_name``/``html_url``.
+    Returns ``None`` when ``location`` isn't a ``/repositories/{id}`` URL.
+    """
+    parsed = urllib.parse.urlsplit(location)
+    parts = [segment for segment in parsed.path.split('/') if segment]
+    try:
+        idx = parts.index('repositories')
+    except ValueError:
+        return None
+    if idx + 1 >= len(parts):
+        return None
+    repo_id = parts[idx + 1]
+    return urllib.parse.urlunsplit(
+        (parsed.scheme, parsed.netloc, f'/repositories/{repo_id}', '', '')
+    )
 
 
 def _checks_cache_key(
@@ -318,14 +344,86 @@ class _DeploymentBase(DeploymentPlugin):
             )
         return token
 
-    def _client(
+    @contextlib.asynccontextmanager
+    async def _client(
         self, ctx: PluginContext, credentials: dict[str, str]
-    ) -> httpx.AsyncClient:
-        return httpx.AsyncClient(
+    ) -> collections.abc.AsyncGenerator[httpx.AsyncClient]:
+        """Yield an httpx client that survives — and self-heals — renames.
+
+        ``follow_redirects=True`` means a renamed repo's ``301`` is
+        followed and the request transparently retried against the
+        canonical ``/repositories/{id}`` location instead of crashing in
+        ``raise_for_status``.  A response hook records that redirect; once
+        the caller's request succeeds we resolve the repo's new
+        ``full_name``/``html_url`` and stash a
+        :class:`~imbi_common.plugins.base.RepositoryRelocation` on ``ctx``
+        so the host can self-heal the project's stored link.  This is the
+        single chokepoint for every deployment call.
+        """
+        captured: list[str] = []
+
+        async def _capture_redirect(response: httpx.Response) -> None:
+            if response.is_redirect:
+                location = response.headers.get('location') or ''
+                if '/repositories/' in location:
+                    captured.append(location)
+
+        client = httpx.AsyncClient(
             timeout=_HTTP_TIMEOUT_SECONDS,
             headers=_auth_headers(self._token(credentials)),
             base_url=self._repo_url(ctx),
-            event_hooks={'response': [_raise_on_401]},
+            follow_redirects=True,
+            event_hooks={'response': [_capture_redirect, _raise_on_401]},
+        )
+        async with client:
+            yield client
+            # Only after the caller's request succeeded: a captured
+            # redirect means the repo was renamed out from under the
+            # stored link.  Resolve the new name once and report it.
+            if captured and ctx.repository_relocation is None:
+                await self._record_relocation(client, ctx, captured[-1])
+
+    async def _record_relocation(
+        self,
+        client: httpx.AsyncClient,
+        ctx: PluginContext,
+        redirect_location: str,
+    ) -> None:
+        """Resolve a renamed repo's canonical name and stash it on ``ctx``.
+
+        Best-effort: any failure to resolve the repo root leaves
+        ``ctx.repository_relocation`` unset so the user-facing call (which
+        already succeeded via the followed redirect) is never disturbed.
+        """
+        repo_root = _repo_root_from_redirect(redirect_location)
+        if repo_root is None:
+            return
+        try:
+            resp = await client.get(repo_root)
+        except (httpx.HTTPError, PluginAuthenticationFailed):
+            # The user-facing request already succeeded; a probe failure
+            # (network, or a 401 surfaced by the response hook) must not
+            # turn that success into an error during teardown.
+            return
+        if resp.status_code != 200:
+            return
+        try:
+            payload = typing.cast(dict[str, typing.Any], resp.json())
+        except ValueError:
+            return
+        full_name = str(payload.get('full_name') or '')
+        html_url = str(payload.get('html_url') or '')
+        if not full_name or not html_url:
+            return
+        old_owner, old_repo = self._owner_repo(ctx)
+        old_owner_repo = f'{old_owner}/{old_repo}'
+        if full_name.lower() == old_owner_repo.lower():
+            return
+        ctx.repository_relocation = RepositoryRelocation(
+            link_key='github-repository',
+            new_url=html_url,
+            old_owner_repo=old_owner_repo,
+            new_owner_repo=full_name,
         )
 
     # -- Refs ---------------------------------------------------------------

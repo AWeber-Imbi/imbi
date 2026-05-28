@@ -17,6 +17,7 @@ from imbi_plugin_github.deployment import (
     GitHubDeploymentPlugin,
     GitHubEnterpriseCloudDeploymentPlugin,
     GitHubEnterpriseServerDeploymentPlugin,
+    _repo_root_from_redirect,
 )
 
 
@@ -1300,3 +1301,167 @@ class ListWorkflowsTestCase(unittest.IsolatedAsyncioTestCase):
         )
         plugin = GitHubDeploymentPlugin()
         self.assertEqual(await plugin.list_workflows(_ctx(), _CREDS), [])
+
+
+class RepoRootFromRedirectTestCase(unittest.TestCase):
+    def test_strips_subresource_to_repo_root(self) -> None:
+        self.assertEqual(
+            _repo_root_from_redirect(
+                'https://api.github.com/repositories/687046/commits'
+            ),
+            'https://api.github.com/repositories/687046',
+        )
+
+    def test_bare_repo_id(self) -> None:
+        self.assertEqual(
+            _repo_root_from_redirect(
+                'https://api.github.com/repositories/687046'
+            ),
+            'https://api.github.com/repositories/687046',
+        )
+
+    def test_returns_none_without_repositories_segment(self) -> None:
+        self.assertIsNone(
+            _repo_root_from_redirect('https://api.github.com/repos/o/r')
+        )
+
+    def test_returns_none_when_id_missing(self) -> None:
+        self.assertIsNone(
+            _repo_root_from_redirect('https://api.github.com/repositories')
+        )
+
+
+class RepoRenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
+    """A repo renamed outside Imbi: GitHub 301s the stale path to the
+    by-id form.  The client follows it (request succeeds) and reports the
+    new name on ``ctx`` so the host can self-heal the stored link.
+    """
+
+    @staticmethod
+    def _mock_rename() -> None:
+        # Stale repo-path call 301s to the canonical /repositories/{id}.
+        respx.get('https://api.github.com/repos/octo/demo/commits').mock(
+            return_value=httpx.Response(
+                301,
+                headers={
+                    'location': (
+                        'https://api.github.com/repositories/123/commits'
+                    )
+                },
+            )
+        )
+        respx.get('https://api.github.com/repositories/123/commits').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'sha': 'abc',
+                        'commit': {
+                            'message': 'msg',
+                            'author': {'name': 'X', 'date': None},
+                        },
+                    }
+                ],
+            )
+        )
+        # Head-commit CI hydration follows the same redirect.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/commits/abc/check-runs'
+        ).mock(
+            return_value=httpx.Response(
+                301,
+                headers={
+                    'location': (
+                        'https://api.github.com/repositories/123'
+                        '/commits/abc/check-runs'
+                    )
+                },
+            )
+        )
+        respx.get(
+            'https://api.github.com/repositories/123/commits/abc/check-runs'
+        ).mock(return_value=httpx.Response(200, json={'check_runs': []}))
+
+    @respx.mock
+    async def test_list_commits_follows_rename_and_reports_relocation(
+        self,
+    ) -> None:
+        self._mock_rename()
+        respx.get('https://api.github.com/repositories/123').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'full_name': 'octo/renamed',
+                    'html_url': 'https://github.com/octo/renamed',
+                },
+            )
+        )
+        ctx = _ctx()
+        plugin = GitHubDeploymentPlugin()
+        commits = await plugin.list_commits(ctx, _CREDS, ref='main')
+        # The user-facing request still succeeds via the followed redirect.
+        self.assertEqual(len(commits), 1)
+        self.assertEqual(commits[0].sha, 'abc')
+        # ...and the rename is reported for the host to self-heal.
+        reloc = ctx.repository_relocation
+        assert reloc is not None
+        self.assertEqual(reloc.link_key, 'github-repository')
+        self.assertEqual(reloc.new_url, 'https://github.com/octo/renamed')
+        self.assertEqual(reloc.old_owner_repo, 'octo/demo')
+        self.assertEqual(reloc.new_owner_repo, 'octo/renamed')
+
+    @respx.mock
+    async def test_no_relocation_when_repo_not_renamed(self) -> None:
+        respx.get('https://api.github.com/repos/octo/demo/commits').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'sha': 'abc',
+                        'commit': {
+                            'message': 'msg',
+                            'author': {'name': 'X', 'date': None},
+                        },
+                    }
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/commits/abc/check-runs'
+        ).mock(return_value=httpx.Response(200, json={'check_runs': []}))
+        ctx = _ctx()
+        plugin = GitHubDeploymentPlugin()
+        await plugin.list_commits(ctx, _CREDS, ref='main')
+        self.assertIsNone(ctx.repository_relocation)
+
+    @respx.mock
+    async def test_no_relocation_when_repo_root_unresolvable(self) -> None:
+        self._mock_rename()
+        # Repo-root resolution fails -> best-effort, no relocation recorded.
+        respx.get('https://api.github.com/repositories/123').mock(
+            return_value=httpx.Response(404)
+        )
+        ctx = _ctx()
+        plugin = GitHubDeploymentPlugin()
+        commits = await plugin.list_commits(ctx, _CREDS, ref='main')
+        self.assertEqual(len(commits), 1)
+        self.assertIsNone(ctx.repository_relocation)
+
+    @respx.mock
+    async def test_no_relocation_when_name_unchanged(self) -> None:
+        self._mock_rename()
+        # Redirect happened but full_name matches the stored owner/repo
+        # (e.g. a transient by-id redirect) -> nothing to heal.
+        respx.get('https://api.github.com/repositories/123').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'full_name': 'octo/demo',
+                    'html_url': 'https://github.com/octo/demo',
+                },
+            )
+        )
+        ctx = _ctx()
+        plugin = GitHubDeploymentPlugin()
+        await plugin.list_commits(ctx, _CREDS, ref='main')
+        self.assertIsNone(ctx.repository_relocation)

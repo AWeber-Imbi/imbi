@@ -57,6 +57,7 @@ from imbi_common.plugins.base import (
     PluginContext,
     PluginManifest,
     PluginOption,
+    RepositoryRelocation,
 )
 from imbi_common.plugins.errors import PluginAuthenticationFailed
 
@@ -129,10 +130,16 @@ class _LifecycleBase(LifecyclePlugin):
     def _client(
         self, ctx: PluginContext, credentials: dict[str, str]
     ) -> httpx.AsyncClient:
+        # follow_redirects so a repo renamed outside Imbi (GitHub answers
+        # the stale ``/repos/{owner}/{repo}`` path with a 301 to the by-id
+        # form) is followed instead of crashing in ``raise_for_status``.
+        # The canonical owner/repo are then adopted from the repo payload;
+        # see ``on_project_archived``.
         return httpx.AsyncClient(
             timeout=_HTTP_TIMEOUT_SECONDS,
             headers=_auth_headers(self._token(credentials)),
             base_url=self._api_base(ctx.assignment_options),
+            follow_redirects=True,
             event_hooks={'response': [_raise_on_401]},
         )
 
@@ -154,8 +161,18 @@ class _LifecycleBase(LifecyclePlugin):
 
         async with self._client(ctx, credentials) as client:
             current = await self._get_repo(client, owner, repo)
-            already_archived = bool(current.get('archived'))
             current_owner = self._current_owner(current, owner)
+            current_repo = self._current_repo(current, repo)
+            # If the repo moved out from under the stored link *before*
+            # we touched it (an external rename), report it so the host
+            # self-heals the link.  This is computed before any transfer
+            # we initiate below, so an intentional archive-org transfer
+            # is never mistaken for an external relocation.
+            self._maybe_report_relocation(
+                ctx, host, current, owner, repo, current_owner, current_repo
+            )
+            repo = current_repo
+            already_archived = bool(current.get('archived'))
 
             needs_transfer = bool(
                 target_org and current_owner.lower() != target_org.lower()
@@ -169,7 +186,9 @@ class _LifecycleBase(LifecyclePlugin):
                         'archived'
                     ),
                     artifacts={
-                        'repo_url': self._repo_html_url(host, owner, repo),
+                        'repo_url': self._repo_html_url(
+                            host, current_owner, repo
+                        ),
                     },
                 )
 
@@ -214,6 +233,11 @@ class _LifecycleBase(LifecyclePlugin):
         async with self._client(ctx, credentials) as client:
             current = await self._get_repo(client, owner, repo)
             current_owner = self._current_owner(current, owner)
+            current_repo = self._current_repo(current, repo)
+            self._maybe_report_relocation(
+                ctx, host, current, owner, repo, current_owner, current_repo
+            )
+            repo = current_repo
             if not current.get('archived'):
                 return LifecycleResult(
                     status='skipped',
@@ -245,6 +269,49 @@ class _LifecycleBase(LifecyclePlugin):
             if isinstance(login, str) and login:
                 return login
         return fallback
+
+    @staticmethod
+    def _current_repo(payload: dict[str, typing.Any], fallback: str) -> str:
+        """Return the repo name from a repo payload, fallback when absent."""
+        name = payload.get('name')
+        if isinstance(name, str) and name:
+            return name
+        return fallback
+
+    def _maybe_report_relocation(
+        self,
+        ctx: PluginContext,
+        host: str,
+        payload: dict[str, typing.Any],
+        link_owner: str,
+        link_repo: str,
+        current_owner: str,
+        current_repo: str,
+    ) -> None:
+        """Record a relocation when the repo moved out from under the link.
+
+        Compares the link-derived ``<owner>/<repo>`` against the repo's
+        canonical name from ``payload``.  When they differ the repo was
+        renamed (or its owner renamed) outside Imbi, so stash a
+        :class:`RepositoryRelocation` on ``ctx`` for the host to self-heal
+        the stored link.  No-op when they match.
+        """
+        old_owner_repo = f'{link_owner}/{link_repo}'
+        new_owner_repo = f'{current_owner}/{current_repo}'
+        if new_owner_repo.lower() == old_owner_repo.lower():
+            return
+        html_url = payload.get('html_url')
+        new_url = (
+            html_url
+            if isinstance(html_url, str) and html_url
+            else self._repo_html_url(host, current_owner, current_repo)
+        )
+        ctx.repository_relocation = RepositoryRelocation(
+            link_key='github-repository',
+            new_url=new_url,
+            old_owner_repo=old_owner_repo,
+            new_owner_repo=new_owner_repo,
+        )
 
     @staticmethod
     def _repo_html_url(host: str, owner: str, repo: str) -> str:
