@@ -604,7 +604,7 @@ class RenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             result.artifacts['repo_url'], 'https://github.com/octo/renamed'
         )
-        reloc = ctx.repository_relocation
+        reloc = ctx.link_writeback
         assert reloc is not None
         self.assertEqual(reloc.link_key, 'github-repository')
         self.assertEqual(reloc.new_url, 'https://github.com/octo/renamed')
@@ -644,7 +644,7 @@ class RenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result.status, 'ok')
         self.assertEqual(patch_route.calls.call_count, 1)
-        reloc = ctx.repository_relocation
+        reloc = ctx.link_writeback
         assert reloc is not None
         self.assertEqual(reloc.new_owner_repo, 'octo/renamed')
 
@@ -703,7 +703,7 @@ class RenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
         ctx = _ctx()
         plugin = GitHubLifecyclePlugin()
         await plugin.on_project_archived(ctx, _CREDS)
-        self.assertIsNone(ctx.repository_relocation)
+        self.assertIsNone(ctx.link_writeback)
 
     @respx.mock
     async def test_intentional_transfer_is_not_reported_as_relocation(
@@ -732,4 +732,4 @@ class RenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
         plugin = GitHubLifecyclePlugin()
         result = await plugin.on_project_archived(ctx, _CREDS)
         self.assertEqual(result.status, 'ok')
-        self.assertIsNone(ctx.repository_relocation)
+        self.assertIsNone(ctx.link_writeback)

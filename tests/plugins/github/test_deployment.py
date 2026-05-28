@@ -1403,7 +1403,7 @@ class RepoRenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(commits), 1)
         self.assertEqual(commits[0].sha, 'abc')
         # ...and the rename is reported for the host to self-heal.
-        reloc = ctx.repository_relocation
+        reloc = ctx.link_writeback
         assert reloc is not None
         self.assertEqual(reloc.link_key, 'github-repository')
         self.assertEqual(reloc.new_url, 'https://github.com/octo/renamed')
@@ -1432,7 +1432,7 @@ class RepoRenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
         ctx = _ctx()
         plugin = GitHubDeploymentPlugin()
         await plugin.list_commits(ctx, _CREDS, ref='main')
-        self.assertIsNone(ctx.repository_relocation)
+        self.assertIsNone(ctx.link_writeback)
 
     @respx.mock
     async def test_no_relocation_when_repo_root_unresolvable(self) -> None:
@@ -1445,7 +1445,7 @@ class RepoRenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
         plugin = GitHubDeploymentPlugin()
         commits = await plugin.list_commits(ctx, _CREDS, ref='main')
         self.assertEqual(len(commits), 1)
-        self.assertIsNone(ctx.repository_relocation)
+        self.assertIsNone(ctx.link_writeback)
 
     @respx.mock
     async def test_no_relocation_when_name_unchanged(self) -> None:
@@ -1464,4 +1464,4 @@ class RepoRenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
         ctx = _ctx()
         plugin = GitHubDeploymentPlugin()
         await plugin.list_commits(ctx, _CREDS, ref='main')
-        self.assertIsNone(ctx.repository_relocation)
+        self.assertIsNone(ctx.link_writeback)

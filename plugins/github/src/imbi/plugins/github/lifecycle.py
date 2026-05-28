@@ -54,10 +54,10 @@ from imbi_common.plugins.base import (
     CredentialField,
     LifecyclePlugin,
     LifecycleResult,
+    LinkWriteback,
     PluginContext,
     PluginManifest,
     PluginOption,
-    RepositoryRelocation,
 )
 from imbi_common.plugins.errors import PluginAuthenticationFailed
 
@@ -288,13 +288,13 @@ class _LifecycleBase(LifecyclePlugin):
         current_owner: str,
         current_repo: str,
     ) -> None:
-        """Record a relocation when the repo moved out from under the link.
+        """Record a link writeback when the repo moved out from under the link.
 
         Compares the link-derived ``<owner>/<repo>`` against the repo's
         canonical name from ``payload``.  When they differ the repo was
         renamed (or its owner renamed) outside Imbi, so stash a
-        :class:`RepositoryRelocation` on ``ctx`` for the host to self-heal
-        the stored link.  No-op when they match.
+        :class:`LinkWriteback` on ``ctx`` for the host to persist the
+        new link.  No-op when they match.
         """
         old_owner_repo = f'{link_owner}/{link_repo}'
         new_owner_repo = f'{current_owner}/{current_repo}'
@@ -306,7 +306,7 @@ class _LifecycleBase(LifecyclePlugin):
             if isinstance(html_url, str) and html_url
             else self._repo_html_url(host, current_owner, current_repo)
         )
-        ctx.repository_relocation = RepositoryRelocation(
+        ctx.link_writeback = LinkWriteback(
             link_key='github-repository',
             new_url=new_url,
             old_owner_repo=old_owner_repo,

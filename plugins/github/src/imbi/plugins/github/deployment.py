@@ -42,6 +42,7 @@ from imbi_common.plugins.base import (
     DeploymentEventStatus,
     DeploymentPlugin,
     DeploymentRun,
+    LinkWriteback,
     OpsLogTemplate,
     PluginContext,
     PluginEdgeLabel,
@@ -51,7 +52,6 @@ from imbi_common.plugins.base import (
     RefInfo,
     ReleaseInfo,
     RemoteDeployment,
-    RepositoryRelocation,
     WorkflowFile,
 )
 from imbi_common.plugins.errors import PluginAuthenticationFailed
@@ -356,8 +356,8 @@ class _DeploymentBase(DeploymentPlugin):
         ``raise_for_status``.  A response hook records that redirect; once
         the caller's request succeeds we resolve the repo's new
         ``full_name``/``html_url`` and stash a
-        :class:`~imbi_common.plugins.base.RepositoryRelocation` on ``ctx``
-        so the host can self-heal the project's stored link.  This is the
+        :class:`~imbi_common.plugins.base.LinkWriteback` on ``ctx`` so the
+        host can persist the project's updated stored link.  This is the
         single chokepoint for every deployment call.
         """
         captured: list[str] = []
@@ -380,7 +380,7 @@ class _DeploymentBase(DeploymentPlugin):
             # Only after the caller's request succeeded: a captured
             # redirect means the repo was renamed out from under the
             # stored link.  Resolve the new name once and report it.
-            if captured and ctx.repository_relocation is None:
+            if captured and ctx.link_writeback is None:
                 await self._record_relocation(client, ctx, captured[-1])
 
     async def _record_relocation(
@@ -392,7 +392,7 @@ class _DeploymentBase(DeploymentPlugin):
         """Resolve a renamed repo's canonical name and stash it on ``ctx``.
 
         Best-effort: any failure to resolve the repo root leaves
-        ``ctx.repository_relocation`` unset so the user-facing call (which
+        ``ctx.link_writeback`` unset so the user-facing call (which
         already succeeded via the followed redirect) is never disturbed.
         """
         repo_root = _repo_root_from_redirect(redirect_location)
@@ -419,7 +419,7 @@ class _DeploymentBase(DeploymentPlugin):
         old_owner_repo = f'{old_owner}/{old_repo}'
         if full_name.lower() == old_owner_repo.lower():
             return
-        ctx.repository_relocation = RepositoryRelocation(
+        ctx.link_writeback = LinkWriteback(
             link_key='github-repository',
             new_url=html_url,
             old_owner_repo=old_owner_repo,
