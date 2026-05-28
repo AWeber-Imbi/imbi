@@ -24,7 +24,7 @@ import { useAuth } from '../useAuth'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
-  getUserByUsername: vi.fn(),
+  getCurrentUser: vi.fn(),
   loginWithPassword: vi.fn(),
   logoutAuth: vi.fn(),
   refreshToken: vi.fn(),
@@ -164,7 +164,7 @@ describe('useAuth', () => {
     // Let the bootstrap refresh attempt settle.
     await waitFor(() => expect(endpoints.refreshToken).toHaveBeenCalled())
 
-    expect(endpoints.getUserByUsername).not.toHaveBeenCalled()
+    expect(endpoints.getCurrentUser).not.toHaveBeenCalled()
     expect(sessionStorage.getItem('imbi_redirect_after_login')).toBeNull()
     expect(latestLocation.pathname).toBe('/login')
     expect(result.current.isAuthenticated).toBe(false)
@@ -180,20 +180,19 @@ describe('useAuth', () => {
       '/projects',
     )
     expect(endpoints.refreshToken).toHaveBeenCalledOnce()
-    expect(endpoints.getUserByUsername).not.toHaveBeenCalled()
+    expect(endpoints.getCurrentUser).not.toHaveBeenCalled()
   })
 
   it('valid access token: fetches currentUser once, does not refresh', async () => {
     setValidAccess()
-    vi.mocked(endpoints.getUserByUsername).mockResolvedValue(validUser as never)
+    vi.mocked(endpoints.getCurrentUser).mockResolvedValue(validUser as never)
 
     const { Wrapper } = setupEnv('/dashboard')
     const { result } = renderHook(() => useAuth(), { wrapper: Wrapper })
 
     await waitFor(() => expect(result.current.isAuthenticated).toBe(true))
-    expect(endpoints.getUserByUsername).toHaveBeenCalledTimes(1)
-    expect(endpoints.getUserByUsername).toHaveBeenCalledWith(
-      'user@example.com',
+    expect(endpoints.getCurrentUser).toHaveBeenCalledTimes(1)
+    expect(endpoints.getCurrentUser).toHaveBeenCalledWith(
       expect.any(AbortSignal),
     )
     expect(endpoints.refreshToken).not.toHaveBeenCalled()
@@ -209,14 +208,14 @@ describe('useAuth', () => {
       refresh_token: 'rt-new',
       token_type: 'bearer',
     } as never)
-    vi.mocked(endpoints.getUserByUsername).mockResolvedValue(validUser as never)
+    vi.mocked(endpoints.getCurrentUser).mockResolvedValue(validUser as never)
 
     const { Wrapper } = setupEnv('/dashboard')
     const { result } = renderHook(() => useAuth(), { wrapper: Wrapper })
 
     await waitFor(() => expect(result.current.isAuthenticated).toBe(true))
     expect(endpoints.refreshToken).toHaveBeenCalledTimes(1)
-    expect(endpoints.getUserByUsername).toHaveBeenCalled()
+    expect(endpoints.getCurrentUser).toHaveBeenCalled()
     expect(latestLocation.pathname).toBe('/dashboard')
     expect(useAuthStore.getState().accessToken).toBe(newToken)
   })
@@ -233,7 +232,7 @@ describe('useAuth', () => {
     expect(sessionStorage.getItem('imbi_redirect_after_login')).toBe(
       '/projects?filter=x',
     )
-    expect(endpoints.getUserByUsername).not.toHaveBeenCalled()
+    expect(endpoints.getCurrentUser).not.toHaveBeenCalled()
   })
 
   it('expired access + no valid cookie: refresh attempted, redirects, saves path', async () => {
@@ -261,7 +260,7 @@ describe('useAuth', () => {
       refresh_token: 'rt-new',
       token_type: 'bearer',
     } as never)
-    vi.mocked(endpoints.getUserByUsername).mockResolvedValue(validUser as never)
+    vi.mocked(endpoints.getCurrentUser).mockResolvedValue(validUser as never)
 
     const { Wrapper } = setupEnv('/dashboard')
     function Consumer() {
@@ -291,7 +290,7 @@ describe('useAuth', () => {
     // refactor MUST keep at minimum this clearTokens side effect; lifting the
     // translated error to a stable signal is a bonus but not required.
     setValidAccess()
-    vi.mocked(endpoints.getUserByUsername).mockRejectedValue(
+    vi.mocked(endpoints.getCurrentUser).mockRejectedValue(
       new ApiError(401, 'Unauthorized', {
         detail: 'user not found or inactive',
       }),
@@ -301,7 +300,7 @@ describe('useAuth', () => {
     renderHook(() => useAuth(), { wrapper: Wrapper })
 
     await waitFor(() => expect(useAuthStore.getState().accessToken).toBeNull())
-    expect(endpoints.getUserByUsername).toHaveBeenCalledTimes(1)
+    expect(endpoints.getCurrentUser).toHaveBeenCalledTimes(1)
   })
 
   it('currentUser 401 with any other detail: surfaces error as-is, does not clear tokens', async () => {
@@ -309,7 +308,7 @@ describe('useAuth', () => {
     const apiErr = new ApiError(401, 'Unauthorized', {
       detail: 'some generic auth failure',
     })
-    vi.mocked(endpoints.getUserByUsername).mockRejectedValue(apiErr)
+    vi.mocked(endpoints.getCurrentUser).mockRejectedValue(apiErr)
 
     const { Wrapper } = setupEnv('/dashboard')
     const { result } = renderHook(() => useAuth(), { wrapper: Wrapper })
@@ -328,7 +327,7 @@ describe('useAuth', () => {
       refresh_token: 'rt-new',
       token_type: 'bearer',
     } as never)
-    vi.mocked(endpoints.getUserByUsername).mockResolvedValue(validUser as never)
+    vi.mocked(endpoints.getCurrentUser).mockResolvedValue(validUser as never)
 
     const { qc, Wrapper } = setupEnv('/login')
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
@@ -373,7 +372,7 @@ describe('useAuth', () => {
 
   it('logout success: clearTokens, queryClient.clear, window.location.href = /login', async () => {
     setValidAccess()
-    vi.mocked(endpoints.getUserByUsername).mockResolvedValue(validUser as never)
+    vi.mocked(endpoints.getCurrentUser).mockResolvedValue(validUser as never)
     vi.mocked(endpoints.logoutAuth).mockResolvedValue(undefined as never)
 
     const { qc, Wrapper } = setupEnv('/dashboard')
@@ -393,7 +392,7 @@ describe('useAuth', () => {
 
   it('logout failure: same cleanup as success (onError path)', async () => {
     setValidAccess()
-    vi.mocked(endpoints.getUserByUsername).mockResolvedValue(validUser as never)
+    vi.mocked(endpoints.getCurrentUser).mockResolvedValue(validUser as never)
     vi.mocked(endpoints.logoutAuth).mockRejectedValue(new Error('server down'))
 
     const { qc, Wrapper } = setupEnv('/dashboard')
@@ -413,7 +412,7 @@ describe('useAuth', () => {
 
   it('refreshToken mutation success: setTokens and user re-populates', async () => {
     setValidAccess()
-    vi.mocked(endpoints.getUserByUsername).mockResolvedValue(validUser as never)
+    vi.mocked(endpoints.getCurrentUser).mockResolvedValue(validUser as never)
     const newToken = makeJwt({ exp: Math.floor(Date.now() / 1000) + 7200 })
     vi.mocked(endpoints.refreshToken).mockResolvedValue({
       access_token: newToken,
@@ -437,7 +436,7 @@ describe('useAuth', () => {
 
   it('refreshToken mutation failure on a protected route: clears tokens, redirects with saved path', async () => {
     setValidAccess()
-    vi.mocked(endpoints.getUserByUsername).mockResolvedValue(validUser as never)
+    vi.mocked(endpoints.getCurrentUser).mockResolvedValue(validUser as never)
     vi.mocked(endpoints.refreshToken).mockRejectedValue(new Error('boom'))
 
     const { Wrapper } = setupEnv('/projects')

@@ -137,8 +137,10 @@ export const refreshToken = () =>
 
 export const logoutAuth = () => apiClient.post<void>('/auth/logout', {})
 
-export const getUserByUsername = (username: string, signal?: AbortSignal) =>
-  apiClient.get<UserResponse>(`/users/${username}`, undefined, signal)
+// GET /users/me resolves the caller from their token and, unlike
+// /users/{email}, includes the effective `permissions` set the UI gates on.
+export const getCurrentUser = (signal?: AbortSignal) =>
+  apiClient.get<UserResponse>('/users/me', undefined, signal)
 
 export const getProjects = async (
   orgSlug: string,

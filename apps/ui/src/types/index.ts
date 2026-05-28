@@ -1341,8 +1341,9 @@ export interface UseAuthReturn {
 }
 
 // `UserResponse` stays hand-written: it's a UI-side extension of `User`
-// (inherits `username`, `user_type`, etc.) which the backend `UserResponse`
-// doesn't expose.
+// (inherits `username`, `user_type`, etc.). `permissions` and `is_admin` are
+// populated by GET /users/me (the backend's CurrentUserResponse); other
+// optional fields (`groups`, `roles`) are not yet exposed by the API.
 export interface UserResponse extends User {
   avatar_url?: null | string
   created_at?: string

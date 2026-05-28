@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ApiError, apiUrl } from '@/api/client'
 import {
-  getUserByUsername,
+  getCurrentUser,
   loginWithPassword,
   logoutAuth,
   refreshToken as refreshTokenApi,
@@ -37,12 +37,11 @@ export function useAuth(): UseAuthReturn {
   } = useQuery<UserResponse>({
     enabled: !!accessToken && !isTokenExpired(),
     queryFn: async ({ signal }) => {
-      const username = getUsername()
-      if (!username) {
-        throw new Error('No username found in token')
-      }
       try {
-        return await getUserByUsername(username, signal)
+        // /users/me resolves the caller from the bearer token; no username
+        // needed. getUsername() is still used in the queryKey below so the
+        // cache is keyed per-user and clearTokens() invalidates it.
+        return await getCurrentUser(signal)
       } catch (error) {
         console.error('[Auth] Error fetching user:', error)
         if (error instanceof ApiError && error.status === 401) {
