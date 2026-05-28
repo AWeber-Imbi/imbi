@@ -34,12 +34,13 @@ COPY imbi-plugin-aws/ imbi-plugin-aws/
 COPY imbi-plugin-github/ imbi-plugin-github/
 COPY imbi-plugin-logzio/ imbi-plugin-logzio/
 COPY imbi-plugin-oidc/ imbi-plugin-oidc/
+COPY imbi-plugin-sonarqube/ imbi-plugin-sonarqube/
 COPY imbi-assistant/ imbi-assistant/
 COPY imbi-gateway/ imbi-gateway/
 COPY imbi-mcp/ imbi-mcp/
 
 # Build wheels for all services
-RUN for svc in imbi-api imbi-plugin-aws imbi-plugin-github imbi-plugin-logzio imbi-plugin-oidc imbi-assistant imbi-gateway imbi-mcp; do \
+RUN for svc in imbi-api imbi-plugin-aws imbi-plugin-github imbi-plugin-logzio imbi-plugin-oidc imbi-plugin-sonarqube imbi-assistant imbi-gateway imbi-mcp; do \
   uv build /tmp/build/$svc --wheel --out-dir /tmp/wheels/; \
 done
 

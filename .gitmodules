@@ -25,3 +25,6 @@
 [submodule "imbi-plugin-github"]
 	path = imbi-plugin-github
 	url = git@github.com:AWeber-Imbi/imbi-plugin-github.git
+[submodule "imbi-plugin-sonarqube"]
+	path = imbi-plugin-sonarqube
+	url = git@github.com:AWeber-Imbi/imbi-plugin-sonarqube.git
