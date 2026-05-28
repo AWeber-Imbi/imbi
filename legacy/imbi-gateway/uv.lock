@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.14"
 
 [options]
-exclude-newer = "2026-05-15T15:12:28.491408Z"
+exclude-newer = "2026-05-21T13:10:30.111399Z"
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
@@ -663,7 +663,7 @@ wheels = [
 
 [[package]]
 name = "imbi-common"
-version = "2.5.2"
+version = "2.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
@@ -679,9 +679,9 @@ dependencies = [
     { name = "python-slugify" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7d/04/a1c672f1efd55b16ac34788a39f72b139f9e3e4f973934adad011fbe269f/imbi_common-2.5.2.tar.gz", hash = "sha256:e42dfda824a5eb63ac8cfa4c4267b74c612d7650b1f4aed4a52a51ac0590e613", size = 276855, upload-time = "2026-05-19T15:43:01.917Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4b/b0/5f28ac0670d239c885822e5a7c9a94b2bb9c1ea205dccba82ac2ae36f329/imbi_common-2.7.0.tar.gz", hash = "sha256:723d2a7ecffef3f0cf86828173586a9721931b95068718c7b0c7cff768c7f764", size = 303583, upload-time = "2026-05-28T12:56:17.525Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7a/13/54a4c7dfd0122a4f8200eb4bbd33ab8c41586941dbe574343d4057f01d57/imbi_common-2.5.2-py3-none-any.whl", hash = "sha256:186878dac74e905dd71cf7ea8e47e14c08aec23019b29542580e223885416280", size = 90588, upload-time = "2026-05-19T15:43:00.1Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/33/e801c0e9d7ecfef434ca1f178291584f4dce1e55f34590c9425c2086c4f6/imbi_common-2.7.0-py3-none-any.whl", hash = "sha256:c475153119376753d5f09b18de686eb872464625fdaf073aa893fec38b3956ab", size = 98903, upload-time = "2026-05-28T12:56:16.147Z" },
 ]
 
 [package.optional-dependencies]
@@ -737,7 +737,7 @@ requires-dist = [
     { name = "cel-python", specifier = ">=0.5.0" },
     { name = "fastapi", specifier = ">=0.135.1" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "imbi-common", extras = ["databases", "server"], specifier = ">=2.5.2" },
+    { name = "imbi-common", extras = ["databases", "server"], specifier = ">=2.7.0" },
     { name = "imbi-plugin-github", marker = "extra == 'plugins'", specifier = "~=1.0" },
     { name = "imbi-plugin-sonarqube", marker = "extra == 'plugins'", specifier = ">=0.0.0" },
     { name = "jsonpointer", specifier = ">=3.1.1" },

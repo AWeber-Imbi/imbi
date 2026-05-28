@@ -1,10 +1,11 @@
 """Built-in webhook-action plugin shipped with imbi-gateway.
 
-Wraps the three legacy actions (``update_project``, ``create_release``,
-``add_deployment_event``) as a :class:`WebhookActionPlugin` so they
-participate in the same discovery, validation, and dispatch flow as
-externally-installed plugins. Declares no credentials -- the host
-always passes an empty ``credentials`` dict to these callables.
+Wraps the bundled actions (``update_project``, ``create_release``,
+``add_deployment_event``, ``ingest_sbom``) as a
+:class:`WebhookActionPlugin` so they participate in the same
+discovery, validation, and dispatch flow as externally-installed
+plugins. Declares no credentials -- the host always passes an empty
+``credentials`` dict to these callables.
 """
 
 import typing
@@ -43,7 +44,8 @@ class GatewayActionsPlugin(plugin_base.WebhookActionPlugin):
         name='Gateway Actions',
         description=(
             'Webhook actions shipped with imbi-gateway: update project '
-            'facts, create a release, and append a deployment event.'
+            'facts, create a release, append a deployment event, and '
+            'ingest CycloneDX SBoMs.'
         ),
         plugin_type='webhook',
         credentials=[],
@@ -82,5 +84,15 @@ class GatewayActionsPlugin(plugin_base.WebhookActionPlugin):
                 ),
                 callable_path='imbi_gateway.actions:add_deployment_event',
                 model_path='imbi_gateway.actions:AddDeploymentEventConfig',
+            ),
+            _descriptor(
+                name='ingest_sbom',
+                label='Ingest CycloneDX SBoM for Release',
+                description=(
+                    'Forwards a CycloneDX 1.7 SBoM document to the '
+                    'Imbi API for the matched project release.'
+                ),
+                callable_path='imbi_gateway.actions:ingest_sbom',
+                model_path='imbi_gateway.actions:IngestSbomConfig',
             ),
         ]
