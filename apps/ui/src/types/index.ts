@@ -1145,6 +1145,32 @@ export interface Release {
   title: string
   updated_at?: null | string
 }
+export interface ReleaseDependenciesResponse {
+  components: ReleaseDependencyComponent[]
+  release_id: string
+}
+
+export interface ReleaseDependencyComponent {
+  description?: null | string
+  ecosystem: string
+  groups: string[]
+  hashes: Record<string, string>
+  identifiers: ReleaseDependencyIdentifier[]
+  license?: null | string
+  name: string
+  purl_name: string
+  scope?: null | ReleaseDependencyScope
+  supplier?: null | string
+  version: string
+}
+
+export interface ReleaseDependencyIdentifier {
+  kind: string
+  value: string
+}
+
+export type ReleaseDependencyScope = 'excluded' | 'optional' | 'required'
+
 export interface ReleaseLink {
   label?: null | string
   type: string

@@ -31,6 +31,7 @@ import {
   type ProjectSchemaResponse,
   type ScoreTrend,
 } from '@/api/endpoints'
+import { DependenciesTab } from '@/components/dependencies/DependenciesTab'
 import {
   type DeploymentRunStarted,
   ReleaseModal,
@@ -51,7 +52,6 @@ import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -1052,7 +1052,7 @@ export function ProjectDetail({
           />
         </TabsContent>
         <TabsContent value="dependencies">
-          <PlaceholderTab name="Dependencies" />
+          <DependenciesTab orgSlug={orgSlug} project={project} />
         </TabsContent>
         {hasLogsPlugin && (
           <TabsContent value="logs">
@@ -1219,19 +1219,6 @@ function fmtAttributeValue(value: unknown): string {
   return isFinite(n) && String(value).trim() !== ''
     ? String(Math.round(n))
     : String(value)
-}
-
-function PlaceholderTab({ name }: { name: string }) {
-  return (
-    <Card>
-      <CardContent className="py-12 text-center">
-        <CardTitle>{name}</CardTitle>
-        <CardDescription className="text-tertiary">
-          This tab will be implemented in a future update.
-        </CardDescription>
-      </CardContent>
-    </Card>
-  )
 }
 
 function ScoreBreakdownDetail({
