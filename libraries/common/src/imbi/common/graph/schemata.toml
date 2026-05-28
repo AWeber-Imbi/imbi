@@ -12,6 +12,9 @@ name = [
   "APIKey",
   "Blueprint",
   "ClientCredential",
+  "Component",
+  "ComponentIdentifier",
+  "ComponentRelease",
   "Conversation",
   "DocumentTemplate",
   "Environment",
@@ -66,6 +69,34 @@ unique = true
 [[vlabel_indexes]]
 vlabel = "ClientCredential"
 attributes = ["client_id"]
+unique = true
+
+# A Component's identity is its version-stripped package URL
+# (e.g. "pkg:npm/express"). Globally unique so MERGE can dedup
+# across projects and releases without a separate uniqueness check.
+[[vlabel_indexes]]
+vlabel = "Component"
+attributes = ["purl_name"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Component"
+attributes = ["ecosystem"]
+
+# Per-component uniqueness of ComponentRelease.version is enforced
+# at the application layer via MERGE on the
+# (Component)-[:HAS_RELEASE]->(ComponentRelease) pattern — two
+# components may legitimately ship the same version string, so a
+# graph-wide UNIQUE index is not possible.
+[[vlabel_indexes]]
+vlabel = "ComponentRelease"
+attributes = ["version"]
+
+# A ComponentIdentifier is globally unique by (kind, value) — a
+# given purl or CPE points at exactly one Component.
+[[vlabel_indexes]]
+vlabel = "ComponentIdentifier"
+attributes = ["kind", "value"]
 unique = true
 
 [[vlabel_indexes]]

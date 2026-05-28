@@ -1093,6 +1093,245 @@ class PluginEdgeTestCase(unittest.TestCase):
         )
 
 
+class ComponentIdentifierTestCase(unittest.TestCase):
+    """Tests for the ComponentIdentifier model."""
+
+    def test_creation_with_purl(self) -> None:
+        ident = models.ComponentIdentifier(
+            kind='purl',
+            value='pkg:npm/express',
+        )
+        self.assertEqual(ident.kind, 'purl')
+        self.assertEqual(ident.value, 'pkg:npm/express')
+
+    def test_all_kinds_accepted(self) -> None:
+        for kind in ('purl', 'cpe', 'bom-ref', 'swid'):
+            with self.subTest(kind=kind):
+                ident = models.ComponentIdentifier(kind=kind, value='x')
+                self.assertEqual(ident.kind, kind)
+
+    def test_unknown_kind_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.ComponentIdentifier(kind='gibberish', value='x')
+
+    def test_value_required(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.ComponentIdentifier(kind='purl')
+
+    def test_is_graph_model(self) -> None:
+        ident = models.ComponentIdentifier(kind='purl', value='pkg:npm/x')
+        self.assertIsInstance(ident, models.GraphModel)
+
+    def test_in_all(self) -> None:
+        self.assertIn('ComponentIdentifier', models.__all__)
+
+
+class ComponentTestCase(unittest.TestCase):
+    """Tests for the Component model."""
+
+    def _make(self, **overrides: typing.Any) -> models.Component:
+        defaults: dict[str, typing.Any] = {
+            'purl_name': 'pkg:npm/express',
+            'name': 'express',
+            'ecosystem': 'npm',
+        }
+        defaults.update(overrides)
+        return models.Component(**defaults)
+
+    def test_minimal(self) -> None:
+        component = self._make()
+        self.assertEqual(component.purl_name, 'pkg:npm/express')
+        self.assertEqual(component.name, 'express')
+        self.assertEqual(component.ecosystem, 'npm')
+        self.assertIsNone(component.description)
+        self.assertEqual(component.identifiers, [])
+
+    def test_identifiers_default_isolated_per_instance(self) -> None:
+        a = self._make()
+        b = self._make()
+        a.identifiers.append(
+            models.ComponentIdentifier(kind='purl', value='pkg:npm/express'),
+        )
+        self.assertEqual(b.identifiers, [])
+
+    def test_identifiers_round_trip(self) -> None:
+        component = self._make(
+            identifiers=[
+                models.ComponentIdentifier(
+                    kind='purl', value='pkg:npm/express'
+                ),
+                models.ComponentIdentifier(
+                    kind='cpe', value='cpe:2.3:a:expressjs:express'
+                ),
+            ],
+        )
+        self.assertEqual(len(component.identifiers), 2)
+        kinds = {i.kind for i in component.identifiers}
+        self.assertEqual(kinds, {'purl', 'cpe'})
+
+    def test_required_fields(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.Component(name='express', ecosystem='npm')
+        with self.assertRaises(pydantic.ValidationError):
+            models.Component(purl_name='pkg:npm/x', ecosystem='npm')
+        with self.assertRaises(pydantic.ValidationError):
+            models.Component(purl_name='pkg:npm/x', name='x')
+
+    def test_is_graph_model(self) -> None:
+        self.assertIsInstance(self._make(), models.GraphModel)
+
+    def test_in_all(self) -> None:
+        self.assertIn('Component', models.__all__)
+
+
+class ComponentReleaseTestCase(unittest.TestCase):
+    """Tests for the ComponentRelease model."""
+
+    def _component(self) -> models.Component:
+        return models.Component(
+            purl_name='pkg:npm/express',
+            name='express',
+            ecosystem='npm',
+        )
+
+    def _make(self, **overrides: typing.Any) -> models.ComponentRelease:
+        defaults: dict[str, typing.Any] = {
+            'component': self._component(),
+            'version': '4.18.2',
+        }
+        defaults.update(overrides)
+        return models.ComponentRelease(**defaults)
+
+    def test_minimal(self) -> None:
+        release = self._make()
+        self.assertEqual(release.version, '4.18.2')
+        self.assertIsNone(release.license)
+        self.assertIsNone(release.supplier)
+        self.assertEqual(release.hashes, {})
+
+    def test_optional_fields_round_trip(self) -> None:
+        release = self._make(
+            license='MIT',
+            supplier='OpenJS Foundation',
+            hashes={'SHA-256': 'a' * 64},
+        )
+        self.assertEqual(release.license, 'MIT')
+        self.assertEqual(release.supplier, 'OpenJS Foundation')
+        self.assertEqual(release.hashes['SHA-256'], 'a' * 64)
+
+    def test_hashes_default_isolated_per_instance(self) -> None:
+        a = self._make()
+        b = self._make()
+        a.hashes['SHA-256'] = 'aaa'
+        self.assertEqual(b.hashes, {})
+
+    def test_required_fields(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.ComponentRelease(version='1.0.0')
+        with self.assertRaises(pydantic.ValidationError):
+            models.ComponentRelease(component=self._component())
+
+    def test_is_graph_model(self) -> None:
+        self.assertIsInstance(self._make(), models.GraphModel)
+
+    def test_in_all(self) -> None:
+        self.assertIn('ComponentRelease', models.__all__)
+
+
+class ReleaseComponentEdgeTestCase(unittest.TestCase):
+    """Tests for Release.component_releases (USES_COMPONENT_RELEASE)."""
+
+    def _edges(
+        self, model_cls: type[pydantic.BaseModel]
+    ) -> dict[str, models.Edge]:
+        result: dict[str, models.Edge] = {}
+        for name, field in model_cls.model_fields.items():
+            for meta in field.metadata:
+                if isinstance(meta, models.Edge):
+                    result[name] = meta
+        return result
+
+    def test_release_has_component_releases_edge(self) -> None:
+        edges = self._edges(models.Release)
+        self.assertIn('component_releases', edges)
+        edge = edges['component_releases']
+        self.assertEqual(edge.rel_type, 'USES_COMPONENT_RELEASE')
+        self.assertEqual(edge.direction, 'OUTGOING')
+
+    def test_release_component_releases_defaults_empty(self) -> None:
+        release = models.Release(
+            project=_make_project(),
+            tag='1.0.0',
+            title='x',
+            created_by='alice@example.com',
+            committish='a1b2c3d',
+        )
+        self.assertEqual(release.component_releases, [])
+
+    def test_release_component_releases_round_trip(self) -> None:
+        component = models.Component(
+            purl_name='pkg:npm/express',
+            name='express',
+            ecosystem='npm',
+        )
+        cr = models.ComponentRelease(
+            component=component,
+            version='4.18.2',
+        )
+        release = models.Release(
+            project=_make_project(),
+            tag='1.0.0',
+            title='x',
+            created_by='alice@example.com',
+            committish='a1b2c3d',
+            component_releases=[cr],
+        )
+        self.assertEqual(len(release.component_releases), 1)
+        self.assertEqual(release.component_releases[0].version, '4.18.2')
+
+
+class ReleaseComponentEdgePropertiesTestCase(unittest.TestCase):
+    """Tests for ``ReleaseComponentEdge`` (the edge-properties model)."""
+
+    def test_is_relationship_edge(self) -> None:
+        edge = models.ReleaseComponentEdge()
+        self.assertIsInstance(edge, models.RelationshipEdge)
+
+    def test_defaults(self) -> None:
+        edge = models.ReleaseComponentEdge()
+        self.assertIsNone(edge.scope)
+        self.assertEqual(edge.groups, [])
+
+    def test_groups_default_isolated_per_instance(self) -> None:
+        a = models.ReleaseComponentEdge()
+        b = models.ReleaseComponentEdge()
+        a.groups.append('dev')
+        self.assertEqual(b.groups, [])
+
+    def test_scope_literal_values(self) -> None:
+        for scope in ('required', 'optional', 'excluded'):
+            with self.subTest(scope=scope):
+                edge = models.ReleaseComponentEdge(scope=scope)
+                self.assertEqual(edge.scope, scope)
+
+    def test_invalid_scope_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.ReleaseComponentEdge(scope='unknown')
+
+    def test_round_trip(self) -> None:
+        edge = models.ReleaseComponentEdge(
+            scope='optional', groups=['dev', 'test']
+        )
+        round_trip = models.ReleaseComponentEdge.model_validate_json(
+            edge.model_dump_json()
+        )
+        self.assertEqual(round_trip.scope, 'optional')
+        self.assertEqual(round_trip.groups, ['dev', 'test'])
+
+    def test_in_all(self) -> None:
+        self.assertIn('ReleaseComponentEdge', models.__all__)
+
+
 class MCPServerModelTestCase(unittest.TestCase):
     """Test the MCPServer model."""
 

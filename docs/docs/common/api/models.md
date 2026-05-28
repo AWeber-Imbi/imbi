@@ -17,6 +17,16 @@ schema extension.
 - **ProjectType**: Project categorization and templates
 - **Project**: Services and applications
 
+### Software-Composition Models
+- **Component**: Third-party package identity (purl with version
+  stripped, e.g. `pkg:npm/express`)
+- **ComponentRelease**: A specific version of a `Component`
+  (`Component-[:HAS_RELEASE]->ComponentRelease`); attached to a
+  project `Release` via `[:USES_COMPONENT_RELEASE]`
+- **ComponentIdentifier**: Globally unique `(kind, value)` pair
+  (purl / cpe / bom-ref / swid) linked to a `Component` via
+  `[:IDENTIFIED_BY]`
+
 ### Blueprint Models
 - **Blueprint**: Dynamic schema definitions
 - **BlueprintAssignment**: Blueprint-to-entity relationships
@@ -65,6 +75,14 @@ await db.create(team)
 ::: imbi_common.models.Project
 
 ::: imbi_common.models.MCPServer
+
+### Software-Composition Models
+
+::: imbi_common.models.Component
+
+::: imbi_common.models.ComponentRelease
+
+::: imbi_common.models.ComponentIdentifier
 
 ### Blueprint Models
 

@@ -13,6 +13,9 @@ __all__ = [
     'BlueprintAssignment',
     'BlueprintEdge',
     'BlueprintFilter',
+    'Component',
+    'ComponentIdentifier',
+    'ComponentRelease',
     'DeploymentEvent',
     'Document',
     'DocumentTemplate',
@@ -35,6 +38,7 @@ __all__ = [
     'RelationshipEdge',
     'RelationshipLink',
     'Release',
+    'ReleaseComponentEdge',
     'ReleaseDeploymentEdge',
     'ReleaseLink',
     'Schema',
@@ -616,6 +620,79 @@ class ReleaseLink(pydantic.BaseModel):
     label: str | None = None
 
 
+class ComponentIdentifier(GraphModel):
+    """A unique identifier for a software ``Component``.
+
+    Versioned identifier kinds (``purl`` with ``@version``, CPE with
+    a version segment) are normalized to their version-agnostic form
+    before persistence so a single ``ComponentIdentifier`` resolves
+    one ``Component`` regardless of release.  ``(kind, value)`` is
+    globally unique.
+    """
+
+    kind: typing.Literal['purl', 'cpe', 'bom-ref', 'swid']
+    value: str
+
+
+class Component(GraphModel):
+    """A piece of third-party software that may appear as a
+    dependency of a project ``Release``.
+
+    Identity is the package URL with version stripped — e.g.
+    ``pkg:npm/express`` for any version of express. Versions are
+    captured as ``ComponentRelease`` nodes linked via
+    ``HAS_RELEASE``.
+    """
+
+    purl_name: str = pydantic.Field(
+        description=(
+            'Canonical package URL with version stripped, used as '
+            'the component-identity key (e.g. pkg:npm/express).'
+        ),
+    )
+    name: typing.Annotated[str, Embeddable()]
+    ecosystem: str = pydantic.Field(
+        description=(
+            'Package ecosystem derived from the purl type '
+            '(e.g. npm, pypi, maven, golang).'
+        ),
+    )
+    description: typing.Annotated[
+        str | None,
+        Embeddable(chunk=True, mimetype='text/markdown'),
+    ] = None
+    identifiers: typing.Annotated[
+        list[ComponentIdentifier],
+        Edge(rel_type='IDENTIFIED_BY', direction='OUTGOING'),
+    ] = []
+
+
+class ComponentRelease(GraphModel):
+    """A specific version of a ``Component``.
+
+    Per-component uniqueness of ``version`` is enforced at the
+    application layer via MERGE on
+    ``(Component)-[:HAS_RELEASE]->(ComponentRelease {version: ...})``;
+    no graph-wide UNIQUE index is possible because two components
+    may legitimately ship the same version string.
+    """
+
+    component: typing.Annotated[
+        Component,
+        Edge(rel_type='HAS_RELEASE', direction='INCOMING'),
+    ]
+    version: str
+    license: str | None = None
+    supplier: str | None = None
+    hashes: dict[str, str] = pydantic.Field(
+        default_factory=dict,
+        description=(
+            'Content-addressable digests keyed by algorithm '
+            '(e.g. {"SHA-256": "abc..."}).'
+        ),
+    )
+
+
 class Release(GraphModel):
     """A versioned release of a ``Project``.
 
@@ -634,6 +711,10 @@ class Release(GraphModel):
     environments: typing.Annotated[
         list[Environment],
         Edge(rel_type='DEPLOYED_TO', direction='OUTGOING'),
+    ] = []
+    component_releases: typing.Annotated[
+        list[ComponentRelease],
+        Edge(rel_type='USES_COMPONENT_RELEASE', direction='OUTGOING'),
     ] = []
     tag: str | None = None
     title: str
@@ -664,6 +745,30 @@ class ReleaseDeploymentEdge(RelationshipEdge):
     """
 
     deployments: list[DeploymentEvent] = []
+
+
+class ReleaseComponentEdge(RelationshipEdge):
+    """Edge properties for
+    ``Release -[:USES_COMPONENT_RELEASE]-> ComponentRelease``.
+
+    A given ``ComponentRelease`` may be required by one project's
+    release and only used in a dev-group by another's. The
+    per-release usage facts therefore live on the edge, not on the
+    node:
+
+    * ``scope`` mirrors CycloneDX's ``component.scope``
+      (``required`` / ``optional`` / ``excluded``); ``None`` means
+      the producer did not declare one.
+    * ``groups`` is the list of dependency-group names the producer
+      attributed the component to (e.g. ``["dev", "test"]``) — for
+      now sourced exclusively from cdxgen's ``cdx:pyproject:group``
+      property. The list is alphabetically sorted and de-duplicated
+      at ingest time so equality comparisons across releases stay
+      stable.
+    """
+
+    scope: typing.Literal['required', 'optional', 'excluded'] | None = None
+    groups: list[str] = []
 
 
 class Embedding(pydantic.BaseModel):
