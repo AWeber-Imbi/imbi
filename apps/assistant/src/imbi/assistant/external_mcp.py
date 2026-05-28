@@ -340,7 +340,7 @@ class ExternalMCPManager:
         self,
         tool_name: str,
         tool_input: dict[str, typing.Any],
-    ) -> str:
+    ) -> tuple[str, bool]:
         """Route a tool call to the owning server's session.
 
         Args:
@@ -348,16 +348,25 @@ class ExternalMCPManager:
             tool_input: The input parameters from Claude.
 
         Returns:
-            The tool result as a string, or a JSON error string.
+            Tuple of (content, is_error). ``content`` is a string
+            suitable for an Anthropic ``tool_result`` block; ``is_error``
+            flags whether the call failed so the caller can set
+            ``is_error: true`` on the tool_result block.
 
         """
         route = self._tool_routes.get(tool_name)
         if route is None:
-            return json.dumps({'error': f'Unknown MCP tool: {tool_name}'})
+            return (
+                json.dumps({'error': f'Unknown MCP tool: {tool_name}'}),
+                True,
+            )
         server_slug, original_name = route
         session = self._sessions.get(server_slug)
         if session is None:
-            return json.dumps({'error': f'Server {server_slug} not connected'})
+            return (
+                json.dumps({'error': f'Server {server_slug} not connected'}),
+                True,
+            )
         try:
             result = await session.call_tool(original_name, tool_input)
             parts: list[str] = []
@@ -372,20 +381,32 @@ class ExternalMCPManager:
                     tool_name,
                     body,
                 )
-                return json.dumps(
-                    {
-                        'error': f'Tool {tool_name} returned an error',
-                        'detail': body,
-                    }
+                return (
+                    json.dumps(
+                        {
+                            'error': f'Tool {tool_name} returned an error',
+                            'detail': body,
+                        }
+                    ),
+                    True,
                 )
-        except Exception:
+        except Exception as exc:
             LOGGER.exception(
                 'External MCP tool execution failed: %s',
                 tool_name,
             )
-            return json.dumps({'error': f'Tool execution failed: {tool_name}'})
+            # Preserve the exception message so the model can react.
+            return (
+                json.dumps(
+                    {
+                        'error': f'Tool execution failed: {tool_name}',
+                        'detail': str(exc),
+                    }
+                ),
+                True,
+            )
         else:
-            return body
+            return body, False
 
     @property
     def is_initialized(self) -> bool:

@@ -364,14 +364,10 @@ async def _run_external_tool(
         'tool_executing',
         {'id': tb['id'], 'name': tb['name']},
     )
-    result_text = await ext_manager.execute_tool(tb['name'], tb['input'])
-    tool_results.append(
-        {
-            'type': 'tool_result',
-            'tool_use_id': tb['id'],
-            'content': result_text,
-        }
+    result_text, is_error = await ext_manager.execute_tool(
+        tb['name'], tb['input']
     )
+    tool_results.append(_tool_result_block(tb['id'], result_text, is_error))
     yield _sse_event(
         'tool_result',
         {'id': tb['id'], 'name': tb['name']},
@@ -389,20 +385,35 @@ async def _run_openapi_tool(
         'tool_executing',
         {'id': tb['id'], 'name': tb['name']},
     )
-    result_text = await mcp_manager.execute_tool(
+    result_text, is_error = await mcp_manager.execute_tool(
         tb['name'], tb['input'], auth_token
     )
-    tool_results.append(
-        {
-            'type': 'tool_result',
-            'tool_use_id': tb['id'],
-            'content': result_text,
-        }
-    )
+    tool_results.append(_tool_result_block(tb['id'], result_text, is_error))
     yield _sse_event(
         'tool_result',
         {'id': tb['id'], 'name': tb['name']},
     )
+
+
+def _tool_result_block(
+    tool_use_id: str,
+    content: str,
+    is_error: bool,
+) -> dict[str, typing.Any]:
+    """Build an Anthropic ``tool_result`` block, flagged on failure.
+
+    Setting ``is_error: true`` is what tells Claude the tool call
+    failed so it can react (e.g. correct its inputs) instead of
+    consuming the error payload as a successful result.
+    """
+    block: dict[str, typing.Any] = {
+        'type': 'tool_result',
+        'tool_use_id': tool_use_id,
+        'content': content,
+    }
+    if is_error:
+        block['is_error'] = True
+    return block
 
 
 async def _run_server_tool(
@@ -411,41 +422,61 @@ async def _run_server_tool(
     tool_results: list[dict[str, typing.Any]],
     auth_ctx: auth.AuthContext,
     rebuild: dict[str, typing.Any],
+    db: graph.Graph,
 ) -> collections.abc.AsyncIterator[str]:
-    """Handle the OpenAPI-refresh server tool."""
+    """Handle the refresh-all-tool-sources server tool.
+
+    Refreshes both the Imbi API OpenAPI surface and the external MCP
+    server connections, then rebuilds the combined tool list. The two
+    refreshes are independent: a failure on one is reported but does
+    not abort the other.
+    """
     yield _sse_event(
         'tool_executing',
         {'id': tb['id'], 'name': tb['name']},
     )
+    # OpenAPI refresh.
+    openapi_success: bool
+    openapi_count: int
+    openapi_error: str | None = None
     try:
-        success, tool_count = await mcp_manager.reinitialize()
+        openapi_success, openapi_count = await mcp_manager.reinitialize()
     except Exception as exc:
         LOGGER.exception('OpenAPI tool refresh failed')
-        tool_results.append(
-            {
-                'type': 'tool_result',
-                'tool_use_id': tb['id'],
-                'content': json.dumps({'success': False, 'error': str(exc)}),
-            }
-        )
-        yield _sse_event(
-            'tool_result',
-            {'id': tb['id'], 'name': tb['name']},
-        )
-        return
-    if success:
-        # Carry the refreshed tools/system back so later rounds in
-        # this stream see the updated endpoints.
+        openapi_success, openapi_count = False, 0
+        openapi_error = str(exc)
+    # External MCP refresh.
+    external_success: bool
+    external_count: int
+    external_error: str | None = None
+    try:
+        external_success, external_count = await external_mcp.reinitialize(db)
+    except Exception as exc:
+        LOGGER.exception('External MCP refresh failed')
+        external_success, external_count = False, 0
+        external_error = str(exc)
+    # Rebuild the combined tools/system so subsequent rounds see the
+    # union of refreshed sources, even if only one source refreshed
+    # cleanly.
+    if openapi_success or external_success:
         tools, system = _build_tools_and_system(mcp_manager, auth_ctx)
         rebuild['tools'], rebuild['system'] = tools, system
+    payload: dict[str, typing.Any] = {
+        'success': openapi_success and external_success,
+        'tool_count': openapi_count + external_count,
+        'openapi': {'success': openapi_success, 'tool_count': openapi_count},
+        'external_mcp': {
+            'success': external_success,
+            'tool_count': external_count,
+        },
+    }
+    if openapi_error is not None:
+        payload['openapi']['error'] = openapi_error
+    if external_error is not None:
+        payload['external_mcp']['error'] = external_error
+    is_error = not payload['success']
     tool_results.append(
-        {
-            'type': 'tool_result',
-            'tool_use_id': tb['id'],
-            'content': json.dumps(
-                {'success': success, 'tool_count': tool_count}
-            ),
-        }
+        _tool_result_block(tb['id'], json.dumps(payload), is_error)
     )
     yield _sse_event(
         'tool_result',
@@ -479,18 +510,24 @@ async def _dispatch_tool_uses(
     auth_ctx: auth.AuthContext,
     auth_token: str | None,
     rebuild: dict[str, typing.Any],
+    db: graph.Graph,
 ) -> collections.abc.AsyncIterator[str]:
     """Dispatch each tool_use block to the owning handler.
 
-    Populates ``tool_results`` and, on an OpenAPI refresh, stores the
-    rebuilt ``tools``/``system`` in ``rebuild``.
+    Populates ``tool_results`` and, on a refresh, stores the rebuilt
+    ``tools``/``system`` in ``rebuild``. ``db`` is forwarded to the
+    refresh handler so the external MCP server list can be reread.
     """
     for tb in tool_use_blocks:
         if mcp.is_server_tool(tb['name']):
             async for chunk in _run_server_tool(
-                mcp_manager, tb, tool_results, auth_ctx, rebuild
+                mcp_manager, tb, tool_results, auth_ctx, rebuild, db
             ):
                 yield chunk
+            # external_mcp.reinitialize() replaces the module singleton,
+            # so re-read it before routing any later tool_use blocks in
+            # this same dispatch.
+            ext_manager = external_mcp.get_manager()
         elif client_tools.is_client_tool(tb['name']):
             yield _client_tool_event(tb, tool_results)
         elif ext_manager.has_tool(tb['name']):
@@ -523,7 +560,6 @@ async def _stream_response(
     assistant_settings = settings.get_assistant_settings()
     max_rounds = assistant_settings.max_tool_rounds
     mcp_manager = mcp.get_manager()
-    ext_manager = external_mcp.get_manager()
     accumulated_text = ''
 
     state: dict[str, typing.Any] = {
@@ -534,6 +570,9 @@ async def _stream_response(
     tool_use_blocks: list[dict[str, typing.Any]] = []
 
     for _round in range(max_rounds):
+        # Re-read each round in case a prior refresh replaced the
+        # external MCP singleton.
+        ext_manager = external_mcp.get_manager()
         state = {
             'text': '',
             'stop_reason': None,
@@ -594,6 +633,7 @@ async def _stream_response(
             auth_ctx,
             auth_token,
             rebuild,
+            db,
         ):
             yield chunk
         if 'tools' in rebuild:

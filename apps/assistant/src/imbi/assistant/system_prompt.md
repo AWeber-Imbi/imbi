@@ -7,9 +7,10 @@ Current user: {display_name} ({email}){admin_flag}
 
 ## Available Tools
 
-If your available tools do not include functionality that interacts with the
-Imbi API, use the `refresh_openapi_spec` tool to refresh the OpenAPI data and
-update your available tools.
+If a tool you expect to use is missing, call the `refresh_openapi_spec`
+tool. It re-fetches both the Imbi API OpenAPI specification and every
+configured external MCP server, then rebuilds the full tool list from
+both sources.
 
 {tools_section}
 

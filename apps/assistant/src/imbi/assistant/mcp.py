@@ -25,10 +25,11 @@ REFRESH_TOOL_NAME = 'refresh_openapi_spec'
 REFRESH_TOOL: dict[str, typing.Any] = {
     'name': REFRESH_TOOL_NAME,
     'description': (
-        'Re-fetch the OpenAPI specification from the Imbi API and '
-        'rebuild the available tool list. Use this when a new API '
-        'version has been deployed and you need access to updated or '
-        'newly added endpoints.'
+        'Re-fetch the Imbi API OpenAPI specification and reconnect to '
+        'every configured external MCP server, rebuilding the full tool '
+        'list from both sources. Use this when a tool you expect to '
+        'exist is missing, or when a new API version or MCP server has '
+        'been deployed.'
     ),
     'input_schema': {
         'type': 'object',
@@ -146,7 +147,7 @@ class MCPManager:
         tool_name: str,
         tool_input: dict[str, typing.Any],
         auth_token: str | None = None,
-    ) -> str:
+    ) -> tuple[str, bool]:
         """Execute a tool via the MCP client.
 
         Args:
@@ -155,11 +156,16 @@ class MCPManager:
             auth_token: Bearer token to forward to the API.
 
         Returns:
-            JSON string of the tool result.
+            Tuple of (content, is_error). ``content`` is a JSON or text
+            string suitable for an Anthropic ``tool_result`` block;
+            ``is_error`` flags whether the call failed so the caller can
+            set ``is_error: true`` on the tool_result block. The Claude
+            API only treats a tool result as an error when that flag is
+            set, so failures must surface here.
 
         """
         if not self._client or not self._http_client:
-            return json.dumps({'error': 'MCP tools not initialized'})
+            return json.dumps({'error': 'MCP tools not initialized'}), True
 
         # Inject the caller's auth token for this request.
         if auth_token:
@@ -182,24 +188,33 @@ class MCPManager:
                     tool_name,
                     body,
                 )
-                return json.dumps(
-                    {
-                        'error': f'Tool {tool_name} returned an error',
-                        'detail': body,
-                    }
+                return (
+                    json.dumps(
+                        {
+                            'error': f'Tool {tool_name} returned an error',
+                            'detail': body,
+                        }
+                    ),
+                    True,
                 )
-        except Exception:
+        except Exception as exc:
             LOGGER.exception(
                 'Tool execution failed: %s',
                 tool_name,
             )
-            return json.dumps(
-                {
-                    'error': f'Tool execution failed: {tool_name}',
-                }
+            # Preserve the exception message (e.g. the 4xx/5xx body from
+            # fastmcp's ToolError) so the model can correct its call.
+            return (
+                json.dumps(
+                    {
+                        'error': f'Tool execution failed: {tool_name}',
+                        'detail': str(exc),
+                    }
+                ),
+                True,
             )
         else:
-            return body
+            return body, False
         finally:
             # Clear the auth header after the request.
             self._http_client.headers.pop('authorization', None)

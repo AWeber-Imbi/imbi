@@ -261,14 +261,16 @@ class ExecuteToolTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_unknown_tool(self) -> None:
         manager = external_mcp.ExternalMCPManager()
-        result = await manager.execute_tool('mcp_x_y', {})
-        self.assertIn('Unknown MCP tool', result)
+        content, is_error = await manager.execute_tool('mcp_x_y', {})
+        self.assertIn('Unknown MCP tool', content)
+        self.assertTrue(is_error)
 
     async def test_session_missing(self) -> None:
         manager = external_mcp.ExternalMCPManager()
         manager._tool_routes['mcp_x_y'] = ('gone', 'y')
-        result = await manager.execute_tool('mcp_x_y', {})
-        self.assertIn('not connected', result)
+        content, is_error = await manager.execute_tool('mcp_x_y', {})
+        self.assertIn('not connected', content)
+        self.assertTrue(is_error)
 
     async def test_success(self) -> None:
         manager = external_mcp.ExternalMCPManager()
@@ -281,8 +283,11 @@ class ExecuteToolTestCase(unittest.IsolatedAsyncioTestCase):
         session.call_tool.return_value = call_result
         manager._sessions['svc'] = session
         manager._tool_routes['mcp_svc_thing'] = ('svc', 'thing')
-        result = await manager.execute_tool('mcp_svc_thing', {'a': 1})
-        self.assertEqual(result, '{"ok": true}')
+        content, is_error = await manager.execute_tool(
+            'mcp_svc_thing', {'a': 1}
+        )
+        self.assertEqual(content, '{"ok": true}')
+        self.assertFalse(is_error)
         session.call_tool.assert_awaited_once_with('thing', {'a': 1})
 
     async def test_tool_returns_error(self) -> None:
@@ -296,10 +301,11 @@ class ExecuteToolTestCase(unittest.IsolatedAsyncioTestCase):
         session.call_tool.return_value = call_result
         manager._sessions['svc'] = session
         manager._tool_routes['mcp_svc_thing'] = ('svc', 'thing')
-        result = await manager.execute_tool('mcp_svc_thing', {})
-        payload = json.loads(result)
+        content, is_error = await manager.execute_tool('mcp_svc_thing', {})
+        payload = json.loads(content)
         self.assertIn('error', payload)
         self.assertEqual(payload['detail'], 'kaboom')
+        self.assertTrue(is_error)
 
     async def test_call_raises(self) -> None:
         manager = external_mcp.ExternalMCPManager()
@@ -307,8 +313,12 @@ class ExecuteToolTestCase(unittest.IsolatedAsyncioTestCase):
         session.call_tool.side_effect = RuntimeError('down')
         manager._sessions['svc'] = session
         manager._tool_routes['mcp_svc_thing'] = ('svc', 'thing')
-        result = await manager.execute_tool('mcp_svc_thing', {})
-        self.assertIn('failed', result)
+        content, is_error = await manager.execute_tool('mcp_svc_thing', {})
+        self.assertIn('failed', content)
+        self.assertTrue(is_error)
+        # Exception message preserved in detail for the model.
+        payload = json.loads(content)
+        self.assertEqual(payload['detail'], 'down')
 
 
 class OpenSessionTestCase(unittest.IsolatedAsyncioTestCase):

@@ -1,5 +1,6 @@
 """Tests for assistant MCP module."""
 
+import json
 import os
 import unittest
 from unittest import mock
@@ -68,8 +69,9 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_execute_tool_not_initialized(self) -> None:
         manager = mcp.MCPManager()
-        result = await manager.execute_tool('test', {})
-        self.assertIn('not initialized', result)
+        content, is_error = await manager.execute_tool('test', {})
+        self.assertIn('not initialized', content)
+        self.assertTrue(is_error)
 
     async def test_aclose_idempotent(self) -> None:
         manager = mcp.MCPManager()
@@ -186,18 +188,22 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
 
             result_block = mock.MagicMock()
             result_block.text = '{"projects": []}'
-            mock_client.call_tool.return_value = [result_block]
+            call_result = mock.MagicMock()
+            call_result.content = [result_block]
+            call_result.is_error = False
+            mock_client.call_tool.return_value = call_result
             mock_mcp_client_cls.return_value = mock_client
 
             manager = mcp.MCPManager()
             await manager.initialize()
 
-            result = await manager.execute_tool(
+            content, is_error = await manager.execute_tool(
                 'get_projects',
                 {},
                 auth_token='test-token',
             )
-            self.assertIn('projects', result)
+            self.assertIn('projects', content)
+            self.assertFalse(is_error)
             mock_client.call_tool.assert_called_once_with(
                 'get_projects',
                 {},
@@ -254,11 +260,81 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
             manager = mcp.MCPManager()
             await manager.initialize()
 
-            result = await manager.execute_tool(
+            content, is_error = await manager.execute_tool(
                 'bad_tool',
                 {},
             )
-            self.assertIn('failed', result)
+            self.assertIn('failed', content)
+            self.assertTrue(is_error)
+            # The exception message must survive into ``detail`` so the
+            # model can correct its call on retry.
+            payload = json.loads(content)
+            self.assertEqual(payload['detail'], 'Connection refused')
+
+            await manager.aclose()
+
+    @mock.patch('imbi_assistant.mcp.httpx.AsyncClient')
+    @mock.patch('imbi_assistant.mcp.fastmcp.Client')
+    @mock.patch('imbi_assistant.mcp.fastmcp.FastMCP.from_openapi')
+    async def test_execute_tool_4xx_detail_propagates(
+        self,
+        mock_from_openapi: mock.MagicMock,
+        mock_mcp_client_cls: mock.MagicMock,
+        mock_httpx_cls: mock.MagicMock,
+    ) -> None:
+        """A 400 with a validation detail must survive into ``detail``
+        with ``is_error=True`` so the LLM can see why the call failed
+        and self-correct on the next turn.
+        """
+        with mock.patch.dict(
+            os.environ,
+            {'IMBI_INTERNAL_API_URL': 'http://api:8000'},
+            clear=True,
+        ):
+            mock_tmp = mock.AsyncMock()
+            mock_response = mock.MagicMock()
+            mock_response.json.return_value = {
+                'openapi': '3.1.0',
+                'paths': {},
+            }
+            mock_tmp.get.return_value = mock_response
+            mock_tmp.__aenter__ = mock.AsyncMock(return_value=mock_tmp)
+            mock_tmp.__aexit__ = mock.AsyncMock(return_value=None)
+            mock_httpx_cls.return_value = mock_tmp
+
+            mock_from_openapi.return_value = mock.MagicMock()
+
+            mock_client = mock.AsyncMock()
+            mock_client.list_tools.return_value = []
+            mock_client.__aenter__ = mock.AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = mock.AsyncMock(return_value=None)
+            # fastmcp surfaces a 4xx by raising ToolError with the
+            # backend's error body in the message. RuntimeError stands
+            # in here to avoid importing fastmcp internals.
+            detail_msg = (
+                "Error calling tool 'patch_project': HTTP error 400: "
+                "Bad Request - {'detail': 'Validation error: "
+                "[{\\'loc\\': (\\'ci_deploy_status\\',), \\'input\\': "
+                "\\'Pass\\'}]'}"
+            )
+            mock_client.call_tool.side_effect = RuntimeError(detail_msg)
+            mock_mcp_client_cls.return_value = mock_client
+
+            manager = mcp.MCPManager()
+            await manager.initialize()
+
+            content, is_error = await manager.execute_tool(
+                'patch_project',
+                {},
+            )
+
+            self.assertTrue(is_error)
+            payload = json.loads(content)
+            self.assertEqual(payload['detail'], detail_msg)
+            # Sanity: the validation specifics make it through unmangled
+            # so the model sees what to fix.
+            self.assertIn('ci_deploy_status', payload['detail'])
+            self.assertIn('Pass', payload['detail'])
 
             await manager.aclose()
 
