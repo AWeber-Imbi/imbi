@@ -44,7 +44,8 @@ class GatewayActionsPlugin(plugin_base.WebhookActionPlugin):
         name='Gateway Actions',
         description=(
             'Webhook actions shipped with imbi-gateway: update project '
-            'facts, create a release, and append a deployment event.'
+            'facts, create a release, append a deployment event, and '
+            'ingest CycloneDX SBoMs.'
         ),
         plugin_type='webhook',
         credentials=[],

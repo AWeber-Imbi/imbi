@@ -1,5 +1,6 @@
 import http
 import logging
+import re
 import typing
 
 import celpy
@@ -24,6 +25,8 @@ class ActionSettings(pydantic_settings.BaseSettings):
 
 
 LOGGER = logging.getLogger(__name__)
+
+_COMMITTISH_PATTERN = re.compile(r'^[0-9a-f]{7}$')
 
 
 class UpdateProjectRule(pydantic.BaseModel):
@@ -533,7 +536,15 @@ async def ingest_sbom(
             ctx.project_id,
         )
         return
-    sbom_document = action_config.sbom_selector.resolve(payload)
+    try:
+        sbom_document = action_config.sbom_selector.resolve(payload)
+    except jsonpointer.JsonPointerException:
+        LOGGER.warning(
+            'SBoM selector %r did not resolve for project %s; SBoM dropped',
+            str(action_config.sbom_selector),
+            ctx.project_id,
+        )
+        return
     if not isinstance(sbom_document, dict):
         LOGGER.warning(
             'SBoM at %r is not a JSON object — skipping ingest for project %s',
@@ -682,7 +693,9 @@ def _resolve_committish(expression: str, payload: object) -> str | None:
     if resolved is None:
         return None
     committish = resolved.strip().lower()[:7]
-    return committish or None
+    if not _COMMITTISH_PATTERN.match(committish):
+        return None
+    return committish
 
 
 def _resolve_title(

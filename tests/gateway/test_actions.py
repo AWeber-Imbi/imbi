@@ -1271,7 +1271,7 @@ def _sbom_envelope(
     }
 
 
-class IngestSbomConfigTests(unittest.TestCase):
+class IngestSbomConfigTests(helpers.TestCase):
     """Pydantic validation of the handler-config JSON."""
 
     def test_minimal_config(self) -> None:
@@ -1375,7 +1375,7 @@ class IngestSbomTests(helpers.TestCase):
                 'list_releases',
                 new_callable=unittest.mock.AsyncMock,
                 return_value=[{'id': 'rel-1'}],
-            ),
+            ) as mock_list,
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'put_sbom',
@@ -1383,10 +1383,33 @@ class IngestSbomTests(helpers.TestCase):
                 return_value=httpx.Response(
                     415, text='Unsupported spec version'
                 ),
-            ),
+            ) as mock_put,
         ):
-            # No assertion needed beyond "doesn't raise" — the call
-            # returns normally and the caller can inspect logs.
+            await actions.ingest_sbom(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=self._config(),
+                payload=envelope,
+            )
+        mock_list.assert_awaited_once()
+        mock_put.assert_awaited_once()
+
+    async def test_skips_when_sbom_is_not_an_object(self) -> None:
+        envelope = {'version': '1.0.0', 'sbom': 'not a dict'}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'list_releases',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_list,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'put_sbom',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_put,
+        ):
             await actions.ingest_sbom(
                 ctx=_ctx(),
                 credentials={},
@@ -1395,8 +1418,14 @@ class IngestSbomTests(helpers.TestCase):
                 payload=envelope,
             )
 
-    async def test_skips_when_sbom_is_not_an_object(self) -> None:
-        envelope = {'version': '1.0.0', 'sbom': 'not a dict'}
+        mock_list.assert_not_awaited()
+        mock_put.assert_not_awaited()
+
+    async def test_drops_when_sbom_selector_misses(self) -> None:
+        # A malformed/mismatched payload (selector points at a missing
+        # path) must warn and drop rather than bubble the
+        # JsonPointerException up to the dispatcher.
+        envelope = {'version': '1.0.0'}
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
             unittest.mock.patch.object(
@@ -1705,6 +1734,42 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
         self.assertEqual(
             mock_create.call_args.args[2]['title'], '2026.05.26 build'
         )
+
+    async def test_drops_when_committish_is_not_short_hex(self) -> None:
+        # ``Release.committish`` is contracted to ^[0-9a-f]{7}$. A
+        # producer that sends e.g. a branch name like "main" or a
+        # short-but-non-hex value must drop, not generate a 4xx from
+        # the API.
+        envelope = self._envelope(committish='main')
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'list_releases',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=[],
+            ),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_create,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'put_sbom',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_put,
+        ):
+            await actions.ingest_sbom(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=self._config(),
+                payload=envelope,
+            )
+
+        mock_create.assert_not_awaited()
+        mock_put.assert_not_awaited()
 
     async def test_drops_when_committish_expression_cannot_resolve(
         self,
