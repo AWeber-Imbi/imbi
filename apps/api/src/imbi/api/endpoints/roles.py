@@ -5,13 +5,13 @@ import logging
 import typing
 
 import fastapi
-import psycopg.errors
 import pydantic
 from imbi_common import graph
 
 from imbi_api import models
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
+from imbi_api.endpoints._helpers import conflict_on_unique_violation
 from imbi_api.relationships import relationship_link
 
 LOGGER = logging.getLogger(__name__)
@@ -63,13 +63,10 @@ async def create_role(
     now = datetime.datetime.now(datetime.UTC)
     role.created_at = now
     role.updated_at = now
-    try:
+    with conflict_on_unique_violation(
+        f'Role with slug {role.slug!r} already exists',
+    ):
         created = await db.create(role)
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=f'Role with slug {role.slug!r} already exists',
-        ) from e
     result = created.model_dump()
     result['relationships'] = _build_relationships(request, role.slug)
     return result

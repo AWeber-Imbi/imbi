@@ -14,7 +14,6 @@ import typing
 
 import fastapi
 import nanoid
-import psycopg
 import pydantic
 from imbi_common import graph
 from imbi_common.auth import encryption
@@ -22,6 +21,7 @@ from imbi_common.auth import encryption
 from imbi_api import settings
 from imbi_api.auth import login_providers, permissions
 from imbi_api.domain import models
+from imbi_api.endpoints._helpers import conflict_on_unique_violation
 from imbi_api.graph_sql import props_template, set_clause
 
 LOGGER = logging.getLogger(__name__)
@@ -457,7 +457,9 @@ async def create_auth_provider(
         ' RETURN a{{.*}} AS app, s{{.*}} AS service,'
         ' o{{.*}} AS organization'
     )
-    try:
+    with conflict_on_unique_violation(
+        f'Auth provider {resolved_slug!r} already exists',
+    ):
         records = await db.execute(
             create_query,
             {
@@ -470,11 +472,6 @@ async def create_auth_provider(
             },
             ['app', 'service', 'organization'],
         )
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=f'Auth provider {resolved_slug!r} already exists',
-        ) from e
 
     if not records:
         raise fastapi.HTTPException(

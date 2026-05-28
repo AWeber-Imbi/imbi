@@ -16,6 +16,7 @@ from imbi_common import graph
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
+from imbi_api.endpoints._helpers import fetch_or_404
 from imbi_api.graph_sql import props_template, set_clause
 
 LOGGER = logging.getLogger(__name__)
@@ -362,13 +363,13 @@ async def get_document_template(
     ],
 ) -> dict[str, typing.Any]:
     """Get a document template by slug."""
-    template = await _fetch_template(db, org_slug, slug)
-    if template is None:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'Document template with slug {slug!r} not found',
-        )
-    return template
+    return await fetch_or_404(
+        _fetch_template,
+        db,
+        org_slug,
+        slug,
+        detail=f'Document template with slug {slug!r} not found',
+    )
 
 
 async def _persist_update(

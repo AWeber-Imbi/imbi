@@ -105,17 +105,26 @@ class SearchEndpointTestCase(unittest.TestCase):
         response = self.client.get(f'{_BASE_URL}?q=foo')
         self.assertEqual(response.status_code, 404)
 
-    def test_filters_results_to_org(self) -> None:
+    def test_node_ids_pushed_to_db_search(self) -> None:
+        """Org node ids are forwarded to ``db.search`` (SQL filter, C7).
+
+        With C7 the org enumeration is pushed into the pgvector query via
+        the ``node_ids`` kwarg, so the endpoint never post-filters by org
+        in Python. The mock therefore mirrors what the real SQL would
+        return: only in-org rows.
+        """
         self._setup_org(node_ids=['proj-1'])
         self.mock_db.search.return_value = [
             self._make_result(node_id='proj-1', distance=0.10),
-            self._make_result(node_id='proj-2', distance=0.20),
         ]
         response = self.client.get(f'{_BASE_URL}?q=test')
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['node_id'], 'proj-1')
+        # _get_org_node_ids enumerates the org node itself plus the Project.
+        call_kwargs = self.mock_db.search.call_args.kwargs
+        self.assertEqual(set(call_kwargs['node_ids']), {'org-abc', 'proj-1'})
 
     def test_passes_query_to_db_search(self) -> None:
         self._setup_org()
@@ -165,28 +174,33 @@ class SearchEndpointTestCase(unittest.TestCase):
         self.assertGreaterEqual(call_kwargs['limit'], 10)
 
     def test_paged_loop_fetches_more_when_needed(self) -> None:
-        """When first batch has no in-org results a second batch is fetched."""
-        self._setup_org(node_ids=['proj-in-org'])
-        out_of_org = [
-            self._make_result(node_id=f'out-{i}', distance=float(i) / 100)
+        """When the first batch dedups under limit, a second is fetched.
+
+        With C7 the SQL filter eliminates out-of-org rows, so the only way the
+        post-fetch loop can return fewer distinct results than the batch size
+        is chunk-level duplicates: the same ``node_id`` appearing across
+        multiple ``(node_id, attribute, chunk)`` rows.
+        """
+        self._setup_org(node_ids=['a', 'b'])
+        # 50 rows that all collapse to a single distinct node id after dedup.
+        first = [
+            self._make_result(node_id='a', distance=float(i) / 100)
             for i in range(50)
         ]
-        in_org = [self._make_result(node_id='proj-in-org', distance=0.99)]
-        self.mock_db.search.side_effect = [out_of_org, in_org]
-        response = self.client.get(f'{_BASE_URL}?q=test&limit=1')
+        second = [self._make_result(node_id='b', distance=0.99)]
+        self.mock_db.search.side_effect = [first, second]
+        response = self.client.get(f'{_BASE_URL}?q=test&limit=2')
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]['node_id'], 'proj-in-org')
+        self.assertEqual([r['node_id'] for r in data], ['a', 'b'])
         self.assertEqual(self.mock_db.search.await_count, 2)
 
     def test_stops_when_result_set_exhausted(self) -> None:
         """Loop stops when db.search returns fewer rows than requested."""
         self._setup_org(node_ids=['proj-1'])
-        # Return only 3 rows (less than the batch size), all out-of-org except
-        # the last; ensures we don't loop forever.
+        # Return a single in-org row (less than the batch size); ensures
+        # we don't loop forever even when limit > available results.
         self.mock_db.search.return_value = [
-            self._make_result(node_id='out-1', distance=0.1),
             self._make_result(node_id='proj-1', distance=0.2),
         ]
         response = self.client.get(f'{_BASE_URL}?q=test&limit=5')
@@ -378,16 +392,16 @@ class SearchEndpointTestCase(unittest.TestCase):
 
         The handler tracks emitted ``node_id``s in ``seen`` so the same
         node returned across two growth batches is counted once. Batch 1
-        emits ``a`` then fills the rest with out-of-org rows (so the batch
-        is full and a second fetch is triggered); batch 2 returns ``a``
-        again (deduped) plus ``b`` to reach the limit.
+        emits ``a`` then fills the rest with duplicate chunk rows for the
+        same node id (so the batch is full and a second fetch is triggered);
+        batch 2 returns ``a`` again (deduped) plus ``b`` to reach the limit.
         """
         from imbi_api.endpoints.search import _INITIAL_BATCH
 
         self._setup_org(node_ids=['a', 'b'])
-        batch_one = [self._make_result(node_id='a', distance=0.01)] + [
-            self._make_result(node_id=f'out-{i}', distance=float(i + 1) / 10)
-            for i in range(_INITIAL_BATCH - 1)
+        batch_one = [
+            self._make_result(node_id='a', distance=float(i + 1) / 100)
+            for i in range(_INITIAL_BATCH)
         ]
         batch_two = [
             self._make_result(node_id='a', distance=0.01),
@@ -421,18 +435,16 @@ class SearchEndpointTestCase(unittest.TestCase):
         batch was not exhausted (len(raw) >= batch_size), the code re-enters
         the while condition check, which is now false, and exits cleanly.
         """
-        self._setup_org(node_ids=['target'])
-        # Return exactly _INITIAL_BATCH (50) items; first is in-org.
-        # That means len(raw)=50 == batch_size=50, so the exhaustion check
-        # does NOT break — we fall through to batch_size *= 2 and re-check
-        # the while condition, which is now false (limit already met).
         from imbi_api.endpoints.search import _INITIAL_BATCH
 
+        self._setup_org(node_ids=['target'])
+        # Return exactly _INITIAL_BATCH (50) rows; the first emits ``target``
+        # and the rest are duplicate-chunk rows for the same node. After dedup
+        # we have one distinct node, the inner ``break`` fires once limit=1
+        # is met, and the while condition then exits without a second fetch.
         batch = [
-            self._make_result(node_id='target', distance=0.01),
-        ] + [
-            self._make_result(node_id=f'out-{i}', distance=float(i + 1) / 10)
-            for i in range(_INITIAL_BATCH - 1)
+            self._make_result(node_id='target', distance=float(i + 1) / 100)
+            for i in range(_INITIAL_BATCH)
         ]
         self.mock_db.search.return_value = batch
         response = self.client.get(f'{_BASE_URL}?q=test&limit=1')

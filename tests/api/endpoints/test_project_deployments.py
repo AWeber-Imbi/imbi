@@ -1,6 +1,7 @@
 """Tests for the project deployment plugin endpoints."""
 
 import datetime
+import json
 import typing
 import unittest
 from unittest import mock
@@ -18,14 +19,17 @@ from imbi_common.plugins.base import (
     RefInfo,
     ReleaseInfo,
     RemoteDeployment,
+    RepositoryRelocation,
 )
 from imbi_common.plugins.registry import RegistryEntry
 
 from imbi_api import app, models
 from imbi_api.auth import password, permissions
+from imbi_api.endpoints import _helpers
 from imbi_api.endpoints.project_deployments import (
     DraftReleaseNotes,
     _EnvFlags,
+    heal_relocated_link,
 )
 from imbi_api.llm.dependencies import _get_anthropic_client
 from imbi_api.plugins.resolution import ResolvedPlugin
@@ -119,6 +123,37 @@ class _FakeNoSyncDeploymentPlugin(_FakeDeploymentPlugin):
     )
 
 
+class _RelocatingDeploymentPlugin(_FakeDeploymentPlugin):
+    """Deployment plugin that reports a repo rename on every call.
+
+    Mirrors how the real GitHub plugin stashes a
+    ``RepositoryRelocation`` on ``ctx`` after following a 301.
+    """
+
+    @staticmethod
+    def _report(ctx: typing.Any) -> None:
+        ctx.repository_relocation = RepositoryRelocation(
+            link_key='github-repository',
+            new_url='https://github.com/octo/renamed',
+            old_owner_repo='octo/demo',
+            new_owner_repo='octo/renamed',
+        )
+
+    async def list_commits(  # type: ignore[override]
+        self, ctx, credentials, ref, limit=25
+    ):
+        self._report(ctx)
+        return await super().list_commits(ctx, credentials, ref, limit)
+
+    async def trigger_deployment(  # type: ignore[override]
+        self, ctx, credentials, ref_or_sha, inputs=None
+    ):
+        self._report(ctx)
+        return await super().trigger_deployment(
+            ctx, credentials, ref_or_sha, inputs
+        )
+
+
 def _entry() -> RegistryEntry:
     return RegistryEntry(
         handler_cls=_FakeDeploymentPlugin,
@@ -129,6 +164,7 @@ def _entry() -> RegistryEntry:
 
 
 _MODULE = 'imbi_api.endpoints.project_deployments'
+_UPDATE_LINK = 'imbi_api.endpoints._helpers.update_project_link'
 
 
 class ProjectDeploymentsTestCase(unittest.TestCase):
@@ -1467,3 +1503,146 @@ class SafeAuditUrlTestCase(unittest.TestCase):
         from imbi_api.endpoints.project_deployments import _safe_audit_url
 
         self.assertIsNone(_safe_audit_url('file:///etc/passwd'))
+
+
+def _relocating_resolved() -> ResolvedPlugin:
+    return ResolvedPlugin(
+        plugin_id='p-1',
+        plugin_slug='github-deployment',
+        entry=RegistryEntry(
+            handler_cls=_RelocatingDeploymentPlugin,
+            manifest=_RelocatingDeploymentPlugin.manifest,
+            package_name='imbi-plugin-github',
+            package_version='0.1.0',
+        ),
+        options={'owner': 'octo', 'repo': 'demo'},
+    )
+
+
+class RepositoryRelocationHealingTestCase(ProjectDeploymentsTestCase):
+    """The endpoint self-heals the stored link when a plugin reports a
+    repository rename on ``ctx.repository_relocation``.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.mocks['resolve_plugin'].return_value = _relocating_resolved()
+        # update_project_link is async; patch auto-uses AsyncMock.
+        self.update_link = self._start(
+            mock.patch(_UPDATE_LINK, return_value=True)
+        )
+
+    def test_list_commits_heals_relocated_link(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'refs/main/commits'
+            )
+        self.assertEqual(response.status_code, 200)
+        self.update_link.assert_awaited_once()
+        args = self.update_link.await_args.args
+        # (db, project_id, link_key, new_url)
+        self.assertEqual(args[2], 'github-repository')
+        self.assertEqual(args[3], 'https://github.com/octo/renamed')
+
+    def test_trigger_deploy_heals_relocated_link(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'deploy',
+                    'environment': 'testing',
+                    'committish': 'main',
+                    'ref_label': 'main',
+                },
+            )
+        self.assertEqual(response.status_code, 202)
+        self.update_link.assert_awaited_once()
+        self.assertEqual(
+            self.update_link.await_args.args[3],
+            'https://github.com/octo/renamed',
+        )
+
+
+class HealRelocatedLinkTestCase(unittest.IsolatedAsyncioTestCase):
+    """Unit coverage for ``heal_relocated_link``."""
+
+    def _ctx(self, reloc: RepositoryRelocation | None) -> mock.MagicMock:
+        ctx = mock.MagicMock()
+        ctx.project_id = 'proj1'
+        ctx.repository_relocation = reloc
+        return ctx
+
+    async def test_noop_when_no_relocation(self) -> None:
+        db = mock.AsyncMock()
+        with mock.patch(_UPDATE_LINK) as update_link:
+            await heal_relocated_link(db, self._ctx(None))
+        update_link.assert_not_called()
+
+    async def test_writes_when_relocation_present(self) -> None:
+        db = mock.AsyncMock()
+        reloc = RepositoryRelocation(
+            link_key='github-repository',
+            new_url='https://github.com/octo/renamed',
+            old_owner_repo='octo/demo',
+            new_owner_repo='octo/renamed',
+        )
+        with mock.patch(_UPDATE_LINK, return_value=True) as update_link:
+            await heal_relocated_link(db, self._ctx(reloc))
+        update_link.assert_awaited_once_with(
+            db, 'proj1', 'github-repository', 'https://github.com/octo/renamed'
+        )
+
+    async def test_swallows_write_failure(self) -> None:
+        db = mock.AsyncMock()
+        reloc = RepositoryRelocation(
+            link_key='github-repository',
+            new_url='https://github.com/octo/renamed',
+        )
+        with mock.patch(
+            _UPDATE_LINK,
+            side_effect=RuntimeError('graph down'),
+        ):
+            # Must not raise — self-heal is best-effort.
+            await heal_relocated_link(db, self._ctx(reloc))
+
+
+class UpdateProjectLinkTestCase(unittest.IsolatedAsyncioTestCase):
+    """Unit coverage for ``_helpers.update_project_link``."""
+
+    async def test_writes_new_value(self) -> None:
+        db = mock.AsyncMock()
+        with mock.patch.object(
+            _helpers,
+            'lookup_project_links',
+            mock.AsyncMock(return_value={'other': 'https://x'}),
+        ):
+            changed = await _helpers.update_project_link(
+                db, 'proj1', 'github-repository', 'https://github.com/o/new'
+            )
+        self.assertTrue(changed)
+        db.execute.assert_awaited_once()
+        params = db.execute.await_args.args[1]
+        self.assertEqual(params['project_id'], 'proj1')
+        self.assertEqual(
+            json.loads(params['links']),
+            {
+                'other': 'https://x',
+                'github-repository': 'https://github.com/o/new',
+            },
+        )
+
+    async def test_noop_when_unchanged(self) -> None:
+        db = mock.AsyncMock()
+        with mock.patch.object(
+            _helpers,
+            'lookup_project_links',
+            mock.AsyncMock(
+                return_value={'github-repository': 'https://github.com/o/new'}
+            ),
+        ):
+            changed = await _helpers.update_project_link(
+                db, 'proj1', 'github-repository', 'https://github.com/o/new'
+            )
+        self.assertFalse(changed)
+        db.execute.assert_not_called()

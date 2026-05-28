@@ -39,6 +39,7 @@ from imbi_common.plugins.errors import PluginCredentialsMissing
 
 from imbi_api.auth import permissions
 from imbi_api.endpoints._helpers import (
+    heal_relocated_link,
     lookup_project_links,
     lookup_project_slugs,
     lookup_project_type_slugs,
@@ -654,6 +655,7 @@ async def resync_for_project(
                 'list_recent_deployments.'
             ),
         ) from exc
+    await heal_relocated_link(db, ctx)
     summary.observed = len(observations)
     # Track identities we've already touched so ``releases_created`` /
     # ``releases_updated`` are counted once per distinct
@@ -823,9 +825,11 @@ async def list_refs(
         db, org_slug, project_id, auth, source=source
     )
     handler = _handler(resolved)
-    return await call_with_timeout(
+    refs = await call_with_timeout(
         handler.list_refs(ctx, credentials, kind=kind, query=q)
     )
+    await heal_relocated_link(db, ctx)
+    return refs
 
 
 @project_deployments_router.get('/refs/{ref:path}/commits')
@@ -848,9 +852,11 @@ async def list_commits(
         db, org_slug, project_id, auth, source=source
     )
     handler = _handler(resolved)
-    return await call_with_timeout(
+    commits = await call_with_timeout(
         handler.list_commits(ctx, credentials, ref=ref, limit=limit)
     )
+    await heal_relocated_link(db, ctx)
+    return commits
 
 
 @project_deployments_router.get('/commits/{committish}')
@@ -872,9 +878,11 @@ async def resolve_commit(
         db, org_slug, project_id, auth, source=source
     )
     handler = _handler(resolved)
-    return await call_with_timeout(
+    commit = await call_with_timeout(
         handler.resolve_committish(ctx, credentials, committish)
     )
+    await heal_relocated_link(db, ctx)
+    return commit
 
 
 @project_deployments_router.get('/compare')
@@ -897,9 +905,11 @@ async def compare_refs(
         db, org_slug, project_id, auth, source=source
     )
     handler = _handler(resolved)
-    return await call_with_timeout(
+    result = await call_with_timeout(
         handler.compare(ctx, credentials, base=base, head=head)
     )
+    await heal_relocated_link(db, ctx)
+    return result
 
 
 @project_deployments_router.post('', status_code=202)
@@ -1095,6 +1105,7 @@ async def _handle_deploy(
     run = await call_with_identity_retry(
         db, ctx, resolved, auth, fn=_trigger, attached=True
     )
+    await heal_relocated_link(db, ctx)
     LOGGER.info(
         'Deployment triggered: project=%s env=%s ref=%s plugin=%s '
         'action=%s actor=%s run_id=%s',
@@ -1409,6 +1420,8 @@ async def _handle_promote(
             tag=body.tag,
             warning='; '.join(warnings) if warnings else None,
         )
+
+    await heal_relocated_link(db, ctx)
 
     # 4. Upsert the Release node so future deploys of the same tag
     #    can attach a DeploymentEvent.

@@ -23,6 +23,7 @@ from imbi_api import blueprint_attributes
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.domain import scoring as scoring_models
+from imbi_api.endpoints._helpers import conflict_on_unique_violation
 from imbi_api.endpoints._json_fields import (
     JSONFields,
     deserialize_json_fields,
@@ -125,14 +126,11 @@ class ProjectUpdate(pydantic.BaseModel):
     identifiers: dict[str, int | str] | None = None
 
 
-class ProjectRelationships(pydantic.BaseModel):
-    """Typed relationship links and counts for a project."""
-
-    team: models.RelationshipLink
-    environments: models.RelationshipLink
-    href: str
-    outbound_count: int = 0
-    inbound_count: int = 0
+# ProjectRelationships now lives in imbi_common.models so the OpenAPI
+# schema emitted from ``make_response_model(Project)`` matches the
+# runtime shape that this endpoint actually returns. Re-export under
+# the historical name for callers in this module.
+ProjectRelationships = models.ProjectRelationships
 
 
 class ReleaseInfo(pydantic.BaseModel):
@@ -962,7 +960,9 @@ async def create_project(
             '\nWITH DISTINCT p, t, o'
         )
     query += _RETURN_FRAGMENT
-    try:
+    with conflict_on_unique_violation(
+        f'Project with id {project_id!r} already exists',
+    ):
         records = await db.execute(
             query,
             {
@@ -974,11 +974,6 @@ async def create_project(
             },
             ['project', 'outbound_count', 'inbound_count'],
         )
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(f'Project with id {project_id!r} already exists'),
-        ) from e
 
     if not records:
         raise fastapi.HTTPException(

@@ -15,6 +15,7 @@ from imbi_common.plugins.base import (
     LifecyclePlugin,
     LifecycleResult,
     PluginManifest,
+    RepositoryRelocation,
 )
 from imbi_common.plugins.registry import RegistryEntry
 
@@ -139,6 +140,44 @@ class DispatchLifecycleTestCase(unittest.TestCase):
             results[0].artifacts, {'repo_url': 'https://github.com/o/r'}
         )
         insert.assert_awaited_once()
+
+    def test_archive_heals_relocated_link(self) -> None:
+        # A lifecycle plugin that reports a repo rename on ctx triggers a
+        # self-heal of the stored link via update_project_link.
+        class _Reloc(LifecyclePlugin):
+            manifest = PluginManifest(
+                slug='gh', name='gh', plugin_type='lifecycle'
+            )
+
+            async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+                ctx.repository_relocation = RepositoryRelocation(
+                    link_key='github-repository',
+                    new_url='https://github.com/octo/renamed',
+                    old_owner_repo='octo/demo',
+                    new_owner_repo='octo/renamed',
+                )
+                return LifecycleResult(status='ok', message='done')
+
+            async def on_project_unarchived(self, ctx, credentials):  # type: ignore[override]
+                raise NotImplementedError
+
+        entry = RegistryEntry(
+            handler_cls=_Reloc,
+            manifest=_Reloc.manifest,
+            package_name='imbi-plugin-gh',
+            package_version='1.0.0',
+        )
+        with mock.patch(
+            'imbi_api.endpoints._helpers.update_project_link',
+            new=mock.AsyncMock(return_value=True),
+        ) as update_link:
+            results, _ = self._run([_resolved(entry)])
+        self.assertEqual(results[0].status, 'ok')
+        update_link.assert_awaited_once()
+        # heal_relocated_link(db, project_id, link_key, new_url)
+        args = update_link.await_args.args
+        self.assertEqual(args[2], 'github-repository')
+        self.assertEqual(args[3], 'https://github.com/octo/renamed')
 
     def test_emits_one_clickhouse_call_for_multiple_plugins(self) -> None:
         """H17: N plugins → 1 ClickHouse insert (rows batched)."""

@@ -8,7 +8,6 @@ import typing
 import fastapi
 import fastapi.responses
 import nanoid
-import psycopg
 import pydantic
 from imbi_common import graph
 from imbi_common.auth import encryption
@@ -16,6 +15,7 @@ from imbi_common.auth import encryption
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.domain import models
+from imbi_api.endpoints._helpers import conflict_on_unique_violation
 from imbi_api.endpoints._json_fields import (
     JSONFields,
     deserialize_json_fields,
@@ -200,19 +200,14 @@ async def create_third_party_service(
             **graph_props,
         }
 
-    try:
+    with conflict_on_unique_violation(
+        f'Third-party service with slug {data.slug!r} already exists',
+    ):
         records = await db.execute(
             query,
             params,
             ['service'],
         )
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(
-                f'Third-party service with slug {data.slug!r} already exists'
-            ),
-        ) from e
 
     if not records:
         if data.team_slug:
@@ -1040,20 +1035,14 @@ async def _execute_service_update(
             **graph_props,
         }
 
-    try:
+    with conflict_on_unique_violation(
+        f'Third-party service with slug {props["slug"]!r} already exists',
+    ):
         updated = await db.execute(
             update_query,
             update_params,
             ['service'],
         )
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(
-                'Third-party service with slug '
-                f'{props["slug"]!r} already exists'
-            ),
-        ) from e
 
     if not updated:
         raise fastapi.HTTPException(
@@ -1304,7 +1293,9 @@ async def patch_service_application(
         f' {app_set}'
         ' RETURN a{{.*}} AS app'
     )
-    try:
+    with conflict_on_unique_violation(
+        f'Application {props["slug"]!r} already exists in service {slug!r}',
+    ):
         updated = await db.execute(
             update_query,
             {
@@ -1315,14 +1306,6 @@ async def patch_service_application(
             },
             ['app'],
         )
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(
-                f'Application {props["slug"]!r} already exists'
-                f' in service {slug!r}'
-            ),
-        ) from e
 
     if not updated:
         raise fastapi.HTTPException(

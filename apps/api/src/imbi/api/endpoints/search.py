@@ -138,6 +138,7 @@ async def search(
             model_name=model,
             node_label=node_label,
             attribute=attribute,
+            node_ids=org_node_ids,
             limit=batch_size,
             distance_threshold=threshold,
         )
@@ -146,8 +147,6 @@ async def search(
             if r.node_id in seen:
                 continue
             seen.add(r.node_id)
-            if r.node_id not in org_node_ids:
-                continue
             out.append(
                 SearchResult(
                     node_label=r.node_label,

@@ -27,6 +27,7 @@ BlueprintEdge = _common.BlueprintEdge
 DeploymentEvent = _common.DeploymentEvent
 Environment = _common.Environment
 LinkDefinition = _common.LinkDefinition
+MCPServer = _common.MCPServer
 Node = _common.Node
 Organization = _common.Organization
 Project = _common.Project

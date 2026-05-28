@@ -25,6 +25,7 @@ from imbi_common.plugins.base import (
     LifecyclePlugin,
     LifecycleResult,
     PluginContext,
+    RepositoryRelocation,
 )
 from imbi_common.plugins.errors import PluginCredentialsMissing
 
@@ -127,10 +128,20 @@ async def _invoke_one(
         else 'on_project_unarchived'
     )
 
+    # call_with_identity_retry re-attaches identity onto a fresh context
+    # before invoking ``_call`` (attached defaults to False here), so the
+    # plugin mutates that inner context, not ``ctx``. Capture any
+    # relocation it reports through the closure so we can self-heal the
+    # link after the call regardless of which context instance was used.
+    captured_relocation: list[RepositoryRelocation] = []
+
     async def _call(c: PluginContext) -> LifecycleResult:
         credentials = await _resolve_credentials(db, c, resolved)
         method = getattr(handler, method_name)
-        return await call_with_timeout(method(c, credentials))
+        res: LifecycleResult = await call_with_timeout(method(c, credentials))
+        if c.repository_relocation is not None:
+            captured_relocation.append(c.repository_relocation)
+        return res
 
     try:
         result = await call_with_identity_retry(
@@ -181,6 +192,14 @@ async def _invoke_one(
             status='failed',
             message=f'{type(exc).__name__}: {exc}',
         )
+
+    if captured_relocation:
+        # Lazy import to avoid the endpoints/_helpers <-> this-module
+        # cycle described above.
+        from imbi_api.endpoints._helpers import heal_relocated_link
+
+        ctx.repository_relocation = captured_relocation[-1]
+        await heal_relocated_link(db, ctx)
 
     return LifecycleInvocation(
         plugin_id=resolved.plugin_id,

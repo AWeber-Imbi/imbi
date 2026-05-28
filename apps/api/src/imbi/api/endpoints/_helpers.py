@@ -1,15 +1,59 @@
 """Shared helpers for endpoint handlers."""
 
+import collections.abc
+import contextlib
 import json
 import logging
 import typing
 
 import fastapi
+import psycopg
 from imbi_common import graph
+from imbi_common.plugins.base import PluginContext
 
 from imbi_api import patch as json_patch
 
 LOGGER = logging.getLogger(__name__)
+
+T = typing.TypeVar('T')
+
+
+async def fetch_or_404(
+    fetch: collections.abc.Callable[..., collections.abc.Awaitable[T | None]],
+    /,
+    *args: typing.Any,
+    detail: str,
+    **kwargs: typing.Any,
+) -> T:
+    """Await ``fetch`` and raise 404 when it returns ``None``.
+
+    Centralizes the ``await fetch(...) -> None -> raise 404`` pattern that
+    every ``get_<resource>`` endpoint duplicates. ``detail`` is passed to
+    the ``HTTPException`` unchanged.
+    """
+    result = await fetch(*args, **kwargs)
+    if result is None:
+        raise fastapi.HTTPException(status_code=404, detail=detail)
+    return result
+
+
+@contextlib.contextmanager
+def conflict_on_unique_violation(
+    detail: str,
+) -> collections.abc.Generator[None]:
+    """Translate ``psycopg.errors.UniqueViolation`` into a 409.
+
+    Replaces the boilerplate try/except → ``HTTPException(409, ...)`` block
+    that every create/update endpoint repeats around a single graph write
+    that could collide on a unique edge or property.
+    """
+    try:
+        yield
+    except psycopg.errors.UniqueViolation as exc:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=detail,
+        ) from exc
 
 
 _USER_UPDATE_ROLE_QUERY: typing.LiteralString = """
@@ -169,6 +213,71 @@ async def lookup_project_links(
         return {}
     items = typing.cast('dict[object, object]', raw)
     return {str(k): str(v) for k, v in items.items() if v}
+
+
+async def update_project_link(
+    db: graph.Graph,
+    project_id: str,
+    key: str,
+    url: str,
+) -> bool:
+    """Set a single entry in the project's external link map.
+
+    Reads the current links (via :func:`lookup_project_links`), sets
+    ``links[key] = url``, and writes the map back as the JSON-encoded
+    string ``p.links`` is stored as on the AGE node. Returns ``True`` when
+    a write happened and ``False`` when the link already had ``url`` (a
+    no-op). Used to self-heal a stale ``github-repository`` link after a
+    deployment plugin reports the remote repository was renamed.
+    """
+    links = await lookup_project_links(db, project_id)
+    if links.get(key) == url:
+        return False
+    links[key] = url
+    query: typing.LiteralString = (
+        'MATCH (p:Project {{id: {project_id}}}) '
+        'SET p.links = {links} RETURN p.id AS id'
+    )
+    await db.execute(
+        query,
+        {'project_id': project_id, 'links': json.dumps(links)},
+        ['id'],
+    )
+    return True
+
+
+async def heal_relocated_link(db: graph.Graph, ctx: PluginContext) -> None:
+    """Persist a repository rename a plugin reported on ``ctx``.
+
+    A deployment / lifecycle plugin sets ``ctx.repository_relocation``
+    when the remote reports the repository has permanently moved (e.g. a
+    GitHub ``301`` after a rename). Rewrite the project's stored link so
+    later calls skip the redirect and the UI shows the current name.
+    Best-effort: a write failure is logged and swallowed so self-healing
+    never fails the user-facing request whose result we already have.
+    """
+    reloc = ctx.repository_relocation
+    if reloc is None:
+        return
+    try:
+        changed = await update_project_link(
+            db, ctx.project_id, reloc.link_key, reloc.new_url
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Failed to self-heal relocated repository link for project %s',
+            ctx.project_id,
+            exc_info=True,
+        )
+        return
+    if changed:
+        LOGGER.info(
+            'Self-healed %s link for project %s after repo rename %s -> %s',
+            reloc.link_key,
+            ctx.project_id,
+            reloc.old_owner_repo,
+            reloc.new_owner_repo,
+        )
 
 
 async def lookup_project_type_slugs(

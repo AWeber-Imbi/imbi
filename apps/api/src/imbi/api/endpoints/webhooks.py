@@ -7,7 +7,6 @@ import typing
 
 import fastapi
 import nanoid
-import psycopg
 import pydantic
 from imbi_common import graph
 from imbi_common.auth import encryption
@@ -15,6 +14,7 @@ from imbi_common.auth import encryption
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.domain import models
+from imbi_api.endpoints._helpers import conflict_on_unique_violation
 from imbi_api.graph_sql import props_template, set_clause
 
 LOGGER = logging.getLogger(__name__)
@@ -297,20 +297,15 @@ async def create_webhook(
         )
         write_params = base_params
 
-    try:
+    with conflict_on_unique_violation(
+        f'A webhook with slug {slug!r} already exists. '
+        f'Choose a different name or rename the existing webhook.',
+    ):
         write_records = await db.execute(
             write_query,
             write_params,
             ['id'],
         )
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(
-                f'A webhook with slug {slug!r} already exists. '
-                f'Choose a different name or rename the existing webhook.'
-            ),
-        ) from e
 
     if not write_records:
         if data.third_party_service_slug:
@@ -645,17 +640,14 @@ async def patch_webhook(
             **rules_params,
         }
 
-    try:
+    with conflict_on_unique_violation(
+        f'A webhook with slug {data.slug!r} already exists.',
+    ):
         write_records = await db.execute(
             write_query,
             params,
             ['id'],
         )
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(f'A webhook with slug {data.slug!r} already exists.'),
-        ) from e
 
     if not write_records:
         raise fastapi.HTTPException(

@@ -6,7 +6,6 @@ import typing
 from urllib import parse as urlparse
 
 import fastapi
-import psycopg.errors
 from imbi_common import graph
 
 from imbi_api import models
@@ -249,13 +248,10 @@ async def create_user(
             detail=(f'User with email {user.email!r} already exists'),
         )
 
-    try:
+    with _helpers.conflict_on_unique_violation(
+        f'User with email {user.email!r} already exists',
+    ):
         await db.create(user)
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(f'User with email {user.email!r} already exists'),
-        ) from e
 
     # Create MEMBER_OF relationship to organization with role
     membership_query = """
