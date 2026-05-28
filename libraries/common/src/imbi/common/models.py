@@ -393,6 +393,16 @@ class MCPServer(Node):
     oauth_client_id: str | None = None
     oauth_client_secret_encrypted: str | None = None
     oauth_scope: str | None = None
+    # Runtime health, written by the connection-test endpoint and by the
+    # assistant when a tool call against this server fails. ``unknown``
+    # means it has never been tested or reported on.
+    status: typing.Literal['unknown', 'healthy', 'degraded', 'unreachable'] = (
+        'unknown'
+    )
+    last_tested_at: datetime.datetime | None = None
+    last_tested_latency_ms: int | None = pydantic.Field(default=None, ge=0)
+    tools_discovered: int | None = pydantic.Field(default=None, ge=0)
+    last_error: str | None = None
 
     @pydantic.field_validator('ignored_tools', mode='before')
     @classmethod

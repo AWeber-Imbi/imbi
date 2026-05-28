@@ -1116,6 +1116,11 @@ class MCPServerModelTestCase(unittest.TestCase):
         self.assertIsNone(server.oauth_client_id)
         self.assertIsNone(server.oauth_client_secret_encrypted)
         self.assertIsNone(server.oauth_scope)
+        self.assertEqual(server.status, 'unknown')
+        self.assertIsNone(server.last_tested_at)
+        self.assertIsNone(server.last_tested_latency_ms)
+        self.assertIsNone(server.tools_discovered)
+        self.assertIsNone(server.last_error)
 
     def test_url_rejects_non_url(self) -> None:
         """url must be a valid HTTP(S) URL, not an arbitrary string."""
@@ -1210,3 +1215,49 @@ class MCPServerModelTestCase(unittest.TestCase):
             oauth_client_secret_encrypted='ciphertext',
         )
         self.assertEqual(server.auth_type, 'oauth_client_credentials')
+
+    def test_health_counts_accept_non_negative(self) -> None:
+        """Zero and positive values are accepted for the health counts."""
+        for value in (0, 5, 250):
+            with self.subTest(value=value):
+                server = models.MCPServer(
+                    name='Example',
+                    slug='example',
+                    url='https://mcp.example.com/mcp',
+                    last_tested_latency_ms=value,
+                    tools_discovered=value,
+                )
+                self.assertEqual(server.last_tested_latency_ms, value)
+                self.assertEqual(server.tools_discovered, value)
+
+    def test_health_counts_default_none(self) -> None:
+        """None is accepted (the untested default) for the health counts."""
+        server = models.MCPServer(
+            name='Example',
+            slug='example',
+            url='https://mcp.example.com/mcp',
+            last_tested_latency_ms=None,
+            tools_discovered=None,
+        )
+        self.assertIsNone(server.last_tested_latency_ms)
+        self.assertIsNone(server.tools_discovered)
+
+    def test_last_tested_latency_ms_rejects_negative(self) -> None:
+        """last_tested_latency_ms must be non-negative."""
+        with self.assertRaises(pydantic.ValidationError):
+            models.MCPServer(
+                name='Example',
+                slug='example',
+                url='https://mcp.example.com/mcp',
+                last_tested_latency_ms=-1,
+            )
+
+    def test_tools_discovered_rejects_negative(self) -> None:
+        """tools_discovered must be non-negative."""
+        with self.assertRaises(pydantic.ValidationError):
+            models.MCPServer(
+                name='Example',
+                slug='example',
+                url='https://mcp.example.com/mcp',
+                tools_discovered=-1,
+            )
