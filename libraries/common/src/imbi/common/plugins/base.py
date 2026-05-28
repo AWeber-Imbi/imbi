@@ -12,10 +12,32 @@ class PluginOption(pydantic.BaseModel):
     name: str
     label: str
     description: str | None = None
-    type: typing.Literal['string', 'integer', 'boolean', 'secret'] = 'string'
+    #: ``mapping`` renders a key/value editor in the admin UI and stores
+    #: the resolved value as a ``dict[str, str]`` rather than a scalar.
+    type: typing.Literal[
+        'string', 'integer', 'boolean', 'secret', 'mapping'
+    ] = 'string'
     required: bool = False
-    default: str | int | bool | None = None
+    default: str | int | bool | dict[str, str] | None = None
     choices: list[str] | None = None
+
+    @pydantic.model_validator(mode='after')
+    def _validate_mapping_shape(self) -> PluginOption:
+        if self.type == 'mapping':
+            if self.choices is not None:
+                raise ValueError(
+                    "PluginOption.choices is not supported for type='mapping'"
+                )
+            if self.default is not None and not isinstance(self.default, dict):
+                raise ValueError(
+                    "PluginOption.default for type='mapping' must be a "
+                    'dict[str, str]'
+                )
+        elif isinstance(self.default, dict):
+            raise ValueError(
+                "PluginOption.default may only be a dict when type='mapping'"
+            )
+        return self
 
 
 class CredentialField(pydantic.BaseModel):
@@ -137,6 +159,25 @@ class PluginManifest(pydantic.BaseModel):
     # value the API writes into the description JSON.  The empty-string
     # key acts as a fallback when no action is present.
     ops_log_templates: dict[str, OpsLogTemplate] = {}
+    # Which project lifecycle events the plugin advertises support for.
+    # The host reads this to decide whether to expose UI affordances
+    # gated on a given event (e.g. "Also delete the repository" on
+    # project delete, "Also move the repository" on a project-type
+    # change that would route to a different target).  An unimplemented
+    # hook still resolves to ``LifecycleResult(status='skipped')`` via
+    # ``NotImplementedError``; this list is purely a capability hint.
+    # Default preserves the pre-2.8 behavior where lifecycle plugins
+    # only handled archive / unarchive.
+    lifecycle_events: list[
+        typing.Literal[
+            'created',
+            'updated',
+            'archived',
+            'unarchived',
+            'deleted',
+            'relocated',
+        ]
+    ] = ['archived', 'unarchived']
 
 
 class IdentityProfile(pydantic.BaseModel):
@@ -207,26 +248,37 @@ class AuthorizationRequest(pydantic.BaseModel):
     registered_credentials: dict[str, str] | None = None
 
 
-class RepositoryRelocation(pydantic.BaseModel):
-    """A remote repository moved out from under its stored reference.
+class LinkWriteback(pydantic.BaseModel):
+    """A project-link URL the host should persist on the project node.
 
     Set by a deployment / lifecycle plugin on :class:`PluginContext` when
-    the remote reports that the repository has permanently moved -- e.g.
-    GitHub answers a request to a renamed repo with a ``301`` to the
-    canonical ``/repositories/{id}`` location.  The host reads this after
-    the call returns and self-heals the project's stored link
-    (``link_key`` -> ``new_url``) so later calls skip the redirect and the
-    UI shows the current name.  Plugins only ever *write* this field; it is
-    not part of the inbound context the host populates.
+    the call mutated, created, or discovered the canonical URL for one
+    of the project's external links.  Covers four cases:
+
+    * **Create** -- a new repository was provisioned and the
+      ``github-repository`` (or equivalent) link must be stored for the
+      first time.
+    * **Rename / 301** -- the remote answered a request to a renamed
+      repo with a ``301`` to the canonical ``/repositories/{id}``
+      location; the host self-heals the stored link so later calls skip
+      the redirect and the UI shows the current name.
+    * **Relocate / transfer** -- the repository moved to a new owner
+      (e.g. ``POST /repos/{owner}/{repo}/transfer``) and the stored
+      link must be rewritten to the new canonical URL.
+    * **Discovery** -- the plugin resolved a link the host had not yet
+      stored (e.g. by following a redirect chain).
+
+    Plugins only ever *write* this field; it is not part of the
+    inbound context the host populates.
     """
 
-    #: Which ``PluginContext.project_links`` key the host should rewrite.
+    #: Which ``PluginContext.project_links`` key the host should write.
     link_key: str
     #: Canonical URL (e.g. GitHub ``html_url``) to store under ``link_key``.
     new_url: str
     #: ``<owner>/<repo>`` the call started from -- informational / logging.
     old_owner_repo: str | None = None
-    #: ``<owner>/<repo>`` the remote redirected to -- informational.
+    #: ``<owner>/<repo>`` the remote ended at -- informational.
     new_owner_repo: str | None = None
 
 
@@ -256,13 +308,41 @@ class PluginContext(pydantic.BaseModel):
     environment_config: dict[str, typing.Any] = {}
     actor_user_id: str | None = None
     identity: IdentityCredentials | None = None
-    # Output side-channel: a deployment / lifecycle plugin sets this when
-    # the remote reports the repository has permanently moved (e.g. a
-    # GitHub 301 after a rename).  The host reads it after the call to
-    # self-heal the project's stored link so later calls skip the
-    # redirect.  Plugins never read it -- it is write-only from the
-    # plugin's perspective and ``None`` on every inbound context.
-    repository_relocation: RepositoryRelocation | None = None
+    # Project slug as it stood *before* the in-flight update.  Populated
+    # by the host on ``on_project_updated`` / ``on_project_relocated``
+    # so plugins can locate the remote when the stored link is stale or
+    # absent and only the slug just changed.  ``None`` for all other
+    # events; ``project_slug`` continues to carry the current slug.
+    previous_project_slug: str | None = None
+    # Project-type slugs as they stood *before* the in-flight update.
+    # Populated by the host on ``on_project_relocated`` (and optionally
+    # on ``on_project_updated``) so plugins comparing prior vs current
+    # type-driven targets can decide what to do.  Empty list for events
+    # where the host has no prior snapshot.
+    previous_project_type_slugs: list[str] = []
+    # Project display name, populated by the host on create / update
+    # events.  Plugins use this for human-facing artifacts (e.g. PR
+    # bodies); GitHub repos do not expose a separate display-name
+    # field, so it is intentionally not synced to the repo by the
+    # bundled GitHub plugin.
+    project_name: str | None = None
+    # Project description, populated by the host on create / update
+    # events.  Plugins write it through to the remote's description
+    # field (e.g. GitHub repo ``description``).
+    project_description: str | None = None
+    # Canonical Imbi UI deep link for the project (built from the
+    # configured public UI base URL + project route).  Populated by the
+    # host on create / update events; plugins write it through to the
+    # remote's homepage-style field (e.g. GitHub repo ``homepage``).
+    project_ui_url: str | None = None
+    # Output side-channel: a deployment / lifecycle plugin sets this
+    # when the project's stored link should be rewritten -- e.g. after
+    # creating a new repo, after a rename that returned a 301, or after
+    # a transfer to a new owner.  The host reads it after the call and
+    # self-heals the stored link.  Plugins never read it -- it is
+    # write-only from the plugin's perspective and ``None`` on every
+    # inbound context.
+    link_writeback: LinkWriteback | None = None
 
 
 class ConfigValue(pydantic.BaseModel):
@@ -793,14 +873,50 @@ class LifecycleResult(pydantic.BaseModel):
     artifacts: dict[str, str] = {}
 
 
+class RelocationTarget(pydantic.BaseModel):
+    """Where a lifecycle plugin would route a project's external link.
+
+    Returned by :meth:`LifecyclePlugin.resolve_relocation_target` so the
+    host can answer "would changing this project's types move its
+    repository?" without inlining plugin-specific resolution (e.g.
+    GitHub org mapping, GitLab namespace) into the API layer.
+
+    The host treats ``identifier`` as opaque -- it compares two
+    :class:`RelocationTarget` instances by ``link_key`` + ``identifier``
+    and surfaces ``display`` to the operator for confirmation.  Plugins
+    typically use ``"<owner>/<repo>"`` or an equivalent stable handle
+    for ``identifier`` and the same string for ``display`` unless a
+    nicer label is available.
+    """
+
+    #: Which ``PluginContext.project_links`` key this target governs.
+    link_key: str
+    #: Stable identifier the host compares for equality (e.g.
+    #: ``"aweber-imbi/my-project"``).
+    identifier: str
+    #: Operator-facing label for confirmation dialogs.  Defaults to
+    #: ``identifier`` when ``None``.
+    display: str | None = None
+
+
 class LifecyclePlugin(abc.ABC):
     """Plugins must not stash global state.
 
     A new instance is created per request.  Lifecycle plugins react to
-    entity state changes (archive / unarchive today; create / delete may
-    follow).  The host invokes them after the authoritative Imbi state
-    change has succeeded so a third-party failure does not roll back
-    the operator's intent.
+    project state changes -- create, update, archive, unarchive,
+    delete, relocate -- by mirroring the change to a backing remote
+    (e.g. creating, renaming, transferring, or deleting a GitHub
+    repository).  The host invokes the hooks *after* the authoritative
+    Imbi state change has succeeded so a third-party failure does not
+    roll back the operator's intent; failures are captured on
+    :class:`LifecycleResult` and surfaced without aborting the write.
+
+    Only :meth:`on_project_archived` is required.  The remaining hooks
+    default to raising :class:`NotImplementedError`, which the host
+    dispatcher maps to ``LifecycleResult(status='skipped')``.  Plugins
+    advertise the events they actually handle via
+    :attr:`PluginManifest.lifecycle_events` so the UI can gate the
+    matching affordances.
     """
 
     manifest: PluginManifest
@@ -826,6 +942,100 @@ class LifecyclePlugin(abc.ABC):
         """
         del ctx, credentials
         raise NotImplementedError
+
+    async def on_project_created(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> LifecycleResult:
+        """React to a project being created in Imbi.
+
+        Optional -- typical plugins provision the backing remote (e.g.
+        ``POST /orgs/{org}/repos``) and set ``ctx.link_writeback`` so
+        the host stores the canonical link on the project node.
+        Plugins without a create concept raise
+        :class:`NotImplementedError`; the host dispatcher maps that to
+        ``LifecycleResult(status='skipped')``.
+        """
+        del ctx, credentials
+        raise NotImplementedError
+
+    async def on_project_updated(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> LifecycleResult:
+        """React to a sync-relevant project field changing in Imbi.
+
+        Optional -- the host dispatches this when ``project_slug`` or
+        ``project_description`` changes; ``ctx.previous_project_slug``
+        carries the prior slug for locating the remote when the stored
+        link is stale.  Typical plugins push name / description /
+        homepage updates through to the remote and set
+        ``ctx.link_writeback`` if the canonical URL changed.  Plugins
+        without an update concept raise :class:`NotImplementedError`.
+        """
+        del ctx, credentials
+        raise NotImplementedError
+
+    async def on_project_deleted(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> LifecycleResult:
+        """React to a project being deleted in Imbi.
+
+        Optional -- the host invokes this *after* the project node has
+        been removed, with a context bundle the host captured *before*
+        ``DETACH DELETE`` (so ``project_links``, ``project_type_slugs``,
+        etc. reflect the project as it existed).  Typical plugins
+        delete the backing remote; ``404`` is treated as
+        ``LifecycleResult(status='skipped')`` (already gone).  Plugins
+        without a delete concept raise :class:`NotImplementedError`.
+        """
+        del ctx, credentials
+        raise NotImplementedError
+
+    async def on_project_relocated(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> LifecycleResult:
+        """React to a project being routed to a different remote target.
+
+        Optional -- the host dispatches this only when the operator has
+        explicitly opted in (e.g. via a "Also move the repository"
+        checkbox on a project-type change).  ``ctx.project_type_slugs``
+        is the post-change set; ``ctx.previous_project_type_slugs`` is
+        the pre-change set.  Typical plugins transfer the remote
+        (``POST /repos/{owner}/{repo}/transfer`` on GitHub), wait for
+        the async settle, and set ``ctx.link_writeback`` to the new
+        canonical URL.  Plugins without a relocate concept raise
+        :class:`NotImplementedError`.
+        """
+        del ctx, credentials
+        raise NotImplementedError
+
+    async def resolve_relocation_target(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> RelocationTarget | None:
+        """Resolve the remote target this plugin would route ``ctx`` to.
+
+        Optional -- used by the host's lifecycle-preview endpoint to
+        decide whether a project-type (or other) change would move the
+        repository to a different remote.  Returning ``None`` (the
+        default) signals the plugin has no relocate concept and the
+        host should not surface a "move repository" affordance.
+
+        Implementations resolve the target deterministically from
+        ``ctx`` (typically ``project_type_slugs`` + plugin options) and
+        MUST NOT call out to the remote -- the host may invoke this
+        many times during a UI preview.
+        """
+        del ctx, credentials
+        return None
 
 
 # ---------------------------------------------------------------------------

@@ -17,7 +17,7 @@ plugin variations and the contract each must satisfy.
 
 ::: imbi_common.plugins.PluginContext
 
-::: imbi_common.plugins.RepositoryRelocation
+::: imbi_common.plugins.LinkWriteback
 
 ## Configuration Plugins
 
@@ -50,6 +50,23 @@ store. Implementations subclass `LogsPlugin` and declare
 ::: imbi_common.plugins.LogResult
 
 ::: imbi_common.plugins.LogHistogramBucket
+
+## Lifecycle Plugins
+
+The `lifecycle` variation reacts to project state changes -- create,
+update, archive, unarchive, delete, relocate -- by mirroring the
+change to a backing remote (e.g. provisioning, renaming, or
+transferring a GitHub repository). Plugins implement only the hooks
+they support; the host treats `NotImplementedError` from any
+non-archive hook as a skip. Plugins advertise the events they handle
+via `PluginManifest.lifecycle_events` so the host can gate UI
+affordances on real capability.
+
+::: imbi_common.plugins.LifecyclePlugin
+
+::: imbi_common.plugins.LifecycleResult
+
+::: imbi_common.plugins.RelocationTarget
 
 ## Webhook Action Plugins
 
@@ -111,8 +128,9 @@ the `imbi.plugins` group. The host calls `load_plugins()` at startup
 
 Helpers for plugins that build provider-specific query strings from
 project context. Substitution is restricted to a fixed whitelist of
-variables (`project_slug`, `org_slug`, `environment`, `project_id`);
-unknown variables raise `ValueError`.
+variables (`project_slug`, `org_slug`, `team_slug`, `environment`,
+`project_id`, `project_type_slug`); unknown variables raise
+`ValueError`.
 
 ::: imbi_common.plugins.validate_template
 

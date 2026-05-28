@@ -13,8 +13,12 @@ class ValidateTemplateTestCase(unittest.TestCase):
 
     def test_validate_template_all_allowed_vars(self) -> None:
         validate_template(
-            '${project_slug}/${org_slug}/${environment}/${project_id}'
+            '${project_slug}/${org_slug}/${team_slug}/${environment}/'
+            '${project_id}/${project_type_slug}'
         )
+
+    def test_validate_template_project_type_slug(self) -> None:
+        validate_template('${project_type_slug}/${project_slug}')
 
     def test_validate_template_mixed_valid_invalid(self) -> None:
         with self.assertRaises(ValueError):
@@ -58,3 +62,10 @@ class ExpandTemplateTestCase(unittest.TestCase):
     def test_expand_template_rejects_unknown_var(self) -> None:
         with self.assertRaises(ValueError):
             expand_template('${rogue_var}', {'rogue_var': 'evil'})
+
+    def test_expand_template_project_type_slug(self) -> None:
+        result = expand_template(
+            '${project_type_slug}/${project_slug}',
+            {'project_type_slug': 'api', 'project_slug': 'billing'},
+        )
+        self.assertEqual(result, 'api/billing')

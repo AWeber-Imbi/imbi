@@ -16,6 +16,7 @@ from imbi_common.plugins.base import (
     IdentityProfile,
     LifecyclePlugin,
     LifecycleResult,
+    LinkWriteback,
     LogFilter,
     LogQuery,
     OpsLogTemplate,
@@ -29,8 +30,8 @@ from imbi_common.plugins.base import (
     Ref,
     RefInfo,
     ReleaseInfo,
+    RelocationTarget,
     RemoteDeployment,
-    RepositoryRelocation,
     WorkflowFile,
 )
 
@@ -528,17 +529,17 @@ class PluginContextEnvironmentConfigTestCase(unittest.TestCase):
         self.assertEqual(restored.environment_config['inputs'], {'foo': 'bar'})
 
 
-class RepositoryRelocationTestCase(unittest.TestCase):
-    def test_relocation_defaults_none_on_context(self) -> None:
+class LinkWritebackTestCase(unittest.TestCase):
+    def test_writeback_defaults_none_on_context(self) -> None:
         ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
-        self.assertIsNone(ctx.repository_relocation)
+        self.assertIsNone(ctx.link_writeback)
 
-    def test_relocation_round_trip(self) -> None:
+    def test_writeback_round_trip(self) -> None:
         ctx = PluginContext(
             project_id='p',
             project_slug='p',
             org_slug='o',
-            repository_relocation=RepositoryRelocation(
+            link_writeback=LinkWriteback(
                 link_key='github-repository',
                 new_url='https://github.com/octo/new-name',
                 old_owner_repo='octo/old-name',
@@ -546,20 +547,226 @@ class RepositoryRelocationTestCase(unittest.TestCase):
             ),
         )
         restored = PluginContext.model_validate(ctx.model_dump())
-        reloc = restored.repository_relocation
-        assert reloc is not None
-        self.assertEqual(reloc.link_key, 'github-repository')
-        self.assertEqual(reloc.new_url, 'https://github.com/octo/new-name')
-        self.assertEqual(reloc.old_owner_repo, 'octo/old-name')
-        self.assertEqual(reloc.new_owner_repo, 'octo/new-name')
+        wb = restored.link_writeback
+        assert wb is not None
+        self.assertEqual(wb.link_key, 'github-repository')
+        self.assertEqual(wb.new_url, 'https://github.com/octo/new-name')
+        self.assertEqual(wb.old_owner_repo, 'octo/old-name')
+        self.assertEqual(wb.new_owner_repo, 'octo/new-name')
 
-    def test_relocation_optional_fields_default_none(self) -> None:
-        reloc = RepositoryRelocation(
+    def test_writeback_optional_fields_default_none(self) -> None:
+        wb = LinkWriteback(
             link_key='github-repository',
             new_url='https://github.com/octo/new-name',
         )
-        self.assertIsNone(reloc.old_owner_repo)
-        self.assertIsNone(reloc.new_owner_repo)
+        self.assertIsNone(wb.old_owner_repo)
+        self.assertIsNone(wb.new_owner_repo)
+
+
+class PluginContextLifecycleFieldsTestCase(unittest.TestCase):
+    def test_lifecycle_fields_default_unset(self) -> None:
+        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
+        self.assertIsNone(ctx.previous_project_slug)
+        self.assertEqual(ctx.previous_project_type_slugs, [])
+        self.assertIsNone(ctx.project_name)
+        self.assertIsNone(ctx.project_description)
+        self.assertIsNone(ctx.project_ui_url)
+
+    def test_lifecycle_fields_round_trip(self) -> None:
+        ctx = PluginContext(
+            project_id='p',
+            project_slug='new-slug',
+            org_slug='o',
+            previous_project_slug='old-slug',
+            previous_project_type_slugs=['api'],
+            project_type_slugs=['library'],
+            project_name='Billing Service',
+            project_description='Handles invoices.',
+            project_ui_url='https://imbi.example/orgs/o/projects/p',
+        )
+        restored = PluginContext.model_validate(ctx.model_dump())
+        self.assertEqual(restored.previous_project_slug, 'old-slug')
+        self.assertEqual(restored.previous_project_type_slugs, ['api'])
+        self.assertEqual(restored.project_type_slugs, ['library'])
+        self.assertEqual(restored.project_name, 'Billing Service')
+        self.assertEqual(restored.project_description, 'Handles invoices.')
+        self.assertEqual(
+            restored.project_ui_url,
+            'https://imbi.example/orgs/o/projects/p',
+        )
+
+
+class PluginManifestLifecycleEventsTestCase(unittest.TestCase):
+    def test_default_preserves_pre_2_8_behavior(self) -> None:
+        manifest = PluginManifest(
+            slug='lc',
+            name='Lifecycle',
+            plugin_type='lifecycle',
+        )
+        self.assertEqual(manifest.lifecycle_events, ['archived', 'unarchived'])
+
+    def test_explicit_events_round_trip(self) -> None:
+        manifest = PluginManifest(
+            slug='lc',
+            name='Lifecycle',
+            plugin_type='lifecycle',
+            lifecycle_events=[
+                'created',
+                'updated',
+                'archived',
+                'unarchived',
+                'deleted',
+                'relocated',
+            ],
+        )
+        restored = PluginManifest.model_validate(manifest.model_dump())
+        self.assertEqual(
+            restored.lifecycle_events,
+            [
+                'created',
+                'updated',
+                'archived',
+                'unarchived',
+                'deleted',
+                'relocated',
+            ],
+        )
+
+    def test_unknown_event_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            PluginManifest(
+                slug='lc',
+                name='Lifecycle',
+                plugin_type='lifecycle',
+                lifecycle_events=['transmuted'],  # type: ignore[list-item]
+            )
+
+
+class PluginOptionMappingTestCase(unittest.TestCase):
+    def test_mapping_default_dict(self) -> None:
+        option = PluginOption(
+            name='org_mapping',
+            label='Org mapping',
+            type='mapping',
+            default={'api': 'org-a', 'library': 'org-b'},
+        )
+        self.assertEqual(option.default, {'api': 'org-a', 'library': 'org-b'})
+
+    def test_mapping_default_none(self) -> None:
+        option = PluginOption(
+            name='org_mapping',
+            label='Org mapping',
+            type='mapping',
+        )
+        self.assertIsNone(option.default)
+
+    def test_mapping_rejects_choices(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            PluginOption(
+                name='org_mapping',
+                label='Org mapping',
+                type='mapping',
+                choices=['api', 'library'],
+            )
+
+    def test_mapping_rejects_scalar_default(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            PluginOption(
+                name='org_mapping',
+                label='Org mapping',
+                type='mapping',
+                default='org-a',
+            )
+
+    def test_scalar_option_rejects_dict_default(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            PluginOption(
+                name='create_org',
+                label='Create org',
+                default={'api': 'org-a'},
+            )
+
+
+class LifecyclePluginOptionalHooksTestCase(unittest.IsolatedAsyncioTestCase):
+    """All non-archive hooks default to NotImplementedError."""
+
+    class _StubLifecycle(LifecyclePlugin):
+        manifest = PluginManifest(
+            slug='stub',
+            name='Stub',
+            plugin_type='lifecycle',
+        )
+
+        async def on_project_archived(
+            self,
+            ctx: PluginContext,
+            credentials: dict[str, str],
+        ) -> LifecycleResult:
+            del ctx, credentials
+            return LifecycleResult(status='ok')
+
+    async def test_unarchived_default_raises(self) -> None:
+        plugin = self._StubLifecycle()
+        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
+        with self.assertRaises(NotImplementedError):
+            await plugin.on_project_unarchived(ctx, {})
+
+    async def test_created_default_raises(self) -> None:
+        plugin = self._StubLifecycle()
+        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
+        with self.assertRaises(NotImplementedError):
+            await plugin.on_project_created(ctx, {})
+
+    async def test_updated_default_raises(self) -> None:
+        plugin = self._StubLifecycle()
+        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
+        with self.assertRaises(NotImplementedError):
+            await plugin.on_project_updated(ctx, {})
+
+    async def test_deleted_default_raises(self) -> None:
+        plugin = self._StubLifecycle()
+        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
+        with self.assertRaises(NotImplementedError):
+            await plugin.on_project_deleted(ctx, {})
+
+    async def test_relocated_default_raises(self) -> None:
+        plugin = self._StubLifecycle()
+        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
+        with self.assertRaises(NotImplementedError):
+            await plugin.on_project_relocated(ctx, {})
+
+    async def test_resolve_relocation_target_defaults_none(self) -> None:
+        plugin = self._StubLifecycle()
+        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
+        self.assertIsNone(await plugin.resolve_relocation_target(ctx, {}))
+
+
+class RelocationTargetTestCase(unittest.TestCase):
+    def test_minimal(self) -> None:
+        target = RelocationTarget(
+            link_key='github-repository',
+            identifier='aweber-imbi/billing',
+        )
+        self.assertEqual(target.link_key, 'github-repository')
+        self.assertEqual(target.identifier, 'aweber-imbi/billing')
+        self.assertIsNone(target.display)
+
+    def test_with_display(self) -> None:
+        target = RelocationTarget(
+            link_key='github-repository',
+            identifier='aweber-imbi/billing',
+            display='AWeber-Imbi/billing',
+        )
+        self.assertEqual(target.display, 'AWeber-Imbi/billing')
+
+    def test_round_trip(self) -> None:
+        target = RelocationTarget(
+            link_key='github-repository',
+            identifier='aweber-imbi/billing',
+            display='AWeber-Imbi/billing',
+        )
+        restored = RelocationTarget.model_validate(target.model_dump())
+        self.assertEqual(restored, target)
 
 
 class PluginManifestWebhookTypeTestCase(unittest.TestCase):
