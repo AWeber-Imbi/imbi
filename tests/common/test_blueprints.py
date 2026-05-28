@@ -520,6 +520,30 @@ class MakeResponseModelTests(unittest.TestCase):
         )
         self.assertEqual(5, instance2.relationships['teams'].count)
 
+    def test_keeps_existing_relationships_field(self) -> None:
+        """When the base model already declares ``relationships``,
+        ``make_response_model`` must not override it — otherwise the
+        emitted OpenAPI schema would drift from the runtime shape.
+        """
+
+        class Typed(pydantic.BaseModel):
+            href: str
+
+        class Base(pydantic.BaseModel):
+            name: str
+            relationships: Typed | None = None
+
+        response_cls = blueprints.make_response_model(Base)
+        field = response_cls.model_fields['relationships']
+        # The annotation must still resolve to the base's typed model,
+        # not the dict[str, RelationshipLink] default override.
+        self.assertEqual(field.annotation, Typed | None)
+        # And the override path must not have been taken.
+        self.assertNotEqual(
+            field.annotation,
+            dict[str, models.RelationshipLink] | None,
+        )
+
 
 # -- _matches_filter tests ------------------------------------------------
 

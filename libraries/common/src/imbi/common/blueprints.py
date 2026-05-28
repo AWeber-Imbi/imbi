@@ -297,12 +297,19 @@ def make_response_model[ModelType: pydantic.BaseModel](
     responses. The write model already has timestamps and
     blueprint fields; this adds the response-only enrichments.
 
+    If the base model already declares a ``relationships`` field
+    (e.g. :class:`Project`, which uses the typed
+    :class:`ProjectRelationships`), it is kept as-is so the emitted
+    OpenAPI schema matches the runtime shape.
     """
+    fields: dict[str, typing.Any] = {}
+    if 'relationships' not in write_model.model_fields:
+        fields['relationships'] = (
+            dict[str, models.RelationshipLink] | None,
+            None,
+        )
     return pydantic.create_model(
         f'{write_model.__name__}Response',
         __base__=write_model,
-        relationships=(
-            dict[str, models.RelationshipLink] | None,
-            None,
-        ),
+        **fields,
     )

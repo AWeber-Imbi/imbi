@@ -30,6 +30,7 @@ __all__ = [
     'Organization',
     'Plugin',
     'Project',
+    'ProjectRelationships',
     'ProjectType',
     'RelationshipEdge',
     'RelationshipLink',
@@ -467,6 +468,23 @@ class LinkDefinition(Node):
     organization: BelongsToOrganization
 
 
+class ProjectRelationships(pydantic.BaseModel):
+    """Typed relationship links and counts for a project response.
+
+    Lives in imbi-common (rather than only inside imbi-api) so the
+    OpenAPI schema generated for ``ProjectResponse`` matches the runtime
+    shape: ``make_response_model`` skips re-injecting ``relationships``
+    when the base model already declares it, leaving this typed model
+    as the canonical schema.
+    """
+
+    team: RelationshipLink
+    environments: RelationshipLink
+    href: str
+    outbound_count: int = 0
+    inbound_count: int = 0
+
+
 class Project(Node):
     team: typing.Annotated[
         Team,
@@ -492,6 +510,8 @@ class Project(Node):
     links: dict[str, pydantic.AnyUrl] = {}
     identifiers: dict[str, int | str | pydantic.AnyUrl] = {}
     score: float | None = None
+    # Populated by the API on response build; never read from the graph.
+    relationships: ProjectRelationships | None = None
 
     @pydantic.field_validator('links', 'identifiers', mode='before')
     @classmethod
