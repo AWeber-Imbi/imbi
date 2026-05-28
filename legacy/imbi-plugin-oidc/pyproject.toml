@@ -1,6 +1,6 @@
 [project]
 name = "imbi-plugin-oidc"
-version = "1.0.1"
+version = "1.0.2"
 description = "Generic OIDC identity plugin for Imbi"
 readme = "README.md"
 requires-python = ">=3.14"
