@@ -39,10 +39,10 @@ from imbi_common.plugins.errors import PluginCredentialsMissing
 
 from imbi_api.auth import permissions
 from imbi_api.endpoints._helpers import (
-    heal_relocated_link,
     lookup_project_links,
     lookup_project_slugs,
     lookup_project_type_slugs,
+    persist_link_writeback,
 )
 from imbi_api.endpoints.releases import (
     AppendOutcome,
@@ -655,7 +655,7 @@ async def resync_for_project(
                 'list_recent_deployments.'
             ),
         ) from exc
-    await heal_relocated_link(db, ctx)
+    await persist_link_writeback(db, ctx)
     summary.observed = len(observations)
     # Track identities we've already touched so ``releases_created`` /
     # ``releases_updated`` are counted once per distinct
@@ -828,7 +828,7 @@ async def list_refs(
     refs = await call_with_timeout(
         handler.list_refs(ctx, credentials, kind=kind, query=q)
     )
-    await heal_relocated_link(db, ctx)
+    await persist_link_writeback(db, ctx)
     return refs
 
 
@@ -855,7 +855,7 @@ async def list_commits(
     commits = await call_with_timeout(
         handler.list_commits(ctx, credentials, ref=ref, limit=limit)
     )
-    await heal_relocated_link(db, ctx)
+    await persist_link_writeback(db, ctx)
     return commits
 
 
@@ -881,7 +881,7 @@ async def resolve_commit(
     commit = await call_with_timeout(
         handler.resolve_committish(ctx, credentials, committish)
     )
-    await heal_relocated_link(db, ctx)
+    await persist_link_writeback(db, ctx)
     return commit
 
 
@@ -908,7 +908,7 @@ async def compare_refs(
     result = await call_with_timeout(
         handler.compare(ctx, credentials, base=base, head=head)
     )
-    await heal_relocated_link(db, ctx)
+    await persist_link_writeback(db, ctx)
     return result
 
 
@@ -1105,7 +1105,7 @@ async def _handle_deploy(
     run = await call_with_identity_retry(
         db, ctx, resolved, auth, fn=_trigger, attached=True
     )
-    await heal_relocated_link(db, ctx)
+    await persist_link_writeback(db, ctx)
     LOGGER.info(
         'Deployment triggered: project=%s env=%s ref=%s plugin=%s '
         'action=%s actor=%s run_id=%s',
@@ -1421,7 +1421,7 @@ async def _handle_promote(
             warning='; '.join(warnings) if warnings else None,
         )
 
-    await heal_relocated_link(db, ctx)
+    await persist_link_writeback(db, ctx)
 
     # 4. Upsert the Release node so future deploys of the same tag
     #    can attach a DeploymentEvent.

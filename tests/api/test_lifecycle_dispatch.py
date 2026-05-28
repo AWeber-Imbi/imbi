@@ -14,8 +14,8 @@ from imbi_common.plugins.base import (
     ConfigurationPlugin,
     LifecyclePlugin,
     LifecycleResult,
+    LinkWriteback,
     PluginManifest,
-    RepositoryRelocation,
 )
 from imbi_common.plugins.registry import RegistryEntry
 
@@ -141,16 +141,16 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         )
         insert.assert_awaited_once()
 
-    def test_archive_heals_relocated_link(self) -> None:
-        # A lifecycle plugin that reports a repo rename on ctx triggers a
-        # self-heal of the stored link via update_project_link.
+    def test_archive_persists_link_writeback(self) -> None:
+        # A lifecycle plugin that reports a link writeback on ctx
+        # triggers a persist of the stored link via update_project_link.
         class _Reloc(LifecyclePlugin):
             manifest = PluginManifest(
                 slug='gh', name='gh', plugin_type='lifecycle'
             )
 
             async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
-                ctx.repository_relocation = RepositoryRelocation(
+                ctx.link_writeback = LinkWriteback(
                     link_key='github-repository',
                     new_url='https://github.com/octo/renamed',
                     old_owner_repo='octo/demo',
@@ -174,7 +174,8 @@ class DispatchLifecycleTestCase(unittest.TestCase):
             results, _ = self._run([_resolved(entry)])
         self.assertEqual(results[0].status, 'ok')
         update_link.assert_awaited_once()
-        # heal_relocated_link(db, project_id, link_key, new_url)
+        # persist_link_writeback(db, ctx) -> update_project_link(
+        #     db, project_id, link_key, new_url)
         args = update_link.await_args.args
         self.assertEqual(args[2], 'github-repository')
         self.assertEqual(args[3], 'https://github.com/octo/renamed')

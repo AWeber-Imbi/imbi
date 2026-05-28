@@ -246,37 +246,39 @@ async def update_project_link(
     return True
 
 
-async def heal_relocated_link(db: graph.Graph, ctx: PluginContext) -> None:
-    """Persist a repository rename a plugin reported on ``ctx``.
+async def persist_link_writeback(db: graph.Graph, ctx: PluginContext) -> None:
+    """Persist a project-link URL a plugin reported on ``ctx``.
 
-    A deployment / lifecycle plugin sets ``ctx.repository_relocation``
-    when the remote reports the repository has permanently moved (e.g. a
-    GitHub ``301`` after a rename). Rewrite the project's stored link so
-    later calls skip the redirect and the UI shows the current name.
-    Best-effort: a write failure is logged and swallowed so self-healing
-    never fails the user-facing request whose result we already have.
+    A deployment / lifecycle plugin sets ``ctx.link_writeback`` when the
+    canonical URL for one of the project's external links has changed --
+    e.g. after creating a new repo, after a rename that returned a
+    ``301``, or after a transfer to a new owner. Rewrite the project's
+    stored link so later calls hit the canonical URL and the UI shows
+    the current name. Best-effort: a write failure is logged and
+    swallowed so persistence never fails the user-facing request whose
+    result we already have.
     """
-    reloc = ctx.repository_relocation
-    if reloc is None:
+    writeback = ctx.link_writeback
+    if writeback is None:
         return
     try:
         changed = await update_project_link(
-            db, ctx.project_id, reloc.link_key, reloc.new_url
+            db, ctx.project_id, writeback.link_key, writeback.new_url
         )
     except Exception:  # noqa: BLE001
         LOGGER.warning(
-            'Failed to self-heal relocated repository link for project %s',
+            'Failed to persist link writeback for project %s',
             ctx.project_id,
             exc_info=True,
         )
         return
     if changed:
         LOGGER.info(
-            'Self-healed %s link for project %s after repo rename %s -> %s',
-            reloc.link_key,
+            'Persisted %s link for project %s (%s -> %s)',
+            writeback.link_key,
             ctx.project_id,
-            reloc.old_owner_repo,
-            reloc.new_owner_repo,
+            writeback.old_owner_repo,
+            writeback.new_owner_repo,
         )
 
 

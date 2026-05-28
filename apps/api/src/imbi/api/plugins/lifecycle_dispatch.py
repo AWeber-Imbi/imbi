@@ -24,8 +24,8 @@ from imbi_common.clickhouse import client as ch_client
 from imbi_common.plugins.base import (
     LifecyclePlugin,
     LifecycleResult,
+    LinkWriteback,
     PluginContext,
-    RepositoryRelocation,
 )
 from imbi_common.plugins.errors import PluginCredentialsMissing
 
@@ -130,17 +130,17 @@ async def _invoke_one(
 
     # call_with_identity_retry re-attaches identity onto a fresh context
     # before invoking ``_call`` (attached defaults to False here), so the
-    # plugin mutates that inner context, not ``ctx``. Capture any
-    # relocation it reports through the closure so we can self-heal the
+    # plugin mutates that inner context, not ``ctx``. Capture any link
+    # writeback it reports through the closure so we can persist the
     # link after the call regardless of which context instance was used.
-    captured_relocation: list[RepositoryRelocation] = []
+    captured_writeback: list[LinkWriteback] = []
 
     async def _call(c: PluginContext) -> LifecycleResult:
         credentials = await _resolve_credentials(db, c, resolved)
         method = getattr(handler, method_name)
         res: LifecycleResult = await call_with_timeout(method(c, credentials))
-        if c.repository_relocation is not None:
-            captured_relocation.append(c.repository_relocation)
+        if c.link_writeback is not None:
+            captured_writeback.append(c.link_writeback)
         return res
 
     try:
@@ -193,13 +193,13 @@ async def _invoke_one(
             message=f'{type(exc).__name__}: {exc}',
         )
 
-    if captured_relocation:
+    if captured_writeback:
         # Lazy import to avoid the endpoints/_helpers <-> this-module
         # cycle described above.
-        from imbi_api.endpoints._helpers import heal_relocated_link
+        from imbi_api.endpoints._helpers import persist_link_writeback
 
-        ctx.repository_relocation = captured_relocation[-1]
-        await heal_relocated_link(db, ctx)
+        ctx.link_writeback = captured_writeback[-1]
+        await persist_link_writeback(db, ctx)
 
     return LifecycleInvocation(
         plugin_id=resolved.plugin_id,
