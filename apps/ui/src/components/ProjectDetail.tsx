@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { useNavigate } from 'react-router-dom'
 
@@ -11,6 +18,7 @@ import {
   Copy,
   Filter,
   Info,
+  RefreshCw,
   Settings2 as SettingsIcon,
   TrendingDown,
 } from 'lucide-react'
@@ -28,6 +36,7 @@ import {
   listProjectDocuments,
   listProjectPlugins,
   listScoringPolicies,
+  previewProjectLifecycle,
   type ProjectSchemaResponse,
   type ScoreTrend,
 } from '@/api/endpoints'
@@ -47,6 +56,7 @@ import { ProjectAttributesSection } from '@/components/ProjectAttributesSection'
 import { ProjectEnvironmentsCard } from '@/components/ProjectEnvironmentsCard'
 import { ProjectRelationshipsTab } from '@/components/ProjectRelationshipsTab'
 import { ProjectSettingsTab } from '@/components/ProjectSettingsTab'
+import { RelocatePreviewDialog } from '@/components/RelocatePreviewDialog'
 import { ScoreHistoryTab } from '@/components/ScoreHistoryTab'
 import { Button } from '@/components/ui/button'
 import {
@@ -78,7 +88,7 @@ import { formatDateTime } from '@/lib/formatDate'
 import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import { formatFieldKey } from '@/lib/project-field-formatting'
 import { sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
-import type { Project, ScoringPolicy } from '@/types'
+import type { LifecyclePreviewEntry, Project, ScoringPolicy } from '@/types'
 
 interface ProjectDetailProps {
   initialSubAction?: string
@@ -114,6 +124,17 @@ export function ProjectDetail({
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug || ''
   const { patch, pendingPath } = useProjectPatch(orgSlug, project.id)
+  // When a project-type change would relocate a backing remote, hold the
+  // pending slugs + the relocating plugins here to drive the opt-in
+  // confirmation dialog (null = no pending relocate decision).
+  const [relocatePreview, setRelocatePreview] = useState<null | {
+    entries: LifecyclePreviewEntry[]
+    slugs: string[]
+  }>(null)
+  // Tracks the in-flight lifecycle-preview request so a later commit can
+  // cancel an earlier one and we can ignore superseded responses (which
+  // would otherwise reopen the dialog with stale slugs).
+  const previewRequestRef = useRef<AbortController | null>(null)
   const navigate = useNavigate()
   const { copied: copiedProjectId, copy: copyProjectId } = useClipboard()
 
@@ -322,6 +343,21 @@ export function ProjectDetail({
       prev.some((r) => r.runId === run.runId) ? prev : [...prev, run],
     )
   }, [])
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true)
+    try {
+      // Reload everything scoped to this project (detail, releases,
+      // events, score trends/breakdown, plugins, schema, …) — every
+      // query whose key carries this project id. Org-level lookups
+      // (link defs, scoring policies, identity plugins) are left alone.
+      await queryClient.invalidateQueries({
+        predicate: (q) => q.queryKey.includes(project.id),
+      })
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [queryClient, project.id])
   const handleRunTerminal = useCallback(
     (runId: string) => {
       // Invalidate the originating project's release cache rather than
@@ -609,8 +645,43 @@ export function ProjectDetail({
     [patch],
   )
   const handleCommitProjectTypeSlugs = useCallback(
-    (v: string[]) => patch('/project_type_slugs', v),
-    [patch],
+    async (v: string[]) => {
+      // No lifecycle plugin assigned → no remote can relocate; commit
+      // directly and skip the preview round-trip.
+      if (!hasLifecyclePlugin) {
+        await patch('/project_type_slugs', v)
+        return
+      }
+      const relocating = await previewRelocations(
+        previewRequestRef,
+        orgSlug,
+        project.id,
+        v,
+      )
+      // Superseded by a newer commit → that call owns the outcome; bail.
+      if (relocating === null) return
+      // Nothing would move → plain metadata change, no confirmation needed.
+      if (relocating.length === 0) {
+        await patch('/project_type_slugs', v)
+        return
+      }
+      setRelocatePreview({ entries: relocating, slugs: v })
+    },
+    [hasLifecyclePlugin, orgSlug, project.id, patch],
+  )
+  const handleRelocateConfirm = useCallback(
+    async (transfer: boolean) => {
+      const decision = relocatePreview
+      if (!decision) return
+      // Keep the dialog mounted during the patch so it can render its
+      // pending state, and so a failure preserves the user's preview and
+      // transfer choice instead of silently dropping them.
+      await patch('/project_type_slugs', decision.slugs, {
+        transferRepository: transfer,
+      })
+      setRelocatePreview(null)
+    },
+    [relocatePreview, patch],
   )
 
   const renderNameValue = useCallback(
@@ -850,22 +921,42 @@ export function ProjectDetail({
         <TabsList className="mb-6">
           {tabs.map((tab) =>
             tab.id === 'settings' ? (
-              <TooltipProvider delayDuration={200} key={tab.id}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <TabsTrigger
-                      aria-label="Project Settings"
-                      className="ml-auto"
-                      value={tab.id}
-                    >
-                      <SettingsIcon className="size-4" />
-                    </TabsTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Project Settings</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <Fragment key={tab.id}>
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        aria-label="Refresh project data"
+                        className="text-muted-foreground hover:text-primary -mb-px ml-auto inline-flex items-center justify-center border-b-2 border-transparent px-1 pt-1 pb-2 transition-colors disabled:opacity-50"
+                        disabled={isRefreshing}
+                        onClick={() => void handleRefresh()}
+                        type="button"
+                      >
+                        <RefreshCw
+                          className={
+                            isRefreshing ? 'size-4 animate-spin' : 'size-4'
+                          }
+                        />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Refresh project data</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <TabsTrigger aria-label="Project Settings" value={tab.id}>
+                        <SettingsIcon className="size-4" />
+                      </TabsTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Project Settings</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </Fragment>
             ) : (
               <TabsTrigger key={tab.id} value={tab.id}>
                 {tab.label}
@@ -1167,6 +1258,13 @@ export function ProjectDetail({
           toastId={run.toastId}
         />
       ))}
+      <RelocatePreviewDialog
+        entries={relocatePreview?.entries ?? []}
+        onCancel={() => setRelocatePreview(null)}
+        onConfirm={handleRelocateConfirm}
+        open={relocatePreview !== null}
+        pending={pendingPath === '/project_type_slugs'}
+      />
     </div>
   )
 }
@@ -1219,6 +1317,37 @@ function fmtAttributeValue(value: unknown): string {
   return isFinite(n) && String(value).trim() !== ''
     ? String(Math.round(n))
     : String(value)
+}
+
+// Run the lifecycle preview for a proposed project-type change and return the
+// plugins that would relocate. Returns null when this request was superseded
+// by a newer commit (its in-flight fetch is aborted so the slower response
+// can't reopen the dialog with stale slugs); returns [] when the preview
+// merely failed, so the caller falls back to a metadata-only change. The
+// abort/supersede handling is irreducibly a few branches for correct request
+// cancellation, hence the complexity suppression.
+// fallow-ignore-next-line complexity
+async function previewRelocations(
+  requestRef: { current: AbortController | null },
+  orgSlug: string,
+  projectId: string,
+  slugs: string[],
+): Promise<LifecyclePreviewEntry[] | null> {
+  requestRef.current?.abort()
+  const controller = new AbortController()
+  requestRef.current = controller
+  try {
+    const preview = await previewProjectLifecycle(
+      orgSlug,
+      projectId,
+      slugs,
+      controller.signal,
+    )
+    return preview.previews.filter((p) => p.would_relocate)
+  } catch {
+    if (controller.signal.aborted) return null
+    return []
+  }
 }
 
 function ScoreBreakdownDetail({

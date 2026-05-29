@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-import { Lock, Plug } from 'lucide-react'
+import { Lock, Plug, X } from 'lucide-react'
 
 import logoDark from '@/assets/logo-dark.svg'
 import logoLight from '@/assets/logo-light.svg'
@@ -12,16 +12,21 @@ import type { InstalledPlugin } from '@/types'
 
 interface UnconnectedIntegrationWidgetProps {
   onConnect: () => void
+  // When provided, renders a dismiss control so the actor can hide this
+  // tile.  Omit it for a non-dismissable widget.
+  onDismiss?: () => void
   onManage: () => void
   pending: boolean
   plugin: InstalledPlugin
 }
 
 // Dashboard "sales pitch" tile rendered for an enabled identity plugin
-// the actor hasn't yet connected.  The widget can't be removed from the
-// dashboard — it disappears on its own once the connection is active.
+// the actor hasn't yet connected.  It disappears on its own once the
+// connection is active, and the actor can dismiss it early via the close
+// control (persisted by the caller).
 export function UnconnectedIntegrationWidget({
   onConnect,
+  onDismiss,
   onManage,
   pending,
   plugin,
@@ -47,6 +52,16 @@ export function UnconnectedIntegrationWidget({
 
   return (
     <article className="border-border bg-card relative grid min-h-60 grid-cols-1 overflow-hidden rounded-2xl border shadow-sm md:grid-cols-[1fr_160px] xl:grid-cols-[1fr_200px]">
+      {onDismiss ? (
+        <button
+          aria-label={`Dismiss ${plugin.name} connection prompt`}
+          className="text-tertiary hover:bg-secondary hover:text-secondary focus:ring-ring absolute top-3 right-3 z-10 rounded p-1.5 transition-colors focus:ring-2 focus:outline-none"
+          onClick={onDismiss}
+          type="button"
+        >
+          <X className="size-4" />
+        </button>
+      ) : null}
       <div className="flex flex-col justify-between p-6">
         <div>
           <span className="border-amber-border bg-amber-bg text-amber-text inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide">

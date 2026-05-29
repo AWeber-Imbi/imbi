@@ -212,6 +212,29 @@ describe('useProjectPatch', () => {
     expect(toast.error).not.toHaveBeenCalled()
   })
 
+  it('forwards transferRepository to patchProject when opted in', async () => {
+    const spy = vi
+      .spyOn(endpoints, 'patchProject')
+      .mockResolvedValue(baseProject as never)
+
+    const { result } = renderHook(() => useProjectPatch('o', 'p1'), {
+      wrapper: wrapper(qc),
+    })
+
+    await act(async () => {
+      await result.current.patch('/project_type_slugs', ['api'], {
+        transferRepository: true,
+      })
+    })
+
+    expect(spy).toHaveBeenCalledWith(
+      'o',
+      'p1',
+      [{ op: 'add', path: '/project_type_slugs', value: ['api'] }],
+      { transferRepository: true },
+    )
+  })
+
   it('tracks pendingPath during the mutation', async () => {
     let resolveIt!: (v: unknown) => void
     vi.spyOn(endpoints, 'patchProject').mockImplementation(

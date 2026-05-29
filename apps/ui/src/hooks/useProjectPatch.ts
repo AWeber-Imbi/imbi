@@ -18,7 +18,11 @@ const SCORE_REFRESH_MAX_ATTEMPTS = 5
 const SCORE_REFRESH_BACKOFF_FACTOR = 2
 
 export interface UseProjectPatchResult {
-  patch: (path: string, value: unknown) => Promise<void>
+  patch: (
+    path: string,
+    value: unknown,
+    options?: { transferRepository?: boolean },
+  ) => Promise<void>
   pendingPath: null | string
   scheduleScoreRefresh: () => void
 }
@@ -75,7 +79,11 @@ export function useProjectPatch(
   }, [invalidateScoreQueries])
 
   const patch = useCallback(
-    async (path: string, value: unknown) => {
+    async (
+      path: string,
+      value: unknown,
+      options?: { transferRepository?: boolean },
+    ) => {
       const key = ['project', orgSlug, projectId] as const
       const op = buildOp(path, value)
       const snapshot = qc.getQueryData<Project>(key)
@@ -100,11 +108,11 @@ export function useProjectPatch(
           }
         }
 
-        const response: ProjectMutationResponse = await patchProject(
-          orgSlug,
-          projectId,
-          [op],
-        )
+        // Only forward ``options`` when present so a plain patch calls
+        // ``patchProject`` with its original 3-arg signature.
+        const response: ProjectMutationResponse = options
+          ? await patchProject(orgSlug, projectId, [op], options)
+          : await patchProject(orgSlug, projectId, [op])
         // Lifecycle plugins (e.g. GitHub repo rename / description sync)
         // run after the project write commits.  Surface failed ones so
         // they're not silent; ``ok``/``skipped`` results are noise from
