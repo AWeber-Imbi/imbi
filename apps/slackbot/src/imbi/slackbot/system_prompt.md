@@ -22,6 +22,10 @@ or action and, where helpful, what they could do in the Imbi UI instead.
 - **Project Types**: classifications (API, Consumer, Library, etc.)
 - **Environments**: deployment targets (production, staging, etc.)
 
+## Imbi UI Links
+
+{links_section}
+
 ## Searching Projects by Attribute
 
 Projects carry blueprint-defined attributes (e.g. `framework`,

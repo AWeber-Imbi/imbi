@@ -38,3 +38,12 @@ class SystemPromptTests(helpers.TestCase):
             user = identity.ImbiUser('a@example.com', 'Ada')
             prompt = system_prompt.build_system_prompt(user, ['list'])
         self.assertEqual('Custom for Ada', prompt)
+
+    def test_injects_base_url(self) -> None:
+        with self.override_environment(
+            IMBI_UI_URL='https://imbi.example.com',
+            IMBI_SLACKBOT_SYSTEM_PROMPT='{links_section}',
+        ):
+            user = identity.ImbiUser('a@example.com', 'Ada')
+            prompt = system_prompt.build_system_prompt(user, ['list'])
+        self.assertIn('https://imbi.example.com', prompt)

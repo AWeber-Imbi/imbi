@@ -11,6 +11,7 @@ from imbi_slackbot import (
     app_status,
     client,
     identity,
+    links,
     mcp,
     slack_handler,
 )
@@ -38,6 +39,12 @@ async def _mcp_lifespan() -> abc.AsyncGenerator[None, None]:
 
 
 @contextlib.asynccontextmanager
+async def _links_lifespan() -> abc.AsyncGenerator[None, None]:
+    await links.initialize()
+    yield
+
+
+@contextlib.asynccontextmanager
 async def _slack_lifespan() -> abc.AsyncGenerator[None, None]:
     # Runs last so the graph, Anthropic client, and MCP tools are ready
     # before the bot starts accepting Slack events.
@@ -62,6 +69,7 @@ def create_app() -> fastapi.FastAPI:
             graph.graph_lifespan,
             _anthropic_lifespan,
             _mcp_lifespan,
+            _links_lifespan,
             _slack_lifespan,
         ),
     )

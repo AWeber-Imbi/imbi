@@ -14,6 +14,7 @@ class AppTests(helpers.TestCase):
         app_instance = imbi_slackbot.app.create_app()
         self.assertIsInstance(app_instance, fastapi.FastAPI)
 
+    @mock.patch('imbi_slackbot.links.initialize')
     @mock.patch('imbi_slackbot.slack_handler.aclose')
     @mock.patch('imbi_slackbot.slack_handler.initialize')
     @mock.patch('imbi_slackbot.mcp.aclose')
@@ -30,6 +31,7 @@ class AppTests(helpers.TestCase):
         _mcp_close: mock.AsyncMock,
         _slack_init: mock.AsyncMock,
         _slack_close: mock.AsyncMock,
+        _links_init: mock.AsyncMock,
     ) -> None:
         start_time = datetime.datetime.now(datetime.UTC)
         with fastapi.testclient.TestClient(

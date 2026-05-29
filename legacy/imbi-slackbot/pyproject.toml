@@ -165,6 +165,7 @@ max-complexity = 15
 [tool.ruff.lint.per-file-ignores]
 "src/imbi_slackbot/client.py" = ["PLW0603"]
 "src/imbi_slackbot/identity.py" = ["PLW0603"]
+"src/imbi_slackbot/links.py" = ["PLW0603"]
 "src/imbi_slackbot/mcp.py" = ["PLW0603"]
 "src/imbi_slackbot/settings.py" = ["PLW0603"]
 "src/imbi_slackbot/slack_handler.py" = ["PLW0603"]

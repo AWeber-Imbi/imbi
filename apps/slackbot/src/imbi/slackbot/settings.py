@@ -47,6 +47,16 @@ class Slackbot(pydantic_settings.BaseSettings):
         validation_alias='IMBI_INTERNAL_API_URL',
     )
 
+    # Public base URL of the Imbi UI (no path component), used to build
+    # absolute deep links to resources in replies. Shares the
+    # ``IMBI_UI_URL`` env var with imbi-api.
+    ui_url: str = pydantic.Field(default='', validation_alias='IMBI_UI_URL')
+
+    @pydantic.field_validator('ui_url')
+    @classmethod
+    def _strip_trailing_slash(cls, value: str) -> str:
+        return value.rstrip('/')
+
     @property
     def api_key(self) -> str | None:
         """Read the Anthropic API key from ANTHROPIC_API_KEY."""

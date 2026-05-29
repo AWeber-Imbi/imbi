@@ -2,7 +2,7 @@
 
 import pathlib
 
-from imbi_slackbot import identity, settings
+from imbi_slackbot import identity, links, settings
 
 _PROMPT_PATH = pathlib.Path(__file__).parent / 'system_prompt.md'
 _prompt_template: str | None = None
@@ -57,10 +57,26 @@ def build_system_prompt(
             'direct the user to the Imbi UI for data queries.'
         )
 
+    base_url = settings.get_slackbot_settings().ui_url
+    patterns = links.get_url_patterns()
+    if base_url:
+        links_section = (
+            f'The Imbi UI is at {base_url}. Link to a resource with Slack '
+            f'link syntax — <{base_url}/projects/123|project name> — by '
+            'appending one of these paths to the base URL:'
+            f'\n\n{patterns}'
+        )
+    else:
+        links_section = (
+            'Imbi UI paths for pointing the user at a page (no base URL is '
+            f'configured, so mention the path):\n\n{patterns}'
+        )
+
     template = _load_template()
     return template.format(
         display_name=user.display_name,
         email=user.email,
         admin_flag='  [Admin]' if user.is_admin else '',
         tools_section=tools_section,
+        links_section=links_section,
     )
