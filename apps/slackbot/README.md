@@ -42,6 +42,8 @@ Mode connection runs as a background task alongside it.
 | `ANTHROPIC_API_KEY` | Anthropic API key (enables the bot when set) |
 | `IMBI_AUTH_JWT_SECRET` | Shared HS256 secret used to mint per-user tokens |
 | `IMBI_INTERNAL_API_URL` | In-cluster base URL of the Imbi API |
+| `IMBI_UI_URL` | Public base URL of the Imbi UI, used to build deep links |
+| `IMBI_INTERNAL_UI_URL` | In-cluster UI address for fetching `llms.txt` (e.g. the Caddy frontend); falls back to `IMBI_UI_URL` |
 | `POSTGRES_URL` | Imbi graph (Apache AGE) connection URL |
 | `IMBI_SLACKBOT_MODEL` | Claude model (default `claude-sonnet-4-6`) |
 

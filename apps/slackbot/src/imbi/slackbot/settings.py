@@ -52,10 +52,30 @@ class Slackbot(pydantic_settings.BaseSettings):
     # ``IMBI_UI_URL`` env var with imbi-api.
     ui_url: str = pydantic.Field(default='', validation_alias='IMBI_UI_URL')
 
-    @pydantic.field_validator('ui_url')
+    # In-cluster address of the Imbi UI used to fetch its ``llms.txt`` for
+    # URL-pattern guidance. Distinct from ``IMBI_UI_URL`` (the UI's
+    # *public* URL, used for deep links): fetching ``llms.txt`` is a
+    # service-to-service call that should stay in-cluster rather than
+    # round-trip through the public ingress. Mirrors
+    # ``IMBI_INTERNAL_API_URL``; falls back to ``ui_url`` when unset.
+    internal_ui_url: str = pydantic.Field(
+        default='', validation_alias='IMBI_INTERNAL_UI_URL'
+    )
+
+    @pydantic.field_validator('ui_url', 'internal_ui_url')
     @classmethod
     def _strip_trailing_slash(cls, value: str) -> str:
         return value.rstrip('/')
+
+    @property
+    def llms_base_url(self) -> str:
+        """Base URL for fetching the UI's ``llms.txt``.
+
+        Prefers the in-cluster ``IMBI_INTERNAL_UI_URL`` and falls back to
+        the public ``IMBI_UI_URL`` so existing single-URL deployments keep
+        working.
+        """
+        return self.internal_ui_url or self.ui_url
 
     @property
     def api_key(self) -> str | None:
