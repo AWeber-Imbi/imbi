@@ -71,7 +71,7 @@ class AttributePolicy(_PolicyBase):
         if value is None:
             return None
         if self.value_score_map is not None:
-            mapped = self.value_score_map.get(str(value))
+            mapped = self.value_score_map.get(_value_key(value))
             return float(mapped) if mapped is not None else None
         if self.range_score_map is not None:
             try:
@@ -204,6 +204,21 @@ def is_missing(value: typing.Any) -> bool:
     if isinstance(value, (list, tuple, set, dict)):
         return len(value) == 0
     return False
+
+
+def _value_key(value: typing.Any) -> str:
+    """Normalize a project value to a ``value_score_map`` lookup key.
+
+    Booleans need special handling: ``str(True)`` is ``'True'`` but
+    policy maps store the JSON-style lowercase ``'true'``/``'false'``.
+    AGE persists some boolean attributes as real booleans and others as
+    the strings ``'true'``/``'false'``; lowercasing only ``bool`` lets
+    both representations match the same map keys without disturbing
+    case-sensitive string values such as ``'GitHub Actions'``.
+    """
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    return str(value)
 
 
 def _parse_range(key: str) -> tuple[float, float]:

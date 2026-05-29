@@ -61,6 +61,27 @@ class EvaluationTests(unittest.TestCase):
     def test_value_map_missing(self) -> None:
         self.assertIsNone(_policy().evaluate(None))
 
+    def test_value_map_boolean_true(self) -> None:
+        # AGE stores some boolean attributes as real booleans; ``str(True)``
+        # is ``'True'`` which must still match the lowercase ``'true'`` key.
+        policy = _policy(value_score_map={'true': 100, 'false': 0})
+        self.assertEqual(100.0, policy.evaluate(True))
+
+    def test_value_map_boolean_false(self) -> None:
+        policy = _policy(value_score_map={'true': 100, 'false': 0})
+        self.assertEqual(0.0, policy.evaluate(False))
+
+    def test_value_map_string_true_still_matches(self) -> None:
+        # Attributes stored as the string ``'true'`` keep working.
+        policy = _policy(value_score_map={'true': 100, 'false': 0})
+        self.assertEqual(100.0, policy.evaluate('true'))
+
+    def test_value_map_case_sensitive_string_preserved(self) -> None:
+        # Non-boolean keys must not be lowercased.
+        policy = _policy(value_score_map={'GitHub Actions': 100})
+        self.assertEqual(100.0, policy.evaluate('GitHub Actions'))
+        self.assertIsNone(policy.evaluate('github actions'))
+
     def test_range_closed(self) -> None:
         policy = _policy(
             value_score_map=None,
