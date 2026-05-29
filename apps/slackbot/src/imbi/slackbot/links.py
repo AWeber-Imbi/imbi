@@ -17,6 +17,10 @@ from imbi_slackbot import settings
 
 LOGGER = logging.getLogger(__name__)
 
+# httpx.InvalidURL is a separate hierarchy from httpx.HTTPError, so a
+# malformed IMBI_UI_URL must be caught explicitly to keep startup fail-soft.
+_FETCH_ERRORS = (httpx.HTTPError, httpx.InvalidURL)
+
 # Used when the UI's llms.txt cannot be fetched. Keep this roughly in sync
 # with imbi-ui's public/llms.txt, which is the canonical source.
 FALLBACK_URL_PATTERNS = """\
@@ -55,7 +59,7 @@ async def initialize() -> None:
             response = await client.get(llms_url)
             response.raise_for_status()
         text = response.text.strip()
-    except httpx.HTTPError:
+    except _FETCH_ERRORS:
         LOGGER.warning(
             'Failed to load %s; using built-in URL patterns', llms_url
         )
