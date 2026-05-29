@@ -20,6 +20,7 @@ vi.mock('@/api/endpoints', async () => {
   return {
     ...actual,
     archiveProject: vi.fn(),
+    deleteProject: vi.fn(),
     listEnvironments: vi.fn(),
     listLinkDefinitions: vi.fn(),
     listProjectPlugins: vi.fn(),
@@ -28,7 +29,7 @@ vi.mock('@/api/endpoints', async () => {
 })
 
 vi.mock('sonner', () => ({
-  toast: { error: vi.fn(), success: vi.fn() },
+  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
 }))
 
 // Isolate the archive card: the surrounding editor cards do their own
@@ -162,6 +163,117 @@ describe('ProjectSettingsTab archive lifecycle results', () => {
       expect(toast.success).toHaveBeenCalledWith('Project restored')
     })
     expect(toast.error).not.toHaveBeenCalled()
+  })
+})
+
+describe('ProjectSettingsTab delete flow', () => {
+  let toast: {
+    error: ReturnType<typeof vi.fn>
+    success: ReturnType<typeof vi.fn>
+    warning: ReturnType<typeof vi.fn>
+  }
+
+  const LIFECYCLE_PLUGIN = {
+    default: true,
+    label: 'GitHub',
+    options: {},
+    plugin_id: 'lc-1',
+    plugin_slug: 'github-lifecycle',
+    source: 'project',
+    tab: 'lifecycle',
+  } as PluginAssignmentResponse
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    mockAuthUser = { is_admin: false, permissions: [] }
+    vi.mocked(endpoints.listEnvironments).mockResolvedValue([])
+    vi.mocked(endpoints.listLinkDefinitions).mockResolvedValue([])
+    vi.mocked(endpoints.listProjectPlugins).mockResolvedValue([])
+    toast = (await import('sonner')).toast as unknown as typeof toast
+  })
+
+  it('omits the "Also delete repository" checkbox without a lifecycle plugin', async () => {
+    // No lifecycle plugins → checkbox is suppressed because there is
+    // no remote for the operator to keep behind.
+    const { findByRole, queryByLabelText } = renderTab()
+    fireEvent.click(await findByRole('button', { name: 'Delete Project' }))
+    expect(queryByLabelText(/Also delete the associated repository/)).toBeNull()
+  })
+
+  it('passes deleteRepository=true by default when checkbox is present', async () => {
+    vi.mocked(endpoints.listProjectPlugins).mockResolvedValue([
+      LIFECYCLE_PLUGIN,
+    ])
+    vi.mocked(endpoints.deleteProject).mockResolvedValue({
+      lifecycle_results: [],
+    })
+
+    const { findByPlaceholderText, findByRole } = renderTab()
+    fireEvent.click(await findByRole('button', { name: 'Delete Project' }))
+    fireEvent.change(await findByPlaceholderText('demo'), {
+      target: { value: 'demo' },
+    })
+    fireEvent.click(await findByRole('button', { name: 'Confirm Delete' }))
+
+    await waitFor(() => {
+      expect(endpoints.deleteProject).toHaveBeenCalledWith('acme', 'p1', {
+        deleteRepository: true,
+      })
+    })
+  })
+
+  it('sends deleteRepository=false when the operator unchecks the box', async () => {
+    vi.mocked(endpoints.listProjectPlugins).mockResolvedValue([
+      LIFECYCLE_PLUGIN,
+    ])
+    vi.mocked(endpoints.deleteProject).mockResolvedValue({
+      lifecycle_results: [],
+    })
+
+    const { findAllByRole, findByPlaceholderText, findByRole } = renderTab()
+    fireEvent.click(await findByRole('button', { name: 'Delete Project' }))
+    // The Radix Checkbox renders as a button with role="checkbox".
+    const checkboxes = await findAllByRole('checkbox')
+    fireEvent.click(checkboxes[0])
+    fireEvent.change(await findByPlaceholderText('demo'), {
+      target: { value: 'demo' },
+    })
+    fireEvent.click(await findByRole('button', { name: 'Confirm Delete' }))
+
+    await waitFor(() => {
+      expect(endpoints.deleteProject).toHaveBeenCalledWith('acme', 'p1', {
+        deleteRepository: false,
+      })
+    })
+  })
+
+  it('surfaces a failed lifecycle delete result as a warning toast', async () => {
+    vi.mocked(endpoints.listProjectPlugins).mockResolvedValue([
+      LIFECYCLE_PLUGIN,
+    ])
+    vi.mocked(endpoints.deleteProject).mockResolvedValue({
+      lifecycle_results: [
+        {
+          artifacts: {},
+          message: '401 from GitHub',
+          plugin_id: 'lc-1',
+          plugin_slug: 'github-lifecycle',
+          status: 'failed',
+        },
+      ],
+    })
+
+    const { findByPlaceholderText, findByRole } = renderTab()
+    fireEvent.click(await findByRole('button', { name: 'Delete Project' }))
+    fireEvent.change(await findByPlaceholderText('demo'), {
+      target: { value: 'demo' },
+    })
+    fireEvent.click(await findByRole('button', { name: 'Confirm Delete' }))
+
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalledTimes(1)
+    })
+    expect(toast.warning.mock.calls[0][0]).toContain('1 integration failed')
   })
 })
 

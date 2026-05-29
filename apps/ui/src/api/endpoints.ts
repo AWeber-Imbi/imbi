@@ -43,6 +43,7 @@ import type {
   IdentityConnectionStartRequest,
   IdentityConnectionStartResponse,
   InstalledPlugin,
+  LifecyclePreviewResponse,
   LinkDefinition,
   LinkDefinitionCreate,
   LocalAuthConfig,
@@ -78,6 +79,8 @@ import type {
   PluginUpdate,
   Project,
   ProjectCreate,
+  ProjectDeletedResponse,
+  ProjectMutationResponse,
   ProjectRelationshipsResponse,
   ProjectType,
   ProjectTypeCreate,
@@ -318,16 +321,51 @@ export const patchProject = (
   orgSlug: string,
   projectId: string,
   operations: PatchOperation[],
-) =>
-  apiClient.patch<Project>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}`,
+  options?: { transferRepository?: boolean },
+) => {
+  // ``transfer_repository`` is the opt-in for the relocate dispatch
+  // (lifecycle plugins moving the backing remote when project types
+  // change).  Default is ``false`` so the URL only carries the param
+  // when a caller explicitly opted in.
+  const query =
+    options?.transferRepository === true ? '?transfer_repository=true' : ''
+  return apiClient.patch<ProjectMutationResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}${query}`,
     operations,
   )
+}
 
-export const deleteProject = (orgSlug: string, projectId: string) =>
-  apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}`,
+export const deleteProject = (
+  orgSlug: string,
+  projectId: string,
+  options?: { deleteRepository?: boolean },
+) => {
+  // ``delete_repository`` defaults server-side to ``true`` so the
+  // common case (delete project + remote together) needs no flag.
+  // Only emit the param when the operator explicitly opted *out*.
+  const query =
+    options?.deleteRepository === false ? '?delete_repository=false' : ''
+  return apiClient.delete<ProjectDeletedResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}${query}`,
   )
+}
+
+export const previewProjectLifecycle = (
+  orgSlug: string,
+  projectId: string,
+  projectTypeSlugs: string[],
+  signal?: AbortSignal,
+) => {
+  const params = new URLSearchParams()
+  for (const slug of projectTypeSlugs) {
+    params.append('project_type_slugs', slug)
+  }
+  return apiClient.get<LifecyclePreviewResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/lifecycle/preview?${params.toString()}`,
+    undefined,
+    signal,
+  )
+}
 
 export const archiveProject = (orgSlug: string, projectId: string) =>
   apiClient.post<ArchiveProjectResponse>(

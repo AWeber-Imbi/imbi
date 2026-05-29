@@ -148,6 +148,70 @@ describe('useProjectPatch', () => {
     expect(toast.error).toHaveBeenCalled()
   })
 
+  it('toasts a failure when the PATCH response carries a failed lifecycle result', async () => {
+    // The Imbi state change succeeded but the GitHub plugin's
+    // ``on_project_updated`` (e.g. repo rename) failed -- surface it so
+    // the operator can fix the sync rather than discover the drift
+    // hours later.  ``ok``/``skipped`` results are deliberately silent.
+    vi.spyOn(endpoints, 'patchProject').mockResolvedValue({
+      ...baseProject,
+      lifecycle_results: [
+        {
+          artifacts: {},
+          message: '404 Not Found',
+          plugin_id: 'lc-1',
+          plugin_slug: 'github-lifecycle',
+          status: 'failed',
+        },
+        {
+          artifacts: {},
+          message: 'ok',
+          plugin_id: 'lc-2',
+          plugin_slug: 'other',
+          status: 'ok',
+        },
+      ],
+    } as never)
+
+    const { result } = renderHook(() => useProjectPatch('o', 'p1'), {
+      wrapper: wrapper(qc),
+    })
+
+    await act(async () => {
+      await result.current.patch('/slug', 'beta')
+    })
+
+    expect(toast.error).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(toast.error).mock.calls[0][0]).toContain(
+      '1 integration failed',
+    )
+  })
+
+  it('stays silent when every lifecycle result is ok or skipped', async () => {
+    vi.spyOn(endpoints, 'patchProject').mockResolvedValue({
+      ...baseProject,
+      lifecycle_results: [
+        {
+          artifacts: {},
+          message: 'Updated o/r',
+          plugin_id: 'lc-1',
+          plugin_slug: 'github-lifecycle',
+          status: 'ok',
+        },
+      ],
+    } as never)
+
+    const { result } = renderHook(() => useProjectPatch('o', 'p1'), {
+      wrapper: wrapper(qc),
+    })
+
+    await act(async () => {
+      await result.current.patch('/slug', 'beta')
+    })
+
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
   it('tracks pendingPath during the mutation', async () => {
     let resolveIt!: (v: unknown) => void
     vi.spyOn(endpoints, 'patchProject').mockImplementation(

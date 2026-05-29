@@ -14,11 +14,11 @@ export interface AgeScoringPolicyCreate extends ScoringPolicyCreateBase {
   category: 'age'
 }
 
-// Response from POST .../archive and .../unarchive: the updated project
-// plus the per-plugin lifecycle results.
-export interface ArchiveProjectResponse extends Project {
-  lifecycle_results?: LifecycleInvocation[]
-}
+// Back-compat alias: the archive / unarchive endpoints originally
+// shipped this response type, and downstream components import it by
+// name.  Identical shape to ``ProjectMutationResponse`` -- prefer the
+// new name in fresh code.
+export type ArchiveProjectResponse = ProjectMutationResponse
 
 export interface AttributeScoringPolicy extends ScoringPolicyBase {
   attribute_name: string
@@ -76,6 +76,21 @@ export interface LifecycleInvocation {
   plugin_id: string
   plugin_slug: string
   status: 'failed' | 'ok' | 'skipped'
+}
+
+// One row of the ``GET /projects/{id}/lifecycle/preview`` response --
+// per-plugin "would the project-type change move my target?" answer
+// the UI uses to gate the "Also move repository to ..." opt-in.
+export interface LifecyclePreviewEntry {
+  current_target: null | RelocationTarget
+  next_target: null | RelocationTarget
+  plugin_id: string
+  plugin_slug: string
+  would_relocate: boolean
+}
+
+export interface LifecyclePreviewResponse {
+  previews: LifecyclePreviewEntry[]
 }
 
 export type LinkDefinition = Schemas['LinkDefinitionResponse']
@@ -212,6 +227,16 @@ export interface ProjectCreate {
   team_slug: string
 }
 
+// Response from DELETE /projects/{id} (post-2.7).  Body carries only
+// the per-plugin lifecycle results -- the project node is gone by the
+// time the response is built.  Empty ``lifecycle_results`` means the
+// delete short-circuited the plugin dispatch
+// (``?delete_repository=false``) or the project had no lifecycle
+// plugins assigned.
+export interface ProjectDeletedResponse {
+  lifecycle_results: LifecycleInvocation[]
+}
+
 // Activity feed projection for the dashboard — not a 1:1 backend shape.
 export interface ProjectFeedEntry {
   display_name: string
@@ -226,6 +251,15 @@ export interface ProjectFeedEntry {
   what: 'created' | 'updated' | 'updated facts'
   when?: string
   who: string
+}
+
+// Response from project create / patch / archive / unarchive: the
+// updated project plus the per-plugin lifecycle results.  All four
+// endpoints share this shape post-`imbi-api` 2.7 -- the older
+// ``ArchiveProjectResponse`` alias is kept above for components still
+// referencing it by name.
+export interface ProjectMutationResponse extends Project {
+  lifecycle_results?: LifecycleInvocation[]
 }
 
 export type ProjectType = Schemas['ProjectTypeResponse']
@@ -272,6 +306,17 @@ export interface ReleaseInfo {
   deployed_at: string
   performed_by?: null | string
   tag?: null | string
+}
+
+// Where a lifecycle plugin would route the project's external link --
+// mirror of the API's ``RelocationTarget``.  The UI compares two
+// targets by ``identifier`` to decide whether a hypothetical
+// project-type change would actually move the repo (``would_relocate``
+// on :type:`LifecyclePreviewEntry`).
+export interface RelocationTarget {
+  display: null | string
+  identifier: string
+  link_key: string
 }
 
 // Scoring policy types — discriminated union on `category`. See

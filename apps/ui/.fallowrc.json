@@ -28,6 +28,7 @@
         "ScoreRollupRow",
         "GlobalScoreEvent",
         "MonthlyImprovementRow",
+        "previewProjectLifecycle",
         "TeamScoreSeries"
       ]
     },

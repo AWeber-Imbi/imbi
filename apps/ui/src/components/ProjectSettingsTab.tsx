@@ -27,6 +27,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -51,6 +52,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
   const { patch, scheduleScoreRefresh } = useProjectPatch(orgSlug, project.id)
   const [deleteConfirmSlug, setDeleteConfirmSlug] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteRepository, setDeleteRepository] = useState(true)
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
   const isArchived = project.archived === true
 
@@ -65,9 +67,37 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
   }
 
   const deleteMutation = useMutation({
-    mutationFn: () => deleteProject(orgSlug, project.id),
+    mutationFn: () => deleteProject(orgSlug, project.id, { deleteRepository }),
     onError: mutationErrorHandler('delete project'),
-    onSuccess: () => navigate('/'),
+    onSuccess: (data) => {
+      // Delete commits before the lifecycle dispatch runs, so a plugin
+      // failure (e.g. the GitHub repo delete) does not roll back the
+      // project removal -- surface it instead of swallowing.
+      const failed = (data?.lifecycle_results ?? []).filter(
+        (result) => result.status === 'failed',
+      )
+      if (failed.length > 0) {
+        toast.warning(
+          `Project deleted, but ${failed.length} integration${
+            failed.length > 1 ? 's' : ''
+          } failed`,
+          {
+            description: (
+              <ul className="mt-1 space-y-0.5">
+                {failed.map((result) => (
+                  <li key={result.plugin_id}>
+                    <span className="font-medium">{result.plugin_slug}</span>:{' '}
+                    {result.message ?? 'unknown error'}
+                  </li>
+                ))}
+              </ul>
+            ),
+            duration: 10000,
+          },
+        )
+      }
+      navigate('/')
+    },
   })
 
   const archiveMutation = useMutation({
@@ -130,6 +160,16 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
     queryFn: ({ signal }) => listProjectPlugins(orgSlug, project.id, signal),
     queryKey: ['projectPlugins', orgSlug, project.id],
   })
+
+  // Whether any lifecycle plugin is assigned to the project (project-
+  // level or via project type).  Drives the "Also delete the associated
+  // repository" checkbox in the delete-project flow: when no lifecycle
+  // plugin is present the checkbox is suppressed because there is no
+  // remote to delete.
+  const hasLifecyclePlugin = useMemo(
+    () => projectPlugins.some((assignment) => assignment.tab === 'lifecycle'),
+    [projectPlugins],
+  )
 
   // Pick the project's deployment plugin (project-level or inherited)
   // and only render the resync card when its manifest opts in. Multiple
@@ -336,6 +376,21 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
                 placeholder={project.slug}
                 value={deleteConfirmSlug}
               />
+              {hasLifecyclePlugin ? (
+                <label className="text-secondary flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={deleteRepository}
+                    disabled={deleteMutation.isPending}
+                    onCheckedChange={(checked) =>
+                      setDeleteRepository(checked === true)
+                    }
+                  />
+                  <span>
+                    Also delete the associated repository -- uncheck to keep the
+                    remote in place after retiring the project.
+                  </span>
+                </label>
+              ) : null}
               <div className="flex gap-2">
                 <Button
                   disabled={
@@ -353,6 +408,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
                   onClick={() => {
                     setShowDeleteConfirm(false)
                     setDeleteConfirmSlug('')
+                    setDeleteRepository(true)
                   }}
                   size="sm"
                   variant="outline"
