@@ -897,3 +897,69 @@ class WebhookActionPluginTestCase(unittest.TestCase):
         self.assertIs(descriptors[0].config_model, _SampleActionConfig)
         # Plugin is still instantiable for parity with other plugin types.
         self.assertIsInstance(_FakeWebhook(), plugin_base.WebhookActionPlugin)
+
+
+class AnalysisResultItemTests(unittest.TestCase):
+    def test_valid_result(self) -> None:
+        item = plugin_base.AnalysisResultItem(
+            slug='dep-vulns',
+            title='Dependency vulnerabilities',
+            description='Found 3 high-severity CVEs.',
+            status='fail',
+        )
+        self.assertEqual(item.slug, 'dep-vulns')
+        self.assertEqual(item.status, 'fail')
+
+    def test_invalid_status_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            plugin_base.AnalysisResultItem(
+                slug='x',
+                title='x',
+                description='x',
+                status='blocker',  # type: ignore[arg-type]
+            )
+
+
+class AnalysisPluginTestCase(unittest.TestCase):
+    def test_subclass_must_implement_analyze(self) -> None:
+        class _Incomplete(plugin_base.AnalysisPlugin):
+            pass
+
+        with self.assertRaises(TypeError):
+            _Incomplete()  # type: ignore[abstract]
+
+    def test_concrete_subclass_returns_items(self) -> None:
+        class _FakeAnalysis(plugin_base.AnalysisPlugin):
+            manifest = plugin_base.PluginManifest(
+                slug='fake', name='Fake', plugin_type='analysis'
+            )
+
+            async def analyze(
+                self,
+                ctx: plugin_base.PluginContext,
+                credentials: dict[str, str],
+            ) -> list[plugin_base.AnalysisResultItem]:
+                return [
+                    plugin_base.AnalysisResultItem(
+                        slug='ok',
+                        title='Looks good',
+                        description='no findings',
+                        status='pass',
+                    )
+                ]
+
+        import asyncio
+
+        instance = _FakeAnalysis()
+        ctx = plugin_base.PluginContext(
+            project_id='p', project_slug='p', org_slug='o'
+        )
+        items = asyncio.run(instance.analyze(ctx, {}))
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].status, 'pass')
+
+    def test_manifest_analysis_type_accepted(self) -> None:
+        manifest = plugin_base.PluginManifest(
+            slug='fake', name='Fake', plugin_type='analysis'
+        )
+        self.assertEqual(manifest.plugin_type, 'analysis')

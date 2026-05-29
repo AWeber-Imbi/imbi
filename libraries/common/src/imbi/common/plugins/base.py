@@ -124,6 +124,7 @@ class PluginManifest(pydantic.BaseModel):
         'deployment',
         'lifecycle',
         'webhook',
+        'analysis',
     ]
     auth_type: typing.Literal['api_token', 'oauth2', 'oidc', 'aws-iam-ic'] = (
         'api_token'
@@ -1133,3 +1134,49 @@ class WebhookActionPlugin(abc.ABC):
         construction time, so misconfigured paths fail loud during
         registry load rather than at request time.
         """
+
+
+# ---------------------------------------------------------------------------
+# Analysis plugin
+# ---------------------------------------------------------------------------
+
+
+#: Possible statuses for a single ``AnalysisResultItem``. ``fail`` is
+#: the worst, ``warn`` is intermediate, ``pass`` is healthy — the
+#: Doctor panel groups results in that order and the report's
+#: ``overall_status`` is the worst observed across all items.
+AnalysisResultStatus = typing.Literal['pass', 'warn', 'fail']
+
+
+class AnalysisResultItem(pydantic.BaseModel):
+    """A single finding emitted by an :class:`AnalysisPlugin`.
+
+    Stable per-plugin ``slug`` lets scoring policies and the UI refer to
+    a result across runs. ``description`` is rendered as Markdown by
+    the Project Doctor panel.
+    """
+
+    slug: str
+    title: str
+    description: str
+    status: AnalysisResultStatus
+
+
+class AnalysisPlugin(abc.ABC):
+    """Plugins must not stash global state.
+
+    A new instance is created per request.  Analysis plugins inspect a
+    project (via its links, third-party-service connections, and any
+    per-plugin credentials) and return a list of pass/warn/fail
+    findings that surface in the Project Doctor panel and feed the
+    ``analysis_result`` scoring-policy category.
+    """
+
+    manifest: PluginManifest
+
+    @abc.abstractmethod
+    async def analyze(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> list[AnalysisResultItem]: ...

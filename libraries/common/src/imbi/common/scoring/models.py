@@ -120,6 +120,61 @@ class LinkPresencePolicy(_PolicyBase):
         )
 
 
+#: Status emitted by an :class:`AnalysisResultItem`. Duplicated here to
+#: avoid importing the plugins package from scoring (which would invert
+#: the existing dependency direction).
+AnalysisResultStatusLiteral = typing.Literal['pass', 'warn', 'fail']
+
+
+class AnalysisResultPolicy(_PolicyBase):
+    """Score a project by the status of a specific analysis result.
+
+    The scoring engine looks up the project's latest
+    ``AnalysisResult`` whose ``slug`` matches ``result_slug``, then
+    maps the result's ``status`` to a 0-100 score via
+    ``status_score_map``. When no matching result exists,
+    :meth:`evaluate` returns ``None`` (consistent with how the
+    attribute / age categories treat missing data).
+    """
+
+    category: typing.Literal['analysis_result'] = 'analysis_result'
+    result_slug: str
+    status_score_map: dict[AnalysisResultStatusLiteral, int] = pydantic.Field(
+        default_factory=lambda: typing.cast(
+            'dict[AnalysisResultStatusLiteral, int]',
+            {'pass': 100, 'warn': 50, 'fail': 0},
+        )
+    )
+
+    @pydantic.field_validator('status_score_map', mode='before')
+    @classmethod
+    def _parse_json_status_map(cls, v: object) -> object:
+        if isinstance(v, str):
+            return json.loads(v)
+        return v
+
+    @pydantic.model_validator(mode='after')
+    def _validate_status_map(self) -> typing.Self:
+        for score in self.status_score_map.values():
+            if not 0 <= score <= 100:
+                raise ValueError(
+                    'status_score_map values must be between 0 and 100'
+                )
+        return self
+
+    def evaluate(self, status: typing.Any) -> float | None:
+        """Map an :class:`AnalysisResultItem` status to its score."""
+        if status is None:
+            return None
+        key = str(status)
+        if key not in ('pass', 'warn', 'fail'):
+            return None
+        mapped = self.status_score_map.get(
+            typing.cast('AnalysisResultStatusLiteral', key)
+        )
+        return float(mapped) if mapped is not None else None
+
+
 class AgePolicy(_PolicyBase):
     """Score based on age of a datetime attribute.
 
@@ -190,7 +245,11 @@ class AgePolicy(_PolicyBase):
 
 
 ScoringPolicy = typing.Annotated[
-    AttributePolicy | PresencePolicy | LinkPresencePolicy | AgePolicy,
+    AttributePolicy
+    | PresencePolicy
+    | LinkPresencePolicy
+    | AgePolicy
+    | AnalysisResultPolicy,
     pydantic.Field(discriminator='category'),
 ]
 
@@ -299,10 +358,11 @@ class PolicyContribution(pydantic.BaseModel):
 
     policy_slug: str
     category: typing.Literal[
-        'attribute', 'presence', 'link_presence', 'age'
+        'attribute', 'presence', 'link_presence', 'age', 'analysis_result'
     ] = 'attribute'
     attribute_name: str | None = None
     link_slug: str | None = None
+    result_slug: str | None = None
     value: typing.Any | None = None
     mapped_score: float
     weight: int

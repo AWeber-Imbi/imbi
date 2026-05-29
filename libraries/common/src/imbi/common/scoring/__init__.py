@@ -4,6 +4,7 @@ from imbi_common.scoring.engine import compute_score
 from imbi_common.scoring.history import clear_score, record_score_change
 from imbi_common.scoring.models import (
     AgePolicy,
+    AnalysisResultPolicy,
     AttributeContribution,
     AttributePolicy,
     LinkPresencePolicy,
@@ -16,6 +17,7 @@ from imbi_common.scoring.models import (
 
 __all__ = [
     'AgePolicy',
+    'AnalysisResultPolicy',
     'AttributeContribution',
     'AttributePolicy',
     'LinkPresencePolicy',

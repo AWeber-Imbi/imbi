@@ -9,6 +9,7 @@ import pydantic
 from imbi_common import blueprints, graph, models
 from imbi_common.scoring.models import (
     AgePolicy,
+    AnalysisResultPolicy,
     AttributePolicy,
     LinkPresencePolicy,
     PresencePolicy,
@@ -17,7 +18,13 @@ from imbi_common.scoring.models import (
 
 LOGGER = logging.getLogger(__name__)
 
-Policy = AttributePolicy | PresencePolicy | LinkPresencePolicy | AgePolicy
+Policy = (
+    AttributePolicy
+    | PresencePolicy
+    | LinkPresencePolicy
+    | AgePolicy
+    | AnalysisResultPolicy
+)
 
 _TYPE_QUERY = (
     'MATCH (p:Project {{id: {id}}})-[:TYPE]->(pt:ProjectType)'
@@ -71,6 +78,8 @@ async def applicable_policies(
         if category in {'attribute', 'presence', 'age'}:
             if props.get('attribute_name') not in attrs:
                 continue
+        # 'analysis_result' policies key off an AnalysisResult slug — no
+        # Project model attribute to gate on, so skip the attrs filter.
         targets: list[str] = graph.parse_agtype(row['targets']) or []
         if targets and not project_type_slugs.intersection(targets):
             continue

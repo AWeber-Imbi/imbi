@@ -10,6 +10,8 @@ name = "vector"
 [vlabels]
 name = [
   "APIKey",
+  "AnalysisReport",
+  "AnalysisResult",
   "Blueprint",
   "ClientCredential",
   "Component",
@@ -61,6 +63,26 @@ unique = true
 [[vlabel_indexes]]
 vlabel = "APIKey"
 attributes = ["revoked"]
+
+# Per-project uniqueness of the latest report (currently only one
+# kept; future history would relax this) is enforced at the
+# application layer by delete-then-create on re-run.
+[[vlabel_indexes]]
+vlabel = "AnalysisReport"
+attributes = ["id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "AnalysisReport"
+attributes = ["project_id"]
+
+[[vlabel_indexes]]
+vlabel = "AnalysisResult"
+attributes = ["report_id"]
+
+[[vlabel_indexes]]
+vlabel = "AnalysisResult"
+attributes = ["slug"]
 
 [[vlabel_indexes]]
 vlabel = "Blueprint"

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import typing
+
 from imbi_common import graph, models
 from imbi_common.scoring import attribute, policies
-from imbi_common.scoring.models import ScoreBreakdown
+from imbi_common.scoring.models import AnalysisResultPolicy, ScoreBreakdown
 
 
 async def compute_score(
@@ -42,8 +44,11 @@ async def _compute(
             f'{extended_cls.__name__}'
         )
     extended_project = extended_matches[0] if extended_matches else project
+    analysis_results: dict[str, str] = {}
+    if any(isinstance(p, AnalysisResultPolicy) for p in applicable):
+        analysis_results = await _load_analysis_results(database, project.id)
     base_score, contributions = attribute.compute_base_score(
-        extended_project, applicable
+        extended_project, applicable, analysis_results
     )
     floored = max(0.0, base_score)
     breakdown = ScoreBreakdown(
@@ -52,3 +57,35 @@ async def _compute(
         attribute_contributions=contributions,
     )
     return floored, breakdown
+
+
+_ANALYSIS_RESULTS_QUERY: typing.LiteralString = (
+    'MATCH (p:Project {{id: {project_id}}})'
+    '-[:HAS_ANALYSIS_REPORT]->(:AnalysisReport)'
+    '-[:HAS_RESULT]->(r:AnalysisResult)'
+    ' RETURN r.slug AS slug, r.status AS status'
+)
+
+
+async def _load_analysis_results(
+    database: graph.Graph,
+    project_id: str,
+) -> dict[str, str]:
+    """Fetch the project's latest ``{result_slug: status}`` map.
+
+    Returns an empty dict when no analysis report exists. The Doctor
+    feature keeps only the latest report per project, so this is a
+    single-pass read with no ordering needed.
+    """
+    rows = await database.execute(
+        _ANALYSIS_RESULTS_QUERY,
+        {'project_id': project_id},
+        columns=['slug', 'status'],
+    )
+    out: dict[str, str] = {}
+    for row in rows:
+        slug = graph.parse_agtype(row['slug'])
+        status = graph.parse_agtype(row['status'])
+        if isinstance(slug, str) and isinstance(status, str):
+            out[slug] = status
+    return out

@@ -264,3 +264,43 @@ class ComputeBaseScoreTests(unittest.TestCase):
         )
         self.assertEqual(0.0, score)
         self.assertEqual(0.0, contribs[0].weighted_contribution)
+
+
+class AnalysisResultScoreTests(unittest.TestCase):
+    def _policy(self, **overrides: object) -> models.AnalysisResultPolicy:
+        defaults: dict[str, object] = {
+            'name': 'Error rate',
+            'slug': 'error-rate',
+            'result_slug': 'logzio:error-rate',
+            'weight': 50,
+        }
+        defaults.update(overrides)
+        return models.AnalysisResultPolicy(**defaults)  # type: ignore[arg-type]
+
+    def test_pass_status_full_score(self) -> None:
+        score, contribs = attribute.compute_base_score(
+            types.SimpleNamespace(),
+            [self._policy()],
+            {'logzio:error-rate': 'pass'},
+        )
+        self.assertEqual(100.0, score)
+        self.assertEqual('logzio:error-rate', contribs[0].result_slug)
+        self.assertEqual('analysis_result', contribs[0].category)
+
+    def test_fail_status_zero(self) -> None:
+        score, _ = attribute.compute_base_score(
+            types.SimpleNamespace(),
+            [self._policy()],
+            {'logzio:error-rate': 'fail'},
+        )
+        self.assertEqual(0.0, score)
+
+    def test_missing_result_contributes_zero(self) -> None:
+        score, contribs = attribute.compute_base_score(
+            types.SimpleNamespace(),
+            [self._policy()],
+            {},
+        )
+        self.assertEqual(0.0, score)
+        self.assertEqual(0.0, contribs[0].mapped_score)
+        self.assertIsNone(contribs[0].value)

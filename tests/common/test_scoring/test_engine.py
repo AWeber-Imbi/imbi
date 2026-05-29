@@ -121,9 +121,9 @@ class ComputeScoreTests(unittest.IsolatedAsyncioTestCase):
             captured: list[object] = []
             orig = engine.attribute.compute_base_score
 
-            def _capture(proj, pols):
+            def _capture(proj, pols, results=None):
                 captured.append(proj)
-                return orig(proj, pols)
+                return orig(proj, pols, results)
 
             with mock.patch(
                 'imbi_common.scoring.engine.attribute.compute_base_score',

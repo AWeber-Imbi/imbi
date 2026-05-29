@@ -2,6 +2,9 @@
 
 from imbi_common.plugins.base import (
     ActionDescriptor,
+    AnalysisPlugin,
+    AnalysisResultItem,
+    AnalysisResultStatus,
     AuthorizationRequest,
     CheckStatus,
     Commit,
@@ -76,6 +79,9 @@ from imbi_common.plugins.templates import expand_template, validate_template
 
 __all__ = [
     'ActionDescriptor',
+    'AnalysisPlugin',
+    'AnalysisResultItem',
+    'AnalysisResultStatus',
     'AuthorizationRequest',
     'CheckStatus',
     'Commit',

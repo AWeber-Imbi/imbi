@@ -8,6 +8,7 @@ import typing
 
 from imbi_common.plugins.base import (
     ActionDescriptor,
+    AnalysisPlugin,
     ConfigurationPlugin,
     DeploymentPlugin,
     IdentityPlugin,
@@ -30,6 +31,7 @@ PluginHandler = (
     | DeploymentPlugin
     | LifecyclePlugin
     | WebhookActionPlugin
+    | AnalysisPlugin
 )
 
 
@@ -42,6 +44,7 @@ class RegistryEntry:
         | type[DeploymentPlugin]
         | type[LifecyclePlugin]
         | type[WebhookActionPlugin]
+        | type[AnalysisPlugin]
     )
     manifest: PluginManifest
     package_name: str
@@ -65,7 +68,8 @@ _PLUGIN_TYPE_BASES: dict[
     | type[IdentityPlugin]
     | type[DeploymentPlugin]
     | type[LifecyclePlugin]
-    | type[WebhookActionPlugin],
+    | type[WebhookActionPlugin]
+    | type[AnalysisPlugin],
 ] = {
     'configuration': ConfigurationPlugin,
     'logs': LogsPlugin,
@@ -73,6 +77,7 @@ _PLUGIN_TYPE_BASES: dict[
     'deployment': DeploymentPlugin,
     'lifecycle': LifecyclePlugin,
     'webhook': WebhookActionPlugin,
+    'analysis': AnalysisPlugin,
 }
 
 
@@ -141,18 +146,20 @@ def load_plugins() -> LoadResult:
                 DeploymentPlugin,
                 LifecyclePlugin,
                 WebhookActionPlugin,
+                AnalysisPlugin,
             ),
         ):
             LOGGER.error(
                 'Plugin %r does not implement ConfigurationPlugin, '
                 'LogsPlugin, IdentityPlugin, DeploymentPlugin, '
-                'LifecyclePlugin, or WebhookActionPlugin; skipping',
+                'LifecyclePlugin, WebhookActionPlugin, or '
+                'AnalysisPlugin; skipping',
                 ep.name,
             )
             errors[ep.name] = (
                 'Plugin must subclass ConfigurationPlugin, LogsPlugin, '
-                'IdentityPlugin, DeploymentPlugin, LifecyclePlugin, or '
-                'WebhookActionPlugin'
+                'IdentityPlugin, DeploymentPlugin, LifecyclePlugin, '
+                'WebhookActionPlugin, or AnalysisPlugin'
             )
             continue
 

@@ -7,32 +7,45 @@ import typing
 
 from imbi_common.scoring.models import (
     AgePolicy,
+    AnalysisResultPolicy,
     AttributePolicy,
     LinkPresencePolicy,
     PolicyContribution,
     PresencePolicy,
 )
 
-Policy = AttributePolicy | PresencePolicy | LinkPresencePolicy | AgePolicy
+Policy = (
+    AttributePolicy
+    | PresencePolicy
+    | LinkPresencePolicy
+    | AgePolicy
+    | AnalysisResultPolicy
+)
 
 
 def compute_base_score(
     project: typing.Any,
     policies: list[Policy],
+    analysis_results: dict[str, str] | None = None,
 ) -> tuple[float, list[PolicyContribution]]:
     """Compute base score and per-policy contributions.
 
     No applicable policies → score is 100. Missing or unmapped values
     contribute a mapped score of 0 to the weighted average.
+
+    ``analysis_results`` is a ``{result_slug: status}`` mapping
+    pre-loaded from the project's latest analysis report. Required for
+    ``AnalysisResultPolicy`` evaluation; unused by the other categories.
     """
     if not policies:
         return 100.0, []
 
+    results = analysis_results or {}
     total_weight = sum(p.weight for p in policies)
     contributions: list[PolicyContribution] = []
     weighted_sum = 0.0
     for policy in policies:
-        value, mapped = _evaluate(project, policy)
+        value, mapped = _evaluate(project, policy, results)
         score = 0.0 if mapped is None else mapped
         weighted_sum += score * policy.weight
         if total_weight > 0:
@@ -45,6 +58,7 @@ def compute_base_score(
                 category=policy.category,
                 attribute_name=getattr(policy, 'attribute_name', None),
                 link_slug=getattr(policy, 'link_slug', None),
+                result_slug=getattr(policy, 'result_slug', None),
                 value=value,
                 mapped_score=score,
                 weight=policy.weight,
@@ -57,7 +71,9 @@ def compute_base_score(
 
 
 def _evaluate(
-    project: typing.Any, policy: Policy
+    project: typing.Any,
+    policy: Policy,
+    analysis_results: dict[str, str],
 ) -> tuple[typing.Any, float | None]:
     if isinstance(policy, LinkPresencePolicy):
         raw = _get_value(project, 'links')
@@ -75,6 +91,9 @@ def _evaluate(
             links.get(policy.link_slug) if isinstance(links, dict) else None
         )
         return sample, policy.evaluate(links)
+    if isinstance(policy, AnalysisResultPolicy):
+        status = analysis_results.get(policy.result_slug)
+        return status, policy.evaluate(status)
     value = _get_value(project, policy.attribute_name)
     if isinstance(policy, PresencePolicy):
         return value, policy.evaluate(value)

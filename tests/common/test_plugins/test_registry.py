@@ -669,6 +669,76 @@ class LoadPluginsWebhookTestCase(unittest.TestCase):
         _reset_registry()
 
 
+class LoadPluginsAnalysisTestCase(unittest.TestCase):
+    def setUp(self) -> None:
+        _reset_registry()
+
+    def test_load_analysis_plugin_round_trip(self) -> None:
+        # Regression test: ensure the load_plugins() issubclass gate
+        # accepts AnalysisPlugin subclasses. Caught in PR #141 review.
+        manifest = base.PluginManifest(
+            slug='fake-analysis',
+            name='Fake Analysis',
+            plugin_type='analysis',
+        )
+
+        class _FakeAnalysis(base.AnalysisPlugin):
+            async def analyze(  # type: ignore[override]
+                self, ctx, credentials
+            ) -> list[base.AnalysisResultItem]:
+                return []
+
+        _FakeAnalysis.manifest = manifest  # type: ignore[attr-defined]
+
+        ep = unittest.mock.MagicMock()
+        ep.name = 'fake-analysis'
+        ep.load.return_value = _FakeAnalysis
+        ep.dist.name = 'imbi-plugin-fake-analysis'
+        ep.dist.version = '1.0'
+
+        with unittest.mock.patch(
+            'importlib.metadata.entry_points', return_value=[ep]
+        ):
+            result = registry.load_plugins()
+
+        self.assertIn('fake-analysis', result.loaded)
+        self.assertEqual(result.errors, {})
+        entry = registry.get_plugin('fake-analysis')
+        self.assertIs(entry.handler_cls, _FakeAnalysis)
+        self.assertEqual(entry.manifest.plugin_type, 'analysis')
+
+    def test_load_analysis_plugin_type_mismatch(self) -> None:
+        # plugin_type='analysis' on a non-AnalysisPlugin class is
+        # rejected by the post-base-check type-routing gate.
+        manifest = base.PluginManifest(
+            slug='mis-analysis',
+            name='Mis Analysis',
+            plugin_type='analysis',
+        )
+
+        class _ConfigImpl(base.ConfigurationPlugin):
+            pass
+
+        _ConfigImpl.manifest = manifest  # type: ignore[attr-defined]
+
+        ep = unittest.mock.MagicMock()
+        ep.name = 'mis-analysis'
+        ep.load.return_value = _ConfigImpl
+        ep.dist.name = 'pkg'
+        ep.dist.version = '1.0'
+
+        with unittest.mock.patch(
+            'importlib.metadata.entry_points', return_value=[ep]
+        ):
+            result = registry.load_plugins()
+
+        self.assertIn('mis-analysis', result.errors)
+        self.assertEqual(result.loaded, [])
+
+    def tearDown(self) -> None:
+        _reset_registry()
+
+
 class LoadPluginsDuplicateSlugTestCase(unittest.TestCase):
     def setUp(self) -> None:
         _reset_registry()

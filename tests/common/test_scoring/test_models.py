@@ -363,3 +363,57 @@ class DiscriminatedUnionTests(unittest.TestCase):
             }
         )
         self.assertIsInstance(policy, models.AgePolicy)
+
+    def test_analysis_result_validates(self) -> None:
+        adapter = pydantic.TypeAdapter(models.ScoringPolicy)
+        policy = adapter.validate_python(
+            {
+                'name': 'Logzio errors',
+                'slug': 'logzio-errors',
+                'category': 'analysis_result',
+                'result_slug': 'logzio:error-rate',
+                'weight': 25,
+                'status_score_map': {'pass': 100, 'warn': 50, 'fail': 0},
+            }
+        )
+        self.assertIsInstance(policy, models.AnalysisResultPolicy)
+
+
+class AnalysisResultPolicyTests(unittest.TestCase):
+    def _policy(self, **overrides: object) -> models.AnalysisResultPolicy:
+        defaults: dict[str, object] = {
+            'name': 'Logzio errors',
+            'slug': 'logzio-errors',
+            'result_slug': 'logzio:error-rate',
+            'weight': 25,
+        }
+        defaults.update(overrides)
+        return models.AnalysisResultPolicy(**defaults)  # type: ignore[arg-type]
+
+    def test_default_status_map(self) -> None:
+        policy = self._policy()
+        self.assertEqual(100.0, policy.evaluate('pass'))
+        self.assertEqual(50.0, policy.evaluate('warn'))
+        self.assertEqual(0.0, policy.evaluate('fail'))
+
+    def test_missing_value_is_none(self) -> None:
+        self.assertIsNone(self._policy().evaluate(None))
+
+    def test_unknown_status_is_none(self) -> None:
+        self.assertIsNone(self._policy().evaluate('unknown'))
+
+    def test_status_map_accepts_json_string(self) -> None:
+        policy = models.AnalysisResultPolicy.model_validate(
+            {
+                'name': 'Logzio errors',
+                'slug': 'logzio-errors',
+                'result_slug': 'logzio:error-rate',
+                'weight': 25,
+                'status_score_map': '{"pass": 80, "warn": 40, "fail": 0}',
+            }
+        )
+        self.assertEqual(80.0, policy.evaluate('pass'))
+
+    def test_invalid_score_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            self._policy(status_score_map={'pass': 200, 'warn': 50, 'fail': 0})

@@ -27,6 +27,7 @@ plugin is defined by the abstract base class it inherits from:
 | `deployment`    | `DeploymentPlugin`    | [Deployment](deployment.md)       | Enumerate refs/commits, compare them, cut tags/releases, and trigger CI workflow runs            |
 | `lifecycle`     | `LifecyclePlugin`     | [Lifecycle](lifecycle.md)         | React to project state transitions (create / update / archive / unarchive / delete / relocate)   |
 | `webhook`       | `WebhookActionPlugin` | [Webhook Actions](webhook.md)     | Run named actions in response to inbound webhook payloads routed by a host such as `imbi-gateway` |
+| `analysis`      | `AnalysisPlugin`      | [Analysis](analysis.md)           | Emit Project Doctor findings (pass/warn/fail items with markdown bodies) and feed the `analysis_result` scoring policy |
 
 The class hierarchy and `plugin_type` must agree — a class that
 subclasses `ConfigurationPlugin` but declares `plugin_type='logs'` is
@@ -36,7 +37,7 @@ rejected at load time, and vice versa.
 
 A minimum plugin distribution contains:
 
-1. A handler class subclassing one of the six base classes above.
+1. A handler class subclassing one of the seven base classes above.
 2. A class-level `manifest: PluginManifest` describing slug, name,
    options, credential fields, and any variation-specific declarations
    (data types, vertex/edge labels, lifecycle events, …).
