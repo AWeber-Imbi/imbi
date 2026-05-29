@@ -27,7 +27,8 @@
 		reverse_proxy 127.0.0.1:8003
 	}
 
-	handle_path /mcp/* {
+	@mcp path /mcp /mcp/*
+	handle @mcp {
 		reverse_proxy 127.0.0.1:8001
 	}
 
