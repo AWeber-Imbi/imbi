@@ -1458,6 +1458,123 @@ class ProjectEndpointsTestCase(unittest.TestCase):
         self.assertEqual(call.args[3], 'updated')
         self.assertEqual(call.kwargs['previous_project_slug'], 'my-api')
 
+    def test_patch_dispatches_relocated_when_transfer_repository_set(
+        self,
+    ) -> None:
+        """``?transfer_repository=true`` + type change → relocate dispatch.
+
+        Asserts the dispatcher is called with ``event='relocated'`` and
+        the previous types are carried through so plugins can decide
+        between transfer and no-op.  The ``updated`` dispatch path is
+        not exercised here (slug/description are unchanged), so the
+        single dispatch await is the relocate call.
+        """
+        existing = self._project_data()
+        updated = self._project_data(
+            project_types=[
+                {
+                    'name': 'Worker',
+                    'slug': 'worker',
+                    'organization': {
+                        'name': 'Engineering',
+                        'slug': 'engineering',
+                    },
+                },
+            ],
+        )
+        self.mock_db.execute.side_effect = [
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+            [{'slug': 'platform'}],
+            [{'pt_slug': 'worker', 'found': True}],
+            [{'project': updated, 'outbound_count': 0, 'inbound_count': 0}],
+        ]
+        self._dispatch_patcher.stop()
+        with (
+            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                new=mock.AsyncMock(return_value=[]),
+            ) as mock_dispatch,
+        ):
+            mock_get_model.return_value = models.Project
+            response = self.client.patch(
+                f'/organizations/engineering/projects/{PROJECT_ID}'
+                '?transfer_repository=true',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/project_type_slugs',
+                        'value': ['worker'],
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        mock_dispatch.assert_awaited_once()
+        call = mock_dispatch.await_args
+        self.assertEqual(call.args[3], 'relocated')
+        self.assertEqual(
+            call.kwargs['previous_project_type_slugs'], ['api-service']
+        )
+
+    def test_patch_skips_relocate_without_transfer_repository_flag(
+        self,
+    ) -> None:
+        """Default behaviour: type change alone never relocates.
+
+        Without ``?transfer_repository=true`` a project-type swap is
+        considered metadata-only -- plugins do not get a relocate
+        event.  Guards against accidentally moving repos when an
+        operator just retags a project.
+        """
+        existing = self._project_data()
+        updated = self._project_data(
+            project_types=[
+                {
+                    'name': 'Worker',
+                    'slug': 'worker',
+                    'organization': {
+                        'name': 'Engineering',
+                        'slug': 'engineering',
+                    },
+                },
+            ],
+        )
+        self.mock_db.execute.side_effect = [
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+            [{'slug': 'platform'}],
+            [{'pt_slug': 'worker', 'found': True}],
+            [{'project': updated, 'outbound_count': 0, 'inbound_count': 0}],
+        ]
+        self._dispatch_patcher.stop()
+        with (
+            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                new=mock.AsyncMock(return_value=[]),
+            ) as mock_dispatch,
+        ):
+            mock_get_model.return_value = models.Project
+            response = self.client.patch(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/project_type_slugs',
+                        'value': ['worker'],
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        mock_dispatch.assert_not_awaited()
+
     def test_delete_with_delete_repository_false_skips_dispatch(
         self,
     ) -> None:
@@ -1489,6 +1606,136 @@ class ProjectEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.json(), {'lifecycle_results': []})
         mock_dispatch.assert_not_awaited()
         mock_bundle.assert_not_awaited()
+
+    def test_preview_returns_would_relocate_per_plugin(self) -> None:
+        """``GET /lifecycle/preview`` fans out per plugin and flags diffs.
+
+        Stubs ``resolve_all_plugins`` with two plugins whose handlers
+        return different ``resolve_relocation_target`` outputs for the
+        current vs hypothetical type set, and asserts the preview rows
+        carry the expected ``would_relocate`` flags.
+        """
+        from imbi_common.plugins.base import RelocationTarget
+
+        self._bundle_patcher.stop()
+        bundle_value = mock.MagicMock(
+            project_slug='my-api',
+            team_slug='platform',
+            project_links={},
+            project_type_slugs=['api-service'],
+        )
+
+        plugin_a_handler = mock.AsyncMock()
+        plugin_a_handler.resolve_relocation_target.side_effect = [
+            RelocationTarget(
+                link_key='github-repository', identifier='apis/my-api'
+            ),
+            RelocationTarget(
+                link_key='github-repository', identifier='workers/my-api'
+            ),
+        ]
+        plugin_b_handler = mock.AsyncMock()
+        plugin_b_handler.resolve_relocation_target.side_effect = [
+            None,
+            None,
+        ]
+        plugin_a_handler.manifest = mock.MagicMock(slug='gh-a')
+        plugin_b_handler.manifest = mock.MagicMock(slug='gh-b')
+
+        plugin_a = mock.MagicMock(
+            plugin_id='p-a',
+            plugin_slug='gh-a',
+            options={},
+            entry=mock.MagicMock(handler_cls=lambda: plugin_a_handler),
+        )
+        plugin_b = mock.MagicMock(
+            plugin_id='p-b',
+            plugin_slug='gh-b',
+            options={},
+            entry=mock.MagicMock(handler_cls=lambda: plugin_b_handler),
+        )
+
+        self.mock_db.execute.side_effect = [[{'id': PROJECT_ID}]]
+        with (
+            mock.patch(
+                'imbi_api.endpoints.projects.build_lifecycle_context_bundle',
+                new=mock.AsyncMock(return_value=bundle_value),
+            ),
+            mock.patch(
+                'imbi_api.endpoints.projects.resolve_all_plugins',
+                new=mock.AsyncMock(return_value=[plugin_a, plugin_b]),
+            ),
+        ):
+            response = self.client.get(
+                f'/organizations/engineering/projects/{PROJECT_ID}'
+                '/lifecycle/preview?project_type_slugs=worker',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(len(body['previews']), 2)
+
+        rows_by_plugin = {row['plugin_slug']: row for row in body['previews']}
+        row_a = rows_by_plugin['gh-a']
+        self.assertTrue(row_a['would_relocate'])
+        self.assertEqual(row_a['current_target']['identifier'], 'apis/my-api')
+        self.assertEqual(row_a['next_target']['identifier'], 'workers/my-api')
+        row_b = rows_by_plugin['gh-b']
+        self.assertFalse(row_b['would_relocate'])
+        self.assertIsNone(row_b['current_target'])
+        self.assertIsNone(row_b['next_target'])
+
+    def test_preview_returns_empty_when_no_lifecycle_plugins(self) -> None:
+        """No assigned lifecycle plugins → empty previews list."""
+        self._bundle_patcher.stop()
+        self.mock_db.execute.side_effect = [[{'id': PROJECT_ID}]]
+        with (
+            mock.patch(
+                'imbi_api.endpoints.projects.build_lifecycle_context_bundle',
+                new=mock.AsyncMock(
+                    return_value=mock.MagicMock(
+                        project_slug='my-api',
+                        team_slug='platform',
+                        project_links={},
+                        project_type_slugs=['api-service'],
+                    ),
+                ),
+            ),
+            mock.patch(
+                'imbi_api.endpoints.projects.resolve_all_plugins',
+                new=mock.AsyncMock(return_value=[]),
+            ),
+        ):
+            response = self.client.get(
+                f'/organizations/engineering/projects/{PROJECT_ID}'
+                '/lifecycle/preview?project_type_slugs=worker',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'previews': []})
+
+    def test_preview_returns_404_when_project_missing(self) -> None:
+        """Missing project → 404 instead of silently empty previews."""
+        self._bundle_patcher.stop()
+        self.mock_db.execute.side_effect = [[]]
+        with (
+            mock.patch(
+                'imbi_api.endpoints.projects.build_lifecycle_context_bundle',
+                new=mock.AsyncMock(),
+            ) as mock_bundle,
+            mock.patch(
+                'imbi_api.endpoints.projects.resolve_all_plugins',
+                new=mock.AsyncMock(return_value=[]),
+            ) as mock_resolve,
+        ):
+            response = self.client.get(
+                f'/organizations/engineering/projects/{PROJECT_ID}'
+                '/lifecycle/preview?project_type_slugs=worker',
+            )
+
+        self.assertEqual(response.status_code, 404)
+        mock_bundle.assert_not_awaited()
+        mock_resolve.assert_not_awaited()
 
 
 class _RelationshipsTestBase(unittest.TestCase):

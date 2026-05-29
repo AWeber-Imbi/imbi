@@ -17,6 +17,11 @@ import psycopg
 import pydantic
 from imbi_common import blueprints, graph, models
 from imbi_common.clickhouse import client as ch_client
+from imbi_common.plugins.base import (
+    LifecyclePlugin,
+    PluginContext,
+    RelocationTarget,
+)
 from imbi_common.scoring import compute_score
 
 from imbi_api import blueprint_attributes
@@ -35,6 +40,7 @@ from imbi_api.plugins.lifecycle_dispatch import (
     build_lifecycle_context_bundle,
     dispatch_lifecycle,
 )
+from imbi_api.plugins.resolution import resolve_all_plugins
 from imbi_api.relationships import RelationshipSpec, build_relationships
 from imbi_api.scoring import OptionalValkeyClient
 from imbi_api.scoring import queue as score_queue
@@ -281,6 +287,36 @@ class ProjectDeletedResponse(pydantic.BaseModel):
     """
 
     lifecycle_results: list[LifecycleInvocation] = []
+
+
+class LifecyclePreviewEntry(pydantic.BaseModel):
+    """One row of the ``/lifecycle/preview`` response.
+
+    Lets the UI decide whether to surface a "move repository" affordance
+    for the hypothetical ``project_type_slugs`` set: ``would_relocate``
+    is true when the plugin would route the link somewhere different
+    than where it points today.  ``current_target`` may be ``None`` if
+    the project has no project types assigned today (a brand-new
+    project being type-tagged for the first time).
+    """
+
+    plugin_id: str
+    plugin_slug: str
+    current_target: RelocationTarget | None = None
+    next_target: RelocationTarget | None = None
+    would_relocate: bool = False
+
+
+class LifecyclePreviewResponse(pydantic.BaseModel):
+    """Per-plugin preview for a hypothetical project-type change.
+
+    Empty ``previews`` when the project has no lifecycle plugins
+    assigned, or when none of the assigned plugins implement
+    :meth:`LifecyclePlugin.resolve_relocation_target` (the default
+    base implementation returns ``None``).
+    """
+
+    previews: list[LifecyclePreviewEntry] = []
 
 
 def _build_project_ui_url(org_slug: str, project_id: str) -> str | None:
@@ -2178,6 +2214,7 @@ async def patch_project(
             permissions.require_permission('project:write'),
         ),
     ],
+    transfer_repository: bool = False,
 ) -> ProjectMutationResponse:
     """Partially update a project using JSON Patch (RFC 6902).
 
@@ -2185,6 +2222,13 @@ async def patch_project(
         org_slug: Organization slug from URL path.
         project_id: Project nano-ID from URL.
         operations: JSON Patch operations list.
+        transfer_repository: When the patch changes
+            ``project_type_slugs`` and the operator opted in (via the
+            ``/lifecycle/preview`` UI affordance), also dispatch
+            ``'relocated'`` so lifecycle plugins can move the backing
+            remote (e.g. a GitHub repo transfer) to the new mapping.
+            Defaults to ``False`` so a type change alone never moves
+            the remote.
 
     Returns:
         The updated project.
@@ -2331,10 +2375,166 @@ async def patch_project(
                 'Lifecycle dispatch failed after updating project %s',
                 project_id,
             )
+    # ``transfer_repository`` is a deliberate opt-in: it never fires for
+    # an unchanged project-type set, and never fires implicitly on a
+    # type change.  The UI surfaces the would-relocate preview from
+    # ``/lifecycle/preview`` and only sets this flag when the operator
+    # checks the "Also move repository" box.
+    new_type_slugs_raw: typing.Any = patched.get('project_type_slugs') or []
+    new_type_slugs: list[str] = [
+        s
+        for s in typing.cast(list[typing.Any], new_type_slugs_raw)
+        if isinstance(s, str) and s
+    ]
+    types_changed = set(new_type_slugs) != set(current_type_slugs)
+    if transfer_repository and types_changed:
+        try:
+            relocate_results = await dispatch_lifecycle(
+                db,
+                project_id,
+                org_slug,
+                'relocated',
+                auth,
+                previous_project_slug=previous_slug if slug_changed else None,
+                previous_project_type_slugs=current_type_slugs,
+                project_name=response.name,
+                project_description=response.description,
+                project_ui_url=_build_project_ui_url(org_slug, project_id),
+            )
+            lifecycle_results = [*lifecycle_results, *relocate_results]
+        except Exception:
+            LOGGER.exception(
+                'Lifecycle relocate dispatch failed after updating project %s',
+                project_id,
+            )
     return ProjectMutationResponse(
         **response.model_dump(),
         lifecycle_results=lifecycle_results,
     )
+
+
+@projects_router.get('/{project_id}/lifecycle/preview')
+async def preview_lifecycle(
+    org_slug: str,
+    project_id: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:read'),
+        ),
+    ],
+    project_type_slugs: typing.Annotated[
+        list[str],
+        fastapi.Query(
+            description=(
+                'Hypothetical project-type slug set to evaluate. '
+                'Repeatable, e.g. '
+                '``?project_type_slugs=api&project_type_slugs=consumer``.'
+            ),
+        ),
+    ],
+) -> LifecyclePreviewResponse:
+    """Preview the relocation outcome of a project-type change.
+
+    Resolves every lifecycle plugin assigned to the project (project- +
+    project-type-level), then asks each plugin's
+    :meth:`LifecyclePlugin.resolve_relocation_target` what target it
+    would route to *today* vs *given the hypothetical type set*.  The UI
+    uses ``would_relocate=True`` rows to surface the "Also move
+    repository to ``<display>``?" opt-in checkbox on the project-type
+    edit dialog.
+
+    The plugin contract requires ``resolve_relocation_target`` to be
+    local-only (no remote calls), so this endpoint is cheap to poll on
+    every selection change.  Per-plugin exceptions are swallowed -- a
+    broken plugin must not block the rest of the preview.
+    """
+    del auth  # read-only preview; authorization handled by the dependency.
+    exists_query: typing.LiteralString = (
+        'MATCH (p:Project {{id: {project_id}}}) '
+        '-[:OWNED_BY]->(:Team) '
+        '-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}}) '
+        'RETURN p.id AS id'
+    )
+    exists = await db.execute(
+        exists_query,
+        {'project_id': project_id, 'org_slug': org_slug},
+        ['id'],
+    )
+    if not exists:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Project {project_id!r} not found',
+        )
+    bundle = await build_lifecycle_context_bundle(db, project_id)
+    resolved = await resolve_all_plugins(db, project_id, 'lifecycle')
+    if not resolved:
+        return LifecyclePreviewResponse(previews=[])
+
+    # Strip empties + duplicates while preserving order so the
+    # hypothetical type set behaves like the stored one.
+    next_types: list[str] = []
+    seen: set[str] = set()
+    for slug in project_type_slugs:
+        slug = slug.strip()
+        if slug and slug not in seen:
+            next_types.append(slug)
+            seen.add(slug)
+
+    previews: list[LifecyclePreviewEntry] = []
+    for plugin in resolved:
+        handler = typing.cast(LifecyclePlugin, plugin.entry.handler_cls())
+        current_ctx = PluginContext(
+            project_id=project_id,
+            project_slug=bundle.project_slug,
+            org_slug=org_slug,
+            team_slug=bundle.team_slug,
+            assignment_options=plugin.options,
+            project_links=bundle.project_links,
+            project_type_slugs=bundle.project_type_slugs,
+        )
+        next_ctx = current_ctx.model_copy(
+            update={'project_type_slugs': next_types}
+        )
+        current_target = await _safe_resolve_target(handler, current_ctx)
+        next_target = await _safe_resolve_target(handler, next_ctx)
+        would_relocate = next_target is not None and (
+            current_target is None
+            or current_target.identifier != next_target.identifier
+        )
+        previews.append(
+            LifecyclePreviewEntry(
+                plugin_id=plugin.plugin_id,
+                plugin_slug=plugin.plugin_slug,
+                current_target=current_target,
+                next_target=next_target,
+                would_relocate=would_relocate,
+            )
+        )
+    return LifecyclePreviewResponse(previews=previews)
+
+
+async def _safe_resolve_target(
+    handler: LifecyclePlugin,
+    ctx: PluginContext,
+) -> RelocationTarget | None:
+    """Call ``resolve_relocation_target``, swallowing plugin errors.
+
+    A broken plugin must not poison the preview for the others; log and
+    return ``None`` so the row reports ``would_relocate=False``.  The
+    plugin contract guarantees the call is local-only, so credentials
+    can be an empty dict.
+    """
+    try:
+        return await handler.resolve_relocation_target(ctx, {})
+    except Exception:
+        LOGGER.exception(
+            'resolve_relocation_target raised for plugin %s on project %s',
+            handler.manifest.slug,
+            ctx.project_id,
+        )
+        return None
 
 
 async def _set_archived_state(
