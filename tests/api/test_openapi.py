@@ -379,6 +379,75 @@ class CreateCustomOpenapiTestCase(unittest.TestCase):
         self.assertIn('items', json_schema)
 
 
+class MarkAiExcludedOperationsTestCase(unittest.TestCase):
+    """Test cases for _mark_ai_excluded_operations."""
+
+    def setUp(self) -> None:
+        """Reset module state before each test."""
+        _reset_openapi_module_state()
+
+    def tearDown(self) -> None:
+        _reset_openapi_module_state()
+
+    def test_stamps_flag_on_excluded_tag(self) -> None:
+        """Operations carrying an excluded tag get x-imbi-ai-tool."""
+        excluded = next(iter(openapi.AI_TOOL_EXCLUDED_TAGS))
+        schema = {
+            'paths': {
+                '/secret': {
+                    'get': {'tags': [excluded]},
+                    'delete': {'tags': [excluded]},
+                },
+                '/public': {'get': {'tags': ['Teams']}},
+            }
+        }
+
+        openapi._mark_ai_excluded_operations(schema)
+
+        secret = schema['paths']['/secret']
+        self.assertIs(secret['get']['x-imbi-ai-tool'], False)
+        self.assertIs(secret['delete']['x-imbi-ai-tool'], False)
+        self.assertNotIn('x-imbi-ai-tool', schema['paths']['/public']['get'])
+
+    def test_ignores_non_operation_values(self) -> None:
+        """Path-item parameters and untagged ops are left untouched."""
+        schema = {
+            'paths': {
+                '/items': {
+                    'parameters': [{'name': 'id', 'in': 'query'}],
+                    'get': {'tags': ['Items']},
+                }
+            }
+        }
+
+        openapi._mark_ai_excluded_operations(schema)
+
+        self.assertNotIn('x-imbi-ai-tool', schema['paths']['/items']['get'])
+
+    def test_excluded_tag_marks_endpoint_in_full_schema(self) -> None:
+        """End-to-end: a tagged route is flagged in the built schema."""
+        openapi._blueprint_models = {}
+        excluded = next(iter(openapi.AI_TOOL_EXCLUDED_TAGS))
+
+        app = fastapi.FastAPI(title='Test', version='1.0.0')
+
+        @app.get('/configuration/', tags=[excluded])
+        async def get_configuration() -> dict:
+            return {}
+
+        @app.get('/teams/', tags=['Teams'])
+        async def list_teams() -> list[dict]:
+            return []
+
+        schema = openapi.create_custom_openapi(app)()
+
+        self.assertIs(
+            schema['paths']['/configuration/']['get']['x-imbi-ai-tool'],
+            False,
+        )
+        self.assertNotIn('x-imbi-ai-tool', schema['paths']['/teams/']['get'])
+
+
 class HoistDefsToComponentsTestCase(unittest.TestCase):
     """Test cases for _hoist_defs_to_components."""
 
