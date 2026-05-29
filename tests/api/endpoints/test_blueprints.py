@@ -1,17 +1,17 @@
 """Tests for blueprint CRUD endpoints"""
 
 import datetime
-import unittest
 from unittest import mock
 
 import psycopg.errors
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
+from tests import support
 
 
-class BlueprintEndpointsTestCase(unittest.TestCase):
+class BlueprintEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for blueprint CRUD endpoints."""
 
     def setUp(self) -> None:
@@ -22,8 +22,6 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
         Blueprint model.
         """
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         # Create an admin user for authentication
         self.admin_user = models.User(

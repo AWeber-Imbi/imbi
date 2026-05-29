@@ -9,9 +9,10 @@ import jwt
 from imbi_common import graph
 from imbi_common.auth import core
 
-from imbi_api import app, models, settings
+from imbi_api import models, settings
 from imbi_api.auth import password
 from imbi_api.middleware import rate_limit
+from tests import support
 
 
 class PasswordHashingTestCase(unittest.TestCase):
@@ -140,12 +141,12 @@ class JWTTokenTestCase(unittest.TestCase):
             )
 
 
-class LoginEndpointTestCase(unittest.TestCase):
+class LoginEndpointTestCase(support.SharedAppTestCase):
     """Test login endpoint."""
 
     def setUp(self) -> None:
         """Set up TestClient and test User."""
-        self.application = app.create_app()
+        self.application = self.test_app
         self.client = fastapi.testclient.TestClient(self.application)
         self.mock_db = mock.AsyncMock()
         # Override graph dependency
@@ -286,12 +287,12 @@ class LoginEndpointTestCase(unittest.TestCase):
         self.assertIn('Invalid credentials', response.json()['detail'])
 
 
-class TokenRefreshEndpointTestCase(unittest.TestCase):
+class TokenRefreshEndpointTestCase(support.SharedAppTestCase):
     """Test token refresh endpoint."""
 
     def setUp(self) -> None:
         """Prepare test fixtures."""
-        self.application = app.create_app()
+        self.application = self.test_app
         self.client = fastapi.testclient.TestClient(self.application)
         self.mock_db = mock.AsyncMock()
         self.application.dependency_overrides[graph._inject_graph] = lambda: (
@@ -436,11 +437,11 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
         self.assertIn('revoked', response.json()['detail'].lower())
 
 
-class LogoutEndpointTestCase(unittest.TestCase):
+class LogoutEndpointTestCase(support.SharedAppTestCase):
     """Test logout endpoint."""
 
     def setUp(self) -> None:
-        self.application = app.create_app()
+        self.application = self.test_app
         self.client = fastapi.testclient.TestClient(self.application)
         self.mock_db = mock.AsyncMock()
         self.application.dependency_overrides[graph._inject_graph] = lambda: (

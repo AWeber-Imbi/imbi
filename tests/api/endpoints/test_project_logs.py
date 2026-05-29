@@ -18,9 +18,10 @@ from imbi_common.plugins.errors import (
 )
 from imbi_common.plugins.registry import RegistryEntry
 
-from imbi_api import app, models
+from imbi_api import models
 from imbi_api.auth import password, permissions
 from imbi_api.plugins.resolution import ResolvedPlugin
+from tests import support
 
 
 class _FakeLogsPlugin(LogsPlugin):
@@ -59,9 +60,8 @@ def _entry() -> RegistryEntry:
     )
 
 
-class ProjectLogsEndpointTestCase(unittest.TestCase):
+class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
     def setUp(self) -> None:
-        self.test_app = app.create_app()
         self.test_user = models.User(
             email='admin@example.com',
             display_name='Admin User',

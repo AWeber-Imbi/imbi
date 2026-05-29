@@ -8,13 +8,13 @@ from unittest import mock
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
 from imbi_api.auth import password, permissions
+from tests import support
 
 
-class ServicePluginsEndpointTestCase(unittest.TestCase):
+class ServicePluginsEndpointTestCase(support.SharedAppTestCase):
     def setUp(self) -> None:
-        self.test_app = app.create_app()
         self.test_user = models.User(
             email='admin@example.com',
             display_name='Admin User',
@@ -958,7 +958,7 @@ class ServicePluginsEndpointTestCase(unittest.TestCase):
         )
 
 
-class ReplacePluginAssignmentsTestCase(unittest.TestCase):
+class ReplacePluginAssignmentsTestCase(support.SharedAppTestCase):
     """Tests for ``PUT /{plugin_id}/assignments`` (fused replace)."""
 
     BASE = (
@@ -967,7 +967,6 @@ class ReplacePluginAssignmentsTestCase(unittest.TestCase):
     )
 
     def setUp(self) -> None:
-        self.test_app = app.create_app()
         self.test_user = models.User(
             email='admin@example.com',
             display_name='Admin User',

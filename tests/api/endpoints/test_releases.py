@@ -3,13 +3,13 @@
 import datetime
 import json
 import typing
-import unittest
 from unittest import mock
 
 import fastapi.testclient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
+from tests import support
 
 PROJECT_ID = 'proj123nanoid'
 RELEASE_ID = 'rel456nanoid'
@@ -35,7 +35,7 @@ def _release_row(**overrides: typing.Any) -> dict[str, typing.Any]:
     return data
 
 
-class _ReleasesTestBase(unittest.TestCase):
+class _ReleasesTestBase(support.SharedAppTestCase):
     """Shared setup mounting release endpoints with admin auth."""
 
     permissions_granted: typing.ClassVar[set[str]] = {
@@ -45,8 +45,6 @@ class _ReleasesTestBase(unittest.TestCase):
 
     def setUp(self) -> None:
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         self.admin_user = models.User(
             email='alice@example.com',

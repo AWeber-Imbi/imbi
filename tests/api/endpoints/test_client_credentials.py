@@ -1,22 +1,21 @@
 """Tests for client credentials CRUD endpoints."""
 
 import datetime
-import unittest
 from unittest import mock
 
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app, models, settings
+from imbi_api import models, settings
 from imbi_api.auth import password, permissions
+from tests import support
 
 
-class ClientCredentialsEndpointsTestCase(unittest.TestCase):
+class ClientCredentialsEndpointsTestCase(support.SharedAppTestCase):
     """Test client credentials endpoint functionality."""
 
     def setUp(self) -> None:
         """Set up test fixtures."""
-        self.test_app = app.create_app()
 
         self.test_user = models.User(
             email='admin@example.com',

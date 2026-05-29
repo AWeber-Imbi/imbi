@@ -8,17 +8,16 @@ from fastapi.testclient import TestClient
 from imbi_common import graph
 from imbi_common.graph.client import SearchResult
 
-from imbi_api import app, models
+from imbi_api import models
 from imbi_api.auth import permissions
+from tests import support
 
 _ORG_SLUG = 'test-org'
 _BASE_URL = f'/organizations/{_ORG_SLUG}/search'
 
 
-class SearchEndpointTestCase(unittest.TestCase):
+class SearchEndpointTestCase(support.SharedAppTestCase):
     def setUp(self) -> None:
-        self.test_app = app.create_app()
-
         admin_user = models.User(
             email='admin@example.com',
             display_name='Admin User',

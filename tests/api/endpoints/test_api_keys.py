@@ -1,22 +1,21 @@
 """Tests for API key management endpoints."""
 
 import datetime
-import unittest
 from unittest import mock
 
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app, models, settings
+from imbi_api import models, settings
 from imbi_api.auth import password, permissions
+from tests import support
 
 
-class APIKeysEndpointsTestCase(unittest.TestCase):
+class APIKeysEndpointsTestCase(support.SharedAppTestCase):
     """Test API keys endpoint functionality."""
 
     def setUp(self) -> None:
         """Set up test fixtures."""
-        self.test_app = app.create_app()
 
         # Create test user
         self.test_user = models.User(

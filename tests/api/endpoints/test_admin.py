@@ -1,22 +1,21 @@
 """Tests for admin settings endpoint."""
 
 import datetime
-import unittest
 from unittest import mock
 
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app, models, settings
+from imbi_api import models, settings
 from imbi_api.auth import password, permissions
+from tests import support
 
 
-class AdminSettingsEndpointTestCase(unittest.TestCase):
+class AdminSettingsEndpointTestCase(support.SharedAppTestCase):
     """Test cases for GET /admin/settings endpoint."""
 
     def setUp(self) -> None:
         """Set up test client, auth settings, and test user."""
-        self.test_app = app.create_app()
 
         self.auth_settings = settings.Auth(
             jwt_secret='test-secret-key-min-32-chars-long',

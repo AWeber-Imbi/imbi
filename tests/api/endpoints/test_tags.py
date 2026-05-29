@@ -9,16 +9,15 @@ import psycopg.errors
 from fastapi.testclient import TestClient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
+from tests import support
 
 
-class TagEndpointsTestCase(unittest.TestCase):
+class TagEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for tag CRUD endpoints."""
 
     def setUp(self) -> None:
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         self.admin_user = models.User(
             email='admin@example.com',

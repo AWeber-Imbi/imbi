@@ -2,13 +2,13 @@
 
 import datetime
 import typing
-import unittest
 from unittest import mock
 
 import fastapi.testclient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
+from tests import support
 
 ORG = 'engineering'
 PROJECT_ID = 'proj123nanoid'
@@ -39,15 +39,13 @@ def _pr_row(**overrides: typing.Any) -> dict[str, typing.Any]:
     return data
 
 
-class _PullRequestsTestBase(unittest.TestCase):
+class _PullRequestsTestBase(support.SharedAppTestCase):
     """Shared setup mounting pull request endpoints with admin auth."""
 
     permissions_granted: typing.ClassVar[set[str]] = {'project:read'}
 
     def setUp(self) -> None:
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         self.admin_user = models.User(
             email='alice@example.com',

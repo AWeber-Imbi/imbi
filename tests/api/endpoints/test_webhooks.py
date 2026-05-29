@@ -4,14 +4,14 @@ import copy
 import datetime
 import json
 import typing
-import unittest
 from unittest import mock
 
 import psycopg.errors
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
+from tests import support
 
 
 class _WebhookDetails(typing.TypedDict):
@@ -40,13 +40,11 @@ class _WebhookRecord(typing.TypedDict):
     rules: list[_WebhookRule | None]
 
 
-class WebhookEndpointsTestCase(unittest.TestCase):
+class WebhookEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for Webhook CRUD endpoints."""
 
     def setUp(self) -> None:
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -1370,13 +1368,11 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.assertTrue(all(c in valid_chars for c in generated))
 
 
-class ProjectServicesEndpointsTestCase(unittest.TestCase):
+class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for Project EXISTS_IN service endpoints."""
 
     def setUp(self) -> None:
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         self.admin_user = models.User(
             email='admin@example.com',

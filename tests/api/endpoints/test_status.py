@@ -3,8 +3,8 @@ import unittest
 
 from fastapi import testclient
 
-from imbi_api import app
 from imbi_api.endpoints import status
+from tests import support
 
 _StatusLiteral = typing.Literal['ok', 'initializing', 'error']
 
@@ -35,12 +35,12 @@ class StatusResponseModelTestCase(unittest.TestCase):
             self.assertEqual(response.status, status_value)
 
 
-class StatusEndpointTestCase(unittest.TestCase):
+class StatusEndpointTestCase(support.SharedAppTestCase):
     """Test cases for status endpoint."""
 
     def setUp(self) -> None:
         """Set up test client."""
-        self.client = testclient.TestClient(app.create_app())
+        self.client = testclient.TestClient(self.test_app)
 
     def test_get_status(self) -> None:
         """Test GET /status endpoint returns ok status."""

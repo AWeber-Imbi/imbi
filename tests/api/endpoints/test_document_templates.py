@@ -2,22 +2,20 @@
 
 import datetime
 import typing
-import unittest
 from unittest import mock
 
 from fastapi.testclient import TestClient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
+from tests import support
 
 
-class DocumentTemplateEndpointsTestCase(unittest.TestCase):
+class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for document template CRUD."""
 
     def setUp(self) -> None:
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         self.admin_user = models.User(
             email='admin@example.com',

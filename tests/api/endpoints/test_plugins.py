@@ -1,21 +1,20 @@
 """Tests for non-admin plugin manifest endpoint."""
 
 import datetime
-import unittest
 from unittest import mock
 
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
 from imbi_api.auth import password, permissions
+from tests import support
 
 
-class PluginManifestEndpointTestCase(unittest.TestCase):
+class PluginManifestEndpointTestCase(support.SharedAppTestCase):
     """Test cases for ``GET /plugins/{slug}/manifest``."""
 
     def setUp(self) -> None:
-        self.test_app = app.create_app()
         self.test_user = models.User(
             email='editor@example.com',
             display_name='Project Editor',

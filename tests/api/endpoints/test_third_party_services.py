@@ -3,23 +3,21 @@
 import datetime
 import json
 import typing
-import unittest
 from unittest import mock
 
 import psycopg.errors
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
+from tests import support
 
 
-class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
+class ThirdPartyServiceEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for ThirdPartyService CRUD endpoints."""
 
     def setUp(self) -> None:
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -641,13 +639,11 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
 
 
-class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
+class ServiceWebhooksEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for list_service_webhooks endpoint."""
 
     def setUp(self) -> None:
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -1011,13 +1007,11 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
         )
 
 
-class ServiceApplicationEndpointsTestCase(unittest.TestCase):
+class ServiceApplicationEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for ServiceApplication CRUD endpoints."""
 
     def setUp(self) -> None:
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         self.admin_user = models.User(
             email='admin@example.com',

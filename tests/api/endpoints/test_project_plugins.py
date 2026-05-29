@@ -2,19 +2,18 @@
 
 import datetime
 import json
-import unittest
 from unittest import mock
 
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
 from imbi_api.auth import password, permissions
+from tests import support
 
 
-class ProjectPluginsEndpointTestCase(unittest.TestCase):
+class ProjectPluginsEndpointTestCase(support.SharedAppTestCase):
     def setUp(self) -> None:
-        self.test_app = app.create_app()
         self.test_user = models.User(
             email='admin@example.com',
             display_name='Admin User',

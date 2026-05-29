@@ -11,10 +11,10 @@ from unittest import mock
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app
 from imbi_api import models as api_models
 from imbi_api.auth import permissions as api_permissions
 from imbi_api.endpoints import user_activity
+from tests import support
 
 
 def _make_auth(
@@ -38,9 +38,8 @@ def _make_auth(
     )
 
 
-class _Base(unittest.TestCase):
+class _Base(support.SharedAppTestCase):
     def setUp(self) -> None:
-        self.test_app = app.create_app()
         self.auth = _make_auth()
 
         async def _current_user() -> api_permissions.AuthContext:
@@ -490,11 +489,10 @@ class GraphActivityExecuteTests(_Base):
                 )
 
 
-class PermissionTests(unittest.TestCase):
+class PermissionTests(support.SharedAppTestCase):
     """Endpoints must require user:read."""
 
     def setUp(self) -> None:
-        self.test_app = app.create_app()
         self.auth = _make_auth(perms=(), is_admin=False)  # no permissions
 
         async def _current_user() -> api_permissions.AuthContext:

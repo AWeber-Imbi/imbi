@@ -8,8 +8,9 @@ import fastapi
 from imbi_common import graph
 from imbi_common.auth import core
 
-from imbi_api import app, models, settings
+from imbi_api import models, settings
 from imbi_api.auth import password, permissions
+from tests import support
 
 
 class PermissionLoadingTestCase(unittest.IsolatedAsyncioTestCase):
@@ -280,12 +281,12 @@ class AuthenticateJWTTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('not found', str(ctx.exception.detail).lower())
 
 
-class ProtectedEndpointTestCase(unittest.TestCase):
+class ProtectedEndpointTestCase(support.SharedAppTestCase):
     """Test protected endpoints require authentication."""
 
     def setUp(self) -> None:
         """Prepare TestClient and auth settings."""
-        self.app = app.create_app()
+        self.app = self.test_app
         self.client = fastapi.testclient.TestClient(self.app)
         self.auth_settings = settings.Auth(
             jwt_secret='test-secret-key-32-characters!',

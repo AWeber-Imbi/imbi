@@ -2,19 +2,19 @@
 
 import base64
 import datetime
-import unittest
 from unittest import mock
 
 import pyotp
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app, models, settings
+from imbi_api import models, settings
 from imbi_api.auth import password, permissions
 from imbi_api.middleware import rate_limit
+from tests import support
 
 
-class MFAEndpointsTestCase(unittest.TestCase):
+class MFAEndpointsTestCase(support.SharedAppTestCase):
     """Test MFA endpoint functionality."""
 
     def setUp(self) -> None:
@@ -23,7 +23,6 @@ class MFAEndpointsTestCase(unittest.TestCase):
         # doesn't bleed across tests in this suite (TestClient reuses
         # 127.0.0.1, which is the limiter key).
         rate_limit.limiter.reset()
-        self.test_app = app.create_app()
 
         # Create test user
         self.test_user = models.User(

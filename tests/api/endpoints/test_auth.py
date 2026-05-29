@@ -8,12 +8,13 @@ import pydantic
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app, settings
+from imbi_api import settings
 from imbi_api.auth import local_auth, login_providers
 from imbi_api.auth import models as auth_models
 from imbi_api.domain import models as domain_models
 from imbi_api.endpoints import auth as auth_endpoints
 from imbi_api.middleware import rate_limit
+from tests import support
 
 
 def _stub_provider(
@@ -191,13 +192,12 @@ class RedactEmailTestCase(unittest.TestCase):
         self.assertEqual(_redact_email(''), '<redacted>')
 
 
-class AuthProvidersEndpointTestCase(unittest.TestCase):
+class AuthProvidersEndpointTestCase(support.SharedAppTestCase):
     """Test cases for GET /auth/providers endpoint."""
 
     def setUp(self) -> None:
         """Set up test client and mock settings."""
         settings._auth_settings = None
-        self.test_app = app.create_app()
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
@@ -294,14 +294,13 @@ class AuthProvidersEndpointTestCase(unittest.TestCase):
         )
 
 
-class OAuthFlowTestCase(unittest.TestCase):
+class OAuthFlowTestCase(support.SharedAppTestCase):
     """Test cases for OAuth login flow endpoints."""
 
     def setUp(self) -> None:
         """Set up test client."""
         settings._auth_settings = None
         rate_limit.limiter.reset()
-        self.test_app = app.create_app()
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
@@ -460,13 +459,12 @@ class OAuthFlowTestCase(unittest.TestCase):
         self.assertIn('client_id=oidc-id', location)
 
 
-class LoginPasswordRehashTestCase(unittest.TestCase):
+class LoginPasswordRehashTestCase(support.SharedAppTestCase):
     """Test password rehashing during login."""
 
     def setUp(self) -> None:
         """Set up test client."""
         settings._auth_settings = None
-        self.test_app = app.create_app()
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
@@ -539,13 +537,12 @@ class LoginPasswordRehashTestCase(unittest.TestCase):
             )
 
 
-class LoginMFATestCase(unittest.TestCase):
+class LoginMFATestCase(support.SharedAppTestCase):
     """Test MFA integration in login endpoint."""
 
     def setUp(self) -> None:
         """Set up test client."""
         settings._auth_settings = None
-        self.test_app = app.create_app()
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
@@ -931,13 +928,12 @@ class LoginMFATestCase(unittest.TestCase):
         )
 
 
-class OAuthCallbackSuccessTestCase(unittest.TestCase):
+class OAuthCallbackSuccessTestCase(support.SharedAppTestCase):
     """Test OAuth callback success path."""
 
     def setUp(self) -> None:
         """Set up test client."""
         settings._auth_settings = None
-        self.test_app = app.create_app()
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
@@ -1576,13 +1572,12 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
             )
 
 
-class TokenRefreshTestCase(unittest.TestCase):
+class TokenRefreshTestCase(support.SharedAppTestCase):
     """Test token refresh endpoint."""
 
     def setUp(self) -> None:
         """Set up test client."""
         settings._auth_settings = None
-        self.test_app = app.create_app()
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
@@ -1935,14 +1930,13 @@ class TokenRefreshTestCase(unittest.TestCase):
         self.assertEqual(third_call_params['family_id'], 'fam-leak')
 
 
-class LogoutTestCase(unittest.TestCase):
+class LogoutTestCase(support.SharedAppTestCase):
     """Test logout endpoint."""
 
     def setUp(self) -> None:
         """Set up test client."""
 
         settings._auth_settings = None
-        self.test_app = app.create_app()
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
@@ -2102,7 +2096,7 @@ class LogoutTestCase(unittest.TestCase):
             )
 
 
-class ServiceAccountAuthTestCase(unittest.TestCase):
+class ServiceAccountAuthTestCase(support.SharedAppTestCase):
     """Test service account authentication guardrails."""
 
     def setUp(self) -> None:
@@ -2110,7 +2104,6 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
         from imbi_api import models
 
         settings._auth_settings = None
-        self.test_app = app.create_app()
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
@@ -2460,7 +2453,7 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
             )
 
 
-class IdentityPluginLoginFlowTestCase(unittest.TestCase):
+class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
     """Cover the identity-plugin branch of /auth/oauth/{provider}.
 
     Exercises both the start (``oauth_login``) and callback
@@ -2480,7 +2473,6 @@ class IdentityPluginLoginFlowTestCase(unittest.TestCase):
         self._identity_repository = identity_repository
 
         settings._auth_settings = None
-        self.test_app = app.create_app()
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db

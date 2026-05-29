@@ -10,10 +10,10 @@ from unittest import mock
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app
 from imbi_api import models as api_models
 from imbi_api.auth import permissions as api_permissions
 from imbi_api.endpoints import events
+from tests import support
 
 
 def _row(
@@ -35,9 +35,8 @@ def _row(
     }
 
 
-class _EventsTestBase(unittest.TestCase):
+class _EventsTestBase(support.SharedAppTestCase):
     def setUp(self) -> None:
-        self.test_app = app.create_app()
         self.user = api_models.User(
             email='alice@example.com',
             display_name='Alice',

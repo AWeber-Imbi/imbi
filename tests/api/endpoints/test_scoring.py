@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import datetime
-import unittest
 from unittest import mock
 
 from fastapi.testclient import TestClient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
 from imbi_api import scoring as scoring_di
+from tests import support
 
 
 class _PipelineProxy:
@@ -51,11 +51,9 @@ class _PipelineProxy:
         return results
 
 
-class ScoringEndpointsTestCase(unittest.TestCase):
+class ScoringEndpointsTestCase(support.SharedAppTestCase):
     def setUp(self) -> None:
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         self.user = models.User(
             email='admin@example.com',

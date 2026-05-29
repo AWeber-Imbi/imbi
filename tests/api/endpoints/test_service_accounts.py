@@ -1,25 +1,23 @@
 """Tests for service account management endpoints."""
 
 import datetime
-import unittest
 from unittest import mock
 
 import psycopg.errors
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
 from imbi_api.auth import password
+from tests import support
 
 
-class ServiceAccountsEndpointsTestCase(unittest.TestCase):
+class ServiceAccountsEndpointsTestCase(support.SharedAppTestCase):
     """Test service account endpoint functionality."""
 
     def setUp(self) -> None:
         """Set up test fixtures."""
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         self.test_user = models.User(
             email='admin@example.com',

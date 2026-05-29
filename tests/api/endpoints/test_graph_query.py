@@ -2,15 +2,15 @@
 
 import datetime
 import json
-import unittest
 from unittest import mock
 
 import psycopg
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
 from imbi_api.auth import password, permissions
+from tests import support
 
 
 def _build_user(*, is_admin: bool) -> models.User:
@@ -24,11 +24,10 @@ def _build_user(*, is_admin: bool) -> models.User:
     )
 
 
-class GraphQueryEndpointTestCase(unittest.TestCase):
+class GraphQueryEndpointTestCase(support.SharedAppTestCase):
     """Tests for ``POST /admin/graph/query``."""
 
     def setUp(self) -> None:
-        self.test_app = app.create_app()
         self.auth_context = permissions.AuthContext(
             user=_build_user(is_admin=True),
             session_id='test-session',
@@ -259,11 +258,10 @@ class GraphQueryEndpointTestCase(unittest.TestCase):
         self.assertEqual(call.args[1], {'email': 'admin@example.com'})
 
 
-class GraphSchemaEndpointTestCase(unittest.TestCase):
+class GraphSchemaEndpointTestCase(support.SharedAppTestCase):
     """Tests for ``GET /admin/graph/schema``."""
 
     def setUp(self) -> None:
-        self.test_app = app.create_app()
         self.auth_context = permissions.AuthContext(
             user=_build_user(is_admin=True),
             session_id='test-session',

@@ -9,19 +9,18 @@ import psycopg.errors
 from fastapi.testclient import TestClient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
+from tests import support
 
 PROJECT_ID = 'abc123nanoid'
 
 
-class ProjectEndpointsTestCase(unittest.TestCase):
+class ProjectEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for project CRUD endpoints."""
 
     def setUp(self) -> None:
         """Set up test app with admin authentication."""
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -1738,15 +1737,13 @@ class ProjectEndpointsTestCase(unittest.TestCase):
         mock_resolve.assert_not_awaited()
 
 
-class _RelationshipsTestBase(unittest.TestCase):
+class _RelationshipsTestBase(support.SharedAppTestCase):
     """Shared setup for relationship endpoint tests."""
 
     _permissions: typing.ClassVar[set[str]] = set()
 
     def setUp(self) -> None:
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         self.test_user = models.User(
             email='user@example.com',

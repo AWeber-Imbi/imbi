@@ -2,24 +2,23 @@
 
 import datetime
 import typing
-import unittest
 from unittest import mock
 
 import psycopg.errors
 from fastapi.testclient import TestClient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
 from imbi_api.auth import permissions
 from imbi_api.mcp_test import ConnectionTestResult
+from tests import support
 
 
-class MCPServerEndpointsTestCase(unittest.TestCase):
+class MCPServerEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for MCP server CRUD endpoints."""
 
     def setUp(self) -> None:
         """Set up test app with admin authentication."""
-        self.test_app = app.create_app()
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -541,12 +540,11 @@ class MCPServerEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
 
 
-class MCPServerPermissionTestCase(unittest.TestCase):
+class MCPServerPermissionTestCase(support.SharedAppTestCase):
     """Non-admin permission enforcement for MCP server endpoints."""
 
     def setUp(self) -> None:
         """Set up the app with a non-admin, unprivileged principal."""
-        self.test_app = app.create_app()
 
         self.user = models.User(
             email='user@example.com',

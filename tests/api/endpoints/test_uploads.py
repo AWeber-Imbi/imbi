@@ -1,24 +1,22 @@
 """Tests for upload CRUD endpoints."""
 
 import datetime
-import unittest
 from unittest import mock
 
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
 from imbi_api.storage.client import StorageClient
 from imbi_api.storage.dependencies import _get_storage_client
+from tests import support
 
 
-class UploadEndpointsTestCase(unittest.TestCase):
+class UploadEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for upload CRUD endpoints."""
 
     def setUp(self) -> None:
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         self.admin_user = models.User(
             email='admin@example.com',

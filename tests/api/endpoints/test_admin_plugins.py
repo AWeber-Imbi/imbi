@@ -1,22 +1,21 @@
 """Tests for admin plugin management endpoints."""
 
 import datetime
-import unittest
 from unittest import mock
 
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
 from imbi_api.auth import password, permissions
 from imbi_api.endpoints import plugin_edges as _plugin_edges
+from tests import support
 
 
-class AdminPluginsEndpointTestCase(unittest.TestCase):
+class AdminPluginsEndpointTestCase(support.SharedAppTestCase):
     """Test cases for /admin/plugins admin endpoints."""
 
     def setUp(self) -> None:
-        self.test_app = app.create_app()
         self.test_user = models.User(
             email='admin@example.com',
             display_name='Admin User',

@@ -1,24 +1,22 @@
 """Tests for team CRUD endpoints and membership."""
 
 import datetime
-import unittest
 from unittest import mock
 
 import psycopg.errors
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
+from tests import support
 
 
-class TeamEndpointsTestCase(unittest.TestCase):
+class TeamEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for team CRUD endpoints."""
 
     def setUp(self) -> None:
         """Set up test app with admin authentication."""
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -534,14 +532,12 @@ class TeamEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
 
 
-class TeamMembershipTestCase(unittest.TestCase):
+class TeamMembershipTestCase(support.SharedAppTestCase):
     """Test cases for team membership endpoints."""
 
     def setUp(self) -> None:
         """Set up test app with admin authentication."""
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         self.admin_user = models.User(
             email='admin@example.com',

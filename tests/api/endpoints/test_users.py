@@ -7,17 +7,16 @@ from unittest import mock
 from fastapi import testclient
 from imbi_common import graph
 
-from imbi_api import app, models
+from imbi_api import models
+from tests import support
 
 
-class UserEndpointsTestCase(unittest.TestCase):
+class UserEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for user CRUD endpoints."""
 
     def setUp(self) -> None:
         """Set up test app with admin authentication context."""
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         # Create an admin user for authentication
         self.admin_user = models.User(
@@ -969,14 +968,12 @@ class UserEndpointsTestCase(unittest.TestCase):
         self.assertIsNone(merged_user.password_hash)
 
 
-class OrgMembershipEndpointsTestCase(unittest.TestCase):
+class OrgMembershipEndpointsTestCase(support.SharedAppTestCase):
     """Test org membership endpoints on users."""
 
     def setUp(self) -> None:
         """Set up test app with admin authentication context."""
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -1421,14 +1418,12 @@ class ReconcileMembershipsTestCase(unittest.IsolatedAsyncioTestCase):
         db.execute.assert_not_called()
 
 
-class ServiceAccountGuardRailsTestCase(unittest.TestCase):
+class ServiceAccountGuardRailsTestCase(support.SharedAppTestCase):
     """Test guardrails for invalid service account operations."""
 
     def setUp(self) -> None:
         """Set up test app with admin authentication context."""
         from imbi_api.auth import permissions
-
-        self.test_app = app.create_app()
 
         self.admin_user = models.User(
             email='admin@example.com',

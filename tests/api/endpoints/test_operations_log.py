@@ -8,10 +8,10 @@ from unittest import mock
 from fastapi import testclient
 from imbi_common import clickhouse as imbi_clickhouse
 
-from imbi_api import app
 from imbi_api import models as api_models
 from imbi_api.auth import permissions as api_permissions
 from imbi_api.endpoints import operations_log
+from tests import support
 
 ALL_OPSLOG_PERMS: set[str] = {
     'operations_log:create',
@@ -52,13 +52,12 @@ def _sample_row(**overrides: typing.Any) -> dict[str, typing.Any]:
     return base
 
 
-class _OpsLogTestBase(unittest.TestCase):
+class _OpsLogTestBase(support.SharedAppTestCase):
     """Shared setup for operations-log endpoint tests."""
 
     permissions_granted: set[str] = ALL_OPSLOG_PERMS
 
     def setUp(self) -> None:
-        self.test_app = app.create_app()
         self.admin = api_models.User(
             email='alice@example.com',
             display_name='Alice',

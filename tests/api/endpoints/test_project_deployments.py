@@ -23,7 +23,7 @@ from imbi_common.plugins.base import (
 )
 from imbi_common.plugins.registry import RegistryEntry
 
-from imbi_api import app, models
+from imbi_api import models
 from imbi_api.auth import password, permissions
 from imbi_api.endpoints import _helpers
 from imbi_api.endpoints.project_deployments import (
@@ -33,6 +33,7 @@ from imbi_api.endpoints.project_deployments import (
 )
 from imbi_api.llm.dependencies import _get_anthropic_client
 from imbi_api.plugins.resolution import ResolvedPlugin
+from tests import support
 
 
 class _FakeDeploymentPlugin(DeploymentPlugin):
@@ -167,9 +168,8 @@ _MODULE = 'imbi_api.endpoints.project_deployments'
 _UPDATE_LINK = 'imbi_api.endpoints._helpers.update_project_link'
 
 
-class ProjectDeploymentsTestCase(unittest.TestCase):
+class ProjectDeploymentsTestCase(support.SharedAppTestCase):
     def setUp(self) -> None:
-        self.test_app = app.create_app()
         self.test_user = models.User(
             email='admin@example.com',
             display_name='Admin User',
