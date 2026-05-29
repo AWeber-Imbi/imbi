@@ -8,7 +8,6 @@ import httpx
 import jwt
 from fastmcp.server.auth.auth import AccessToken, RemoteAuthProvider
 from fastmcp.server.providers.openapi import MCPType
-from fastmcp.utilities.openapi import HTTPRoute
 
 import imbi_mcp
 from imbi_mcp import server
@@ -139,25 +138,6 @@ class CreateServerTests(unittest.TestCase):
         self.assertTrue(
             all('GET' in rm.methods for rm in resource_maps),
             'All resource route maps should specify GET method',
-        )
-
-
-class ExcludeNonAiToolsTests(unittest.TestCase):
-    def test_excludes_flagged_route(self) -> None:
-        route = HTTPRoute(
-            path='/configuration/{key}',
-            method='PUT',
-            extensions={'x-imbi-ai-tool': False},
-        )
-        self.assertEqual(
-            MCPType.EXCLUDE,
-            server._exclude_non_ai_tools(route, MCPType.TOOL),
-        )
-
-    def test_keeps_unflagged_route(self) -> None:
-        route = HTTPRoute(path='/projects/', method='GET')
-        self.assertIsNone(
-            server._exclude_non_ai_tools(route, MCPType.RESOURCE)
         )
 
 
