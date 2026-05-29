@@ -301,14 +301,22 @@ export const getProjectRelationships = (
     signal,
   )
 
-export const setProjectRelationships = (
+export const addProjectRelationship = (
   orgSlug: string,
   projectId: string,
-  dependsOn: string[],
+  targetId: string,
 ) =>
-  apiClient.put<ProjectRelationshipsResponse>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/relationships`,
-    { depends_on: dependsOn },
+  apiClient.post<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/relationships/${encodeURIComponent(targetId)}`,
+  )
+
+export const removeProjectRelationship = (
+  orgSlug: string,
+  projectId: string,
+  targetId: string,
+) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/relationships/${encodeURIComponent(targetId)}`,
   )
 
 export const createProject = (orgSlug: string, project: ProjectCreate) =>
