@@ -7,6 +7,7 @@ import typing
 import pydantic
 from imbi_common.scoring import (
     AgePolicy,
+    AnalysisResultPolicy,
     AttributeContribution,
     AttributePolicy,
     LinkPresencePolicy,
@@ -18,6 +19,7 @@ from imbi_common.scoring import (
 
 __all__ = [
     'AgePolicy',
+    'AnalysisResultPolicy',
     'AttributeContribution',
     'AttributePolicy',
     'GlobalScoreEvent',
@@ -56,7 +58,7 @@ class PolicyCreate(pydantic.BaseModel):
     slug: str
     description: str | None = None
     category: typing.Literal[
-        'attribute', 'presence', 'link_presence', 'age'
+        'attribute', 'presence', 'link_presence', 'age', 'analysis_result'
     ] = 'attribute'
     weight: int = pydantic.Field(ge=0, le=100)
     enabled: bool = True
@@ -64,11 +66,13 @@ class PolicyCreate(pydantic.BaseModel):
     targets: list[str] = pydantic.Field(default_factory=list)
     attribute_name: str | None = None
     link_slug: str | None = None
+    result_slug: str | None = None
     present_score: int | None = pydantic.Field(default=None, ge=0, le=100)
     missing_score: int | None = pydantic.Field(default=None, ge=0, le=100)
     value_score_map: dict[str, int] | None = None
     range_score_map: dict[str, int] | None = None
     age_score_map: dict[str, int] | None = None
+    status_score_map: dict[str, int] | None = None
 
 
 class PolicyUpdate(pydantic.BaseModel):
@@ -80,12 +84,14 @@ class PolicyUpdate(pydantic.BaseModel):
     description: str | None = None
     attribute_name: str | None = None
     link_slug: str | None = None
+    result_slug: str | None = None
     weight: int | None = pydantic.Field(default=None, ge=0, le=100)
     enabled: bool | None = None
     priority: int | None = None
     value_score_map: dict[str, int] | None = None
     range_score_map: dict[str, int] | None = None
     age_score_map: dict[str, int] | None = None
+    status_score_map: dict[str, int] | None = None
     present_score: int | None = pydantic.Field(default=None, ge=0, le=100)
     missing_score: int | None = pydantic.Field(default=None, ge=0, le=100)
     targets: list[str] | None = None

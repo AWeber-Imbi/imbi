@@ -427,3 +427,148 @@ def _select_identity_plugin_id(
         if isinstance(plugin_identity, str) and plugin_identity:
             identity_plugin_id = plugin_identity
     return identity_plugin_id
+
+
+async def resolve_analysis_plugins(
+    db: graph.Graph,
+    project_id: str,
+) -> list[ResolvedPlugin]:
+    """Return every analysis plugin applicable to ``project_id``.
+
+    The union covers three discovery paths:
+
+    1. ``(:Project)-[:USES_PLUGIN {tab:'analysis'}]->(:Plugin)`` — project
+       override.
+    2. ``(:Project)-[:TYPE]->(:ProjectType)-[:USES_PLUGIN {tab:'analysis'}]
+       ->(:Plugin)`` — project-type default. Project override wins per
+       plugin id, mirroring :func:`resolve_all_plugins`.
+    3. ``(:Project)-[:EXISTS_IN]->(:ThirdPartyService)-[:HAS_PLUGIN]
+       ->(:Plugin)`` filtered to ``plugin_type='analysis'``. The
+       third-party-service path attaches an analysis plugin to every
+       project that connects to that TPS, without requiring an
+       operator-managed ``USES_PLUGIN`` edge.
+
+    Deduped by ``plugin_id``: a plugin reachable via multiple paths is
+    returned once with options resolved from the highest-precedence
+    edge (project edge > project-type edge; TPS-only entries carry no
+    edge options). Plugins whose registry entry is missing or whose
+    :class:`PluginRegistration` is disabled are silently dropped (a
+    single misconfigured plugin must not block the rest of the
+    fan-out, matching :func:`resolve_all_plugins`).
+    """
+    query: typing.LiteralString = """
+    MATCH (proj:Project {{id: {project_id}}})
+    OPTIONAL MATCH (proj)-[pe:USES_PLUGIN]->(p:Plugin)
+    WHERE pe.tab = 'analysis'
+    OPTIONAL MATCH (proj)-[:TYPE]->(pt:ProjectType)
+      -[pte:USES_PLUGIN]->(p2:Plugin)
+    WHERE pte.tab = 'analysis'
+    OPTIONAL MATCH (proj)-[:EXISTS_IN]->(tps:ThirdPartyService)
+      -[:HAS_PLUGIN]->(p3:Plugin)
+    WHERE p3.plugin_type = 'analysis'
+    WITH
+      collect(DISTINCT {{id: p.id, slug: p.plugin_slug,
+                         edge_options: pe.options,
+                         plugin_options: p.options,
+                         default: pe.default,
+                         src: 'project'}})
+       AS proj_plugins,
+      collect(DISTINCT {{id: p2.id, slug: p2.plugin_slug,
+                         edge_options: pte.options,
+                         plugin_options: p2.options,
+                         default: pte.default,
+                         src: 'project_type'}})
+       AS pt_plugins,
+      collect(DISTINCT {{id: p3.id, slug: p3.plugin_slug,
+                         plugin_options: p3.options,
+                         src: 'third_party_service'}})
+       AS tps_plugins
+    RETURN proj_plugins, pt_plugins, tps_plugins
+    """
+    records = await db.execute(
+        query,
+        {'project_id': project_id},
+        ['proj_plugins', 'pt_plugins', 'tps_plugins'],
+    )
+    if not records:
+        return []
+
+    proj_plugins: list[dict[str, typing.Any]] = (
+        graph.parse_agtype(records[0]['proj_plugins']) or []
+    )
+    pt_plugins: list[dict[str, typing.Any]] = (
+        graph.parse_agtype(records[0]['pt_plugins']) or []
+    )
+    tps_plugins: list[dict[str, typing.Any]] = (
+        graph.parse_agtype(records[0]['tps_plugins']) or []
+    )
+
+    pt_by_id: dict[str, dict[str, typing.Any]] = {
+        p['id']: p for p in pt_plugins if p.get('id')
+    }
+    merged: dict[str, dict[str, typing.Any]] = {}
+    # Seed with TPS entries first; project-type and project edges win.
+    for p in tps_plugins:
+        if p.get('id'):
+            merged[p['id']] = p
+    for p in pt_plugins:
+        if p.get('id'):
+            merged[p['id']] = p
+    for p in proj_plugins:
+        pid = p.get('id')
+        if not pid:
+            continue
+        if pid in pt_by_id:
+            merged[pid] = {
+                **p,
+                'pt_edge_options': pt_by_id[pid].get('edge_options'),
+            }
+        else:
+            merged[pid] = p
+
+    from imbi_api.plugins.lifecycle import get_enabled_map
+
+    enabled_map = await get_enabled_map(db)
+
+    resolved: list[ResolvedPlugin] = []
+    for chosen in merged.values():
+        plugin_id = chosen.get('id')
+        plugin_slug = chosen.get('slug')
+        if not plugin_id or not plugin_slug:
+            continue
+        if not enabled_map.get(plugin_slug, False):
+            LOGGER.info(
+                'Skipping disabled plugin %r (id=%s) during analysis fan-out',
+                plugin_slug,
+                plugin_id,
+            )
+            continue
+        plugin_defaults: dict[str, typing.Any] = parse_options(
+            chosen.get('plugin_options')
+        )
+        pt_edge: dict[str, typing.Any] = parse_options(
+            chosen.get('pt_edge_options')
+        )
+        overrides: dict[str, typing.Any] = parse_options(
+            chosen.get('edge_options')
+        )
+        options = {**plugin_defaults, **pt_edge, **overrides}
+        try:
+            entry = get_plugin(plugin_slug)
+        except PluginNotFoundError:
+            LOGGER.warning(
+                'Skipping unregistered plugin %r (id=%s) during analysis '
+                'fan-out',
+                plugin_slug,
+                plugin_id,
+            )
+            continue
+        resolved.append(
+            ResolvedPlugin(
+                plugin_id=plugin_id,
+                plugin_slug=plugin_slug,
+                entry=entry,
+                options=options,
+            )
+        )
+    return resolved

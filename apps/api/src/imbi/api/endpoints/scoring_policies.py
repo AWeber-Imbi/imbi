@@ -30,6 +30,7 @@ PolicyType = (
     | scoring_common.PresencePolicy
     | scoring_common.LinkPresencePolicy
     | scoring_common.AgePolicy
+    | scoring_common.AnalysisResultPolicy
 )
 
 
@@ -38,6 +39,7 @@ _JSON_PROPS_KEYS = (
     'value_score_map',
     'range_score_map',
     'age_score_map',
+    'status_score_map',
 )
 
 
@@ -55,11 +57,13 @@ _NODE_PROPERTY_KEYS: frozenset[str] = frozenset(
         'priority',
         'attribute_name',
         'link_slug',
+        'result_slug',
         'present_score',
         'missing_score',
         'value_score_map',
         'range_score_map',
         'age_score_map',
+        'status_score_map',
     }
 )
 

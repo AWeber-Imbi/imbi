@@ -16,6 +16,7 @@ from collections import abc
 from imbi_common import blueprints, clickhouse, graph, models
 from imbi_common.scoring import (
     AgePolicy,
+    AnalysisResultPolicy,
     AttributePolicy,
     LinkPresencePolicy,
     PresencePolicy,
@@ -25,7 +26,13 @@ from imbi_common.scoring import (
 )
 from valkey import asyncio as valkey
 
-Policy = AttributePolicy | PresencePolicy | LinkPresencePolicy | AgePolicy
+Policy = (
+    AttributePolicy
+    | PresencePolicy
+    | LinkPresencePolicy
+    | AgePolicy
+    | AnalysisResultPolicy
+)
 
 STREAM = 'imbi:score-recompute'
 GROUP = 'score-workers'
@@ -156,11 +163,12 @@ async def affected_projects(
 
     For attribute/presence/age policies, ``policy.attribute_name`` must
     exist on the blueprint-extended Project model. For link_presence
-    policies, no attribute check is required — the policy applies based
-    on the project's links dict. In all cases, the result is
-    intersected with the policy's TARGETS edges when set.
+    and analysis_result policies, no attribute check is required —
+    they key off project links / analysis-report results instead. In
+    all cases, the result is intersected with the policy's TARGETS
+    edges when set.
     """
-    if not isinstance(policy, LinkPresencePolicy):
+    if not isinstance(policy, (LinkPresencePolicy, AnalysisResultPolicy)):
         extended = await blueprints.get_model(db, models.Project)
         if policy.attribute_name not in extended.model_fields:
             return []

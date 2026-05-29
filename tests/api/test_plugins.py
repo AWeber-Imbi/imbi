@@ -1440,3 +1440,205 @@ class ReloadSubscriberTestCase(unittest.IsolatedAsyncioTestCase):
                     pass
 
         asyncio.run(_run())
+
+
+class ResolveAnalysisPluginsTestCase(unittest.TestCase):
+    """Coverage for the analysis-plugin union resolver."""
+
+    def _enabled(self, *slugs: str) -> mock.AsyncMock:
+        return mock.AsyncMock(return_value=dict.fromkeys(slugs, True))
+
+    def _make_analysis_registry_entry(self, slug: str) -> object:
+        from imbi_common.plugins.base import AnalysisPlugin, PluginManifest
+        from imbi_common.plugins.registry import RegistryEntry
+
+        class _Fake(AnalysisPlugin):
+            manifest = PluginManifest(
+                slug=slug, name=slug, plugin_type='analysis'
+            )
+
+            async def analyze(self, ctx, credentials):  # type: ignore[override]
+                return []
+
+        return RegistryEntry(
+            handler_cls=_Fake,
+            manifest=_Fake.manifest,
+            package_name='x',
+            package_version='0',
+        )
+
+    def test_returns_empty_when_no_project(self) -> None:
+        from imbi_api.plugins.resolution import resolve_analysis_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = []
+        result = asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
+        self.assertEqual([], result)
+
+    def test_returns_tps_plugins(self) -> None:
+        from imbi_api.plugins.resolution import resolve_analysis_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {
+                'proj_plugins': '[]',
+                'pt_plugins': '[]',
+                'tps_plugins': json.dumps(
+                    [
+                        {
+                            'id': 'p1',
+                            'slug': 'logzio',
+                            'plugin_options': '{}',
+                            'src': 'third_party_service',
+                        }
+                    ]
+                ),
+            }
+        ]
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin',
+                side_effect=lambda s: self._make_analysis_registry_entry(s),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.get_enabled_map',
+                new=self._enabled('logzio'),
+            ),
+        ):
+            resolved = asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
+        self.assertEqual({r.plugin_slug for r in resolved}, {'logzio'})
+
+    def test_project_override_wins_over_project_type(self) -> None:
+        from imbi_api.plugins.resolution import resolve_analysis_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {
+                'proj_plugins': json.dumps(
+                    [
+                        {
+                            'id': 'p1',
+                            'slug': 'sonarqube',
+                            'edge_options': json.dumps({'token': 'proj'}),
+                            'plugin_options': '{}',
+                            'default': True,
+                            'src': 'project',
+                        }
+                    ]
+                ),
+                'pt_plugins': json.dumps(
+                    [
+                        {
+                            'id': 'p1',
+                            'slug': 'sonarqube',
+                            'edge_options': json.dumps({'token': 'pt'}),
+                            'plugin_options': '{}',
+                            'default': True,
+                            'src': 'project_type',
+                        }
+                    ]
+                ),
+                'tps_plugins': '[]',
+            }
+        ]
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin',
+                side_effect=lambda s: self._make_analysis_registry_entry(s),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.get_enabled_map',
+                new=self._enabled('sonarqube'),
+            ),
+        ):
+            resolved = asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
+        self.assertEqual(len(resolved), 1)
+        self.assertEqual(resolved[0].options.get('token'), 'proj')
+
+    def test_dedup_across_sources(self) -> None:
+        from imbi_api.plugins.resolution import resolve_analysis_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {
+                'proj_plugins': '[]',
+                'pt_plugins': json.dumps(
+                    [
+                        {
+                            'id': 'p1',
+                            'slug': 'logzio',
+                            'edge_options': '{}',
+                            'plugin_options': '{}',
+                            'default': True,
+                            'src': 'project_type',
+                        }
+                    ]
+                ),
+                'tps_plugins': json.dumps(
+                    [
+                        {
+                            'id': 'p1',
+                            'slug': 'logzio',
+                            'plugin_options': '{}',
+                            'src': 'third_party_service',
+                        }
+                    ]
+                ),
+            }
+        ]
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin',
+                side_effect=lambda s: self._make_analysis_registry_entry(s),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.get_enabled_map',
+                new=self._enabled('logzio'),
+            ),
+        ):
+            resolved = asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
+        # p1 should appear exactly once even though two paths matched
+        self.assertEqual([r.plugin_id for r in resolved], ['p1'])
+
+    def test_skips_disabled_plugins(self) -> None:
+        from imbi_api.plugins.resolution import resolve_analysis_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {
+                'proj_plugins': '[]',
+                'pt_plugins': json.dumps(
+                    [
+                        {
+                            'id': 'p1',
+                            'slug': 'enabled',
+                            'edge_options': '{}',
+                            'plugin_options': '{}',
+                            'src': 'project_type',
+                        },
+                        {
+                            'id': 'p2',
+                            'slug': 'disabled',
+                            'edge_options': '{}',
+                            'plugin_options': '{}',
+                            'src': 'project_type',
+                        },
+                    ]
+                ),
+                'tps_plugins': '[]',
+            }
+        ]
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin',
+                side_effect=lambda s: self._make_analysis_registry_entry(s),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.get_enabled_map',
+                new=mock.AsyncMock(
+                    return_value={'enabled': True, 'disabled': False}
+                ),
+            ),
+        ):
+            resolved = asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
+        self.assertEqual({r.plugin_slug for r in resolved}, {'enabled'})
