@@ -5,7 +5,31 @@ import os
 import unittest
 from unittest import mock
 
+from fastmcp.server.providers.openapi import MCPType
+from fastmcp.utilities.openapi import HTTPRoute
+
 from imbi_assistant import mcp, settings
+
+
+class ExcludeNonAiToolsTestCase(unittest.TestCase):
+    """Test cases for _exclude_non_ai_tools."""
+
+    def test_excludes_flagged_route(self) -> None:
+        route = HTTPRoute(
+            path='/configuration/{key}',
+            method='PUT',
+            extensions={'x-imbi-ai-tool': False},
+        )
+        self.assertEqual(
+            MCPType.EXCLUDE,
+            mcp._exclude_non_ai_tools(route, MCPType.TOOL),
+        )
+
+    def test_keeps_unflagged_route(self) -> None:
+        route = HTTPRoute(path='/projects/', method='GET')
+        self.assertIsNone(
+            mcp._exclude_non_ai_tools(route, MCPType.TOOL),
+        )
 
 
 class MCPToolToAnthropicTestCase(unittest.TestCase):
@@ -143,6 +167,49 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
 
             await manager.aclose()
             self.assertFalse(manager.is_initialized)
+
+    @mock.patch('imbi_assistant.mcp.httpx.AsyncClient')
+    @mock.patch('imbi_assistant.mcp.fastmcp.Client')
+    @mock.patch('imbi_assistant.mcp.fastmcp.FastMCP.from_openapi')
+    async def test_initialize_passes_ai_exclusion_hook(
+        self,
+        mock_from_openapi: mock.MagicMock,
+        mock_mcp_client_cls: mock.MagicMock,
+        mock_httpx_cls: mock.MagicMock,
+    ) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {'IMBI_INTERNAL_API_URL': 'http://api:8000'},
+            clear=True,
+        ):
+            mock_tmp = mock.AsyncMock()
+            mock_response = mock.MagicMock()
+            mock_response.json.return_value = {
+                'openapi': '3.1.0',
+                'paths': {},
+            }
+            mock_tmp.get.return_value = mock_response
+            mock_tmp.__aenter__ = mock.AsyncMock(return_value=mock_tmp)
+            mock_tmp.__aexit__ = mock.AsyncMock(return_value=None)
+            mock_httpx_cls.return_value = mock_tmp
+
+            mock_from_openapi.return_value = mock.MagicMock()
+            mock_client = mock.AsyncMock()
+            mock_client.list_tools.return_value = []
+            mock_client.__aenter__ = mock.AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = mock.AsyncMock(return_value=None)
+            mock_mcp_client_cls.return_value = mock_client
+
+            manager = mcp.MCPManager()
+            await manager.initialize()
+
+            _, kwargs = mock_from_openapi.call_args
+            self.assertIs(
+                kwargs['route_map_fn'],
+                mcp._exclude_non_ai_tools,
+            )
+
+            await manager.aclose()
 
     @mock.patch('imbi_assistant.mcp.httpx.AsyncClient')
     @mock.patch('imbi_assistant.mcp.fastmcp.Client')
