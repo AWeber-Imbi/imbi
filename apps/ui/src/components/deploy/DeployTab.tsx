@@ -16,7 +16,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { LoadingState } from '@/components/ui/loading-state'
+import { Skeleton } from '@/components/ui/skeleton'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { cn, sortEnvironments } from '@/lib/utils'
 import type {
@@ -63,7 +63,11 @@ export function DeployTab({
     : sorted[0]
   const envSlug = env?.slug ?? ''
 
-  const { data: currentReleases = [] } = useQuery<CurrentReleaseEnvironment[]>({
+  const {
+    data: currentReleases = [],
+    isError: currentReleasesError,
+    isLoading: currentReleasesLoading,
+  } = useQuery<CurrentReleaseEnvironment[]>({
     enabled: open && !!orgSlug && !!projectId,
     queryFn: ({ signal }) => listCurrentReleases(orgSlug, projectId, signal),
     queryKey: ['currentReleases', orgSlug, projectId],
@@ -80,7 +84,12 @@ export function DeployTab({
   // branch.  For staging / production we list tags.
   const isFirstEnv = env?.slug === sorted[0]?.slug
 
-  const { data: refs = [] } = useQuery<DeploymentRef[]>({
+  const {
+    data: refs = [],
+    isError: refsError,
+    isLoading: refsLoading,
+    refetch: refsRefetch,
+  } = useQuery<DeploymentRef[]>({
     enabled: open && !!env,
     queryFn: ({ signal }) =>
       listDeploymentRefs(
@@ -102,9 +111,12 @@ export function DeployTab({
     return def?.name ?? 'main'
   }, [refs])
 
-  const { data: branchCommits = [], isLoading: commitsLoading } = useQuery<
-    DeploymentCommit[]
-  >({
+  const {
+    data: branchCommits = [],
+    isError: commitsError,
+    isLoading: commitsLoading,
+    refetch: commitsRefetch,
+  } = useQuery<DeploymentCommit[]>({
     enabled: open && !!env && isFirstEnv,
     queryFn: ({ signal }) =>
       listRefCommits(
@@ -137,9 +149,12 @@ export function DeployTab({
   }, [envSlug])
 
   const showBranchPane = isFirstEnv && pickerMode === 'branches'
-  const { data: branchRefs = [], isLoading: branchesLoading } = useQuery<
-    DeploymentRef[]
-  >({
+  const {
+    data: branchRefs = [],
+    isError: branchesError,
+    isLoading: branchesLoading,
+    refetch: branchesRefetch,
+  } = useQuery<DeploymentRef[]>({
     enabled: open && showBranchPane,
     queryFn: ({ signal }) =>
       listDeploymentRefs(orgSlug, projectId, { kind: 'branch' }, signal),
@@ -150,19 +165,23 @@ export function DeployTab({
     if (!q) return branchRefs
     return branchRefs.filter((b) => b.name.toLowerCase().includes(q))
   }, [branchRefs, branchQuery])
-  const { data: activeBranchCommits = [], isLoading: activeBranchLoading } =
-    useQuery<DeploymentCommit[]>({
-      enabled: open && showBranchPane && !!activeBranch,
-      queryFn: ({ signal }) =>
-        listRefCommits(
-          orgSlug,
-          projectId,
-          activeBranch ?? '',
-          { limit: 25 },
-          signal,
-        ),
-      queryKey: ['refCommits', orgSlug, projectId, activeBranch],
-    })
+  const {
+    data: activeBranchCommits = [],
+    isError: activeBranchError,
+    isLoading: activeBranchLoading,
+    refetch: activeBranchRefetch,
+  } = useQuery<DeploymentCommit[]>({
+    enabled: open && showBranchPane && !!activeBranch,
+    queryFn: ({ signal }) =>
+      listRefCommits(
+        orgSlug,
+        projectId,
+        activeBranch ?? '',
+        { limit: 25 },
+        signal,
+      ),
+    queryKey: ['refCommits', orgSlug, projectId, activeBranch],
+  })
 
   const [selected, setSelected] = useState<null | SelectedVersion>(null)
   useEffect(() => {
@@ -254,7 +273,7 @@ export function DeployTab({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex max-h-[80vh] min-h-121.5 flex-col gap-4">
       {/* Locked target environment */}
       <section>
         <p className="text-tertiary mb-2 text-xs tracking-wider uppercase">
@@ -263,7 +282,20 @@ export function DeployTab({
         <div className="border-action bg-action/5 rounded-md border p-3">
           <div className="text-sm font-medium">{env?.name ?? envSlug}</div>
           <div className="text-tertiary mt-1 text-xs">
-            {current?.release ? (
+            {currentReleasesLoading ? (
+              <div
+                aria-busy="true"
+                aria-label="Loading current release"
+                className="flex items-center gap-2"
+              >
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+            ) : currentReleasesError ? (
+              <span className="text-danger">
+                Unable to load current release.
+              </span>
+            ) : current?.release ? (
               <>
                 <span className="font-mono">
                   {current.release.tag ?? current.release.committish}
@@ -285,7 +317,7 @@ export function DeployTab({
       </section>
 
       {/* Version picker */}
-      <section className="min-h-45">
+      <section>
         <div className="mb-2 flex items-center justify-between">
           <p className="text-tertiary text-xs tracking-wider uppercase">
             {isFirstEnv
@@ -313,6 +345,9 @@ export function DeployTab({
             current={
               current?.release?.tag ?? current?.release?.committish ?? null
             }
+            isError={refsError}
+            isLoading={refsLoading}
+            onRetry={refsRefetch}
             onSelect={(r) => setSelected({ label: r.name, sha: r.sha })}
             selectedSha={selected?.sha ?? null}
             tags={tagOptions}
@@ -321,12 +356,15 @@ export function DeployTab({
           <BranchPicker
             activeBranch={activeBranch}
             branches={filteredBranches}
+            branchesError={branchesError}
             branchesLoading={branchesLoading}
             commits={activeBranchCommits}
+            commitsError={activeBranchError}
             commitsLoading={activeBranchLoading}
             current={
               current?.release?.tag ?? current?.release?.committish ?? null
             }
+            onBranchesRetry={branchesRefetch}
             onBranchSelect={(name) => {
               setActiveBranch(name)
               setSelected(null)
@@ -335,6 +373,7 @@ export function DeployTab({
               if (!activeBranch) return
               setSelected({ label: activeBranch, sha: c.sha })
             }}
+            onCommitsRetry={activeBranchRefetch}
             onQueryChange={setBranchQuery}
             query={branchQuery}
             selectedSha={selected?.sha ?? null}
@@ -345,7 +384,9 @@ export function DeployTab({
             current={
               current?.release?.tag ?? current?.release?.committish ?? null
             }
+            isError={commitsError}
             isLoading={commitsLoading}
+            onRetry={commitsRefetch}
             onSelect={(c) =>
               setSelected({ label: defaultBranchName, sha: c.sha })
             }
@@ -354,15 +395,17 @@ export function DeployTab({
         )}
       </section>
 
-      {/* Diff summary */}
-      {selected && current?.release ? (
-        <DiffSummary
-          base={current.release.committish}
-          head={selected.label ?? selected.sha}
-          orgSlug={orgSlug}
-          projectId={projectId}
-        />
-      ) : null}
+      {/* Diff summary — fixed-height slot so footer doesn't shift */}
+      <div className="min-h-[70.5px]">
+        {selected && current?.release ? (
+          <DiffSummary
+            base={current.release.committish}
+            head={selected.label ?? selected.sha}
+            orgSlug={orgSlug}
+            projectId={projectId}
+          />
+        ) : null}
+      </div>
 
       {/* Footer */}
       <div className="border-tertiary bg-secondary/30 -mx-6 mt-2 -mb-4 flex items-center justify-end gap-2 border-t px-6 py-4">
@@ -388,27 +431,113 @@ export function DeployTab({
   )
 }
 
+function BranchList({
+  activeBranch,
+  branches,
+  isError,
+  isLoading,
+  onRetry,
+  onSelect,
+}: {
+  activeBranch: null | string
+  branches: DeploymentRef[]
+  isError: boolean
+  isLoading: boolean
+  onRetry: () => void
+  onSelect: (name: string) => void
+}) {
+  if (isError)
+    return (
+      <div className="border-danger bg-danger/10 text-danger rounded-md border px-3 py-2 text-sm">
+        Failed to load branches.{' '}
+        <Button className="ml-2" onClick={onRetry} size="sm" variant="ghost">
+          Retry
+        </Button>
+      </div>
+    )
+  if (isLoading)
+    return (
+      <ul
+        aria-busy="true"
+        aria-label="Loading branches"
+        className="border-secondary rounded-md border"
+      >
+        {Array.from({ length: 6 }, (_, i) => (
+          <li
+            aria-hidden="true"
+            className="border-tertiary flex items-center gap-3 border-b px-3 py-2 last:border-b-0"
+            key={i}
+          >
+            <Skeleton className="h-3 flex-1" />
+          </li>
+        ))}
+      </ul>
+    )
+  if (branches.length === 0)
+    return (
+      <p className="border-secondary text-tertiary rounded-md border p-3 text-sm">
+        No branches.
+      </p>
+    )
+  return (
+    <ul className="border-secondary max-h-65 overflow-y-auto rounded-md border">
+      {branches.map((b) => {
+        const active = b.name === activeBranch
+        return (
+          <li
+            className={cn(
+              'border-b border-tertiary last:border-b-0',
+              active && 'bg-action/5',
+            )}
+            key={b.name}
+          >
+            <button
+              className="flex w-full min-w-0 cursor-pointer items-center gap-2 px-3 py-2 text-left"
+              onClick={() => onSelect(b.name)}
+              type="button"
+            >
+              <span className="min-w-0 flex-1 truncate text-sm">{b.name}</span>
+              {b.pr_number ? (
+                <Badge variant="outline">#{b.pr_number}</Badge>
+              ) : null}
+              {active ? <Check className="text-action size-4" /> : null}
+            </button>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 function BranchPicker({
   activeBranch,
   branches,
+  branchesError,
   branchesLoading,
   commits,
+  commitsError,
   commitsLoading,
   current,
+  onBranchesRetry,
   onBranchSelect,
   onCommitSelect,
+  onCommitsRetry,
   onQueryChange,
   query,
   selectedSha,
 }: {
   activeBranch: null | string
   branches: DeploymentRef[]
+  branchesError: boolean
   branchesLoading: boolean
   commits: DeploymentCommit[]
+  commitsError: boolean
   commitsLoading: boolean
   current: null | string
+  onBranchesRetry: () => void
   onBranchSelect: (name: string) => void
   onCommitSelect: (commit: DeploymentCommit) => void
+  onCommitsRetry: () => void
   onQueryChange: (q: string) => void
   query: string
   selectedSha: null | string
@@ -424,42 +553,14 @@ function BranchPicker({
           type="text"
           value={query}
         />
-        {branchesLoading ? (
-          <LoadingState label="Loading branches…" />
-        ) : branches.length === 0 ? (
-          <p className="border-secondary text-tertiary rounded-md border p-3 text-sm">
-            No branches.
-          </p>
-        ) : (
-          <ul className="border-secondary max-h-65 overflow-y-auto rounded-md border">
-            {branches.map((b) => {
-              const active = b.name === activeBranch
-              return (
-                <li
-                  className={cn(
-                    'border-b border-tertiary last:border-b-0',
-                    active && 'bg-action/5',
-                  )}
-                  key={b.name}
-                >
-                  <button
-                    className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left"
-                    onClick={() => onBranchSelect(b.name)}
-                    type="button"
-                  >
-                    <span className="min-w-0 flex-1 truncate text-sm">
-                      {b.name}
-                    </span>
-                    {b.pr_number ? (
-                      <Badge variant="outline">#{b.pr_number}</Badge>
-                    ) : null}
-                    {active ? <Check className="text-action size-4" /> : null}
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        )}
+        <BranchList
+          activeBranch={activeBranch}
+          branches={branches}
+          isError={branchesError}
+          isLoading={branchesLoading}
+          onRetry={onBranchesRetry}
+          onSelect={onBranchSelect}
+        />
       </div>
       <div>
         {!activeBranch ? (
@@ -470,7 +571,9 @@ function BranchPicker({
           <CommitList
             commits={commits}
             current={current}
+            isError={commitsError}
             isLoading={commitsLoading}
+            onRetry={onCommitsRetry}
             onSelect={onCommitSelect}
             selectedSha={selectedSha}
           />
@@ -483,17 +586,49 @@ function BranchPicker({
 function CommitList({
   commits,
   current,
+  isError,
   isLoading,
+  onRetry,
   onSelect,
   selectedSha,
 }: {
   commits: DeploymentCommit[]
   current: null | string
+  isError: boolean
   isLoading: boolean
+  onRetry: () => void
   onSelect: (commit: DeploymentCommit) => void
   selectedSha: null | string
 }) {
-  if (isLoading) return <LoadingState label="Loading commits…" />
+  if (isError)
+    return (
+      <div className="border-danger bg-danger/10 text-danger rounded-md border px-3 py-2 text-sm">
+        Failed to load commits.{' '}
+        <Button className="ml-2" onClick={onRetry} size="sm" variant="ghost">
+          Retry
+        </Button>
+      </div>
+    )
+  if (isLoading)
+    return (
+      <ul
+        aria-busy="true"
+        aria-label="Loading commits"
+        className="border-secondary rounded-md border"
+      >
+        {Array.from({ length: 6 }, (_, i) => (
+          <li
+            aria-hidden="true"
+            className="border-tertiary flex items-center gap-3 border-b px-3 py-2 last:border-b-0"
+            key={i}
+          >
+            <Skeleton className="h-3 w-12 shrink-0" />
+            <Skeleton className="h-3 flex-1" />
+            <Skeleton className="h-3 w-16 shrink-0" />
+          </li>
+        ))}
+      </ul>
+    )
   if (commits.length === 0)
     return (
       <p className="border-secondary text-tertiary rounded-md border p-3 text-sm">
@@ -514,7 +649,7 @@ function CommitList({
             key={c.sha}
           >
             <button
-              className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
               onClick={() => onSelect(c)}
               type="button"
             >
@@ -568,7 +703,18 @@ function DiffSummary({
         Re-deploying — no commit delta to summarize.
       </p>
     )
-  if (isLoading || !data) return null
+  if (isLoading)
+    return (
+      <div
+        aria-busy="true"
+        aria-label="Loading diff summary"
+        className="border-secondary bg-tertiary/20 flex flex-col gap-2 rounded-md border p-3"
+      >
+        <Skeleton className="h-3 w-48" />
+        <Skeleton className="h-3 w-32" />
+      </div>
+    )
+  if (!data) return null
   return (
     <div className="border-secondary bg-tertiary/20 rounded-md border p-3 text-xs">
       <div className="text-tertiary font-mono">
@@ -630,15 +776,49 @@ function PickerToggle({
 
 function TagList({
   current,
+  isError,
+  isLoading,
+  onRetry,
   onSelect,
   selectedSha,
   tags,
 }: {
   current: null | string
+  isError: boolean
+  isLoading: boolean
+  onRetry: () => void
   onSelect: (tag: DeploymentRef) => void
   selectedSha: null | string
   tags: DeploymentRef[]
 }) {
+  if (isError)
+    return (
+      <div className="border-danger bg-danger/10 text-danger rounded-md border px-3 py-2 text-sm">
+        Failed to load tags.{' '}
+        <Button className="ml-2" onClick={onRetry} size="sm" variant="ghost">
+          Retry
+        </Button>
+      </div>
+    )
+  if (isLoading)
+    return (
+      <ul
+        aria-busy="true"
+        aria-label="Loading tags"
+        className="border-secondary rounded-md border"
+      >
+        {Array.from({ length: 5 }, (_, i) => (
+          <li
+            aria-hidden="true"
+            className="border-tertiary flex items-center gap-3 border-b px-3 py-2 last:border-b-0"
+            key={i}
+          >
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-3 w-12" />
+          </li>
+        ))}
+      </ul>
+    )
   if (tags.length === 0)
     return (
       <p className="border-secondary text-tertiary rounded-md border p-3 text-sm">
@@ -659,7 +839,7 @@ function TagList({
             key={t.sha}
           >
             <button
-              className="flex flex-1 items-center gap-3 text-left"
+              className="flex flex-1 cursor-pointer items-center gap-3 text-left"
               onClick={() => onSelect(t)}
               type="button"
             >
