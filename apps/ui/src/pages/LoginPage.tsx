@@ -14,6 +14,10 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import {
+  performPostLoginRedirect,
+  resolvePostLoginTarget,
+} from '@/lib/postLoginRedirect'
 import { queryKeys } from '@/lib/queryKeys'
 
 const REMEMBERED_EMAIL_KEY = 'imbi_remembered_email'
@@ -60,20 +64,18 @@ export function LoginPage() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      // Check if there's a stored redirect path from a 401
-      const redirectPath = sessionStorage.getItem('imbi_redirect_after_login')
-
-      if (redirectPath) {
-        // Clear the stored path
-        sessionStorage.removeItem('imbi_redirect_after_login')
-        console.log('[Login] Redirecting to stored path:', redirectPath)
-        navigate(redirectPath, { replace: true })
-      } else {
-        // Default to dashboard
-        navigate('/dashboard', { replace: true })
-      }
+      // Prefer an OAuth `return_to` (MCP login bounces here with it), then a
+      // path stored on a prior 401. Absolute same-origin URLs (the API
+      // /authorize endpoint) trigger a full-page load so the access cookie is
+      // sent; relative paths stay in-SPA.
+      const target = resolvePostLoginTarget(
+        searchParams.get('return_to'),
+        sessionStorage.getItem('imbi_redirect_after_login'),
+      )
+      sessionStorage.removeItem('imbi_redirect_after_login')
+      performPostLoginRedirect(target, navigate)
     }
-  }, [isAuthenticated, navigate])
+  }, [isAuthenticated, navigate, searchParams])
 
   const handlePasswordLogin = async (credentials: {
     email: string

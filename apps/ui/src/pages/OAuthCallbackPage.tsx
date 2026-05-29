@@ -5,6 +5,10 @@ import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { useAuth } from '@/hooks/useAuth'
+import {
+  performPostLoginRedirect,
+  resolvePostLoginTarget,
+} from '@/lib/postLoginRedirect'
 import { useAuthStore } from '@/stores/authStore'
 
 export function OAuthCallbackPage() {
@@ -55,12 +59,15 @@ export function OAuthCallbackPage() {
 
   useEffect(() => {
     if (user) {
-      // Check for redirect path from 401 or OAuth flow
-      const returnTo =
-        sessionStorage.getItem('imbi_redirect_after_login') || '/dashboard'
+      // Redirect path from a 401 or the OAuth/MCP-login flow. An absolute
+      // same-origin URL (the API /authorize endpoint) triggers a full-page
+      // load so the access cookie is sent; relative paths stay in-SPA.
+      const target = resolvePostLoginTarget(
+        null,
+        sessionStorage.getItem('imbi_redirect_after_login'),
+      )
       sessionStorage.removeItem('imbi_redirect_after_login')
-      console.log('[OAuth] Redirecting to:', returnTo)
-      navigate(returnTo, { replace: true })
+      performPostLoginRedirect(target, navigate)
     }
   }, [user, navigate])
 
