@@ -1,0 +1,191 @@
+[project]
+name = "imbi-slackbot"
+version = "0.1.0"
+description = "Imbi Slack bot"
+readme = "README.md"
+requires-python = ">=3.14"
+license = "BSD-3-Clause"
+authors = [{ name = "Gavin M. Roy", email = "gavinr@aweber.com" }]
+dependencies = [
+  "anthropic>=0.84.0",
+  "fastapi>=0.135.1",
+  "fastmcp>=3.0.0",
+  "httpx>=0.28.1",
+  "imbi-common[databases,mcp,server]>=2.8.0",
+  "pydantic~=2.12",
+  "sentry-sdk>=2.48.0",
+  "slack-bolt>=1.21",
+]
+
+[project.scripts]
+imbi-slackbot = "imbi_slackbot.app:cli"
+
+[dependency-groups]
+dev = [
+  "basedpyright>=1.37.1",
+  "coverage[toml]>=7.13.1",
+  "mypy~=1.19.1",
+  "pre-commit>=4.5.1",
+  "pytest>=9.0.2",
+  "pytest-cov>=7.0.0",
+  "python-dotenv>=1.1.0",
+  "ruff~=0.14.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+
+[tool.mypy]
+namespace_packages = true
+show_error_codes = true
+strict = true
+packages = ["imbi_slackbot", "tests"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+disallow_any_expr = false
+implicit_reexport = true
+warn_return_any = false
+disable_error_code = [
+  "attr-defined",
+  "call-arg",
+  "arg-type",
+  "type-arg",
+  "union-attr",
+  "index",
+  "var-annotated"
+]
+
+[tool.pyright]
+deprecateTypingAliases = true
+reportMissingSuperCall = "hint"
+typeCheckingMode = "strict"
+
+[[tool.pyright.executionEnvironments]]
+root = "src"
+reportUnusedFunction = "warning"
+
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+reportUnusedFunction = "none"
+reportUnusedVariable = "none"
+reportPrivateUsage = "none"
+reportAttributeAccessIssue = "none"
+reportMissingParameterType = "none"
+reportUnknownLambdaType = "none"
+reportUnknownParameterType = "none"
+reportUnknownVariableType = "none"
+reportMissingTypeArgument = "none"
+reportCallIssue = "none"
+reportOptionalMemberAccess = "none"
+reportOptionalSubscript = "none"
+reportUnknownMemberType = "none"
+reportArgumentType = "none"
+reportUnknownArgumentType = "none"
+extraPaths = ["src", "."]
+
+[tool.pytest.ini_options]
+addopts = [
+  "--cov=src/imbi_slackbot",
+  "--cov-report=xml:build/coverage.xml",
+  "--cov-report=term",
+]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 79
+target-version = "py314"
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint]
+select = [
+  "A",
+  "ANN",
+  "ARG",
+  "ASYNC",
+  "B",
+  "BLE",
+  "C4",
+  "C90",
+  "DTZ",
+  "E",
+  "ERA",
+  "F",
+  "FLY",
+  "FURB",
+  "G",
+  "I",
+  "LOG",
+  "N",
+  "PIE",
+  "PL",
+  "PTH",
+  "Q",
+  "RET",
+  "RSE",
+  "RUF",
+  "S",
+  "SIM",
+  "T10",
+  "T20",
+  "TC",
+  "TRY",
+  "W",
+]
+ignore = [
+  "ANN401",
+  "ARG002",
+  "PLR0913",
+  "PLR2004",
+  "TRY003",
+  "TRY400",
+]
+flake8-quotes = { inline-quotes = "single" }
+
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = ["pydantic.BaseModel"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+"src/imbi_slackbot/client.py" = ["PLW0603"]
+"src/imbi_slackbot/identity.py" = ["PLW0603"]
+"src/imbi_slackbot/mcp.py" = ["PLW0603"]
+"src/imbi_slackbot/settings.py" = ["PLW0603"]
+"src/imbi_slackbot/slack_handler.py" = ["PLW0603"]
+"src/imbi_slackbot/system_prompt.py" = ["PLW0603"]
+"tests/**/*.py" = [
+  "ANN",
+  "ARG005",
+  "B018",
+  "N802",
+  "PLC0415",
+  "RUF059",
+  "S",
+]
+
+[tool.uv]
+exclude-newer = "7 days"
+exclude-newer-package = { "imbi-common" = false }
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true
+
+[tool.uv.sources]
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }
