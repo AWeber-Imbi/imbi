@@ -29,10 +29,16 @@ def _ctx(
     options: dict[str, object] | None = None,
     project_links: dict[str, str] | None = None,
     project_type_slugs: list[str] | None = None,
+    *,
+    project_slug: str = 'demo',
+    previous_project_slug: str | None = None,
+    project_name: str | None = None,
+    project_description: str | None = None,
+    project_ui_url: str | None = None,
 ) -> PluginContext:
     return PluginContext(
         project_id='p',
-        project_slug='demo',
+        project_slug=project_slug,
         org_slug='octo',
         assignment_options=options or {},
         actor_user_id='u-1',
@@ -42,6 +48,10 @@ def _ctx(
             else {'github-repository': 'https://github.com/octo/demo'}
         ),
         project_type_slugs=project_type_slugs or [],
+        previous_project_slug=previous_project_slug,
+        project_name=project_name,
+        project_description=project_description,
+        project_ui_url=project_ui_url,
     )
 
 
@@ -81,6 +91,39 @@ class ManifestTestCase(unittest.TestCase):
         ):
             names = {opt.name for opt in cls.manifest.options}
             self.assertIn('archive_target_org', names)
+
+    def test_create_org_and_org_mapping_options(self) -> None:
+        # Every flavor advertises the new ``create_org`` + ``org_mapping``
+        # options so the admin UI can render them without per-host casing.
+        for cls in (
+            GitHubLifecyclePlugin,
+            GitHubEnterpriseCloudLifecyclePlugin,
+            GitHubEnterpriseServerLifecyclePlugin,
+        ):
+            opts = {opt.name: opt for opt in cls.manifest.options}
+            self.assertIn('create_org', opts)
+            self.assertEqual(opts['create_org'].type, 'string')
+            self.assertIn('org_mapping', opts)
+            self.assertEqual(opts['org_mapping'].type, 'mapping')
+
+    def test_lifecycle_events_includes_all_supported(self) -> None:
+        # ``lifecycle_events`` drives UI affordance gating (e.g. the
+        # "Also delete the repository" checkbox); every flavor must
+        # advertise the full set the plugin implements.
+        expected = {
+            'created',
+            'updated',
+            'archived',
+            'unarchived',
+            'deleted',
+            'relocated',
+        }
+        for cls in (
+            GitHubLifecyclePlugin,
+            GitHubEnterpriseCloudLifecyclePlugin,
+            GitHubEnterpriseServerLifecyclePlugin,
+        ):
+            self.assertEqual(set(cls.manifest.lifecycle_events), expected)
 
 
 class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
@@ -733,3 +776,384 @@ class RenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
         result = await plugin.on_project_archived(ctx, _CREDS)
         self.assertEqual(result.status, 'ok')
         self.assertIsNone(ctx.link_writeback)
+
+
+class CreateTestCase(unittest.IsolatedAsyncioTestCase):
+    """``on_project_created`` provisions the repo and writes the link."""
+
+    @respx.mock
+    async def test_create_happy_path_uses_org_mapping(self) -> None:
+        # Project-type mapping wins over ``create_org``; the repo is
+        # created at the mapped org and the link writeback carries the
+        # canonical ``html_url`` GitHub returned.
+        respx.get('https://api.github.com/repos/aweber-apis/demo').mock(
+            return_value=httpx.Response(404, json={'message': 'Not Found'})
+        )
+        create_route = respx.post(
+            'https://api.github.com/orgs/aweber-apis/repos'
+        ).mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    'name': 'demo',
+                    'html_url': 'https://github.com/aweber-apis/demo',
+                    'owner': {'login': 'aweber-apis'},
+                },
+            )
+        )
+
+        ctx = _ctx(
+            options={
+                'create_org': 'fallback',
+                'org_mapping': {'api-service': 'aweber-apis'},
+            },
+            project_links={},
+            project_type_slugs=['api-service'],
+            project_description='An example API',
+            project_ui_url='https://imbi.example.com/projects/p',
+        )
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_created(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(create_route.calls.call_count, 1)
+        self.assertEqual(
+            create_route.calls.last.request.read(),
+            b'{"name":"demo","description":"An example API",'
+            b'"homepage":"https://imbi.example.com/projects/p"}',
+        )
+        self.assertIsNotNone(ctx.link_writeback)
+        assert ctx.link_writeback is not None
+        self.assertEqual(ctx.link_writeback.link_key, 'github-repository')
+        self.assertEqual(
+            ctx.link_writeback.new_url,
+            'https://github.com/aweber-apis/demo',
+        )
+
+    @respx.mock
+    async def test_create_falls_back_to_template(self) -> None:
+        # No mapping match → expand the ``create_org`` template.
+        respx.get('https://api.github.com/repos/aweber-api-service/demo').mock(
+            return_value=httpx.Response(404, json={'message': 'Not Found'})
+        )
+        create_route = respx.post(
+            'https://api.github.com/orgs/aweber-api-service/repos'
+        ).mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    'name': 'demo',
+                    'html_url': ('https://github.com/aweber-api-service/demo'),
+                },
+            )
+        )
+
+        ctx = _ctx(
+            options={'create_org': 'aweber-${project_type_slug}'},
+            project_links={},
+            project_type_slugs=['api-service'],
+        )
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_created(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(create_route.calls.call_count, 1)
+
+    async def test_create_skips_when_no_target_org_configured(self) -> None:
+        # Neither mapping nor template -> clean skip rather than HTTP.
+        ctx = _ctx(
+            options={},
+            project_links={},
+            project_type_slugs=['api-service'],
+        )
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_created(ctx, _CREDS)
+        self.assertEqual(result.status, 'skipped')
+        self.assertIn('No target org', result.message or '')
+        self.assertIsNone(ctx.link_writeback)
+
+    @respx.mock
+    async def test_create_idempotent_when_repo_exists(self) -> None:
+        # Re-running a create for a repo that already exists adopts the
+        # existing URL via a link writeback and reports ``skipped``.
+        respx.get('https://api.github.com/repos/aweber-apis/demo').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'name': 'demo',
+                    'html_url': 'https://github.com/aweber-apis/demo',
+                    'owner': {'login': 'aweber-apis'},
+                },
+            )
+        )
+        create_route = respx.post(
+            'https://api.github.com/orgs/aweber-apis/repos'
+        ).mock(return_value=httpx.Response(201, json={}))
+
+        ctx = _ctx(
+            options={'org_mapping': {'api-service': 'aweber-apis'}},
+            project_links={},
+            project_type_slugs=['api-service'],
+        )
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_created(ctx, _CREDS)
+        self.assertEqual(result.status, 'skipped')
+        self.assertIn('already exists', result.message or '')
+        self.assertEqual(create_route.calls.call_count, 0)
+        self.assertIsNotNone(ctx.link_writeback)
+
+
+class UpdateTestCase(unittest.IsolatedAsyncioTestCase):
+    """``on_project_updated`` syncs slug/description/homepage to the repo."""
+
+    @respx.mock
+    async def test_update_syncs_all_three_fields_in_one_patch(self) -> None:
+        respx.get('https://api.github.com/repos/octo/demo').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'name': 'demo',
+                    'owner': {'login': 'octo'},
+                },
+            )
+        )
+        patch_route = respx.patch(
+            'https://api.github.com/repos/octo/demo'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'name': 'demo',
+                    'html_url': 'https://github.com/octo/demo',
+                    'owner': {'login': 'octo'},
+                },
+            )
+        )
+
+        ctx = _ctx(
+            project_description='New description',
+            project_ui_url='https://imbi.example.com/projects/p',
+        )
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_updated(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(patch_route.calls.call_count, 1)
+        body = patch_route.calls.last.request.read()
+        self.assertIn(b'"name":"demo"', body)
+        self.assertIn(b'"description":"New description"', body)
+        self.assertIn(
+            b'"homepage":"https://imbi.example.com/projects/p"', body
+        )
+        self.assertIsNone(ctx.link_writeback)
+
+    @respx.mock
+    async def test_update_records_writeback_when_slug_changes(self) -> None:
+        # A slug rename PATCHes ``name`` to the new value; the response
+        # carries the new ``html_url`` and the plugin stashes the
+        # writeback for the host to persist.
+        respx.get('https://api.github.com/repos/octo/demo-old').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'name': 'demo-old',
+                    'owner': {'login': 'octo'},
+                },
+            )
+        )
+        respx.patch('https://api.github.com/repos/octo/demo-old').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'name': 'demo-new',
+                    'html_url': 'https://github.com/octo/demo-new',
+                    'owner': {'login': 'octo'},
+                },
+            )
+        )
+
+        ctx = _ctx(
+            project_slug='demo-new',
+            previous_project_slug='demo-old',
+            project_links={
+                'github-repository': 'https://github.com/octo/demo-old',
+            },
+        )
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_updated(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        self.assertIsNotNone(ctx.link_writeback)
+        assert ctx.link_writeback is not None
+        self.assertEqual(
+            ctx.link_writeback.new_url,
+            'https://github.com/octo/demo-new',
+        )
+        self.assertEqual(ctx.link_writeback.old_owner_repo, 'octo/demo-old')
+        self.assertEqual(ctx.link_writeback.new_owner_repo, 'octo/demo-new')
+
+    @respx.mock
+    async def test_update_falls_back_to_previous_slug_without_link(
+        self,
+    ) -> None:
+        # No stored link → resolve from ``<project_type_slug>/<previous_slug>``
+        # so a slug-rename still finds the pre-rename repo on GitHub.
+        respx.get('https://api.github.com/repos/api-service/demo-old').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'name': 'demo-old',
+                    'owner': {'login': 'api-service'},
+                },
+            )
+        )
+        respx.patch('https://api.github.com/repos/api-service/demo-old').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'name': 'demo-new',
+                    'html_url': ('https://github.com/api-service/demo-new'),
+                },
+            )
+        )
+
+        ctx = _ctx(
+            project_slug='demo-new',
+            previous_project_slug='demo-old',
+            project_links={},
+            project_type_slugs=['api-service'],
+        )
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_updated(ctx, _CREDS)
+        self.assertEqual(result.status, 'ok')
+
+
+class DeleteTestCase(unittest.IsolatedAsyncioTestCase):
+    """``on_project_deleted`` removes the backing repository."""
+
+    @respx.mock
+    async def test_delete_happy_path(self) -> None:
+        delete_route = respx.delete(
+            'https://api.github.com/repos/octo/demo'
+        ).mock(return_value=httpx.Response(204))
+
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_deleted(_ctx(), _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(delete_route.calls.call_count, 1)
+
+    @respx.mock
+    async def test_delete_already_gone_is_skipped(self) -> None:
+        respx.delete('https://api.github.com/repos/octo/demo').mock(
+            return_value=httpx.Response(404, json={'message': 'Not Found'})
+        )
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_deleted(_ctx(), _CREDS)
+        self.assertEqual(result.status, 'skipped')
+        self.assertIn('already gone', result.message or '')
+
+    async def test_delete_without_resolvable_repo_is_skipped(self) -> None:
+        # No link, no project type → clean skip (rather than a hard
+        # failure) since there's nothing to act on.
+        ctx = _ctx(project_links={}, project_type_slugs=[])
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_deleted(ctx, _CREDS)
+        self.assertEqual(result.status, 'skipped')
+
+
+class RelocateTestCase(unittest.IsolatedAsyncioTestCase):
+    """``on_project_relocated`` transfers the repo to the resolved org."""
+
+    @respx.mock
+    async def test_relocate_transfers_repo_and_records_writeback(
+        self,
+    ) -> None:
+        transfer_route = respx.post(
+            'https://api.github.com/repos/octo/demo/transfer'
+        ).mock(
+            return_value=httpx.Response(
+                202,
+                json={
+                    'name': 'demo',
+                    'html_url': 'https://github.com/aweber-apis/demo',
+                    'owner': {'login': 'aweber-apis'},
+                },
+            )
+        )
+
+        ctx = _ctx(
+            options={'org_mapping': {'api-service': 'aweber-apis'}},
+            project_type_slugs=['api-service'],
+        )
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_relocated(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(transfer_route.calls.call_count, 1)
+        self.assertEqual(
+            transfer_route.calls.last.request.read(),
+            b'{"new_owner":"aweber-apis"}',
+        )
+        self.assertIsNotNone(ctx.link_writeback)
+        assert ctx.link_writeback is not None
+        self.assertEqual(
+            ctx.link_writeback.new_url,
+            'https://github.com/aweber-apis/demo',
+        )
+        self.assertEqual(ctx.link_writeback.old_owner_repo, 'octo/demo')
+        self.assertEqual(ctx.link_writeback.new_owner_repo, 'aweber-apis/demo')
+
+    async def test_relocate_skips_when_no_target_resolved(self) -> None:
+        ctx = _ctx(options={}, project_type_slugs=['api-service'])
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_relocated(ctx, _CREDS)
+        self.assertEqual(result.status, 'skipped')
+        self.assertIn('No relocation target', result.message or '')
+
+    async def test_relocate_skips_when_already_at_target(self) -> None:
+        # Current owner == target org → no transfer, clean skip.
+        ctx = _ctx(
+            options={'org_mapping': {'api-service': 'octo'}},
+            project_type_slugs=['api-service'],
+        )
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_relocated(ctx, _CREDS)
+        self.assertEqual(result.status, 'skipped')
+        self.assertIn('already at the target', result.message or '')
+
+
+class ResolveRelocationTargetTestCase(unittest.IsolatedAsyncioTestCase):
+    """``resolve_relocation_target`` derives the target locally."""
+
+    async def test_returns_target_from_mapping(self) -> None:
+        ctx = _ctx(
+            options={'org_mapping': {'api-service': 'aweber-apis'}},
+            project_type_slugs=['api-service'],
+        )
+        plugin = GitHubLifecyclePlugin()
+        target = await plugin.resolve_relocation_target(ctx, _CREDS)
+        self.assertIsNotNone(target)
+        assert target is not None
+        self.assertEqual(target.link_key, 'github-repository')
+        self.assertEqual(target.identifier, 'aweber-apis/demo')
+
+    async def test_returns_target_from_template_when_mapping_misses(
+        self,
+    ) -> None:
+        ctx = _ctx(
+            options={'create_org': 'aweber-${project_type_slug}'},
+            project_type_slugs=['api-service'],
+            project_links={},
+        )
+        plugin = GitHubLifecyclePlugin()
+        target = await plugin.resolve_relocation_target(ctx, _CREDS)
+        self.assertIsNotNone(target)
+        assert target is not None
+        self.assertEqual(target.identifier, 'aweber-api-service/demo')
+
+    async def test_returns_none_when_no_org_configured(self) -> None:
+        ctx = _ctx(options={}, project_type_slugs=['api-service'])
+        plugin = GitHubLifecyclePlugin()
+        target = await plugin.resolve_relocation_target(ctx, _CREDS)
+        self.assertIsNone(target)

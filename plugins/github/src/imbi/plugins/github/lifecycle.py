@@ -58,11 +58,16 @@ from imbi_common.plugins.base import (
     PluginContext,
     PluginManifest,
     PluginOption,
+    RelocationTarget,
 )
 from imbi_common.plugins.errors import PluginAuthenticationFailed
+from imbi_common.plugins.templates import expand_template
 
 from imbi_plugin_github._hosts import normalize_host, require_ghec_tenant_host
-from imbi_plugin_github._repos import resolve_owner_repo
+from imbi_plugin_github._repos import (
+    derive_owner_repo_from_links,
+    resolve_owner_repo,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -149,6 +154,249 @@ class _LifecycleBase(LifecyclePlugin):
         if isinstance(raw, str) and raw.strip():
             return raw.strip()
         return None
+
+    @staticmethod
+    def _resolve_create_org(ctx: PluginContext) -> str | None:
+        """Resolve the GitHub org for create / relocate from plugin options.
+
+        Checks ``org_mapping`` (project-type-slug → org) first so per-type
+        overrides win, then falls back to the ``create_org`` template.
+        Returns ``None`` when neither is configured so the caller can
+        emit a clean ``status='skipped'``.
+        """
+        options = ctx.assignment_options
+        mapping_raw = options.get('org_mapping')
+        if isinstance(mapping_raw, dict):
+            mapping = typing.cast(dict[str, typing.Any], mapping_raw)
+            for pt_slug in ctx.project_type_slugs:
+                if pt_slug in mapping:
+                    value = mapping[pt_slug]
+                    if isinstance(value, str) and value.strip():
+                        return value.strip()
+        template = options.get('create_org')
+        if isinstance(template, str) and template.strip():
+            first_type_slug = (
+                ctx.project_type_slugs[0] if ctx.project_type_slugs else None
+            )
+            expanded = expand_template(
+                template,
+                {
+                    'project_slug': ctx.project_slug,
+                    'org_slug': ctx.org_slug,
+                    'team_slug': ctx.team_slug,
+                    'project_type_slug': first_type_slug,
+                    'project_id': ctx.project_id,
+                },
+            ).strip()
+            return expanded or None
+        return None
+
+    async def on_project_created(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> LifecycleResult:
+        target_org = self._resolve_create_org(ctx)
+        if not target_org:
+            return LifecycleResult(
+                status='skipped',
+                message=(
+                    'No target org configured for project creation; set '
+                    "the plugin's ``create_org`` or ``org_mapping`` option"
+                ),
+            )
+        host = self._resolve_host(ctx.assignment_options)
+        async with self._client(ctx, credentials) as client:
+            existing = await self._get_repo_or_none(
+                client, target_org, ctx.project_slug
+            )
+            if existing is not None:
+                # Already provisioned (e.g. retry after a partial failure):
+                # adopt the existing repo's URL via a link writeback so the
+                # operator can wire it up without a second attempt.
+                html_url = str(
+                    existing.get('html_url')
+                    or self._repo_html_url(host, target_org, ctx.project_slug)
+                )
+                ctx.link_writeback = LinkWriteback(
+                    link_key='github-repository',
+                    new_url=html_url,
+                )
+                return LifecycleResult(
+                    status='skipped',
+                    message=(
+                        f'Repository {target_org}/{ctx.project_slug} '
+                        'already exists'
+                    ),
+                    artifacts={'repo_url': html_url},
+                )
+            created = await self._create_repo(client, target_org, ctx)
+            html_url = str(
+                created.get('html_url')
+                or self._repo_html_url(host, target_org, ctx.project_slug)
+            )
+            ctx.link_writeback = LinkWriteback(
+                link_key='github-repository',
+                new_url=html_url,
+            )
+        return LifecycleResult(
+            status='ok',
+            message=f'Created {target_org}/{ctx.project_slug}',
+            artifacts={'repo_url': html_url},
+        )
+
+    async def on_project_updated(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> LifecycleResult:
+        host = self._resolve_host(ctx.assignment_options)
+        # ``prefer_previous_slug`` so a slug rename still locates the
+        # pre-rename repo on GitHub when the project has no stored link.
+        owner, repo = resolve_owner_repo(
+            ctx,
+            host,
+            'GitHub lifecycle plugin',
+            prefer_previous_slug=True,
+        )
+        async with self._client(ctx, credentials) as client:
+            current = await self._get_repo(client, owner, repo)
+            current_owner = self._current_owner(current, owner)
+            current_repo = self._current_repo(current, repo)
+            # Surface an external rename even when there's nothing else
+            # to do, so the host can self-heal the link.
+            self._maybe_report_relocation(
+                ctx, host, current, owner, repo, current_owner, current_repo
+            )
+            patched = await self._patch_repo_attrs(
+                client,
+                current_owner,
+                current_repo,
+                name=ctx.project_slug,
+                description=ctx.project_description or '',
+                homepage=ctx.project_ui_url or '',
+            )
+            new_repo = str(patched.get('name') or current_repo)
+            new_url = str(
+                patched.get('html_url')
+                or self._repo_html_url(host, current_owner, new_repo)
+            )
+            # If the patch itself renamed the repo (we asked GitHub to
+            # set ``name`` to a new slug), record the writeback even when
+            # the external-rename check above didn't.
+            if new_repo != current_repo:
+                ctx.link_writeback = LinkWriteback(
+                    link_key='github-repository',
+                    new_url=new_url,
+                    old_owner_repo=f'{current_owner}/{current_repo}',
+                    new_owner_repo=f'{current_owner}/{new_repo}',
+                )
+        return LifecycleResult(
+            status='ok',
+            message=f'Updated {current_owner}/{new_repo}',
+            artifacts={'repo_url': new_url},
+        )
+
+    async def on_project_deleted(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> LifecycleResult:
+        host = self._resolve_host(ctx.assignment_options)
+        try:
+            owner, repo = resolve_owner_repo(
+                ctx, host, 'GitHub lifecycle plugin'
+            )
+        except ValueError as exc:
+            return LifecycleResult(status='skipped', message=str(exc))
+        async with self._client(ctx, credentials) as client:
+            resp = await client.delete(f'/repos/{owner}/{repo}')
+            if resp.status_code == 404:
+                return LifecycleResult(
+                    status='skipped',
+                    message=f'Repository {owner}/{repo} already gone',
+                )
+            resp.raise_for_status()
+        return LifecycleResult(
+            status='ok',
+            message=f'Deleted {owner}/{repo}',
+        )
+
+    async def on_project_relocated(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> LifecycleResult:
+        host = self._resolve_host(ctx.assignment_options)
+        target = await self.resolve_relocation_target(ctx, credentials)
+        if target is None:
+            return LifecycleResult(
+                status='skipped',
+                message='No relocation target resolved',
+            )
+        try:
+            new_owner, _new_repo_hint = target.identifier.split('/', 1)
+        except ValueError:
+            return LifecycleResult(
+                status='failed',
+                message=(
+                    f'Malformed relocation identifier {target.identifier!r};'
+                    ' expected ``<owner>/<repo>``'
+                ),
+            )
+        try:
+            owner, repo = resolve_owner_repo(
+                ctx, host, 'GitHub lifecycle plugin'
+            )
+        except ValueError as exc:
+            return LifecycleResult(status='skipped', message=str(exc))
+        if owner.lower() == new_owner.lower():
+            return LifecycleResult(
+                status='skipped',
+                message=(
+                    f'Repository {owner}/{repo} is already at the '
+                    f'target org {new_owner}'
+                ),
+            )
+        async with self._client(ctx, credentials) as client:
+            transferred = await self._transfer(client, owner, repo, new_owner)
+            final_repo = str(transferred.get('name') or repo)
+            html_url = str(
+                transferred.get('html_url')
+                or self._repo_html_url(host, new_owner, final_repo)
+            )
+            ctx.link_writeback = LinkWriteback(
+                link_key='github-repository',
+                new_url=html_url,
+                old_owner_repo=f'{owner}/{repo}',
+                new_owner_repo=f'{new_owner}/{final_repo}',
+            )
+        return LifecycleResult(
+            status='ok',
+            message=f'Transferred to {new_owner}/{final_repo}',
+            artifacts={'repo_url': html_url},
+        )
+
+    async def resolve_relocation_target(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> RelocationTarget | None:
+        del credentials  # resolution is local; never hits the remote.
+        target_org = self._resolve_create_org(ctx)
+        if not target_org:
+            return None
+        host = self._resolve_host(ctx.assignment_options)
+        # Prefer the canonical repo name from a stored link; fall back to
+        # project_slug so a preview before any link exists still resolves.
+        derived = derive_owner_repo_from_links(ctx.project_links, host)
+        repo_name = derived[1] if derived is not None else ctx.project_slug
+        identifier = f'{target_org}/{repo_name}'
+        return RelocationTarget(
+            link_key='github-repository',
+            identifier=identifier,
+            display=identifier,
+        )
 
     async def on_project_archived(
         self,
@@ -324,6 +572,64 @@ class _LifecycleBase(LifecyclePlugin):
         resp.raise_for_status()
         return typing.cast(dict[str, typing.Any], resp.json())
 
+    async def _get_repo_or_none(
+        self, client: httpx.AsyncClient, owner: str, repo: str
+    ) -> dict[str, typing.Any] | None:
+        """Read a repo, returning ``None`` on 404 instead of raising.
+
+        Used by :meth:`on_project_created` for the idempotency check —
+        any other status is treated as a real failure and re-raised.
+        """
+        resp = await client.get(f'/repos/{owner}/{repo}')
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        return typing.cast(dict[str, typing.Any], resp.json())
+
+    async def _create_repo(
+        self,
+        client: httpx.AsyncClient,
+        org: str,
+        ctx: PluginContext,
+    ) -> dict[str, typing.Any]:
+        resp = await client.post(
+            f'/orgs/{org}/repos',
+            json={
+                'name': ctx.project_slug,
+                'description': ctx.project_description or '',
+                'homepage': ctx.project_ui_url or '',
+            },
+        )
+        resp.raise_for_status()
+        return typing.cast(dict[str, typing.Any], resp.json())
+
+    async def _patch_repo_attrs(
+        self,
+        client: httpx.AsyncClient,
+        owner: str,
+        repo: str,
+        *,
+        name: str,
+        description: str,
+        homepage: str,
+    ) -> dict[str, typing.Any]:
+        """Sync name / description / homepage via a single PATCH.
+
+        One call covers all three sync fields so an update that touches
+        several is still a single GitHub round trip.  ``raise_for_status``
+        on any non-2xx so the dispatcher captures the failure.
+        """
+        resp = await client.patch(
+            f'/repos/{owner}/{repo}',
+            json={
+                'name': name,
+                'description': description,
+                'homepage': homepage,
+            },
+        )
+        resp.raise_for_status()
+        return typing.cast(dict[str, typing.Any], resp.json())
+
     async def _set_archived(
         self,
         client: httpx.AsyncClient,
@@ -397,7 +703,48 @@ _COMMON_OPTIONS: list[PluginOption] = [
         type='string',
         required=False,
     ),
+    PluginOption(
+        name='create_org',
+        label='Default org for repo creation',
+        description=(
+            'Org used by ``on_project_created`` (and the relocate-target '
+            'preview) when no per-project-type override matches in '
+            '``org_mapping``.  Supports the template variables '
+            '``${project_slug}``, ``${org_slug}``, ``${team_slug}``, '
+            '``${project_type_slug}``, ``${project_id}``.  Leave blank '
+            'to skip create / relocate when no mapping matches.'
+        ),
+        type='string',
+        required=False,
+    ),
+    PluginOption(
+        name='org_mapping',
+        label='Project-type to org overrides',
+        description=(
+            'Per-project-type-slug overrides for the target GitHub org.  '
+            'The first ``project_type_slug`` that has a mapping wins '
+            'over ``create_org``.  Use this when different project types '
+            'live in different orgs (e.g. ``api`` → ``aweber-services``, '
+            '``library`` → ``aweber-libs``).'
+        ),
+        type='mapping',
+        required=False,
+    ),
 ]
+
+# Lifecycle events every GitHub lifecycle variant supports.  Shared
+# across the three host flavors -- they inherit the same ``_LifecycleBase``
+# implementation, so their capability lists are identical.
+_COMMON_LIFECYCLE_EVENTS: list[
+    typing.Literal[
+        'created',
+        'updated',
+        'archived',
+        'unarchived',
+        'deleted',
+        'relocated',
+    ]
+] = ['created', 'updated', 'archived', 'unarchived', 'deleted', 'relocated']
 
 _COMMON_CREDENTIALS: list[CredentialField] = [
     CredentialField(
@@ -418,15 +765,15 @@ class GitHubLifecyclePlugin(_LifecycleBase):
         slug='github-lifecycle',
         name='GitHub Lifecycle',
         description=(
-            'React to project archive / unarchive on github.com by '
-            'archiving (or unarchiving) the matching repository.  '
-            'Optionally transfers the repo to a sunset organization '
-            'before archiving so retired projects do not crowd primary '
-            'org searches.'
+            'React to the project lifecycle on github.com by creating, '
+            'renaming, archiving, transferring, or deleting the matching '
+            'repository.  Org selection on create / relocate is driven '
+            'by per-project-type overrides plus a template fallback.'
         ),
         plugin_type='lifecycle',
         options=_COMMON_OPTIONS,
         credentials=_COMMON_CREDENTIALS,
+        lifecycle_events=_COMMON_LIFECYCLE_EVENTS,
     )
 
     @classmethod
@@ -440,9 +787,9 @@ class GitHubEnterpriseCloudLifecyclePlugin(_LifecycleBase):
         slug='github-lifecycle-ec',
         name='GitHub Enterprise Cloud Lifecycle',
         description=(
-            'React to project archive / unarchive on a GHEC tenant '
-            '(``*.ghe.com``) by archiving (or unarchiving) the matching '
-            'repository; optional transfer to a sunset org first.'
+            'React to the project lifecycle on a GHEC tenant '
+            '(``*.ghe.com``) by creating, renaming, archiving, '
+            'transferring, or deleting the matching repository.'
         ),
         plugin_type='lifecycle',
         options=[
@@ -456,6 +803,7 @@ class GitHubEnterpriseCloudLifecyclePlugin(_LifecycleBase):
             *_COMMON_OPTIONS,
         ],
         credentials=_COMMON_CREDENTIALS,
+        lifecycle_events=_COMMON_LIFECYCLE_EVENTS,
     )
 
     @classmethod
@@ -471,9 +819,9 @@ class GitHubEnterpriseServerLifecyclePlugin(_LifecycleBase):
         slug='github-lifecycle-es',
         name='GitHub Enterprise Server Lifecycle',
         description=(
-            'React to project archive / unarchive on a GHES install by '
-            'archiving (or unarchiving) the matching repository; '
-            'optional transfer to a sunset org first.'
+            'React to the project lifecycle on a GHES install by '
+            'creating, renaming, archiving, transferring, or deleting '
+            'the matching repository.'
         ),
         plugin_type='lifecycle',
         options=[
@@ -486,6 +834,7 @@ class GitHubEnterpriseServerLifecyclePlugin(_LifecycleBase):
             *_COMMON_OPTIONS,
         ],
         credentials=_COMMON_CREDENTIALS,
+        lifecycle_events=_COMMON_LIFECYCLE_EVENTS,
     )
 
     @classmethod
