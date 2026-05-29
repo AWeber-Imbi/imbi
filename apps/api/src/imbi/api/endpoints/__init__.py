@@ -17,6 +17,7 @@ from .graph_query import graph_query_router
 from .local_auth import local_auth_router
 from .mcp_servers import mcp_servers_router
 from .mfa import mfa_router
+from .oauth_metadata import oauth_metadata_router
 from .operations_log import operations_log_router
 from .organizations import organizations_router
 from .plugin_entities import plugin_entities_router
@@ -58,7 +59,9 @@ prefixed_routers: list[fastapi.APIRouter] = [
     users_router,
 ]
 
-unprefixed_routers: list[fastapi.APIRouter] = []
+unprefixed_routers: list[fastapi.APIRouter] = [
+    oauth_metadata_router,
+]
 
 routers: list[fastapi.APIRouter] = prefixed_routers + unprefixed_routers
 

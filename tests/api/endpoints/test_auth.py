@@ -2222,11 +2222,11 @@ class ServiceAccountAuthTestCase(support.SharedAppTestCase):
     def test_client_credentials_bad_grant_type(
         self,
     ) -> None:
-        """POST /auth/token with wrong grant_type."""
+        """POST /auth/token with an unsupported grant_type."""
         response = self.client.post(
             '/auth/token',
             data={
-                'grant_type': 'authorization_code',
+                'grant_type': 'password',
                 'client_id': 'cc_test123',
                 'client_secret': 'secret123',
             },

@@ -192,6 +192,22 @@ OAuth **provider credentials** (Google, GitHub, generic OIDC client IDs and secr
 | `IMBI_AUTH_OAUTH_AUTO_LINK_BY_EMAIL` | `true` | Auto-link an incoming OAuth identity to an existing local user when emails match. Safe for verified-email IdPs (Google, most OIDC). Disable when you require an admin to manually approve linking. |
 | `IMBI_AUTH_OAUTH_AUTO_CREATE_USERS` | `true` | Auto-create a user record on first successful OAuth login. Disable to require pre-provisioned accounts. |
 
+### OAuth2 Authorization Server (MCP login)
+
+Imbi acts as an OAuth 2.0 Authorization Server so MCP clients (and other
+OAuth clients) can log a user in via the browser and obtain an Imbi access
+token, instead of pasting a static API key. The flow is authorization-code
+with PKCE (`S256` required); clients self-register via :rfc:`7591` Dynamic
+Client Registration. Discovery is published at
+`/.well-known/oauth-authorization-server` (served at the host root); the
+endpoints are `/auth/authorize`, `/auth/token`, and `/auth/register` under
+the API prefix. `/authorize` reuses the existing Imbi login (including any
+configured upstream IdP), so MCP login inherits MFA and provider rules.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMBI_AUTH_DCR_ENABLED` | `true` | Allow OAuth clients to self-register at `/auth/register` (RFC 7591). Disable to require clients to be provisioned out of band. |
+
 ## Other Settings
 
 ### Releases (`IMBI_RELEASES_*`)
