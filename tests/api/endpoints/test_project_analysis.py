@@ -255,8 +255,8 @@ class ProjectAnalysisTestCase(unittest.TestCase):
             permissions={'project:read'},
         )
         # Force is_admin path off so permission check actually fires.
-        self.auth_context.user = models.User(
-            **{**self.test_user.model_dump(), 'is_admin': False}
+        self.auth_context.user = self.test_user.model_copy(
+            update={'is_admin': False}
         )
 
         async def mock_get_current_user() -> permissions.AuthContext:
