@@ -5,31 +5,9 @@ import os
 import unittest
 from unittest import mock
 
-from fastmcp.server.providers.openapi import MCPType
-from fastmcp.utilities.openapi import HTTPRoute
+from imbi_common.mcp import exclude_non_ai_tools
 
 from imbi_assistant import mcp, settings
-
-
-class ExcludeNonAiToolsTestCase(unittest.TestCase):
-    """Test cases for _exclude_non_ai_tools."""
-
-    def test_excludes_flagged_route(self) -> None:
-        route = HTTPRoute(
-            path='/configuration/{key}',
-            method='PUT',
-            extensions={'x-imbi-ai-tool': False},
-        )
-        self.assertEqual(
-            MCPType.EXCLUDE,
-            mcp._exclude_non_ai_tools(route, MCPType.TOOL),
-        )
-
-    def test_keeps_unflagged_route(self) -> None:
-        route = HTTPRoute(path='/projects/', method='GET')
-        self.assertIsNone(
-            mcp._exclude_non_ai_tools(route, MCPType.TOOL),
-        )
 
 
 class MCPToolToAnthropicTestCase(unittest.TestCase):
@@ -206,7 +184,7 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
             _, kwargs = mock_from_openapi.call_args
             self.assertIs(
                 kwargs['route_map_fn'],
-                mcp._exclude_non_ai_tools,
+                exclude_non_ai_tools,
             )
 
             await manager.aclose()

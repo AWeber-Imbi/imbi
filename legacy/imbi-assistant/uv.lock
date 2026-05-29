@@ -805,7 +805,7 @@ dependencies = [
   { name = "fastapi" },
   { name = "fastmcp" },
   { name = "httpx" },
-  { name = "imbi-common", extra = ["databases", "server"] },
+  { name = "imbi-common", extra = ["databases", "mcp", "server"] },
   { name = "pydantic" },
   { name = "sentry-sdk" },
 ]
@@ -829,7 +829,7 @@ requires-dist = [
   { name = "fastapi", specifier = ">=0.135.1" },
   { name = "fastmcp", specifier = ">=2.0.0" },
   { name = "httpx", specifier = ">=0.28.1" },
-  { name = "imbi-common", extras = ["databases", "server"], git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main" },
+  { name = "imbi-common", extras = ["databases", "mcp", "server"], git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main" },
   { name = "pydantic", specifier = "~=2.12" },
   { name = "sentry-sdk", specifier = ">=2.48.0" },
 ]
@@ -849,8 +849,8 @@ dev = [
 
 [[package]]
 name = "imbi-common"
-version = "2.7.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main#052a64ef91b7d94a5c0818c5604e84fac95bb26b" }
+version = "2.8.0"
+source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main#cd4b108a7726901d325dd58526235720ec278619" }
 dependencies = [
   { name = "cryptography" },
   { name = "httpx" },
@@ -873,6 +873,9 @@ databases = [
   { name = "pgvector" },
   { name = "psycopg", extra = ["binary", "pool"] },
   { name = "valkey" },
+]
+mcp = [
+  { name = "fastmcp" },
 ]
 server = [
   { name = "fastapi" },
