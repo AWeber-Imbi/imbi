@@ -497,6 +497,7 @@ dependencies = [
   { name = "httpx" },
   { name = "imbi-common" },
   { name = "pydantic" },
+  { name = "pyjwt" },
   { name = "sentry-sdk" },
 ]
 
@@ -518,6 +519,7 @@ requires-dist = [
   { name = "httpx", specifier = ">=0.28.1" },
   { name = "imbi-common", specifier = ">=2.5.0" },
   { name = "pydantic", specifier = "~=2.12" },
+  { name = "pyjwt", specifier = ">=2.10" },
   { name = "sentry-sdk", specifier = ">=2.48.0" },
 ]
 

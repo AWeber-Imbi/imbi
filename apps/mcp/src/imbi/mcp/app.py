@@ -14,7 +14,7 @@ cli = typer.Typer(no_args_is_help=True)
 
 
 @cli.command()
-def serve(
+def serve(  # noqa: PLR0913 - CLI options map 1:1 to parameters
     *,
     api_url: t.Annotated[
         str,
@@ -35,11 +35,32 @@ def serve(
         int,
         typer.Option(help='Port to bind to'),
     ] = 8001,
+    public_url: t.Annotated[
+        str | None,
+        typer.Option(
+            help='Public URL where this MCP server is reachable '
+            '(e.g. https://host/mcp). Enables OAuth when set together '
+            'with --auth-server-url.',
+            envvar='IMBI_MCP_PUBLIC_URL',
+        ),
+    ] = None,
+    auth_server_url: t.Annotated[
+        str | None,
+        typer.Option(
+            help='Imbi OAuth issuer URL (e.g. https://host). Enables '
+            'OAuth when set together with --public-url.',
+            envvar='IMBI_MCP_AUTH_SERVER_URL',
+        ),
+    ] = None,
 ) -> None:
     """Run the Imbi MCP server."""
     init_sentry()
     try:
-        mcp = server.create_server(api_url)
+        mcp = server.create_server(
+            api_url,
+            public_url=public_url,
+            auth_server_url=auth_server_url,
+        )
     except Exception as err:
         raise typer.BadParameter(
             f'Failed to connect to Imbi API at {api_url}: {err}',

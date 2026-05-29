@@ -1,9 +1,12 @@
 import json
+import typing
 import unittest
 from unittest import mock
 
 import fastmcp
 import httpx
+import jwt
+from fastmcp.server.auth.auth import AccessToken, RemoteAuthProvider
 from fastmcp.server.providers.openapi import MCPType
 
 import imbi_mcp
@@ -160,3 +163,84 @@ class InjectAuthTests(unittest.IsolatedAsyncioTestCase):
         ) as mock_fn:
             await server._inject_auth(request)
         mock_fn.assert_called_once_with(include={'authorization'})
+
+
+class ImbiTokenVerifierTests(unittest.IsolatedAsyncioTestCase):
+    async def test_api_key_accepted_and_forwarded(self) -> None:
+        verifier = server.ImbiTokenVerifier()
+        token = await verifier.verify_token('ik_abc_secret')
+        self.assertIsNotNone(token)
+        token = typing.cast('AccessToken', token)
+        self.assertEqual('ik_abc_secret', token.token)
+        self.assertEqual('api-key', token.client_id)
+
+    async def test_valid_access_jwt(self) -> None:
+        claims = {
+            'type': 'access',
+            'sub': 'user@example.com',
+            'scope': 'read write',
+            'exp': 1234567890,
+        }
+        with mock.patch(
+            'imbi_mcp.server.core.verify_token', return_value=claims
+        ):
+            token = await server.ImbiTokenVerifier().verify_token('jwt')
+        self.assertIsNotNone(token)
+        token = typing.cast('AccessToken', token)
+        self.assertEqual('user@example.com', token.client_id)
+        self.assertEqual(['read', 'write'], token.scopes)
+        self.assertEqual(1234567890, token.expires_at)
+
+    async def test_invalid_jwt_returns_none(self) -> None:
+        with mock.patch(
+            'imbi_mcp.server.core.verify_token',
+            side_effect=jwt.InvalidTokenError('bad'),
+        ):
+            token = await server.ImbiTokenVerifier().verify_token('jwt')
+        self.assertIsNone(token)
+
+    async def test_non_access_token_rejected(self) -> None:
+        with mock.patch(
+            'imbi_mcp.server.core.verify_token',
+            return_value={'type': 'refresh', 'sub': 'user@example.com'},
+        ):
+            token = await server.ImbiTokenVerifier().verify_token('jwt')
+        self.assertIsNone(token)
+
+
+class BuildAuthTests(unittest.TestCase):
+    def test_none_when_unconfigured(self) -> None:
+        self.assertIsNone(server._build_auth(None, None))
+        self.assertIsNone(server._build_auth('https://host/mcp', None))
+        self.assertIsNone(server._build_auth(None, 'https://host'))
+
+    def test_provider_when_configured(self) -> None:
+        provider = server._build_auth('https://host/mcp', 'https://host')
+        self.assertIsInstance(provider, RemoteAuthProvider)
+
+
+class CreateServerAuthTests(unittest.TestCase):
+    def setUp(self) -> None:
+        spec = _minimal_openapi_spec()
+        self.mock_response = httpx.Response(
+            200,
+            content=json.dumps(spec).encode(),
+            headers={'content-type': 'application/json'},
+            request=httpx.Request('GET', 'http://localhost:8000/openapi.json'),
+        )
+
+    @mock.patch('imbi_mcp.server.httpx.get')
+    def test_auth_disabled_by_default(self, mock_get: mock.Mock) -> None:
+        mock_get.return_value = self.mock_response
+        mcp = server.create_server('http://localhost:8000')
+        self.assertIsNone(mcp.auth)
+
+    @mock.patch('imbi_mcp.server.httpx.get')
+    def test_auth_enabled_when_configured(self, mock_get: mock.Mock) -> None:
+        mock_get.return_value = self.mock_response
+        mcp = server.create_server(
+            'http://localhost:8000',
+            public_url='https://host/mcp',
+            auth_server_url='https://host',
+        )
+        self.assertIsInstance(mcp.auth, RemoteAuthProvider)

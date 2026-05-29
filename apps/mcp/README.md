@@ -21,6 +21,21 @@ Route mapping rules control what gets exposed:
 The caller's `Authorization` header is forwarded to the API so that
 requests run with the caller's permissions.
 
+## Authentication
+
+Two modes, which can be used together:
+
+- **Token (always on).** The caller's `Authorization` header — an Imbi
+  `ik_` API key or a JWT — is forwarded to the API, which authorizes the
+  request. This works with no extra configuration.
+- **OAuth (when configured).** Set `--public-url` and `--auth-server-url`
+  (see below) to make the server an OAuth 2.0 Resource Server. It then
+  verifies JWT access tokens locally, accepts-and-forwards `ik_` API
+  keys, and publishes Protected Resource Metadata so MCP clients can
+  discover the Imbi authorization server and run a browser login flow
+  (authorization-code + PKCE, with Dynamic Client Registration). Local
+  JWT verification uses the shared `IMBI_AUTH_JWT_SECRET`.
+
 ## Requirements
 
 - Python 3.12+
@@ -51,6 +66,8 @@ imbi-mcp serve [OPTIONS]
 | `--transport`   | `streamable-http`        |                | MCP transport type       |
 | `--host`        | `127.0.0.1`              |                | Host to bind to          |
 | `--port`        | `8001`                   |                | Port to bind to          |
+| `--public-url`  | _(none)_                 | `IMBI_MCP_PUBLIC_URL` | Public URL of this server (e.g. `https://host/mcp`); enables OAuth with `--auth-server-url` |
+| `--auth-server-url` | _(none)_             | `IMBI_MCP_AUTH_SERVER_URL` | Imbi OAuth issuer URL (e.g. `https://host`); enables OAuth with `--public-url` |
 
 Supported transports: `stdio`, `http`, `sse`, `streamable-http`
 
