@@ -32,6 +32,18 @@
 		reverse_proxy 127.0.0.1:8001
 	}
 
+	# OAuth discovery: imbi-mcp serves Protected Resource Metadata
+	# (RFC 9728); imbi-api serves Authorization Server metadata
+	# (RFC 8414) unprefixed at the root. Both must keep their full path,
+	# so use handle (not handle_path).
+	handle /.well-known/oauth-protected-resource* {
+		reverse_proxy 127.0.0.1:8001
+	}
+
+	handle /.well-known/oauth-authorization-server* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
 	handle /openapi.json {
 		reverse_proxy 127.0.0.1:8000
 	}

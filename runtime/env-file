@@ -6,6 +6,12 @@ IMBI_AUTH_JWT_SECRET="dev-jwt-secret-change-in-production"
 # (the API's public URL). Default targets the in-pod loopback used
 # by the all-in-one image.
 IMBI_INTERNAL_API_URL="http://localhost:8000"
+# Enable the imbi-mcp OAuth login flow (browser sign-in for MCP clients)
+# by pointing it at this deployment's public URLs. Leave unset to keep
+# imbi-mcp in token-only pass-through mode. IMBI_MCP_AUTH_SERVER_URL is the
+# public origin (the OAuth issuer); IMBI_MCP_PUBLIC_URL is the public /mcp URL.
+# IMBI_MCP_PUBLIC_URL="https://imbi.example.com/mcp"
+# IMBI_MCP_AUTH_SERVER_URL="https://imbi.example.com"
 IMBI_EMAIL_SMTP_HOST="mailpit"
 IMBI_EMAIL_SMTP_PORT="1025"
 IMBI_EMAIL_SMTP_USE_TLS="false"
