@@ -1,30 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
-import { Check, ExternalLink, Loader2, Rocket } from 'lucide-react'
-import { toast } from 'sonner'
+import { Loader2, Rocket } from 'lucide-react'
 
-import { ApiError } from '@/api/client'
 import {
   compareDeploymentRefs,
-  listCurrentReleases,
   listDeploymentRefs,
   listRefCommits,
-  triggerDeployment,
 } from '@/api/endpoints'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { extractApiErrorDetail } from '@/lib/apiError'
 import { cn, sortEnvironments } from '@/lib/utils'
-import type {
-  CurrentReleaseEnvironment,
-  DeploymentCommit,
-  DeploymentRef,
-  Environment,
-} from '@/types'
+import type { DeploymentCommit, DeploymentRef, Environment } from '@/types'
+
+import { BranchList, CommitList, TagList } from './lists'
+import { useBranchPicker } from './useBranchPicker'
+import { useCurrentRelease } from './useCurrentRelease'
+import { useDeployMutation } from './useDeployMutation'
 
 interface DeployTabProps {
   environments: Environment[]
@@ -64,21 +58,10 @@ export function DeployTab({
   const envSlug = env?.slug ?? ''
 
   const {
-    data: currentReleases = [],
+    current,
     isError: currentReleasesError,
     isLoading: currentReleasesLoading,
-  } = useQuery<CurrentReleaseEnvironment[]>({
-    enabled: open && !!orgSlug && !!projectId,
-    queryFn: ({ signal }) => listCurrentReleases(orgSlug, projectId, signal),
-    queryKey: ['currentReleases', orgSlug, projectId],
-  })
-  const current = useMemo(
-    () =>
-      env
-        ? currentReleases.find((r) => r.environment.slug === env.slug)
-        : undefined,
-    [currentReleases, env],
-  )
+  } = useCurrentRelease({ env, open, orgSlug, projectId })
 
   // For the first env (e.g. Testing) we list commits on the default
   // branch.  For staging / production we list tags.
@@ -137,140 +120,40 @@ export function DeployTab({
   // Phase 1.5 picker: on Testing the user can swap from the flat
   // default-branch commit list into a "Branches" pane that lists every
   // branch (filterable) and pulls commits for the chosen one on demand.
-  const [pickerMode, setPickerMode] = useState<'branches' | 'default'>(
-    'default',
-  )
-  const [branchQuery, setBranchQuery] = useState('')
-  const [activeBranch, setActiveBranch] = useState<null | string>(null)
-  useEffect(() => {
-    setPickerMode('default')
-    setActiveBranch(null)
-    setBranchQuery('')
-  }, [envSlug])
-
-  const showBranchPane = isFirstEnv && pickerMode === 'branches'
   const {
-    data: branchRefs = [],
-    isError: branchesError,
-    isLoading: branchesLoading,
-    refetch: branchesRefetch,
-  } = useQuery<DeploymentRef[]>({
-    enabled: open && showBranchPane,
-    queryFn: ({ signal }) =>
-      listDeploymentRefs(orgSlug, projectId, { kind: 'branch' }, signal),
-    queryKey: ['deploymentRefs', orgSlug, projectId, 'branch'],
-  })
-  const filteredBranches = useMemo(() => {
-    const q = branchQuery.trim().toLowerCase()
-    if (!q) return branchRefs
-    return branchRefs.filter((b) => b.name.toLowerCase().includes(q))
-  }, [branchRefs, branchQuery])
-  const {
-    data: activeBranchCommits = [],
-    isError: activeBranchError,
-    isLoading: activeBranchLoading,
-    refetch: activeBranchRefetch,
-  } = useQuery<DeploymentCommit[]>({
-    enabled: open && showBranchPane && !!activeBranch,
-    queryFn: ({ signal }) =>
-      listRefCommits(
-        orgSlug,
-        projectId,
-        activeBranch ?? '',
-        { limit: 25 },
-        signal,
-      ),
-    queryKey: ['refCommits', orgSlug, projectId, activeBranch],
-  })
+    activeBranch,
+    activeBranchCommits,
+    activeBranchError,
+    activeBranchLoading,
+    activeBranchRefetch,
+    branchesError,
+    branchesLoading,
+    branchesRefetch,
+    branchQuery,
+    filteredBranches,
+    pickerMode,
+    setActiveBranch,
+    setBranchQuery,
+    setPickerMode,
+    showBranchPane,
+  } = useBranchPicker({ envSlug, isFirstEnv, open, orgSlug, projectId })
 
   const [selected, setSelected] = useState<null | SelectedVersion>(null)
   useEffect(() => {
     setSelected(null)
   }, [envSlug])
 
-  // For first-env (commit-based) deployments, ``selected.label`` is the
-  // branch name (e.g. ``main``), so compare against ``selected.sha`` via
-  // the release's ``committish``. For tag-based envs ``selected.label`` is
-  // the tag and matches ``current.release.tag``.
-  const currentCommittish = current?.release?.committish ?? null
-  const currentTag = current?.release?.tag ?? null
-  const isRedeploy =
-    !!current?.release &&
-    !!selected &&
-    (isFirstEnv
-      ? !!currentCommittish &&
-        (currentCommittish === selected.sha ||
-          selected.sha.startsWith(currentCommittish) ||
-          currentCommittish.startsWith(selected.sha))
-      : currentTag === selected.label)
-
-  const queryClient = useQueryClient()
-  const mutation = useMutation({
-    mutationFn: (payload: SelectedVersion) =>
-      triggerDeployment(orgSlug, projectId, {
-        action: isRedeploy ? 'redeploy' : 'deploy',
-        committish: payload.sha,
-        environment: envSlug,
-        ref_label: payload.label,
-      }),
-    onError: (err) => {
-      toast.error(
-        err instanceof ApiError
-          ? (extractApiErrorDetail(err) ?? err.message)
-          : (err as Error).message,
-      )
-    },
-    onSuccess: (data) => {
-      void queryClient.invalidateQueries({
-        queryKey: ['currentReleases', orgSlug, projectId],
-      })
-      const url = data.run.run_url
-      const envName = env?.name ?? envSlug
-      if (onRunStarted && data.run.run_id) {
-        const toastId = toast.loading(`Deploying to ${envName}…`, {
-          action: url
-            ? {
-                label: 'View run',
-                onClick: () => window.open(url, '_blank', 'noopener'),
-              }
-            : undefined,
-          description: data.run.status
-            ? `status: ${data.run.status}`
-            : undefined,
-          icon: <Loader2 className="size-4 animate-spin" />,
-        })
-        onRunStarted({
-          actionLabel: url ? 'View run' : undefined,
-          actionUrl: url,
-          envName,
-          initialStatus: data.run.status,
-          originOrgSlug: orgSlug,
-          originProjectId: projectId,
-          runId: data.run.run_id,
-          runUrl: url,
-          toastId,
-        })
-      } else {
-        toast.success(
-          `Workflow dispatched to ${envName}`,
-          url
-            ? {
-                action: {
-                  label: 'View run',
-                  onClick: () => window.open(url, '_blank', 'noopener'),
-                },
-              }
-            : undefined,
-        )
-      }
-      onClose()
-    },
+  const { isPending, isRedeploy, onDeploy } = useDeployMutation({
+    current,
+    env,
+    envSlug,
+    isFirstEnv,
+    onClose,
+    onRunStarted,
+    orgSlug,
+    projectId,
+    selected,
   })
-
-  const onDeploy = () => {
-    if (!selected) return
-    mutation.mutate(selected)
-  }
 
   return (
     <div className="flex max-h-[80vh] min-h-121.5 flex-col gap-4">
@@ -413,11 +296,11 @@ export function DeployTab({
           Cancel
         </Button>
         <Button
-          disabled={!selected || mutation.isPending}
+          disabled={!selected || isPending}
           onClick={onDeploy}
           type="button"
         >
-          {mutation.isPending ? (
+          {isPending ? (
             <Loader2 className="mr-1 size-4 animate-spin" />
           ) : (
             <Rocket className="mr-1 size-4" />
@@ -428,84 +311,6 @@ export function DeployTab({
         </Button>
       </div>
     </div>
-  )
-}
-
-function BranchList({
-  activeBranch,
-  branches,
-  isError,
-  isLoading,
-  onRetry,
-  onSelect,
-}: {
-  activeBranch: null | string
-  branches: DeploymentRef[]
-  isError: boolean
-  isLoading: boolean
-  onRetry: () => void
-  onSelect: (name: string) => void
-}) {
-  if (isError)
-    return (
-      <div className="border-danger bg-danger/10 text-danger rounded-md border px-3 py-2 text-sm">
-        Failed to load branches.{' '}
-        <Button className="ml-2" onClick={onRetry} size="sm" variant="ghost">
-          Retry
-        </Button>
-      </div>
-    )
-  if (isLoading)
-    return (
-      <ul
-        aria-busy="true"
-        aria-label="Loading branches"
-        className="border-secondary rounded-md border"
-      >
-        {Array.from({ length: 6 }, (_, i) => (
-          <li
-            aria-hidden="true"
-            className="border-tertiary flex items-center gap-3 border-b px-3 py-2 last:border-b-0"
-            key={i}
-          >
-            <Skeleton className="h-3 flex-1" />
-          </li>
-        ))}
-      </ul>
-    )
-  if (branches.length === 0)
-    return (
-      <p className="border-secondary text-tertiary rounded-md border p-3 text-sm">
-        No branches.
-      </p>
-    )
-  return (
-    <ul className="border-secondary max-h-65 overflow-y-auto rounded-md border">
-      {branches.map((b) => {
-        const active = b.name === activeBranch
-        return (
-          <li
-            className={cn(
-              'border-b border-tertiary last:border-b-0',
-              active && 'bg-action/5',
-            )}
-            key={b.name}
-          >
-            <button
-              className="flex w-full min-w-0 cursor-pointer items-center gap-2 px-3 py-2 text-left"
-              onClick={() => onSelect(b.name)}
-              type="button"
-            >
-              <span className="min-w-0 flex-1 truncate text-sm">{b.name}</span>
-              {b.pr_number ? (
-                <Badge variant="outline">#{b.pr_number}</Badge>
-              ) : null}
-              {active ? <Check className="text-action size-4" /> : null}
-            </button>
-          </li>
-        )
-      })}
-    </ul>
   )
 }
 
@@ -580,103 +385,6 @@ function BranchPicker({
         )}
       </div>
     </div>
-  )
-}
-
-function CommitList({
-  commits,
-  current,
-  isError,
-  isLoading,
-  onRetry,
-  onSelect,
-  selectedSha,
-}: {
-  commits: DeploymentCommit[]
-  current: null | string
-  isError: boolean
-  isLoading: boolean
-  onRetry: () => void
-  onSelect: (commit: DeploymentCommit) => void
-  selectedSha: null | string
-}) {
-  if (isError)
-    return (
-      <div className="border-danger bg-danger/10 text-danger rounded-md border px-3 py-2 text-sm">
-        Failed to load commits.{' '}
-        <Button className="ml-2" onClick={onRetry} size="sm" variant="ghost">
-          Retry
-        </Button>
-      </div>
-    )
-  if (isLoading)
-    return (
-      <ul
-        aria-busy="true"
-        aria-label="Loading commits"
-        className="border-secondary rounded-md border"
-      >
-        {Array.from({ length: 6 }, (_, i) => (
-          <li
-            aria-hidden="true"
-            className="border-tertiary flex items-center gap-3 border-b px-3 py-2 last:border-b-0"
-            key={i}
-          >
-            <Skeleton className="h-3 w-12 shrink-0" />
-            <Skeleton className="h-3 flex-1" />
-            <Skeleton className="h-3 w-16 shrink-0" />
-          </li>
-        ))}
-      </ul>
-    )
-  if (commits.length === 0)
-    return (
-      <p className="border-secondary text-tertiary rounded-md border p-3 text-sm">
-        No commits available.
-      </p>
-    )
-  return (
-    <ul className="border-secondary max-h-65 overflow-y-auto rounded-md border">
-      {commits.map((c) => {
-        const active = c.sha === selectedSha
-        const isCurrent = current ? c.sha.startsWith(current) : false
-        return (
-          <li
-            className={cn(
-              'flex min-w-0 items-center gap-3 border-b border-tertiary px-3 py-2 last:border-b-0',
-              active && 'bg-action/5',
-            )}
-            key={c.sha}
-          >
-            <button
-              className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
-              onClick={() => onSelect(c)}
-              type="button"
-            >
-              <span className="shrink-0 font-mono text-xs">{c.short_sha}</span>
-              <span className="min-w-0 flex-1 truncate text-sm">
-                {c.message}
-              </span>
-              <span className="text-tertiary shrink-0 text-xs">{c.author}</span>
-              {c.is_head ? <Badge variant="outline">HEAD</Badge> : null}
-              {isCurrent ? <Badge variant="neutral">current</Badge> : null}
-              {active ? <Check className="text-action size-4" /> : null}
-            </button>
-            {c.url ? (
-              <a
-                aria-label="View commit on GitHub"
-                className="text-tertiary hover:text-primary"
-                href={c.url}
-                rel="noopener"
-                target="_blank"
-              >
-                <ExternalLink className="size-3.5" />
-              </a>
-            ) : null}
-          </li>
-        )
-      })}
-    </ul>
   )
 }
 
@@ -771,88 +479,5 @@ function PickerToggle({
         Branches
       </button>
     </div>
-  )
-}
-
-function TagList({
-  current,
-  isError,
-  isLoading,
-  onRetry,
-  onSelect,
-  selectedSha,
-  tags,
-}: {
-  current: null | string
-  isError: boolean
-  isLoading: boolean
-  onRetry: () => void
-  onSelect: (tag: DeploymentRef) => void
-  selectedSha: null | string
-  tags: DeploymentRef[]
-}) {
-  if (isError)
-    return (
-      <div className="border-danger bg-danger/10 text-danger rounded-md border px-3 py-2 text-sm">
-        Failed to load tags.{' '}
-        <Button className="ml-2" onClick={onRetry} size="sm" variant="ghost">
-          Retry
-        </Button>
-      </div>
-    )
-  if (isLoading)
-    return (
-      <ul
-        aria-busy="true"
-        aria-label="Loading tags"
-        className="border-secondary rounded-md border"
-      >
-        {Array.from({ length: 5 }, (_, i) => (
-          <li
-            aria-hidden="true"
-            className="border-tertiary flex items-center gap-3 border-b px-3 py-2 last:border-b-0"
-            key={i}
-          >
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-3 w-12" />
-          </li>
-        ))}
-      </ul>
-    )
-  if (tags.length === 0)
-    return (
-      <p className="border-secondary text-tertiary rounded-md border p-3 text-sm">
-        No tags available.
-      </p>
-    )
-  return (
-    <ul className="border-secondary max-h-65 overflow-y-auto rounded-md border">
-      {tags.map((t) => {
-        const active = t.sha === selectedSha
-        const isCurrent = t.name === current
-        return (
-          <li
-            className={cn(
-              'flex items-center justify-between border-b border-tertiary px-3 py-2 last:border-b-0',
-              active && 'bg-action/5',
-            )}
-            key={t.sha}
-          >
-            <button
-              className="flex flex-1 cursor-pointer items-center gap-3 text-left"
-              onClick={() => onSelect(t)}
-              type="button"
-            >
-              <span className="font-mono text-sm">{t.name}</span>
-              <span className="text-tertiary font-mono text-xs">
-                {t.sha.slice(0, 7)}
-              </span>
-              {isCurrent ? <Badge variant="neutral">current</Badge> : null}
-              {active ? <Check className="text-action size-4" /> : null}
-            </button>
-          </li>
-        )
-      })}
-    </ul>
   )
 }
