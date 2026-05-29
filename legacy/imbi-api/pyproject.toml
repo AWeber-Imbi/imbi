@@ -236,9 +236,11 @@ exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "
 url = "https://pypi.org/simple"
 default = true
 
-# Pinned to the imbi-common #138 merge commit while 2.8.0 is
-# unreleased.  An immutable rev is used (instead of branch = "main")
-# so the build is reproducible.  Remove this entire block when
-# imbi-common 2.8.0 ships to PyPI.
+# Pinned to the imbi-common #141 merge commit so the Project Doctor
+# types (AnalysisPlugin, AnalysisResultItem, AnalysisResultPolicy,
+# AnalysisResult* graph labels) resolve while 2.8.0 is unreleased.
+# An immutable rev is used (instead of branch = "main") so the build
+# is reproducible. Remove this entire block when imbi-common 2.8.0
+# ships to PyPI.
 [tool.uv.sources]
-imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", rev = "d21cc8818f238cfe02625ac6f292091c526ed787" }
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", rev = "101412c762993784d1b91403a856014d1479208d" }
