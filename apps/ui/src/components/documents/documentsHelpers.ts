@@ -1,5 +1,5 @@
 import { LABEL_SWATCHES } from '@/lib/chip-colors'
-import type { Document, TagRef } from '@/types'
+import type { Document, DocumentTemplate, TagRef } from '@/types'
 
 /**
  * Deterministic color for a tag slug. Stable hash keeps each tag on the same
@@ -110,6 +110,25 @@ function truncate(s: string, max: number): string {
 }
 
 export const EMPTY_ACTIVE: ReadonlySet<string> = new Set()
+
+/**
+ * Templates with no project-type restriction apply everywhere; otherwise a
+ * template is only offered when it targets one of this project's types.
+ */
+export function filterTemplatesByProjectType(
+  templates: DocumentTemplate[],
+  projectTypeSlugs?: string[],
+): DocumentTemplate[] {
+  const set =
+    projectTypeSlugs && projectTypeSlugs.length
+      ? new Set(projectTypeSlugs)
+      : undefined
+  return templates.filter((t) => {
+    if (!t.project_type_slugs || t.project_type_slugs.length === 0) return true
+    if (!set) return false
+    return t.project_type_slugs.some((s) => set.has(s))
+  })
+}
 
 export function tagCounts(documents: Document[]): Record<string, number> {
   const counts: Record<string, number> = {}

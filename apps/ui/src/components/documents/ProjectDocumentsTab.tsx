@@ -335,6 +335,8 @@ export function ProjectDocumentsTab({
       onCreate={handleCreate}
       onOpen={(id) => navigateToView({ documentId: id, kind: 'reading' })}
       onTogglePin={togglePin}
+      orgSlug={orgSlug}
+      projectTypeSlugs={projectTypeSlugs}
     />
   )
 }

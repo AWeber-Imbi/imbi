@@ -1,8 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 
-import { ArrowUpRight, Pin, Plus } from 'lucide-react'
+import { ArrowUpRight, Pin } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -13,7 +12,7 @@ import {
 import { IconTooltip } from '@/components/ui/tooltip'
 import { UserDisplay } from '@/components/ui/user-display'
 import { cn } from '@/lib/utils'
-import type { Document } from '@/types'
+import type { Document, DocumentTemplate } from '@/types'
 
 import { DocumentsFilterRail } from './DocumentsFilterRail'
 import {
@@ -24,13 +23,16 @@ import {
   uniqueTagsFromDocuments,
 } from './documentsHelpers'
 import { DocumentTagChip } from './DocumentTagChip'
+import { NewDocumentMenu } from './NewDocumentMenu'
 
 interface Props {
   displayNames?: Map<string, string>
   documents: Document[]
-  onCreate: () => void
+  onCreate: (template?: DocumentTemplate) => void
   onOpen: (documentId: string) => void
   onTogglePin: (document: Document) => void
+  orgSlug: string
+  projectTypeSlugs?: string[]
 }
 
 export function DocumentsPinboard({
@@ -39,6 +41,8 @@ export function DocumentsPinboard({
   onCreate,
   onOpen,
   onTogglePin,
+  orgSlug,
+  projectTypeSlugs,
 }: Props) {
   const [active, setActive] = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
@@ -98,14 +102,12 @@ export function DocumentsPinboard({
               ))}
             </div>
           )}
-          <Button
-            className={cn('gap-1.5', pinned.length === 0 && 'ml-auto')}
-            onClick={onCreate}
-            size="sm"
-          >
-            <Plus className="size-3" />
-            New document
-          </Button>
+          <NewDocumentMenu
+            className={cn(pinned.length === 0 && 'ml-auto')}
+            onCreate={onCreate}
+            orgSlug={orgSlug}
+            projectTypeSlugs={projectTypeSlugs}
+          />
         </section>
 
         <section>

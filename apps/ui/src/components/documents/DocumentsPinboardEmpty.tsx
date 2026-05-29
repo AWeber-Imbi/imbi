@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { EntityIcon } from '@/components/ui/entity-icon'
 import type { DocumentTemplate } from '@/types'
 
+import { filterTemplatesByProjectType } from './documentsHelpers'
 import { DocumentTagChip } from './DocumentTagChip'
 
 interface Props {
@@ -29,16 +30,10 @@ export function DocumentsPinboardEmpty({
     queryKey: ['documentTemplates', orgSlug],
   })
 
-  const projectTypeSet =
-    projectTypeSlugs && projectTypeSlugs.length
-      ? new Set(projectTypeSlugs)
-      : undefined
-
-  const visibleTemplates = templates.filter((t) => {
-    if (!t.project_type_slugs || t.project_type_slugs.length === 0) return true
-    if (!projectTypeSet) return false
-    return t.project_type_slugs.some((s) => projectTypeSet.has(s))
-  })
+  const visibleTemplates = filterTemplatesByProjectType(
+    templates,
+    projectTypeSlugs,
+  )
 
   return (
     <div className="border-tertiary bg-primary flex flex-col items-center gap-4 rounded-lg border px-10 py-14 text-center">
