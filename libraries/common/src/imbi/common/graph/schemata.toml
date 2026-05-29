@@ -22,6 +22,7 @@ name = [
   "LinkDefinition",
   "MCPServer",
   "Message",
+  "OAuthClient",
   "OAuthIdentity",
   "Organization",
   "Permission",
@@ -137,6 +138,11 @@ attributes = ["conversation_id"]
 [[vlabel_indexes]]
 vlabel = "DocumentTemplate"
 attributes = ["slug"]
+
+[[vlabel_indexes]]
+vlabel = "OAuthClient"
+attributes = ["client_id"]
+unique = true
 
 [[vlabel_indexes]]
 vlabel = "OAuthIdentity"
