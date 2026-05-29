@@ -5,6 +5,7 @@ import { CornerDownLeft, Plus, Tag as TagIcon, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { createTag, listTags } from '@/api/endpoints'
+import { Keystroke } from '@/components/ui/keystroke'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { cn } from '@/lib/utils'
 import type { Tag, TagRef } from '@/types'
@@ -252,7 +253,7 @@ export function TagCombobox({
                 <Plus className="text-tertiary size-3" />
                 Create{' '}
                 <span className="text-primary font-medium">“{query}”</span>
-                <span className="text-tertiary ml-auto text-[11px]">Enter</span>
+                <Keystroke className="ml-auto" value="Enter" />
               </button>
             </>
           )}

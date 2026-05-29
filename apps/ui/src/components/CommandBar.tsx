@@ -18,6 +18,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { createConversation, sendMessageSSE } from '@/api/assistant'
 import { getConfidenceLabel, searchOrg, type SearchResult } from '@/api/search'
 import { Button } from '@/components/ui/button'
+import { Keystroke } from '@/components/ui/keystroke'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Tooltip,
@@ -26,6 +27,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAssistantShortcut } from '@/hooks/useAssistantShortcut'
 import { useAuth } from '@/hooks/useAuth'
 import { queryClient } from '@/lib/queryClient'
 import { getQueryKeysForResource } from '@/lib/queryKeys'
@@ -43,6 +45,7 @@ export function CommandBar() {
   const { selectedOrganization } = useOrganization()
   const navigate = useNavigate()
   const [input, setInput] = useState('')
+  const [inputFocused, setInputFocused] = useState(false)
   const [mode, setMode] = useState<TrayMode>('search')
   const [panelHeight, setPanelHeight] = useState(() => {
     const saved = localStorage.getItem('imbi-assistant-height')
@@ -133,6 +136,8 @@ export function CommandBar() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [messages, isExpanded, streamingContent, mode])
+
+  useAssistantShortcut(inputRef, isExpanded, setExpanded)
 
   // Focus input when panel expands
   useEffect(() => {
@@ -570,7 +575,9 @@ export function CommandBar() {
             <input
               className="text-primary placeholder:text-muted-foreground flex-1 bg-transparent text-sm outline-none disabled:opacity-50"
               disabled={mode === 'assistant' && isStreaming}
+              onBlur={() => setInputFocused(false)}
               onChange={handleInputChange}
+              onFocus={() => setInputFocused(true)}
               onKeyDown={handleKeyDown}
               placeholder={
                 mode === 'assistant' && isStreaming
@@ -581,6 +588,7 @@ export function CommandBar() {
               type="text"
               value={input}
             />
+            {!input && !inputFocused && <Keystroke value="Ctrl+Shift+A" />}
             {mode === 'assistant' && isStreaming ? (
               <Button
                 aria-label="Stop generating"

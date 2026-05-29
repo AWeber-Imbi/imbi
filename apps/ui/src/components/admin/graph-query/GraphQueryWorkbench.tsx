@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Clock, Database, Play } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Keystroke } from '@/components/ui/keystroke'
 import { useGraphQuery } from '@/contexts/GraphQueryContext'
 
 import { CypherEditor } from './CypherEditor'
@@ -145,7 +146,7 @@ export function GraphQueryWorkbench() {
                 />
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <span className="text-tertiary font-mono text-[11px]">⌘⏎</span>
+                <Keystroke value="Ctrl+Enter" />
                 <Button
                   className="border-amber-border bg-amber-bg text-amber-text h-8 gap-1.5 border font-medium"
                   disabled={!editorValue.trim() || isRunning}
@@ -167,8 +168,10 @@ export function GraphQueryWorkbench() {
             <div className="flex h-full items-center justify-center p-8">
               <div className="max-w-md text-center">
                 <Database className="text-tertiary mx-auto mb-3 size-6" />
-                <p className="text-secondary text-sm">
-                  Enter a Cypher query above and press ⌘⏎ to run.
+                <p className="text-secondary inline-flex flex-wrap items-center justify-center gap-1 text-sm">
+                  Enter a Cypher query above and press
+                  <Keystroke value="Ctrl+Enter" />
+                  to run.
                 </p>
                 <p className="text-tertiary mt-1 text-xs">
                   Results will appear as cards here, newest first.

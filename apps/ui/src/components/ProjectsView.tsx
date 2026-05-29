@@ -4,6 +4,7 @@ import {
   useDeferredValue,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 
@@ -31,6 +32,7 @@ import { getProjectsSlim, type ProjectListItem } from '@/api/endpoints'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { useSearchShortcut } from '@/hooks/useSearchShortcut'
 import { deriveChipColors } from '@/lib/chip-colors'
 import { formatRelativeDate } from '@/lib/formatDate'
 
@@ -41,6 +43,7 @@ import { Checkbox } from './ui/checkbox'
 import { EnvironmentBadge } from './ui/environment-badge'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from './ui/hover-card'
 import { Input } from './ui/input'
+import { Keystroke } from './ui/keystroke'
 import { Label } from './ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { ScoreBadge } from './ui/score-badge'
@@ -120,6 +123,9 @@ export function ProjectsView() {
   // user by ``SEARCH_DEBOUNCE_MS`` so back-buttoning still works.
   const urlQuery = searchParams.get('q') ?? ''
   const [inputQuery, setInputQuery] = useState(urlQuery)
+  const [searchFocused, setSearchFocused] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  useSearchShortcut(searchInputRef)
   const debouncedQuery = useDebouncedValue(inputQuery, SEARCH_DEBOUNCE_MS)
   // ``useDeferredValue`` lets React render the stale filtered list
   // first (so the input never freezes), then reconcile to the new
@@ -378,13 +384,21 @@ export function ProjectsView() {
             <div className="relative w-80 shrink-0">
               <Search className="text-tertiary absolute top-1/2 left-3 size-4 -translate-y-1/2" />
               <Input
-                className="pl-9"
+                className="pr-8 pl-9"
                 disabled={isLoading}
+                onBlur={() => setSearchFocused(false)}
                 onChange={(e) => setInputQuery(e.target.value)}
+                onFocus={() => setSearchFocused(true)}
                 placeholder="Search projects..."
+                ref={searchInputRef}
                 type="text"
                 value={inputQuery}
               />
+              {!inputQuery && !searchFocused && (
+                <div className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2">
+                  <Keystroke value="/" />
+                </div>
+              )}
             </div>
 
             <div className="flex flex-1 items-center gap-2">
