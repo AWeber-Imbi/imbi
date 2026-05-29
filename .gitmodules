@@ -1,30 +1,30 @@
 [submodule "imbi-api"]
-	path = imbi-api
+	path = repositories/imbi-api
 	url = git@github.com:AWeber-Imbi/imbi-api.git
 [submodule "imbi-gateway"]
-	path = imbi-gateway
+	path = repositories/imbi-gateway
 	url = git@github.com:AWeber-Imbi/imbi-gateway.git
 [submodule "imbi-assistant"]
-	path = imbi-assistant
+	path = repositories/imbi-assistant
 	url = git@github.com:AWeber-Imbi/imbi-assistant.git
 [submodule "imbi-mcp"]
-	path = imbi-mcp
+	path = repositories/imbi-mcp
 	url = git@github.com:AWeber-Imbi/imbi-mcp.git
 [submodule "imbi-ui"]
-	path = imbi-ui
+	path = repositories/imbi-ui
 	url = git@github.com:AWeber-Imbi/imbi-ui.git
 [submodule "imbi-plugin-logzio"]
-	path = imbi-plugin-logzio
+	path = repositories/imbi-plugin-logzio
 	url = git@github.com:AWeber-Imbi/imbi-plugin-logzio.git
 [submodule "imbi-plugin-aws"]
-	path = imbi-plugin-aws
+	path = repositories/imbi-plugin-aws
 	url = git@github.com:AWeber-Imbi/imbi-plugin-aws.git
 [submodule "imbi-plugin-oidc"]
-	path = imbi-plugin-oidc
+	path = repositories/imbi-plugin-oidc
 	url = git@github.com:AWeber-Imbi/imbi-plugin-oidc.git
 [submodule "imbi-plugin-github"]
-	path = imbi-plugin-github
+	path = repositories/imbi-plugin-github
 	url = git@github.com:AWeber-Imbi/imbi-plugin-github.git
 [submodule "imbi-plugin-sonarqube"]
-	path = imbi-plugin-sonarqube
+	path = repositories/imbi-plugin-sonarqube
 	url = git@github.com:AWeber-Imbi/imbi-plugin-sonarqube.git

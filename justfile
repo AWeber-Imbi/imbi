@@ -31,7 +31,8 @@ update-submodules:
 update-submodules-tag tag:
     #!/usr/bin/env sh
     set -e
-    for module in imbi-api imbi-assistant imbi-common imbi-gateway imbi-mcp imbi-ui imbi-plugin-aws imbi-plugin-github imbi-plugin-logzio imbi-plugin-oidc imbi-plugin-sonarqube; do
+    for module in repositories/*/; do
+        module="${module%/}"
         echo "Updating $module to {{ tag }}..."
         git -C "$module" fetch --tags
         git -C "$module" checkout "{{ tag }}"

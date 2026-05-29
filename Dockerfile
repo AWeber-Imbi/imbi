@@ -1,6 +1,6 @@
 ARG PYTHON_VERSION=3.14
 ARG CADDY_VERSION=2
-ARG NODE_VERSION=22
+ARG NODE_VERSION=24
 
 # ---------------------------------------------------------------------------
 # Stage 1: Build the UI
@@ -10,9 +10,7 @@ FROM node:${NODE_VERSION}-slim AS ui-builder
 WORKDIR /tmp/build
 ARG VITE_GIT_REF=""
 ENV VITE_GIT_REF=${VITE_GIT_REF}
-COPY imbi-ui/package.json imbi-ui/package-lock.json ./
-RUN npm ci
-COPY imbi-ui/ ./
+COPY repositories/imbi-ui/ ./
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build
 
@@ -29,20 +27,13 @@ RUN pip install uv \
  && apt install -y gcc
 
 # Copy all service sources
-COPY imbi-api/ imbi-api/
-COPY imbi-plugin-aws/ imbi-plugin-aws/
-COPY imbi-plugin-github/ imbi-plugin-github/
-COPY imbi-plugin-logzio/ imbi-plugin-logzio/
-COPY imbi-plugin-oidc/ imbi-plugin-oidc/
-COPY imbi-plugin-sonarqube/ imbi-plugin-sonarqube/
-COPY imbi-assistant/ imbi-assistant/
-COPY imbi-gateway/ imbi-gateway/
-COPY imbi-mcp/ imbi-mcp/
+COPY repositories/ /tmp/build/
 
 # Build wheels for all services
-RUN for svc in imbi-api imbi-plugin-aws imbi-plugin-github imbi-plugin-logzio imbi-plugin-oidc imbi-plugin-sonarqube imbi-assistant imbi-gateway imbi-mcp; do \
-  uv build /tmp/build/$svc --wheel --out-dir /tmp/wheels/; \
-done
+RUN rm -rf /tmp/build/imbi-ui \
+ && for svc in /tmp/build/*/; do \
+	  uv build "$svc" --wheel --out-dir /tmp/wheels/; \
+	done
 
 # Install all services into a venv, then clean up source
 ENV UV_LINK_MODE=copy UV_PROJECT_DIRECTORY=/app VIRTUAL_ENV=/app
@@ -93,7 +84,10 @@ COPY --chmod=755 entrypoint.sh /usr/local/bin/entrypoint.sh
 
 ENV PATH="/app/bin:$PATH"
 
+# Caddy Admin
 EXPOSE 2019
+
+# Caddy Public Port
 EXPOSE 8080
 
 USER imbi
