@@ -7,7 +7,7 @@ requires-python = ">=3.14"
 license = "BSD-3-Clause"
 authors = [{ name = "Gavin M. Roy", email = "gavinr@aweber.com" }]
 dependencies = [
-  "fastmcp>=2.0.0",
+  "fastmcp>=3.0.0",
   "httpx>=0.28.1",
   "imbi-common>=2.5.0",
   "pydantic~=2.12",
