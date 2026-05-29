@@ -47,6 +47,7 @@ nav:
       - Blueprints: api/blueprints.md
       - JSON Pointer: api/json-pointer.md
       - Authentication: api/auth.md
+      - MCP Toolset Policy: api/mcp.md
       - Logging: api/logging.md
       - OpenTelemetry: api/otel.md
       - Lifespan: api/lifespan.md

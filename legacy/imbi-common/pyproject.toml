@@ -44,6 +44,9 @@ databases = [
 llm = [
   "anthropic>=0.40",
 ]
+mcp = [
+  "fastmcp>=3,<4",
+]
 otel = [
   "opentelemetry-api==1.41.1",
   "opentelemetry-distro==0.62b1",
