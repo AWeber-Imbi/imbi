@@ -15,6 +15,7 @@ class AppTests(helpers.TestCase):
         app_instance = imbi_assistant.app.create_app()
         self.assertIsInstance(app_instance, fastapi.FastAPI)
 
+    @mock.patch('imbi_assistant.links.initialize')
     @mock.patch('imbi_assistant.external_mcp.initialize')
     @mock.patch('imbi_assistant.app.graph.Graph')
     @mock.patch('imbi_assistant.client.aclose')
@@ -27,6 +28,7 @@ class AppTests(helpers.TestCase):
         _client_close: mock.AsyncMock,
         _graph_cls: mock.MagicMock,
         _ext_init: mock.AsyncMock,
+        _links_init: mock.AsyncMock,
     ) -> None:
         _graph_cls.return_value = mock.AsyncMock()
         start_time = datetime.datetime.now(datetime.UTC)
@@ -46,6 +48,7 @@ class AppTests(helpers.TestCase):
         self.assertEqual('ok', body['status'])
         self.assertEqual(imbi_assistant.version, body['version'])
 
+    @mock.patch('imbi_assistant.links.initialize')
     @mock.patch('imbi_assistant.external_mcp.initialize')
     @mock.patch('imbi_assistant.app.graph.Graph')
     @mock.patch('imbi_assistant.client.aclose')
@@ -58,6 +61,7 @@ class AppTests(helpers.TestCase):
         _client_close: mock.AsyncMock,
         _graph_cls: mock.MagicMock,
         _ext_init: mock.AsyncMock,
+        _links_init: mock.AsyncMock,
     ) -> None:
         _graph_cls.return_value = mock.AsyncMock()
         with (

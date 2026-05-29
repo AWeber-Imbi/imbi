@@ -13,6 +13,7 @@ from imbi_assistant import (
     client,
     endpoints,
     external_mcp,
+    links,
     mcp,
     settings,
 )
@@ -37,6 +38,12 @@ async def _mcp_lifespan() -> abc.AsyncIterator[None]:
         yield
     finally:
         await mcp.aclose()
+
+
+@contextlib.asynccontextmanager
+async def _links_lifespan() -> abc.AsyncIterator[None]:
+    await links.initialize()
+    yield
 
 
 @contextlib.asynccontextmanager
@@ -74,6 +81,7 @@ def create_app() -> fastapi.FastAPI:
             graph.graph_lifespan,
             _anthropic_lifespan,
             _mcp_lifespan,
+            _links_lifespan,
             _external_mcp_lifespan,
         ),
     )

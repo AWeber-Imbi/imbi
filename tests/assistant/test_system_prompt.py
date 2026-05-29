@@ -123,3 +123,16 @@ class BuildSystemPromptTestCase(unittest.TestCase):
         result = system_prompt.build_system_prompt(auth_ctx, [])
         self.assertIn('Test User', result)
         self.assertNotIn('[Admin]', result)
+
+    @mock.patch.dict(
+        os.environ,
+        {
+            'IMBI_UI_URL': 'https://imbi.example.com',
+            'IMBI_ASSISTANT_SYSTEM_PROMPT': '{links_section}',
+        },
+        clear=True,
+    )
+    def test_build_injects_base_url(self) -> None:
+        auth_ctx = _make_auth_context()
+        result = system_prompt.build_system_prompt(auth_ctx, [])
+        self.assertIn('https://imbi.example.com', result)

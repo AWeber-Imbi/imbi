@@ -2,7 +2,7 @@
 
 import pathlib
 
-from imbi_assistant import auth, settings
+from imbi_assistant import auth, links, settings
 
 _PROMPT_PATH = pathlib.Path(__file__).parent / 'system_prompt.md'
 _prompt_template: str | None = None
@@ -73,6 +73,21 @@ def build_system_prompt(
         perms_list = ', '.join(perms)
         perms_section = f'User permissions: {perms_list}.'
 
+    base_url = settings.get_assistant_settings().ui_url
+    patterns = links.get_url_patterns()
+    if base_url:
+        links_section = (
+            f'The Imbi UI is at {base_url}. When you mention a project, '
+            'team, or other resource, link to its page by appending one of '
+            f'these paths to that base URL (e.g. {base_url}/projects/123):'
+            f'\n\n{patterns}'
+        )
+    else:
+        links_section = (
+            'Imbi UI paths (relative to the UI root) for pointing the user '
+            f'at a page:\n\n{patterns}'
+        )
+
     template = _load_template()
     return template.format(
         display_name=user.display_name,
@@ -80,4 +95,5 @@ def build_system_prompt(
         admin_flag='  [Admin]' if user.is_admin else '',
         perms_section=perms_section,
         tools_section=tools_section,
+        links_section=links_section,
     )

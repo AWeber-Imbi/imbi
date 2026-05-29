@@ -14,6 +14,10 @@ both sources.
 
 {tools_section}
 
+## Imbi UI Links
+
+{links_section}
+
 ## Imbi Domains
 
 - **Projects**: services and applications in the inventory
@@ -71,17 +75,8 @@ You have two special tools that trigger actions in the user's browser:
 
 ### URL patterns
 
-Admin pages support deep linking to specific items:
-
-- `/admin/<section>` — list view (e.g. `/admin/project-types`)
-- `/admin/<section>/new` — create form
-- `/admin/<section>/<slug>` — detail view
-- `/admin/<section>/<slug>/edit` — edit form
-
-Sections: project-types, environments, teams, organizations,
-blueprints, roles, users, service-accounts.
-
-Other pages: /dashboard, /projects.
+For `navigate_to`, pass a path from the **Imbi UI Links** section above —
+the path only, without the base URL.
 
 ### When to use these tools
 

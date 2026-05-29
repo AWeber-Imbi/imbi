@@ -166,6 +166,7 @@ max-complexity = 15
 [tool.ruff.lint.per-file-ignores]
 "src/imbi_assistant/client.py" = ["PLW0603"]
 "src/imbi_assistant/external_mcp.py" = ["PLW0603"]
+"src/imbi_assistant/links.py" = ["PLW0603"]
 "src/imbi_assistant/mcp.py" = ["PLW0603"]
 "src/imbi_assistant/settings.py" = ["PLW0603"]
 "src/imbi_assistant/system_prompt.py" = ["PLW0603"]

@@ -39,8 +39,12 @@ class Assistant(pydantic_settings.BaseSettings):
     url: str = pydantic.Field(
         default='', validation_alias='IMBI_ASSISTANT_URL'
     )
+    # Public base URL of the Imbi UI (no path component), used to build
+    # absolute deep links to resources in responses. Shares the
+    # ``IMBI_UI_URL`` env var with imbi-api.
+    ui_url: str = pydantic.Field(default='', validation_alias='IMBI_UI_URL')
 
-    @pydantic.field_validator('url')
+    @pydantic.field_validator('url', 'ui_url')
     @classmethod
     def _normalize_url(cls, value: str) -> str:
         return value.rstrip('/')
