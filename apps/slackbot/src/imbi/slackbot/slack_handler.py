@@ -132,20 +132,25 @@ async def handle_event(
         )
         return
 
-    token = identity.mint_token(user)
-    manager = mcp.get_manager()
-    tools = manager.get_tools() or None
-    system = system_prompt.build_system_prompt(user, manager.get_tool_names())
-
-    answer = await agent.run_turn(
-        messages=messages,
-        system=system,
-        tools=tools,
-        auth_token=token,
-        model=slackbot_settings.model,
-        max_tokens=slackbot_settings.max_tokens,
-        max_rounds=slackbot_settings.max_tool_rounds,
-    )
+    try:
+        token = identity.mint_token(user)
+        manager = mcp.get_manager()
+        tools = manager.get_tools() or None
+        system = system_prompt.build_system_prompt(
+            user, manager.get_tool_names()
+        )
+        answer = await agent.run_turn(
+            messages=messages,
+            system=system,
+            tools=tools,
+            auth_token=token,
+            model=slackbot_settings.model,
+            max_tokens=slackbot_settings.max_tokens,
+            max_rounds=slackbot_settings.max_tool_rounds,
+        )
+    except Exception:
+        LOGGER.exception('Failed to handle event in %s/%s', channel, ts)
+        answer = 'Sorry — something went wrong handling your request.'
     await slack_client.chat_postMessage(
         channel=channel,
         text=answer or _EMPTY_MESSAGE,

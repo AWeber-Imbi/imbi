@@ -133,9 +133,13 @@ class RunTurnTests(helpers.TestCase):
                 patch.stop()
         self.assertIn('Found 3 projects', answer)
         self.assertEqual('tok', manager.executed[0][2])
-        # assistant tool_use + tool_result rounds appended.
-        self.assertEqual('assistant', messages[1]['role'])
-        self.assertEqual('user', messages[2]['role'])
+        # The tool round was processed: the working message list grew with
+        # the assistant tool_use + user tool_result turns.
+        working = client.messages.calls[-1]['messages']
+        self.assertEqual('assistant', working[1]['role'])
+        self.assertEqual('user', working[2]['role'])
+        # run_turn must not mutate the caller-supplied messages list.
+        self.assertEqual(1, len(messages))
 
     async def test_max_rounds(self) -> None:
         client = FakeClient(
