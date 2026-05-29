@@ -20,6 +20,7 @@ import fastapi
 import nanoid
 import pydantic
 from imbi_common import graph
+from imbi_common.graph import cypher as graph_cypher
 from imbi_common.plugins.base import (
     AnalysisPlugin,
     AnalysisResultItem,
@@ -135,7 +136,13 @@ async def _run_one(
         items: list[AnalysisResultItem] = await call_with_timeout(
             handler.analyze(ctx, credentials)
         )
-    except Exception as exc:
+    except Exception:
+        # The traceback (and any URLs / query fragments / credentials
+        # the plugin might have embedded in the exception message) is
+        # kept in the server log via ``LOGGER.exception``. The body
+        # surfaced through the API stays a fixed, sanitised string so
+        # a misbehaving plugin can't leak operator-visible secrets
+        # into the Doctor panel.
         LOGGER.exception(
             'Analysis plugin %r (id=%s) raised',
             resolved.plugin_slug,
@@ -146,8 +153,8 @@ async def _run_one(
                 slug=f'{resolved.plugin_slug}:plugin-error',
                 title=f'{resolved.plugin_slug} analysis failed',
                 description=(
-                    f'`{type(exc).__name__}`: {exc}\n\n'
-                    'See server logs for the full traceback.'
+                    'The plugin failed while running analysis. '
+                    'See server logs for details.'
                 ),
                 status='fail',
                 plugin_slug=resolved.plugin_slug,
@@ -218,33 +225,50 @@ async def _persist_report(
     triggered_by_user_id: str | None,
     results: list[AnalysisResult],
 ) -> AnalysisReport:
-    """Replace the project's existing report and persist a new one."""
-    await db.execute(_DELETE_REPORT_QUERY, {'project_id': project_id})
+    """Replace the project's existing report and persist a new one.
+
+    Runs the delete + creates as a single database transaction so a
+    mid-flight failure can't leave the project with a partial
+    report, and two concurrent ``/run`` requests serialise on the
+    project rather than interleaving and producing duplicate
+    ``HAS_ANALYSIS_REPORT`` edges. Reuses :meth:`graph.Graph._execute_batch`
+    — the host-side transactional primitive imbi-common exposes for
+    exactly this case.
+    """
     report_id = nanoid.generate()
     created_at = datetime.datetime.now(datetime.UTC)
-    await db.execute(
-        _CREATE_REPORT_QUERY,
-        {
-            'project_id': project_id,
-            'id': report_id,
-            'created_at': created_at.isoformat(),
-            'overall_status': overall_status,
-            'triggered_by_user_id': triggered_by_user_id or '',
-        },
-    )
-    for result in results:
-        await db.execute(
-            _CREATE_RESULT_QUERY,
-            {
-                'report_id': report_id,
-                'slug': result.slug,
-                'title': result.title,
-                'description': result.description,
-                'status': result.status,
-                'plugin_slug': result.plugin_slug,
-                'plugin_id': result.plugin_id,
+    statements: list[graph_cypher.Statement] = [
+        graph_cypher.Statement(
+            cypher=_DELETE_REPORT_QUERY,
+            params={'project_id': project_id},
+        ),
+        graph_cypher.Statement(
+            cypher=_CREATE_REPORT_QUERY,
+            params={
+                'project_id': project_id,
+                'id': report_id,
+                'created_at': created_at.isoformat(),
+                'overall_status': overall_status,
+                'triggered_by_user_id': triggered_by_user_id or '',
             },
-        )
+        ),
+        *(
+            graph_cypher.Statement(
+                cypher=_CREATE_RESULT_QUERY,
+                params={
+                    'report_id': report_id,
+                    'slug': result.slug,
+                    'title': result.title,
+                    'description': result.description,
+                    'status': result.status,
+                    'plugin_slug': result.plugin_slug,
+                    'plugin_id': result.plugin_id,
+                },
+            )
+            for result in results
+        ),
+    ]
+    await db._execute_batch(statements)
     return AnalysisReport(
         id=report_id,
         project_id=project_id,

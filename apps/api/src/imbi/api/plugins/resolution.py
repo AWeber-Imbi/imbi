@@ -490,8 +490,20 @@ async def resolve_analysis_plugins(
         {'project_id': project_id},
         ['proj_plugins', 'pt_plugins', 'tps_plugins'],
     )
+    # ``MATCH (proj:Project)`` anchors the whole pipeline: if the
+    # project doesn't exist, the OPTIONAL MATCHes still run but
+    # collect() aggregates over zero rows and the RETURN line yields
+    # no records at all. A project that exists but has no analysis
+    # plugins returns exactly one record with three empty
+    # collections — that's the falls-through-to-merge case. Mirror
+    # ``resolve_plugin`` and raise 404 when the project itself is
+    # missing so callers can distinguish "no findings" from "the
+    # project_id is bogus".
     if not records:
-        return []
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail='Project not found',
+        )
 
     proj_plugins: list[dict[str, typing.Any]] = (
         graph.parse_agtype(records[0]['proj_plugins']) or []

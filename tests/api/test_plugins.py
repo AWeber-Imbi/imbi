@@ -1467,12 +1467,40 @@ class ResolveAnalysisPluginsTestCase(unittest.TestCase):
             package_version='0',
         )
 
-    def test_returns_empty_when_no_project(self) -> None:
+    def test_raises_404_when_project_missing(self) -> None:
+        # Empty result from db.execute() means the anchor ``MATCH
+        # (proj:Project)`` matched zero rows -- the project_id is
+        # bogus. Surface that as 404 instead of collapsing it into
+        # "no plugins" (which the endpoint would happily persist as
+        # an empty pass report).
         from imbi_api.plugins.resolution import resolve_analysis_plugins
 
         mock_db = mock.AsyncMock()
         mock_db.execute.return_value = []
-        result = asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
+        self.assertEqual(404, ctx.exception.status_code)
+
+    def test_returns_empty_when_project_has_no_plugins(self) -> None:
+        # Project exists, no plugins assigned anywhere -- collect()
+        # over the OPTIONAL MATCHes still yields one record with
+        # three empty lists, which the resolver should treat as
+        # "no findings will be produced".
+        from imbi_api.plugins.resolution import resolve_analysis_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {
+                'proj_plugins': '[]',
+                'pt_plugins': '[]',
+                'tps_plugins': '[]',
+            }
+        ]
+        with mock.patch(
+            'imbi_api.plugins.lifecycle.get_enabled_map',
+            new=mock.AsyncMock(return_value={}),
+        ):
+            result = asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
         self.assertEqual([], result)
 
     def test_returns_tps_plugins(self) -> None:

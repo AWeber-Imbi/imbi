@@ -200,6 +200,10 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         self.assertEqual(
             'boom-plugin:plugin-error', body['results'][0]['slug']
         )
+        # The plugin's exception text (``'boom'``) must NOT leak into
+        # the user-facing description -- only into the server log.
+        self.assertNotIn('boom', body['results'][0]['description'])
+        self.assertNotIn('RuntimeError', body['results'][0]['description'])
 
     def test_get_returns_404_when_no_report(self) -> None:
         self.mock_db.execute.return_value = []
