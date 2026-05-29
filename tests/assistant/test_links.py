@@ -47,6 +47,32 @@ class LinksTests(helpers.TestCase):
             await links.initialize()
         self.assertEqual(body, links.get_url_patterns())
 
+    async def test_internal_ui_url_preferred(self) -> None:
+        body = '- `/projects`: the project list.'
+        with (
+            self.override_environment(
+                IMBI_UI_URL='https://imbi.example.com',
+                IMBI_INTERNAL_UI_URL='http://imbi-ui:5173',
+            ),
+            mock.patch.object(
+                httpx.AsyncClient, 'get', return_value=FakeResponse(body)
+            ) as mock_get,
+        ):
+            await links.initialize()
+        self.assertEqual(body, links.get_url_patterns())
+        mock_get.assert_called_once_with('http://imbi-ui:5173/llms.txt')
+
+    async def test_public_ui_url_used_when_no_internal(self) -> None:
+        body = '- `/projects`: the project list.'
+        with (
+            self.override_environment(IMBI_UI_URL='https://imbi.example.com'),
+            mock.patch.object(
+                httpx.AsyncClient, 'get', return_value=FakeResponse(body)
+            ) as mock_get,
+        ):
+            await links.initialize()
+        mock_get.assert_called_once_with('https://imbi.example.com/llms.txt')
+
     async def test_html_response_uses_fallback(self) -> None:
         with (
             self.override_environment(IMBI_UI_URL='https://imbi.example.com'),

@@ -2,8 +2,9 @@
 
 The Imbi UI publishes an ``llms.txt`` at its root documenting the route
 patterns for building deep links. This module fetches it once at startup
-and caches it; if the UI is unreachable (or no ``IMBI_UI_URL`` is set) a
-built-in fallback is used so the system prompt always has URL guidance.
+from the in-cluster ``IMBI_INTERNAL_UI_URL`` (falling back to the public
+``IMBI_UI_URL``) and caches it; if the UI is unreachable or neither is set
+a built-in fallback is used so the system prompt always has URL guidance.
 
 """
 
@@ -47,13 +48,16 @@ async def initialize() -> None:
     """Fetch the UI's ``llms.txt`` and cache its contents."""
     global _url_patterns
     assistant_settings = settings.get_assistant_settings()
-    ui_url = assistant_settings.ui_url
-    if not ui_url:
-        LOGGER.info('No IMBI_UI_URL configured; using built-in URL patterns')
+    base_url = assistant_settings.llms_base_url
+    if not base_url:
+        LOGGER.info(
+            'No IMBI_INTERNAL_UI_URL or IMBI_UI_URL configured; '
+            'using built-in URL patterns'
+        )
         _url_patterns = FALLBACK_URL_PATTERNS
         return
 
-    llms_url = f'{ui_url.rstrip("/")}/llms.txt'
+    llms_url = f'{base_url.rstrip("/")}/llms.txt'
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.get(llms_url)

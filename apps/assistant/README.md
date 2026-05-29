@@ -102,6 +102,8 @@ auto-enables when `ANTHROPIC_API_KEY` is present.
 | `IMBI_ASSISTANT_SYSTEM_PROMPT`          | _(bundled template)_    | Override for the system prompt template                           |
 | `IMBI_ASSISTANT_URL`                    | _(none)_                | Public URL; its path becomes the route prefix                     |
 | `IMBI_INTERNAL_API_URL`                 | `http://localhost:8000` | In-cluster address of the Imbi API for service-to-service calls   |
+| `IMBI_UI_URL`                           | _(none)_                | Public base URL of the Imbi UI, used to build deep links          |
+| `IMBI_INTERNAL_UI_URL`                  | _(falls back to `IMBI_UI_URL`)_ | In-cluster UI address for fetching `llms.txt` (e.g. the Caddy frontend) |
 | `IMBI_AUTH_JWT_SECRET`                  | _(required)_            | Shared secret for verifying access tokens (via `imbi-common`)     |
 | `POSTGRES_URL`                          | _(required)_            | DSN for the AGE graph (via `imbi-common`)                         |
 
