@@ -14,6 +14,7 @@ token validation to the API.
 from __future__ import annotations
 
 import logging
+import typing
 
 import fastmcp
 import httpx
@@ -30,7 +31,16 @@ from pydantic import AnyHttpUrl
 
 import imbi_mcp
 
+if typing.TYPE_CHECKING:
+    from fastmcp.utilities.openapi import HTTPRoute
+
 logger = logging.getLogger(__name__)
+
+# OpenAPI operation extension imbi-api stamps on endpoints that must not
+# be exposed to AI. Its presence (set to ``False``) hides the operation
+# regardless of path or method — the API owns which endpoints are
+# sensitive (e.g. project Configuration / SSM Parameter Store).
+_AI_TOOL_EXTENSION = 'x-imbi-ai-tool'
 
 # Endpoints that should not be exposed as MCP tools.
 _EXCLUDED_ROUTE_MAPS = [
@@ -39,6 +49,21 @@ _EXCLUDED_ROUTE_MAPS = [
     RouteMap(pattern=r'^/status/?$', mcp_type=MCPType.EXCLUDE),
     RouteMap(pattern=r'.*/thumbnail/?$', mcp_type=MCPType.EXCLUDE),
 ]
+
+
+def _exclude_non_ai_tools(
+    route: HTTPRoute, _mcp_type: MCPType
+) -> MCPType | None:
+    """Exclude operations imbi-api flagged as off-limits for AI.
+
+    Returns ``MCPType.EXCLUDE`` when the operation carries
+    ``x-imbi-ai-tool: false`` in the OpenAPI spec, else ``None`` to
+    leave the route map decision unchanged.
+    """
+    if route.extensions.get(_AI_TOOL_EXTENSION) is False:
+        return MCPType.EXCLUDE
+    return None
+
 
 # Read-only list endpoints → resources, parameterised GETs →
 # resource templates, everything else → tools.
@@ -153,4 +178,5 @@ def create_server(
             *_EXCLUDED_ROUTE_MAPS,
             *_SEMANTIC_ROUTE_MAPS,
         ],
+        route_map_fn=_exclude_non_ai_tools,
     )

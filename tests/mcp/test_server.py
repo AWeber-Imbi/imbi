@@ -8,6 +8,7 @@ import httpx
 import jwt
 from fastmcp.server.auth.auth import AccessToken, RemoteAuthProvider
 from fastmcp.server.providers.openapi import MCPType
+from fastmcp.utilities.openapi import HTTPRoute
 
 import imbi_mcp
 from imbi_mcp import server
@@ -40,6 +41,16 @@ def _minimal_openapi_spec() -> dict[str, object]:
                 'get': {
                     'operationId': 'status',
                     'summary': 'Status',
+                    'responses': {
+                        '200': {'description': 'OK'},
+                    },
+                },
+            },
+            '/organizations/{org_slug}/projects/{id}/configuration/{key}': {
+                'put': {
+                    'operationId': 'set_configuration_value',
+                    'summary': 'Set configuration value',
+                    'x-imbi-ai-tool': False,
                     'responses': {
                         '200': {'description': 'OK'},
                     },
@@ -129,6 +140,48 @@ class CreateServerTests(unittest.TestCase):
             all('GET' in rm.methods for rm in resource_maps),
             'All resource route maps should specify GET method',
         )
+
+
+class ExcludeNonAiToolsTests(unittest.TestCase):
+    def test_excludes_flagged_route(self) -> None:
+        route = HTTPRoute(
+            path='/configuration/{key}',
+            method='PUT',
+            extensions={'x-imbi-ai-tool': False},
+        )
+        self.assertEqual(
+            MCPType.EXCLUDE,
+            server._exclude_non_ai_tools(route, MCPType.TOOL),
+        )
+
+    def test_keeps_unflagged_route(self) -> None:
+        route = HTTPRoute(path='/projects/', method='GET')
+        self.assertIsNone(
+            server._exclude_non_ai_tools(route, MCPType.RESOURCE)
+        )
+
+
+class CreateServerExcludesConfigTests(unittest.IsolatedAsyncioTestCase):
+    @mock.patch('imbi_mcp.server.httpx.get')
+    async def test_flagged_endpoint_not_exposed(
+        self, mock_get: mock.Mock
+    ) -> None:
+        spec = _minimal_openapi_spec()
+        mock_get.return_value = httpx.Response(
+            200,
+            content=json.dumps(spec).encode(),
+            headers={'content-type': 'application/json'},
+            request=httpx.Request('GET', 'http://localhost:8000/openapi.json'),
+        )
+        mcp = server.create_server('http://localhost:8000')
+        async with fastmcp.Client(mcp) as client:
+            tools = await client.list_tools()
+            resources = await client.list_resources()
+        names = {t.name for t in tools}
+        self.assertNotIn('set_configuration_value', names)
+        # A non-flagged GET still becomes a resource, proving the spec
+        # was processed rather than wholesale rejected.
+        self.assertTrue(resources)
 
 
 class InjectAuthTests(unittest.IsolatedAsyncioTestCase):
