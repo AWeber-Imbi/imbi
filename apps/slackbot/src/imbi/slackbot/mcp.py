@@ -9,6 +9,7 @@ the shared :mod:`imbi_common.mcp` policy.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import typing
@@ -56,6 +57,12 @@ class MCPManager:
         self._tools: list[dict[str, typing.Any]] = []
         self._http_client: httpx.AsyncClient | None = None
         self._initialized = False
+        # The HTTP client is shared across concurrent Slack event
+        # handlers and FastMCP's call_tool has no per-call header
+        # support, so serialize the auth-header set/call/clear sequence
+        # to prevent one caller's bearer token leaking into another's
+        # request.
+        self._call_lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         """Fetch the OpenAPI spec and build tools."""
@@ -139,53 +146,58 @@ class MCPManager:
         if not self._client or not self._http_client:
             return json.dumps({'error': 'MCP tools not initialized'}), True
 
-        # Inject the caller's auth token for this request.
-        if auth_token:
-            self._http_client.headers['authorization'] = f'Bearer {auth_token}'
-        try:
-            result = await self._client.call_tool(
-                tool_name,
-                tool_input,
-            )
-            parts: list[str] = []
-            for block in result.content:
-                text = getattr(block, 'text', None)
-                if text is not None:
-                    parts.append(text)
-            body = '\n'.join(parts) if parts else '{}'
-            if result.is_error:
-                LOGGER.warning(
-                    'Tool returned error: %s: %s',
+        # Inject the caller's auth token for this request. The header
+        # mutation and the call are guarded by a lock because the HTTP
+        # client is shared across concurrent handlers.
+        async with self._call_lock:
+            if auth_token:
+                self._http_client.headers['authorization'] = (
+                    f'Bearer {auth_token}'
+                )
+            try:
+                result = await self._client.call_tool(
                     tool_name,
-                    body,
+                    tool_input,
+                )
+                parts: list[str] = []
+                for block in result.content:
+                    text = getattr(block, 'text', None)
+                    if text is not None:
+                        parts.append(text)
+                body = '\n'.join(parts) if parts else '{}'
+                if result.is_error:
+                    LOGGER.warning(
+                        'Tool returned error: %s: %s',
+                        tool_name,
+                        body,
+                    )
+                    return (
+                        json.dumps(
+                            {
+                                'error': f'Tool {tool_name} returned an error',
+                                'detail': body,
+                            }
+                        ),
+                        True,
+                    )
+            except Exception as exc:
+                LOGGER.exception(
+                    'Tool execution failed: %s',
+                    tool_name,
                 )
                 return (
                     json.dumps(
                         {
-                            'error': f'Tool {tool_name} returned an error',
-                            'detail': body,
+                            'error': f'Tool execution failed: {tool_name}',
+                            'detail': str(exc),
                         }
                     ),
                     True,
                 )
-        except Exception as exc:
-            LOGGER.exception(
-                'Tool execution failed: %s',
-                tool_name,
-            )
-            return (
-                json.dumps(
-                    {
-                        'error': f'Tool execution failed: {tool_name}',
-                        'detail': str(exc),
-                    }
-                ),
-                True,
-            )
-        else:
-            return body, False
-        finally:
-            self._http_client.headers.pop('authorization', None)
+            else:
+                return body, False
+            finally:
+                self._http_client.headers.pop('authorization', None)
 
     @property
     def is_initialized(self) -> bool:

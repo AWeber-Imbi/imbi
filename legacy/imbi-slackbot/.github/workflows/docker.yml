@@ -28,7 +28,8 @@ jobs:
       - name: Attach distributions
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload ${{ github.event.release.tag_name }} dist/*.whl dist/*.tar.gz --clobber
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG_NAME" dist/*.whl dist/*.tar.gz --clobber
 
   build-and-publish-docker:
     runs-on: ubuntu-latest

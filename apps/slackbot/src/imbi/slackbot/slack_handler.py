@@ -25,7 +25,7 @@ SlackClient = typing.Any
 
 LOGGER = logging.getLogger(__name__)
 
-_MENTION_RE = re.compile(r'<@[A-Z0-9]+>')
+_MENTION_RE = re.compile(r'<@[A-Z0-9]+(?:\|[^>]+)?>')
 
 _NO_USER_MESSAGE = (
     "I couldn't match your Slack account to an Imbi user. Imbi matches "

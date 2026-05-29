@@ -36,6 +36,12 @@ class StripMentionTests(helpers.TestCase):
             slack_handler._strip_mentions('<@U123> hello there'),
         )
 
+    def test_strip_labeled(self) -> None:
+        self.assertEqual(
+            'hello there',
+            slack_handler._strip_mentions('<@U123|alice> hello there'),
+        )
+
 
 class ReconstructTests(helpers.TestCase):
     def test_roles_and_mention_strip(self) -> None:
