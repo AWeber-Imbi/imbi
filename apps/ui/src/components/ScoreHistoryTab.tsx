@@ -22,6 +22,7 @@ import {
   ScoreHistoryPoint,
 } from '@/api/endpoints'
 import { formatFieldKey } from '@/lib/project-field-formatting'
+import { computeScoreYAxis } from '@/lib/score-chart'
 
 type Granularity = 'day' | 'hour' | 'raw'
 type LucideIcon = React.FC<LucideProps>
@@ -682,8 +683,14 @@ function ScoreChart({
   const innerW = W - padL - padR
   const innerH = H - padT - padB
 
-  const yMin = 50
-  const yMax = 100
+  // Derive the y-axis range from the data: keep the familiar 50–100 view for
+  // healthy projects, but drop the floor below 50 when the score actually goes
+  // there so the line and area fill stay inside the plot (see computeScoreYAxis).
+  const {
+    ticks: yTicks,
+    yMax,
+    yMin,
+  } = computeScoreYAxis(points.map((p) => p.score))
 
   const xFor = (i: number) =>
     padL + (i / Math.max(points.length - 1, 1)) * innerW
@@ -705,8 +712,6 @@ function ScoreChart({
     idx,
     reason,
   }))
-
-  const yTicks = [50, 60, 70, 80, 90, 100]
 
   // 6 evenly spaced x-axis labels
   const xTickIndices =
