@@ -28,8 +28,8 @@ export function DocumentTemplateManagement() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
   const {
+    editPath,
     goToCreate,
-    goToEdit,
     goToList,
     slug: selectedSlug,
     viewMode,
@@ -269,10 +269,10 @@ export function DocumentTemplateManagement() {
               : 'No document templates created yet.'
         }
         getDeleteLabel={(nt) => nt.name}
+        getRowHref={(nt) => editPath(nt.slug)}
         getRowKey={(nt) => nt.slug}
         isDeleting={deleteMutation.isPending}
         onDelete={handleDelete}
-        onRowClick={(nt) => goToEdit(nt.slug)}
         rows={filteredDocumentTemplates}
       />
     </AdminSection>

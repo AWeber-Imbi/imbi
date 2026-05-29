@@ -26,8 +26,8 @@ export function ProjectTypeManagement() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
   const {
+    editPath,
     goToCreate,
-    goToEdit,
     goToList,
     slug: selectedPtSlug,
     viewMode,
@@ -223,10 +223,10 @@ export function ProjectTypeManagement() {
               : 'No project types created yet.'
         }
         getDeleteLabel={(pt) => pt.name}
+        getRowHref={(pt) => editPath(pt.slug)}
         getRowKey={(pt) => pt.slug}
         isDeleting={deleteMutation.isPending}
         onDelete={handleDelete}
-        onRowClick={(pt) => goToEdit(pt.slug)}
         rows={filteredProjectTypes}
       />
     </AdminSection>

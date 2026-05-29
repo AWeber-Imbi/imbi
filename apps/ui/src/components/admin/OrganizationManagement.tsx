@@ -23,6 +23,7 @@ import { OrganizationForm } from './organizations/OrganizationForm'
 
 export function OrganizationManagement() {
   const {
+    editPath,
     goToCreate,
     goToEdit,
     goToList,
@@ -270,10 +271,10 @@ export function OrganizationManagement() {
             : 'No organizations created yet.'
         }
         getDeleteLabel={(org) => org.name}
+        getRowHref={(org) => editPath(org.slug)}
         getRowKey={(org) => org.slug}
         isDeleting={deleteMutation.isPending}
         onDelete={handleDelete}
-        onRowClick={(org) => goToEdit(org.slug)}
         rows={filteredOrgs}
       />
     </AdminSection>

@@ -27,6 +27,7 @@ export function EnvironmentManagement() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
   const {
+    editPath,
     goToCreate,
     goToEdit,
     goToList,
@@ -253,10 +254,10 @@ export function EnvironmentManagement() {
               : 'No environments created yet.'
         }
         getDeleteLabel={(env) => env.name}
+        getRowHref={(env) => editPath(env.slug)}
         getRowKey={(env) => env.slug}
         isDeleting={deleteMutation.isPending}
         onDelete={handleDelete}
-        onRowClick={(env) => goToEdit(env.slug)}
         rows={filteredEnvironments}
       />
     </AdminSection>

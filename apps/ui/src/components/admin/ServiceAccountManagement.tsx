@@ -36,8 +36,8 @@ type StatusFilter = 'active' | 'all' | 'inactive'
 
 export function ServiceAccountManagement() {
   const {
+    editPath,
     goToCreate,
-    goToEdit,
     goToList,
     slug: selectedAccountSlug,
     viewMode,
@@ -92,10 +92,6 @@ export function ServiceAccountManagement() {
 
   const handleDelete = (account: ServiceAccount) => {
     deleteMutation.mutate(account.slug)
-  }
-
-  const handleViewClick = (account: ServiceAccount) => {
-    goToEdit(account.slug)
   }
 
   const handleSave = (data: ServiceAccountCreate) => {
@@ -247,10 +243,10 @@ export function ServiceAccountManagement() {
             : 'No service accounts created yet'
         }
         getDeleteLabel={(account) => account.display_name}
+        getRowHref={(account) => editPath(account.slug)}
         getRowKey={(account) => account.slug}
         isDeleting={deleteMutation.isPending}
         onDelete={handleDelete}
-        onRowClick={(account) => handleViewClick(account)}
         rows={filteredAccounts}
       />
 

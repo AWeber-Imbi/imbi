@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, CirclePlay, Package, PowerOff } from 'lucide-react'
@@ -195,7 +195,6 @@ function DisabledList({ parentLoading, plugins }: DisabledListProps) {
 }
 
 function EnabledList({ error, isError, isLoading, plugins }: EnabledListProps) {
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [pluginToDisable, setPluginToDisable] =
     useState<InstalledPlugin | null>(null)
@@ -266,11 +265,15 @@ function EnabledList({ error, isError, isLoading, plugins }: EnabledListProps) {
             <TableBody>
               {plugins.map((plugin) => (
                 <TableRow
-                  className="hover:bg-secondary/40 cursor-pointer"
+                  className="hover:bg-secondary/40 relative cursor-pointer"
                   key={plugin.slug}
-                  onClick={() => navigate(`/admin/plugins/${plugin.slug}`)}
                 >
                   <TableCell>
+                    <Link
+                      aria-label={`View ${plugin.name}`}
+                      className="focus-visible:ring-ring absolute inset-0 rounded-sm focus-visible:ring-2 focus-visible:outline-none"
+                      to={`/admin/plugins/${plugin.slug}`}
+                    />
                     <div className="font-medium">{plugin.name}</div>
                     <div className="text-secondary text-xs">
                       {plugin.description}
@@ -306,7 +309,7 @@ function EnabledList({ error, isError, isLoading, plugins }: EnabledListProps) {
                       ))}
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="relative z-10">
                     <Button
                       disabled={disableMutation.isPending}
                       onClick={(e) => {

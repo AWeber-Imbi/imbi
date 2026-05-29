@@ -21,8 +21,8 @@ import { TeamForm } from './teams/TeamForm'
 export function TeamManagement() {
   const { selectedOrganization } = useOrganization()
   const {
+    detailPath,
     goToCreate,
-    goToDetail,
     goToEdit,
     goToList,
     slug: selectedTeamSlug,
@@ -289,10 +289,10 @@ export function TeamManagement() {
               : 'No teams created yet.'
         }
         getDeleteLabel={(team) => team.name}
+        getRowHref={(team) => detailPath(team.slug)}
         getRowKey={(team) => team.slug}
         isDeleting={deleteMutation.isPending}
         onDelete={handleDelete}
-        onRowClick={(team) => goToDetail(team.slug)}
         rows={filteredTeams}
       />
     </AdminSection>

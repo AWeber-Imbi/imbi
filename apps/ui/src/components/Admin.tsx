@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import {
   Bot,
@@ -246,6 +246,7 @@ export function Admin() {
     const isActive = currentSection === sectionDef.id
     return (
       <Button
+        asChild
         className={`h-auto w-full items-start justify-start rounded-lg text-left transition-colors ${
           isCollapsed ? 'justify-center px-3 py-3' : 'px-4 py-3'
         } ${
@@ -254,21 +255,22 @@ export function Admin() {
             : 'text-secondary hover:bg-secondary hover:text-primary'
         }`}
         key={sectionDef.id}
-        onClick={() => navigate(`/admin/${sectionDef.id}`)}
         title={isCollapsed ? sectionDef.label : undefined}
         variant="ghost"
       >
-        <Icon className="mt-0.5 size-5 shrink-0" />
-        {!isCollapsed && (
-          <>
-            <div
-              className={`min-w-0 flex-1 font-medium ${isActive ? 'text-amber-text' : ''}`}
-            >
-              {sectionDef.label}
-            </div>
-            {isActive && <ChevronRight className="mt-0.5 size-4 shrink-0" />}
-          </>
-        )}
+        <Link to={`/admin/${sectionDef.id}`}>
+          <Icon className="mt-0.5 size-5 shrink-0" />
+          {!isCollapsed && (
+            <>
+              <div
+                className={`min-w-0 flex-1 font-medium ${isActive ? 'text-amber-text' : ''}`}
+              >
+                {sectionDef.label}
+              </div>
+              {isActive && <ChevronRight className="mt-0.5 size-4 shrink-0" />}
+            </>
+          )}
+        </Link>
       </Button>
     )
   }
@@ -343,12 +345,13 @@ export function Admin() {
                 )}
                 {isSubPage ? (
                   <Button
+                    asChild
                     className="hover:text-amber-text h-auto p-0 text-xl font-semibold no-underline hover:no-underline"
-                    onClick={() => navigate(`/admin/${currentSection}`)}
-                    type="button"
                     variant="link"
                   >
-                    {currentSectionData?.label}
+                    <Link to={`/admin/${currentSection}`}>
+                      {currentSectionData?.label}
+                    </Link>
                   </Button>
                 ) : (
                   <h1 className="text-primary text-xl font-semibold">

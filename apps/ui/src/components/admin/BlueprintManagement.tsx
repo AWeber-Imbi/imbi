@@ -55,6 +55,7 @@ interface BlueprintKey {
 
 export function BlueprintManagement() {
   const {
+    editPath,
     goToCreate,
     goToEdit,
     goToList,
@@ -179,10 +180,6 @@ export function BlueprintManagement() {
   }
 
   const handleEditClick = (key: BlueprintKey) => {
-    goToEdit(`${key.type}:${key.slug}`)
-  }
-
-  const handleViewClick = (key: BlueprintKey) => {
     goToEdit(`${key.type}:${key.slug}`)
   }
 
@@ -471,18 +468,14 @@ export function BlueprintManagement() {
             : 'No blueprints created yet'
         }
         getDeleteLabel={(bp) => bp.name}
+        getRowHref={(bp) =>
+          bp.slug ? editPath(`${blueprintPathType(bp)}:${bp.slug}`) : undefined
+        }
         getRowKey={(bp) => `${blueprintPathType(bp)}/${bp.slug}`}
         isDeleting={deleteMutation.isPending}
         onDelete={(bp) => {
           if (!bp.slug) return
           deleteMutation.mutate({
-            slug: bp.slug,
-            type: blueprintPathType(bp),
-          })
-        }}
-        onRowClick={(bp) => {
-          if (!bp.slug) return
-          handleViewClick({
             slug: bp.slug,
             type: blueprintPathType(bp),
           })

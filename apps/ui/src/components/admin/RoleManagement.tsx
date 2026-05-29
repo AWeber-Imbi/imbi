@@ -31,8 +31,9 @@ type Role = Awaited<ReturnType<typeof getRoles>>[number]
 
 export function RoleManagement() {
   const {
+    detailPath,
+    editPath,
     goToCreate,
-    goToDetail,
     goToEdit,
     goToList,
     slug: selectedRoleSlug,
@@ -254,12 +255,12 @@ export function RoleManagement() {
           searchQuery ? 'No roles match your search' : 'No roles created yet'
         }
         getDeleteLabel={(role) => role.name}
+        getRowHref={(role) =>
+          isSystemRole(role) ? detailPath(role.slug) : editPath(role.slug)
+        }
         getRowKey={(role) => role.slug}
         isDeleting={deleteMutation.isPending}
         onDelete={handleDelete}
-        onRowClick={(role) =>
-          isSystemRole(role) ? goToDetail(role.slug) : goToEdit(role.slug)
-        }
         rows={filteredRoles}
       />
     </AdminSection>

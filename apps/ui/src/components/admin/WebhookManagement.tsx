@@ -23,6 +23,7 @@ import { WebhookForm, type WebhookSaveData } from './webhooks/WebhookForm'
 export function WebhookManagement() {
   const { selectedOrganization } = useOrganization()
   const {
+    editPath,
     goToCreate,
     goToEdit,
     goToList,
@@ -248,10 +249,10 @@ export function WebhookManagement() {
               : 'No webhooks created yet.'
         }
         getDeleteLabel={(wh) => wh.name}
+        getRowHref={(wh) => editPath(wh.slug)}
         getRowKey={(wh) => wh.slug}
         isDeleting={deleteMutation.isPending}
         onDelete={handleDelete}
-        onRowClick={(wh) => goToEdit(wh.slug)}
         rows={filteredWebhooks}
       />
     </AdminSection>

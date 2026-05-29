@@ -1,14 +1,7 @@
 import * as React from 'react'
-import {
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -78,7 +71,6 @@ interface FilterPopoverProps {
 }
 
 interface ProjectListRowProps {
-  onSelect: (id: string) => void
   project: ProjectListItem
 }
 
@@ -252,15 +244,6 @@ export function ProjectsView() {
       .map(([slug, label]) => ({ label, slug }))
       .sort((a, b) => a.label.localeCompare(b.label))
   }, [projects])
-
-  // Stable ref so the memoized ``ProjectListRow`` can actually skip
-  // re-renders when only the parent's input/filter state changes.
-  const handleProjectSelect = useCallback(
-    (projectId: string) => {
-      navigate(`/projects/${projectId}`)
-    },
-    [navigate],
-  )
 
   const driftedProjectIds = useMemo(() => {
     const ids = new Set<string>()
@@ -491,10 +474,14 @@ export function ProjectsView() {
             )
             return (
               <Card
-                className="flex min-h-56 cursor-pointer flex-col p-5 transition-shadow hover:shadow-md"
+                className="relative flex min-h-56 cursor-pointer flex-col p-5 transition-shadow hover:shadow-md"
                 key={`card-${project.id}`}
-                onClick={() => handleProjectSelect(project.id)}
               >
+                <Link
+                  aria-label={`View ${project.name}`}
+                  className="focus-visible:ring-ring absolute inset-0 rounded-lg focus-visible:ring-2 focus-visible:outline-none"
+                  to={`/projects/${project.id}`}
+                />
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <h3 className="text-primary mb-1 truncate font-medium">
@@ -533,7 +520,7 @@ export function ProjectsView() {
                       <DriftCell inline project={project} />
                     </div>
                     {isProjectDeployable(project) && envs.length > 0 && (
-                      <div className="ml-auto flex flex-wrap items-center gap-2">
+                      <div className="relative z-10 ml-auto flex flex-wrap items-center gap-2">
                         {envs.map((env) => (
                           <EnvDeploymentHover
                             env={env}
@@ -617,11 +604,7 @@ export function ProjectsView() {
             }}
           >
             {filteredProjects.map((project) => (
-              <ProjectListRow
-                key={`row-${project.id}`}
-                onSelect={handleProjectSelect}
-                project={project}
-              />
+              <ProjectListRow key={`row-${project.id}`} project={project} />
             ))}
           </div>
         </Card>
@@ -1218,14 +1201,15 @@ function StatBadge({
 // returns the same array between renders), the row skips its render.
 // fallow-ignore-next-line complexity
 const ProjectListRow = React.memo(function ProjectListRow({
-  onSelect,
   project,
 }: ProjectListRowProps) {
   return (
-    <div
-      className="hover:bg-secondary flex cursor-pointer items-center transition-colors"
-      onClick={() => onSelect(project.id)}
-    >
+    <div className="hover:bg-secondary relative flex cursor-pointer items-center transition-colors">
+      <Link
+        aria-label={`View ${project.name}`}
+        className="focus-visible:ring-ring absolute inset-0 focus-visible:ring-2 focus-visible:outline-none"
+        to={`/projects/${project.id}`}
+      />
       <div className="w-65 shrink-0 px-6 py-4">
         <p className="text-primary font-medium">{project.name}</p>
         {(project.project_types ?? []).length > 0 && (

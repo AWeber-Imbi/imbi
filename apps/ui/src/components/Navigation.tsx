@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import {
   Activity,
@@ -99,18 +99,20 @@ export function Navigation({ currentView }: NavigationProps) {
           {/* Logo and Brand */}
           <div className="flex items-center gap-8">
             <Button
+              asChild
               className="hover:bg-secondary h-auto rounded-lg px-2 py-1.5 transition-all"
-              onClick={() => navigate('/dashboard')}
               variant="ghost"
             >
-              <img
-                alt="Imbi"
-                className="size-8"
-                src={isDarkMode ? logoDark : logoLight}
-              />
-              <span className="text-primary" style={{ fontWeight: 800 }}>
-                Imbi
-              </span>
+              <Link to="/dashboard">
+                <img
+                  alt="Imbi"
+                  className="size-8"
+                  src={isDarkMode ? logoDark : logoLight}
+                />
+                <span className="text-primary" style={{ fontWeight: 800 }}>
+                  Imbi
+                </span>
+              </Link>
             </Button>
 
             {/* Navigation Items */}
@@ -120,17 +122,19 @@ export function Navigation({ currentView }: NavigationProps) {
                 const isActive = activeView === item.id
                 return (
                   <Button
+                    asChild
                     className={`h-auto rounded-lg px-4 py-2 transition-colors ${
                       isActive
                         ? 'bg-amber-bg text-amber-text hover:bg-amber-bg hover:text-amber-text'
                         : 'text-secondary hover:bg-secondary hover:text-primary'
                     }`}
                     key={item.id}
-                    onClick={() => navigate(item.path)}
                     variant="ghost"
                   >
-                    <Icon className="size-4" />
-                    <span>{item.label}</span>
+                    <Link to={item.path}>
+                      <Icon className="size-4" />
+                      <span>{item.label}</span>
+                    </Link>
                   </Button>
                 )
               })}

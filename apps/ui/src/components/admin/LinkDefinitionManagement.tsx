@@ -28,8 +28,8 @@ export function LinkDefinitionManagement() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
   const {
+    editPath,
     goToCreate,
-    goToEdit,
     goToList,
     slug: selectedSlug,
     viewMode,
@@ -255,10 +255,10 @@ export function LinkDefinitionManagement() {
               : 'No link definitions created yet.'
         }
         getDeleteLabel={(ld) => ld.name}
+        getRowHref={(ld) => editPath(ld.slug)}
         getRowKey={(ld) => ld.slug}
         isDeleting={deleteMutation.isPending}
         onDelete={handleDelete}
-        onRowClick={(ld) => goToEdit(ld.slug)}
         rows={filteredLinkDefinitions}
       />
     </AdminSection>

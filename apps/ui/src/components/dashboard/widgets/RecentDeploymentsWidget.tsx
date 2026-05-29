@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import type { InfiniteData } from '@tanstack/react-query'
@@ -165,7 +165,6 @@ function DeploymentRow({
   deployment: OperationsLogRecord
   projectsBySlug: Map<string, Project>
 }) {
-  const navigate = useNavigate()
   const project = projectsBySlug.get(d.project_slug)
   const projectLabel = project
     ? `${project.team.slug}/${project.slug}`
@@ -174,16 +173,14 @@ function DeploymentRow({
   const StatusIcon = inProgress ? Clock : CheckCircle
   const statusVariant: BadgeProps['variant'] = inProgress ? 'info' : 'success'
   const statusLabel = inProgress ? 'In Progress' : 'Success'
+  const to = project
+    ? `/projects/${project.id}`
+    : `/operations-log?entry=${encodeURIComponent(d.id)}`
 
   return (
-    <button
-      className="border-input bg-background hover:border-secondary w-full rounded-lg border p-3 text-left transition-colors"
-      onClick={() =>
-        project
-          ? navigate(`/projects/${project.id}`)
-          : navigate(`/operations-log?entry=${encodeURIComponent(d.id)}`)
-      }
-      type="button"
+    <Link
+      className="border-input bg-background hover:border-secondary block w-full rounded-lg border p-3 text-left transition-colors"
+      to={to}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-1 items-start gap-3">
@@ -217,7 +214,7 @@ function DeploymentRow({
         </div>
         <ChevronRight className="text-tertiary size-4 shrink-0" />
       </div>
-    </button>
+    </Link>
   )
 }
 

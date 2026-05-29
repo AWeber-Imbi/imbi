@@ -40,6 +40,7 @@ type UserFilter = 'admins' | 'all' | 'users'
 export function UserManagement() {
   const queryClient = useQueryClient()
   const {
+    editPath,
     goToCreate,
     goToEdit,
     goToList,
@@ -135,10 +136,6 @@ export function UserManagement() {
   })
 
   const handleEditClick = (user: AdminUser) => {
-    goToEdit(user.email)
-  }
-
-  const handleViewClick = (user: AdminUser) => {
     goToEdit(user.email)
   }
 
@@ -306,6 +303,7 @@ export function UserManagement() {
             cellAlign: 'center',
             header: 'Status',
             headerAlign: 'center',
+            interactive: true,
             key: 'status',
             render: (user) => (
               <button
@@ -342,8 +340,8 @@ export function UserManagement() {
             ? 'No users match your filters'
             : 'No users created yet'
         }
+        getRowHref={(user) => editPath(user.email)}
         getRowKey={(user) => user.email}
-        onRowClick={(user) => handleViewClick(user)}
         rows={filteredUsers}
       />
     </AdminSection>

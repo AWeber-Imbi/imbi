@@ -1,6 +1,6 @@
 import { type ReactElement, useEffect, useState } from 'react'
 
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import {
   closestCenter,
@@ -370,18 +370,12 @@ export function Dashboard({
     ),
     // fallow-ignore-next-line complexity
     'stat-open-prs': () => (
-      <Card
-        className="hover:border-secondary relative flex h-full cursor-pointer flex-col transition-colors"
-        onClick={() => navigate('/projects?view=list&has_open_prs=1')}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            navigate('/projects?view=list&has_open_prs=1')
-          }
-        }}
-        role="link"
-        tabIndex={0}
-      >
+      <Card className="hover:border-secondary relative flex h-full cursor-pointer flex-col transition-colors">
+        <Link
+          aria-label="View total open pull requests"
+          className="focus-visible:ring-ring absolute inset-0 rounded-lg focus-visible:ring-2 focus-visible:outline-none"
+          to="/projects?view=list&has_open_prs=1"
+        />
         <GitPullRequest className="text-tertiary absolute top-6 right-6 size-9 shrink-0" />
         <CardHeader className="pb-2">
           <CardTitle className="text-secondary font-normal">
@@ -413,8 +407,8 @@ export function Dashboard({
     ),
     'stat-total-projects': () => (
       <StatWidget
+        href="/projects"
         icon="📁"
-        onClick={() => navigate('/projects')}
         title="Total Projects"
         value={projectCount.toLocaleString()}
       />

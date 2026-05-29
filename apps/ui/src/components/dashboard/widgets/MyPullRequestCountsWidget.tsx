@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 
 import { useQuery } from '@tanstack/react-query'
 import { GitMerge } from 'lucide-react'
@@ -11,7 +11,6 @@ import { useGithubLogin } from '@/hooks/useGithubLogin'
 
 // fallow-ignore-next-line complexity
 export function MyPullRequestCountsWidget() {
-  const navigate = useNavigate()
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug ?? ''
 
@@ -44,19 +43,12 @@ export function MyPullRequestCountsWidget() {
   const openCount = openData?.total ?? 0
 
   return (
-    <Card
-      aria-label="View my open pull requests"
-      className="hover:border-secondary relative flex h-full cursor-pointer flex-col transition-colors"
-      onClick={() => navigate('/projects?view=list&has_my_open_prs=1')}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          navigate('/projects?view=list&has_my_open_prs=1')
-        }
-      }}
-      role="link"
-      tabIndex={0}
-    >
+    <Card className="hover:border-secondary relative flex h-full cursor-pointer flex-col transition-colors">
+      <Link
+        aria-label="View my open pull requests"
+        className="focus-visible:ring-ring absolute inset-0 rounded-lg focus-visible:ring-2 focus-visible:outline-none"
+        to="/projects?view=list&has_my_open_prs=1"
+      />
       <GitMerge className="text-tertiary absolute top-6 right-6 size-9" />
       <CardHeader className="pb-2">
         <CardTitle className="text-secondary font-normal">
@@ -76,9 +68,8 @@ export function MyPullRequestCountsWidget() {
           <>
             <p className="text-tertiary text-3xl">—</p>
             <a
-              className="text-action mt-1 block text-xs hover:underline"
+              className="text-action relative z-10 mt-1 block text-xs hover:underline"
               href="/settings/connections"
-              onClick={(event) => event.stopPropagation()}
             >
               Connect GitHub
             </a>

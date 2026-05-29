@@ -1,6 +1,6 @@
 import { type MouseEvent, type ReactNode, useEffect, useState } from 'react'
 
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import { Trash2 } from 'lucide-react'
 
@@ -45,6 +45,10 @@ export interface AdminTableColumn<T> {
   cellAlign?: 'center' | 'left' | 'right'
   header: string
   headerAlign?: 'center' | 'left' | 'right'
+  // When the cell renders its own interactive content (links, buttons,
+  // toggles), set this so the cell stacks above the row link overlay and
+  // stays clickable.
+  interactive?: boolean
   key: string
   render: (row: T) => ReactNode
 }
@@ -67,12 +71,15 @@ interface AdminTableProps<T> {
   columns: AdminTableColumn<T>[]
   emptyMessage?: string
   getDeleteLabel?: (row: T) => string
+  // Returns the destination for a row. When provided, the row renders a real
+  // anchor so cmd/ctrl/middle-click and the browser context menu work
+  // natively. Return undefined to make a row non-navigable.
+  getRowHref?: (row: T) => string | undefined
   getRowKey: (row: T) => string
   getRowLabel?: (row: T) => string
   isDeleting?: boolean
   isRowClickable?: (row: T) => boolean
   onDelete?: (row: T) => void
-  onRowClick?: (row: T) => void
   rows: T[]
 }
 
@@ -88,18 +95,51 @@ const CELL_ALIGN: Record<string, string> = {
   right: 'text-right',
 }
 
+interface AdminRowActionsProps<T> {
+  actions?: (row: T) => ReactNode
+  deleteCheck: CanDeleteResult
+  isDeleting: boolean
+  label: string
+  onDelete?: (row: T) => void
+  onDeleteClick: (
+    row: T,
+    e: MouseEvent<HTMLButtonElement>,
+    deleteCheck: CanDeleteResult,
+  ) => void
+  row: T
+}
+
+interface AdminTableRowProps<T> {
+  actions?: (row: T) => ReactNode
+  canDelete?: (row: T) => CanDeleteResult
+  columns: AdminTableColumn<T>[]
+  getDeleteLabel?: (row: T) => string
+  getRowHref?: (row: T) => string | undefined
+  getRowLabel?: (row: T) => string
+  isDeleting: boolean
+  isRowClickable?: (row: T) => boolean
+  onDelete?: (row: T) => void
+  onDeleteClick: (
+    row: T,
+    e: MouseEvent<HTMLButtonElement>,
+    deleteCheck: CanDeleteResult,
+  ) => void
+  row: T
+  showActions: boolean
+}
+
 export function AdminTable<T>({
   actions,
   canDelete,
   columns,
   emptyMessage = 'No items found.',
   getDeleteLabel,
+  getRowHref,
   getRowKey,
   getRowLabel,
   isDeleting = false,
   isRowClickable,
   onDelete,
-  onRowClick,
   rows,
 }: AdminTableProps<T>) {
   const navigate = useNavigate()
@@ -282,92 +322,23 @@ export function AdminTable<T>({
                   </TableCell>
                 </TableRow>
               ) : (
-                rows.map((row) => {
-                  const key = getRowKey(row)
-                  const label = getRowLabel
-                    ? getRowLabel(row)
-                    : getDeleteLabel
-                      ? getDeleteLabel(row)
-                      : ''
-                  const deleteCheck = canDelete
-                    ? canDelete(row)
-                    : { allowed: true }
-                  const canDeleteRow = deleteCheck.allowed
-                  const deleteReason = deleteCheck.reason
-                  const rowClickable =
-                    onRowClick && (isRowClickable ? isRowClickable(row) : true)
-
-                  return (
-                    <TableRow
-                      aria-label={rowClickable ? `Edit ${label}` : undefined}
-                      className={cn(rowClickable && 'cursor-pointer')}
-                      key={key}
-                      onClick={rowClickable ? () => onRowClick(row) : undefined}
-                      onKeyDown={
-                        rowClickable
-                          ? (e) => {
-                              if (e.currentTarget !== e.target) return
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault()
-                                onRowClick(row)
-                              }
-                            }
-                          : undefined
-                      }
-                      tabIndex={rowClickable ? 0 : undefined}
-                    >
-                      {columns.map((col) => (
-                        <TableCell
-                          className={CELL_ALIGN[col.cellAlign ?? 'left']}
-                          key={col.key}
-                        >
-                          {col.render(row)}
-                        </TableCell>
-                      ))}
-                      {showActions && (
-                        <TableCell
-                          className="text-right"
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => e.stopPropagation()}
-                        >
-                          <div className="flex items-center justify-end gap-2">
-                            {actions && actions(row)}
-                            {onDelete && (
-                              <TooltipProvider delayDuration={200}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="inline-flex">
-                                      <Button
-                                        aria-label={`Delete ${label}`}
-                                        className={cn(
-                                          'text-destructive hover:bg-destructive/10 hover:text-destructive',
-                                          isDeleting &&
-                                            'pointer-events-none opacity-30',
-                                          !canDeleteRow && 'opacity-30',
-                                        )}
-                                        disabled={isDeleting}
-                                        onClick={(e) =>
-                                          handleDeleteClick(row, e, deleteCheck)
-                                        }
-                                        size="sm"
-                                        variant="ghost"
-                                      >
-                                        <Trash2 className="size-4" />
-                                      </Button>
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>{deleteReason ?? 'Delete'}</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
-                          </div>
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  )
-                })
+                rows.map((row) => (
+                  <AdminTableRow
+                    actions={actions}
+                    canDelete={canDelete}
+                    columns={columns}
+                    getDeleteLabel={getDeleteLabel}
+                    getRowHref={getRowHref}
+                    getRowLabel={getRowLabel}
+                    isDeleting={isDeleting}
+                    isRowClickable={isRowClickable}
+                    key={getRowKey(row)}
+                    onDelete={onDelete}
+                    onDeleteClick={handleDeleteClick}
+                    row={row}
+                    showActions={showActions}
+                  />
+                ))
               )}
             </TableBody>
           </Table>
@@ -375,4 +346,117 @@ export function AdminTable<T>({
       </Card>
     </>
   )
+}
+
+function AdminRowActions<T>({
+  actions,
+  deleteCheck,
+  isDeleting,
+  label,
+  onDelete,
+  onDeleteClick,
+  row,
+}: AdminRowActionsProps<T>) {
+  return (
+    <TableCell
+      className="relative z-10 text-right"
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-end gap-2">
+        {actions && actions(row)}
+        {onDelete && (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button
+                    aria-label={`Delete ${label}`}
+                    className={cn(
+                      'text-destructive hover:bg-destructive/10 hover:text-destructive',
+                      isDeleting && 'pointer-events-none opacity-30',
+                      !deleteCheck.allowed && 'opacity-30',
+                    )}
+                    disabled={isDeleting}
+                    onClick={(e) => onDeleteClick(row, e, deleteCheck)}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{deleteCheck.reason ?? 'Delete'}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
+    </TableCell>
+  )
+}
+
+function AdminTableRow<T>({
+  actions,
+  canDelete,
+  columns,
+  getDeleteLabel,
+  getRowHref,
+  getRowLabel,
+  isDeleting,
+  isRowClickable,
+  onDelete,
+  onDeleteClick,
+  row,
+  showActions,
+}: AdminTableRowProps<T>) {
+  const label = resolveLabel(row, getRowLabel, getDeleteLabel)
+  const deleteCheck = canDelete ? canDelete(row) : { allowed: true }
+  const clickable = isRowClickable ? isRowClickable(row) : true
+  const href = getRowHref && clickable ? getRowHref(row) : undefined
+
+  return (
+    <TableRow className={cn(href && 'relative cursor-pointer')}>
+      {columns.map((col, colIndex) => (
+        <TableCell
+          className={cn(
+            CELL_ALIGN[col.cellAlign ?? 'left'],
+            col.interactive && 'relative z-10',
+          )}
+          key={col.key}
+        >
+          {href && colIndex === 0 && (
+            <Link
+              aria-label={label ? `Open ${label}` : 'Open item'}
+              className="focus-visible:ring-ring absolute inset-0 rounded-sm focus-visible:ring-2 focus-visible:outline-none"
+              to={href}
+            />
+          )}
+          {col.render(row)}
+        </TableCell>
+      ))}
+      {showActions && (
+        <AdminRowActions
+          actions={actions}
+          deleteCheck={deleteCheck}
+          isDeleting={isDeleting}
+          label={label}
+          onDelete={onDelete}
+          onDeleteClick={onDeleteClick}
+          row={row}
+        />
+      )}
+    </TableRow>
+  )
+}
+
+function resolveLabel<T>(
+  row: T,
+  getRowLabel?: (row: T) => string,
+  getDeleteLabel?: (row: T) => string,
+): string {
+  if (getRowLabel) return getRowLabel(row)
+  if (getDeleteLabel) return getDeleteLabel(row)
+  return ''
 }

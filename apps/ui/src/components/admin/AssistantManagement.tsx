@@ -34,7 +34,7 @@ type Filter = 'all' | 'disabled' | 'enabled' | 'issues'
 const MCP_SERVERS_KEY = ['mcp-servers']
 
 export function AssistantManagement() {
-  const { goToCreate, goToEdit, goToList, slug, viewMode } = useAdminNav()
+  const { editPath, goToCreate, goToList, slug, viewMode } = useAdminNav()
   const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
@@ -243,6 +243,7 @@ export function AssistantManagement() {
               },
               {
                 header: 'Enabled',
+                interactive: true,
                 key: 'enabled',
                 render: (srv) => (
                   <span
@@ -268,10 +269,10 @@ export function AssistantManagement() {
                 : 'No MCP servers configured yet.'
             }
             getDeleteLabel={(srv) => srv.name}
+            getRowHref={(srv) => editPath(srv.slug)}
             getRowKey={(srv) => srv.slug}
             isDeleting={deleteMutation.isPending}
             onDelete={(srv) => deleteMutation.mutate(srv.id)}
-            onRowClick={(srv) => goToEdit(srv.slug)}
             rows={filtered}
           />
           <div className="text-tertiary flex items-center justify-between text-xs">

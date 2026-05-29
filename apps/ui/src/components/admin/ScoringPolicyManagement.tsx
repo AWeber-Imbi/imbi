@@ -57,8 +57,8 @@ const CATEGORY_LABELS: Record<ScoringPolicyCategory, string> = {
 
 export function ScoringPolicyManagement() {
   const {
+    editPath,
     goToCreate,
-    goToEdit,
     goToList,
     slug: selectedSlug,
     viewMode,
@@ -332,10 +332,10 @@ export function ScoringPolicyManagement() {
               : 'No scoring policies defined yet.'
           }
           getDeleteLabel={(p) => p.name}
+          getRowHref={(p) => editPath(p.slug)}
           getRowKey={(p) => p.slug}
           isDeleting={deleteMutation.isPending}
           onDelete={(p) => deleteMutation.mutate(p.slug)}
-          onRowClick={(p) => goToEdit(p.slug)}
           rows={filteredPolicies}
         />
       </AdminSection>

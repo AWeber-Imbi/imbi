@@ -5,10 +5,14 @@ import { useNavigate, useParams } from 'react-router-dom'
 export type ViewMode = 'create' | 'detail' | 'edit' | 'list'
 
 interface AdminNavState {
+  createPath: string
+  detailPath: (slug: string) => string
+  editPath: (slug: string) => string
   goToCreate: () => void
   goToDetail: (slug: string) => void
   goToEdit: (slug: string) => void
   goToList: () => void
+  listPath: string
   slug: null | string
   viewMode: ViewMode
 }
@@ -33,21 +37,34 @@ export function useAdminNav(): AdminNavState {
 
   const base = section ? `/admin/${section}` : '/admin'
 
-  const goToList = useCallback(() => navigate(base), [navigate, base])
+  const listPath = base
+  const createPath = `${base}/new`
+
+  const detailPath = useCallback(
+    (s: string) => `${base}/${encodeURIComponent(s)}`,
+    [base],
+  )
+
+  const editPath = useCallback(
+    (s: string) => `${base}/${encodeURIComponent(s)}/edit`,
+    [base],
+  )
+
+  const goToList = useCallback(() => navigate(listPath), [navigate, listPath])
 
   const goToCreate = useCallback(
-    () => navigate(`${base}/new`),
-    [navigate, base],
+    () => navigate(createPath),
+    [navigate, createPath],
   )
 
   const goToDetail = useCallback(
-    (s: string) => navigate(`${base}/${encodeURIComponent(s)}`),
-    [navigate, base],
+    (s: string) => navigate(detailPath(s)),
+    [navigate, detailPath],
   )
 
   const goToEdit = useCallback(
-    (s: string) => navigate(`${base}/${encodeURIComponent(s)}/edit`),
-    [navigate, base],
+    (s: string) => navigate(editPath(s)),
+    [navigate, editPath],
   )
 
   useEffect(() => {
@@ -75,10 +92,14 @@ export function useAdminNav(): AdminNavState {
   }, [viewMode, itemSlug, goToEdit, goToList])
 
   return {
+    createPath,
+    detailPath,
+    editPath,
     goToCreate,
     goToDetail,
     goToEdit,
     goToList,
+    listPath,
     slug: itemSlug,
     viewMode,
   }

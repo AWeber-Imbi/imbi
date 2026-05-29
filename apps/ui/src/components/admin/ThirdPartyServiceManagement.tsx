@@ -30,8 +30,8 @@ import { ThirdPartyServiceForm } from './third-party-services/ThirdPartyServiceF
 export function ThirdPartyServiceManagement() {
   const { selectedOrganization } = useOrganization()
   const {
+    detailPath,
     goToCreate,
-    goToDetail,
     goToEdit,
     goToList,
     slug: selectedSlug,
@@ -277,10 +277,10 @@ export function ThirdPartyServiceManagement() {
               : 'No third-party services created yet.'
         }
         getDeleteLabel={(svc) => svc.name}
+        getRowHref={(svc) => detailPath(svc.slug)}
         getRowKey={(svc) => svc.slug}
         isDeleting={deleteMutation.isPending}
         onDelete={(svc) => deleteMutation.mutate(svc.slug)}
-        onRowClick={(svc) => goToDetail(svc.slug)}
         rows={filteredServices}
       />
     </AdminSection>
