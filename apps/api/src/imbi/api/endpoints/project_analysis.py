@@ -268,7 +268,12 @@ async def _persist_report(
             for result in results
         ),
     ]
-    await db._execute_batch(statements)
+    # imbi-common exposes ``_execute_batch`` as the host-side
+    # transactional primitive (used internally by ``Graph.create`` /
+    # ``Graph.merge``). It's single-underscore by convention, not
+    # truly private — basedpyright's ``reportPrivateUsage`` rule is
+    # noise here.
+    await db._execute_batch(statements)  # pyright: ignore[reportPrivateUsage]
     return AnalysisReport(
         id=report_id,
         project_id=project_id,
@@ -296,10 +301,24 @@ async def _fetch_report(
     )
     if not rows:
         return None
-    report_raw = graph.parse_agtype(rows[0]['r'])
-    if not isinstance(report_raw, dict):
+    report_parsed = graph.parse_agtype(rows[0]['r'])
+    if not isinstance(report_parsed, dict):
         return None
-    raw_results = graph.parse_agtype(rows[0]['results']) or []
+    # ``parse_agtype`` returns ``Any``; pin to a typed dict so the
+    # rest of this function reads cleanly under basedpyright strict.
+    report_raw: dict[str, typing.Any] = typing.cast(
+        'dict[str, typing.Any]', report_parsed
+    )
+    results_parsed = graph.parse_agtype(rows[0]['results'])
+    # mypy sees ``parse_agtype`` as ``Any`` (so ``list`` narrowing is
+    # already ``list[Any]``); basedpyright sees ``list[Unknown]`` and
+    # demands the explicit ``list[Any]`` cast. The cast keeps strict
+    # checks clean; the ``# type: ignore`` keeps mypy quiet.
+    raw_results: list[typing.Any] = (
+        typing.cast('list[typing.Any]', results_parsed)  # type: ignore[redundant-cast]
+        if isinstance(results_parsed, list)
+        else []
+    )
     results: list[AnalysisResult] = []
     for entry in raw_results:
         if not isinstance(entry, dict):
@@ -318,14 +337,22 @@ async def _fetch_report(
         if isinstance(created_at_raw, str)
         else datetime.datetime.now(datetime.UTC)
     )
-    triggered = report_raw.get('triggered_by_user_id') or None
-    overall = report_raw.get('overall_status') or 'pass'
+    triggered_raw = report_raw.get('triggered_by_user_id')
+    triggered = (
+        triggered_raw
+        if isinstance(triggered_raw, str) and triggered_raw
+        else None
+    )
+    overall_raw = report_raw.get('overall_status')
+    overall: AnalysisResultStatus = (
+        overall_raw if overall_raw in ('pass', 'warn', 'fail') else 'pass'
+    )
     return AnalysisReport(
         id=str(report_raw.get('id')),
         project_id=project_id,
         created_at=created_at,
-        overall_status=typing.cast('AnalysisResultStatus', overall),
-        triggered_by_user_id=triggered if isinstance(triggered, str) else None,
+        overall_status=overall,
+        triggered_by_user_id=triggered,
         results=results,
     )
 
