@@ -208,7 +208,9 @@ async def initialize() -> None:
         await _manager.initialize()
     except Exception:
         LOGGER.exception('Failed to initialize MCP tools')
-        _manager = MCPManager()
+        # Close any partially-opened client and leave the empty manager
+        # in place; callers degrade to a tool-less prompt.
+        await _manager.aclose()
 
 
 async def aclose() -> None:

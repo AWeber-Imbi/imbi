@@ -19,10 +19,7 @@ async def initialize() -> None:
     """
     global _client
 
-    if _client is not None:
-        existing_client = _client
-        _client = None
-        await existing_client.close()
+    await aclose()
 
     slackbot_settings = settings.get_slackbot_settings()
 
