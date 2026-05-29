@@ -1,3 +1,4 @@
+import asyncio
 from unittest import mock
 
 import httpx
@@ -92,6 +93,44 @@ class ManagerTests(helpers.TestCase):
             await manager._http_client.aclose()
         self.assertTrue(is_error)
         self.assertIn('returned an error', body)
+
+    async def test_execute_serializes_auth_header(self) -> None:
+        # Two concurrent calls with different tokens must not interleave
+        # their auth-header set/clear; the lock guarantees each call_tool
+        # sees only its own bearer token.
+        manager = mcp.MCPManager()
+        manager._http_client = httpx.AsyncClient()
+        release = asyncio.Event()
+        seen: list[str | None] = []
+
+        async def call_tool(_name: str, _input: dict) -> object:
+            seen.append(manager._http_client.headers.get('authorization'))
+            if len(seen) == 1:
+                # Hold the first call open so the second would race if the
+                # critical section were not serialized.
+                await release.wait()
+            block = mock.Mock()
+            block.text = 'ok'
+            return mock.Mock(content=[block], is_error=False)
+
+        manager._client = mock.Mock(call_tool=call_tool)
+        try:
+            first = asyncio.create_task(
+                manager.execute_tool('t', {}, 'token-a')
+            )
+            await asyncio.sleep(0)
+            second = asyncio.create_task(
+                manager.execute_tool('t', {}, 'token-b')
+            )
+            await asyncio.sleep(0)
+            # While the first call holds the lock, the second cannot have
+            # entered call_tool yet.
+            self.assertEqual(['Bearer token-a'], seen)
+            release.set()
+            await asyncio.gather(first, second)
+        finally:
+            await manager._http_client.aclose()
+        self.assertEqual(['Bearer token-a', 'Bearer token-b'], seen)
 
     async def test_execute_when_not_initialized(self) -> None:
         manager = mcp.MCPManager()
