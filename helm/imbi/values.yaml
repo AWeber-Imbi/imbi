@@ -54,18 +54,6 @@ resources:
     cpu: "2"
     memory: 2Gi
 
-# Neo4j subchart configuration
-neo4j:
-  enabled: true
-  neo4j:
-    edition: community
-    acceptLicenseAgreement: "yes"
-    password: ""  # REQUIRED: must be overridden with a secure password
-
-# External Neo4j (when neo4j.enabled is false)
-externalNeo4j:
-  url: ""
-
 # ClickHouse subchart configuration
 clickhouse:
   enabled: true

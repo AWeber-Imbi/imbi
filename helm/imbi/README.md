@@ -8,9 +8,8 @@ This chart includes the following subcharts:
 
 | Dependency | Repository | Purpose |
 |------------|------------|---------|
-| Neo4j | https://helm.neo4j.com/neo4j | Graph database |
 | ClickHouse | https://charts.bitnami.com/bitnami | Analytics database |
-| PostgreSQL | https://charts.bitnami.com/bitnami | Gateway database |
+| PostgreSQL | https://charts.bitnami.com/bitnami | Graph + relational database (Apache AGE) |
 
 Each can be disabled in favor of external instances via `values.yaml`.
 

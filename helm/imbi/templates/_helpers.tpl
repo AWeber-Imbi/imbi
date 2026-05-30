@@ -35,14 +35,6 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 {{- end }}
 
-{{- define "imbi.neo4jUrl" -}}
-{{- if .Values.neo4j.enabled }}
-{{- printf "bolt://%s:7687" .Release.Name }}
-{{- else }}
-{{- .Values.externalNeo4j.url }}
-{{- end }}
-{{- end }}
-
 {{- define "imbi.clickhouseUrl" -}}
 {{- if .Values.clickhouse.enabled }}
 {{- printf "http://%s:%s@%s-clickhouse:8123/imbi" .Values.clickhouse.auth.username .Values.clickhouse.auth.password .Release.Name }}

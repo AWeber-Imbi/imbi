@@ -6,11 +6,6 @@ version: 2.0.0
 appVersion: "2.0.0"
 
 dependencies:
-  - name: neo4j
-    version: "5.x.x"
-    repository: https://helm.neo4j.com/neo4j
-    condition: neo4j.enabled
-
   - name: clickhouse
     version: "6.x.x"
     repository: https://charts.bitnami.com/bitnami
