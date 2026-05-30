@@ -13,6 +13,7 @@ from imbi_api.auth import permissions
 from imbi_api.endpoints._helpers import conflict_on_unique_violation
 from imbi_api.relationships import RelationshipSpec, build_relationships
 
+from .comments import comments_router
 from .document_templates import document_templates_router
 from .documents import documents_project_router, documents_router
 from .environments import environments_router
@@ -97,6 +98,12 @@ organizations_router.include_router(
 organizations_router.include_router(
     documents_project_router,
     prefix='/{org_slug}/projects/{project_id}/documents',
+)
+organizations_router.include_router(
+    comments_router,
+    prefix=(
+        '/{org_slug}/projects/{project_id}/documents/{document_id}/comments'
+    ),
 )
 organizations_router.include_router(
     document_templates_router,

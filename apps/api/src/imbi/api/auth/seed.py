@@ -277,6 +277,25 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'delete',
         'Delete project documents',
     ),
+    # Comment management
+    (
+        'comment:create',
+        'comment',
+        'create',
+        'Create document comments',
+    ),
+    (
+        'comment:write',
+        'comment',
+        'write',
+        'Update document comments',
+    ),
+    (
+        'comment:delete',
+        'comment',
+        'delete',
+        'Delete document comments',
+    ),
     # Auth provider (login-eligible ServiceApplication) management
     (
         'auth_providers:read',
@@ -480,6 +499,9 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'document:read',
             'document:write',
             'document:delete',
+            'comment:create',
+            'comment:write',
+            'comment:delete',
             'document_template:read',
             'me:identities:manage',
             'search:read',
