@@ -28,3 +28,6 @@
 [submodule "imbi-plugin-sonarqube"]
 	path = repositories/imbi-plugin-sonarqube
 	url = git@github.com:AWeber-Imbi/imbi-plugin-sonarqube.git
+[submodule "imbi-slackbot"]
+	path = repositories/imbi-slackbot
+	url = git@github.com:AWeber-Imbi/imbi-slackbot.git
