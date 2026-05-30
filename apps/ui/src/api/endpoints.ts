@@ -110,6 +110,12 @@ import type {
   Webhook,
   WebhookCreate,
 } from '@/types'
+import type {
+  AddReplyBody,
+  Comment,
+  CommentThread,
+  CreateThreadBody,
+} from '@/types/comments'
 
 import { apiClient, apiUrl } from './client'
 
@@ -1525,6 +1531,101 @@ export const deleteProjectDocument = (
 ) =>
   apiClient.delete<void>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}`,
+  )
+
+// Document comments. Hand-written like the document endpoints above; the
+// comments API is not yet in the committed openapi snapshot. Base path:
+// /organizations/{orgSlug}/projects/{projectId}/documents/{documentId}/comments
+const documentCommentsPath = (
+  orgSlug: string,
+  projectId: string,
+  documentId: string,
+) =>
+  `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}/comments`
+
+export const listDocumentComments = async (
+  orgSlug: string,
+  projectId: string,
+  documentId: string,
+  signal?: AbortSignal,
+): Promise<CommentThread[]> => {
+  const response = await apiClient.get<{ data: CommentThread[] }>(
+    documentCommentsPath(orgSlug, projectId, documentId),
+    undefined,
+    signal,
+  )
+  return response?.data ?? []
+}
+
+export const createCommentThread = (
+  orgSlug: string,
+  projectId: string,
+  documentId: string,
+  body: CreateThreadBody,
+) =>
+  apiClient.post<CommentThread>(
+    documentCommentsPath(orgSlug, projectId, documentId),
+    body,
+  )
+
+export const addCommentReply = (
+  orgSlug: string,
+  projectId: string,
+  documentId: string,
+  threadId: string,
+  body: AddReplyBody,
+) =>
+  apiClient.post<Comment>(
+    `${documentCommentsPath(orgSlug, projectId, documentId)}/${encodeURIComponent(threadId)}/comments`,
+    body,
+  )
+
+export const resolveCommentThread = (
+  orgSlug: string,
+  projectId: string,
+  documentId: string,
+  threadId: string,
+  resolved: boolean,
+) =>
+  apiClient.patch<CommentThread>(
+    `${documentCommentsPath(orgSlug, projectId, documentId)}/${encodeURIComponent(threadId)}`,
+    [{ op: 'replace', path: '/resolved', value: resolved }],
+  )
+
+export const editComment = (
+  orgSlug: string,
+  projectId: string,
+  documentId: string,
+  threadId: string,
+  commentId: string,
+  body: string,
+) =>
+  apiClient.patch<Comment>(
+    `${documentCommentsPath(orgSlug, projectId, documentId)}/${encodeURIComponent(threadId)}/comments/${encodeURIComponent(commentId)}`,
+    [{ op: 'replace', path: '/body', value: body }],
+  )
+
+export const acknowledgeComment = (
+  orgSlug: string,
+  projectId: string,
+  documentId: string,
+  threadId: string,
+  commentId: string,
+) =>
+  apiClient.post<Comment>(
+    `${documentCommentsPath(orgSlug, projectId, documentId)}/${encodeURIComponent(threadId)}/comments/${encodeURIComponent(commentId)}/acknowledge`,
+    {},
+  )
+
+export const deleteComment = (
+  orgSlug: string,
+  projectId: string,
+  documentId: string,
+  threadId: string,
+  commentId: string,
+) =>
+  apiClient.delete<void>(
+    `${documentCommentsPath(orgSlug, projectId, documentId)}/${encodeURIComponent(threadId)}/comments/${encodeURIComponent(commentId)}`,
   )
 
 // Tags (org-scoped)

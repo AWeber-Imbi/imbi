@@ -1,16 +1,35 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { ArrowLeft, Clock, Pencil, Pin, PinOff, Trash2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  CheckCircle2,
+  CircleDot,
+  Clock,
+  Eye,
+  EyeOff,
+  List,
+  Pencil,
+  Pin,
+  PinOff,
+  Trash2,
+} from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from '@/components/ui/segmented-control'
 import { IconTooltip } from '@/components/ui/tooltip'
 import { UserDisplay } from '@/components/ui/user-display'
 import { cn } from '@/lib/utils'
 import type { Document } from '@/types'
+import type { CommentThread } from '@/types/comments'
 
+import { BottomDiscussion } from './comments/BottomDiscussion'
+import type { CommentFilter } from './comments/BottomDiscussion'
 import { DocumentsFilterRail } from './DocumentsFilterRail'
 import {
   documentTitle,
@@ -30,28 +49,53 @@ interface Heading {
 
 interface Props {
   allDocuments: Document[]
+  comments: CommentThread[]
+  commentsBusy?: boolean
+  currentUserEmail: string
   deleting?: boolean
   displayNames?: Map<string, string>
   document: Document
+  onAcknowledgeComment: (threadId: string, commentId: string) => void
   onBack: () => void
+  onCreateThread: (body: string) => void
   onDelete?: () => void
+  onDeleteComment: (threadId: string, commentId: string) => void
   onEdit?: () => void
+  onEditComment: (threadId: string, commentId: string, body: string) => void
   onOpen: (documentId: string) => void
+  onReplyComment: (threadId: string, body: string) => void
+  onResolveThread: (threadId: string, resolved: boolean) => void
   onTogglePin: () => void
 }
 
 export function DocumentsPinboardReader({
   allDocuments,
+  comments,
+  commentsBusy = false,
+  currentUserEmail,
   deleting = false,
   displayNames,
   document,
+  onAcknowledgeComment,
   onBack,
+  onCreateThread,
   onDelete,
+  onDeleteComment,
   onEdit,
+  onEditComment,
   onOpen,
+  onReplyComment,
+  onResolveThread,
   onTogglePin,
 }: Props) {
   const [search, setSearch] = useState('')
+  const [commentFilter, setCommentFilter] = useState<CommentFilter>('open')
+  const [showComments, setShowComments] = useState(true)
+
+  const commentCounts = useMemo(() => {
+    const open = comments.filter((t) => !t.resolved).length
+    return { all: comments.length, open, resolved: comments.length - open }
+  }, [comments])
   const [confirmDelete, setConfirmDelete] = useState(false)
   const pinned = document.is_pinned
   const title = documentTitle(document)
@@ -106,6 +150,60 @@ export function DocumentsPinboardReader({
               All documents
             </Button>
             <div className="ml-auto flex items-center gap-1">
+              {showComments && (
+                <SegmentedControl
+                  ariaLabel="Comment filter"
+                  className="mr-1"
+                  onValueChange={(v) => setCommentFilter(v as CommentFilter)}
+                  value={commentFilter}
+                >
+                  <SegmentedControlItem value="open">
+                    <CircleDot className="size-3" />
+                    Open
+                    <span className="text-tertiary tabular-nums">
+                      {commentCounts.open}
+                    </span>
+                  </SegmentedControlItem>
+                  <SegmentedControlItem value="resolved">
+                    <CheckCircle2 className="size-3" />
+                    Resolved
+                    <span className="text-tertiary tabular-nums">
+                      {commentCounts.resolved}
+                    </span>
+                  </SegmentedControlItem>
+                  <SegmentedControlItem value="all">
+                    <List className="size-3" />
+                    All
+                    <span className="text-tertiary tabular-nums">
+                      {commentCounts.all}
+                    </span>
+                  </SegmentedControlItem>
+                </SegmentedControl>
+              )}
+              <Button
+                className="gap-1.5"
+                onClick={() => setShowComments((v) => !v)}
+                size="sm"
+                variant="ghost"
+              >
+                {showComments ? (
+                  <>
+                    <EyeOff className="size-3" />
+                    Hide comments
+                  </>
+                ) : (
+                  <>
+                    <Eye className="size-3" />
+                    Show comments
+                    {commentCounts.all > 0 && (
+                      <span className="text-tertiary tabular-nums">
+                        {commentCounts.all}
+                      </span>
+                    )}
+                  </>
+                )}
+              </Button>
+              <span className="bg-tertiary mx-1 h-5 w-px" />
               <Button
                 className="gap-1.5"
                 onClick={onTogglePin}
@@ -282,6 +380,24 @@ export function DocumentsPinboardReader({
             )}
           </div>
         </div>
+
+        {showComments && (
+          <div className="grid grid-cols-[minmax(0,1fr)_260px] gap-5">
+            <BottomDiscussion
+              busy={commentsBusy}
+              currentUserEmail={currentUserEmail}
+              displayNames={displayNames}
+              filter={commentFilter}
+              onAcknowledge={onAcknowledgeComment}
+              onCreateThread={onCreateThread}
+              onDelete={onDeleteComment}
+              onEdit={onEditComment}
+              onReply={onReplyComment}
+              onResolve={onResolveThread}
+              threads={comments}
+            />
+          </div>
+        )}
       </div>
       <ConfirmDialog
         confirmLabel={deleting ? 'Deleting…' : 'Delete'}

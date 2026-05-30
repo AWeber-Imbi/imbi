@@ -13,6 +13,8 @@ import {
 } from '@/api/endpoints'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { LoadingState } from '@/components/ui/loading-state'
+import { useAuth } from '@/hooks/useAuth'
+import { useDocumentComments } from '@/hooks/useDocumentComments'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import type { Document, DocumentTemplate } from '@/types'
@@ -99,6 +101,8 @@ export function ProjectDocumentsTab({
   })
 
   const { displayNames, isError: usersError } = useUserDisplayNames()
+  const { user } = useAuth()
+  const currentUserEmail = user?.email ?? ''
 
   useEffect(() => {
     if (usersError) {
@@ -222,6 +226,13 @@ export function ProjectDocumentsTab({
     [documents, view],
   )
 
+  const comments = useDocumentComments(
+    orgSlug,
+    projectId,
+    selectedDocument?.id ?? '',
+    currentUserEmail,
+  )
+
   const editingDocument = useMemo(
     () =>
       view.kind === 'editing'
@@ -304,15 +315,24 @@ export function ProjectDocumentsTab({
     return (
       <DocumentsPinboardReader
         allDocuments={documents}
+        comments={comments.comments}
+        commentsBusy={comments.commentsBusy}
+        currentUserEmail={currentUserEmail}
         deleting={deleteMutation.isPending}
         displayNames={displayNames}
         document={selectedDocument}
+        onAcknowledgeComment={comments.onAcknowledge}
         onBack={() => navigateToView({ kind: 'list' })}
+        onCreateThread={comments.onCreateThread}
         onDelete={() => deleteMutation.mutate(selectedDocument.id)}
+        onDeleteComment={comments.onDelete}
         onEdit={() =>
           navigateToView({ documentId: selectedDocument.id, kind: 'editing' })
         }
+        onEditComment={comments.onEdit}
         onOpen={(id) => navigateToView({ documentId: id, kind: 'reading' })}
+        onReplyComment={comments.onReply}
+        onResolveThread={comments.onResolve}
         onTogglePin={() => togglePin(selectedDocument)}
       />
     )
