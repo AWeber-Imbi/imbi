@@ -36,11 +36,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{- define "imbi.clickhouseUrl" -}}
-{{- if .Values.clickhouse.enabled }}
-{{- printf "http://%s:%s@%s-clickhouse:8123/imbi" .Values.clickhouse.auth.username .Values.clickhouse.auth.password .Release.Name }}
-{{- else }}
-{{- .Values.externalClickhouse.url }}
-{{- end }}
+{{- required "externalClickhouse.url is required (point it at your ClickHouse instance)" .Values.externalClickhouse.url }}
 {{- end }}
 
 {{- define "imbi.containerPort" -}}
@@ -53,9 +49,5 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{- define "imbi.postgresUrl" -}}
-{{- if .Values.postgresql.enabled }}
-{{- printf "postgresql://postgres:%s@%s-postgresql/%s" .Values.postgresql.auth.postgresPassword .Release.Name .Values.postgresql.auth.database }}
-{{- else }}
-{{- .Values.externalPostgresql.url }}
-{{- end }}
+{{- required "externalPostgresql.url is required (point it at your CloudNativePG / AGE-enabled PostgreSQL)" .Values.externalPostgresql.url }}
 {{- end }}

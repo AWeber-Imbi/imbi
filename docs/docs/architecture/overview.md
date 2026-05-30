@@ -24,7 +24,8 @@ complete service management platform.
                                     |
                           +---------+---------+
                           |                   |
-                        Neo4j            ClickHouse
+                 PostgreSQL + AGE        ClickHouse
+                  (graph database)       (analytics)
 ```
 
 ## Services
@@ -65,7 +66,7 @@ Model Context Protocol server built with FastMCP. Provides:
 
 Shared Python library used by all backend services. Provides:
 
-- Neo4j client with async support
+- PostgreSQL + Apache AGE graph client (async)
 - ClickHouse client
 - Domain models (Pydantic)
 - Authentication utilities (JWT, Argon2)
@@ -73,14 +74,16 @@ Shared Python library used by all backend services. Provides:
 
 ## Data Stores
 
-### Neo4j
+### PostgreSQL + Apache AGE
 
-Graph database storing:
+PostgreSQL with the Apache AGE extension is the primary datastore, providing
+both graph and relational storage:
 
 - Service/project nodes and their relationships
-- User, group, and role hierarchy
 - Dependency graph between services
+- User, group, and role hierarchy
 - Organization and team structure
+- Webhook event storage and processing state (gateway)
 
 ### ClickHouse
 
@@ -89,10 +92,3 @@ Column-oriented analytics database storing:
 - Operations logs
 - Time-series metrics
 - Audit trail
-
-### PostgreSQL
-
-Relational database used by the gateway for:
-
-- Webhook event storage
-- Event processing state

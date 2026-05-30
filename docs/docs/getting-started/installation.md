@@ -5,9 +5,9 @@ Imbi is distributed as a Docker image that packages all services together.
 ## Prerequisites
 
 - Docker 24+ or a Kubernetes cluster with Helm
-- Neo4j 5+
+- PostgreSQL with the Apache AGE extension (the `ghcr.io/aweber-imbi/postgres`
+  image bundles AGE, pg_cron, and pgvector)
 - ClickHouse 24+
-- PostgreSQL 17+ (for the webhook gateway)
 
 ## Docker
 
@@ -33,25 +33,10 @@ services:
       IMBI_AUTH_JWT_SECRET: change-me-to-a-random-secret
       IMBI_AUTH_ENCRYPTION_KEY: change-me-to-a-fernet-key
     depends_on:
-      neo4j:
-        condition: service_healthy
       clickhouse:
         condition: service_healthy
       postgres:
         condition: service_healthy
-
-  neo4j:
-    image: neo4j:latest
-    ports:
-      - "7474:7474"
-      - "7687:7687"
-    environment:
-      NEO4J_AUTH: none
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest
@@ -68,7 +53,7 @@ services:
       retries: 10
 
   postgres:
-    image: postgres:17-alpine
+    image: ghcr.io/aweber-imbi/postgres:latest
     ports:
       - "5432:5432"
     environment:

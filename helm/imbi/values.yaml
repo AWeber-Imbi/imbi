@@ -54,35 +54,22 @@ resources:
     cpu: "2"
     memory: 2Gi
 
-# ClickHouse subchart configuration
-clickhouse:
-  enabled: true
-  auth:
-    username: default
-    password: ""  # REQUIRED: must be overridden with a secure password
-  defaultConfigurationOverrides: |
-    <clickhouse>
-      <profiles>
-        <default>
-          <allow_experimental_lightweight_delete>1</allow_experimental_lightweight_delete>
-        </default>
-      </profiles>
-    </clickhouse>
-
-# External ClickHouse (when clickhouse.enabled is false)
+# ClickHouse connection (external, required).
+#
+# The chart does not bundle ClickHouse; provision it externally (the Altinity
+# ClickHouse operator is the recommended approach) and set the connection URL.
+# See docs/deployment/kubernetes.md.
 externalClickhouse:
-  url: ""
+  url: ""  # REQUIRED, e.g. clickhouse+http://default:password@clickhouse-imbi:8123/imbi
 
-# PostgreSQL subchart configuration
-postgresql:
-  enabled: true
-  auth:
-    postgresPassword: ""  # REQUIRED: must be overridden with a secure password
-    database: imbi
-
-# External PostgreSQL (when postgresql.enabled is false)
+# PostgreSQL connection (external, required).
+#
+# Imbi's graph database is PostgreSQL with the Apache AGE extension. The chart
+# does not bundle a database; point this at an AGE-enabled PostgreSQL such as a
+# CloudNativePG cluster. See docs/deployment/kubernetes.md for operator setup
+# and an example Cluster manifest.
 externalPostgresql:
-  url: ""
+  url: ""  # REQUIRED, e.g. postgresql://imbi:password@imbi-pg-rw:5432/imbi
 
 # AI Assistant configuration
 assistant:

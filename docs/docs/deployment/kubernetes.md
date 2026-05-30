@@ -1,12 +1,22 @@
 # Kubernetes Deployment
 
-Imbi provides a Helm chart for deploying to Kubernetes with all
-dependencies included.
+Imbi provides a Helm chart for deploying to Kubernetes. The chart does not
+bundle databases — it expects PostgreSQL (with the Apache AGE extension) and
+ClickHouse to be provisioned externally. The recommended approach is to run
+them with their respective Kubernetes operators:
+
+- **PostgreSQL** — [CloudNativePG](https://cloudnative-pg.io/) with an
+  AGE-enabled image
+- **ClickHouse** — the [Altinity ClickHouse operator](https://github.com/Altinity/clickhouse-operator)
 
 ## Prerequisites
 
 - Kubernetes 1.28+
 - Helm 3.x
+- The [CloudNativePG operator](https://cloudnative-pg.io/documentation/current/installation_upgrade/)
+  installed in the cluster (or another AGE-enabled PostgreSQL)
+- The [Altinity ClickHouse operator](https://github.com/Altinity/clickhouse-operator)
+  installed in the cluster (or another ClickHouse instance)
 
 ## Installing the Chart
 
@@ -59,25 +69,65 @@ service:
 
 ### Database Configuration
 
-The chart includes Neo4j, ClickHouse, and PostgreSQL as dependencies.
-To use external databases instead:
+The chart does not deploy databases. Point it at your external PostgreSQL
+(Apache AGE) and ClickHouse instances:
 
 ```yaml
-neo4j:
-  enabled: false
-externalNeo4j:
-  url: bolt://neo4j.example.com:7687
-
-clickhouse:
-  enabled: false
-externalClickhouse:
-  url: http://clickhouse.example.com:8123/imbi
-
-postgresql:
-  enabled: false
 externalPostgresql:
-  url: postgresql://user:pass@pg.example.com/imbi
+  url: postgresql://imbi:password@imbi-pg-rw:5432/imbi
+
+externalClickhouse:
+  url: clickhouse+http://default:password@clickhouse-imbi:8123/imbi
 ```
+
+#### PostgreSQL with CloudNativePG
+
+Imbi's graph database is PostgreSQL with the Apache AGE extension. Create a
+CloudNativePG `Cluster` using an AGE-enabled image before installing the chart:
+
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: imbi-pg
+spec:
+  instances: 3
+  imageName: ghcr.io/aweber-imbi/postgres:18.3-1
+  postgresql:
+    shared_preload_libraries:
+      - age
+      - pg_cron
+    parameters:
+      cron.database_name: imbi
+  bootstrap:
+    initdb:
+      database: imbi
+      owner: imbi
+      postInitSQL:
+        - CREATE EXTENSION IF NOT EXISTS age
+  storage:
+    size: 20Gi
+```
+
+CloudNativePG exposes the primary at `<cluster-name>-rw` (here `imbi-pg-rw`)
+and stores the generated `imbi` user's password in the `imbi-pg-app` secret.
+Use those to build `externalPostgresql.url`.
+
+!!! note
+    CloudNativePG's operand-image requirements are minimal — standard
+    PostgreSQL binaries, a proper locale, and a PGDG-supported version — and
+    the official-postgres-based `ghcr.io/aweber-imbi/postgres` image (Apache
+    AGE, pg_cron, pgvector) satisfies them. Two caveats: the image **tag must
+    begin with the PostgreSQL major version** (e.g. `18.3-1`); CNPG rejects
+    `latest` for version detection. And because CNPG generates its own
+    `postgresql.conf`, set `shared_preload_libraries` in the Cluster spec
+    rather than relying on the image's baked config.
+
+#### ClickHouse with the Altinity operator
+
+Provision ClickHouse with a `ClickHouseInstallation` resource, then point
+`externalClickhouse.url` at the service the operator creates (typically
+`clickhouse-<installation-name>`).
 
 ### Ingress
 

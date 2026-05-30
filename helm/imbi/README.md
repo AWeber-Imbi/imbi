@@ -2,24 +2,27 @@
 
 Helm chart for deploying Imbi to Kubernetes.
 
-## Dependencies
+## Databases
 
-This chart includes the following subcharts:
+This chart does **not** bundle any database subcharts. Provision both
+datastores externally and point the chart at them via `values.yaml`:
 
-| Dependency | Repository | Purpose |
-|------------|------------|---------|
-| ClickHouse | https://charts.bitnami.com/bitnami | Analytics database |
-| PostgreSQL | https://charts.bitnami.com/bitnami | Graph + relational database (Apache AGE) |
+| Datastore | Recommended approach | Value |
+|-----------|----------------------|-------|
+| PostgreSQL + Apache AGE | [CloudNativePG](https://cloudnative-pg.io/) cluster with an AGE-enabled image | `externalPostgresql.url` |
+| ClickHouse | [Altinity ClickHouse operator](https://github.com/Altinity/clickhouse-operator) | `externalClickhouse.url` |
 
-Each can be disabled in favor of external instances via `values.yaml`.
+See [the Kubernetes deployment guide](../../docs/docs/deployment/kubernetes.md)
+for operator setup and an example CloudNativePG `Cluster` manifest.
 
 ## Install
 
 ```bash
-helm dependency update helm/imbi
 helm install imbi helm/imbi \
   --set auth.jwtSecret=your-secret \
-  --set auth.encryptionKey=your-key
+  --set auth.encryptionKey=your-key \
+  --set externalPostgresql.url=postgresql://imbi:password@imbi-pg-rw:5432/imbi \
+  --set externalClickhouse.url=clickhouse+http://default:password@clickhouse-imbi:8123/imbi
 ```
 
 See `values.yaml` for all configuration options.

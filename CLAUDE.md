@@ -60,9 +60,7 @@ Only `imbi` is published on a fixed host port (`8080`). The backing services use
 | 8025 | Mailpit (email testing UI) |
 | 4566 | LocalStack (S3) |
 
-The local stack uses PostgreSQL with Apache AGE as the graph database (no Neo4j). The
-Helm chart, however, still ships a Neo4j subchart (`helm/imbi/values.yaml`) — legacy and
-out of step with the compose stack.
+The local stack uses PostgreSQL with Apache AGE as the graph database (no Neo4j).
 
 ## Docker Image Architecture
 
@@ -92,7 +90,7 @@ GitHub Actions (`.github/workflows/build-and-deploy.yaml`) triggers on tag pushe
 
 ## Helm Chart
 
-`helm/imbi/` contains a Kubernetes deployment chart with optional subchart dependencies for Neo4j, ClickHouse, and PostgreSQL. Set `neo4j.enabled`, `clickhouse.enabled`, `postgresql.enabled` to false and use `externalNeo4j.url` etc. for external databases.
+`helm/imbi/` contains a Kubernetes deployment chart. It bundles **no** database subcharts — PostgreSQL (with Apache AGE) and ClickHouse must be provisioned externally (CloudNativePG and the Altinity ClickHouse operator are the recommended approaches). Set `externalPostgresql.url` and `externalClickhouse.url`.
 
 ## GitHub CLI
 

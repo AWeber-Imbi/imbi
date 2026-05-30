@@ -5,13 +5,6 @@ type: application
 version: 2.0.0
 appVersion: "2.0.0"
 
-dependencies:
-  - name: clickhouse
-    version: "6.x.x"
-    repository: https://charts.bitnami.com/bitnami
-    condition: clickhouse.enabled
-
-  - name: postgresql
-    version: "16.x.x"
-    repository: https://charts.bitnami.com/bitnami
-    condition: postgresql.enabled
+# Imbi expects PostgreSQL (with Apache AGE) and ClickHouse to be provisioned
+# externally — see docs/deployment/kubernetes.md. The chart bundles no
+# database subcharts.

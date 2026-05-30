@@ -38,6 +38,5 @@ All services run behind [Caddy](https://caddyserver.com/) as a reverse proxy.
 
 | Database | Purpose |
 |----------|---------|
-| **Neo4j** | Graph database for service relationships, dependencies, users, and permissions |
+| **PostgreSQL + Apache AGE** | Graph and relational database for service relationships, dependencies, users, permissions, and webhook gateway state |
 | **ClickHouse** | Analytics database for operations logs and time-series data |
-| **PostgreSQL** | Relational storage for the webhook gateway |
