@@ -94,6 +94,9 @@ async def run_turn(
     api_client = client.get_client()
     manager = mcp.get_manager()
     accumulated: list[str] = []
+    # Work on a copy so appending assistant/tool-result turns does not
+    # mutate the caller-supplied list.
+    messages = list(messages)
 
     for _round in range(max_rounds):
         kwargs: dict[str, typing.Any] = {

@@ -252,6 +252,25 @@ class HandleEventTests(helpers.TestCase):
         self.assertEqual('the answer', client.posts[-1]['text'])
         self.assertEqual('1', client.posts[-1]['thread_ts'])
 
+    async def test_run_turn_failure_posts_fallback(self) -> None:
+        user = identity.ImbiUser('ada@example.com', 'Ada')
+        event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': '<@BOT> hi'}
+        client = FakeSlackClient(replies=[])
+        with (
+            mock.patch.object(
+                slack_handler.identity,
+                'resolve',
+                new=mock.AsyncMock(return_value=user),
+            ),
+            mock.patch.object(
+                slack_handler.agent,
+                'run_turn',
+                new=mock.AsyncMock(side_effect=RuntimeError('boom')),
+            ),
+        ):
+            await slack_handler.handle_event(event, client, bot_user_id='BOT')
+        self.assertIn('something went wrong', client.posts[-1]['text'])
+
     async def test_unknown_user(self) -> None:
         event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': 'hi'}
         client = FakeSlackClient(replies=[])

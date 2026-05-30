@@ -39,6 +39,16 @@ class SystemPromptTests(helpers.TestCase):
             prompt = system_prompt.build_system_prompt(user, ['list'])
         self.assertEqual('Custom for Ada', prompt)
 
+    def test_override_with_stray_braces_falls_back(self) -> None:
+        # An operator override containing unescaped braces must not break
+        # prompt construction; it falls back to the raw template.
+        with self.override_environment(
+            IMBI_SLACKBOT_SYSTEM_PROMPT='Example JSON: {"k": "v"}',
+        ):
+            user = identity.ImbiUser('a@example.com', 'Ada')
+            prompt = system_prompt.build_system_prompt(user, ['list'])
+        self.assertEqual('Example JSON: {"k": "v"}', prompt)
+
     def test_injects_base_url(self) -> None:
         with self.override_environment(
             IMBI_UI_URL='https://imbi.example.com',

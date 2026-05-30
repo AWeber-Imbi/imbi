@@ -1,8 +1,11 @@
 """Dynamic system prompt builder for the Slack bot."""
 
+import logging
 import pathlib
 
 from imbi_slackbot import identity, links, settings
+
+LOGGER = logging.getLogger(__name__)
 
 _PROMPT_PATH = pathlib.Path(__file__).parent / 'system_prompt.md'
 _prompt_template: str | None = None
@@ -73,10 +76,17 @@ def build_system_prompt(
         )
 
     template = _load_template()
-    return template.format(
-        display_name=user.display_name,
-        email=user.email,
-        admin_flag='  [Admin]' if user.is_admin else '',
-        tools_section=tools_section,
-        links_section=links_section,
-    )
+    try:
+        return template.format(
+            display_name=user.display_name,
+            email=user.email,
+            admin_flag='  [Admin]' if user.is_admin else '',
+            tools_section=tools_section,
+            links_section=links_section,
+        )
+    except (KeyError, ValueError, IndexError):
+        # An operator-supplied override with stray/unescaped braces would
+        # otherwise break prompt construction for every event. Fall back
+        # to the unformatted template rather than failing the request.
+        LOGGER.exception('Failed to format system prompt template')
+        return template
