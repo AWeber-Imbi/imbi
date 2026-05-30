@@ -14,6 +14,8 @@ name = [
   "AnalysisResult",
   "Blueprint",
   "ClientCredential",
+  "Comment",
+  "CommentThread",
   "Component",
   "ComponentIdentifier",
   "ComponentRelease",
@@ -93,6 +95,34 @@ unique = true
 vlabel = "ClientCredential"
 attributes = ["client_id"]
 unique = true
+
+[[vlabel_indexes]]
+vlabel = "Comment"
+attributes = ["id"]
+unique = true
+
+# Comments render in chronological order within a thread.
+[[vlabel_indexes]]
+vlabel = "Comment"
+attributes = ["created_at"]
+
+[[vlabel_indexes]]
+vlabel = "CommentThread"
+attributes = ["id"]
+unique = true
+
+# Threads list newest-first per document.
+[[vlabel_indexes]]
+vlabel = "CommentThread"
+attributes = ["created_at"]
+
+[[vlabel_indexes]]
+vlabel = "CommentThread"
+attributes = ["kind"]
+
+[[vlabel_indexes]]
+vlabel = "CommentThread"
+attributes = ["resolved"]
 
 # A Component's identity is its version-stripped package URL
 # (e.g. "pkg:npm/express"). Globally unique so MERGE can dedup

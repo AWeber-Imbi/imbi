@@ -13,6 +13,8 @@ __all__ = [
     'BlueprintAssignment',
     'BlueprintEdge',
     'BlueprintFilter',
+    'Comment',
+    'CommentThread',
     'Component',
     'ComponentIdentifier',
     'ComponentRelease',
@@ -553,6 +555,64 @@ class Document(GraphModel):
     created_by: str
     updated_by: str | None = None
     is_pinned: bool = False
+
+
+class CommentThread(GraphModel):
+    """A thread of comments anchored to a project ``Document``.
+
+    ``kind`` is ``'page'`` for a whole-document discussion or
+    ``'inline'`` for a comment tied to a span of the document's
+    text.  The inline anchor is FLATTENED into the four
+    ``anchor_*`` scalar properties (rather than a nested model) so
+    the stored agtype stays a plain map.  Page-level threads leave
+    the anchor fields at their defaults.
+
+    """
+
+    document: typing.Annotated[
+        Document,
+        Edge(rel_type='ON_DOCUMENT', direction='OUTGOING'),
+    ]
+    kind: typing.Literal['page', 'inline'] = 'page'
+    resolved: bool = False
+    resolved_by: str | None = None
+    resolved_at: datetime.datetime | None = None
+    anchor_quote: str = ''
+    anchor_prefix: str = ''
+    anchor_suffix: str = ''
+    anchor_start: int = 0
+    created_by: str
+
+
+class Comment(GraphModel):
+    """A single comment within a ``CommentThread``.
+
+    ``mentions`` and ``acknowledged_by`` hold email addresses and
+    round-trip through AGE as agtype arrays.  ``body`` is plain
+    markdown text and is intentionally NOT embeddable.
+
+    """
+
+    thread: typing.Annotated[
+        CommentThread,
+        Edge(rel_type='IN_THREAD', direction='OUTGOING'),
+    ]
+    author: str
+    body: str
+    mentions: list[str] = []
+    acknowledged_by: list[str] = []
+    edited: bool = False
+
+    @pydantic.field_validator(
+        'mentions',
+        'acknowledged_by',
+        mode='before',
+    )
+    @classmethod
+    def _parse_json_list(cls, value: object) -> object:
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
 
 
 class DocumentTemplate(Node):

@@ -27,6 +27,16 @@ schema extension.
   (purl / cpe / bom-ref / swid) linked to a `Component` via
   `[:IDENTIFIED_BY]`
 
+### Collaboration Models
+- **CommentThread**: A thread of comments anchored to a project
+  `Document` via `[:ON_DOCUMENT]`. `kind` is `page` (whole-document)
+  or `inline` (text-anchored); inline anchors are flattened into the
+  `anchor_quote` / `anchor_prefix` / `anchor_suffix` / `anchor_start`
+  scalar properties.
+- **Comment**: A single comment within a `CommentThread`
+  (`Comment-[:IN_THREAD]->CommentThread`); carries `mentions` and
+  `acknowledged_by` email lists.
+
 ### Blueprint Models
 - **Blueprint**: Dynamic schema definitions
 - **BlueprintAssignment**: Blueprint-to-entity relationships
@@ -83,6 +93,12 @@ await db.create(team)
 ::: imbi_common.models.ComponentRelease
 
 ::: imbi_common.models.ComponentIdentifier
+
+### Collaboration Models
+
+::: imbi_common.models.CommentThread
+
+::: imbi_common.models.Comment
 
 ### Blueprint Models
 

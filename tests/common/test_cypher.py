@@ -488,3 +488,76 @@ class NoneEdgeTests(unittest.TestCase):
         stmts = cypher.create(team)
         # Only the node CREATE, no edge statement
         self.assertEqual(1, len(stmts))
+
+
+def _document() -> models.Document:
+    return models.Document.model_construct(
+        id='doc-id',
+        title='Runbook',
+        content='# Runbook\n',
+        created_by='alice@example.com',
+    )
+
+
+def _comment_thread() -> models.CommentThread:
+    return models.CommentThread.model_construct(
+        id='thread-id',
+        document=_document(),
+        created_by='alice@example.com',
+    )
+
+
+def _comment() -> models.Comment:
+    # model_construct so the thread Edge field accepts a model instance.
+    return models.Comment.model_construct(
+        id='comment-id',
+        thread=_comment_thread(),
+        author='alice@example.com',
+        body='Looks good.',
+        mentions=['bob@example.com', 'carol@example.com'],
+        acknowledged_by=['dave@example.com'],
+    )
+
+
+class CommentListPropertyTests(unittest.TestCase):
+    """list[str] props serialize as native lists, not strings.
+
+    ``Graph._cypher_param`` turns a Python list into an agtype
+    array literal via ``json.dumps``; AGE stores and returns it as
+    an array, so the value must reach the param map as a ``list``
+    (not a pre-stringified JSON value).
+    """
+
+    def test_node_properties_keep_lists(self) -> None:
+        props = cypher._node_properties(_comment())
+        self.assertIsInstance(props['mentions'], list)
+        self.assertEqual(
+            props['mentions'],
+            ['bob@example.com', 'carol@example.com'],
+        )
+        self.assertIsInstance(props['acknowledged_by'], list)
+        self.assertEqual(props['acknowledged_by'], ['dave@example.com'])
+
+    def test_node_properties_exclude_edge(self) -> None:
+        props = cypher._node_properties(_comment())
+        self.assertNotIn('thread', props)
+
+    def test_create_params_carry_lists(self) -> None:
+        stmts = cypher.create(_comment())
+        # node CREATE + IN_THREAD edge
+        self.assertEqual(2, len(stmts))
+        self.assertIn('CREATE (n:Comment', stmts[0].cypher)
+        self.assertEqual(
+            stmts[0].params['mentions'],
+            ['bob@example.com', 'carol@example.com'],
+        )
+        self.assertIn('IN_THREAD', stmts[1].cypher)
+
+    def test_thread_create_includes_on_document_edge(self) -> None:
+        stmts = cypher.create(_comment_thread())
+        self.assertEqual(2, len(stmts))
+        self.assertIn('CREATE (n:CommentThread', stmts[0].cypher)
+        self.assertIn('ON_DOCUMENT', stmts[1].cypher)
+        # Both endpoints are GraphModel (matched by id).
+        self.assertIn('id: {src}', stmts[1].cypher)
+        self.assertIn('id: {tgt}', stmts[1].cypher)

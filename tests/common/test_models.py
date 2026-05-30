@@ -499,6 +499,231 @@ class DocumentTemplateModelTestCase(unittest.TestCase):
             models.DocumentTemplate(name='ADR', slug='adr')
 
 
+def _make_document() -> models.Document:
+    return models.Document.model_construct(
+        id='doc-id',
+        project=_make_project(),
+        title='Runbook',
+        content='# Runbook\n',
+        created_by='alice@example.com',
+    )
+
+
+class CommentThreadModelTestCase(unittest.TestCase):
+    """Test cases for the CommentThread model."""
+
+    def _edges(
+        self, model_cls: type[pydantic.BaseModel]
+    ) -> dict[str, models.Edge]:
+        result: dict[str, models.Edge] = {}
+        for name, field in model_cls.model_fields.items():
+            for meta in field.metadata:
+                if isinstance(meta, models.Edge):
+                    result[name] = meta
+        return result
+
+    def _make(self, **overrides: typing.Any) -> models.CommentThread:
+        defaults: dict[str, typing.Any] = {
+            'document': _make_document(),
+            'created_by': 'alice@example.com',
+        }
+        defaults.update(overrides)
+        return models.CommentThread(**defaults)
+
+    def test_minimal(self) -> None:
+        thread = self._make()
+        self.assertEqual(thread.created_by, 'alice@example.com')
+
+    def test_kind_defaults_to_page(self) -> None:
+        self.assertEqual(self._make().kind, 'page')
+
+    def test_kind_inline_accepted(self) -> None:
+        thread = self._make(kind='inline')
+        self.assertEqual(thread.kind, 'inline')
+
+    def test_invalid_kind_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            self._make(kind='gibberish')
+
+    def test_resolution_defaults(self) -> None:
+        thread = self._make()
+        self.assertFalse(thread.resolved)
+        self.assertIsNone(thread.resolved_by)
+        self.assertIsNone(thread.resolved_at)
+
+    def test_resolution_round_trip(self) -> None:
+        now = datetime.datetime.now(datetime.UTC)
+        thread = self._make(
+            resolved=True,
+            resolved_by='bob@example.com',
+            resolved_at=now,
+        )
+        self.assertTrue(thread.resolved)
+        self.assertEqual(thread.resolved_by, 'bob@example.com')
+        self.assertEqual(thread.resolved_at, now)
+
+    def test_anchor_defaults(self) -> None:
+        thread = self._make()
+        self.assertEqual(thread.anchor_quote, '')
+        self.assertEqual(thread.anchor_prefix, '')
+        self.assertEqual(thread.anchor_suffix, '')
+        self.assertEqual(thread.anchor_start, 0)
+
+    def test_anchor_fields_round_trip(self) -> None:
+        thread = self._make(
+            kind='inline',
+            anchor_quote='the quick brown fox',
+            anchor_prefix='see ',
+            anchor_suffix=' jumped',
+            anchor_start=42,
+        )
+        self.assertEqual(thread.anchor_quote, 'the quick brown fox')
+        self.assertEqual(thread.anchor_prefix, 'see ')
+        self.assertEqual(thread.anchor_suffix, ' jumped')
+        self.assertEqual(thread.anchor_start, 42)
+
+    def test_requires_created_by(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.CommentThread(document=_make_document())
+
+    def test_requires_document(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.CommentThread(created_by='alice@example.com')
+
+    def test_on_document_edge(self) -> None:
+        edges = self._edges(models.CommentThread)
+        self.assertIn('document', edges)
+        edge = edges['document']
+        self.assertEqual(edge.rel_type, 'ON_DOCUMENT')
+        self.assertEqual(edge.direction, 'OUTGOING')
+
+    def test_is_graph_model_not_node(self) -> None:
+        self.assertIsInstance(self._make(), models.GraphModel)
+        self.assertFalse(issubclass(models.CommentThread, models.Node))
+
+    def test_identity_fields(self) -> None:
+        thread = self._make()
+        self.assertIsInstance(thread.id, str)
+        self.assertTrue(len(thread.id) > 0)
+        self.assertEqual(thread.created_at.tzinfo, datetime.UTC)
+        self.assertIsNone(thread.updated_at)
+
+    def test_in_all(self) -> None:
+        self.assertIn('CommentThread', models.__all__)
+
+
+class CommentModelTestCase(unittest.TestCase):
+    """Test cases for the Comment model."""
+
+    def _edges(
+        self, model_cls: type[pydantic.BaseModel]
+    ) -> dict[str, models.Edge]:
+        result: dict[str, models.Edge] = {}
+        for name, field in model_cls.model_fields.items():
+            for meta in field.metadata:
+                if isinstance(meta, models.Edge):
+                    result[name] = meta
+        return result
+
+    def _thread(self) -> models.CommentThread:
+        return models.CommentThread.model_construct(
+            id='thread-id',
+            document=_make_document(),
+            created_by='alice@example.com',
+        )
+
+    def _make(self, **overrides: typing.Any) -> models.Comment:
+        defaults: dict[str, typing.Any] = {
+            'thread': self._thread(),
+            'author': 'alice@example.com',
+            'body': 'Looks good to me.',
+        }
+        defaults.update(overrides)
+        return models.Comment(**defaults)
+
+    def test_minimal(self) -> None:
+        comment = self._make()
+        self.assertEqual(comment.author, 'alice@example.com')
+        self.assertEqual(comment.body, 'Looks good to me.')
+
+    def test_list_defaults_empty(self) -> None:
+        comment = self._make()
+        self.assertEqual(comment.mentions, [])
+        self.assertEqual(comment.acknowledged_by, [])
+
+    def test_edited_defaults_false(self) -> None:
+        self.assertFalse(self._make().edited)
+
+    def test_requires_author_body_thread(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.Comment(thread=self._thread(), body='x')
+        with self.assertRaises(pydantic.ValidationError):
+            models.Comment(thread=self._thread(), author='a@x.com')
+        with self.assertRaises(pydantic.ValidationError):
+            models.Comment(author='a@x.com', body='x')
+
+    def test_in_thread_edge(self) -> None:
+        edges = self._edges(models.Comment)
+        self.assertIn('thread', edges)
+        edge = edges['thread']
+        self.assertEqual(edge.rel_type, 'IN_THREAD')
+        self.assertEqual(edge.direction, 'OUTGOING')
+
+    def test_body_is_not_embeddable(self) -> None:
+        info = models.Comment.model_fields['body']
+        self.assertFalse(
+            any(isinstance(meta, models.Embeddable) for meta in info.metadata)
+        )
+
+    def test_mentions_from_json_string(self) -> None:
+        """mentions parses an AGE JSON-string into a list."""
+        comment = self._make(
+            mentions=json.dumps(['bob@x.com', 'carol@x.com']),
+        )
+        self.assertEqual(comment.mentions, ['bob@x.com', 'carol@x.com'])
+
+    def test_acknowledged_by_from_json_string(self) -> None:
+        comment = self._make(
+            acknowledged_by=json.dumps(['dave@x.com']),
+        )
+        self.assertEqual(comment.acknowledged_by, ['dave@x.com'])
+
+    def test_lists_from_native_list_unchanged(self) -> None:
+        comment = self._make(
+            mentions=['bob@x.com'],
+            acknowledged_by=['dave@x.com'],
+        )
+        self.assertEqual(comment.mentions, ['bob@x.com'])
+        self.assertEqual(comment.acknowledged_by, ['dave@x.com'])
+
+    def test_list_defaults_isolated_per_instance(self) -> None:
+        a = self._make()
+        b = self._make()
+        a.mentions.append('bob@x.com')
+        a.acknowledged_by.append('dave@x.com')
+        self.assertEqual(b.mentions, [])
+        self.assertEqual(b.acknowledged_by, [])
+
+    def test_round_trip_json(self) -> None:
+        original = self._make(
+            mentions=['bob@x.com', 'carol@x.com'],
+            acknowledged_by=['dave@x.com'],
+            edited=True,
+        )
+        roundtrip = models.Comment.model_validate_json(
+            original.model_dump_json(),
+        )
+        self.assertEqual(roundtrip.mentions, ['bob@x.com', 'carol@x.com'])
+        self.assertEqual(roundtrip.acknowledged_by, ['dave@x.com'])
+        self.assertTrue(roundtrip.edited)
+
+    def test_is_graph_model(self) -> None:
+        self.assertIsInstance(self._make(), models.GraphModel)
+
+    def test_in_all(self) -> None:
+        self.assertIn('Comment', models.__all__)
+
+
 class OperationLogTestCase(unittest.TestCase):
     """Tests for the OperationLog model."""
 
