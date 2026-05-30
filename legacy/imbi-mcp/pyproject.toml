@@ -1,6 +1,6 @@
 [project]
 name = "imbi-mcp"
-version = "1.1.1"
+version = "2.8.0"
 description = "Imbi MCP server"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -9,7 +9,7 @@ authors = [{ name = "Gavin M. Roy", email = "gavinr@aweber.com" }]
 dependencies = [
   "fastmcp>=3.0.0",
   "httpx>=0.28.1",
-  "imbi-common[mcp]>=2.8.0",
+  "imbi-common[mcp]==2.8.0",
   "pydantic~=2.12",
   "pyjwt>=2.10",
   "sentry-sdk>=2.48.0",
@@ -122,9 +122,6 @@ flake8-quotes = { inline-quotes = "single" }
 [tool.uv]
 exclude-newer = "7 days"
 exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "imbi-plugin-aws" = false, "imbi-plugin-github" = false, "imbi-plugin-logzio" = false, "imbi-plugin-oidc" = false, "imbi-plugin-pagerduty" = false, "imbi-plugin-sentry" = false, "imbi-plugin-sonarqube" = false }
-
-[tool.uv.sources]
-imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
