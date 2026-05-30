@@ -10,6 +10,8 @@ FROM node:${NODE_VERSION}-slim AS ui-builder
 WORKDIR /tmp/build
 ARG VITE_GIT_REF=""
 ENV VITE_GIT_REF=${VITE_GIT_REF}
+COPY repositories/imbi-ui/package.json repositories/imbi-ui/package-lock.json ./
+RUN npm ci
 COPY repositories/imbi-ui/ ./
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build

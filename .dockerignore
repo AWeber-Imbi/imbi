@@ -8,6 +8,9 @@ LICENSE
 .gitignore
 .gitmodules
 .dockerignore
+# Node artifacts
+**/node_modules
+
 # Python artifacts
 **/__pycache__
 **/*.pyc
