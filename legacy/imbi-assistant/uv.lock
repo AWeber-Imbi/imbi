@@ -798,7 +798,7 @@ wheels = [
 
 [[package]]
 name = "imbi-assistant"
-version = "1.3.0"
+version = "2.8.0"
 source = { editable = "." }
 dependencies = [
   { name = "anthropic" },
@@ -829,7 +829,7 @@ requires-dist = [
   { name = "fastapi", specifier = ">=0.135.1" },
   { name = "fastmcp", specifier = ">=2.0.0" },
   { name = "httpx", specifier = ">=0.28.1" },
-  { name = "imbi-common", extras = ["databases", "mcp", "server"], git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main" },
+  { name = "imbi-common", extras = ["databases", "mcp", "server"], specifier = "==2.8.0" },
   { name = "pydantic", specifier = "~=2.12" },
   { name = "sentry-sdk", specifier = ">=2.48.0" },
 ]
@@ -850,7 +850,7 @@ dev = [
 [[package]]
 name = "imbi-common"
 version = "2.8.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main#cd4b108a7726901d325dd58526235720ec278619" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
   { name = "cryptography" },
   { name = "httpx" },
@@ -864,6 +864,10 @@ dependencies = [
   { name = "pyjwt" },
   { name = "python-slugify" },
   { name = "typer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/97/bc/d530fb11a6cc77b6fb9205824f90ffd61a9e177e5521547e8f56d625cb67/imbi_common-2.8.0.tar.gz", hash = "sha256:064407290a832f73e6ae2830f6802268f41a4ce65a68fb5f51c18cc45e966c70", size = 329556, upload-time = "2026-05-29T23:58:54.186Z" }
+wheels = [
+  { url = "https://files.pythonhosted.org/packages/7f/3f/eb691a100829dff13f58c56a38bcd8c48ec83dd4a8270aca97da63b5a604/imbi_common-2.8.0-py3-none-any.whl", hash = "sha256:30cdb1aa1666f39a36eee9cc2285891650eb2340fcf184c26ed34c115695608d", size = 105139, upload-time = "2026-05-29T23:58:52.578Z" },
 ]
 
 [package.optional-dependencies]
