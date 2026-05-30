@@ -8,7 +8,7 @@ and AI-powered features.
 ## Features
 
 - **Service Catalog**: Centralized inventory of all services and applications
-- **Dependency Tracking**: Graph-based dependency visualization using Neo4j
+- **Dependency Tracking**: Graph-based dependency visualization using PostgreSQL + Apache AGE
 - **Blueprint System**: Customizable metadata schemas for extending project fields
 - **Ownership Hierarchy**: Organization, team, and user-based ownership model
 - **AI Assistant**: Conversational AI powered by Claude for service queries
@@ -38,7 +38,8 @@ and AI-powered features.
                                     |
                           +---------+---------+
                           |                   |
-                        Neo4j            ClickHouse
+                 PostgreSQL + AGE        ClickHouse
+                  (graph database)       (analytics)
 ```
 
 All services run behind [Caddy](https://caddyserver.com/), a powerful and
@@ -68,16 +69,23 @@ docker compose exec -it imbi imbi-api setup
 docker compose logs -f imbi
 ```
 
-Once running, the following services are available:
+Once running, Imbi is available at **http://localhost:8080** — the only
+service published on a fixed host port:
 
 | Service | URL | Description |
 |---------|-----|-------------|
 | Imbi | http://localhost:8080 | Main application (UI + API via Caddy) |
-| Neo4j Browser | http://localhost:7474 | Graph database admin UI |
-| ClickHouse | http://localhost:8123 | Analytics database HTTP interface |
-| Mailpit | http://localhost:8025 | Email testing UI (captures all outbound email) |
-| LocalStack | http://localhost:4566 | S3-compatible object storage |
-| PostgreSQL | localhost:5432 | Gateway database (user: `postgres`, password: `secret`) |
+
+The backing services are exposed on **ephemeral** host ports (assigned by
+Docker) to avoid collisions. Find a service's mapped port with
+`docker compose port <service> <container-port>`:
+
+| Service | Container port | Description |
+|---------|----------------|-------------|
+| PostgreSQL | 5432 | Graph database (Apache AGE); user `postgres`, password `secret` |
+| ClickHouse | 8123 | Analytics database HTTP interface |
+| Mailpit | 8025 | Email testing UI (captures all outbound email) |
+| LocalStack | 4566 | S3-compatible object storage |
 
 ### UI Development with Docker Compose
 
@@ -92,7 +100,7 @@ docker compose up --build -d
 docker compose exec -it imbi imbi-api setup
 
 # 3. In the imbi-ui directory, point the dev proxy at the local backend
-cd imbi-ui
+cd repositories/imbi-ui
 echo 'VITE_PROXY_TARGET=http://localhost:8080' > .env.local
 npm install
 npm run dev
@@ -116,8 +124,10 @@ Useful services during UI development:
 |---------|-----|-----|
 | UI (dev) | http://localhost:3000 | Vite dev server with hot-reload |
 | Imbi (backend) | http://localhost:8080 | Full app via Caddy (API + bundled UI) |
-| Mailpit | http://localhost:8025 | View emails sent by the app |
-| Neo4j Browser | http://localhost:7474 | Inspect graph data directly |
+
+Mailpit (email) and PostgreSQL (graph data) are reachable on the ephemeral
+host ports reported by `docker compose port <service> <container-port>`
+(see the table above) for inspecting state during development.
 
 ### Python Service Development (Beta)
 
@@ -194,6 +204,9 @@ just build
 # Build with a specific tag
 just build v1.0.0
 
+# Check out all submodules at their recorded commits
+just checkout-submodules
+
 # Update all submodules to latest main
 just update-submodules
 
@@ -229,19 +242,30 @@ just update-submodules-tag v1.0.0
 
 ```
 imbi/
-├── imbi-api/          # Core REST API (git submodule)
-├── imbi-assistant/    # AI assistant service (git submodule)
-├── imbi-common/       # Shared Python library (git submodule)
-├── imbi-gateway/      # Webhook gateway (git submodule)
-├── imbi-mcp/          # MCP server (git submodule)
-├── imbi-ui/           # React frontend (git submodule)
+├── repositories/                 # Git submodules for every service and plugin
+│   ├── imbi-api/                 # Core REST API
+│   ├── imbi-assistant/           # AI assistant service
+│   ├── imbi-gateway/             # Webhook gateway
+│   ├── imbi-mcp/                 # MCP server
+│   ├── imbi-ui/                  # React frontend
+│   ├── imbi-plugin-aws/          # AWS plugin
+│   ├── imbi-plugin-github/       # GitHub plugin
+│   ├── imbi-plugin-logzio/       # Logz.io plugin
+│   ├── imbi-plugin-oidc/         # OIDC authentication plugin
+│   ├── imbi-plugin-sonarqube/    # SonarQube plugin
+│   └── imbi-slackbot/            # Slack bot (vendored in-tree, not a submodule)
+├── runtime/           # Per-service dev image + Caddy helper for `just start-dev`/`stop-dev`
 ├── Caddyfile          # Reverse proxy configuration
+├── compose.yaml       # Local Docker Compose stack
 ├── docs/              # Administration and usage documentation
 ├── helm/imbi/         # Helm chart for Kubernetes deployment
 ├── Dockerfile         # Multi-stage Docker build
 ├── entrypoint.sh      # Container entrypoint with service dispatch
 └── justfile           # Build and development commands
 ```
+
+> `imbi-common` is the shared Python library; it is pulled in as a published
+> dependency rather than tracked as a submodule here.
 
 ## Documentation
 
