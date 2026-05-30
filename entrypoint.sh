@@ -38,6 +38,13 @@ require_gateway_vars() {
     require_var POSTGRES_URL "PostgreSQL connection URL (e.g. postgresql://user:pass@host/db)"
 }
 
+require_slackbot_vars() {
+    require_var SLACK_APP_TOKEN "Slack app-level token for socket mode"
+    require_var SLACK_BOT_TOKEN "Slack bot OAuth token"
+    require_var ANTHROPIC_API_KEY "Anthropic API key (bot stays disabled without it)"
+    require_var POSTGRES_URL "PostgreSQL connection URL (e.g. postgresql://user:pass@host/db)"
+}
+
 check_errors() {
     if [ -n "$errors" ]; then
         echo "ERROR: Missing required environment variables for $1:" >&2
@@ -75,6 +82,9 @@ case "$IMBI_SERVICE" in
         require_var CLICKHOUSE_URL "ClickHouse connection URL (e.g. clickhouse+http://default:password@clickhouse:8123/imbi)"
         require_var IMBI_AUTH_ENCRYPTION_KEY "Fernet encryption key for sensitive data"
         require_gateway_vars
+        # Slack bot is optional in 'all' mode: it auto-enables only when
+        # ANTHROPIC_API_KEY and the SLACK_* tokens are present, so its vars
+        # are not required here.
         ;;
     api)
         require_api_vars
@@ -88,9 +98,12 @@ case "$IMBI_SERVICE" in
     mcp)
         # No required vars currently
         ;;
+    slackbot)
+        require_slackbot_vars
+        ;;
     *)
         echo "ERROR: Unknown service '$IMBI_SERVICE'" >&2
-        echo "Valid values: all, api, assistant, gateway, mcp" >&2
+        echo "Valid values: all, api, assistant, gateway, mcp, slackbot" >&2
         exit 1
         ;;
 esac
@@ -119,6 +132,7 @@ upload_sourcemaps() {
     if [ -n "${SENTRY_URL:-}" ]; then
         args="$args --url $SENTRY_URL"
     fi
+    # shellcheck disable=SC2086  # $args holds multiple flags; intentional word-splitting
     sentry-cli sourcemaps upload $args /srv/ui/assets/
     echo "Source maps uploaded."
 }
@@ -174,6 +188,11 @@ start_mcp() {
     imbi-mcp serve --transport streamable-http --host 0.0.0.0 --port 8001 &
 }
 
+start_slackbot() {
+    echo "Starting imbi-slackbot on :8004..."
+    imbi-slackbot serve --host 0.0.0.0 --port 8004 &
+}
+
 start_caddy() {
     echo "Starting caddy reverse proxy on :8080..."
     caddy run --config /etc/caddy/Caddyfile &
@@ -185,6 +204,7 @@ case "$IMBI_SERVICE" in
         start_assistant
         start_gateway
         start_mcp
+        start_slackbot
         start_caddy
         ;;
     api)
@@ -199,9 +219,12 @@ case "$IMBI_SERVICE" in
     mcp)
         exec imbi-mcp serve --transport streamable-http --host 0.0.0.0 --port 8001
         ;;
+    slackbot)
+        exec imbi-slackbot serve --host 0.0.0.0 --port 8004
+        ;;
     *)
         echo "ERROR: Unknown service '$IMBI_SERVICE'" >&2
-        echo "Valid values: all, api, assistant, gateway, mcp" >&2
+        echo "Valid values: all, api, assistant, gateway, mcp, slackbot" >&2
         exit 1
         ;;
 esac
