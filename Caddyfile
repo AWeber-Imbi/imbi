@@ -27,6 +27,16 @@
 		reverse_proxy 127.0.0.1:8003
 	}
 
+	# MCP clients derive AS metadata discovery from the /mcp resource
+	# URL, requesting /mcp/.well-known/oauth-authorization-server. Strip
+	# the /mcp prefix and serve it from imbi-api (which registers the
+	# document at the bare /.well-known path). Must precede @mcp so it
+	# wins over the /mcp/* catch-all below.
+	handle /mcp/.well-known/oauth-authorization-server* {
+		uri strip_prefix /mcp
+		reverse_proxy 127.0.0.1:8000
+	}
+
 	@mcp path /mcp /mcp/*
 	handle @mcp {
 		reverse_proxy 127.0.0.1:8001
