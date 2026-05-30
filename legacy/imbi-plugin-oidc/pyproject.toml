@@ -1,6 +1,6 @@
 [project]
 name = "imbi-plugin-oidc"
-version = "1.0.2"
+version = "2.8.0"
 description = "Generic OIDC identity plugin for Imbi"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27",
-  "imbi-common>=0.1.0a1",
+  "imbi-common==2.8.0",
   "pydantic>=2",
 ]
 
@@ -27,7 +27,7 @@ oidc = "imbi_plugin_oidc.plugin:OIDCPlugin"
 dev = [
   "basedpyright",
   "coverage[toml]",
-  "imbi-common[server,databases]",
+  "imbi-common[server,databases]==2.8.0",
   "pre-commit",
   "pytest",
   "pytest-asyncio",
