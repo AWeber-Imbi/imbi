@@ -222,11 +222,18 @@ async def callback(
             status_code=404, detail=f'Plugin {plugin_id!r} not available'
         ) from exc
 
-    target: str = (
+    # The callback is served by the API, but the landing page is a UI
+    # route. Absolutize against ``ui_url`` so the browser resolves the
+    # 302 against the UI origin rather than the API host. ``ui_url`` is
+    # empty in same-origin deployments, yielding a relative path the
+    # browser resolves against the current host.
+    path: str = (
         return_to
         if return_to is not None and _is_safe_return_to(return_to)
         else '/settings/connections'
     )
+    ui_url = settings.get_server_config().ui_url
+    target = f'{ui_url}{path}' if ui_url else path
     return fastapi.responses.RedirectResponse(target, status_code=302)
 
 

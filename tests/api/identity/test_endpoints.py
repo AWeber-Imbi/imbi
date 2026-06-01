@@ -283,6 +283,75 @@ class CallbackEndpointTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers['location'], '/settings/connections')
 
+    async def test_absolutizes_return_to_against_ui_url(self) -> None:
+        from imbi_common.plugins.base import (
+            IdentityCredentials,
+            IdentityProfile,
+        )
+
+        db = mock.AsyncMock()
+        with (
+            mock.patch.object(
+                endpoints.flows,
+                'complete_flow',
+                new=mock.AsyncMock(
+                    return_value=(
+                        IdentityProfile(subject='s'),
+                        IdentityCredentials(access_token='at'),
+                        'plugin-1',
+                        '/projects/x',
+                    )
+                ),
+            ),
+            mock.patch.object(
+                endpoints.settings,
+                'get_server_config',
+                return_value=mock.MagicMock(ui_url='https://ui.imbi.test'),
+            ),
+        ):
+            response = await endpoints.callback(
+                'plugin-1', 'code', 'st', db, mock.AsyncMock()
+            )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response.headers['location'], 'https://ui.imbi.test/projects/x'
+        )
+
+    async def test_absolutizes_default_against_ui_url(self) -> None:
+        from imbi_common.plugins.base import (
+            IdentityCredentials,
+            IdentityProfile,
+        )
+
+        db = mock.AsyncMock()
+        with (
+            mock.patch.object(
+                endpoints.flows,
+                'complete_flow',
+                new=mock.AsyncMock(
+                    return_value=(
+                        IdentityProfile(subject='s'),
+                        IdentityCredentials(access_token='at'),
+                        'plugin-1',
+                        None,
+                    )
+                ),
+            ),
+            mock.patch.object(
+                endpoints.settings,
+                'get_server_config',
+                return_value=mock.MagicMock(ui_url='https://ui.imbi.test'),
+            ),
+        ):
+            response = await endpoints.callback(
+                'plugin-1', 'code', 'st', db, mock.AsyncMock()
+            )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response.headers['location'],
+            'https://ui.imbi.test/settings/connections',
+        )
+
     async def test_maps_invalid_state_to_400(self) -> None:
         db = mock.AsyncMock()
         with mock.patch.object(
