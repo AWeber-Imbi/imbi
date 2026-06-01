@@ -50,10 +50,19 @@ export interface CommentThread {
  */
 export interface CommentThreadHandlers {
   onAcknowledge: (threadId: string, commentId: string) => void
-  onCreateThread: (body: string, inline?: { anchor: CommentAnchor }) => void
+  onCreateThread: (
+    body: string,
+    mentions: string[],
+    inline?: { anchor: CommentAnchor },
+  ) => void
   onDelete: (threadId: string, commentId: string) => void
-  onEdit: (threadId: string, commentId: string, body: string) => void
-  onReply: (threadId: string, body: string) => void
+  onEdit: (
+    threadId: string,
+    commentId: string,
+    body: string,
+    mentions: string[],
+  ) => void
+  onReply: (threadId: string, body: string, mentions: string[]) => void
   onResolve: (threadId: string, resolved: boolean) => void
 }
 

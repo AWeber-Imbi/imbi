@@ -20,16 +20,22 @@ interface Props {
   displayNames?: Map<string, string>
   draft?: DraftThread | null
   focusedId: null | string
+  lastVisit?: number
   layoutTick: number
   onAcknowledge: (threadId: string, commentId: string) => void
   onCancelDraft: () => void
   onDelete: (threadId: string, commentId: string) => void
-  onEdit: (threadId: string, commentId: string, body: string) => void
+  onEdit: (
+    threadId: string,
+    commentId: string,
+    body: string,
+    mentions: string[],
+  ) => void
   onFocus: (threadId: null | string) => void
   onHover: (threadId: null | string) => void
-  onReply: (threadId: string, body: string) => void
+  onReply: (threadId: string, body: string, mentions: string[]) => void
   onResolve: (threadId: string, resolved: boolean) => void
-  onSubmitDraft: (body: string) => void
+  onSubmitDraft: (body: string, mentions: string[]) => void
   /** Inline threads (anchored or orphaned) shown in the margin. */
   orphanedIds: Set<string>
   threads: CommentThread[]
@@ -59,6 +65,7 @@ export function RightCommentBar({
   displayNames,
   draft,
   focusedId,
+  lastVisit,
   layoutTick,
   onAcknowledge,
   onCancelDraft,
@@ -130,13 +137,16 @@ export function RightCommentBar({
             draft={isDraft}
             focused={thread.id === focusedId || isDraft}
             key={thread.id}
+            lastVisit={lastVisit}
             onAcknowledge={(commentId) => onAcknowledge(thread.id, commentId)}
             onCancelDraft={onCancelDraft}
             onDelete={(commentId) => onDelete(thread.id, commentId)}
-            onEdit={(commentId, body) => onEdit(thread.id, commentId, body)}
+            onEdit={(commentId, body, mentions) =>
+              onEdit(thread.id, commentId, body, mentions)
+            }
             onFocus={() => onFocus(thread.id)}
             onHover={(hovered) => onHover(hovered ? thread.id : null)}
-            onReply={(body) => onReply(thread.id, body)}
+            onReply={(body, mentions) => onReply(thread.id, body, mentions)}
             onResolve={(resolved) => onResolve(thread.id, resolved)}
             onSubmitDraft={onSubmitDraft}
             orphaned={!isDraft && orphanedIds.has(thread.id)}

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { formatDistanceToNow } from 'date-fns'
 import { Pencil, Reply, ThumbsUp, Trash2 } from 'lucide-react'
@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import type { Comment } from '@/types/comments'
 
 import { CommentComposer } from './CommentComposer'
+import { parseBody } from './mentions'
 
 interface ActionsProps {
   ackCount: number
@@ -29,8 +30,10 @@ interface Props {
   displayNames?: Map<string, string>
   onAcknowledge: () => void
   onDelete: () => void
-  onEdit: (body: string) => void
+  onEdit: (body: string, mentions: string[]) => void
   onReply?: () => void
+  /** Show an unread dot — comment is newer than the viewer's last visit. */
+  unread?: boolean
 }
 
 export function CommentItem({
@@ -42,6 +45,7 @@ export function CommentItem({
   onDelete,
   onEdit,
   onReply,
+  unread = false,
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -65,25 +69,35 @@ export function CommentItem({
           })}
           {comment.edited && ' · edited'}
         </span>
+        {unread && (
+          <span
+            aria-label="New since your last visit"
+            className="comment-unread-dot"
+            title="New since your last visit"
+          />
+        )}
       </div>
 
       {editing ? (
         <CommentComposer
           autoFocus
           busy={busy}
+          displayNames={displayNames}
           initial={comment.body}
           onCancel={() => setEditing(false)}
-          onSubmit={(body) => {
-            onEdit(body)
+          onSubmit={(body, mentions) => {
+            onEdit(body, mentions)
             setEditing(false)
           }}
           submitLabel="Save"
         />
       ) : (
         <>
-          <div className="text-primary text-[13.5px] leading-normal whitespace-pre-wrap">
-            {comment.body}
-          </div>
+          <CommentBody
+            body={comment.body}
+            displayNames={displayNames}
+            mentions={comment.mentions}
+          />
           <CommentActions
             ackCount={ackCount}
             acknowledged={acknowledged}
@@ -165,6 +179,47 @@ function CommentActions({
         />
       )}
       {mine && <OwnerActions onDelete={onDelete} onEdit={onEdit} />}
+    </div>
+  )
+}
+
+/**
+ * Render a comment body, styling `@Display Name` tokens that resolve to one of
+ * the comment's mentioned users. Matching is restricted to the comment's
+ * `mentions` (resolved emails) so unrelated `@text` is left as plain text.
+ */
+function CommentBody({
+  body,
+  displayNames,
+  mentions,
+}: {
+  body: string
+  displayNames?: Map<string, string>
+  mentions: string[]
+}) {
+  const names = useMemo(() => {
+    const m = new Map<string, string>()
+    if (!displayNames) return m
+    for (const email of mentions) {
+      const name = displayNames.get(email)
+      if (name) m.set(email, name)
+    }
+    return m
+  }, [displayNames, mentions])
+
+  const segments = useMemo(() => parseBody(body, names), [body, names])
+
+  return (
+    <div className="text-primary text-[13.5px] leading-normal whitespace-pre-wrap">
+      {segments.map((seg, i) =>
+        seg.type === 'mention' ? (
+          <span className="comment-mention" key={i}>
+            {seg.text}
+          </span>
+        ) : (
+          <span key={i}>{seg.text}</span>
+        ),
+      )}
     </div>
   )
 }

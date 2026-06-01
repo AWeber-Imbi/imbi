@@ -16,15 +16,16 @@ interface Props {
   displayNames?: Map<string, string>
   draft?: boolean
   focused: boolean
+  lastVisit?: number
   onAcknowledge: (commentId: string) => void
   onCancelDraft?: () => void
   onDelete: (commentId: string) => void
-  onEdit: (commentId: string, body: string) => void
+  onEdit: (commentId: string, body: string, mentions: string[]) => void
   onFocus: () => void
   onHover: (hovered: boolean) => void
-  onReply: (body: string) => void
+  onReply: (body: string, mentions: string[]) => void
   onResolve: (resolved: boolean) => void
-  onSubmitDraft?: (body: string) => void
+  onSubmitDraft?: (body: string, mentions: string[]) => void
   orphaned?: boolean
   thread: CommentThread
 }
@@ -45,6 +46,7 @@ export const MarginCommentCard = forwardRef<HTMLDivElement, Props>(
       displayNames,
       draft,
       focused,
+      lastVisit,
       onAcknowledge,
       onCancelDraft,
       onDelete,
@@ -89,8 +91,9 @@ export const MarginCommentCard = forwardRef<HTMLDivElement, Props>(
           <CommentComposer
             autoFocus
             busy={busy}
+            displayNames={displayNames}
             onCancel={onCancelDraft}
-            onSubmit={(body) => onSubmitDraft?.(body)}
+            onSubmit={(body, mentions) => onSubmitDraft?.(body, mentions)}
             placeholder="Add your comment…"
             submitLabel="Comment"
           />
@@ -99,6 +102,7 @@ export const MarginCommentCard = forwardRef<HTMLDivElement, Props>(
             busy={busy}
             currentUserEmail={currentUserEmail}
             displayNames={displayNames}
+            lastVisit={lastVisit}
             onAcknowledge={onAcknowledge}
             onDelete={onDelete}
             onEdit={onEdit}

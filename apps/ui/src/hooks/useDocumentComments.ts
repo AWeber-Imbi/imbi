@@ -28,14 +28,17 @@ interface CommentVars {
 interface CreateThreadVars {
   anchor?: CommentAnchor
   body: string
+  mentions: string[]
 }
 
 interface EditVars extends CommentVars {
   body: string
+  mentions: string[]
 }
 
 interface ReplyVars {
   body: string
+  mentions: string[]
   threadId: string
 }
 
@@ -109,9 +112,10 @@ export function useDocumentComments(
     unknown,
     CreateThreadVars
   >({
-    mutationFn: ({ anchor, body }) =>
+    mutationFn: ({ anchor, body, mentions }) =>
       createCommentThread(orgSlug, projectId, documentId, {
         body,
+        mentions,
         ...(anchor ? { anchor, kind: 'inline' } : { kind: 'page' }),
       }),
     onError: fail('Comment failed'),
@@ -124,8 +128,11 @@ export function useDocumentComments(
   })
 
   const replyMutation = useMutation<Comment, unknown, ReplyVars>({
-    mutationFn: ({ body, threadId }) =>
-      addCommentReply(orgSlug, projectId, documentId, threadId, { body }),
+    mutationFn: ({ body, mentions, threadId }) =>
+      addCommentReply(orgSlug, projectId, documentId, threadId, {
+        body,
+        mentions,
+      }),
     onError: fail('Reply failed'),
     onSettled: settle,
     onSuccess: (comment, { threadId }) => {
@@ -195,18 +202,27 @@ export function useDocumentComments(
     EditVars,
     { previous?: CommentThread[] }
   >({
-    mutationFn: ({ body, commentId, threadId }) =>
-      editComment(orgSlug, projectId, documentId, threadId, commentId, body),
+    mutationFn: ({ body, commentId, mentions, threadId }) =>
+      editComment(
+        orgSlug,
+        projectId,
+        documentId,
+        threadId,
+        commentId,
+        body,
+        mentions,
+      ),
     onError: (err, _vars, ctx) => {
       rollback(ctx)
       fail('Edit failed')(err)
     },
-    onMutate: ({ body, commentId, threadId }) =>
+    onMutate: ({ body, commentId, mentions, threadId }) =>
       optimistic((prev) =>
         mapComment(prev, threadId, commentId, (c) => ({
           ...c,
           body,
           edited: true,
+          mentions,
         })),
       ),
     onSettled: settle,
@@ -234,13 +250,14 @@ export function useDocumentComments(
     commentsBusy,
     onAcknowledge: (threadId, commentId) =>
       acknowledgeMutation.mutate({ commentId, threadId }),
-    onCreateThread: (body, inline) =>
-      createThreadMutation.mutate({ anchor: inline?.anchor, body }),
+    onCreateThread: (body, mentions, inline) =>
+      createThreadMutation.mutate({ anchor: inline?.anchor, body, mentions }),
     onDelete: (threadId, commentId) =>
       deleteCommentMutation.mutate({ commentId, threadId }),
-    onEdit: (threadId, commentId, body) =>
-      editMutation.mutate({ body, commentId, threadId }),
-    onReply: (threadId, body) => replyMutation.mutate({ body, threadId }),
+    onEdit: (threadId, commentId, body, mentions) =>
+      editMutation.mutate({ body, commentId, mentions, threadId }),
+    onReply: (threadId, body, mentions) =>
+      replyMutation.mutate({ body, mentions, threadId }),
     onResolve: (threadId, resolved) =>
       resolveMutation.mutate({ resolved, threadId }),
   }

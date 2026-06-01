@@ -14,6 +14,7 @@ interface Props extends CommentThreadHandlers {
   currentUserEmail: string
   displayNames?: Map<string, string>
   filter: CommentFilter
+  lastVisit?: number
   threads: CommentThread[]
 }
 
@@ -22,6 +23,7 @@ export function BottomDiscussion({
   currentUserEmail,
   displayNames,
   filter,
+  lastVisit,
   onAcknowledge,
   onCreateThread,
   onDelete,
@@ -50,6 +52,7 @@ export function BottomDiscussion({
 
       <CommentComposer
         busy={busy}
+        displayNames={displayNames}
         onSubmit={onCreateThread}
         placeholder="Add a comment to the discussion…"
         submitLabel="Comment"
@@ -67,10 +70,13 @@ export function BottomDiscussion({
               currentUserEmail={currentUserEmail}
               displayNames={displayNames}
               key={thread.id}
+              lastVisit={lastVisit}
               onAcknowledge={(commentId) => onAcknowledge(thread.id, commentId)}
               onDelete={(commentId) => onDelete(thread.id, commentId)}
-              onEdit={(commentId, body) => onEdit(thread.id, commentId, body)}
-              onReply={(body) => onReply(thread.id, body)}
+              onEdit={(commentId, body, mentions) =>
+                onEdit(thread.id, commentId, body, mentions)
+              }
+              onReply={(body, mentions) => onReply(thread.id, body, mentions)}
               onResolve={(resolved) => onResolve(thread.id, resolved)}
               thread={thread}
             />

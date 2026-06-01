@@ -334,6 +334,8 @@ export function ProjectDocumentsTab({
         onReplyComment={comments.onReply}
         onResolveThread={comments.onResolve}
         onTogglePin={() => togglePin(selectedDocument)}
+        orgSlug={orgSlug}
+        projectId={projectId}
       />
     )
   }

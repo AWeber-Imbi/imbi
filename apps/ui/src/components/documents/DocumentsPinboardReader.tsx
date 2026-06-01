@@ -32,6 +32,7 @@ import { BottomDiscussion } from './comments/BottomDiscussion'
 import type { CommentFilter } from './comments/BottomDiscussion'
 import { RightCommentBar } from './comments/RightCommentBar'
 import { SelectionToolbar } from './comments/SelectionToolbar'
+import { useCommentLastVisit } from './comments/useCommentLastVisit'
 import { useInlineComments } from './comments/useInlineComments'
 import { DocumentsFilterRail } from './DocumentsFilterRail'
 import {
@@ -60,15 +61,26 @@ interface Props {
   document: Document
   onAcknowledgeComment: (threadId: string, commentId: string) => void
   onBack: () => void
-  onCreateThread: (body: string, inline?: { anchor: CommentAnchor }) => void
+  onCreateThread: (
+    body: string,
+    mentions: string[],
+    inline?: { anchor: CommentAnchor },
+  ) => void
   onDelete?: () => void
   onDeleteComment: (threadId: string, commentId: string) => void
   onEdit?: () => void
-  onEditComment: (threadId: string, commentId: string, body: string) => void
+  onEditComment: (
+    threadId: string,
+    commentId: string,
+    body: string,
+    mentions: string[],
+  ) => void
   onOpen: (documentId: string) => void
-  onReplyComment: (threadId: string, body: string) => void
+  onReplyComment: (threadId: string, body: string, mentions: string[]) => void
   onResolveThread: (threadId: string, resolved: boolean) => void
   onTogglePin: () => void
+  orgSlug: string
+  projectId: string
 }
 
 export function DocumentsPinboardReader({
@@ -90,10 +102,12 @@ export function DocumentsPinboardReader({
   onReplyComment,
   onResolveThread,
   onTogglePin,
+  orgSlug,
+  projectId,
 }: Props) {
   const [search, setSearch] = useState('')
   const [commentFilter, setCommentFilter] = useState<CommentFilter>('open')
-  const [showComments, setShowComments] = useState(true)
+  const [showComments, setShowComments] = useState(false)
   const articleRef = useRef<HTMLDivElement>(null)
   const marginRef = useRef<HTMLDivElement>(null)
 
@@ -131,9 +145,11 @@ export function DocumentsPinboardReader({
     [inlineThreads, commentFilter, inline.focusedId],
   )
 
-  const handleSubmitDraft = (body: string) => {
+  const lastVisit = useCommentLastVisit(orgSlug, projectId, document.id)
+
+  const handleSubmitDraft = (body: string, mentions: string[]) => {
     if (!inline.draft) return
-    onCreateThread(body, { anchor: inline.draft.anchor })
+    onCreateThread(body, mentions, { anchor: inline.draft.anchor })
     inline.onConfirmedDraft()
   }
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -190,36 +206,34 @@ export function DocumentsPinboardReader({
               All documents
             </Button>
             <div className="ml-auto flex items-center gap-1">
-              {showComments && (
-                <SegmentedControl
-                  ariaLabel="Comment filter"
-                  className="mr-1"
-                  onValueChange={(v) => setCommentFilter(v as CommentFilter)}
-                  value={commentFilter}
-                >
-                  <SegmentedControlItem value="open">
-                    <CircleDot className="size-3" />
-                    Open
-                    <span className="text-tertiary tabular-nums">
-                      {commentCounts.open}
-                    </span>
-                  </SegmentedControlItem>
-                  <SegmentedControlItem value="resolved">
-                    <CheckCircle2 className="size-3" />
-                    Resolved
-                    <span className="text-tertiary tabular-nums">
-                      {commentCounts.resolved}
-                    </span>
-                  </SegmentedControlItem>
-                  <SegmentedControlItem value="all">
-                    <List className="size-3" />
-                    All
-                    <span className="text-tertiary tabular-nums">
-                      {commentCounts.all}
-                    </span>
-                  </SegmentedControlItem>
-                </SegmentedControl>
-              )}
+              <SegmentedControl
+                ariaLabel="Comment filter"
+                className="mr-1"
+                onValueChange={(v) => setCommentFilter(v as CommentFilter)}
+                value={commentFilter}
+              >
+                <SegmentedControlItem value="open">
+                  <CircleDot className="size-3" />
+                  Open
+                  <span className="text-tertiary tabular-nums">
+                    {commentCounts.open}
+                  </span>
+                </SegmentedControlItem>
+                <SegmentedControlItem value="resolved">
+                  <CheckCircle2 className="size-3" />
+                  Resolved
+                  <span className="text-tertiary tabular-nums">
+                    {commentCounts.resolved}
+                  </span>
+                </SegmentedControlItem>
+                <SegmentedControlItem value="all">
+                  <List className="size-3" />
+                  All
+                  <span className="text-tertiary tabular-nums">
+                    {commentCounts.all}
+                  </span>
+                </SegmentedControlItem>
+              </SegmentedControl>
               <Button
                 className="gap-1.5"
                 onClick={() => setShowComments((v) => !v)}
@@ -229,15 +243,15 @@ export function DocumentsPinboardReader({
                 {showComments ? (
                   <>
                     <EyeOff className="size-3" />
-                    Hide comments
+                    Hide inline comments
                   </>
                 ) : (
                   <>
                     <Eye className="size-3" />
-                    Show comments
-                    {commentCounts.all > 0 && (
+                    Show inline comments
+                    {inlineThreads.length > 0 && (
                       <span className="text-tertiary tabular-nums">
-                        {commentCounts.all}
+                        {inlineThreads.length}
                       </span>
                     )}
                   </>
@@ -437,6 +451,7 @@ export function DocumentsPinboardReader({
                 displayNames={displayNames}
                 draft={inline.draft}
                 focusedId={inline.focusedId}
+                lastVisit={lastVisit}
                 layoutTick={inline.layoutTick}
                 onAcknowledge={onAcknowledgeComment}
                 onCancelDraft={inline.onCancelDraft}
@@ -454,23 +469,22 @@ export function DocumentsPinboardReader({
           )}
         </div>
 
-        {showComments && (
-          <div className="grid grid-cols-[minmax(0,1fr)_260px] gap-5">
-            <BottomDiscussion
-              busy={commentsBusy}
-              currentUserEmail={currentUserEmail}
-              displayNames={displayNames}
-              filter={commentFilter}
-              onAcknowledge={onAcknowledgeComment}
-              onCreateThread={onCreateThread}
-              onDelete={onDeleteComment}
-              onEdit={onEditComment}
-              onReply={onReplyComment}
-              onResolve={onResolveThread}
-              threads={pageThreads}
-            />
-          </div>
-        )}
+        <div className="grid grid-cols-[minmax(0,1fr)_260px] gap-5">
+          <BottomDiscussion
+            busy={commentsBusy}
+            currentUserEmail={currentUserEmail}
+            displayNames={displayNames}
+            filter={commentFilter}
+            lastVisit={lastVisit}
+            onAcknowledge={onAcknowledgeComment}
+            onCreateThread={onCreateThread}
+            onDelete={onDeleteComment}
+            onEdit={onEditComment}
+            onReply={onReplyComment}
+            onResolve={onResolveThread}
+            threads={pageThreads}
+          />
+        </div>
       </div>
 
       <SelectionToolbar

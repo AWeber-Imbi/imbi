@@ -1635,10 +1635,14 @@ export const editComment = (
   threadId: string,
   commentId: string,
   body: string,
+  mentions: string[],
 ) =>
   apiClient.patch<Comment>(
     `${documentCommentsPath(orgSlug, projectId, documentId)}/${encodeURIComponent(threadId)}/comments/${encodeURIComponent(commentId)}`,
-    [{ op: 'replace', path: '/body', value: body }],
+    [
+      { op: 'replace', path: '/body', value: body },
+      { op: 'replace', path: '/mentions', value: mentions },
+    ],
   )
 
 export const acknowledgeComment = (

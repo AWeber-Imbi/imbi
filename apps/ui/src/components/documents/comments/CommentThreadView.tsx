@@ -11,10 +11,12 @@ interface Props {
   busy?: boolean
   currentUserEmail: string
   displayNames?: Map<string, string>
+  /** Epoch ms of the viewer's last visit; comments after it show unread dots. */
+  lastVisit?: number
   onAcknowledge: (commentId: string) => void
   onDelete: (commentId: string) => void
-  onEdit: (commentId: string, body: string) => void
-  onReply: (body: string) => void
+  onEdit: (commentId: string, body: string, mentions: string[]) => void
+  onReply: (body: string, mentions: string[]) => void
   onResolve: (resolved: boolean) => void
   thread: CommentThread
 }
@@ -31,6 +33,7 @@ export function CommentThreadView({
   busy = false,
   currentUserEmail,
   displayNames,
+  lastVisit,
   onAcknowledge,
   onDelete,
   onEdit,
@@ -41,6 +44,11 @@ export function CommentThreadView({
   const root = thread.comments[0]
   const replies = thread.comments.slice(1)
   if (!root) return null
+
+  const isUnread = (comment: (typeof thread.comments)[number]) =>
+    lastVisit !== undefined &&
+    comment.author !== currentUserEmail &&
+    new Date(comment.created_at).getTime() > lastVisit
 
   return (
     <div className="border-tertiary bg-primary flex flex-col gap-3 rounded-lg border p-4">
@@ -59,7 +67,8 @@ export function CommentThreadView({
         displayNames={displayNames}
         onAcknowledge={() => onAcknowledge(root.id)}
         onDelete={() => onDelete(root.id)}
-        onEdit={(body) => onEdit(root.id, body)}
+        onEdit={(body, mentions) => onEdit(root.id, body, mentions)}
+        unread={isUnread(root)}
       />
 
       {replies.length > 0 && (
@@ -73,7 +82,8 @@ export function CommentThreadView({
               key={reply.id}
               onAcknowledge={() => onAcknowledge(reply.id)}
               onDelete={() => onDelete(reply.id)}
-              onEdit={(body) => onEdit(reply.id, body)}
+              onEdit={(body, mentions) => onEdit(reply.id, body, mentions)}
+              unread={isUnread(reply)}
             />
           ))}
         </div>
@@ -82,6 +92,7 @@ export function CommentThreadView({
       {!thread.resolved && (
         <CommentComposer
           busy={busy}
+          displayNames={displayNames}
           onSubmit={onReply}
           placeholder="Reply…"
           submitLabel="Reply"
