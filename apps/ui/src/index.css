@@ -490,6 +490,70 @@
     background: var(--color-activity-info-dot);
     flex-shrink: 0;
   }
+
+  /* Brief ring when a thread is deep-linked from the activity feed. */
+  .comment-thread-flash {
+    animation: comment-thread-flash 1.8s ease-out;
+  }
+
+  /* Theme the mdx-editor rich composer onto the design tokens. Mapping the
+     editor's semantic vars to our --ds-* tokens makes it dark-mode aware
+     without depending on the editor's own .dark-theme class. */
+  .ds-mdx .mdxeditor {
+    --baseBg: var(--ds-bg-primary);
+    --basePageBg: var(--ds-bg-primary);
+    --baseBgSubtle: var(--ds-bg-secondary);
+    --baseBgHover: var(--ds-bg-secondary);
+    --baseBgActive: var(--ds-bg-tertiary);
+    --baseText: var(--ds-text-primary);
+    --baseTextContrast: var(--ds-text-primary);
+    --baseBorder: var(--ds-border-tertiary);
+    --baseBorderHover: var(--ds-border-secondary);
+    --baseLine: var(--ds-border-tertiary);
+    --accentText: var(--ds-action-fg);
+    --accentTextContrast: var(--ds-text-primary);
+    --accentBg: var(--ds-action-bg);
+    --accentBgSubtle: var(--ds-action-bg);
+    --accentBgHover: var(--ds-action-bg-hover);
+    --accentBgActive: var(--ds-action-bg-hover);
+    --accentBorder: var(--ds-border-accent);
+    --accentSolid: var(--color-primary);
+    --accentSolidHover: var(--color-primary);
+    /* White content surface (dark surface in dark mode) so the editor reads
+       as an input field rather than blending into the page. */
+    background: var(--ds-bg-primary);
+    border: 0.5px solid var(--ds-border-tertiary);
+    border-radius: 0.375rem;
+    font-family: inherit;
+  }
+
+  .ds-mdx .ds-mdx-content {
+    min-height: var(--ds-mdx-min-h, 152px);
+    padding: 6px 10px;
+    font-size: 13.5px;
+    background: var(--ds-bg-primary);
+    /* User-adjustable height: drag the bottom-right handle. */
+    resize: vertical;
+    overflow: auto;
+  }
+
+  /* Compact the toolbar to match the dense UI. */
+  .ds-mdx .mdxeditor [role='toolbar'] {
+    padding: 3px;
+    min-height: 0;
+  }
+}
+
+@keyframes comment-thread-flash {
+  0% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  15% {
+    box-shadow: 0 0 0 2px var(--ds-border-accent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 
 @keyframes slide-in-right {

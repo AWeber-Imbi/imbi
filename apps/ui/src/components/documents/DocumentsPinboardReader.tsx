@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { useSearchParams } from 'react-router-dom'
+
 import {
   ArrowLeft,
   CheckCircle2,
@@ -83,6 +85,7 @@ interface Props {
   projectId: string
 }
 
+// fallow-ignore-next-line complexity
 export function DocumentsPinboardReader({
   allDocuments,
   comments,
@@ -111,9 +114,12 @@ export function DocumentsPinboardReader({
   const articleRef = useRef<HTMLDivElement>(null)
   const marginRef = useRef<HTMLDivElement>(null)
 
+  // The Open/Resolved/All filter applies to inline comments only — the page
+  // discussion is a flat, non-resolvable feed.
   const commentCounts = useMemo(() => {
-    const open = comments.filter((t) => !t.resolved).length
-    return { all: comments.length, open, resolved: comments.length - open }
+    const inline = comments.filter((t) => t.kind === 'inline')
+    const open = inline.filter((t) => !t.resolved).length
+    return { all: inline.length, open, resolved: inline.length - open }
   }, [comments])
 
   const pageThreads = useMemo(
@@ -146,6 +152,49 @@ export function DocumentsPinboardReader({
   )
 
   const lastVisit = useCommentLastVisit(orgSlug, projectId, document.id)
+
+  // Deep-link: ?thread=<id> (e.g. from the activity feed) scrolls to and
+  // flashes a page thread; for an inline one it shows + focuses the reader
+  // and scrolls to the highlight (which only renders once the overlay is on,
+  // hence the rAF retry).
+  const [searchParams] = useSearchParams()
+  const focusThreadId = searchParams.get('thread')
+  const setFocusedId = inline.setFocusedId
+  // fallow-ignore-next-line complexity
+  useEffect(() => {
+    if (!focusThreadId || comments.length === 0) return
+    const isInline = inlineThreads.some((t) => t.id === focusThreadId)
+    if (isInline) {
+      setShowComments(true)
+      setFocusedId(focusThreadId)
+    }
+    let raf = 0
+    let tries = 0
+    let cleanup: (() => void) | undefined
+    const attempt = () => {
+      const target = isInline
+        ? articleRef.current?.querySelector(
+            `.comment-highlight[data-thread-id="${focusThreadId}"]`,
+          )
+        : window.document.getElementById(`comment-thread-${focusThreadId}`)
+      if (target instanceof HTMLElement) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        target.classList.add('comment-thread-flash')
+        const timer = window.setTimeout(
+          () => target.classList.remove('comment-thread-flash'),
+          1800,
+        )
+        cleanup = () => window.clearTimeout(timer)
+      } else if (tries++ < 30) {
+        raf = requestAnimationFrame(attempt)
+      }
+    }
+    raf = requestAnimationFrame(attempt)
+    return () => {
+      cancelAnimationFrame(raf)
+      cleanup?.()
+    }
+  }, [comments.length, focusThreadId, inlineThreads, setFocusedId])
 
   const handleSubmitDraft = (body: string, mentions: string[]) => {
     if (!inline.draft) return
@@ -206,34 +255,36 @@ export function DocumentsPinboardReader({
               All documents
             </Button>
             <div className="ml-auto flex items-center gap-1">
-              <SegmentedControl
-                ariaLabel="Comment filter"
-                className="mr-1"
-                onValueChange={(v) => setCommentFilter(v as CommentFilter)}
-                value={commentFilter}
-              >
-                <SegmentedControlItem value="open">
-                  <CircleDot className="size-3" />
-                  Open
-                  <span className="text-tertiary tabular-nums">
-                    {commentCounts.open}
-                  </span>
-                </SegmentedControlItem>
-                <SegmentedControlItem value="resolved">
-                  <CheckCircle2 className="size-3" />
-                  Resolved
-                  <span className="text-tertiary tabular-nums">
-                    {commentCounts.resolved}
-                  </span>
-                </SegmentedControlItem>
-                <SegmentedControlItem value="all">
-                  <List className="size-3" />
-                  All
-                  <span className="text-tertiary tabular-nums">
-                    {commentCounts.all}
-                  </span>
-                </SegmentedControlItem>
-              </SegmentedControl>
+              {showComments && (
+                <SegmentedControl
+                  ariaLabel="Comment filter"
+                  className="mr-1"
+                  onValueChange={(v) => setCommentFilter(v as CommentFilter)}
+                  value={commentFilter}
+                >
+                  <SegmentedControlItem value="open">
+                    <CircleDot className="size-3" />
+                    Open
+                    <span className="text-tertiary tabular-nums">
+                      {commentCounts.open}
+                    </span>
+                  </SegmentedControlItem>
+                  <SegmentedControlItem value="resolved">
+                    <CheckCircle2 className="size-3" />
+                    Resolved
+                    <span className="text-tertiary tabular-nums">
+                      {commentCounts.resolved}
+                    </span>
+                  </SegmentedControlItem>
+                  <SegmentedControlItem value="all">
+                    <List className="size-3" />
+                    All
+                    <span className="text-tertiary tabular-nums">
+                      {commentCounts.all}
+                    </span>
+                  </SegmentedControlItem>
+                </SegmentedControl>
+              )}
               <Button
                 className="gap-1.5"
                 onClick={() => setShowComments((v) => !v)}
@@ -474,7 +525,6 @@ export function DocumentsPinboardReader({
             busy={commentsBusy}
             currentUserEmail={currentUserEmail}
             displayNames={displayNames}
-            filter={commentFilter}
             lastVisit={lastVisit}
             onAcknowledge={onAcknowledgeComment}
             onCreateThread={onCreateThread}

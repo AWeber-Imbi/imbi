@@ -1,11 +1,12 @@
-import { useMemo } from 'react'
+import { useState } from 'react'
 
-import { MessagesSquare } from 'lucide-react'
+import { MessageSquarePlus, MessagesSquare } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import type { CommentThread, CommentThreadHandlers } from '@/types/comments'
 
-import { CommentComposer } from './CommentComposer'
 import { CommentThreadView } from './CommentThreadView'
+import { LazyRichComposer } from './LazyRichComposer'
 
 export type CommentFilter = 'all' | 'open' | 'resolved'
 
@@ -13,16 +14,20 @@ interface Props extends CommentThreadHandlers {
   busy?: boolean
   currentUserEmail: string
   displayNames?: Map<string, string>
-  filter: CommentFilter
   lastVisit?: number
   threads: CommentThread[]
 }
 
+/**
+ * The page-level discussion feed. Unlike inline comments, discussion threads
+ * are a flat, always-visible conversation — they are not resolvable and are
+ * not filtered. The composer follows the Confluence pattern: a collapsed
+ * "Add a comment" trigger at the bottom that expands into the form on click.
+ */
 export function BottomDiscussion({
   busy = false,
   currentUserEmail,
   displayNames,
-  filter,
   lastVisit,
   onAcknowledge,
   onCreateThread,
@@ -32,13 +37,7 @@ export function BottomDiscussion({
   onResolve,
   threads,
 }: Props) {
-  const visible = useMemo(
-    () =>
-      threads.filter((t) =>
-        filter === 'all' ? true : filter === 'open' ? !t.resolved : t.resolved,
-      ),
-    [threads, filter],
-  )
+  const [composing, setComposing] = useState(false)
 
   return (
     <section className="mt-8 flex flex-col gap-4">
@@ -50,21 +49,38 @@ export function BottomDiscussion({
         </span>
       </h2>
 
-      <CommentComposer
-        busy={busy}
-        displayNames={displayNames}
-        onSubmit={onCreateThread}
-        placeholder="Add a comment to the discussion…"
-        submitLabel="Comment"
-      />
-
-      {visible.length === 0 ? (
-        <div className="text-tertiary py-7 text-center text-[13.5px]">
-          No comments in this view.
+      {composing ? (
+        <LazyRichComposer
+          autoFocus
+          busy={busy}
+          displayNames={displayNames}
+          onCancel={() => setComposing(false)}
+          onSubmit={(body, mentions) => {
+            onCreateThread(body, mentions)
+            setComposing(false)
+          }}
+          placeholder="Add a comment to the discussion…"
+          submitLabel="Comment"
+        />
+      ) : (
+        <div>
+          <Button
+            className="gap-1.5"
+            onClick={() => setComposing(true)}
+            size="sm"
+            variant="ghost"
+          >
+            <MessageSquarePlus className="size-3.5" />
+            Add a comment
+          </Button>
         </div>
+      )}
+
+      {threads.length === 0 ? (
+        <div className="text-tertiary text-[13.5px]">No comments yet.</div>
       ) : (
         <div className="flex flex-col gap-3">
-          {visible.map((thread) => (
+          {threads.map((thread) => (
             <CommentThreadView
               busy={busy}
               currentUserEmail={currentUserEmail}
@@ -78,6 +94,7 @@ export function BottomDiscussion({
               }
               onReply={(body, mentions) => onReply(thread.id, body, mentions)}
               onResolve={(resolved) => onResolve(thread.id, resolved)}
+              resolvable={false}
               thread={thread}
             />
           ))}

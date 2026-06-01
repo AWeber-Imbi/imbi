@@ -7,8 +7,8 @@ import { UserDisplay } from '@/components/ui/user-display'
 import { cn } from '@/lib/utils'
 import type { CommentThread } from '@/types/comments'
 
-import { CommentComposer } from './CommentComposer'
 import { CommentThreadView } from './CommentThreadView'
+import { LazyRichComposer } from './LazyRichComposer'
 
 interface Props {
   busy?: boolean
@@ -88,10 +88,11 @@ export const MarginCommentCard = forwardRef<HTMLDivElement, Props>(
         )}
 
         {draft ? (
-          <CommentComposer
+          <LazyRichComposer
             autoFocus
             busy={busy}
             displayNames={displayNames}
+            minHeight={96}
             onCancel={onCancelDraft}
             onSubmit={(body, mentions) => onSubmitDraft?.(body, mentions)}
             placeholder="Add your comment…"

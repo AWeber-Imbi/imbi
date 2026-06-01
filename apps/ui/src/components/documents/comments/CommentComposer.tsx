@@ -1,10 +1,10 @@
 import type { KeyboardEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
 import { Gravatar } from '@/components/ui/gravatar'
 import { Textarea } from '@/components/ui/textarea'
 
+import { ComposerActions, isSubmitChord } from './ComposerActions'
 import type { MentionCandidate } from './mentions'
 import { resolveMentions } from './mentions'
 import { useMentionAutocomplete } from './useMentionAutocomplete'
@@ -115,59 +115,44 @@ export function CommentComposer({
   const empty = !text.trim()
 
   return (
-    <div className="relative flex flex-col gap-1.5">
-      <Textarea
-        className="min-h-9 resize-none text-[13.5px]"
-        onChange={(e) => {
-          setText(e.target.value)
-          grow()
-          mentions.refresh(e.target)
-        }}
-        onKeyDown={onKeyDown}
-        onKeyUp={(e) => {
-          // Don't undo the navigation/selection/dismiss the popover just did.
-          if (mentions.open && POPOVER_KEYS.has(e.key)) return
-          mentions.refresh(e.currentTarget)
-        }}
-        placeholder={placeholder}
-        ref={ref}
-        rows={1}
-        value={text}
-      />
-      {mentions.open && (
-        <MentionPopover
-          active={mentions.active}
-          matches={mentions.matches}
-          onPick={mentions.pick}
+    <div className="flex flex-col gap-1.5">
+      <div className="relative">
+        <Textarea
+          className="min-h-19 resize-none text-[13.5px]"
+          onChange={(e) => {
+            setText(e.target.value)
+            grow()
+            mentions.refresh(e.target)
+          }}
+          onKeyDown={onKeyDown}
+          onKeyUp={(e) => {
+            // Don't undo the navigation/selection/dismiss the popover just did.
+            if (mentions.open && POPOVER_KEYS.has(e.key)) return
+            mentions.refresh(e.currentTarget)
+          }}
+          placeholder={placeholder}
+          ref={ref}
+          rows={3}
+          value={text}
         />
-      )}
-      <div className="flex items-center justify-between">
-        <span className="text-tertiary text-[11px]">
-          {empty ? '' : 'Cmd + Enter to send · @ to mention'}
-        </span>
-        <div className="flex items-center gap-2">
-          {onCancel && (
-            <Button onClick={onCancel} size="sm" type="button" variant="ghost">
-              Cancel
-            </Button>
-          )}
-          <Button
-            disabled={empty || busy}
-            onClick={submit}
-            size="sm"
-            type="button"
-          >
-            {submitLabel}
-          </Button>
-        </div>
+        {mentions.open && (
+          <MentionPopover
+            active={mentions.active}
+            matches={mentions.matches}
+            onPick={mentions.pick}
+          />
+        )}
       </div>
+      <ComposerActions
+        busy={busy}
+        empty={empty}
+        hint="Cmd + Enter to send · @ to mention"
+        onCancel={onCancel}
+        onSubmit={submit}
+        submitLabel={submitLabel}
+      />
     </div>
   )
-}
-
-/** Cmd/Ctrl-Enter submits the composer. */
-function isSubmitChord(e: KeyboardEvent<HTMLTextAreaElement>): boolean {
-  return e.key === 'Enter' && (e.metaKey || e.ctrlKey)
 }
 
 function MentionPopover({
@@ -180,7 +165,7 @@ function MentionPopover({
   onPick: (candidate: MentionCandidate) => void
 }) {
   return (
-    <div className="border-tertiary bg-primary absolute top-9 left-0 z-20 flex w-64 flex-col gap-0.5 rounded-md border p-1 shadow-md">
+    <div className="border-tertiary bg-primary absolute top-full left-0 z-20 mt-1 flex w-64 flex-col gap-0.5 rounded-md border p-1 shadow-md">
       {matches.map((candidate, i) => (
         <button
           className={
