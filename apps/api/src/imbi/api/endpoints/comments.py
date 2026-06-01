@@ -5,9 +5,9 @@ Comments hang off a project ``Document`` via a ``CommentThread`` vertex
 (``IN_THREAD`` edge). The root comment is the oldest comment in a thread;
 replies follow in ``created_at`` order.
 
-Phase 1 only creates ``kind='page'`` threads — the anchor properties are
-persisted as empty strings / ``0`` and surfaced as ``anchor: null``.
-Inline-anchored threads are a later phase.
+``kind='page'`` threads persist the anchor properties as empty strings /
+``0`` and surface ``anchor: null``. ``kind='inline'`` threads carry an
+anchor (quote/prefix/suffix/start) and round-trip it on read.
 
 Modeled on :mod:`imbi_api.endpoints.documents`: raw Cypher via
 ``db.execute(...)`` + ``graph.parse_agtype(...)`` with local Pydantic
@@ -99,10 +99,21 @@ class CommentThreadListResponse(pydantic.BaseModel):
 
 
 class CommentThreadCreate(pydantic.BaseModel):
-    kind: typing.Literal['page'] = 'page'
+    kind: typing.Literal['page', 'inline'] = 'page'
     body: str = pydantic.Field(min_length=1)
     anchor: AnchorModel | None = None
     mentions: list[str] = []
+
+    @pydantic.model_validator(mode='after')
+    def _validate_anchor(self) -> typing.Self:
+        if self.kind == 'inline':
+            if self.anchor is None or not self.anchor.quote.strip():
+                raise ValueError(
+                    'inline threads require an anchor with a non-empty quote'
+                )
+        else:
+            self.anchor = None
+        return self
 
 
 class CommentBodyCreate(pydantic.BaseModel):
@@ -333,6 +344,7 @@ async def create_comment_thread(
     now = datetime.datetime.now(datetime.UTC)
     thread_id = nanoid.generate()
     comment_id = nanoid.generate()
+    anchor = data.anchor
     query: typing.LiteralString = (
         _DOC_JOIN
         + """
@@ -373,14 +385,14 @@ async def create_comment_thread(
             'project_id': project_id,
             'org_slug': org_slug,
             'thread_id': thread_id,
-            'kind': 'page',
+            'kind': data.kind,
             'resolved': False,
             'resolved_by': None,
             'resolved_at': None,
-            'anchor_quote': '',
-            'anchor_prefix': '',
-            'anchor_suffix': '',
-            'anchor_start': 0,
+            'anchor_quote': anchor.quote if anchor else '',
+            'anchor_prefix': anchor.prefix if anchor else '',
+            'anchor_suffix': anchor.suffix if anchor else '',
+            'anchor_start': anchor.start if anchor else 0,
             'created_by': auth.principal_name,
             'created_at': now.isoformat(),
             'updated_at': None,

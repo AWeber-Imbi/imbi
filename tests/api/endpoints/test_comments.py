@@ -201,6 +201,123 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
         response = self.client.post(_BASE, json={'body': ''})
         self.assertEqual(response.status_code, 422)
 
+    # -- Create inline thread ------------------------------------------
+
+    def test_create_inline_thread_with_anchor(self) -> None:
+        inline_thread = self._thread(
+            kind='inline',
+            anchor_quote='the disputed phrase',
+            anchor_prefix='before ',
+            anchor_suffix=' after',
+            anchor_start=42,
+        )
+        # 1: verify_document, 2: create, 3: _fetch_thread
+        self.mock_db.execute.side_effect = [
+            [{'id': 'doc-1'}],
+            [{'id': 'thread-1'}],
+            [self._thread_row(thread=inline_thread)],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.post(
+                _BASE,
+                json={
+                    'kind': 'inline',
+                    'body': 'Inline!',
+                    'anchor': {
+                        'quote': 'the disputed phrase',
+                        'prefix': 'before ',
+                        'suffix': ' after',
+                        'start': 42,
+                    },
+                },
+            )
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        self.assertEqual(body['kind'], 'inline')
+        self.assertEqual(body['anchor']['quote'], 'the disputed phrase')
+        self.assertEqual(body['anchor']['prefix'], 'before ')
+        self.assertEqual(body['anchor']['suffix'], ' after')
+        self.assertEqual(body['anchor']['start'], 42)
+        # Persisted params carry the anchor scalars.
+        create_call = self.mock_db.execute.await_args_list[1]
+        self.assertEqual(create_call.args[1]['kind'], 'inline')
+        self.assertEqual(
+            create_call.args[1]['anchor_quote'], 'the disputed phrase'
+        )
+        self.assertEqual(create_call.args[1]['anchor_prefix'], 'before ')
+        self.assertEqual(create_call.args[1]['anchor_suffix'], ' after')
+        self.assertEqual(create_call.args[1]['anchor_start'], 42)
+
+    def test_create_page_thread_has_no_anchor(self) -> None:
+        # Regression: page threads round-trip anchor=None.
+        self.mock_db.execute.side_effect = [
+            [{'id': 'doc-1'}],
+            [{'id': 'thread-1'}],
+            [self._thread_row()],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.post(_BASE, json={'body': 'First!'})
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()['kind'], 'page')
+        self.assertIsNone(response.json()['anchor'])
+
+    def test_create_inline_thread_missing_anchor_rejected(self) -> None:
+        response = self.client.post(
+            _BASE, json={'kind': 'inline', 'body': 'x'}
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_create_inline_thread_blank_quote_rejected(self) -> None:
+        response = self.client.post(
+            _BASE,
+            json={
+                'kind': 'inline',
+                'body': 'x',
+                'anchor': {
+                    'quote': '   ',
+                    'prefix': '',
+                    'suffix': '',
+                    'start': 0,
+                },
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_create_page_thread_ignores_anchor(self) -> None:
+        # A page thread with an anchor in the body persists empty scalars
+        # and round-trips anchor=None.
+        self.mock_db.execute.side_effect = [
+            [{'id': 'doc-1'}],
+            [{'id': 'thread-1'}],
+            [self._thread_row()],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.post(
+                _BASE,
+                json={
+                    'kind': 'page',
+                    'body': 'First!',
+                    'anchor': {
+                        'quote': 'ignored',
+                        'prefix': '',
+                        'suffix': '',
+                        'start': 7,
+                    },
+                },
+            )
+        self.assertEqual(response.status_code, 201)
+        self.assertIsNone(response.json()['anchor'])
+        create_call = self.mock_db.execute.await_args_list[1]
+        self.assertEqual(create_call.args[1]['kind'], 'page')
+        self.assertEqual(create_call.args[1]['anchor_quote'], '')
+        self.assertEqual(create_call.args[1]['anchor_start'], 0)
+
     # -- Reply ---------------------------------------------------------
 
     def test_create_reply(self) -> None:
