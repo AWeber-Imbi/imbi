@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { API_BASE_URL } from '@/api/client'
+import { API_URL } from '@/api/client'
 import {
   createAuthProvider,
   deleteAuthProvider,
@@ -70,7 +70,7 @@ const APP_TYPE_DESCRIPTIONS: Record<OAuthAppType, string> = {
 const APP_TYPE_ORDER: OAuthAppType[] = ['google', 'github', 'oidc']
 
 const callbackUrlForType = (appType: OAuthAppType): string =>
-  `${API_BASE_URL}/auth/oauth/${appType}/callback`
+  `${API_URL}/auth/oauth/${appType}/callback`
 
 const copyToClipboard = async (value: string, label: string) => {
   try {

@@ -1,7 +1,7 @@
 import { useAuthStore } from '@/stores/authStore'
 import type { TokenResponse } from '@/types'
 
-function resolveApiBaseUrl(): string {
+function resolveInjectedApiUrl(): string {
   // index.html injects `{{env "IMBI_API_URL"}}`; when served without a
   // templater (e.g. Vite dev) the placeholder reaches the browser literally,
   // so detect the unsubstituted form and fall back.
@@ -12,10 +12,40 @@ function resolveApiBaseUrl(): string {
   return import.meta.env.VITE_API_URL
 }
 
-export const API_BASE_URL = resolveApiBaseUrl()
-if (!API_BASE_URL) {
+// The configured API URL as injected (absolute in deployment), with any
+// trailing slash trimmed so the callback URLs built from it concatenate
+// cleanly (e.g. `${API_URL}/auth/oauth/.../callback`). A slash-terminated
+// IMBI_API_URL would otherwise yield a `//` that breaks exact OAuth redirect
+// URI matching. Used to build the IdP callback URLs an admin registers with a
+// provider.
+export const API_URL = resolveInjectedApiUrl()?.replace(/\/+$/, '')
+if (!API_URL) {
   throw new Error('IMBI_API_URL (or VITE_API_URL) is required')
 }
+
+// Base path for same-origin API requests. The SPA may be served from more
+// than one host (e.g. an internal host plus a public host that fronts the
+// MCP OAuth login), so requests must target the document's own origin
+// rather than the injected host — otherwise a page served from the public
+// host would call the unreachable internal API URL. We keep only the path
+// of the injected (production) URL; the Vite-dev fallback is used verbatim
+// so a cross-origin dev server still works.
+function resolveApiBasePath(): string {
+  const runtime = window.__IMBI_API_URL__
+  if (runtime && !runtime.includes('{{')) {
+    try {
+      return new URL(runtime, window.location.origin).pathname.replace(
+        /\/+$/,
+        '',
+      )
+    } catch {
+      return runtime
+    }
+  }
+  return import.meta.env.VITE_API_URL
+}
+
+export const API_BASE_URL = resolveApiBasePath()
 
 export const apiUrl = (path: string): string =>
   path.startsWith('/') ? `${API_BASE_URL}${path}` : `${API_BASE_URL}/${path}`

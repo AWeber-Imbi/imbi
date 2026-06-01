@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 import { AlertCircle } from 'lucide-react'
 
-import { API_BASE_URL } from '@/api/client'
+import { API_URL } from '@/api/client'
 import { FormHeader } from '@/components/admin/form-header'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -27,7 +27,7 @@ import type {
 } from '@/types'
 
 const callbackUrlForSlug = (slug: string): string =>
-  slug ? `${API_BASE_URL}/me/identities/${slug}/callback` : ''
+  slug ? `${API_URL}/me/identities/${slug}/callback` : ''
 
 interface OAuth2ApplicationFormProps {
   application: null | ServiceApplication
