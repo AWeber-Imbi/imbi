@@ -11,21 +11,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: Set up Python
-        run: uv python install 3.14
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: 3.14
+          enable-cache: true
 
       - name: Build
         run: uv build
 
       - name: Upload dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: dist
           path: dist/
@@ -36,10 +36,14 @@ jobs:
     environment: pypi
     steps:
       - name: Download dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: dist
           path: dist/
 
       - name: Publish package
+        # Intentionally pinned to the release/v1 branch rather than a SHA.
+        # PyPA ship trusted-publishing fixes by rolling this branch forward,
+        # and recommend tracking it instead of pinning a commit.
+        # https://github.com/pypa/gh-action-pypi-publish#:~:text=release/v1
         uses: pypa/gh-action-pypi-publish@release/v1
