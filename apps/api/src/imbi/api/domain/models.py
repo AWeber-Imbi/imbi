@@ -31,6 +31,9 @@ __all__ = [
     'LogResultResponse',
     'MembershipProperties',
     'OAuth2TokenResponse',
+    'OAuthClient',
+    'OAuthClientRegistrationRequest',
+    'OAuthClientRegistrationResponse',
     'OAuthIdentity',
     'OrgMembership',
     'OrganizationEdge',
@@ -971,6 +974,55 @@ class OAuth2TokenResponse(pydantic.BaseModel):
     expires_in: int
     scope: str | None = None
     refresh_token: str | None = None
+
+
+class OAuthClient(models.GraphModel):
+    """A dynamically-registered OAuth2 client (RFC 7591).
+
+    Created by the ``/auth/register`` endpoint when an MCP client (or any
+    OAuth client) self-registers, and read by ``/auth/authorize`` and
+    ``/auth/token`` to validate the client and its redirect URIs. Only
+    public clients (``token_endpoint_auth_method='none'``, PKCE-protected)
+    are supported today, so no secret is stored.
+    """
+
+    client_id: str
+    client_name: str | None = None
+    redirect_uris: list[str]
+    grant_types: list[str] = [  # noqa: RUF012
+        'authorization_code',
+        'refresh_token',
+    ]
+    response_types: list[str] = ['code']  # noqa: RUF012
+    token_endpoint_auth_method: str = 'none'
+    scope: str | None = None
+
+
+class OAuthClientRegistrationRequest(pydantic.BaseModel):
+    """RFC 7591 dynamic client registration request."""
+
+    redirect_uris: list[str]
+    client_name: str | None = None
+    grant_types: list[str] = [
+        'authorization_code',
+        'refresh_token',
+    ]
+    response_types: list[str] = ['code']
+    token_endpoint_auth_method: str = 'none'
+    scope: str | None = None
+
+
+class OAuthClientRegistrationResponse(pydantic.BaseModel):
+    """RFC 7591 dynamic client registration response."""
+
+    client_id: str
+    client_name: str | None = None
+    redirect_uris: list[str]
+    grant_types: list[str]
+    response_types: list[str]
+    token_endpoint_auth_method: str
+    scope: str | None = None
+    client_id_issued_at: int
 
 
 # -- Webhook models -------------------------------------------------------

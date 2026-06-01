@@ -55,6 +55,14 @@ _schema_cache: dict[str, typing.Any] | None = None
 # half-built schemas being observed mid-population.
 _schema_cache_lock = threading.Lock()
 
+# OpenAPI operation tags whose endpoints must not be exposed as AI
+# tools by downstream consumers (imbi-mcp, imbi-assistant). Operations
+# carrying any of these tags are stamped with ``x-imbi-ai-tool: false``
+# in the generated schema; the AI services read that extension to drop
+# the endpoint from the toolset they build off ``/openapi.json``. Add a
+# tag here to hide every operation that carries it from AI tooling.
+AI_TOOL_EXCLUDED_TAGS: frozenset[str] = frozenset({'Project: Configuration'})
+
 # Mapping of API paths to their model types
 PATH_MODEL_MAPPING: dict[str, str] = {
     '/organizations/{org_slug}/teams/': 'Team',
@@ -328,7 +336,32 @@ def _build_schema(
     if _edge_models:
         _hoist_defs_to_components(schemas)
 
+    _mark_ai_excluded_operations(openapi_schema)
+
     return openapi_schema, had_failure
+
+
+def _mark_ai_excluded_operations(
+    openapi_schema: dict[str, typing.Any],
+) -> None:
+    """Flag operations that must not be built into AI tools.
+
+    Stamps ``x-imbi-ai-tool: false`` on every operation whose tags
+    intersect :data:`AI_TOOL_EXCLUDED_TAGS`. Downstream consumers
+    (imbi-mcp, imbi-assistant) read this extension to exclude the
+    endpoint from the toolset they build from ``/openapi.json``.
+    """
+    paths: dict[str, typing.Any] = openapi_schema.get('paths', {})
+    for path_ops in paths.values():
+        if not isinstance(path_ops, dict):
+            continue
+        ops = typing.cast(dict[str, typing.Any], path_ops)
+        for operation in ops.values():
+            if not isinstance(operation, dict):
+                continue
+            op = typing.cast(dict[str, typing.Any], operation)
+            if AI_TOOL_EXCLUDED_TAGS.intersection(op.get('tags', ())):
+                op['x-imbi-ai-tool'] = False
 
 
 def _hoist_defs_to_components(

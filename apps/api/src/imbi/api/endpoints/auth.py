@@ -18,9 +18,11 @@ from valkey import asyncio as valkey_module
 
 from imbi_api import models, settings
 from imbi_api.auth import (
+    authorization_codes,
     local_auth,
     login_providers,
     oauth,
+    oauth_clients,
     permissions,
     tokens,
 )
@@ -225,34 +227,151 @@ async def get_auth_providers(
     )
 
 
+async def _authorization_code_grant(
+    db: graph.Graph,
+    valkey_client: valkey_module.Valkey | None,
+    *,
+    code: str | None,
+    redirect_uri: str | None,
+    client_id: str | None,
+    code_verifier: str | None,
+) -> models.OAuth2TokenResponse:
+    """Exchange a PKCE authorization code for an Imbi token pair."""
+    if not (code and redirect_uri and client_id and code_verifier):
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Missing authorization_code parameters',
+        )
+    if valkey_client is None:
+        # Codes live in Valkey; without it single-use cannot be enforced,
+        # so fail closed rather than trust an unverifiable code.
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail='Authorization code store unavailable',
+        )
+    client = await oauth_clients.get_client(db, client_id)
+    if client is None:
+        raise fastapi.HTTPException(
+            status_code=401, detail='Invalid client_id'
+        )
+    payload = await authorization_codes.consume_code(valkey_client, code)
+    if payload is None:
+        raise fastapi.HTTPException(
+            status_code=400, detail='Invalid or expired authorization code'
+        )
+    if (
+        payload['client_id'] != client_id
+        or payload['redirect_uri'] != redirect_uri
+    ):
+        raise fastapi.HTTPException(
+            status_code=400, detail='Authorization code does not match request'
+        )
+    if not authorization_codes.verify_pkce(
+        code_verifier, payload['code_challenge']
+    ):
+        raise fastapi.HTTPException(
+            status_code=400, detail='PKCE verification failed'
+        )
+
+    auth_settings = settings.get_auth_settings()
+    try:
+        access_token, refresh_token_value, _ = await tokens.issue_token_pair(
+            db,
+            principal_type='user',
+            principal_id=payload['principal_id'],
+            auth_settings=auth_settings,
+            extra_claims={'auth_method': 'oauth'},
+        )
+    except tokens.PrincipalNotFoundError as err:
+        raise fastapi.HTTPException(
+            status_code=400, detail='User no longer exists'
+        ) from err
+    LOGGER.info(
+        'OAuth code exchanged for %s (client %s)',
+        _redact_email(payload['principal_id']),
+        client_id,
+    )
+    return models.OAuth2TokenResponse(
+        access_token=access_token,
+        token_type='bearer',
+        expires_in=auth_settings.access_token_expire_seconds,
+        scope=payload['scope'],
+        refresh_token=refresh_token_value,
+    )
+
+
+async def _refresh_token_grant(
+    db: graph.Graph,
+    refresh_token_value: str | None,
+) -> models.OAuth2TokenResponse:
+    """Rotate a refresh token presented via the OAuth token endpoint."""
+    if not refresh_token_value:
+        raise fastapi.HTTPException(
+            status_code=400, detail='Missing refresh_token'
+        )
+    auth_settings = settings.get_auth_settings()
+    access_token, new_refresh_token = await _rotate_refresh_token(
+        db, refresh_token_value, auth_settings
+    )
+    return models.OAuth2TokenResponse(
+        access_token=access_token,
+        token_type='bearer',
+        expires_in=auth_settings.access_token_expire_seconds,
+        refresh_token=new_refresh_token,
+    )
+
+
 @auth_router.post('/token', response_model=models.OAuth2TokenResponse)
 @rate_limit.limiter.limit('10/minute')  # type: ignore[untyped-decorator]
 async def token(
     request: fastapi.Request,
     db: graph.Pool,
+    valkey_client: OptionalValkeyClient,
     grant_type: typing.Annotated[str, fastapi.Form()],
-    client_id: typing.Annotated[str, fastapi.Form()],
-    client_secret: typing.Annotated[str, fastapi.Form()],
+    client_id: typing.Annotated[str | None, fastapi.Form()] = None,
+    client_secret: typing.Annotated[str | None, fastapi.Form()] = None,
     scope: typing.Annotated[str | None, fastapi.Form()] = None,
+    code: typing.Annotated[str | None, fastapi.Form()] = None,
+    redirect_uri: typing.Annotated[str | None, fastapi.Form()] = None,
+    code_verifier: typing.Annotated[str | None, fastapi.Form()] = None,
+    refresh_token: typing.Annotated[str | None, fastapi.Form()] = None,
 ) -> models.OAuth2TokenResponse:
-    """OAuth2 token endpoint for client credentials grant.
+    """OAuth2 token endpoint (RFC 6749), form-encoded.
 
-    Accepts form-encoded parameters per RFC 6749.
+    Dispatches on ``grant_type``:
 
-    Args:
-        grant_type: Must be 'client_credentials'
-        client_id: Client credential ID (cc_...)
-        client_secret: Client secret
-        scope: Optional space-separated scopes
+    * ``authorization_code`` -- exchange a PKCE-protected code minted by
+      ``/auth/authorize`` for an Imbi access+refresh pair (public client,
+      no secret).
+    * ``refresh_token`` -- rotate an Imbi refresh token.
+    * ``client_credentials`` -- service-account machine-to-machine grant
+      (requires ``client_id`` + ``client_secret``).
 
     Returns:
-        OAuth2TokenResponse with access and refresh tokens
+        OAuth2TokenResponse with access and (for code/refresh) refresh
+        tokens.
 
     """
+    if grant_type == 'authorization_code':
+        return await _authorization_code_grant(
+            db,
+            valkey_client,
+            code=code,
+            redirect_uri=redirect_uri,
+            client_id=client_id,
+            code_verifier=code_verifier,
+        )
+    if grant_type == 'refresh_token':
+        return await _refresh_token_grant(db, refresh_token)
     if grant_type != 'client_credentials':
         raise fastapi.HTTPException(
             status_code=400,
-            detail='Unsupported grant_type; use client_credentials',
+            detail='Unsupported grant_type',
+        )
+    if not client_id or not client_secret:
+        raise fastapi.HTTPException(
+            status_code=401,
+            detail='Invalid client credentials',
         )
 
     # Fetch credential with owning service account
@@ -376,6 +495,205 @@ async def token(
         expires_in=auth_settings.access_token_expire_seconds,
         scope=scope_str,
         refresh_token=refresh_token,
+    )
+
+
+def _principal_from_token(token: str) -> str | None:
+    """Return the subject of a valid Imbi *access* token, else None."""
+    try:
+        payload = core.verify_token(token, settings.get_auth_settings())
+    except jwt.InvalidTokenError:
+        return None
+    if payload.get('type') != 'access':
+        return None
+    sub = payload.get('sub')
+    return sub if isinstance(sub, str) else None
+
+
+def _authorize_request_principal(request: fastapi.Request) -> str | None:
+    """Identify the logged-in Imbi user for an /authorize request.
+
+    Prefers a Bearer access token, falling back to the access cookie the
+    SPA sets after login. Returns the subject (email) or ``None`` when no
+    valid access token is present.
+    """
+    authz = request.headers.get('authorization', '')
+    if authz.lower().startswith('bearer '):
+        principal = _principal_from_token(authz[7:].strip())
+        if principal:
+            return principal
+    cookie = request.cookies.get(permissions.ACCESS_COOKIE_NAME)
+    return _principal_from_token(cookie) if cookie else None
+
+
+def _public_authorize_url(request: fastapi.Request) -> str:
+    """Absolute, public URL of this /authorize request (for return_to)."""
+    base = settings.get_server_config().public_base_url
+    query = request.url.query
+    suffix = f'?{query}' if query else ''
+    return f'{base}/auth/authorize{suffix}'
+
+
+def _login_redirect_url(return_to: str) -> str:
+    """SPA login URL that returns to *return_to* after authentication.
+
+    ``ui_url`` is empty in same-origin deployments, yielding a relative
+    ``/login`` that the browser resolves against the current host.
+    """
+    ui = settings.get_server_config().ui_url
+    return f'{ui}/login?{urlparse.urlencode({"return_to": return_to})}'
+
+
+@auth_router.get('/authorize')
+@rate_limit.limiter.limit('20/minute')  # type: ignore[untyped-decorator]
+async def authorize(
+    request: fastapi.Request,
+    db: graph.Pool,
+    valkey_client: OptionalValkeyClient,
+    response_type: str = fastapi.Query(default=''),
+    client_id: str = fastapi.Query(default=''),
+    redirect_uri: str = fastapi.Query(default=''),
+    code_challenge: str = fastapi.Query(default=''),
+    code_challenge_method: str = fastapi.Query(default=''),
+    scope: str | None = fastapi.Query(default=None),
+    state: str | None = fastapi.Query(default=None),
+) -> fastapi.responses.RedirectResponse:
+    """OAuth2 authorization endpoint (authorization_code + PKCE).
+
+    Validates the client and redirect URI, requires an authenticated
+    Imbi user (bouncing through the SPA login if absent), then issues a
+    single-use authorization code bound to the PKCE challenge and the
+    user. The Imbi login may itself delegate to an upstream IdP — that
+    is transparent here; only the resulting Imbi session matters.
+    """
+    client = (
+        await oauth_clients.get_client(db, client_id) if client_id else None
+    )
+    if client is None:
+        raise fastapi.HTTPException(
+            status_code=400, detail='Unknown client_id'
+        )
+    if redirect_uri not in client.redirect_uris:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='redirect_uri not registered for this client',
+        )
+
+    # redirect_uri is trusted from here, so protocol errors are reported
+    # back to it (RFC 6749 §4.1.2.1) rather than surfaced to the user.
+    def _redirect_error(error: str) -> fastapi.responses.RedirectResponse:
+        params = {'error': error}
+        if state:
+            params['state'] = state
+        sep = '&' if '?' in redirect_uri else '?'
+        return fastapi.responses.RedirectResponse(
+            url=f'{redirect_uri}{sep}{urlparse.urlencode(params)}',
+            status_code=302,
+        )
+
+    if response_type != 'code':
+        return _redirect_error('unsupported_response_type')
+    if code_challenge_method != 'S256' or not code_challenge:
+        return _redirect_error('invalid_request')
+
+    principal = _authorize_request_principal(request)
+    if principal is None:
+        # Not logged in to Imbi: bounce through the SPA login and return
+        # here via a full-page navigation so the access cookie is sent.
+        return fastapi.responses.RedirectResponse(
+            url=_login_redirect_url(_public_authorize_url(request)),
+            status_code=302,
+        )
+
+    if valkey_client is None:
+        raise fastapi.HTTPException(
+            status_code=503, detail='Authorization code store unavailable'
+        )
+    code = await authorization_codes.issue_code(
+        valkey_client,
+        client_id=client_id,
+        redirect_uri=redirect_uri,
+        code_challenge=code_challenge,
+        principal_id=principal,
+        scope=scope,
+    )
+    LOGGER.info(
+        'Issued authorization code for client %s to %s',
+        client_id,
+        _redact_email(principal),
+    )
+    params = {'code': code}
+    if state:
+        params['state'] = state
+    sep = '&' if '?' in redirect_uri else '?'
+    return fastapi.responses.RedirectResponse(
+        url=f'{redirect_uri}{sep}{urlparse.urlencode(params)}',
+        status_code=302,
+    )
+
+
+@auth_router.post(
+    '/register',
+    response_model=models.OAuthClientRegistrationResponse,
+    status_code=201,
+)
+@rate_limit.limiter.limit('10/minute')  # type: ignore[untyped-decorator]
+async def register_oauth_client(
+    request: fastapi.Request,
+    db: graph.Pool,
+    body: models.OAuthClientRegistrationRequest,
+) -> models.OAuthClientRegistrationResponse:
+    """Dynamic Client Registration (RFC 7591) for public OAuth clients."""
+    auth_settings = settings.get_auth_settings()
+    if not auth_settings.dcr_enabled:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Dynamic client registration is disabled',
+        )
+    if not body.redirect_uris:
+        raise fastapi.HTTPException(
+            status_code=400, detail='redirect_uris is required'
+        )
+    for uri in body.redirect_uris:
+        if not oauth_clients.is_valid_redirect_uri(uri):
+            raise fastapi.HTTPException(
+                status_code=400, detail=f'Invalid redirect_uri: {uri}'
+            )
+    if set(body.grant_types) != {'authorization_code', 'refresh_token'}:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Only authorization_code and refresh_token grants '
+            'are supported',
+        )
+    if body.response_types != ['code']:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="Only response_types=['code'] is supported",
+        )
+    if body.token_endpoint_auth_method != 'none':
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Only public clients '
+            '(token_endpoint_auth_method=none) are supported',
+        )
+    client = await oauth_clients.register_client(
+        db,
+        redirect_uris=body.redirect_uris,
+        client_name=body.client_name,
+        grant_types=body.grant_types,
+        response_types=body.response_types,
+        token_endpoint_auth_method=body.token_endpoint_auth_method,
+        scope=body.scope,
+    )
+    return models.OAuthClientRegistrationResponse(
+        client_id=client.client_id,
+        client_name=client.client_name,
+        redirect_uris=client.redirect_uris,
+        grant_types=client.grant_types,
+        response_types=client.response_types,
+        token_endpoint_auth_method=client.token_endpoint_auth_method,
+        scope=client.scope,
+        client_id_issued_at=int(client.created_at.timestamp()),
     )
 
 
@@ -617,45 +935,23 @@ async def _handle_refresh_reuse(
     )
 
 
-@auth_router.post('/token/refresh', response_model=auth_models.TokenResponse)
-@rate_limit.limiter.limit('10/minute')  # type: ignore[untyped-decorator]
-async def refresh_token(
-    request: fastapi.Request,
-    response: fastapi.Response,
-    db: graph.Pool,
-    refresh_request: auth_models.TokenRefreshRequest | None = None,
-) -> auth_models.TokenResponse:
-    """Refresh access token and rotate refresh token (Phase 5).
+async def _rotate_refresh_token(
+    db: graph.Graph,
+    token_str: str,
+    auth_settings: settings.Auth,
+) -> tuple[str, str]:
+    """Validate a refresh token and mint a rotated access+refresh pair.
 
-    Phase 5 implements token rotation: the old refresh token is
-    revoked and a new refresh token is issued alongside the new
-    access token. This prevents refresh token reuse attacks.
-
-    Args:
-        refresh_request: Refresh token
-        request: FastAPI request object
-
-    Returns:
-        New JWT access token and NEW refresh token (rotated)
+    Shared by the cookie-based ``/auth/token/refresh`` endpoint and the
+    ``refresh_token`` grant of ``/auth/token``. The presented refresh
+    token is revoked atomically; reuse of an already-revoked token
+    revokes the whole family. Returns ``(access_token,
+    new_refresh_token)``.
 
     Raises:
-        HTTPException: 401 if refresh token is invalid or revoked
-
+        fastapi.HTTPException: 401 if the token is invalid, expired, the
+            wrong type, or has been revoked/reused.
     """
-    auth_settings = settings.get_auth_settings()
-
-    # The browser flow sends the refresh token as an HttpOnly cookie (C2);
-    # programmatic clients (e.g. the /auth/token grant) may still send it
-    # in the request body. Prefer the cookie, fall back to the body.
-    token_str = request.cookies.get(_REFRESH_COOKIE) or (
-        refresh_request.refresh_token if refresh_request else None
-    )
-    if not token_str:
-        raise fastapi.HTTPException(
-            status_code=401, detail='Missing refresh token'
-        )
-
-    # Decode and validate refresh token
     try:
         payload = core.verify_token(token_str, auth_settings)
     except jwt.ExpiredSignatureError as err:
@@ -669,7 +965,6 @@ async def refresh_token(
             status_code=401, detail='Invalid refresh token'
         ) from err
 
-    # Verify token type
     if payload.get('type') != 'refresh':
         LOGGER.warning('Token refresh failed: wrong token type')
         raise fastapi.HTTPException(
@@ -768,6 +1063,50 @@ async def refresh_token(
     LOGGER.info(
         'Token refreshed for %s (rotated refresh token)',
         principal_id,
+    )
+    return access_token, new_refresh_token
+
+
+@auth_router.post('/token/refresh', response_model=auth_models.TokenResponse)
+@rate_limit.limiter.limit('10/minute')  # type: ignore[untyped-decorator]
+async def refresh_token(
+    request: fastapi.Request,
+    response: fastapi.Response,
+    db: graph.Pool,
+    refresh_request: auth_models.TokenRefreshRequest | None = None,
+) -> auth_models.TokenResponse:
+    """Refresh access token and rotate refresh token (Phase 5).
+
+    Phase 5 implements token rotation: the old refresh token is
+    revoked and a new refresh token is issued alongside the new
+    access token. This prevents refresh token reuse attacks.
+
+    Args:
+        refresh_request: Refresh token
+        request: FastAPI request object
+
+    Returns:
+        New JWT access token and NEW refresh token (rotated)
+
+    Raises:
+        HTTPException: 401 if refresh token is invalid or revoked
+
+    """
+    auth_settings = settings.get_auth_settings()
+
+    # The browser flow sends the refresh token as an HttpOnly cookie (C2);
+    # programmatic clients (e.g. the /auth/token grant) may still send it
+    # in the request body. Prefer the cookie, fall back to the body.
+    token_str = request.cookies.get(_REFRESH_COOKIE) or (
+        refresh_request.refresh_token if refresh_request else None
+    )
+    if not token_str:
+        raise fastapi.HTTPException(
+            status_code=401, detail='Missing refresh token'
+        )
+
+    access_token, new_refresh_token = await _rotate_refresh_token(
+        db, token_str, auth_settings
     )
 
     _set_refresh_cookie(response, new_refresh_token)

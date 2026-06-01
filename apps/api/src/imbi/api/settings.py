@@ -135,6 +135,12 @@ class Auth(settings.Auth):  # type: ignore[misc]
     oauth_auto_link_by_email: bool = True
     oauth_auto_create_users: bool = True
 
+    # OAuth2 Authorization Server (MCP login)
+    # Allow OAuth clients to self-register via RFC 7591 dynamic client
+    # registration at /auth/register. Disable to require clients to be
+    # provisioned out of band.
+    dcr_enabled: bool = True
+
 
 class Email(pydantic_settings.BaseSettings):
     """Email sending configuration."""
