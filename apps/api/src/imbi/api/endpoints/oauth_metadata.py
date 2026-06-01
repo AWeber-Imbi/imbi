@@ -11,7 +11,7 @@ from urllib import parse as urlparse
 
 import fastapi
 
-from imbi_api import settings
+from imbi_api.endpoints import _request_urls
 
 oauth_metadata_router = fastapi.APIRouter(tags=['Authentication'])
 
@@ -20,9 +20,16 @@ oauth_metadata_router = fastapi.APIRouter(tags=['Authentication'])
     '/.well-known/oauth-authorization-server',
     include_in_schema=False,
 )
-async def authorization_server_metadata() -> dict[str, object]:
-    """Return RFC 8414 Authorization Server metadata."""
-    base = settings.get_server_config().public_base_url
+async def authorization_server_metadata(
+    request: fastapi.Request,
+) -> dict[str, object]:
+    """Return RFC 8414 Authorization Server metadata.
+
+    The issuer and endpoints name the (trusted) host the client reached,
+    so discovery validates whether the deployment is fronted by one host
+    or several. See :mod:`imbi_api.endpoints._request_urls`.
+    """
+    base = _request_urls.public_base_url_for_request(request)
     parsed = urlparse.urlparse(base)
     issuer = f'{parsed.scheme}://{parsed.netloc}'
     return {

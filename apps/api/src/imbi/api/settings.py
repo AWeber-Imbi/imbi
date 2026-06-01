@@ -280,16 +280,20 @@ def clear_caches() -> None:
     _storage_settings = None
 
 
-def oauth_callback_url(provider_slug: str) -> str:
+def oauth_callback_url(provider_slug: str, base_url: str | None = None) -> str:
     """Build the public OAuth callback URL for a provider slug.
 
     Appends the canonical ``/auth/oauth/{slug}/callback`` route to
-    ``IMBI_API_URL`` (or the local host:port fallback).
+    *base_url* when given (the request's trusted public base, for
+    multi-host deployments), otherwise to ``IMBI_API_URL`` (or the local
+    host:port fallback).
     """
-    return (
-        f'{get_server_config().public_base_url}'
-        f'/auth/oauth/{provider_slug}/callback'
+    base = (
+        base_url
+        if base_url is not None
+        else get_server_config().public_base_url
     )
+    return f'{base.rstrip("/")}/auth/oauth/{provider_slug}/callback'
 
 
 class APIConfiguration(settings.Configuration):  # type: ignore[misc]

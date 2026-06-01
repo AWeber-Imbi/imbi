@@ -56,7 +56,7 @@ Configured by [`ServerConfig`](https://github.com/AWeber-Imbi/imbi-api/blob/main
 | `ENVIRONMENT` | `development` | Deployment environment (`development`, `staging`, `production`). Unprefixed — picks up whatever the platform (Vercel, ECS, GHA, etc.) already exports. Currently drives Mailpit dev auto-config. |
 | `IMBI_API_HOST` | `localhost` | Server bind address |
 | `IMBI_API_PORT` | `8000` | Server bind port. Strings of the form `tcp://ip:port` (injected by Kubernetes service discovery) are parsed and the port extracted, so the `<SERVICE>_PORT=tcp://…` pattern does not collide with this field. |
-| `IMBI_API_CORS_ALLOWED_ORIGINS` | `[]` | JSON array of allowed CORS origins. Credentials and the `Authorization` header are allowed for cross-origin requests from these origins. |
+| `IMBI_API_CORS_ALLOWED_ORIGINS` | `[]` | JSON array of allowed CORS origins. Credentials and the `Authorization` header are allowed for cross-origin requests from these origins. Also the allow-list of trusted hosts for per-request OAuth URL derivation in multi-host deployments (see "OAuth2 Authorization Server"). |
 | `IMBI_API_FORWARDED_ALLOW_IPS` | `''` | Comma-separated list (or `*`) of trusted proxy IPs whose `X-Forwarded-*` headers are honored. Required when running behind a reverse proxy so rate limiting keys on the real client IP. Empty disables the middleware. |
 | `IMBI_API_URL` | `''` | Public URL where the API is reachable from a browser, including any path prefix it is mounted under (e.g. `https://imbi.example.com/api`). Drives FastAPI route mounting, hypermedia links, and OAuth redirect URIs. Falls back to `http://{host}:{port}` (no prefix) for dev loopback. `/docs` and `/openapi.json` are always served at the root regardless of prefix. |
 
@@ -207,6 +207,47 @@ configured upstream IdP), so MCP login inherits MFA and provider rules.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `IMBI_AUTH_DCR_ENABLED` | `true` | Allow OAuth clients to self-register at `/auth/register` (RFC 7591). Disable to require clients to be provisioned out of band. |
+
+#### Multi-host deployments (separate public login host)
+
+A deployment may be reachable on more than one host — e.g. an internal
+host that serves the SPA and a separate internet-facing host that fronts
+the MCP OAuth login for a remote client (Claude Desktop and other remote
+connectors reach the server from the vendor's cloud, not the user's
+machine, so the MCP and OAuth endpoints must be publicly reachable).
+
+The issuer and endpoints in the discovery document, the post-login
+`return_to`/login redirect, and the upstream-IdP callback URL are all
+derived **per request** from the host the caller actually reached, rather
+than from the single `IMBI_API_URL`. To prevent a spoofed `Host` header
+from redirecting freshly minted tokens off-origin, a request host is only
+honored when it is a **trusted origin**: the origin of `IMBI_API_URL` plus
+every entry in `IMBI_API_CORS_ALLOWED_ORIGINS`. Untrusted hosts fall back
+to `IMBI_API_URL`. This also requires `IMBI_API_FORWARDED_ALLOW_IPS` to be
+set so the request scheme/host are trusted from the proxy.
+
+To enable a separate public login host:
+
+1. Add the public origin to `IMBI_API_CORS_ALLOWED_ORIGINS`
+   (e.g. `https://imbi-public.example.com`). `IMBI_API_URL` stays pointed
+   at the internal host, so internal SPA traffic is unaffected.
+2. Route `/mcp`, `/.well-known/oauth-*`, and `/api/auth/*` to the service
+   on that public host. If the public host should support browser-based
+   login (not just MCP), also serve the SPA's login UI assets — the SPA
+   entry document (`index.html`) served at `/` and `/login`, plus its
+   static assets (`*.js`, `*.css`, images) — so the login page renders on
+   that host.
+3. If login uses an upstream IdP (Google/GitHub/OIDC), register the public
+   host's callback — `https://<public-host>/api/auth/oauth/<slug>/callback`
+   — with that provider in addition to the internal one, since the
+   callback now names whichever host the user logged in from.
+
+!!! note "Known limitation"
+    Standard OAuth provider logins (Google/GitHub/OIDC) and MCP OAuth
+    client flows are fully per-host aware. The identity-plugin *connect*
+    flow (linking an additional identity from the account settings UI) is
+    not yet derived per host and continues to use `IMBI_API_URL`, so its
+    callback must remain registered against the `IMBI_API_URL` origin.
 
 ## Other Settings
 

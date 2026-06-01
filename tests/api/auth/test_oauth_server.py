@@ -73,6 +73,46 @@ class OAuthServerTestCase(support.SharedAppTestCase):
         self.assertEqual(body['code_challenge_methods_supported'], ['S256'])
         self.assertIn('authorization_code', body['grant_types_supported'])
 
+    def test_metadata_reflects_trusted_request_host(self) -> None:
+        """Issuer/endpoints name the trusted host the client reached.
+
+        A multi-host deployment fronts the MCP login on a separate public
+        host; the discovery document must advertise that host (not the
+        internal ``IMBI_API_URL``) or the client's issuer check fails.
+        """
+        cfg = mock.MagicMock()
+        cfg.public_base_url = 'https://imbi.internal/api'
+        cfg.cors_allowed_origins = ['https://imbi-public.test']
+        cfg.api_prefix = '/api'
+        with mock.patch(
+            'imbi_api.settings.get_server_config', return_value=cfg
+        ):
+            client = testclient.TestClient(
+                self.test_app, base_url='https://imbi-public.test'
+            )
+            resp = client.get('/.well-known/oauth-authorization-server')
+        body = resp.json()
+        self.assertEqual(body['issuer'], 'https://imbi-public.test')
+        self.assertEqual(
+            body['authorization_endpoint'],
+            'https://imbi-public.test/api/auth/authorize',
+        )
+
+    def test_metadata_ignores_untrusted_request_host(self) -> None:
+        """A spoofed Host falls back to the configured public base URL."""
+        cfg = mock.MagicMock()
+        cfg.public_base_url = 'https://imbi.internal/api'
+        cfg.cors_allowed_origins = []
+        cfg.api_prefix = '/api'
+        with mock.patch(
+            'imbi_api.settings.get_server_config', return_value=cfg
+        ):
+            client = testclient.TestClient(
+                self.test_app, base_url='https://evil.example'
+            )
+            resp = client.get('/.well-known/oauth-authorization-server')
+        self.assertEqual(resp.json()['issuer'], 'https://imbi.internal')
+
     # -- registration (DCR) ----------------------------------------------
 
     def test_register_success(self) -> None:

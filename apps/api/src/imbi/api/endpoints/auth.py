@@ -29,6 +29,7 @@ from imbi_api.auth import (
 from imbi_api.auth import models as auth_models
 from imbi_api.auth import password as password_auth
 from imbi_api.auth.totp import fetch_totp_secret, verify_totp_code
+from imbi_api.endpoints import _request_urls
 from imbi_api.identity import flows as identity_flows
 from imbi_api.identity import repository as identity_repository
 from imbi_api.middleware import rate_limit
@@ -528,20 +529,25 @@ def _authorize_request_principal(request: fastapi.Request) -> str | None:
 
 def _public_authorize_url(request: fastapi.Request) -> str:
     """Absolute, public URL of this /authorize request (for return_to)."""
-    base = settings.get_server_config().public_base_url
+    base = _request_urls.public_base_url_for_request(request)
     query = request.url.query
     suffix = f'?{query}' if query else ''
     return f'{base}/auth/authorize{suffix}'
 
 
-def _login_redirect_url(return_to: str) -> str:
+def _login_redirect_url(request: fastapi.Request, return_to: str) -> str:
     """SPA login URL that returns to *return_to* after authentication.
 
-    ``ui_url`` is empty in same-origin deployments, yielding a relative
-    ``/login`` that the browser resolves against the current host.
+    The login page is the SPA served on the same host as this request, so
+    the redirect targets the request's trusted origin -- which keeps the
+    login leg same-origin whether the deployment is fronted by one host or
+    several. Falls back to ``ui_url`` (empty -> a relative ``/login`` the
+    browser resolves against the current host) when the origin is untrusted.
     """
-    ui = settings.get_server_config().ui_url
-    return f'{ui}/login?{urlparse.urlencode({"return_to": return_to})}'
+    base = _request_urls.request_origin(request)
+    if base is None:
+        base = settings.get_server_config().ui_url
+    return f'{base}/login?{urlparse.urlencode({"return_to": return_to})}'
 
 
 @auth_router.get('/authorize')
@@ -601,7 +607,7 @@ async def authorize(
         # Not logged in to Imbi: bounce through the SPA login and return
         # here via a full-page navigation so the access cookie is sent.
         return fastapi.responses.RedirectResponse(
-            url=_login_redirect_url(_public_authorize_url(request)),
+            url=_login_redirect_url(request, _public_authorize_url(request)),
             status_code=302,
         )
 
@@ -1283,6 +1289,13 @@ async def oauth_login(
     own = urlparse.urlparse(server_config.public_base_url)
     if own.scheme and own.netloc:
         allowed_origins.append(f'{own.scheme}://{own.netloc}')
+    # On a multi-host deployment the SPA's same-origin callback is on the
+    # host this request reached, not public_base_url's, so trust that
+    # origin too (it is validated against the configured trusted set).
+    request_base = _request_urls.public_base_url_for_request(request)
+    request_own = _request_urls.request_origin(request)
+    if request_own is not None:
+        allowed_origins.append(request_own)
     if not _is_safe_redirect_uri(redirect_uri, allowed_origins):
         raise fastapi.HTTPException(
             status_code=400,
@@ -1299,7 +1312,9 @@ async def oauth_login(
                 status_code=500,
                 detail=f'Identity plugin row {provider!r} missing plugin_id',
             )
-        callback_url = settings.oauth_callback_url(provider)
+        callback_url = settings.oauth_callback_url(
+            provider, base_url=request_base
+        )
         try:
             url, _state, _polling = await identity_flows.start_flow(
                 db,
@@ -1325,7 +1340,7 @@ async def oauth_login(
         provider, redirect_uri, auth_settings
     )
 
-    callback_url = settings.oauth_callback_url(provider)
+    callback_url = settings.oauth_callback_url(provider, base_url=request_base)
 
     auth_url = ''
     if app.oauth_app_type == 'google':
@@ -1454,8 +1469,14 @@ async def oauth_callback(
         if state_data.provider != provider:
             raise ValueError('Provider mismatch')
 
-        # Exchange code for tokens
-        callback_url = settings.oauth_callback_url(provider)
+        # Exchange code for tokens. The redirect_uri must byte-match the
+        # one sent at authorize time; both derive from the request's
+        # trusted origin, and the IdP redirected the browser back to this
+        # same host, so they agree on a multi-host deployment.
+        callback_url = settings.oauth_callback_url(
+            provider,
+            base_url=_request_urls.public_base_url_for_request(request),
+        )
         token_response = await oauth.exchange_oauth_code(
             provider, code, callback_url, db
         )
