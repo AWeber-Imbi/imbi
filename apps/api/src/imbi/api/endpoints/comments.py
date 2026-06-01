@@ -23,6 +23,7 @@ import fastapi
 import nanoid
 import pydantic
 from imbi_common import graph
+from imbi_common.clickhouse import client as ch_client
 
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
@@ -30,6 +31,66 @@ from imbi_api.auth import permissions
 LOGGER = logging.getLogger(__name__)
 
 comments_router = fastapi.APIRouter(tags=['Comments'])
+
+# Event type written to the ClickHouse ``events`` table so comment activity
+# surfaces in the project + user activity feeds.
+_COMMENT_EVENT_TYPE: typing.LiteralString = 'document-comment'
+
+
+async def _emit_comment_event(
+    *,
+    project_id: str,
+    document_id: str,
+    thread_id: str,
+    comment_id: str,
+    kind: str,
+    action: str,
+    principal: str,
+    body: str,
+) -> None:
+    """Best-effort: record a comment as an ``events`` row.
+
+    Mirrors the project-change emit in ``projects.py``. Never raises -- a
+    failed analytics write must not fail the comment request.
+    """
+    try:
+        await ch_client.Clickhouse.get_instance().insert(
+            'events',
+            [
+                [
+                    nanoid.generate(),
+                    project_id,
+                    datetime.datetime.now(datetime.UTC),
+                    _COMMENT_EVENT_TYPE,
+                    'internal',
+                    principal,
+                    {},
+                    {
+                        'document_id': document_id,
+                        'thread_id': thread_id,
+                        'comment_id': comment_id,
+                        'kind': kind,
+                        'action': action,
+                        'excerpt': body[:140],
+                    },
+                ]
+            ],
+            [
+                'id',
+                'project_id',
+                'recorded_at',
+                'type',
+                'third_party_service',
+                'attributed_to',
+                'metadata',
+                'payload',
+            ],
+        )
+    except Exception:
+        LOGGER.exception(
+            'Failed to emit comment event for document %s', document_id
+        )
+
 
 # Every thread field except ``/resolved`` is read-only over the PATCH API.
 _THREAD_READONLY_PATHS: frozenset[str] = frozenset(
@@ -430,6 +491,16 @@ async def create_comment_thread(
             status_code=500,
             detail='Thread created but could not be read back',
         )
+    await _emit_comment_event(
+        project_id=project_id,
+        document_id=document_id,
+        thread_id=thread_id,
+        comment_id=comment_id,
+        kind=data.kind,
+        action='created',
+        principal=auth.principal_name,
+        body=data.body,
+    )
     return thread
 
 
@@ -495,6 +566,16 @@ async def create_reply(
             status_code=404,
             detail=f'Thread {thread_id!r} not found',
         )
+    await _emit_comment_event(
+        project_id=project_id,
+        document_id=document_id,
+        thread_id=thread_id,
+        comment_id=comment_id,
+        kind='',
+        action='replied',
+        principal=auth.principal_name,
+        body=data.body,
+    )
     return _parse_comment(records[0]['c'])
 
 
