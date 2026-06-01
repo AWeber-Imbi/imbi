@@ -849,6 +849,42 @@ export const rescoreProject = (projectId: string) =>
     project_id: projectId,
   })
 
+export interface AnalysisReport {
+  created_at: string
+  id: string
+  overall_status: AnalysisResultStatus
+  project_id: string
+  results: AnalysisResult[]
+  triggered_by_user_id?: null | string
+}
+
+export interface AnalysisResult {
+  description: string
+  plugin_id: string
+  plugin_slug: string
+  slug: string
+  status: AnalysisResultStatus
+  title: string
+}
+
+export type AnalysisResultStatus = 'fail' | 'pass' | 'warn'
+
+export const getProjectAnalysis = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<AnalysisReport>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/analysis/`,
+    undefined,
+    signal,
+  )
+
+export const runProjectAnalysis = (orgSlug: string, projectId: string) =>
+  apiClient.post<AnalysisReport>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/analysis/run`,
+  )
+
 export interface ScoreTrend {
   current: null | number
   delta: null | number

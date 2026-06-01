@@ -14,6 +14,18 @@ export interface AgeScoringPolicyCreate extends ScoringPolicyCreateBase {
   category: 'age'
 }
 
+export interface AnalysisResultScoringPolicy extends ScoringPolicyBase {
+  category: 'analysis_result'
+  result_slug: string
+  status_score_map?: null | Record<'fail' | 'pass' | 'warn', number>
+}
+
+export interface AnalysisResultScoringPolicyCreate extends ScoringPolicyCreateBase {
+  category: 'analysis_result'
+  result_slug: string
+  status_score_map?: null | Record<'fail' | 'pass' | 'warn', number>
+}
+
 // Back-compat alias: the archive / unarchive endpoints originally
 // shipped this response type, and downstream components import it by
 // name.  Identical shape to ``ProjectMutationResponse`` -- prefer the
@@ -323,18 +335,21 @@ export interface RelocationTarget {
 // imbi-common/scoring/models.py for the canonical shape.
 export type ScoringPolicy =
   | AgeScoringPolicy
+  | AnalysisResultScoringPolicy
   | AttributeScoringPolicy
   | LinkPresenceScoringPolicy
   | PresenceScoringPolicy
 
 export type ScoringPolicyCategory =
   | 'age'
+  | 'analysis_result'
   | 'attribute'
   | 'link_presence'
   | 'presence'
 
 export type ScoringPolicyCreate =
   | AgeScoringPolicyCreate
+  | AnalysisResultScoringPolicyCreate
   | AttributeScoringPolicyCreate
   | LinkPresenceScoringPolicyCreate
   | PresenceScoringPolicyCreate

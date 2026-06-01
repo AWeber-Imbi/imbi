@@ -16,6 +16,7 @@ import {
   Check,
   ChevronDown,
   Copy,
+  Stethoscope as DoctorIcon,
   Filter,
   Info,
   RefreshCw,
@@ -24,8 +25,10 @@ import {
 } from 'lucide-react'
 
 import {
+  type AnalysisResultStatus,
   type AttributeContribution,
   getMyIdentities,
+  getProjectAnalysis,
   getProjectBreakdown,
   getProjectPullRequests,
   getProjectSchema,
@@ -53,6 +56,7 @@ import { LogsTab } from '@/components/project/LogsTab'
 import { ProjectPullRequestsTab } from '@/components/project/ProjectPullRequestsTab'
 import { ProjectActivityLog } from '@/components/ProjectActivityLog'
 import { ProjectAttributesSection } from '@/components/ProjectAttributesSection'
+import { ProjectDoctorTab } from '@/components/ProjectDoctorTab'
 import { ProjectEnvironmentsCard } from '@/components/ProjectEnvironmentsCard'
 import { ProjectRelationshipsTab } from '@/components/ProjectRelationshipsTab'
 import { ProjectSettingsTab } from '@/components/ProjectSettingsTab'
@@ -87,6 +91,7 @@ import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { formatDateTime } from '@/lib/formatDate'
 import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import { formatFieldKey } from '@/lib/project-field-formatting'
+import { treatNotFoundAsNull } from '@/lib/queryHelpers'
 import { sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
 import type { LifecyclePreviewEntry, Project, ScoringPolicy } from '@/types'
 
@@ -107,6 +112,7 @@ const VALID_TABS = [
   'operations-log',
   'pull-requests',
   'score-history',
+  'doctor',
   'settings',
 ] as const
 
@@ -302,6 +308,29 @@ export function ProjectDetail({
     queryKey: ['scoringPolicies'],
     staleTime: 5 * 60 * 1000,
   })
+
+  // Drives the Doctor tab icon color. A 404 from the API means no
+  // report has been generated yet — render that as null instead of
+  // throwing.
+  const { data: doctorReport } = useQuery({
+    enabled: !!orgSlug && !!project.id,
+    queryFn: ({ signal }) =>
+      treatNotFoundAsNull(() =>
+        getProjectAnalysis(orgSlug, project.id, signal),
+      ),
+    queryKey: ['projectAnalysis', orgSlug, project.id],
+    staleTime: 60 * 1000,
+  })
+  const doctorOverallStatus: AnalysisResultStatus | null =
+    doctorReport?.overall_status ?? null
+  const doctorIconClass =
+    doctorOverallStatus === 'fail'
+      ? 'text-danger'
+      : doctorOverallStatus === 'warn'
+        ? 'text-warning'
+        : doctorOverallStatus === 'pass'
+          ? 'text-success'
+          : 'text-tertiary'
   // Capture the score present at page load so intra-session changes are visible
   // even when the 30d baseline equals the current live score.
   const sessionBaseScore = useRef<null | number>(project.score ?? null)
@@ -729,6 +758,7 @@ export function ProjectDetail({
       })(),
     },
     { id: 'score-history', label: 'Score History' },
+    { id: 'doctor', label: '' },
     { id: 'settings', label: '' },
   ]
 
@@ -919,50 +949,76 @@ export function ProjectDetail({
       {/* Tabs */}
       <Tabs onValueChange={handleTabChange} value={activeTab}>
         <TabsList className="mb-6">
-          {tabs.map((tab) =>
-            tab.id === 'settings' ? (
-              <Fragment key={tab.id}>
-                <TooltipProvider delayDuration={200}>
+          {tabs.map((tab) => {
+            if (tab.id === 'doctor') {
+              return (
+                <TooltipProvider delayDuration={200} key={tab.id}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <button
-                        aria-label="Refresh project data"
-                        className="text-muted-foreground hover:text-primary -mb-px ml-auto inline-flex items-center justify-center border-b-2 border-transparent px-1 pt-1 pb-2 transition-colors disabled:opacity-50"
-                        disabled={isRefreshing}
-                        onClick={() => void handleRefresh()}
-                        type="button"
+                      <TabsTrigger
+                        aria-label="Project Doctor"
+                        className="ml-auto"
+                        value={tab.id}
                       >
-                        <RefreshCw
-                          className={
-                            isRefreshing ? 'size-4 animate-spin' : 'size-4'
-                          }
-                        />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Refresh project data</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <TabsTrigger aria-label="Project Settings" value={tab.id}>
-                        <SettingsIcon className="size-4" />
+                        <DoctorIcon className={`size-4 ${doctorIconClass}`} />
                       </TabsTrigger>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Project Settings</p>
+                      <p>Project Doctor</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
-              </Fragment>
-            ) : (
+              )
+            }
+            if (tab.id === 'settings') {
+              return (
+                <Fragment key={tab.id}>
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          aria-label="Refresh project data"
+                          className="text-muted-foreground hover:text-primary -mb-px inline-flex items-center justify-center border-b-2 border-transparent px-1 pt-1 pb-2 transition-colors disabled:opacity-50"
+                          disabled={isRefreshing}
+                          onClick={() => void handleRefresh()}
+                          type="button"
+                        >
+                          <RefreshCw
+                            className={
+                              isRefreshing ? 'size-4 animate-spin' : 'size-4'
+                            }
+                          />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Refresh project data</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <TabsTrigger
+                          aria-label="Project Settings"
+                          value={tab.id}
+                        >
+                          <SettingsIcon className="size-4" />
+                        </TabsTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Project Settings</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </Fragment>
+              )
+            }
+            return (
               <TabsTrigger key={tab.id} value={tab.id}>
                 {tab.label}
               </TabsTrigger>
-            ),
-          )}
+            )
+          })}
         </TabsList>
 
         <TabsContent value="overview">
@@ -1188,6 +1244,9 @@ export function ProjectDetail({
         )}
         <TabsContent value="score-history">
           <ScoreHistoryTab orgSlug={orgSlug} projectId={project.id} />
+        </TabsContent>
+        <TabsContent value="doctor">
+          <ProjectDoctorTab project={project} />
         </TabsContent>
         <TabsContent value="settings">
           <ProjectSettingsTab project={project} />

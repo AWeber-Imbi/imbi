@@ -40,6 +40,7 @@ interface MapRow {
 
 const CATEGORY_LABELS: Record<ScoringPolicyCategory, string> = {
   age: 'Age',
+  analysis_result: 'Analysis Result',
   attribute: 'Attribute',
   link_presence: 'Link Presence',
   presence: 'Presence',
@@ -47,6 +48,8 @@ const CATEGORY_LABELS: Record<ScoringPolicyCategory, string> = {
 
 const CATEGORY_DESCRIPTIONS: Record<ScoringPolicyCategory, string> = {
   age: 'Score by how recently a datetime attribute changed, using the same threshold DSL as blueprint age maps (e.g. >30d, <=7d). Recomputed daily.',
+  analysis_result:
+    "Score based on a Project Doctor analysis result's status (pass / warn / fail). The result is identified by its plugin-emitted slug.",
   attribute:
     'Map a specific attribute value or numeric range to a score (e.g. test-coverage tiers).',
   link_presence:
@@ -137,6 +140,24 @@ export function ScoringPolicyForm({
           newRow('<=7d', '100'),
         ],
   )
+  const [resultSlug, setResultSlug] = useState(
+    policy && policy.category === 'analysis_result' ? policy.result_slug : '',
+  )
+  const [analysisPassScore, setAnalysisPassScore] = useState(
+    policy?.category === 'analysis_result'
+      ? String(policy.status_score_map?.pass ?? 100)
+      : '100',
+  )
+  const [analysisWarnScore, setAnalysisWarnScore] = useState(
+    policy?.category === 'analysis_result'
+      ? String(policy.status_score_map?.warn ?? 50)
+      : '50',
+  )
+  const [analysisFailScore, setAnalysisFailScore] = useState(
+    policy?.category === 'analysis_result'
+      ? String(policy.status_score_map?.fail ?? 0)
+      : '0',
+  )
 
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -179,10 +200,13 @@ export function ScoringPolicyForm({
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {
       ...validateIdentity({ name, slug }),
-      ...validateSubject({ attributeName, category, linkSlug }),
+      ...validateSubject({ attributeName, category, linkSlug, resultSlug }),
       ...validateWeight(weight),
       ...validateCategoryFields({
         ageMapRows,
+        analysisFailScore,
+        analysisPassScore,
+        analysisWarnScore,
         attributeMapRows,
         category,
         missingScore,
@@ -232,6 +256,19 @@ export function ScoringPolicyForm({
         link_slug: linkSlug.trim(),
         missing_score: parseInt(missingScore, 10),
         present_score: parseInt(presentScore, 10),
+      })
+      return
+    }
+    if (category === 'analysis_result') {
+      onSave({
+        ...base,
+        category: 'analysis_result',
+        result_slug: resultSlug.trim(),
+        status_score_map: {
+          fail: parseInt(analysisFailScore, 10),
+          pass: parseInt(analysisPassScore, 10),
+          warn: parseInt(analysisWarnScore, 10),
+        },
       })
       return
     }
@@ -292,6 +329,7 @@ export function ScoringPolicyForm({
                   'presence',
                   'link_presence',
                   'age',
+                  'analysis_result',
                 ] as ScoringPolicyCategory[]
               ).map((c) => (
                 <button
@@ -423,6 +461,28 @@ export function ScoringPolicyForm({
                   <code>present_score</code>
                 </p>
                 {fieldError('link_slug')}
+              </div>
+            ) : category === 'analysis_result' ? (
+              <div>
+                <Label
+                  className="text-secondary mb-1.5 block text-sm"
+                  htmlFor="sp-result-slug"
+                >
+                  Analysis Result Slug <RequiredAsterisk />
+                </Label>
+                <Input
+                  className={errors.result_slug ? 'border-danger' : ''}
+                  disabled={isLoading}
+                  id="sp-result-slug"
+                  onChange={(e) => setResultSlug(e.target.value)}
+                  placeholder="e.g., logzio:error-rate"
+                  value={resultSlug}
+                />
+                <p className="text-tertiary mt-1 text-xs">
+                  The stable slug emitted by an analysis plugin for the result
+                  this policy scores
+                </p>
+                {fieldError('result_slug')}
               </div>
             ) : (
               <div>
@@ -587,6 +647,84 @@ export function ScoringPolicyForm({
                 rows={ageMapRows}
                 scoreHeader="Score (0–100)"
               />
+            </CardContent>
+          </Card>
+        )}
+
+        {category === 'analysis_result' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Status Scores</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-tertiary text-xs">
+                Map the analysis result's status to a 0–100 score.
+              </p>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div>
+                  <Label
+                    className="text-secondary mb-1.5 block text-sm"
+                    htmlFor="sp-analysis-pass-score"
+                  >
+                    Pass score
+                  </Label>
+                  <Input
+                    className={
+                      errors.analysis_pass_score ? 'border-danger' : ''
+                    }
+                    disabled={isLoading}
+                    id="sp-analysis-pass-score"
+                    max={100}
+                    min={0}
+                    onChange={(e) => setAnalysisPassScore(e.target.value)}
+                    type="number"
+                    value={analysisPassScore}
+                  />
+                  {fieldError('analysis_pass_score')}
+                </div>
+                <div>
+                  <Label
+                    className="text-secondary mb-1.5 block text-sm"
+                    htmlFor="sp-analysis-warn-score"
+                  >
+                    Warn score
+                  </Label>
+                  <Input
+                    className={
+                      errors.analysis_warn_score ? 'border-danger' : ''
+                    }
+                    disabled={isLoading}
+                    id="sp-analysis-warn-score"
+                    max={100}
+                    min={0}
+                    onChange={(e) => setAnalysisWarnScore(e.target.value)}
+                    type="number"
+                    value={analysisWarnScore}
+                  />
+                  {fieldError('analysis_warn_score')}
+                </div>
+                <div>
+                  <Label
+                    className="text-secondary mb-1.5 block text-sm"
+                    htmlFor="sp-analysis-fail-score"
+                  >
+                    Fail score
+                  </Label>
+                  <Input
+                    className={
+                      errors.analysis_fail_score ? 'border-danger' : ''
+                    }
+                    disabled={isLoading}
+                    id="sp-analysis-fail-score"
+                    max={100}
+                    min={0}
+                    onChange={(e) => setAnalysisFailScore(e.target.value)}
+                    type="number"
+                    value={analysisFailScore}
+                  />
+                  {fieldError('analysis_fail_score')}
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -849,6 +987,9 @@ function validateAttributeMap(rows: MapRow[]): null | string {
 // fallow-ignore-next-line complexity
 function validateCategoryFields(args: {
   ageMapRows: MapRow[]
+  analysisFailScore: string
+  analysisPassScore: string
+  analysisWarnScore: string
   attributeMapRows: MapRow[]
   category: ScoringPolicyCategory
   missingScore: string
@@ -861,6 +1002,16 @@ function validateCategoryFields(args: {
   if (args.category === 'attribute') {
     const err = validateAttributeMap(args.attributeMapRows)
     return err ? { map: err } : {}
+  }
+  if (args.category === 'analysis_result') {
+    const errors: Record<string, string> = {}
+    if (!isScoreInRange(args.analysisPassScore))
+      errors.analysis_pass_score = 'Score must be 0–100'
+    if (!isScoreInRange(args.analysisWarnScore))
+      errors.analysis_warn_score = 'Score must be 0–100'
+    if (!isScoreInRange(args.analysisFailScore))
+      errors.analysis_fail_score = 'Score must be 0–100'
+    return errors
   }
   return validatePresenceScores(args.presentScore, args.missingScore)
 }
@@ -891,13 +1042,20 @@ function validatePresenceScores(
   return errors
 }
 
+// fallow-ignore-next-line complexity
 function validateSubject(args: {
   attributeName: string
   category: ScoringPolicyCategory
   linkSlug: string
+  resultSlug: string
 }): Record<string, string> {
   if (args.category === 'link_presence') {
     return args.linkSlug.trim() ? {} : { link_slug: 'Link type is required' }
+  }
+  if (args.category === 'analysis_result') {
+    return args.resultSlug.trim()
+      ? {}
+      : { result_slug: 'Result slug is required' }
   }
   return args.attributeName.trim()
     ? {}

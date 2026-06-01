@@ -50,6 +50,7 @@ import { ScoringPolicyForm } from './scoring-policies/ScoringPolicyForm'
 
 const CATEGORY_LABELS: Record<ScoringPolicyCategory, string> = {
   age: 'Age',
+  analysis_result: 'Analysis Result',
   attribute: 'Attribute',
   link_presence: 'Link Presence',
   presence: 'Presence',
@@ -370,6 +371,13 @@ function categorySpecificExport(
         age_score_map: policy.age_score_map,
         attribute_name: policy.attribute_name,
       }
+    case 'analysis_result':
+      return {
+        result_slug: policy.result_slug,
+        ...(policy.status_score_map
+          ? { status_score_map: policy.status_score_map }
+          : {}),
+      }
     case 'attribute':
       return attributeExport(policy)
     case 'link_presence':
@@ -388,9 +396,9 @@ function categorySpecificExport(
 }
 
 function policySubjectKey(policy: ScoringPolicy): string {
-  return policy.category === 'link_presence'
-    ? policy.link_slug
-    : policy.attribute_name
+  if (policy.category === 'link_presence') return policy.link_slug
+  if (policy.category === 'analysis_result') return policy.result_slug
+  return policy.attribute_name
 }
 
 function policyToExportPayload(policy: ScoringPolicy): Record<string, unknown> {
