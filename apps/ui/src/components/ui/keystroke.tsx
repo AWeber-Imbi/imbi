@@ -26,13 +26,13 @@ export function Keystroke({
     : { alt: 'Alt', ctrl: 'Ctrl', shift: 'Shift' }
   const keys = value.split('+')
   return (
-    <span className={className}>
+    <span className={`inline-flex gap-0.5 ${className ?? ''}`}>
       {keys.map((key, i) => {
         const lower = key.trim().toLowerCase()
         const display = glyphs[lower] ?? keyGlyphs[key] ?? key
         return (
           <kbd
-            className="border-muted-foreground/40 text-muted-foreground inline-flex items-center rounded border px-1 font-mono text-[10px] leading-none"
+            className="border-muted-foreground/40 text-muted-foreground inline-flex items-center rounded border px-1 py-0.5 font-mono text-xs leading-none"
             key={i}
           >
             {display}

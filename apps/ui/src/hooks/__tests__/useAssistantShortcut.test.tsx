@@ -26,16 +26,16 @@ function Harness() {
         type="text"
         value={value}
       />
-      {!value && !focused && <span data-testid="badge">⌘⇧A</span>}
+      {!value && !focused && <span data-testid="badge">⌘K</span>}
     </div>
   )
 }
 
 describe('useAssistantShortcut', () => {
-  it('focuses the assistant input when Ctrl+Shift+A is pressed', async () => {
+  it('focuses the assistant input when Ctrl+K is pressed', async () => {
     const user = userEvent.setup()
     render(<Harness />)
-    await user.keyboard('{Control>}{Shift>}A{/Shift}{/Control}')
+    await user.keyboard('{Control>}k{/Control}')
     expect(screen.getByTestId('assistant-input')).toHaveFocus()
   })
 
@@ -43,7 +43,7 @@ describe('useAssistantShortcut', () => {
     const user = userEvent.setup()
     render(<Harness />)
     expect(screen.getByTestId('expanded')).toHaveTextContent('closed')
-    await user.keyboard('{Control>}{Shift>}A{/Shift}{/Control}')
+    await user.keyboard('{Control>}k{/Control}')
     expect(screen.getByTestId('expanded')).toHaveTextContent('open')
   })
 

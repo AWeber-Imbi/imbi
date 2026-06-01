@@ -588,7 +588,7 @@ export function CommandBar() {
               type="text"
               value={input}
             />
-            {!input && !inputFocused && <Keystroke value="Ctrl+Shift+A" />}
+            {!input && !inputFocused && <Keystroke value="Ctrl+K" />}
             {mode === 'assistant' && isStreaming ? (
               <Button
                 aria-label="Stop generating"

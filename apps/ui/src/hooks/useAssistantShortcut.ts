@@ -7,7 +7,7 @@ export function useAssistantShortcut(
 ) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'A' && e.shiftKey && (e.metaKey || e.ctrlKey)) {
+      if (e.key === 'k' && !e.shiftKey && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
         if (!isExpanded) setExpanded(true)
         ref.current?.focus()
