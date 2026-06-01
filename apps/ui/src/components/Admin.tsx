@@ -13,6 +13,7 @@ import {
   Globe,
   KeyRound,
   Layers,
+  LayoutDashboard,
   Link2,
   Network,
   Puzzle,
@@ -28,6 +29,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { useOrganization } from '@/contexts/OrganizationContext'
 
+import { AdminOverview } from './admin/AdminOverview'
 import { AssistantManagement } from './admin/AssistantManagement'
 import { AuthProvidersManagement } from './admin/AuthProvidersManagement'
 import { BlueprintManagement } from './admin/BlueprintManagement'
@@ -56,6 +58,7 @@ type AdminSection =
   | 'link-definitions'
   | 'oauth'
   | 'organizations'
+  | 'overview'
   | 'plugins'
   | 'project-types'
   | 'roles'
@@ -66,6 +69,9 @@ type AdminSection =
   | 'users'
   | 'webhooks'
 
+// The admin section shown when none is specified in the URL.
+const DEFAULT_ADMIN_SECTION: AdminSection = 'overview'
+
 const VALID_SECTIONS: AdminSection[] = [
   'assistant',
   'blueprints',
@@ -75,6 +81,7 @@ const VALID_SECTIONS: AdminSection[] = [
   'document-templates',
   'oauth',
   'organizations',
+  'overview',
   'plugins',
   'project-types',
   'roles',
@@ -100,19 +107,26 @@ export function Admin() {
   const isSubPage = !!slug
   const currentSection: AdminSection = isValidSection(section)
     ? section
-    : 'blueprints'
+    : DEFAULT_ADMIN_SECTION
   const [isCollapsed, setIsCollapsed] = useState(false)
   const { selectedOrganization } = useOrganization()
 
   useEffect(() => {
     if (section === undefined) {
-      navigate('/admin/blueprints', { replace: true })
+      navigate(`/admin/${DEFAULT_ADMIN_SECTION}`, { replace: true })
     }
   }, [section, navigate])
 
   const orgName = selectedOrganization?.name || 'Organization'
 
   const orgAdminSections: SectionDef[] = [
+    {
+      description: 'Operations metrics and system health at a glance',
+      icon: LayoutDashboard,
+      id: 'overview',
+      label: 'Overview',
+      scope: 'org',
+    },
     {
       description: 'Configure metadata templates',
       icon: FileJson,
@@ -364,6 +378,7 @@ export function Admin() {
 
           {/* Section Content */}
           <div className="p-8">
+            {currentSection === 'overview' && <AdminOverview />}
             {currentSection === 'teams' && <TeamManagement />}
             {currentSection === 'environments' && <EnvironmentManagement />}
             {currentSection === 'project-types' && <ProjectTypeManagement />}
