@@ -446,6 +446,31 @@
   .document-markdown input[type='checkbox'] {
     margin-right: 0.5em;
   }
+
+  /* Inline comment highlights (overlay spans wrapped around anchored text). */
+  .comment-highlight {
+    cursor: pointer;
+    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+    border-bottom: 2px solid
+      color-mix(in srgb, var(--color-primary) 55%, transparent);
+    border-radius: 2px;
+    padding: 0 1px;
+    transition: background 120ms ease;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+  .comment-highlight:hover,
+  .comment-highlight.is-hover,
+  .comment-highlight.is-focused {
+    background: color-mix(in srgb, var(--color-primary) 32%, transparent);
+  }
+  .comment-highlight.is-focused {
+    border-bottom-color: var(--color-primary);
+  }
+  .comment-highlight[data-resolved='true'] {
+    background: transparent;
+    border-bottom: 1px dotted var(--ds-border-secondary);
+  }
 }
 
 @keyframes slide-in-right {

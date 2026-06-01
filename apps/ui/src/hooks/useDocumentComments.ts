@@ -15,6 +15,7 @@ import {
 import { extractApiErrorDetail } from '@/lib/apiError'
 import type {
   Comment,
+  CommentAnchor,
   CommentThread,
   CommentThreadHandlers,
 } from '@/types/comments'
@@ -22,6 +23,11 @@ import type {
 interface CommentVars {
   commentId: string
   threadId: string
+}
+
+interface CreateThreadVars {
+  anchor?: CommentAnchor
+  body: string
 }
 
 interface EditVars extends CommentVars {
@@ -98,11 +104,15 @@ export function useDocumentComments(
     [],
   )
 
-  const createThreadMutation = useMutation({
-    mutationFn: (body: string) =>
+  const createThreadMutation = useMutation<
+    CommentThread,
+    unknown,
+    CreateThreadVars
+  >({
+    mutationFn: ({ anchor, body }) =>
       createCommentThread(orgSlug, projectId, documentId, {
         body,
-        kind: 'page',
+        ...(anchor ? { anchor, kind: 'inline' } : { kind: 'page' }),
       }),
     onError: fail('Comment failed'),
     onSettled: settle,
@@ -224,7 +234,8 @@ export function useDocumentComments(
     commentsBusy,
     onAcknowledge: (threadId, commentId) =>
       acknowledgeMutation.mutate({ commentId, threadId }),
-    onCreateThread: (body) => createThreadMutation.mutate(body),
+    onCreateThread: (body, inline) =>
+      createThreadMutation.mutate({ anchor: inline?.anchor, body }),
     onDelete: (threadId, commentId) =>
       deleteCommentMutation.mutate({ commentId, threadId }),
     onEdit: (threadId, commentId, body) =>

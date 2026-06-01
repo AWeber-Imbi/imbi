@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   ArrowLeft,
@@ -26,10 +26,13 @@ import { IconTooltip } from '@/components/ui/tooltip'
 import { UserDisplay } from '@/components/ui/user-display'
 import { cn } from '@/lib/utils'
 import type { Document } from '@/types'
-import type { CommentThread } from '@/types/comments'
+import type { CommentAnchor, CommentThread } from '@/types/comments'
 
 import { BottomDiscussion } from './comments/BottomDiscussion'
 import type { CommentFilter } from './comments/BottomDiscussion'
+import { RightCommentBar } from './comments/RightCommentBar'
+import { SelectionToolbar } from './comments/SelectionToolbar'
+import { useInlineComments } from './comments/useInlineComments'
 import { DocumentsFilterRail } from './DocumentsFilterRail'
 import {
   documentTitle,
@@ -57,7 +60,7 @@ interface Props {
   document: Document
   onAcknowledgeComment: (threadId: string, commentId: string) => void
   onBack: () => void
-  onCreateThread: (body: string) => void
+  onCreateThread: (body: string, inline?: { anchor: CommentAnchor }) => void
   onDelete?: () => void
   onDeleteComment: (threadId: string, commentId: string) => void
   onEdit?: () => void
@@ -91,11 +94,48 @@ export function DocumentsPinboardReader({
   const [search, setSearch] = useState('')
   const [commentFilter, setCommentFilter] = useState<CommentFilter>('open')
   const [showComments, setShowComments] = useState(true)
+  const articleRef = useRef<HTMLDivElement>(null)
+  const marginRef = useRef<HTMLDivElement>(null)
 
   const commentCounts = useMemo(() => {
     const open = comments.filter((t) => !t.resolved).length
     return { all: comments.length, open, resolved: comments.length - open }
   }, [comments])
+
+  const pageThreads = useMemo(
+    () => comments.filter((t) => t.kind !== 'inline'),
+    [comments],
+  )
+  const inlineThreads = useMemo(
+    () => comments.filter((t) => t.kind === 'inline'),
+    [comments],
+  )
+
+  const inline = useInlineComments({
+    articleRef,
+    content: document.content,
+    enabled: showComments,
+    inlineThreads,
+  })
+
+  // Inline threads shown in the margin: filtered, but always keep a focused one.
+  const visibleInline = useMemo(
+    () =>
+      inlineThreads.filter((t) =>
+        commentFilter === 'all'
+          ? true
+          : commentFilter === 'open'
+            ? !t.resolved
+            : t.resolved || t.id === inline.focusedId,
+      ),
+    [inlineThreads, commentFilter, inline.focusedId],
+  )
+
+  const handleSubmitDraft = (body: string) => {
+    if (!inline.draft) return
+    onCreateThread(body, { anchor: inline.draft.anchor })
+    inline.onConfirmedDraft()
+  }
   const [confirmDelete, setConfirmDelete] = useState(false)
   const pinned = document.is_pinned
   const title = documentTitle(document)
@@ -247,7 +287,14 @@ export function DocumentsPinboardReader({
           </div>
         </div>
 
-        <div className="grid grid-cols-[minmax(0,1fr)_260px] items-start gap-5">
+        <div
+          className={cn(
+            'grid items-start gap-5',
+            showComments
+              ? 'grid-cols-[minmax(0,1fr)_220px_300px]'
+              : 'grid-cols-[minmax(0,1fr)_260px]',
+          )}
+        >
           <article className="border-tertiary bg-primary rounded-lg border px-8 py-7">
             <h1 className="text-primary m-0 text-[26px] leading-[1.2] font-medium tracking-[-0.015em]">
               {title}
@@ -273,7 +320,7 @@ export function DocumentsPinboardReader({
               </div>
             </div>
 
-            <div className="document-markdown mt-6">
+            <div className="document-markdown mt-6" ref={articleRef}>
               <Markdown
                 components={{
                   h2: ({ children, ...props }) => (
@@ -379,6 +426,32 @@ export function DocumentsPinboardReader({
               </div>
             )}
           </div>
+
+          {showComments && (
+            <div className="relative" ref={marginRef}>
+              <RightCommentBar
+                articleRef={articleRef}
+                busy={commentsBusy}
+                containerRef={marginRef}
+                currentUserEmail={currentUserEmail}
+                displayNames={displayNames}
+                draft={inline.draft}
+                focusedId={inline.focusedId}
+                layoutTick={inline.layoutTick}
+                onAcknowledge={onAcknowledgeComment}
+                onCancelDraft={inline.onCancelDraft}
+                onDelete={onDeleteComment}
+                onEdit={onEditComment}
+                onFocus={inline.setFocusedId}
+                onHover={inline.setHoverId}
+                onReply={onReplyComment}
+                onResolve={onResolveThread}
+                onSubmitDraft={handleSubmitDraft}
+                orphanedIds={inline.orphanedIds}
+                threads={visibleInline}
+              />
+            </div>
+          )}
         </div>
 
         {showComments && (
@@ -394,11 +467,16 @@ export function DocumentsPinboardReader({
               onEdit={onEditComment}
               onReply={onReplyComment}
               onResolve={onResolveThread}
-              threads={comments}
+              threads={pageThreads}
             />
           </div>
         )}
       </div>
+
+      <SelectionToolbar
+        onComment={inline.onStartDraft}
+        rect={inline.selectionRect}
+      />
       <ConfirmDialog
         confirmLabel={deleting ? 'Deleting…' : 'Delete'}
         description={`"${title}" will be permanently removed.`}

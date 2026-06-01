@@ -50,7 +50,7 @@ export interface CommentThread {
  */
 export interface CommentThreadHandlers {
   onAcknowledge: (threadId: string, commentId: string) => void
-  onCreateThread: (body: string) => void
+  onCreateThread: (body: string, inline?: { anchor: CommentAnchor }) => void
   onDelete: (threadId: string, commentId: string) => void
   onEdit: (threadId: string, commentId: string, body: string) => void
   onReply: (threadId: string, body: string) => void
@@ -58,7 +58,8 @@ export interface CommentThreadHandlers {
 }
 
 export interface CreateThreadBody {
+  anchor?: CommentAnchor
   body: string
-  kind: 'page'
+  kind: 'inline' | 'page'
   mentions?: string[]
 }
