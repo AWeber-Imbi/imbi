@@ -20,6 +20,8 @@ import type {
   ConfigKeyResponse,
   ConfigKeyValueResponse,
   CurrentReleaseEnvironment,
+  DashboardMetrics,
+  DashboardStatus,
   DeploymentCommit,
   DeploymentCompareResult,
   DeploymentPromoteRequest,
@@ -943,6 +945,12 @@ export const getScoreHistory = (
 // Admin - Settings (reference data)
 export const getAdminSettings = (signal?: AbortSignal) =>
   apiClient.get<AdminSettings>('/admin/settings', undefined, signal)
+
+export const getDashboardStatus = (signal?: AbortSignal) =>
+  apiClient.get<DashboardStatus>('/admin/dashboard/status', undefined, signal)
+
+export const getDashboardMetrics = (signal?: AbortSignal) =>
+  apiClient.get<DashboardMetrics>('/admin/dashboard/metrics', undefined, signal)
 
 // Admin - Blueprints
 export const listBlueprints = async (
@@ -2088,9 +2096,11 @@ export interface ScoreRollupRow {
 }
 
 export const getScoreRollup = (
+  org: string,
   dimension: 'organization' | 'project_type' | 'team' = 'team',
   signal?: AbortSignal,
-) => apiClient.get<ScoreRollupRow[]>('/scores/rollup', { dimension }, signal)
+) =>
+  apiClient.get<ScoreRollupRow[]>('/scores/rollup', { dimension, org }, signal)
 
 export interface GlobalScoreEvent {
   change_reason: null | string
@@ -2127,18 +2137,20 @@ interface ScoreHistoryByTeamResponse {
 }
 
 export const getScoreHistoryFeed = (
-  params?: {
+  params: {
     from?: string
     limit?: number
+    org: string
     to?: string
   },
   signal?: AbortSignal,
 ) => apiClient.get<GlobalScoreEvent[]>('/scores/history-feed', params, signal)
 
 export const getScoreHistoryByTeam = (
-  params?: {
+  params: {
     from?: string
     granularity?: 'day' | 'hour'
+    org: string
     to?: string
   },
   signal?: AbortSignal,
@@ -2153,6 +2165,7 @@ export const getMonthlyImprovement = (
   params: {
     dimension?: 'organization' | 'project_type' | 'team'
     month: number
+    org: string
     year: number
   },
   signal?: AbortSignal,
@@ -2162,6 +2175,7 @@ export const getMonthlyImprovement = (
     {
       dimension: params.dimension ?? 'team',
       month: params.month,
+      org: params.org,
       year: params.year,
     },
     signal,

@@ -356,7 +356,11 @@ async function resolveAuthToken(url: string): Promise<null | string> {
 }
 
 function shouldSkipAuth(url: string): boolean {
-  return SKIP_AUTH_PATHS.some((path) => url.includes(path))
+  // Match the exact request path, not a substring: a substring check would
+  // strip auth from any endpoint whose path merely contains a public one,
+  // e.g. `/admin/dashboard/status` colliding with `/status`.
+  const path = url.split(/[?#]/)[0]
+  return SKIP_AUTH_PATHS.includes(path)
 }
 
 export const apiClient = new ApiClient()

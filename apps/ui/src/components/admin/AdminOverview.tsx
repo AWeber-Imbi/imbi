@@ -1,11 +1,10 @@
 // Admin · Overview dashboard (Direction B: ops console + status rail).
 //
 // Recreates the chosen design from the Admin Dashboard handoff inside the
-// real admin shell. Real data is wired where the API already exposes it
-// (operations-log metrics + project scores); everything the backend does not
-// expose yet — datastore/service health, active-user counts, the 30-day score
-// trend, and the per-label entity counts that need one Cypher count each — is
-// MOCKED below and flagged so it's easy to swap for a real `/status` payload.
+// real admin shell. All data is live: 7-day activity metrics via
+// /admin/dashboard/metrics, project scores, the 30-day score trend via
+// /scores/history-by-team, and datastore/service health via
+// /admin/dashboard/status.
 
 import { useMemo } from 'react'
 
@@ -14,73 +13,47 @@ import {
   Activity,
   ArrowLeftRight,
   ArrowUpRight,
+  BookOpen,
   Box,
-  Building2,
   Database,
-  FileCode2,
-  FolderKanban,
-  GitBranch,
   GitFork,
+  GitPullRequest,
   Hash,
-  KeyRound,
-  Layers,
   type LucideIcon,
   Plug,
   Rocket,
-  Shapes,
+  ScrollText,
   Sparkles,
-  User,
-  Users,
   Webhook,
   Zap,
 } from 'lucide-react'
 
-import { getProjectsSlim, listOperationsLog } from '@/api/endpoints'
+import {
+  getDashboardMetrics,
+  getDashboardStatus,
+  getProjectsSlim,
+  getScoreHistoryByTeam,
+  type TeamScoreSeries,
+} from '@/api/endpoints'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import type { DatastoreStatus, ServiceStatus } from '@/types'
 
-// ---------------------------------------------------------------------------
-// Mock data — not yet exposed by the API (see file header).
-// ---------------------------------------------------------------------------
-
-interface HealthEntry {
-  icon: LucideIcon
-  latency: string
-  name: string
-  role: string
+// Icons keyed by the name the dashboard status endpoint returns.
+const DATASTORE_ICONS: Record<string, LucideIcon> = {
+  ClickHouse: Database,
+  PostgreSQL: GitFork,
+  Valkey: Zap,
 }
 
-// Tier-1 datastore pings (SELECT 1 / PING per store).
-const MOCK_DATASTORES: HealthEntry[] = [
-  { icon: GitFork, latency: '4.2 ms', name: 'Neo4j', role: 'graph · Pool' },
-  {
-    icon: Database,
-    latency: '11.8 ms',
-    name: 'ClickHouse',
-    role: 'operations_log',
-  },
-  { icon: Zap, latency: '0.9 ms', name: 'Valkey', role: 'cache · client' },
-]
-
-const MOCK_SERVICES: { icon: LucideIcon; name: string }[] = [
-  { icon: Sparkles, name: 'Assistant' },
-  { icon: Webhook, name: 'API' },
-  { icon: ArrowLeftRight, name: 'Gateway' },
-  { icon: Plug, name: 'MCP' },
-  { icon: Hash, name: 'Slackbot' },
-]
-
-// uniqExact(performed_by) over operations_log with a time filter.
-const MOCK_ACTIVE_USERS = { last7d: 47, last30d: 112 }
-
-// score_history materialized view — avg score over the last 30 days.
-const MOCK_SCORE_TREND = [78, 79, 77, 80, 81, 80, 82, 83, 82, 82, 84, 82]
-
-// 7-day deploy sparkline (per-day Deployed counts).
-const MOCK_DEPLOY_SPARK = [38, 51, 44, 62, 35, 58, 54]
-
-const LAST_CHECKED = '8s ago'
+const SERVICE_ICONS: Record<string, LucideIcon> = {
+  API: Webhook,
+  Assistant: Sparkles,
+  Gateway: ArrowLeftRight,
+  MCP: Plug,
+  Slackbot: Hash,
+}
 
 // ---------------------------------------------------------------------------
 // Data hook — real operations-log metrics + project scores.
@@ -91,6 +64,48 @@ interface ScoreBand {
   label: string
   range: string
   tone: 'danger' | 'success' | 'warning'
+}
+
+// Collapse the per-team daily score series (from /scores/history-by-team)
+// into a single trend line: for each day bucket, average every team's
+// latest-known daily score (carried forward over days a team didn't
+// change). The result is then emitted as a continuous daily series from
+// the first data day through today, repeating the prior day's value on
+// days with no score changes, so the line spans the window rather than
+// collapsing onto the handful of days that actually changed.
+// fallow-ignore-next-line complexity
+function aggregateScoreTrend(teams: TeamScoreSeries[]): number[] {
+  const dayKey = (ts: string) => ts.slice(0, 10)
+  const days = [
+    ...new Set(teams.flatMap((t) => t.points.map((p) => dayKey(p.timestamp)))),
+  ].sort()
+  if (days.length === 0) return []
+  const teamMaps = teams.map(
+    (t) => new Map(t.points.map((p) => [dayKey(p.timestamp), p.score])),
+  )
+  const lastKnown: (null | number)[] = teams.map(() => null)
+  const avgByDay = new Map<string, number>()
+  for (const day of days) {
+    teamMaps.forEach((m, i) => {
+      const v = m.get(day)
+      if (v != null) lastKnown[i] = v
+    })
+    const vals = lastKnown.filter((v): v is number => v != null)
+    if (vals.length > 0) {
+      avgByDay.set(day, vals.reduce((a, b) => a + b, 0) / vals.length)
+    }
+  }
+  const trend: number[] = []
+  let carried: null | number = null
+  const cursor = new Date(`${days[0]}T00:00:00Z`)
+  const end = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`)
+  while (cursor.getTime() <= end.getTime()) {
+    const value = avgByDay.get(cursor.toISOString().slice(0, 10))
+    if (value != null) carried = value
+    if (carried != null) trend.push(carried)
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+  return trend
 }
 
 function deriveScores(projects: { score: null | number; slug: string }[]) {
@@ -122,16 +137,38 @@ function deriveScores(projects: { score: null | number; slug: string }[]) {
       tone: 'danger',
     },
   ]
-  const attention = [...valid].sort((a, b) => a.score - b.score).slice(0, 6)
-  return { attention, average, bands, total }
+  return { average, bands, total }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = bytes / 1024
+  let i = 0
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024
+    i++
+  }
+  return `${value.toFixed(1)} ${units[i]}`
 }
 
 function nfmt(n: number): string {
   return n.toLocaleString('en-US')
 }
 
-function sevenDaysAgoIso(): string {
-  return new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+function relativeTime(iso: string): string {
+  const secs = Math.max(
+    0,
+    Math.round((Date.now() - new Date(iso).getTime()) / 1000),
+  )
+  if (secs < 60) return `${secs}s ago`
+  const mins = Math.round(secs / 60)
+  if (mins < 60) return `${mins}m ago`
+  return `${Math.round(mins / 60)}h ago`
+}
+
+function thirtyDaysAgoIso(): string {
+  return new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
 }
 
 function titleCase(slug: string): string {
@@ -143,11 +180,7 @@ function titleCase(slug: string): string {
 
 function useOverviewData(orgSlug: string) {
   const metricsQuery = useQuery({
-    queryFn: ({ signal }) =>
-      listOperationsLog(
-        { filters: { since: sevenDaysAgoIso() }, limit: 1 },
-        signal,
-      ),
+    queryFn: ({ signal }) => getDashboardMetrics(signal),
     queryKey: ['admin-overview', 'metrics'],
     staleTime: 60_000,
   })
@@ -159,18 +192,37 @@ function useOverviewData(orgSlug: string) {
     staleTime: 60_000,
   })
 
-  const metrics = metricsQuery.data?.metrics
+  const trendQuery = useQuery({
+    enabled: !!orgSlug,
+    queryFn: ({ signal }) =>
+      getScoreHistoryByTeam(
+        { from: thirtyDaysAgoIso(), granularity: 'day', org: orgSlug },
+        signal,
+      ),
+    queryKey: ['admin-overview', 'score-trend', orgSlug],
+    staleTime: 120_000,
+  })
 
-  const deploysByEnv = useMemo(() => {
-    const raw = metrics?.deploys_by_environment ?? {}
-    return Object.entries(raw)
-      .map(([slug, count]) => ({ count, label: titleCase(slug), slug }))
-      .sort((a, b) => b.count - a.count)
-  }, [metrics])
+  const metrics = metricsQuery.data
+
+  const deploysByEnv = useMemo(
+    () =>
+      (metrics?.releases_by_environment ?? []).map((e) => ({
+        count: e.count,
+        label: titleCase(e.slug),
+        slug: e.slug,
+      })),
+    [metrics],
+  )
 
   const scores = useMemo(
     () => deriveScores(projectsQuery.data ?? []),
     [projectsQuery.data],
+  )
+
+  const scoreTrend = useMemo(
+    () => aggregateScoreTrend(trendQuery.data?.teams ?? []),
+    [trendQuery.data],
   )
 
   return {
@@ -178,10 +230,10 @@ function useOverviewData(orgSlug: string) {
     metrics,
     metricsError: metricsQuery.isError,
     metricsLoading: metricsQuery.isLoading,
-    projectCount: projectsQuery.data?.length ?? null,
     scores,
     scoresError: projectsQuery.isError,
     scoresLoading: projectsQuery.isLoading,
+    scoreTrend,
   }
 }
 
@@ -189,11 +241,6 @@ function useOverviewData(orgSlug: string) {
 // Shared bits
 // ---------------------------------------------------------------------------
 
-const TONE_TEXT: Record<string, string> = {
-  danger: 'text-danger',
-  success: 'text-success',
-  warning: 'text-warning',
-}
 const TONE_BG: Record<string, string> = {
   danger: 'bg-danger',
   success: 'bg-success',
@@ -213,29 +260,19 @@ const ENV_COLORS = [
 export function AdminOverview() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug ?? ''
-  const orgName = selectedOrganization?.name ?? 'Organization'
   const {
     deploysByEnv,
     metrics,
     metricsError,
     metricsLoading,
-    projectCount,
     scores,
     scoresError,
     scoresLoading,
+    scoreTrend,
   } = useOverviewData(orgSlug)
 
   return (
     <div className="max-w-dashboard">
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <p className="text-secondary text-sm">
-          {orgName} tenant · operations metrics for the last 7 days
-        </p>
-        <span className="bg-secondary text-secondary inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 font-mono text-xs">
-          <GitBranch className="size-3" />v{__APP_VERSION__}
-        </span>
-      </div>
-
       <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         {/* Main column */}
         <div className="flex flex-col gap-6">
@@ -244,32 +281,37 @@ export function AdminOverview() {
               icon={Rocket}
               isError={metricsError}
               isLoading={metricsLoading}
-              label="Deploys"
-              spark={MOCK_DEPLOY_SPARK}
+              label="Releases"
+              spark={metrics?.releases.daily}
               sub="7 days"
-              value={metrics?.deploys ?? null}
+              value={metrics?.releases.total ?? null}
             />
             <MetricTile
               icon={Activity}
               isError={metricsError}
               isLoading={metricsLoading}
               label="Events"
+              spark={metrics?.events.daily}
               sub="7 days"
-              value={metrics?.event_count ?? null}
+              value={metrics?.events.total ?? null}
             />
             <MetricTile
-              icon={Users}
-              label="Active users"
-              sub={`${MOCK_ACTIVE_USERS.last30d} · 30d`}
-              value={MOCK_ACTIVE_USERS.last7d}
+              icon={ScrollText}
+              isError={metricsError}
+              isLoading={metricsLoading}
+              label="OpsLog Entries"
+              spark={metrics?.ops_log.daily}
+              sub="7 days"
+              value={metrics?.ops_log.total ?? null}
             />
             <MetricTile
-              icon={FolderKanban}
-              isError={scoresError}
-              isLoading={scoresLoading}
-              label="Projects"
-              sub="in catalog"
-              value={projectCount}
+              icon={GitPullRequest}
+              isError={metricsError}
+              isLoading={metricsLoading}
+              label="Pull Requests"
+              spark={metrics?.pull_requests.daily}
+              sub="7 days"
+              value={metrics?.pull_requests.total ?? null}
             />
           </div>
 
@@ -278,18 +320,18 @@ export function AdminOverview() {
               <SectionLabel
                 right={
                   <span className="text-tertiary text-xs">
-                    {nfmt(metrics?.deploys ?? 0)} total
+                    {nfmt(metrics?.releases.total ?? 0)} total
                   </span>
                 }
               >
-                Deploys by environment
+                Releases by Environment
               </SectionLabel>
               <Card className="p-4">
                 <DeploysByEnv
                   data={deploysByEnv}
                   isError={metricsError}
                   isLoading={metricsLoading}
-                  total={metrics?.deploys ?? 0}
+                  total={metrics?.releases.total ?? 0}
                 />
               </Card>
             </div>
@@ -308,91 +350,52 @@ export function AdminOverview() {
                   isError={scoresError}
                   isLoading={scoresLoading}
                   scores={scores}
+                  trend={scoreTrend}
                 />
               </Card>
             </div>
           </section>
 
-          {scores.attention.length > 0 && (
-            <section>
-              <SectionLabel>Lowest scores</SectionLabel>
-              <Card className="grid grid-cols-1 gap-x-7 gap-y-2 p-4 sm:grid-cols-2">
-                {scores.attention.map((a) => (
-                  <div className="flex items-center gap-2.5" key={a.slug}>
-                    <span className="text-secondary flex-1 truncate font-mono text-[12.5px]">
-                      {a.slug}
-                    </span>
-                    <ScorePip score={a.score} />
-                  </div>
-                ))}
-              </Card>
-            </section>
-          )}
-
-          <section>
-            <SectionLabel
-              right={
-                <span className="text-tertiary text-xs">11 entity types</span>
-              }
-            >
-              Catalog
-            </SectionLabel>
-            <CatalogGrid
-              environments={metrics?.environments ?? null}
-              projects={projectCount}
-            />
-          </section>
+          <ResourcesCard />
         </div>
 
         {/* Status rail */}
         <div className="flex flex-col gap-3.5">
           <SystemHealthRail />
-          <ResourcesCard />
         </div>
       </div>
     </div>
   )
 }
 
-function CatalogGrid({
-  environments,
-  projects,
-}: {
-  environments: null | number
-  projects: null | number
-}) {
-  // Real where the operations-log metrics expose it (Project, Environment);
-  // the rest need a per-label Cypher count and are MOCKED for now.
-  const entities: { count: null | number; icon: LucideIcon; label: string }[] =
-    [
-      { count: projects, icon: FolderKanban, label: 'Project' },
-      { count: 47, icon: Box, label: 'Component' },
-      { count: 14, icon: Shapes, label: 'ProjectType' },
-      { count: 32, icon: FileCode2, label: 'Blueprint' },
-      { count: environments, icon: Layers, label: 'Environment' },
-      { count: 18, icon: Users, label: 'Team' },
-      { count: 96, icon: User, label: 'User' },
-      { count: 4, icon: Building2, label: 'Organization' },
-      { count: 11, icon: Webhook, label: 'Webhook' },
-      { count: 6, icon: Plug, label: 'MCPServer' },
-      { count: 9, icon: KeyRound, label: 'OAuthClient' },
-    ]
+// fallow-ignore-next-line complexity
+function DatastoreRow({ ds }: { ds: DatastoreStatus }) {
+  const Icon = DATASTORE_ICONS[ds.name] ?? Box
+  const ok = ds.status === 'ok'
   return (
-    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
-      {entities.map((e) => (
-        <div
-          className="bg-primary border-tertiary hover:border-secondary flex flex-col gap-1.5 rounded-md border p-3 transition-colors"
-          key={e.label}
-        >
-          <e.icon className="text-tertiary size-3.5" />
-          <div>
-            <div className="text-primary text-xl font-semibold tracking-tight tabular-nums">
-              {e.count == null ? '—' : nfmt(e.count)}
-            </div>
-            <div className="text-tertiary mt-0.5 text-xs">{e.label}</div>
-          </div>
+    <div className="bg-secondary flex items-center gap-3 rounded-md px-2.5 py-2.5">
+      <span
+        className={`${ok ? 'bg-success text-success' : 'bg-danger text-danger'} flex size-7.5 shrink-0 items-center justify-center rounded-md`}
+      >
+        <Icon className="size-3.75" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] font-semibold">{ds.name}</span>
+          <StatusDot ok={ok} size={7} />
         </div>
-      ))}
+        <span className="text-tertiary font-mono text-[11px]">{ds.role}</span>
+      </div>
+      <div className="text-right">
+        <div className="font-mono text-xs font-semibold">
+          {ok && ds.latency_ms != null ? `${ds.latency_ms} ms` : '—'}
+        </div>
+        {ok && ds.size_bytes != null && (
+          <div className="text-tertiary font-mono text-[11px]">
+            {formatBytes(ds.size_bytes)}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -424,7 +427,7 @@ function DeploysByEnv({
   if (data.length === 0) {
     return (
       <div className="text-tertiary text-sm">
-        No deploys in the last 7 days.
+        No releases in the last 7 days.
       </div>
     )
   }
@@ -439,7 +442,7 @@ function DeploysByEnv({
               style={{ color }}
             >
               <span
-                className="size-[7px] rounded-full"
+                className="size-1.75 rounded-full"
                 style={{ background: color }}
               />
               {d.label}
@@ -516,14 +519,17 @@ function MetricTile({
   )
 }
 
+// fallow-ignore-next-line complexity
 function ProjectHealth({
   isError,
   isLoading,
   scores,
+  trend,
 }: {
   isError?: boolean
   isLoading?: boolean
   scores: ReturnType<typeof deriveScores>
+  trend: number[]
 }) {
   if (isLoading) {
     return (
@@ -547,10 +553,12 @@ function ProjectHealth({
           </div>
           <div className="text-tertiary mt-1 text-xs">average score</div>
         </div>
-        <div className="ml-auto text-right">
-          <TrendLine data={MOCK_SCORE_TREND} />
-          <div className="text-tertiary mt-0.5 text-xs">30-day trend</div>
-        </div>
+        {trend.length >= 2 && (
+          <div className="ml-auto text-right">
+            <TrendLine data={trend} />
+            <div className="text-tertiary mt-0.5 text-xs">30-day trend</div>
+          </div>
+        )}
       </div>
       <div className="mb-3 flex h-2.5 gap-0.5 overflow-hidden rounded-[5px]">
         {bands.map((b) => (
@@ -588,11 +596,12 @@ function ProjectHealth({
 function ResourcesCard() {
   const base = window.location.origin
   const resources = [
+    { icon: BookOpen, name: 'API docs', url: `${base}/docs` },
     { icon: Webhook, name: 'REST API', url: `${base}/api/` },
     { icon: Plug, name: 'MCP server', url: `${base}/mcp/` },
     { icon: ArrowLeftRight, name: 'Webhook gateway', url: `${base}/gateway/` },
   ]
-  const snippet = `claude mcp add imbi \\\n  --url ${base}/mcp/`
+  const snippet = `claude mcp add imbi --url ${base}/mcp/`
   return (
     <Card className="overflow-hidden p-0">
       <div className="px-4 pt-3 pb-1">
@@ -608,8 +617,8 @@ function ResourcesCard() {
               rel="noreferrer"
               target="_blank"
             >
-              <span className="bg-secondary text-secondary flex size-[30px] shrink-0 items-center justify-center rounded-md">
-                <r.icon className="size-[15px]" />
+              <span className="bg-secondary text-secondary flex size-7.5 shrink-0 items-center justify-center rounded-md">
+                <r.icon className="size-3.75" />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-[13.5px] font-medium">
@@ -623,7 +632,7 @@ function ResourcesCard() {
             </a>
           ))}
         </div>
-        <div className="bg-secondary border-tertiary mt-2.5 rounded-md border px-3 py-2.5">
+        <div className="border-tertiary bg-secondary mt-2.5 rounded-md border px-3 py-2.5">
           <div className="text-tertiary mb-1.5 text-[10px] font-semibold tracking-wider uppercase">
             Connect the MCP server
           </div>
@@ -640,23 +649,6 @@ function ResourcesCard() {
 // Tiles
 // ---------------------------------------------------------------------------
 
-function ScorePip({ score }: { score: number }) {
-  const tone = scorePipTone(score)
-  return (
-    <span
-      className={`inline-flex h-[22px] min-w-[30px] items-center justify-center rounded-md px-[7px] font-mono text-[12.5px] font-semibold tabular-nums ${TONE_BG[tone]} ${TONE_TEXT[tone]}`}
-    >
-      {Math.round(score)}
-    </span>
-  )
-}
-
-function scorePipTone(score: number): string {
-  if (score >= 85) return 'success'
-  if (score >= 75) return 'warning'
-  return 'danger'
-}
-
 function SectionLabel({
   children,
   right,
@@ -670,6 +662,29 @@ function SectionLabel({
         {children}
       </div>
       {right}
+    </div>
+  )
+}
+
+// fallow-ignore-next-line complexity
+function ServiceRow({ service }: { service: ServiceStatus }) {
+  const Icon = SERVICE_ICONS[service.name] ?? Box
+  const up = service.status === 'up'
+  return (
+    <div className="bg-primary flex items-center gap-2.5 px-3 py-2.5">
+      <Icon className="text-tertiary size-3.75" />
+      <span className="flex-1 text-[13.5px]">{service.name}</span>
+      {service.version && (
+        <span className="text-tertiary font-mono text-[11px]">
+          v{service.version}
+        </span>
+      )}
+      <StatusDot ok={up} />
+      <span
+        className={`${up ? 'text-success' : 'text-danger'} text-xs font-medium`}
+      >
+        {up ? 'Up' : 'Down'}
+      </span>
     </div>
   )
 }
@@ -705,12 +720,12 @@ function Sparkbars({ data }: { data: number[] }) {
 // Status rail
 // ---------------------------------------------------------------------------
 
-function StatusDot({ size = 8 }: { size?: number }) {
+function StatusDot({ ok = true, size = 8 }: { ok?: boolean; size?: number }) {
   return (
     <span
-      className="bg-success inline-block shrink-0 rounded-full"
+      className={`${ok ? 'bg-success' : 'bg-danger'} inline-block shrink-0 rounded-full`}
       style={{
-        boxShadow: '0 0 0 3px var(--ds-bg-success)',
+        boxShadow: `0 0 0 3px ${ok ? 'var(--ds-bg-success)' : 'var(--ds-bg-danger)'}`,
         height: size,
         width: size,
       }}
@@ -718,54 +733,47 @@ function StatusDot({ size = 8 }: { size?: number }) {
   )
 }
 
+// fallow-ignore-next-line complexity
 function SystemHealthRail() {
+  const { data, isError, isLoading } = useQuery({
+    queryFn: ({ signal }) => getDashboardStatus(signal),
+    queryKey: ['admin-overview', 'status'],
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  })
+
+  const datastores = data?.datastores ?? []
+  const services = data?.services ?? []
+  const loadingFirst = isLoading && !data
+
+  let headerNote: string
+  if (loadingFirst) headerNote = 'checking…'
+  else if (isError || !data) headerNote = 'unavailable'
+  else headerNote = relativeTime(data.checked_at)
+
   return (
     <Card className="overflow-hidden p-0">
       <div className="border-tertiary flex items-center gap-2.5 border-b px-4 py-3">
-        <StatusDot size={9} />
         <span className="flex-1 text-[15px] font-semibold">System health</span>
-        <span className="text-tertiary text-xs">{LAST_CHECKED}</span>
+        <span className="text-tertiary text-xs">{headerNote}</span>
       </div>
       <div className="flex flex-col gap-2 p-3">
-        {MOCK_DATASTORES.map((ds) => (
-          <div
-            className="bg-secondary flex items-center gap-3 rounded-md px-2.5 py-2.5"
-            key={ds.name}
-          >
-            <span className="bg-success text-success flex size-[30px] shrink-0 items-center justify-center rounded-md">
-              <ds.icon className="size-[15px]" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="text-[13px] font-semibold">{ds.name}</span>
-                <StatusDot size={7} />
-              </div>
-              <span className="text-tertiary font-mono text-[11px]">
-                {ds.role}
-              </span>
-            </div>
-            <span className="font-mono text-xs font-semibold">
-              {ds.latency}
-            </span>
-          </div>
-        ))}
+        {loadingFirst
+          ? [0, 1, 2].map((i) => (
+              <Skeleton className="h-13.5 rounded-md" key={i} />
+            ))
+          : datastores.map((ds) => <DatastoreRow ds={ds} key={ds.name} />)}
       </div>
       <div className="px-3 pb-3">
         <div className="text-tertiary mx-1 mb-2 text-xs font-semibold tracking-wider uppercase">
           Services
         </div>
-        <div className="border-tertiary divide-tertiary divide-y overflow-hidden rounded-md border">
-          {MOCK_SERVICES.map((s) => (
-            <div
-              className="bg-primary flex items-center gap-2.5 px-3 py-2.5"
-              key={s.name}
-            >
-              <s.icon className="text-tertiary size-[15px]" />
-              <span className="flex-1 text-[13.5px]">{s.name}</span>
-              <StatusDot />
-              <span className="text-success text-xs font-medium">Up</span>
-            </div>
-          ))}
+        <div className="divide-tertiary border-tertiary divide-y overflow-hidden rounded-md border">
+          {loadingFirst ? (
+            <Skeleton className="h-30" />
+          ) : (
+            services.map((s) => <ServiceRow key={s.name} service={s} />)
+          )}
         </div>
       </div>
     </Card>

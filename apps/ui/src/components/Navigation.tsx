@@ -229,6 +229,20 @@ export function Navigation({ currentView }: NavigationProps) {
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {/* Theme Toggle */}
+            <Button
+              className="text-secondary hover:bg-secondary rounded-full"
+              onClick={toggleTheme}
+              size="icon"
+              variant="ghost"
+            >
+              {isDarkMode ? (
+                <Sun className="size-4" />
+              ) : (
+                <Moon className="size-4" />
+              )}
+            </Button>
+
             {/* User Profile Dropdown */}
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
@@ -277,20 +291,6 @@ export function Navigation({ currentView }: NavigationProps) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-
-            {/* Theme Toggle */}
-            <Button
-              className="text-secondary hover:bg-secondary rounded-full"
-              onClick={toggleTheme}
-              size="icon"
-              variant="ghost"
-            >
-              {isDarkMode ? (
-                <Sun className="size-4" />
-              ) : (
-                <Moon className="size-4" />
-              )}
-            </Button>
           </div>
         </div>
       </nav>

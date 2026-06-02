@@ -488,6 +488,33 @@ export interface CurrentReleaseEnvironment {
   release: null | Release
 }
 
+// Dashboard types are hand-written: the /admin/dashboard/* endpoints are
+// not in the committed OpenAPI snapshot yet. (DatastoreStatus /
+// ServiceStatus live in their own alphabetical slots for module sort.)
+export interface DashboardMetrics {
+  events: { daily: number[]; total: number }
+  ops_log: { daily: number[]; total: number }
+  pull_requests: { daily: number[]; total: number }
+  releases: { daily: number[]; total: number }
+  releases_by_environment: { count: number; slug: string }[]
+  since: string
+}
+
+export interface DashboardStatus {
+  checked_at: string
+  datastores: DatastoreStatus[]
+  services: ServiceStatus[]
+}
+
+export interface DatastoreStatus {
+  detail?: null | string
+  latency_ms?: null | number
+  name: string
+  role: string
+  size_bytes?: null | number
+  status: 'error' | 'ok'
+}
+
 export type DeploymentAction = 'deploy' | 'redeploy'
 
 export interface DeploymentCommit {
@@ -1335,6 +1362,16 @@ export type ServiceApplicationUpdate = Schemas['ServiceApplicationUpdate'] & {
 }
 
 export type ServiceApplicationUsage = 'both' | 'integration' | 'login'
+
+// Part of the hand-written dashboard system-health types; see
+// DashboardStatus for context.
+export interface ServiceStatus {
+  detail?: null | string
+  latency_ms?: null | number
+  name: string
+  status: 'down' | 'up'
+  version?: null | string
+}
 
 export interface Tag {
   created_at?: null | string

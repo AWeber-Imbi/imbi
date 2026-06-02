@@ -71,7 +71,7 @@ export function MonthlyImprovementReport() {
     enabled: !!orgSlug,
     queryFn: ({ signal }) =>
       getMonthlyImprovement(
-        { month: selected.month, year: selected.year },
+        { month: selected.month, org: orgSlug, year: selected.year },
         signal,
       ),
     queryKey: ['monthlyImprovement', orgSlug, selected.year, selected.month],

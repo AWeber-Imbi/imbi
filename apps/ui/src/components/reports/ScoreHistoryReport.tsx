@@ -48,7 +48,10 @@ export function ScoreHistoryReport() {
   const { data: historyData, isLoading: historyLoading } = useQuery({
     enabled: !!orgSlug,
     queryFn: ({ signal }) =>
-      getScoreHistoryByTeam({ granularity: 'day', ...rangeParams }, signal),
+      getScoreHistoryByTeam(
+        { granularity: 'day', org: orgSlug, ...rangeParams },
+        signal,
+      ),
     queryKey: ['scoreHistoryByTeam', orgSlug, range],
     staleTime: 120_000,
   })
@@ -56,7 +59,7 @@ export function ScoreHistoryReport() {
   const { data: feedData, isLoading: feedLoading } = useQuery({
     enabled: !!orgSlug,
     queryFn: ({ signal }) =>
-      getScoreHistoryFeed({ ...rangeParams, limit: 200 }, signal),
+      getScoreHistoryFeed({ ...rangeParams, limit: 200, org: orgSlug }, signal),
     queryKey: ['scoreHistoryFeed', orgSlug, range],
     staleTime: 120_000,
   })
