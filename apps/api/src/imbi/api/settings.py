@@ -213,10 +213,34 @@ class Storage(pydantic_settings.BaseSettings):
     thumbnail_quality: int = 85
 
 
+class InternalServices(pydantic_settings.BaseSettings):
+    """Internal base URLs of sibling services, for health probing.
+
+    Set per-deployment (cluster service URLs in compose/k8s). Empty
+    values mark a service as not deployed -- the dashboard status check
+    skips probing it.
+    """
+
+    model_config = settings.base_settings_config(env_prefix='IMBI_INTERNAL_')
+
+    assistant_url: str = ''
+    gateway_url: str = ''
+    mcp_url: str = ''
+    slackbot_url: str = ''
+
+    @pydantic.field_validator(
+        'assistant_url', 'gateway_url', 'mcp_url', 'slackbot_url'
+    )
+    @classmethod
+    def _strip_slash(cls, value: str) -> str:
+        return value.rstrip('/')
+
+
 # Module-level singletons for extended settings
 _auth_settings: Auth | None = None
 _server_config: ServerConfig | None = None
 _storage_settings: Storage | None = None
+_internal_services: InternalServices | None = None
 
 
 def get_auth_settings() -> Auth:
@@ -248,7 +272,7 @@ def get_server_config() -> ServerConfig:
     if _server_config is None:
         try:
             _server_config = load_config().server
-        except (FileNotFoundError, OSError, ValueError, TypeError):
+        except FileNotFoundError, OSError, ValueError, TypeError:
             _server_config = ServerConfig()
     return _server_config
 
@@ -263,9 +287,17 @@ def get_storage_settings() -> Storage:
     if _storage_settings is None:
         try:
             _storage_settings = load_config().storage
-        except (FileNotFoundError, OSError, ValueError, TypeError):
+        except FileNotFoundError, OSError, ValueError, TypeError:
             _storage_settings = Storage()
     return _storage_settings
+
+
+def get_internal_services() -> InternalServices:
+    """Get the singleton InternalServices settings instance."""
+    global _internal_services
+    if _internal_services is None:
+        _internal_services = InternalServices()
+    return _internal_services
 
 
 def clear_caches() -> None:
@@ -275,9 +307,11 @@ def clear_caches() -> None:
     which lazily initialize once per process.
     """
     global _auth_settings, _server_config, _storage_settings
+    global _internal_services
     _auth_settings = None
     _server_config = None
     _storage_settings = None
+    _internal_services = None
 
 
 def oauth_callback_url(provider_slug: str, base_url: str | None = None) -> str:

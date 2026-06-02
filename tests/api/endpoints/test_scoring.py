@@ -88,8 +88,8 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
             side_effect=lambda **_kw: _PipelineProxy(self.mock_valkey)
         )
 
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
         self.test_app.dependency_overrides[
             scoring_di._inject_optional_client
@@ -157,7 +157,7 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
             ),
         ):
             response = self.client.get(
-                '/scores/rollup', params={'dimension': 'team'}
+                '/scores/rollup', params={'org': 'acme', 'dimension': 'team'}
             )
         self.assertEqual(response.status_code, 200, response.text)
         body = response.json()
@@ -169,7 +169,7 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
     def test_rollup_empty_when_no_projects(self) -> None:
         self.mock_db.execute = mock.AsyncMock(return_value=[])
         response = self.client.get(
-            '/scores/rollup', params={'dimension': 'team'}
+            '/scores/rollup', params={'org': 'acme', 'dimension': 'team'}
         )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json(), [])
@@ -429,7 +429,12 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
         ):
             response = self.client.get(
                 '/scores/monthly-improvement',
-                params={'year': 2026, 'month': 4, 'dimension': 'team'},
+                params={
+                    'org': 'acme',
+                    'year': 2026,
+                    'month': 4,
+                    'dimension': 'team',
+                },
             )
         self.assertEqual(response.status_code, 200, response.text)
         body = response.json()
@@ -456,18 +461,30 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute = mock.AsyncMock(return_value=[])
         response = self.client.get(
             '/scores/monthly-improvement',
-            params={'year': 2026, 'month': 4, 'dimension': 'team'},
+            params={
+                'org': 'acme',
+                'year': 2026,
+                'month': 4,
+                'dimension': 'team',
+            },
         )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json(), [])
 
     def test_history_by_team_empty_when_no_projects(self) -> None:
         self.mock_db.execute = mock.AsyncMock(return_value=[])
-        response = self.client.get('/scores/history-by-team')
+        response = self.client.get(
+            '/scores/history-by-team', params={'org': 'acme'}
+        )
         self.assertEqual(response.status_code, 200, response.text)
         body = response.json()
         self.assertEqual(body['granularity'], 'day')
         self.assertEqual(body['teams'], [])
+
+    def test_history_by_team_requires_org(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        response = self.client.get('/scores/history-by-team')
+        self.assertEqual(response.status_code, 422, response.text)
 
     def test_history_by_team_returns_aggregated_series(self) -> None:
         self.mock_db.execute = mock.AsyncMock(
@@ -504,7 +521,9 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
                 'imbi_common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
-            response = self.client.get('/scores/history-by-team')
+            response = self.client.get(
+                '/scores/history-by-team', params={'org': 'acme'}
+            )
         self.assertEqual(response.status_code, 200, response.text)
         body = response.json()
         self.assertEqual(body['granularity'], 'day')
@@ -531,6 +550,7 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
             response = self.client.get(
                 '/scores/history-by-team',
                 params={
+                    'org': 'acme',
                     'granularity': 'hour',
                     'from': '2026-01-01T00:00:00',
                     'to': '2026-04-01T00:00:00',
@@ -543,9 +563,16 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
 
     def test_history_feed_empty_when_no_projects(self) -> None:
         self.mock_db.execute = mock.AsyncMock(return_value=[])
-        response = self.client.get('/scores/history-feed')
+        response = self.client.get(
+            '/scores/history-feed', params={'org': 'acme'}
+        )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json(), [])
+
+    def test_history_feed_requires_org(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        response = self.client.get('/scores/history-feed')
+        self.assertEqual(response.status_code, 422, response.text)
 
     def test_history_feed_returns_events(self) -> None:
         self.mock_db.execute = mock.AsyncMock(
@@ -576,7 +603,9 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
                 'imbi_common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
-            response = self.client.get('/scores/history-feed')
+            response = self.client.get(
+                '/scores/history-feed', params={'org': 'acme'}
+            )
         self.assertEqual(response.status_code, 200, response.text)
         body = response.json()
         self.assertEqual(len(body), 1)
@@ -610,6 +639,7 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
             response = self.client.get(
                 '/scores/history-feed',
                 params={
+                    'org': 'acme',
                     'from': '2026-01-01T00:00:00',
                     'to': '2026-04-01T00:00:00',
                     'limit': 50,
@@ -647,7 +677,9 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
                 'imbi_common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
-            response = self.client.get('/scores/history-feed')
+            response = self.client.get(
+                '/scores/history-feed', params={'org': 'acme'}
+            )
         self.assertEqual(response.status_code, 200, response.text)
         body = response.json()
         self.assertEqual(len(body), 1)

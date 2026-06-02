@@ -159,18 +159,23 @@ async def get_score_trend(
     )
 
 
+# Project → dimension-key mappings, scoped to a single organization
+# (the {org} slug) so aggregates never span tenants.
 _DIMENSION_QUERY: dict[str, typing.LiteralString] = {
     'team': (
         'MATCH (p:Project)-[:OWNED_BY]->(t:Team)'
+        '-[:BELONGS_TO]->(:Organization {{slug: {org}}})'
         ' RETURN p.id AS project_id, t.slug AS dim_key'
     ),
     'project_type': (
         'MATCH (p:Project)-[:TYPE]->(pt:ProjectType)'
+        ' MATCH (p)-[:OWNED_BY]->(:Team)'
+        '-[:BELONGS_TO]->(:Organization {{slug: {org}}})'
         ' RETURN p.id AS project_id, pt.slug AS dim_key'
     ),
     'organization': (
         'MATCH (p:Project)-[:OWNED_BY]->(:Team)'
-        '-[:BELONGS_TO]->(o:Organization)'
+        '-[:BELONGS_TO]->(o:Organization {{slug: {org}}})'
         ' RETURN p.id AS project_id, o.slug AS dim_key'
     ),
 }
@@ -183,16 +188,17 @@ async def score_rollup(
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('project:read')),
     ],
+    org: str,
     dimension: typing.Literal['team', 'project_type', 'organization'] = 'team',
 ) -> list[scoring_models.ScoreRollupRow]:
-    """Return current-score rollup grouped by the requested dimension.
+    """Return current-score rollup for *org*, grouped by *dimension*.
 
     Uses ``score_latest`` (one row per project, current score only)
     so projects with many history entries do not skew aggregates.
     """
     # Fetch project → dimension key mapping from the graph
     dim_records = await db.execute(
-        _DIMENSION_QUERY[dimension], {}, ['project_id', 'dim_key']
+        _DIMENSION_QUERY[dimension], {'org': org}, ['project_id', 'dim_key']
     )
     project_dim: dict[str, str] = {}
     for rec in dim_records:
@@ -255,6 +261,7 @@ async def score_monthly_improvement(
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('project:read')),
     ],
+    org: str,
     year: int = fastapi.Query(ge=2020, le=2100),
     month: int = fastapi.Query(ge=1, le=12),
     dimension: typing.Literal['team', 'project_type', 'organization'] = 'team',
@@ -276,7 +283,7 @@ async def score_monthly_improvement(
         prev_start = datetime.datetime(year, month - 1, 1, tzinfo=datetime.UTC)
 
     dim_records = await db.execute(
-        _DIMENSION_QUERY[dimension], {}, ['project_id', 'dim_key']
+        _DIMENSION_QUERY[dimension], {'org': org}, ['project_id', 'dim_key']
     )
     project_dim: dict[str, str] = {}
     for rec in dim_records:
@@ -362,15 +369,16 @@ async def score_history_by_team(
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('project:read')),
     ],
+    org: str,
     granularity: typing.Literal['hour', 'day'] = 'day',
     from_: typing.Annotated[
         datetime.datetime | None, fastapi.Query(alias='from')
     ] = None,
     to: datetime.datetime | None = None,
 ) -> scoring_models.ScoreHistoryByTeamResponse:
-    """Return avg score history per team, bucketed by granularity."""
+    """Return avg score history per team for *org*, bucketed by granularity."""
     dim_records = await db.execute(
-        _DIMENSION_QUERY['team'], {}, ['project_id', 'dim_key']
+        _DIMENSION_QUERY['team'], {'org': org}, ['project_id', 'dim_key']
     )
     project_team: dict[str, str] = {}
     for rec in dim_records:
@@ -434,18 +442,20 @@ async def score_history_feed(
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('project:read')),
     ],
+    org: str,
     from_: typing.Annotated[
         datetime.datetime | None, fastapi.Query(alias='from')
     ] = None,
     to: datetime.datetime | None = None,
     limit: typing.Annotated[int, fastapi.Query(ge=1, le=500)] = 200,
 ) -> list[scoring_models.GlobalScoreEvent]:
-    """Return recent raw score change events across all projects."""
+    """Return recent raw score change events for *org*'s projects."""
     project_records = await db.execute(
         'MATCH (p:Project)-[:OWNED_BY]->(t:Team)'
+        '-[:BELONGS_TO]->(:Organization {{slug: {org}}})'
         ' RETURN p.id AS project_id, p.name AS project_name,'
         ' t.slug AS team_slug',
-        {},
+        {'org': org},
         ['project_id', 'project_name', 'team_slug'],
     )
     project_info: dict[str, tuple[str, str]] = {}

@@ -448,6 +448,13 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'events:read',
         'List events across every organization (audit / support)',
     ),
+    # System health dashboard
+    (
+        'admin:dashboard:read',
+        'admin',
+        'dashboard:read',
+        'View the admin system-health dashboard',
+    ),
 ]
 
 # Default role definitions.
