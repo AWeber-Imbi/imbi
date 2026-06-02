@@ -14,6 +14,7 @@ token validation to the API.
 from __future__ import annotations
 
 import logging
+import typing
 
 import fastmcp
 import httpx
@@ -28,8 +29,12 @@ from fastmcp.server.providers.openapi import MCPType, RouteMap
 from imbi_common.auth import core
 from imbi_common.mcp import EXCLUDED_ROUTE_MAPS, exclude_non_ai_tools
 from pydantic import AnyHttpUrl
+from starlette.responses import JSONResponse
 
 import imbi_mcp
+
+if typing.TYPE_CHECKING:
+    from starlette.requests import Request
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +142,7 @@ def create_server(
         event_hooks={'request': [_inject_auth]},
     )
 
-    return fastmcp.FastMCP.from_openapi(
+    mcp = fastmcp.FastMCP.from_openapi(
         openapi_spec=spec,
         client=client,
         name='Imbi',
@@ -149,3 +154,16 @@ def create_server(
         ],
         route_map_fn=exclude_non_ai_tools,
     )
+
+    @mcp.custom_route('/status', methods=['GET'])
+    async def status(_request: Request) -> JSONResponse:
+        """Unauthenticated operational status probe for health checks."""
+        return JSONResponse(
+            {
+                'service': 'imbi-mcp',
+                'status': 'ok',
+                'version': imbi_mcp.version,
+            }
+        )
+
+    return mcp
