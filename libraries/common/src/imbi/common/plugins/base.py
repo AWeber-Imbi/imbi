@@ -283,6 +283,20 @@ class LinkWriteback(pydantic.BaseModel):
     new_owner_repo: str | None = None
 
 
+class ServicePlugin(pydantic.BaseModel):
+    """A plugin connected to the same third-party service as the caller.
+
+    Surfaced on :class:`PluginContext` so an action can introspect how
+    its ``ThirdPartyService`` is configured -- e.g. a webhook action that
+    needs the GitHub host/flavor reads it from the GitHub plugin attached
+    to the same service rather than re-declaring it on the rule. Carries
+    only the non-secret ``options`` map; credentials are never included.
+    """
+
+    slug: str
+    options: dict[str, typing.Any] = {}
+
+
 class PluginContext(pydantic.BaseModel):
     project_id: str
     project_slug: str
@@ -290,6 +304,13 @@ class PluginContext(pydantic.BaseModel):
     team_slug: str | None = None
     environment: str | None = None
     assignment_options: dict[str, typing.Any] = {}
+    # Other plugins connected to the same ``ThirdPartyService`` as the
+    # action being dispatched (slug + non-secret ``options``, never
+    # credentials).  Populated by the host so an action can introspect
+    # sibling configuration -- e.g. a webhook commit-sync action reading
+    # the GitHub host/flavor off the GitHub plugin on the same service.
+    # Empty when the host does not resolve a service or it has no plugins.
+    service_plugins: list[ServicePlugin] = []
     # Project's external links (e.g. ``{"github-repository": "https://..."}``).
     # Populated by the host so plugins can derive per-project state (e.g. the
     # GitHub owner/repo) from the link map instead of duplicating it as

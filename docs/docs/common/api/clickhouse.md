@@ -34,6 +34,45 @@ for row in results:
     print(f"{row['user_id']}: {row['count']}")
 ```
 
+## Built-in Tables
+
+`schemata.toml` ships the tables every Imbi service shares. DDL is
+applied by `setup_schema()`. Notable tables:
+
+| Table            | Engine               | Order key                   | Written by                                   |
+| ---------------- | -------------------- | --------------------------- | -------------------------------------------- |
+| `events`         | `MergeTree`          | `(project_id, recorded_at)` | `imbi-gateway` raw webhook deliveries        |
+| `pull_requests`  | `ReplacingMergeTree` | `(project_id, pr_id)`       | `pull_requests_mv` over `events`             |
+| `operations_log` | `ReplacingMergeTree` | `(project_id, id)`          | ops-log writers                              |
+| `commits`        | `ReplacingMergeTree` | `(project_id, sha)`         | a VCS plugin via [`CommitRecord`](models.md) |
+| `tags`           | `ReplacingMergeTree` | `(project_id, name)`        | a VCS plugin via [`TagRecord`](models.md)    |
+
+`commits` and `tags` are provider-agnostic commit/tag history keyed by
+`project_id`. Their `ReplacingMergeTree` engines collapse duplicate rows
+(by `recorded_at`) on merge, so re-syncing an overlapping commit range
+or re-pushing a tag is idempotent. Reads that must be exact use `FINAL`
+or `argMax(..., recorded_at)`. Insert typed rows with the matching
+model:
+
+```python
+from imbi_common import clickhouse, models
+
+await clickhouse.insert(
+    "commits",
+    [
+        models.CommitRecord(
+            project_id="abc123",
+            sha="9f8e7d6c5b4a",
+            short_sha="9f8e7d6",
+            ref="main",
+            message="Fix the thing",
+            authored_at=authored_at,
+            pushed_at=pushed_at,
+        )
+    ],
+)
+```
+
 ## Privacy Utilities
 
 ```python

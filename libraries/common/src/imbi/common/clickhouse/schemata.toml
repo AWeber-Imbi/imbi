@@ -159,3 +159,43 @@ FROM score_latest_data
 GROUP BY project_id;
 """
 enabled = true
+
+[commits]
+query = """
+CREATE TABLE IF NOT EXISTS commits (
+  project_id    LowCardinality(String),
+  sha           String,
+  short_sha     String DEFAULT substring(sha, 1, 7),
+  ref           LowCardinality(String),
+  message       String,
+  author_name   String DEFAULT '',
+  author_email  String DEFAULT '',
+  author_login  LowCardinality(String) DEFAULT '',
+  committer_name  String DEFAULT '',
+  authored_at   DateTime64(3, 'UTC'),
+  committed_at  Nullable(DateTime64(3, 'UTC')),
+  url           String DEFAULT '',
+  pushed_at     DateTime64(3, 'UTC'),
+  recorded_at   DateTime64(3, 'UTC')
+) ENGINE = ReplacingMergeTree(recorded_at)
+PARTITION BY toYYYYMM(authored_at)
+ORDER BY (project_id, sha);
+"""
+enabled = true
+
+[tags]
+query = """
+CREATE TABLE IF NOT EXISTS tags (
+  project_id    LowCardinality(String),
+  name          String,
+  sha           String,
+  message       String DEFAULT '',
+  tagger_name   String DEFAULT '',
+  tagger_email  String DEFAULT '',
+  tagged_at     Nullable(DateTime64(3, 'UTC')),
+  url           String DEFAULT '',
+  recorded_at   DateTime64(3, 'UTC')
+) ENGINE = ReplacingMergeTree(recorded_at)
+ORDER BY (project_id, name);
+"""
+enabled = true

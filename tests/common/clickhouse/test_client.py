@@ -26,6 +26,44 @@ class SchemataQueryTestCase(unittest.TestCase):
         self.assertFalse(query.enabled)
 
 
+class PackagedSchemataTestCase(unittest.TestCase):
+    """The packaged schemata.toml must define every shipped table.
+
+    Loads the real file (no mocks) so a malformed DDL string or a
+    dropped table entry fails the suite. ``just test`` runs this
+    against the same TOML ``setup_schema`` executes against ClickHouse.
+    """
+
+    def _schemata(self) -> dict[str, dict[str, object]]:
+        resource = importlib.resources.files(
+            'imbi_common.clickhouse'
+        ).joinpath('schemata.toml')
+        with resource.open('rb') as handle:
+            return tomllib.load(handle)
+
+    def test_commits_table_defined_and_enabled(self) -> None:
+        schemata = self._schemata()
+        self.assertIn('commits', schemata)
+        self.assertTrue(schemata['commits'].get('enabled'))
+        query = str(schemata['commits']['query'])
+        self.assertIn('CREATE TABLE IF NOT EXISTS commits', query)
+        self.assertIn('ORDER BY (project_id, sha)', query)
+
+    def test_tags_table_defined_and_enabled(self) -> None:
+        schemata = self._schemata()
+        self.assertIn('tags', schemata)
+        self.assertTrue(schemata['tags'].get('enabled'))
+        query = str(schemata['tags']['query'])
+        self.assertIn('CREATE TABLE IF NOT EXISTS tags', query)
+        self.assertIn('ORDER BY (project_id, name)', query)
+
+    def test_every_entry_loads_as_schemata_query(self) -> None:
+        loaded = client.Clickhouse.get_instance()._load_schemata_queries()
+        names = {q.name for q in loaded}
+        self.assertIn('commits', names)
+        self.assertIn('tags', names)
+
+
 class TranslateErrorsTestCase(unittest.TestCase):
     """Tests for the `_translate_errors` helper."""
 

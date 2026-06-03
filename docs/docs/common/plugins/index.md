@@ -175,7 +175,18 @@ the acting user's materialized `identity`, …). A handful of fields are
 *write-only* side channels the plugin sets and the host reads back after
 the call — most notably `link_writeback`.
 
+`service_plugins` lets an action introspect the other plugins connected
+to the same `ThirdPartyService`. Each entry is a `ServicePlugin`
+carrying the sibling plugin's `slug` and its non-secret `options` map —
+**never** credentials. A webhook action that needs provider-specific
+configuration it was not given directly (for example the GitHub
+host/flavor for a commit-history sync) reads it from the matching
+sibling here rather than re-declaring it on every rule. The list is
+empty when the host resolved no service or it has no connected plugins.
+
 ::: imbi_common.plugins.PluginContext
+
+::: imbi_common.plugins.ServicePlugin
 
 ::: imbi_common.plugins.LinkWriteback
 

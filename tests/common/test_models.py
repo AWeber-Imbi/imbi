@@ -1725,3 +1725,84 @@ class MCPServerModelTestCase(unittest.TestCase):
                 url='https://mcp.example.com/mcp',
                 tools_discovered=-1,
             )
+
+
+class CommitRecordTestCase(unittest.TestCase):
+    """Test cases for the CommitRecord ClickHouse insert model."""
+
+    # Mirror of the ``commits`` table columns in schemata.toml; the
+    # round-trip assertion below fails if the model drifts from the DDL.
+    _COLUMNS: typing.ClassVar[list[str]] = [
+        'project_id',
+        'sha',
+        'short_sha',
+        'ref',
+        'message',
+        'author_name',
+        'author_email',
+        'author_login',
+        'committer_name',
+        'authored_at',
+        'committed_at',
+        'url',
+        'pushed_at',
+        'recorded_at',
+    ]
+
+    def test_minimal_fields_and_defaults(self) -> None:
+        now = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        record = models.CommitRecord(
+            project_id='p-1',
+            sha='abc123def456',
+            short_sha='abc123d',
+            ref='main',
+            message='Initial commit',
+            authored_at=now,
+            pushed_at=now,
+        )
+        self.assertEqual(record.author_name, '')
+        self.assertEqual(record.author_email, '')
+        self.assertEqual(record.author_login, '')
+        self.assertEqual(record.committer_name, '')
+        self.assertIsNone(record.committed_at)
+        self.assertEqual(record.url, '')
+        self.assertEqual(record.recorded_at.tzinfo, datetime.UTC)
+
+    def test_field_names_match_commits_columns(self) -> None:
+        self.assertEqual(list(models.CommitRecord.model_fields), self._COLUMNS)
+
+    def test_exported(self) -> None:
+        self.assertIn('CommitRecord', models.__all__)
+
+
+class TagRecordTestCase(unittest.TestCase):
+    """Test cases for the TagRecord ClickHouse insert model."""
+
+    _COLUMNS: typing.ClassVar[list[str]] = [
+        'project_id',
+        'name',
+        'sha',
+        'message',
+        'tagger_name',
+        'tagger_email',
+        'tagged_at',
+        'url',
+        'recorded_at',
+    ]
+
+    def test_minimal_fields_and_defaults(self) -> None:
+        record = models.TagRecord(
+            project_id='p-1', name='v1.0.0', sha='abc123'
+        )
+        self.assertEqual(record.message, '')
+        self.assertEqual(record.tagger_name, '')
+        self.assertEqual(record.tagger_email, '')
+        self.assertIsNone(record.tagged_at)
+        self.assertEqual(record.url, '')
+        self.assertEqual(record.recorded_at.tzinfo, datetime.UTC)
+
+    def test_field_names_match_tags_columns(self) -> None:
+        self.assertEqual(list(models.TagRecord.model_fields), self._COLUMNS)
+
+    def test_exported(self) -> None:
+        self.assertIn('TagRecord', models.__all__)

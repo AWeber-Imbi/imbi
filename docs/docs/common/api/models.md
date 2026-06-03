@@ -41,6 +41,15 @@ schema extension.
 - **Blueprint**: Dynamic schema definitions
 - **BlueprintAssignment**: Blueprint-to-entity relationships
 
+### Analytics Models
+These are not graph nodes — they are typed rows inserted into ClickHouse
+via [`clickhouse.insert`](clickhouse.md). They are provider-agnostic so
+any version-control plugin (GitHub, GitLab, …) can reuse them.
+- **CommitRecord**: A VCS commit, written to the `commits` table
+  (`ReplacingMergeTree` keyed by `(project_id, sha)`)
+- **TagRecord**: A VCS tag, written to the `tags` table
+  (`ReplacingMergeTree` keyed by `(project_id, name)`)
+
 ## Basic Usage
 
 ```python
@@ -107,3 +116,9 @@ await db.create(team)
 ::: imbi_common.models.BlueprintAssignment
 
 ::: imbi_common.models.BlueprintEdge
+
+### Analytics Models
+
+::: imbi_common.models.CommitRecord
+
+::: imbi_common.models.TagRecord

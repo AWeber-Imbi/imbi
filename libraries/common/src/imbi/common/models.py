@@ -15,6 +15,7 @@ __all__ = [
     'BlueprintFilter',
     'Comment',
     'CommentThread',
+    'CommitRecord',
     'Component',
     'ComponentIdentifier',
     'ComponentRelease',
@@ -46,6 +47,7 @@ __all__ = [
     'Schema',
     'ServiceApplication',
     'Tag',
+    'TagRecord',
     'Team',
     'ThirdPartyService',
 ]
@@ -916,3 +918,53 @@ class Event(pydantic.BaseModel):
         (``user_id is None``) and pass that value through directly.
         """
         return '' if value is None else value
+
+
+class CommitRecord(pydantic.BaseModel):
+    """A VCS commit recorded in the ClickHouse ``commits`` table.
+
+    Generic across version-control providers — a GitHub, GitLab, or
+    Bitbucket plugin maps its API response onto these fields and inserts
+    via :func:`imbi_common.clickhouse.insert`. The table is a
+    ``ReplacingMergeTree`` keyed by ``(project_id, sha)``, so re-syncing an
+    overlapping commit range collapses duplicates on merge.
+    """
+
+    project_id: str
+    sha: str
+    short_sha: str
+    ref: str
+    message: str
+    author_name: str = ''
+    author_email: str = ''
+    author_login: str = ''
+    committer_name: str = ''
+    authored_at: datetime.datetime
+    committed_at: datetime.datetime | None = None
+    url: str = ''
+    pushed_at: datetime.datetime
+    recorded_at: datetime.datetime = pydantic.Field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+
+class TagRecord(pydantic.BaseModel):
+    """A VCS tag recorded in the ClickHouse ``tags`` table.
+
+    Mirrors :class:`CommitRecord`'s role for tags. The table is a
+    ``ReplacingMergeTree`` keyed by ``(project_id, name)``; annotated-tag
+    metadata (``message``, ``tagger_*``, ``tagged_at``) is populated when
+    the provider exposes it and left at its default otherwise.
+    """
+
+    project_id: str
+    name: str
+    sha: str
+    message: str = ''
+    tagger_name: str = ''
+    tagger_email: str = ''
+    tagged_at: datetime.datetime | None = None
+    url: str = ''
+    recorded_at: datetime.datetime = pydantic.Field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC),
+    )
