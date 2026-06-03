@@ -173,7 +173,14 @@ project's identity plus host-populated fields the plugin can derive
 state from (external links, project-type slugs, per-environment config,
 the acting user's materialized `identity`, …). A handful of fields are
 *write-only* side channels the plugin sets and the host reads back after
-the call — most notably `link_writeback`.
+the call — most notably `link_writeback` and `service_writeback`.
+
+The host also injects the running plugin's bound third-party service
+(`third_party_service_slug`) and the project's `EXISTS_IN`
+connections (`service_connections`) so plugins can read the canonical
+project↔service relationship without re-querying the graph. A lifecycle
+plugin maintains that relationship by setting `service_writeback`; the
+host persists it as the `EXISTS_IN` edge against the bound service.
 
 `service_plugins` lets an action introspect the other plugins connected
 to the same `ThirdPartyService`. Each entry is a `ServicePlugin`
@@ -189,6 +196,10 @@ empty when the host resolved no service or it has no connected plugins.
 ::: imbi_common.plugins.ServicePlugin
 
 ::: imbi_common.plugins.LinkWriteback
+
+::: imbi_common.plugins.ServiceWriteback
+
+::: imbi_common.plugins.ServiceConnection
 
 ## Search Templates
 

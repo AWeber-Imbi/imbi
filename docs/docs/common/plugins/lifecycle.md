@@ -77,6 +77,24 @@ Hooks that create, rename, or relocate the remote set
 persists or self-heals the project's stored link. See
 [Plugin Context](index.md#plugin-context).
 
+## Service edge write-back
+
+Hooks that create, move, or tear down the project's relationship with
+the service the plugin is bound to set
+[`ctx.service_writeback`][imbi_common.plugins.ServiceWriteback]. The
+host persists it as the
+`(:Project)-[:EXISTS_IN]->(:ThirdPartyService)` edge — storing the
+`identifier` and the canonical **API** URL — and merges any
+`dashboard_links` into `Project.links`. Set `remove=True` to delete the
+edge (e.g. on project delete or relocation away from the service).
+
+The host owns the plugin↔service binding: the writeback targets the
+service surfaced as
+[`ctx.third_party_service_slug`][imbi_common.plugins.PluginContext], so
+it carries no service slug and a plugin cannot write an edge to an
+arbitrary service. Read the current relationship from
+[`ctx.service_connections`][imbi_common.plugins.ServiceConnection].
+
 ## API reference
 
 ::: imbi_common.plugins.LifecyclePlugin

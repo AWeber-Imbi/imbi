@@ -32,6 +32,8 @@ from imbi_common.plugins.base import (
     ReleaseInfo,
     RelocationTarget,
     RemoteDeployment,
+    ServiceConnection,
+    ServiceWriteback,
     WorkflowFile,
 )
 
@@ -561,6 +563,68 @@ class LinkWritebackTestCase(unittest.TestCase):
         )
         self.assertIsNone(wb.old_owner_repo)
         self.assertIsNone(wb.new_owner_repo)
+
+
+class ServiceWritebackTestCase(unittest.TestCase):
+    def test_service_fields_default_unset(self) -> None:
+        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
+        self.assertIsNone(ctx.service_writeback)
+        self.assertIsNone(ctx.third_party_service_slug)
+        self.assertEqual(ctx.service_connections, [])
+
+    def test_service_writeback_round_trip(self) -> None:
+        ctx = PluginContext(
+            project_id='p',
+            project_slug='p',
+            org_slug='o',
+            third_party_service_slug='github-enterprise-cloud',
+            service_writeback=ServiceWriteback(
+                identifier='134741',
+                canonical_url='https://api.aweber.ghe.com/repositories/134741',
+                dashboard_links={
+                    'github-enterprise-cloud': 'https://aweber.ghe.com/o/r'
+                },
+            ),
+            service_connections=[
+                ServiceConnection(
+                    service_slug='sonarqube',
+                    identifier='conv:account',
+                    canonical_url='https://sonarqube.aweber.io/api/x',
+                ),
+            ],
+        )
+        restored = PluginContext.model_validate(ctx.model_dump())
+        self.assertEqual(
+            restored.third_party_service_slug, 'github-enterprise-cloud'
+        )
+        wb = restored.service_writeback
+        assert wb is not None
+        self.assertEqual(wb.identifier, '134741')
+        self.assertEqual(
+            wb.canonical_url,
+            'https://api.aweber.ghe.com/repositories/134741',
+        )
+        self.assertEqual(
+            wb.dashboard_links,
+            {'github-enterprise-cloud': 'https://aweber.ghe.com/o/r'},
+        )
+        self.assertFalse(wb.remove)
+        self.assertEqual(len(restored.service_connections), 1)
+        self.assertEqual(
+            restored.service_connections[0].service_slug, 'sonarqube'
+        )
+        self.assertEqual(
+            restored.service_connections[0].identifier, 'conv:account'
+        )
+
+    def test_service_writeback_defaults(self) -> None:
+        wb = ServiceWriteback(identifier='1', canonical_url='https://x/1')
+        self.assertEqual(wb.dashboard_links, {})
+        self.assertFalse(wb.remove)
+
+    def test_service_connection_canonical_url_optional(self) -> None:
+        conn = ServiceConnection(service_slug='github', identifier='1')
+        self.assertIsNone(conn.canonical_url)
 
 
 class PluginContextLifecycleFieldsTestCase(unittest.TestCase):

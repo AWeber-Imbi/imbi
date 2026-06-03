@@ -297,6 +297,64 @@ class ServicePlugin(pydantic.BaseModel):
     options: dict[str, typing.Any] = {}
 
 
+class ServiceConnection(pydantic.BaseModel):
+    """A project's ``EXISTS_IN`` edge to a third-party service.
+
+    Populated by the host on the inbound :class:`PluginContext` so
+    plugins can read the canonical relationship a project has with a
+    third-party service without re-querying the graph.  Each connection
+    mirrors one ``(:Project)-[:EXISTS_IN]->(:ThirdPartyService)`` edge.
+
+    Plugins only ever *read* these; the canonical relationship is
+    maintained through :class:`ServiceWriteback`.
+    """
+
+    #: Slug of the ``ThirdPartyService`` the project exists in.
+    service_slug: str
+    #: Opaque, stable identifier the service uses for the project (e.g.
+    #: a GitHub repository id or a SonarQube project key).
+    identifier: str
+    #: Canonical API URL (returns JSON) for the project in the service.
+    #: ``None`` when the edge predates canonical-URL maintenance.
+    canonical_url: str | None = None
+
+
+class ServiceWriteback(pydantic.BaseModel):
+    """A project's third-party-service relationship the host should persist.
+
+    Set by a lifecycle plugin on :class:`PluginContext` when a call
+    created, moved, or tore down the project's relationship with the
+    service the plugin is bound to.  The host persists it as the
+    ``(:Project)-[:EXISTS_IN]->(:ThirdPartyService)`` edge -- writing
+    ``identifier`` and the canonical API URL -- and merges any
+    ``dashboard_links`` into ``Project.links``.
+
+    The host owns the plugin-to-service binding: the writeback targets
+    the service the plugin is attached to (surfaced as
+    :attr:`PluginContext.third_party_service_slug`), so it carries no
+    service slug of its own and a plugin cannot write an edge to an
+    arbitrary service.
+
+    Plugins only ever *write* this field; it is ``None`` on every
+    inbound context.
+    """
+
+    #: Opaque, stable identifier for the project in the service (e.g. a
+    #: GitHub repository id).  Stored on the ``EXISTS_IN`` edge.
+    identifier: str
+    #: Canonical API URL (returns JSON) for the project in the service.
+    #: Stored on the ``EXISTS_IN`` edge.  For id-based URLs (e.g. GitHub
+    #: ``/repositories/{id}``) this is rename-stable.
+    canonical_url: str
+    #: Human-facing dashboard URLs to merge into ``Project.links``,
+    #: keyed by the ``Project.links`` key (typically the service slug).
+    dashboard_links: dict[str, str] = {}
+    #: When ``True`` the host removes the ``EXISTS_IN`` edge and the
+    #: ``dashboard_links`` keys instead of upserting them -- e.g. on
+    #: project delete or relocation away from this service.
+    remove: bool = False
+
+
 class PluginContext(pydantic.BaseModel):
     project_id: str
     project_slug: str
@@ -365,6 +423,26 @@ class PluginContext(pydantic.BaseModel):
     # write-only from the plugin's perspective and ``None`` on every
     # inbound context.
     link_writeback: LinkWriteback | None = None
+    # Output side-channel: a lifecycle plugin sets this when the
+    # project's relationship with the service it is bound to should be
+    # created, updated, or torn down.  The host persists it as the
+    # ``EXISTS_IN`` edge (identifier + canonical API URL) against
+    # ``third_party_service_slug`` and merges any dashboard links into
+    # ``Project.links``.  Write-only from the plugin's perspective;
+    # ``None`` on every inbound context.
+    service_writeback: ServiceWriteback | None = None
+    # Slug of the ``ThirdPartyService`` the running plugin is bound to,
+    # resolved by the host from the
+    # ``(:ThirdPartyService)-[:HAS_PLUGIN]->(:Plugin)`` edge.  Tells the
+    # plugin which service its ``service_writeback`` targets and which
+    # ``service_connections`` entry is its own.  ``None`` for plugins
+    # not attached to a service.
+    third_party_service_slug: str | None = None
+    # The project's ``EXISTS_IN`` connections, populated by the host so
+    # plugins (e.g. an analysis "doctor") can read the canonical
+    # relationship without re-querying the graph.  Empty when the
+    # project exists in no services.
+    service_connections: list[ServiceConnection] = []
 
 
 class ConfigValue(pydantic.BaseModel):
