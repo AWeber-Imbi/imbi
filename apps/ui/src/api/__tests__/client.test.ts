@@ -45,7 +45,7 @@ describe('api client base URL resolution', () => {
     delete w.__IMBI_API_URL__
     vi.resetModules()
     const client = await import('../client')
-    // src/test/setup.ts stubs VITE_API_URL=http://localhost:8000
+    // test/setup.ts stubs VITE_API_URL=http://localhost:8000
     expect(client.API_BASE_URL).toBe('http://localhost:8000')
     expect(client.API_URL).toBe('http://localhost:8000')
   })

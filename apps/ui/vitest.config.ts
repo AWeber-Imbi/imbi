@@ -5,15 +5,16 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
+    alias: [
+      { find: '@/test', replacement: path.resolve(__dirname, './test') },
+      { find: '@', replacement: path.resolve(__dirname, './src') },
+    ],
   },
   test: {
     coverage: {
       exclude: [
         'node_modules/',
-        'src/test/',
+        'test/',
         '**/*.d.ts',
         '**/*.config.*',
         '**/mockData',
@@ -30,6 +31,6 @@ export default defineConfig({
       'src/**/*.{test,spec}.{ts,tsx}',
       'tools/**/*.{test,spec}.{ts,js}',
     ],
-    setupFiles: './src/test/setup.ts',
+    setupFiles: './test/setup.ts',
   },
 })

@@ -18,7 +18,7 @@
   "jsPlugins": ["eslint-plugin-react-refresh", "eslint-plugin-perfectionist", "oxlint-tailwindcss", "./tools/oxlint-plugin-css-vars.ts"],
   "overrides": [
     {
-      "files": ["src/test/**/*.{ts,tsx}"],
+      "files": ["test/**/*.{ts,tsx}"],
       "rules": {
         "react-refresh/only-export-components": "off"
       }

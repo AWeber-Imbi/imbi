@@ -19,13 +19,14 @@ src/
 ├── hooks/
 │   ├── useHookName.ts
 │   └── useHookName.test.ts
-├── stores/
-│   ├── storeName.ts
-│   └── storeName.test.ts
-└── test/
-    ├── setup.ts          # Global test setup
-    ├── utils.tsx         # Test utilities and custom render
-    └── README.md         # This file
+└── stores/
+    ├── storeName.ts
+    └── storeName.test.ts
+test/
+├── setup.ts          # Global test setup
+├── utils.tsx         # Test utilities and custom render
+├── vitest.d.ts       # Vitest global type references
+└── README.md         # This file
 ```
 
 ## Running Tests
@@ -107,23 +108,7 @@ describe('useMyHook', () => {
 })
 ```
 
-For hooks using React Query, use the `AllTheProviders` wrapper:
-
-```typescript
-import { renderHook } from '@testing-library/react'
-import { AllTheProviders } from '@/test/utils'
-import { useAuth } from './useAuth'
-
-describe('useAuth', () => {
-  it('should fetch user', async () => {
-    const { result } = renderHook(() => useAuth(), {
-      wrapper: AllTheProviders,
-    })
-
-    // Test implementation
-  })
-})
-```
+For hooks using React Query, define a local wrapper in the test so the suite can control Query Client state.
 
 ## Testing Patterns
 
