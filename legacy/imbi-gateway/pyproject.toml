@@ -10,7 +10,7 @@ dependencies = [
   "cel-python>=0.5.0",
   "fastapi>=0.135.1",
   "httpx>=0.28.1",
-  "imbi-common[databases,server]==2.8.0",
+  "imbi-common[databases,server]==2.9.0",
   "jsonpointer>=3.1.1",
   "psycopg[binary,pool]~=3.3.2",
   "pydantic~=2.12",
@@ -138,6 +138,3 @@ exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
-
-[tool.uv.sources]
-imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }
