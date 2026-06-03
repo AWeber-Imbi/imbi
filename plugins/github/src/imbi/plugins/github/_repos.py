@@ -66,23 +66,32 @@ def parse_owner_repo(url: str, target_host: str) -> tuple[str, str] | None:
 
 
 def derive_owner_repo_from_links(
-    links: dict[str, str], host: str
+    links: dict[str, str],
+    host: str,
+    *,
+    preferred_key: str | None = None,
 ) -> tuple[str, str] | None:
     """Find a project link pointing at ``host`` and parse owner/repo.
 
-    Prefers an explicit ``github-repository`` link key when one is
-    present and points at ``host``; otherwise scans the remaining
-    same-host links and returns the first usable one.  Returns
-    ``None`` when nothing matches.
+    Prefers the dashboard link keyed by ``preferred_key`` (the bound
+    third-party-service slug) when present and pointing at ``host``,
+    then the legacy ``github-repository`` link key, then scans the
+    remaining same-host links and returns the first usable one.
+    Returns ``None`` when nothing matches.
     """
     target = host.lower()
-    preferred = links.get('github-repository')
-    if preferred is not None:
-        owner_repo = parse_owner_repo(preferred, target)
-        if owner_repo is not None:
-            return owner_repo
+    tried: set[str] = set()
+    for key in (preferred_key, 'github-repository'):
+        if not key or key in tried:
+            continue
+        tried.add(key)
+        url = links.get(key)
+        if url is not None:
+            owner_repo = parse_owner_repo(url, target)
+            if owner_repo is not None:
+                return owner_repo
     for key, url in links.items():
-        if key == 'github-repository':
+        if key in tried:
             continue
         owner_repo = parse_owner_repo(url, target)
         if owner_repo is not None:
@@ -110,7 +119,11 @@ def resolve_owner_repo(
     so callers reacting to a slug rename (e.g. ``on_project_updated``)
     can still locate the pre-rename repo on GitHub.
     """
-    derived = derive_owner_repo_from_links(ctx.project_links, host)
+    derived = derive_owner_repo_from_links(
+        ctx.project_links,
+        host,
+        preferred_key=ctx.third_party_service_slug,
+    )
     if derived is not None:
         return derived
     if ctx.project_type_slugs:

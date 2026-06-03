@@ -59,6 +59,7 @@ from imbi_common.plugins.base import (
     PluginManifest,
     PluginOption,
     RelocationTarget,
+    ServiceWriteback,
 )
 from imbi_common.plugins.errors import PluginAuthenticationFailed
 from imbi_common.plugins.templates import expand_template
@@ -212,15 +213,10 @@ class _LifecycleBase(LifecyclePlugin):
             )
             if existing is not None:
                 # Already provisioned (e.g. retry after a partial failure):
-                # adopt the existing repo's URL via a link writeback so the
-                # operator can wire it up without a second attempt.
-                html_url = str(
-                    existing.get('html_url')
-                    or self._repo_html_url(host, target_org, ctx.project_slug)
-                )
-                ctx.link_writeback = LinkWriteback(
-                    link_key='github-repository',
-                    new_url=html_url,
+                # adopt the existing repo's URL/edge so the operator can
+                # wire it up without a second attempt.
+                html_url = self._record_repo(
+                    ctx, host, target_org, ctx.project_slug, existing
                 )
                 return LifecycleResult(
                     status='skipped',
@@ -231,13 +227,8 @@ class _LifecycleBase(LifecyclePlugin):
                     artifacts={'repo_url': html_url},
                 )
             created = await self._create_repo(client, target_org, ctx)
-            html_url = str(
-                created.get('html_url')
-                or self._repo_html_url(host, target_org, ctx.project_slug)
-            )
-            ctx.link_writeback = LinkWriteback(
-                link_key='github-repository',
-                new_url=html_url,
+            html_url = self._record_repo(
+                ctx, host, target_org, ctx.project_slug, created
             )
         return LifecycleResult(
             status='ok',
@@ -277,19 +268,23 @@ class _LifecycleBase(LifecyclePlugin):
                 homepage=ctx.project_ui_url or '',
             )
             new_repo = str(patched.get('name') or current_repo)
-            new_url = str(
-                patched.get('html_url')
-                or self._repo_html_url(host, current_owner, new_repo)
-            )
             # If the patch itself renamed the repo (we asked GitHub to
             # set ``name`` to a new slug), record the writeback even when
             # the external-rename check above didn't.
             if new_repo != current_repo:
-                ctx.link_writeback = LinkWriteback(
-                    link_key='github-repository',
-                    new_url=new_url,
+                new_url = self._record_repo(
+                    ctx,
+                    host,
+                    current_owner,
+                    new_repo,
+                    patched,
                     old_owner_repo=f'{current_owner}/{current_repo}',
                     new_owner_repo=f'{current_owner}/{new_repo}',
+                )
+            else:
+                new_url = str(
+                    patched.get('html_url')
+                    or self._repo_html_url(host, current_owner, new_repo)
                 )
         return LifecycleResult(
             status='ok',
@@ -361,13 +356,12 @@ class _LifecycleBase(LifecyclePlugin):
         async with self._client(ctx, credentials) as client:
             transferred = await self._transfer(client, owner, repo, new_owner)
             final_repo = str(transferred.get('name') or repo)
-            html_url = str(
-                transferred.get('html_url')
-                or self._repo_html_url(host, new_owner, final_repo)
-            )
-            ctx.link_writeback = LinkWriteback(
-                link_key='github-repository',
-                new_url=html_url,
+            html_url = self._record_repo(
+                ctx,
+                host,
+                new_owner,
+                final_repo,
+                transferred,
                 old_owner_repo=f'{owner}/{repo}',
                 new_owner_repo=f'{new_owner}/{final_repo}',
             )
@@ -540,23 +534,21 @@ class _LifecycleBase(LifecyclePlugin):
 
         Compares the link-derived ``<owner>/<repo>`` against the repo's
         canonical name from ``payload``.  When they differ the repo was
-        renamed (or its owner renamed) outside Imbi, so stash a
-        :class:`LinkWriteback` on ``ctx`` for the host to persist the
-        new link.  No-op when they match.
+        renamed (or its owner renamed) outside Imbi, so record the repo
+        on ``ctx`` (via :meth:`_record_repo`) for the host to persist the
+        refreshed dashboard link / ``EXISTS_IN`` edge.  No-op when they
+        match.
         """
         old_owner_repo = f'{link_owner}/{link_repo}'
         new_owner_repo = f'{current_owner}/{current_repo}'
         if new_owner_repo.lower() == old_owner_repo.lower():
             return
-        html_url = payload.get('html_url')
-        new_url = (
-            html_url
-            if isinstance(html_url, str) and html_url
-            else self._repo_html_url(host, current_owner, current_repo)
-        )
-        ctx.link_writeback = LinkWriteback(
-            link_key='github-repository',
-            new_url=new_url,
+        self._record_repo(
+            ctx,
+            host,
+            current_owner,
+            current_repo,
+            payload,
             old_owner_repo=old_owner_repo,
             new_owner_repo=new_owner_repo,
         )
@@ -564,6 +556,50 @@ class _LifecycleBase(LifecyclePlugin):
     @staticmethod
     def _repo_html_url(host: str, owner: str, repo: str) -> str:
         return f'https://{host}/{owner}/{repo}'
+
+    def _record_repo(
+        self,
+        ctx: PluginContext,
+        host: str,
+        owner: str,
+        repo: str,
+        payload: dict[str, typing.Any] | None = None,
+        *,
+        old_owner_repo: str | None = None,
+        new_owner_repo: str | None = None,
+    ) -> str:
+        """Record the repo on ``ctx`` for the host to persist.
+
+        Returns the dashboard (human) URL.  When the plugin is bound to a
+        third-party service and the GitHub payload carries the numeric
+        repo id, emit a :class:`ServiceWriteback` that maintains the
+        ``EXISTS_IN`` edge -- the id plus the rename-stable
+        ``/repositories/{id}`` API URL -- and a dashboard link keyed by
+        the service slug.  Otherwise fall back to the legacy
+        ``github-repository`` :class:`LinkWriteback` so a project not
+        wired to a service still gets its stored link.
+        """
+        data = payload or {}
+        html_url = str(
+            data.get('html_url') or self._repo_html_url(host, owner, repo)
+        )
+        slug = ctx.third_party_service_slug
+        repo_id = data.get('id')
+        if slug and isinstance(repo_id, int):
+            api_base = self._api_base(ctx.assignment_options)
+            ctx.service_writeback = ServiceWriteback(
+                identifier=str(repo_id),
+                canonical_url=f'{api_base}/repositories/{repo_id}',
+                dashboard_links={slug: html_url},
+            )
+        else:
+            ctx.link_writeback = LinkWriteback(
+                link_key='github-repository',
+                new_url=html_url,
+                old_owner_repo=old_owner_repo,
+                new_owner_repo=new_owner_repo,
+            )
+        return html_url
 
     async def _get_repo(
         self, client: httpx.AsyncClient, owner: str, repo: str
