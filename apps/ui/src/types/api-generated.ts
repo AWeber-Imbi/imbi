@@ -3326,8 +3326,10 @@ export interface components {
             third_party_service_slug: string;
             /** Identifier */
             identifier: string;
-            /** Canonical Link */
-            canonical_link?: string | null;
+            /** Canonical Url */
+            canonical_url?: string | null;
+            /** Dashboard Url */
+            dashboard_url?: string | null;
         };
         /**
          * ExistsInResponse
@@ -3340,8 +3342,10 @@ export interface components {
             third_party_service_name: string;
             /** Identifier */
             identifier: string;
-            /** Canonical Link */
-            canonical_link?: string | null;
+            /** Canonical Url */
+            canonical_url?: string | null;
+            /** Dashboard Url */
+            dashboard_url?: string | null;
         };
         /**
          * FormatType

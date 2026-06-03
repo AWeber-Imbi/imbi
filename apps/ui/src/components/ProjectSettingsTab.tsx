@@ -18,6 +18,7 @@ import {
 import { EditEnvironmentsCard } from '@/components/EditEnvironmentsCard'
 import { EditIdentifiersCard } from '@/components/EditIdentifiersCard'
 import { EditLinksCard } from '@/components/EditLinksCard'
+import { IntegrationsCard } from '@/components/IntegrationsCard'
 import { ProjectPluginsSection } from '@/components/project/ProjectPluginsSection'
 import { Button } from '@/components/ui/button'
 import {
@@ -253,6 +254,8 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
         identifiers={project.identifiers || {}}
         onPatch={(entries) => patch('/identifiers', entries)}
       />
+
+      <IntegrationsCard orgSlug={orgSlug} projectId={project.id} />
 
       <ProjectPluginsSection orgSlug={orgSlug} projectId={project.id} />
 

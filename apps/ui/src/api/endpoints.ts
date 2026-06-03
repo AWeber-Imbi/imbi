@@ -45,6 +45,8 @@ import type {
   IdentityConnectionStartRequest,
   IdentityConnectionStartResponse,
   InstalledPlugin,
+  Integration,
+  IntegrationCreate,
   LifecyclePreviewResponse,
   LinkDefinition,
   LinkDefinitionCreate,
@@ -1575,6 +1577,41 @@ export const deleteProjectDocument = (
 ) =>
   apiClient.delete<void>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}`,
+  )
+
+// Project integrations (EXISTS_IN edges). One row per third-party
+// service the project exists in; `createProjectService` also persists
+// the optional dashboard URL into the project's links.
+export const listProjectServices = async (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<Integration[]> => {
+  const response = await apiClient.get<Integration[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/services/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createProjectService = (
+  orgSlug: string,
+  projectId: string,
+  data: IntegrationCreate,
+) =>
+  apiClient.post<Integration>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/services/`,
+    data,
+  )
+
+export const deleteProjectService = (
+  orgSlug: string,
+  projectId: string,
+  serviceSlug: string,
+) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/services/${encodeURIComponent(serviceSlug)}`,
   )
 
 // Document comments. Hand-written like the document endpoints above; the
