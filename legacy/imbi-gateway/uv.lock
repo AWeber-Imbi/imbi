@@ -664,7 +664,7 @@ wheels = [
 [[package]]
 name = "imbi-common"
 version = "2.8.0"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main#ef294a10ee3d71e2e5ae364df3a220c8e48298ac" }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
@@ -678,10 +678,6 @@ dependencies = [
     { name = "pyjwt" },
     { name = "python-slugify" },
     { name = "typer" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/97/bc/d530fb11a6cc77b6fb9205824f90ffd61a9e177e5521547e8f56d625cb67/imbi_common-2.8.0.tar.gz", hash = "sha256:064407290a832f73e6ae2830f6802268f41a4ce65a68fb5f51c18cc45e966c70", size = 329556, upload-time = "2026-05-29T23:58:54.186Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/7f/3f/eb691a100829dff13f58c56a38bcd8c48ec83dd4a8270aca97da63b5a604/imbi_common-2.8.0-py3-none-any.whl", hash = "sha256:30cdb1aa1666f39a36eee9cc2285891650eb2340fcf184c26ed34c115695608d", size = 105139, upload-time = "2026-05-29T23:58:52.578Z" },
 ]
 
 [package.optional-dependencies]
@@ -737,7 +733,7 @@ requires-dist = [
     { name = "cel-python", specifier = ">=0.5.0" },
     { name = "fastapi", specifier = ">=0.135.1" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "imbi-common", extras = ["databases", "server"], specifier = "==2.8.0" },
+    { name = "imbi-common", extras = ["databases", "server"], git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main" },
     { name = "imbi-plugin-github", marker = "extra == 'plugins'", specifier = "~=1.0" },
     { name = "imbi-plugin-sonarqube", marker = "extra == 'plugins'", specifier = ">=0.0.0" },
     { name = "jsonpointer", specifier = ">=3.1.1" },

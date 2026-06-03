@@ -150,7 +150,7 @@ async def process_notification(
         ' WITH w, o, tps, i, rules,'
         '      collect(DISTINCT plg.plugin_slug) AS plugin_slugs,'
         '      collect(DISTINCT plg{{.id, .plugin_slug,'
-        '        .plugin_configuration}}) AS plugins'
+        '        .plugin_configuration, .options}}) AS plugins'
         ' RETURN w{{.*}} AS webhook, o{{.*}} AS org, tps{{.*}} AS service,'
         '        i{{.*}} AS sel, rules, plugin_slugs, plugins',
         {'webhook_id': webhook_id},
@@ -192,6 +192,7 @@ async def process_notification(
     plugin_slugs: list[str] = [str(s) for s in plugin_slugs_raw if s]
     plugins_raw: list[typing.Any] = graph.parse_agtype(record['plugins']) or []
     plugins_by_slug = _index_plugins(plugins_raw)
+    service_plugins = _service_plugins(plugins_raw)
 
     parsed_rules: list[typing.Any] = graph.parse_agtype(raw_rules) or []
     try:
@@ -329,6 +330,7 @@ async def process_notification(
             user_id=user_id,
             rules=matched_rules,
             plugins_by_slug=plugins_by_slug,
+            service_plugins=service_plugins,
             webhook_id=webhook_id,
         )
 
@@ -336,11 +338,14 @@ async def process_notification(
     response.status_code = http.HTTPStatus.ACCEPTED
 
 
-def _index_plugins(
+def _iter_plugin_rows(
     plugins_raw: 'abc.Iterable[typing.Any]',
-) -> dict[str, dict[str, str]]:
-    """Build ``{plugin_slug: {id, plugin_configuration}}`` from raw rows."""
-    indexed: dict[str, dict[str, str]] = {}
+) -> 'abc.Iterator[tuple[dict[str, typing.Any], str]]':
+    """Yield ``(row_dict, slug)`` for each well-formed Plugin row.
+
+    Skips rows that aren't dicts or carry no ``plugin_slug``; the shared
+    guard for the two indexers below.
+    """
     for row in plugins_raw:
         if not isinstance(row, dict):
             continue
@@ -348,7 +353,15 @@ def _index_plugins(
         slug_raw: object = row_dict.get('plugin_slug')
         if not slug_raw:
             continue
-        slug = str(slug_raw)
+        yield row_dict, str(slug_raw)
+
+
+def _index_plugins(
+    plugins_raw: 'abc.Iterable[typing.Any]',
+) -> dict[str, dict[str, str]]:
+    """Build ``{plugin_slug: {id, plugin_configuration}}`` from raw rows."""
+    indexed: dict[str, dict[str, str]] = {}
+    for row_dict, slug in _iter_plugin_rows(plugins_raw):
         plugin_id: object = row_dict.get('id')
         configuration: object = row_dict.get('plugin_configuration')
         indexed[slug] = {
@@ -358,6 +371,45 @@ def _index_plugins(
             ),
         }
     return indexed
+
+
+def _service_plugins(
+    plugins_raw: 'abc.Iterable[typing.Any]',
+) -> list[plugin_base.ServicePlugin]:
+    """Build the non-secret connected-plugin list for ``PluginContext``.
+
+    Surfaces each plugin attached to the ``ThirdPartyService`` as a
+    slug + ``options`` map so actions can introspect sibling
+    configuration (e.g. a GitHub host/flavor). Credentials
+    (``plugin_configuration``) are deliberately excluded.
+    """
+    return [
+        plugin_base.ServicePlugin(
+            slug=slug, options=_plugin_options(row_dict.get('options'))
+        )
+        for row_dict, slug in _iter_plugin_rows(plugins_raw)
+    ]
+
+
+def _plugin_options(raw: object) -> dict[str, typing.Any]:
+    """Decode a Plugin node's ``options`` property to a dict.
+
+    AGE stores the ``options`` map property as a JSON string (the graph
+    client serializes dict properties via ``json.dumps``), so it comes
+    back as a ``str`` that must be parsed. Tolerates an already-decoded
+    dict and treats anything else (``None``, malformed JSON) as no
+    options rather than failing the dispatch.
+    """
+    if isinstance(raw, dict):
+        return typing.cast('dict[str, typing.Any]', raw)
+    if isinstance(raw, str) and raw:
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        if isinstance(parsed, dict):
+            return typing.cast('dict[str, typing.Any]', parsed)
+    return {}
 
 
 def _decrypt_plugin_credentials(
@@ -475,6 +527,7 @@ async def _run_handlers(  # noqa: PLR0913
     user_id: str | None,
     rules: 'abc.Iterable[WebhookRule]',
     plugins_by_slug: dict[str, dict[str, str]],
+    service_plugins: 'abc.Sequence[plugin_base.ServicePlugin]' = (),
     webhook_id: str | None = None,
 ) -> None:
     LOGGER.debug(
@@ -494,6 +547,7 @@ async def _run_handlers(  # noqa: PLR0913
         team_slug=team_slug,
         actor_user_id=user_id,
         assignment_options=assignment_options,
+        service_plugins=list(service_plugins),
     )
     for rule in rules:
         resolved = _resolve_rule_handler(rule, webhook_id=webhook_id)
