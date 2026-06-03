@@ -882,6 +882,85 @@ class ResolveAllPluginsTestCase(unittest.TestCase):
         slugs = {r.plugin_slug for r in result}
         self.assertEqual(slugs, {'github-lifecycle', 'aws-lifecycle'})
 
+    def test_surfaces_third_party_service_slug(self) -> None:
+        from imbi_api.plugins.resolution import resolve_all_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {
+                'pt_plugins': '[]',
+                'proj_plugins': json.dumps(
+                    [
+                        {
+                            'id': 'p1',
+                            'slug': 'github-lifecycle',
+                            'edge_options': '{}',
+                            'plugin_options': '{}',
+                            'tps_slug': 'github-enterprise-cloud',
+                            'default': True,
+                            'src': 'project',
+                        }
+                    ]
+                ),
+            }
+        ]
+        entry = _make_registry_entry('github-lifecycle')
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin',
+                side_effect=lambda slug: entry,
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.get_enabled_map',
+                new=mock.AsyncMock(return_value={'github-lifecycle': True}),
+            ),
+        ):
+            result = asyncio.run(
+                resolve_all_plugins(mock_db, 'proj1', 'lifecycle')
+            )
+        self.assertEqual(len(result), 1)
+        self.assertEqual(
+            result[0].third_party_service_slug, 'github-enterprise-cloud'
+        )
+
+    def test_third_party_service_slug_none_when_unbound(self) -> None:
+        from imbi_api.plugins.resolution import resolve_all_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {
+                'pt_plugins': '[]',
+                'proj_plugins': json.dumps(
+                    [
+                        {
+                            'id': 'p1',
+                            'slug': 'github-lifecycle',
+                            'edge_options': '{}',
+                            'plugin_options': '{}',
+                            'tps_slug': None,
+                            'default': True,
+                            'src': 'project',
+                        }
+                    ]
+                ),
+            }
+        ]
+        entry = _make_registry_entry('github-lifecycle')
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin',
+                side_effect=lambda slug: entry,
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.get_enabled_map',
+                new=mock.AsyncMock(return_value={'github-lifecycle': True}),
+            ),
+        ):
+            result = asyncio.run(
+                resolve_all_plugins(mock_db, 'proj1', 'lifecycle')
+            )
+        self.assertIsNone(result[0].third_party_service_slug)
+
     def test_skips_unregistered_plugin(self) -> None:
         from imbi_common.plugins.errors import PluginNotFoundError
 

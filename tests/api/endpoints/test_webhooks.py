@@ -1412,7 +1412,7 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
             'service_slug': 'github',
             'service_name': 'GitHub',
             'identifier': 'org/repo',
-            'canonical_link': 'https://github.com/org/repo',
+            'canonical_url': 'https://github.com/org/repo',
         }
 
     # -- List --
@@ -1452,9 +1452,9 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), [])
 
-    def test_list_without_canonical_link(self) -> None:
+    def test_list_without_canonical_url(self) -> None:
         record = copy.deepcopy(self.service_record)
-        record['canonical_link'] = None
+        record['canonical_url'] = None
 
         self.mock_db.execute.return_value = [record]
         with mock.patch(
@@ -1467,7 +1467,7 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
 
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertIsNone(data[0]['canonical_link'])
+        self.assertIsNone(data[0]['canonical_url'])
 
     # -- Create --
 
@@ -1484,7 +1484,7 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
                 json={
                     'third_party_service_slug': 'github',
                     'identifier': 'org/repo',
-                    'canonical_link': ('https://github.com/org/repo'),
+                    'canonical_url': ('https://github.com/org/repo'),
                 },
             )
 
@@ -1551,3 +1551,76 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
+
+    # -- Dashboard URL folding --
+
+    def test_list_includes_dashboard_url_from_links(self) -> None:
+        self.mock_db.execute.return_value = [self.service_record]
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.webhooks.lookup_project_links',
+                new=mock.AsyncMock(
+                    return_value={'github': 'https://aweber.ghe.com/o/r'}
+                ),
+            ),
+        ):
+            response = self.client.get(
+                '/organizations/engineering/projects/my-project/services/',
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()[0]['dashboard_url'],
+            'https://aweber.ghe.com/o/r',
+        )
+
+    def test_create_with_dashboard_url_writes_link(self) -> None:
+        self.mock_db.execute.return_value = [self.service_record]
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.webhooks.merge_project_links',
+                new=mock.AsyncMock(return_value=True),
+            ) as merge_links,
+        ):
+            response = self.client.post(
+                '/organizations/engineering/projects/my-project/services/',
+                json={
+                    'third_party_service_slug': 'github',
+                    'identifier': 'org/repo',
+                    'canonical_url': 'https://api.github.com/repositories/1',
+                    'dashboard_url': 'https://github.com/org/repo',
+                },
+            )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            response.json()['dashboard_url'],
+            'https://github.com/org/repo',
+        )
+        merge_links.assert_awaited_once()
+        self.assertEqual(
+            merge_links.await_args.kwargs['add'],
+            {'github': 'https://github.com/org/repo'},
+        )
+
+    def test_delete_clears_dashboard_link(self) -> None:
+        self.mock_db.execute.return_value = [{'deleted': 1}]
+        with mock.patch(
+            'imbi_api.endpoints.webhooks.merge_project_links',
+            new=mock.AsyncMock(return_value=True),
+        ) as merge_links:
+            response = self.client.delete(
+                '/organizations/engineering/projects/my-project/services/github',
+            )
+        self.assertEqual(response.status_code, 204)
+        merge_links.assert_awaited_once()
+        self.assertEqual(
+            list(merge_links.await_args.kwargs['remove']),
+            ['github'],
+        )

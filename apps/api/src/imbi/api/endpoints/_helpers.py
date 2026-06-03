@@ -9,7 +9,7 @@ import typing
 import fastapi
 import psycopg
 from imbi_common import graph
-from imbi_common.plugins.base import PluginContext
+from imbi_common.plugins.base import PluginContext, ServiceConnection
 
 from imbi_api import patch as json_patch
 
@@ -280,6 +280,208 @@ async def persist_link_writeback(db: graph.Graph, ctx: PluginContext) -> None:
             writeback.old_owner_repo,
             writeback.new_owner_repo,
         )
+
+
+async def merge_project_links(
+    db: graph.Graph,
+    project_id: str,
+    *,
+    add: dict[str, str] | None = None,
+    remove: collections.abc.Iterable[str] | None = None,
+) -> bool:
+    """Apply additions and removals to the project's external link map.
+
+    Reads the current links once, applies ``add`` (set/overwrite) and
+    ``remove`` (drop keys), and writes the map back as the JSON-encoded
+    string ``p.links`` is stored as on the AGE node. Returns ``True``
+    when the map changed. Companion to :func:`update_project_link` for
+    the multi-key / removal case driven by a service writeback.
+    """
+    links = await lookup_project_links(db, project_id)
+    updated = dict(links)
+    for key, url in (add or {}).items():
+        if url:
+            updated[key] = url
+    for key in remove or ():
+        updated.pop(key, None)
+    if updated == links:
+        return False
+    query: typing.LiteralString = (
+        'MATCH (p:Project {{id: {project_id}}}) '
+        'SET p.links = {links} RETURN p.id AS id'
+    )
+    await db.execute(
+        query,
+        {'project_id': project_id, 'links': json.dumps(updated)},
+        ['id'],
+    )
+    return True
+
+
+async def lookup_project_exists_in(
+    db: graph.Graph,
+    project_id: str,
+) -> list[ServiceConnection]:
+    """Return the project's ``EXISTS_IN`` connections.
+
+    One :class:`ServiceConnection` per
+    ``(:Project)-[:EXISTS_IN]->(:ThirdPartyService)`` edge, carrying the
+    service slug, the edge ``identifier``, and the canonical API URL.
+    Returns ``[]`` on lookup failure or when the project exists in no
+    services. Populated onto :attr:`PluginContext.service_connections`
+    so plugins can read the relationship without re-querying the graph.
+    """
+    query: typing.LiteralString = (
+        'MATCH (p:Project {{id: {project_id}}}) '
+        '-[ei:EXISTS_IN]->(tps:ThirdPartyService) '
+        'RETURN tps.slug AS service_slug, '
+        'ei.identifier AS identifier, '
+        'ei.canonical_url AS canonical_url'
+    )
+    try:
+        records = await db.execute(
+            query,
+            {'project_id': project_id},
+            ['service_slug', 'identifier', 'canonical_url'],
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.debug('Project EXISTS_IN lookup failed', exc_info=True)
+        return []
+    connections: list[ServiceConnection] = []
+    for r in records:
+        slug = graph.parse_agtype(r.get('service_slug'))
+        if not slug:
+            continue
+        identifier = graph.parse_agtype(r.get('identifier'))
+        canonical_url = graph.parse_agtype(r.get('canonical_url'))
+        connections.append(
+            ServiceConnection(
+                service_slug=str(slug),
+                identifier='' if identifier is None else str(identifier),
+                canonical_url=(
+                    None if canonical_url is None else str(canonical_url)
+                ),
+            )
+        )
+    return connections
+
+
+async def persist_service_writeback(
+    db: graph.Graph, ctx: PluginContext
+) -> None:
+    """Persist a project's service relationship a plugin reported on ``ctx``.
+
+    A lifecycle plugin sets ``ctx.service_writeback`` when a call
+    created, moved, or tore down the project's relationship with the
+    service it is bound to (``ctx.third_party_service_slug``). Upsert the
+    ``EXISTS_IN`` edge (identifier + canonical API URL) and merge any
+    dashboard links into ``Project.links`` -- or, when ``remove`` is set,
+    delete the edge and drop those link keys. Best-effort: a write
+    failure is logged and swallowed so persistence never fails the
+    user-facing request whose result we already have.
+    """
+    writeback = ctx.service_writeback
+    if writeback is None:
+        return
+    slug = ctx.third_party_service_slug
+    if not slug:
+        LOGGER.warning(
+            'Service writeback for project %s has no bound '
+            'third_party_service_slug; skipping',
+            ctx.project_id,
+        )
+        return
+    try:
+        if writeback.remove:
+            await _delete_exists_in(db, ctx.org_slug, ctx.project_id, slug)
+            await merge_project_links(
+                db, ctx.project_id, remove=writeback.dashboard_links.keys()
+            )
+        else:
+            await _merge_exists_in(
+                db,
+                ctx.org_slug,
+                ctx.project_id,
+                slug,
+                writeback.identifier,
+                writeback.canonical_url,
+            )
+            await merge_project_links(
+                db, ctx.project_id, add=writeback.dashboard_links
+            )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Failed to persist service writeback for project %s (%s)',
+            ctx.project_id,
+            slug,
+            exc_info=True,
+        )
+        return
+    LOGGER.info(
+        'Persisted EXISTS_IN edge for project %s -> %s (%s)',
+        ctx.project_id,
+        slug,
+        'removed' if writeback.remove else writeback.identifier,
+    )
+
+
+async def _merge_exists_in(
+    db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+    tps_slug: str,
+    identifier: str,
+    canonical_url: str,
+) -> None:
+    """Upsert the ``EXISTS_IN`` edge for ``(project, service)``."""
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    MATCH (tps:ThirdPartyService {{slug: {tps_slug}}})
+          -[:BELONGS_TO]->(o)
+    MERGE (p)-[ei:EXISTS_IN]->(tps)
+    SET ei.identifier = {identifier},
+        ei.canonical_url = {canonical_url}
+    RETURN ei.identifier AS identifier
+    """
+    await db.execute(
+        query,
+        {
+            'org_slug': org_slug,
+            'project_id': project_id,
+            'tps_slug': tps_slug,
+            'identifier': identifier,
+            'canonical_url': canonical_url,
+        },
+        ['identifier'],
+    )
+
+
+async def _delete_exists_in(
+    db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+    tps_slug: str,
+) -> None:
+    """Remove the ``EXISTS_IN`` edge for ``(project, service)``. Idempotent."""
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    OPTIONAL MATCH (p)-[ei:EXISTS_IN]->
+          (tps:ThirdPartyService {{slug: {tps_slug}}})
+    DELETE ei
+    """
+    await db.execute(
+        query,
+        {
+            'org_slug': org_slug,
+            'project_id': project_id,
+            'tps_slug': tps_slug,
+        },
+        [],
+    )
 
 
 async def lookup_project_type_slugs(

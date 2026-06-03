@@ -30,6 +30,8 @@ from imbi_common.plugins.base import (
     LifecycleResult,
     LinkWriteback,
     PluginContext,
+    ServiceConnection,
+    ServiceWriteback,
 )
 from imbi_common.plugins.errors import PluginCredentialsMissing
 
@@ -88,6 +90,9 @@ class LifecycleContextBundle:
     team_slug: str | None
     project_links: dict[str, str]
     project_type_slugs: list[str]
+    service_connections: list[ServiceConnection] = dataclasses.field(
+        default_factory=list
+    )
 
 
 async def build_lifecycle_context_bundle(
@@ -99,27 +104,31 @@ async def build_lifecycle_context_bundle(
     write, and pass it as ``bundle=`` to :func:`dispatch_lifecycle`.
     """
     from imbi_api.endpoints._helpers import (
+        lookup_project_exists_in,
         lookup_project_links,
         lookup_project_slugs,
         lookup_project_type_slugs,
     )
 
-    # Three independent DB lookups; gather them concurrently so each
-    # lifecycle dispatch pays one round-trip latency rather than three.
+    # Independent DB lookups; gather them concurrently so each lifecycle
+    # dispatch pays one round-trip latency rather than several.
     (
         (project_slug, team_slug),
         project_links,
         project_type_slugs,
+        service_connections,
     ) = await asyncio.gather(
         lookup_project_slugs(db, project_id),
         lookup_project_links(db, project_id),
         lookup_project_type_slugs(db, project_id),
+        lookup_project_exists_in(db, project_id),
     )
     return LifecycleContextBundle(
         project_slug=project_slug,
         team_slug=team_slug,
         project_links=project_links,
         project_type_slugs=project_type_slugs,
+        service_connections=service_connections,
     )
 
 
@@ -182,6 +191,8 @@ async def dispatch_lifecycle(
             project_name=project_name,
             project_description=project_description,
             project_ui_url=project_ui_url,
+            third_party_service_slug=resolved.third_party_service_slug,
+            service_connections=bundle.service_connections,
         )
         invocation = await _invoke_one(db, ctx, resolved, event, auth)
         results.append(invocation)
@@ -243,6 +254,7 @@ async def _invoke_one(
     # writeback it reports through the closure so we can persist the
     # link after the call regardless of which context instance was used.
     captured_writeback: list[LinkWriteback] = []
+    captured_service_writeback: list[ServiceWriteback] = []
 
     async def _call(c: PluginContext) -> LifecycleResult:
         credentials = await _resolve_credentials(db, c, resolved)
@@ -250,6 +262,8 @@ async def _invoke_one(
         res: LifecycleResult = await call_with_timeout(method(c, credentials))
         if c.link_writeback is not None:
             captured_writeback.append(c.link_writeback)
+        if c.service_writeback is not None:
+            captured_service_writeback.append(c.service_writeback)
         return res
 
     try:
@@ -285,13 +299,20 @@ async def _invoke_one(
             message=f'{type(exc).__name__}: {exc}',
         )
 
-    if captured_writeback:
+    if captured_writeback or captured_service_writeback:
         # Lazy import to avoid the endpoints/_helpers <-> this-module
         # cycle described above.
-        from imbi_api.endpoints._helpers import persist_link_writeback
+        from imbi_api.endpoints._helpers import (
+            persist_link_writeback,
+            persist_service_writeback,
+        )
 
-        ctx.link_writeback = captured_writeback[-1]
-        await persist_link_writeback(db, ctx)
+        if captured_writeback:
+            ctx.link_writeback = captured_writeback[-1]
+            await persist_link_writeback(db, ctx)
+        if captured_service_writeback:
+            ctx.service_writeback = captured_service_writeback[-1]
+            await persist_service_writeback(db, ctx)
 
     return LifecycleInvocation(
         plugin_id=resolved.plugin_id,

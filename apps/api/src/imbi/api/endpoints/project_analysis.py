@@ -30,6 +30,7 @@ from imbi_common.plugins.errors import PluginCredentialsMissing
 
 from imbi_api.auth import permissions
 from imbi_api.endpoints._helpers import (
+    lookup_project_exists_in,
     lookup_project_links,
     lookup_project_slugs,
     lookup_project_type_slugs,
@@ -89,6 +90,7 @@ async def _build_context(
     project_slug, team_slug = await lookup_project_slugs(db, project_id)
     project_links = await lookup_project_links(db, project_id)
     project_type_slugs = await lookup_project_type_slugs(db, project_id)
+    service_connections = await lookup_project_exists_in(db, project_id)
     return PluginContext(
         project_id=project_id,
         project_slug=project_slug,
@@ -97,6 +99,8 @@ async def _build_context(
         assignment_options=resolved.options,
         project_links=project_links,
         project_type_slugs=project_type_slugs,
+        third_party_service_slug=resolved.third_party_service_slug,
+        service_connections=service_connections,
     )
 
 

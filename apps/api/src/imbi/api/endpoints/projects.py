@@ -28,6 +28,7 @@ from imbi_api import blueprint_attributes
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.domain import scoring as scoring_models
+from imbi_api.domain.models import ExistsInResponse
 from imbi_api.endpoints._helpers import conflict_on_unique_violation
 from imbi_api.endpoints._json_fields import (
     JSONFields,
@@ -230,6 +231,12 @@ class ProjectResponse(pydantic.BaseModel):
     environments: list[EnvironmentRef] = []
     links: dict[str, pydantic.AnyUrl] = {}
     identifiers: dict[str, int | str] = {}
+    # The project's EXISTS_IN connections, one entry per
+    # ``(:Project)-[:EXISTS_IN]->(:ThirdPartyService)`` edge.  Read-only
+    # structured surface (identifier + canonical API URL + the dashboard
+    # URL from ``links``); maintained through the project-services
+    # endpoints, not by editing ``identifiers``.
+    services: list[ExistsInResponse] = []
     score: float | None = None
     breakdown: scoring_models.ScoreBreakdown | None = None
     relationships: ProjectRelationships | None = None
@@ -255,6 +262,52 @@ class ProjectResponse(pydantic.BaseModel):
         if isinstance(value, str):
             return json.loads(value)
         return value
+
+    @pydantic.model_validator(mode='before')
+    @classmethod
+    def _build_services(cls, data: typing.Any) -> typing.Any:
+        """Build the ``services`` list from the EXISTS_IN edges.
+
+        The read fragment returns a ``service_edges`` list of
+        ``{slug, name, identifier, canonical_url}`` from each
+        ``(:Project)-[:EXISTS_IN]->(:ThirdPartyService)`` edge.  Pair each
+        with the matching ``Project.links[slug]`` dashboard URL and expose
+        the result as the read-only ``services`` field.  ``identifiers``
+        is intentionally left as the node property -- edge identifiers are
+        *not* merged into it, so the editable identifier map and the
+        service relationship never collide.
+        """
+        if not isinstance(data, dict):
+            return data
+        values = typing.cast('dict[str, typing.Any]', data)
+        raw_edges = values.pop('service_edges', None)
+        if not raw_edges or not isinstance(raw_edges, list):
+            return values
+        edges = typing.cast('list[dict[str, typing.Any]]', raw_edges)
+        raw_links: typing.Any = values.get('links') or {}
+        if isinstance(raw_links, str):
+            raw_links = json.loads(raw_links) or {}
+        links = typing.cast('dict[str, typing.Any]', raw_links)
+        services: list[dict[str, typing.Any]] = []
+        for edge in edges:
+            slug = edge.get('slug')
+            if not slug or not isinstance(slug, str):
+                continue
+            identifier = edge.get('identifier')
+            dashboard = links.get(slug)
+            services.append(
+                {
+                    'third_party_service_slug': slug,
+                    'third_party_service_name': edge.get('name') or slug,
+                    'identifier': ''
+                    if identifier is None
+                    else str(identifier),
+                    'canonical_url': edge.get('canonical_url'),
+                    'dashboard_url': str(dashboard) if dashboard else None,
+                }
+            )
+        values['services'] = services
+        return values
 
 
 class ProjectMutationResponse(ProjectResponse):
@@ -864,10 +917,19 @@ _RETURN_FRAGMENT: typing.LiteralString = """
     OPTIONAL MATCH (p)<-[:DEPENDS_ON]-(in_:Project)
     WITH p, o, t, pts, envs, outbound_count,
          count(in_) AS inbound_count
+    OPTIONAL MATCH (p)-[ei:EXISTS_IN]->(tps:ThirdPartyService)
+    WITH p, o, t, pts, envs, outbound_count, inbound_count,
+         collect(CASE WHEN tps IS NOT NULL
+                 THEN {{slug: tps.slug,
+                        name: tps.name,
+                        identifier: ei.identifier,
+                        canonical_url: ei.canonical_url}}
+                 END) AS service_edges
     RETURN p{{.*,
         team: t{{.*, organization: o{{.*}}}},
         project_types: pts,
-        environments: envs
+        environments: envs,
+        service_edges: service_edges
     }} AS project,
     outbound_count,
     inbound_count

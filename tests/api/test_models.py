@@ -527,18 +527,18 @@ class ExistsInModelTestCase(unittest.TestCase):
                 'identifier': 'org/repo',
             }
         )
-        self.assertIsNone(obj.canonical_link)
+        self.assertIsNone(obj.canonical_url)
 
     def test_exists_in_create_with_link(self) -> None:
         obj = domain_models.ExistsInCreate.model_validate(
             {
                 'third_party_service_slug': 'github',
                 'identifier': 'org/repo',
-                'canonical_link': 'https://github.com/org/repo',
+                'canonical_url': 'https://github.com/org/repo',
             }
         )
         self.assertEqual(
-            obj.canonical_link,
+            obj.canonical_url,
             'https://github.com/org/repo',
         )
 
@@ -560,7 +560,7 @@ class ExistsInModelTestCase(unittest.TestCase):
             }
         )
         self.assertEqual(obj.third_party_service_name, 'GitHub')
-        self.assertIsNone(obj.canonical_link)
+        self.assertIsNone(obj.canonical_url)
 
 
 class WebhookResponseFromGraphRecordTestCase(unittest.TestCase):

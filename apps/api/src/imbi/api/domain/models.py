@@ -1273,7 +1273,13 @@ class ExistsInCreate(pydantic.BaseModel):
 
     third_party_service_slug: str
     identifier: str = pydantic.Field(min_length=1)
-    canonical_link: str | None = None
+    canonical_url: str | None = None
+    #: Optional human dashboard URL; persisted into ``Project.links``
+    #: keyed by the service slug (not stored on the edge).  Validated as a
+    #: URL at the request boundary so a malformed value can't poison the
+    #: project's ``links`` map (``dict[str, AnyUrl]``), which is
+    #: re-validated on every project read.
+    dashboard_url: pydantic.AnyUrl | None = None
 
 
 class ExistsInResponse(pydantic.BaseModel):
@@ -1282,4 +1288,6 @@ class ExistsInResponse(pydantic.BaseModel):
     third_party_service_slug: str
     third_party_service_name: str
     identifier: str
-    canonical_link: str | None = None
+    canonical_url: str | None = None
+    #: Human dashboard URL read from ``Project.links`` (service slug key).
+    dashboard_url: str | None = None

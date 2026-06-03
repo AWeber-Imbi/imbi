@@ -33,6 +33,13 @@ class ResolvedPlugin(typing.NamedTuple):
     # per-env payloads" by call sites; the default is None rather than
     # {} so the NamedTuple does not carry a shared mutable default.
     env_payloads: dict[str, dict[str, typing.Any]] | None = None
+    # Slug of the ThirdPartyService this plugin instance is attached to
+    # via ``(:ThirdPartyService)-[:HAS_PLUGIN]->(:Plugin)``, or ``None``
+    # when the plugin is not bound to a service.  The host injects it
+    # into ``PluginContext.third_party_service_slug`` so the plugin knows
+    # which service its ``service_writeback`` / ``EXISTS_IN`` edge
+    # targets.
+    third_party_service_slug: str | None = None
 
 
 def _merge_env_payloads(
@@ -281,9 +288,11 @@ async def resolve_all_plugins(
     MATCH (proj:Project {{id: {project_id}}})
     OPTIONAL MATCH (proj)-[pe:USES_PLUGIN]->(p:Plugin)
     WHERE pe.tab = {tab}
+    OPTIONAL MATCH (tps1:ThirdPartyService)-[:HAS_PLUGIN]->(p)
     OPTIONAL MATCH (proj)-[:TYPE]->(pt:ProjectType)
       -[pte:USES_PLUGIN]->(p2:Plugin)
     WHERE pte.tab = {tab}
+    OPTIONAL MATCH (tps2:ThirdPartyService)-[:HAS_PLUGIN]->(p2)
     WITH
       collect(DISTINCT {{id: p.id, slug: p.plugin_slug,
                          edge_options: pe.options,
@@ -291,6 +300,7 @@ async def resolve_all_plugins(
                          plugin_options: p.options,
                          identity_plugin_id: pe.identity_plugin_id,
                          plugin_identity_plugin_id: p.identity_plugin_id,
+                         tps_slug: tps1.slug,
                          default: pe.default,
                          src: 'project'}})
        AS proj_plugins,
@@ -300,6 +310,7 @@ async def resolve_all_plugins(
                          plugin_options: p2.options,
                          identity_plugin_id: pte.identity_plugin_id,
                          plugin_identity_plugin_id: p2.identity_plugin_id,
+                         tps_slug: tps2.slug,
                          default: pte.default,
                          src: 'project_type'}})
        AS pt_plugins
@@ -384,6 +395,7 @@ async def resolve_all_plugins(
                 plugin_id,
             )
             continue
+        tps_slug = chosen.get('tps_slug')
         resolved.append(
             ResolvedPlugin(
                 plugin_id=plugin_id,
@@ -394,6 +406,11 @@ async def resolve_all_plugins(
                 env_payloads=_merge_env_payloads(
                     chosen.get('pt_edge_env_payloads'),
                     chosen.get('edge_env_payloads'),
+                ),
+                third_party_service_slug=(
+                    tps_slug
+                    if isinstance(tps_slug, str) and tps_slug
+                    else None
                 ),
             )
         )
@@ -481,6 +498,7 @@ async def resolve_analysis_plugins(
        AS pt_plugins,
       collect(DISTINCT {{id: p3.id, slug: p3.plugin_slug,
                          plugin_options: p3.options,
+                         tps_slug: tps.slug,
                          src: 'third_party_service'}})
        AS tps_plugins
     RETURN proj_plugins, pt_plugins, tps_plugins
@@ -575,12 +593,18 @@ async def resolve_analysis_plugins(
                 plugin_id,
             )
             continue
+        tps_slug = chosen.get('tps_slug')
         resolved.append(
             ResolvedPlugin(
                 plugin_id=plugin_id,
                 plugin_slug=plugin_slug,
                 entry=entry,
                 options=options,
+                third_party_service_slug=(
+                    tps_slug
+                    if isinstance(tps_slug, str) and tps_slug
+                    else None
+                ),
             )
         )
     return resolved

@@ -14,7 +14,11 @@ from imbi_common.auth import encryption
 from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.domain import models
-from imbi_api.endpoints._helpers import conflict_on_unique_violation
+from imbi_api.endpoints._helpers import (
+    conflict_on_unique_violation,
+    lookup_project_links,
+    merge_project_links,
+)
 from imbi_api.graph_sql import props_template, set_clause
 
 LOGGER = logging.getLogger(__name__)
@@ -734,7 +738,7 @@ async def list_project_services(
     RETURN tps.slug AS service_slug,
            tps.name AS service_name,
            ei.identifier AS identifier,
-           ei.canonical_link AS canonical_link
+           ei.canonical_url AS canonical_url
     ORDER BY tps.name
     """
     records = await db.execute(
@@ -744,25 +748,28 @@ async def list_project_services(
             'service_slug',
             'service_name',
             'identifier',
-            'canonical_link',
+            'canonical_url',
         ],
     )
 
-    return [
-        models.ExistsInResponse(
-            third_party_service_slug=graph.parse_agtype(
-                r['service_slug'],
-            ),
-            third_party_service_name=graph.parse_agtype(
-                r['service_name'],
-            ),
-            identifier=graph.parse_agtype(r['identifier']),
-            canonical_link=graph.parse_agtype(
-                r.get('canonical_link'),
-            ),
+    links = await lookup_project_links(db, project_id)
+    responses: list[models.ExistsInResponse] = []
+    for r in records:
+        slug = graph.parse_agtype(r['service_slug'])
+        responses.append(
+            models.ExistsInResponse(
+                third_party_service_slug=slug,
+                third_party_service_name=graph.parse_agtype(
+                    r['service_name'],
+                ),
+                identifier=graph.parse_agtype(r['identifier']),
+                canonical_url=graph.parse_agtype(
+                    r.get('canonical_url'),
+                ),
+                dashboard_url=links.get(slug),
+            )
         )
-        for r in records
-    ]
+    return responses
 
 
 @project_services_router.post('/', status_code=201)
@@ -787,11 +794,11 @@ async def create_project_service(
           -[:BELONGS_TO]->(o)
     MERGE (p)-[ei:EXISTS_IN]->(tps)
     SET ei.identifier = {identifier},
-        ei.canonical_link = {canonical_link}
+        ei.canonical_url = {canonical_url}
     RETURN tps.slug AS service_slug,
            tps.name AS service_name,
            ei.identifier AS identifier,
-           ei.canonical_link AS canonical_link
+           ei.canonical_url AS canonical_url
     """
     records = await db.execute(
         query,
@@ -800,13 +807,13 @@ async def create_project_service(
             'project_id': project_id,
             'tps_slug': data.third_party_service_slug,
             'identifier': data.identifier,
-            'canonical_link': data.canonical_link,
+            'canonical_url': data.canonical_url,
         },
         [
             'service_slug',
             'service_name',
             'identifier',
-            'canonical_link',
+            'canonical_url',
         ],
     )
 
@@ -820,6 +827,18 @@ async def create_project_service(
             ),
         )
 
+    # The dashboard URL is a human link, not edge state: persist it into
+    # ``Project.links`` keyed by the service slug so the edge and its
+    # links entry stay a single coherent row.  ``dashboard_url`` is an
+    # ``AnyUrl`` (validated at the boundary); store its string form.
+    dashboard_url = str(data.dashboard_url) if data.dashboard_url else None
+    if dashboard_url:
+        await merge_project_links(
+            db,
+            project_id,
+            add={data.third_party_service_slug: dashboard_url},
+        )
+
     r = records[0]
     return models.ExistsInResponse(
         third_party_service_slug=graph.parse_agtype(
@@ -829,9 +848,10 @@ async def create_project_service(
             r['service_name'],
         ),
         identifier=graph.parse_agtype(r['identifier']),
-        canonical_link=graph.parse_agtype(
-            r.get('canonical_link'),
+        canonical_url=graph.parse_agtype(
+            r.get('canonical_url'),
         ),
+        dashboard_url=dashboard_url,
     )
 
 
@@ -881,3 +901,7 @@ async def delete_project_service(
                 f'{service_slug!r} not found'
             ),
         )
+
+    # Drop the matching dashboard link so the edge and its ``links``
+    # entry are removed together.
+    await merge_project_links(db, project_id, remove=[service_slug])

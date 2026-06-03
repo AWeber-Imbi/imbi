@@ -18,6 +18,7 @@ from imbi_common.plugins.base import (
     LinkWriteback,
     PluginContext,
     PluginManifest,
+    ServiceWriteback,
 )
 from imbi_common.plugins.registry import RegistryEntry
 
@@ -196,6 +197,119 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         args = update_link.await_args.args
         self.assertEqual(args[2], 'github-repository')
         self.assertEqual(args[3], 'https://github.com/octo/renamed')
+
+    def test_archive_persists_service_writeback(self) -> None:
+        # A lifecycle plugin that reports a service writeback on ctx
+        # triggers an EXISTS_IN upsert + dashboard-link merge against the
+        # plugin's bound third-party service.
+        class _Svc(LifecyclePlugin):
+            manifest = PluginManifest(
+                slug='gh', name='gh', plugin_type='lifecycle'
+            )
+
+            async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+                ctx.service_writeback = ServiceWriteback(
+                    identifier='134741',
+                    canonical_url='https://api.x.ghe.com/repositories/134741',
+                    dashboard_links={
+                        'github-enterprise-cloud': 'https://x.ghe.com/o/r'
+                    },
+                )
+                return LifecycleResult(status='ok', message='done')
+
+            async def on_project_unarchived(self, ctx, credentials):  # type: ignore[override]
+                raise NotImplementedError
+
+        entry = RegistryEntry(
+            handler_cls=_Svc,
+            manifest=_Svc.manifest,
+            package_name='imbi-plugin-gh',
+            package_version='1.0.0',
+        )
+        resolved = ResolvedPlugin(
+            plugin_id='p1',
+            plugin_slug='gh',
+            entry=entry,
+            options={},
+            third_party_service_slug='github-enterprise-cloud',
+        )
+        with (
+            mock.patch(
+                'imbi_api.endpoints._helpers._merge_exists_in',
+                new=mock.AsyncMock(),
+            ) as merge_edge,
+            mock.patch(
+                'imbi_api.endpoints._helpers.merge_project_links',
+                new=mock.AsyncMock(return_value=True),
+            ) as merge_links,
+        ):
+            results, _ = self._run([resolved])
+        self.assertEqual(results[0].status, 'ok')
+        merge_edge.assert_awaited_once()
+        # _merge_exists_in(db, org, project, slug, identifier, canonical_url)
+        args = merge_edge.await_args.args
+        self.assertEqual(args[1], 'org-1')
+        self.assertEqual(args[2], 'proj-1')
+        self.assertEqual(args[3], 'github-enterprise-cloud')
+        self.assertEqual(args[4], '134741')
+        self.assertEqual(args[5], 'https://api.x.ghe.com/repositories/134741')
+        merge_links.assert_awaited_once()
+        self.assertEqual(
+            merge_links.await_args.kwargs['add'],
+            {'github-enterprise-cloud': 'https://x.ghe.com/o/r'},
+        )
+
+    def test_service_writeback_remove_deletes_edge(self) -> None:
+        class _Svc(LifecyclePlugin):
+            manifest = PluginManifest(
+                slug='gh', name='gh', plugin_type='lifecycle'
+            )
+
+            async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+                ctx.service_writeback = ServiceWriteback(
+                    identifier='1',
+                    canonical_url='https://api.x/1',
+                    dashboard_links={
+                        'github-enterprise-cloud': 'https://x/o/r'
+                    },
+                    remove=True,
+                )
+                return LifecycleResult(status='ok')
+
+            async def on_project_unarchived(self, ctx, credentials):  # type: ignore[override]
+                raise NotImplementedError
+
+        entry = RegistryEntry(
+            handler_cls=_Svc,
+            manifest=_Svc.manifest,
+            package_name='imbi-plugin-gh',
+            package_version='1.0.0',
+        )
+        resolved = ResolvedPlugin(
+            plugin_id='p1',
+            plugin_slug='gh',
+            entry=entry,
+            options={},
+            third_party_service_slug='github-enterprise-cloud',
+        )
+        with (
+            mock.patch(
+                'imbi_api.endpoints._helpers._delete_exists_in',
+                new=mock.AsyncMock(),
+            ) as delete_edge,
+            mock.patch(
+                'imbi_api.endpoints._helpers.merge_project_links',
+                new=mock.AsyncMock(return_value=True),
+            ) as merge_links,
+        ):
+            results, _ = self._run([resolved])
+        self.assertEqual(results[0].status, 'ok')
+        delete_edge.assert_awaited_once()
+        self.assertEqual(
+            delete_edge.await_args.args[3], 'github-enterprise-cloud'
+        )
+        # remove path drops the dashboard keys, not adds them
+        self.assertIn('remove', merge_links.await_args.kwargs)
 
     def test_emits_one_clickhouse_call_for_multiple_plugins(self) -> None:
         """H17: N plugins → 1 ClickHouse insert (rows batched)."""
