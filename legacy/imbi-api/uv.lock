@@ -7,7 +7,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-05-27T15:59:52.237516Z"
+exclude-newer = "0001-01-01T00:00:00Z"  # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
@@ -1016,7 +1016,7 @@ wheels = [
 
 [[package]]
 name = "imbi-api"
-version = "2.8.0"
+version = "2.9.0"
 source = { editable = "." }
 dependencies = [
   { name = "aioboto3" },
