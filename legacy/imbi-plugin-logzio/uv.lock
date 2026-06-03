@@ -667,7 +667,7 @@ wheels = [
 
 [[package]]
 name = "imbi-common"
-version = "2.8.0"
+version = "2.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
   { name = "cryptography" },
@@ -683,9 +683,9 @@ dependencies = [
   { name = "python-slugify" },
   { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/97/bc/d530fb11a6cc77b6fb9205824f90ffd61a9e177e5521547e8f56d625cb67/imbi_common-2.8.0.tar.gz", hash = "sha256:064407290a832f73e6ae2830f6802268f41a4ce65a68fb5f51c18cc45e966c70", size = 329556, upload-time = "2026-05-29T23:58:54.186Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ff/5e/e7306a4bafa6e23ad8fd6dcdaef552d646233b974b4cfd3352750ff57631/imbi_common-2.9.0.tar.gz", hash = "sha256:6687219808b824bc65af7229a6193cf2bf86e5b348ad2d3928126446c288b9ef", size = 336785, upload-time = "2026-06-03T15:52:11.958Z" }
 wheels = [
-  { url = "https://files.pythonhosted.org/packages/7f/3f/eb691a100829dff13f58c56a38bcd8c48ec83dd4a8270aca97da63b5a604/imbi_common-2.8.0-py3-none-any.whl", hash = "sha256:30cdb1aa1666f39a36eee9cc2285891650eb2340fcf184c26ed34c115695608d", size = 105139, upload-time = "2026-05-29T23:58:52.578Z" },
+  { url = "https://files.pythonhosted.org/packages/c2/dc/3c3e782709e5557620aa37e089233a267b0d73c9da44dbcfad963805f646/imbi_common-2.9.0-py3-none-any.whl", hash = "sha256:a8fad461cc7759e61ba101fa44f047610690805163ab43f8e10c8b97d91f8f0c", size = 107509, upload-time = "2026-06-03T15:52:10.159Z" },
 ]
 
 [package.optional-dependencies]
@@ -731,7 +731,7 @@ dist = [
 [package.metadata]
 requires-dist = [
   { name = "httpx", specifier = ">=0.27" },
-  { name = "imbi-common", specifier = "==2.8.0" },
+  { name = "imbi-common", specifier = "==2.9.0" },
   { name = "pydantic", specifier = ">=2" },
 ]
 
@@ -739,7 +739,7 @@ requires-dist = [
 dev = [
   { name = "basedpyright" },
   { name = "coverage", extras = ["toml"] },
-  { name = "imbi-common", extras = ["server", "databases"], specifier = "==2.8.0" },
+  { name = "imbi-common", extras = ["server", "databases"], specifier = "==2.9.0" },
   { name = "pre-commit" },
   { name = "pytest" },
   { name = "pytest-asyncio" },
