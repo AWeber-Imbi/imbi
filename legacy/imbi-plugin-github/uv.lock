@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.14"
 
 [options]
-exclude-newer = "2026-05-27T16:09:33.3534Z"
+exclude-newer = "0001-01-01T00:00:00Z"  # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
@@ -703,7 +703,7 @@ server = [
 
 [[package]]
 name = "imbi-plugin-github"
-version = "2.8.0"
+version = "2.9.0"
 source = { editable = "." }
 dependencies = [
   { name = "httpx" },
