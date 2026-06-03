@@ -56,7 +56,11 @@ from imbi_common.plugins.base import (
 )
 from imbi_common.plugins.errors import PluginAuthenticationFailed
 
-from imbi_plugin_github._hosts import normalize_host, require_ghec_tenant_host
+from imbi_plugin_github._hosts import (
+    host_to_api_base,
+    normalize_host,
+    require_ghec_tenant_host,
+)
 from imbi_plugin_github._repos import (
     derive_owner_repo_from_links,
     parse_owner_repo,
@@ -299,12 +303,7 @@ class _DeploymentBase(DeploymentPlugin):
         raise NotImplementedError
 
     def _api_base(self, options: dict[str, typing.Any]) -> str:
-        host = self._resolve_host(options)
-        if host == 'github.com':
-            return 'https://api.github.com'
-        if host.endswith('.ghe.com'):
-            return f'https://api.{host}'
-        return f'https://{host}/api/v3'
+        return host_to_api_base(self._resolve_host(options))
 
     def _owner_repo(self, ctx: PluginContext) -> tuple[str, str]:
         return resolve_owner_repo(

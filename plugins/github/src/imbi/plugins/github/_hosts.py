@@ -48,3 +48,20 @@ def require_ghec_tenant_host(host: str, label: str) -> str:
             f'got {host!r}'
         )
     return host
+
+
+def host_to_api_base(host: str) -> str:
+    """Map a resolved GitHub host to its REST API base.
+
+    The single source of truth for GitHub's flavor routing:
+    ``github.com`` -> ``api.github.com``, a ``*.ghe.com`` tenant ->
+    ``api.<tenant>.ghe.com``, and a GHES appliance -> ``<host>/api/v3``.
+    Shared by the deployment plugins (which resolve the host per call
+    via ``_resolve_host``) and the commit-sync webhook action (which
+    resolves it from connected-plugin options at runtime).
+    """
+    if host == 'github.com':
+        return 'https://api.github.com'
+    if host.endswith('.ghe.com'):
+        return f'https://api.{host}'
+    return f'https://{host}/api/v3'
