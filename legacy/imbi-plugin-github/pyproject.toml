@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27",
-  "imbi-common[databases]==2.8.0",
+  "imbi-common[databases]==2.9.0",
   "pydantic>=2",
 ]
 
@@ -36,7 +36,7 @@ github-commit-sync = "imbi_plugin_github.commits:GitHubCommitSyncPlugin"
 dev = [
   "basedpyright",
   "coverage[toml]",
-  "imbi-common[server,databases]==2.8.0",
+  "imbi-common[server,databases]==2.9.0",
   "pre-commit",
   "pytest",
   "pytest-asyncio",
@@ -128,6 +128,3 @@ exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
-
-[tool.uv.sources]
-imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }

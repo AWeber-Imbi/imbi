@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.14"
 
 [options]
-exclude-newer = "0001-01-01T00:00:00Z"  # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
+exclude-newer = "2026-05-27T16:09:33.3534Z"
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
@@ -667,8 +667,8 @@ wheels = [
 
 [[package]]
 name = "imbi-common"
-version = "2.8.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main#ef294a10ee3d71e2e5ae364df3a220c8e48298ac" }
+version = "2.9.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
   { name = "cryptography" },
   { name = "httpx" },
@@ -682,6 +682,10 @@ dependencies = [
   { name = "pyjwt" },
   { name = "python-slugify" },
   { name = "typer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ff/5e/e7306a4bafa6e23ad8fd6dcdaef552d646233b974b4cfd3352750ff57631/imbi_common-2.9.0.tar.gz", hash = "sha256:6687219808b824bc65af7229a6193cf2bf86e5b348ad2d3928126446c288b9ef", size = 336785, upload-time = "2026-06-03T15:52:11.958Z" }
+wheels = [
+  { url = "https://files.pythonhosted.org/packages/c2/dc/3c3e782709e5557620aa37e089233a267b0d73c9da44dbcfad963805f646/imbi_common-2.9.0-py3-none-any.whl", hash = "sha256:a8fad461cc7759e61ba101fa44f047610690805163ab43f8e10c8b97d91f8f0c", size = 107509, upload-time = "2026-06-03T15:52:10.159Z" },
 ]
 
 [package.optional-dependencies]
@@ -727,7 +731,7 @@ dist = [
 [package.metadata]
 requires-dist = [
   { name = "httpx", specifier = ">=0.27" },
-  { name = "imbi-common", extras = ["databases"], git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main" },
+  { name = "imbi-common", extras = ["databases"], specifier = "==2.9.0" },
   { name = "pydantic", specifier = ">=2" },
 ]
 
@@ -735,7 +739,7 @@ requires-dist = [
 dev = [
   { name = "basedpyright" },
   { name = "coverage", extras = ["toml"] },
-  { name = "imbi-common", extras = ["server", "databases"], git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main" },
+  { name = "imbi-common", extras = ["server", "databases"], specifier = "==2.9.0" },
   { name = "pre-commit" },
   { name = "pytest" },
   { name = "pytest-asyncio" },
