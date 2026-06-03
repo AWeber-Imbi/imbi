@@ -35,6 +35,7 @@ def _ctx(
     project_name: str | None = None,
     project_description: str | None = None,
     project_ui_url: str | None = None,
+    third_party_service_slug: str | None = None,
 ) -> PluginContext:
     return PluginContext(
         project_id='p',
@@ -52,6 +53,7 @@ def _ctx(
         project_name=project_name,
         project_description=project_description,
         project_ui_url=project_ui_url,
+        third_party_service_slug=third_party_service_slug,
     )
 
 
@@ -901,6 +903,82 @@ class CreateTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('already exists', result.message or '')
         self.assertEqual(create_route.calls.call_count, 0)
         self.assertIsNotNone(ctx.link_writeback)
+
+
+class ServiceWritebackTestCase(unittest.IsolatedAsyncioTestCase):
+    """When bound to a third-party service, hooks emit a ServiceWriteback
+    (EXISTS_IN edge + dashboard link) instead of the legacy LinkWriteback.
+    """
+
+    @respx.mock
+    async def test_create_emits_service_writeback(self) -> None:
+        respx.get('https://api.github.com/repos/aweber-apis/demo').mock(
+            return_value=httpx.Response(404, json={'message': 'Not Found'})
+        )
+        respx.post('https://api.github.com/orgs/aweber-apis/repos').mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    'id': 134741,
+                    'name': 'demo',
+                    'html_url': 'https://github.com/aweber-apis/demo',
+                    'owner': {'login': 'aweber-apis'},
+                },
+            )
+        )
+        ctx = _ctx(
+            options={'org_mapping': {'api-service': 'aweber-apis'}},
+            project_links={},
+            project_type_slugs=['api-service'],
+            third_party_service_slug='github',
+        )
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_created(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        # legacy link writeback is NOT used when bound to a service
+        self.assertIsNone(ctx.link_writeback)
+        wb = ctx.service_writeback
+        assert wb is not None
+        self.assertEqual(wb.identifier, '134741')
+        self.assertEqual(
+            wb.canonical_url,
+            'https://api.github.com/repositories/134741',
+        )
+        self.assertEqual(
+            wb.dashboard_links,
+            {'github': 'https://github.com/aweber-apis/demo'},
+        )
+
+    @respx.mock
+    async def test_create_falls_back_to_link_without_id(self) -> None:
+        # No numeric id in the payload -> legacy LinkWriteback even when
+        # bound to a service (can't build the id-based canonical URL).
+        respx.get('https://api.github.com/repos/aweber-apis/demo').mock(
+            return_value=httpx.Response(404, json={'message': 'Not Found'})
+        )
+        respx.post('https://api.github.com/orgs/aweber-apis/repos').mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    'name': 'demo',
+                    'html_url': 'https://github.com/aweber-apis/demo',
+                },
+            )
+        )
+        ctx = _ctx(
+            options={'org_mapping': {'api-service': 'aweber-apis'}},
+            project_links={},
+            project_type_slugs=['api-service'],
+            third_party_service_slug='github',
+        )
+        plugin = GitHubLifecyclePlugin()
+        result = await plugin.on_project_created(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        self.assertIsNone(ctx.service_writeback)
+        assert ctx.link_writeback is not None
+        self.assertEqual(ctx.link_writeback.link_key, 'github-repository')
 
 
 class UpdateTestCase(unittest.IsolatedAsyncioTestCase):
