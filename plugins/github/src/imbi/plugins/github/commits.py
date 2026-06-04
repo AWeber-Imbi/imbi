@@ -565,20 +565,46 @@ async def _annotated_tag(
     return typing.cast('dict[str, typing.Any]', resp.json())
 
 
+def _web_base(api_base: str) -> str:
+    """Map a REST API base to the web host (inverse of the routing table).
+
+    ``https://api.github.com`` -> ``https://github.com``;
+    ``https://api.<tenant>.ghe.com`` -> ``https://<tenant>.ghe.com``;
+    GHES ``https://<host>/api/v3`` -> ``https://<host>``.
+    """
+    if api_base.endswith('/api/v3'):
+        return api_base[: -len('/api/v3')]
+    return api_base.replace('://api.', '://', 1)
+
+
+def _tag_web_url(client: httpx.AsyncClient, name: str) -> str:
+    """Build the web URL for *name* from the client's repo-scoped base."""
+    full = str(client.base_url).rstrip('/')
+    marker = '/repos/'
+    idx = full.find(marker)
+    if idx == -1:
+        return ''
+    web = _web_base(full[:idx])
+    owner_repo = full[idx + len(marker) :]
+    return f'{web}/{owner_repo}/releases/tag/{urllib.parse.quote(name)}'
+
+
 def _tag_record(
     *,
     project_id: str,
     name: str,
     sha: str,
     annotated: dict[str, typing.Any] | None = None,
+    url: str = '',
 ) -> TagRecord:
     if annotated is None:
-        return TagRecord(project_id=project_id, name=name, sha=sha)
+        return TagRecord(project_id=project_id, name=name, sha=sha, url=url)
     tagger: dict[str, typing.Any] = annotated.get('tagger') or {}
     return TagRecord(
         project_id=project_id,
         name=name,
         sha=sha,
+        url=url,
         message=str(annotated.get('message') or ''),
         tagger_name=str(tagger.get('name') or ''),
         tagger_email=str(tagger.get('email') or ''),
@@ -589,22 +615,41 @@ def _tag_record(
 async def _reconcile_tags(
     client: httpx.AsyncClient, project_id: str
 ) -> list[TagRecord]:
-    """Upsert the repo's full tag list (lightweight); ``ReplacingMergeTree``
-    dedupes against rows recorded from individual pushes."""
+    """Upsert the repo's full tag list via the git-refs API.
+
+    ``/git/matching-refs/tags`` yields each tag's object sha + type;
+    annotated tags (``type == 'tag'``) are enriched with tagger/message/
+    date from the tag object, lightweight tags carry name/sha/url only.
+    ``ReplacingMergeTree`` dedupes against rows recorded from pushes.
+    """
     out: list[TagRecord] = []
+    prefix = 'refs/tags/'
     params: dict[str, str] = {'per_page': '100'}
     while True:
-        resp = await client.get('/tags', params=params)
+        resp = await client.get('/git/matching-refs/tags', params=params)
         resp.raise_for_status()
         rows = typing.cast('list[dict[str, typing.Any]]', resp.json())
         for row in rows:
-            name = str(row.get('name') or '')
-            commit: dict[str, typing.Any] = row.get('commit') or {}
-            sha = str(commit.get('sha') or '')
-            if name and sha:
-                out.append(
-                    _tag_record(project_id=project_id, name=name, sha=sha)
+            ref = str(row.get('ref') or '')
+            obj: dict[str, typing.Any] = row.get('object') or {}
+            sha = str(obj.get('sha') or '')
+            if not ref.startswith(prefix) or not sha:
+                continue
+            name = ref[len(prefix) :]
+            annotated = (
+                await _annotated_tag(client, sha)
+                if obj.get('type') == 'tag'
+                else None
+            )
+            out.append(
+                _tag_record(
+                    project_id=project_id,
+                    name=name,
+                    sha=sha,
+                    annotated=annotated,
+                    url=_tag_web_url(client, name),
                 )
+            )
         next_url = _next_page_url(resp.headers.get('link'))
         if next_url is None:
             return out
@@ -650,6 +695,7 @@ async def sync_tags(
                 name=name,
                 sha=after,
                 annotated=annotated,
+                url=_tag_web_url(client, name),
             )
         ]
         if action_config.reconcile_all:

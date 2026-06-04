@@ -470,12 +470,20 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(
             f'https://api.github.com/repos/octo/demo/git/tags/{sha}'
         ).mock(return_value=httpx.Response(404))
-        respx.get('https://api.github.com/repos/octo/demo/tags').mock(
+        respx.get(
+            'https://api.github.com/repos/octo/demo/git/matching-refs/tags'
+        ).mock(
             return_value=httpx.Response(
                 200,
                 json=[
-                    {'name': 'v1.2.3', 'commit': {'sha': sha}},
-                    {'name': 'v1.0.0', 'commit': {'sha': 'z' * 40}},
+                    {
+                        'ref': 'refs/tags/v1.2.3',
+                        'object': {'sha': sha, 'type': 'commit'},
+                    },
+                    {
+                        'ref': 'refs/tags/v1.0.0',
+                        'object': {'sha': 'z' * 40, 'type': 'commit'},
+                    },
                 ],
             )
         )
@@ -490,6 +498,14 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
         _, records = _await_args(insert)
         names = {r.name for r in records}
         self.assertEqual({'v1.2.3', 'v1.0.0'}, names)
+        urls = {r.name: r.url for r in records}
+        self.assertEqual(
+            {
+                'v1.2.3': 'https://github.com/octo/demo/releases/tag/v1.2.3',
+                'v1.0.0': 'https://github.com/octo/demo/releases/tag/v1.0.0',
+            },
+            urls,
+        )
 
     @respx.mock
     async def test_reconcile_all_paginates(self) -> None:
@@ -497,17 +513,27 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(
             f'https://api.github.com/repos/octo/demo/git/tags/{sha}'
         ).mock(return_value=httpx.Response(404))
-        url = 'https://api.github.com/repos/octo/demo/tags'
+        url = 'https://api.github.com/repos/octo/demo/git/matching-refs/tags'
         respx.get(url).mock(
             side_effect=[
                 httpx.Response(
                     200,
-                    json=[{'name': 'v1.2.3', 'commit': {'sha': sha}}],
+                    json=[
+                        {
+                            'ref': 'refs/tags/v1.2.3',
+                            'object': {'sha': sha, 'type': 'commit'},
+                        }
+                    ],
                     headers={'link': f'<{url}?page=2>; rel="next"'},
                 ),
                 httpx.Response(
                     200,
-                    json=[{'name': 'v1.0.0', 'commit': {'sha': 'z' * 40}}],
+                    json=[
+                        {
+                            'ref': 'refs/tags/v1.0.0',
+                            'object': {'sha': 'z' * 40, 'type': 'commit'},
+                        }
+                    ],
                 ),
             ]
         )
@@ -522,6 +548,14 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
         _, records = _await_args(insert)
         names = {r.name for r in records}
         self.assertEqual({'v1.2.3', 'v1.0.0'}, names)
+        urls = {r.name: r.url for r in records}
+        self.assertEqual(
+            {
+                'v1.2.3': 'https://github.com/octo/demo/releases/tag/v1.2.3',
+                'v1.0.0': 'https://github.com/octo/demo/releases/tag/v1.0.0',
+            },
+            urls,
+        )
 
     @respx.mock
     async def test_401_raises_authentication_failed(self) -> None:
@@ -850,12 +884,18 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
                 200, json=[_commit('c' * 40), _commit('d' * 40)]
             )
         )
-        respx.get(f'{self._REPO}/tags').mock(
+        respx.get(f'{self._REPO}/git/matching-refs/tags').mock(
             return_value=httpx.Response(
                 200,
                 json=[
-                    {'name': 'v1.0.0', 'commit': {'sha': 'z' * 40}},
-                    {'name': 'v1.1.0', 'commit': {'sha': 'y' * 40}},
+                    {
+                        'ref': 'refs/tags/v1.0.0',
+                        'object': {'sha': 'z' * 40, 'type': 'commit'},
+                    },
+                    {
+                        'ref': 'refs/tags/v1.1.0',
+                        'object': {'sha': 'y' * 40, 'type': 'commit'},
+                    },
                 ],
             )
         )
@@ -876,6 +916,17 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         records = commit_call.args[1]
         self.assertIsInstance(records[0], CommitRecord)
         self.assertEqual('main', records[0].ref)
+        tag_call = next(
+            c for c in insert.await_args_list if c.args[0] == 'tags'
+        )
+        urls = {r.name: r.url for r in tag_call.args[1]}
+        self.assertEqual(
+            {
+                'v1.0.0': 'https://github.com/octo/demo/releases/tag/v1.0.0',
+                'v1.1.0': 'https://github.com/octo/demo/releases/tag/v1.1.0',
+            },
+            urls,
+        )
 
     @respx.mock
     async def test_paginates_commits(self) -> None:
@@ -891,7 +942,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
                 httpx.Response(200, json=[_commit('2' * 40)]),
             ]
         )
-        respx.get(f'{self._REPO}/tags').mock(
+        respx.get(f'{self._REPO}/git/matching-refs/tags').mock(
             return_value=httpx.Response(200, json=[])
         )
         with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
@@ -917,7 +968,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
                 headers={'link': f'<{url}?page=2>; rel="next"'},
             )
         )
-        respx.get(f'{self._REPO}/tags').mock(
+        respx.get(f'{self._REPO}/git/matching-refs/tags').mock(
             return_value=httpx.Response(200, json=[])
         )
         with mock.patch.object(commits, '_MAX_HISTORY_PAGES', 1):
@@ -941,7 +992,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(f'{self._REPO}/commits').mock(
             return_value=httpx.Response(200, json=[_commit('c' * 40)])
         )
-        respx.get(f'{self._REPO}/tags').mock(
+        respx.get(f'{self._REPO}/git/matching-refs/tags').mock(
             return_value=httpx.Response(200, json=[])
         )
         failing = mock.AsyncMock(side_effect=RuntimeError('clickhouse down'))
@@ -969,7 +1020,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(f'{self._REPO}/commits').mock(
             return_value=httpx.Response(200, json=[_commit('c' * 40)])
         )
-        respx.get(f'{self._REPO}/tags').mock(
+        respx.get(f'{self._REPO}/git/matching-refs/tags').mock(
             return_value=httpx.Response(200, json=[])
         )
         creds = {
@@ -982,3 +1033,65 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
                 ctx=self._ctx(), credentials=creds
             )
         self.assertEqual(1, token_route.call_count)
+
+    @respx.mock
+    async def test_annotated_tags_enriched_with_metadata(self) -> None:
+        self._mock_default_branch()
+        respx.get(f'{self._REPO}/commits').mock(
+            return_value=httpx.Response(200, json=[_commit('c' * 40)])
+        )
+        tag_sha = 'a' * 40
+        respx.get(f'{self._REPO}/git/matching-refs/tags').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'ref': 'refs/tags/v2.0.0',
+                        'object': {'sha': tag_sha, 'type': 'tag'},
+                    }
+                ],
+            )
+        )
+        respx.get(f'{self._REPO}/git/tags/{tag_sha}').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'message': 'Release 2.0.0',
+                    'tagger': {
+                        'name': 'Rel Bot',
+                        'email': 'rel@example.com',
+                        'date': '2026-02-01T00:00:00Z',
+                    },
+                },
+            )
+        )
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            await commits.GitHubCommitSyncPlugin().sync_all_history(
+                ctx=self._ctx(), credentials=_CREDS
+            )
+        tag_call = next(
+            c for c in insert.await_args_list if c.args[0] == 'tags'
+        )
+        record = tag_call.args[1][0]
+        self.assertEqual('Release 2.0.0', record.message)
+        self.assertEqual('Rel Bot', record.tagger_name)
+        self.assertIsNotNone(record.tagged_at)
+        self.assertEqual(
+            'https://github.com/octo/demo/releases/tag/v2.0.0', record.url
+        )
+
+
+class WebBaseTestCase(unittest.TestCase):
+    def test_web_base_flavors(self) -> None:
+        self.assertEqual(
+            'https://github.com',
+            commits._web_base('https://api.github.com'),
+        )
+        self.assertEqual(
+            'https://tenant.ghe.com',
+            commits._web_base('https://api.tenant.ghe.com'),
+        )
+        self.assertEqual(
+            'https://ghe.example.com',
+            commits._web_base('https://ghe.example.com/api/v3'),
+        )
