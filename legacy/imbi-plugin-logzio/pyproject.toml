@@ -1,6 +1,6 @@
 [project]
 name = "imbi-plugin-logzio"
-version = "2.9.1"
+version = "2.9.2"
 description = "Logz.io logs plugin for Imbi"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27",
-  "imbi-common==2.9.1",
+  "imbi-common==2.9.2",
   "pydantic>=2",
 ]
 
@@ -27,7 +27,7 @@ logzio = "imbi_plugin_logzio.plugin:LogzioPlugin"
 dev = [
   "basedpyright",
   "coverage[toml]",
-  "imbi-common[server,databases]==2.9.1",
+  "imbi-common[server,databases]==2.9.2",
   "pre-commit",
   "pytest",
   "pytest-asyncio",
