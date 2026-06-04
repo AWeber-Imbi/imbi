@@ -25,6 +25,7 @@ def create_app() -> fastapi.FastAPI:
             lifespans.anthropic_hook,
             valkey.valkey_lifespan,
             lifespans.score_worker_hook,
+            lifespans.commit_sync_worker_hook,
             lifespans.identity_refresh_hook,
         ),
         version=version,

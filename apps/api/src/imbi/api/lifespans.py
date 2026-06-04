@@ -14,6 +14,7 @@ from imbi_common import clickhouse, graph, valkey
 from imbi_common.llm import AnthropicClient
 
 from imbi_api import openapi
+from imbi_api.commit_sync import queue as commit_sync_queue
 from imbi_api.email.client import EmailClient
 from imbi_api.email.templates import TemplateManager
 from imbi_api.identity import sweeper as identity_sweeper
@@ -129,6 +130,39 @@ async def identity_refresh_hook() -> abc.AsyncGenerator[None]:
             pass
         except Exception:  # noqa: BLE001
             LOGGER.warning('Identity sweeper exited with error', exc_info=True)
+
+
+@contextlib.asynccontextmanager
+async def commit_sync_worker_hook() -> abc.AsyncGenerator[None]:
+    """Run the on-demand commit/tag-sync consumer loop."""
+    try:
+        client = valkey.get_client()
+    except RuntimeError:
+        LOGGER.warning('Valkey unavailable; commit-sync worker not started')
+        yield None
+        return
+    if _graph is None:
+        LOGGER.warning('Graph not ready; commit-sync worker not started')
+        yield None
+        return
+    stop = asyncio.Event()
+    LOGGER.info('Commit-sync worker starting')
+    consumer_task = asyncio.create_task(
+        commit_sync_queue.consume_commit_sync(client, _graph, stop=stop)
+    )
+    try:
+        yield None
+    finally:
+        stop.set()
+        consumer_task.cancel()
+        try:
+            await consumer_task
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'Commit-sync worker task exited with error', exc_info=True
+            )
 
 
 @contextlib.asynccontextmanager

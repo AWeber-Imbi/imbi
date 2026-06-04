@@ -22,6 +22,7 @@ from .identity_plugins import identity_plugins_router
 from .link_definitions import link_definitions_router
 from .operations_log import operations_log_project_router
 from .project_analysis import project_analysis_router
+from .project_commit_sync import project_commit_sync_router
 from .project_configuration import project_configuration_router
 from .project_deployments import project_deployments_router
 from .project_logs import project_logs_router
@@ -141,6 +142,10 @@ organizations_router.include_router(
 organizations_router.include_router(
     project_analysis_router,
     prefix='/{org_slug}/projects/{project_id}/analysis',
+)
+organizations_router.include_router(
+    project_commit_sync_router,
+    prefix='/{org_slug}/projects/{project_id}/commits',
 )
 organizations_router.include_router(
     pull_requests_project_router,
