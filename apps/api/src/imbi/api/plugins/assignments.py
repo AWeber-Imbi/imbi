@@ -4,6 +4,7 @@ import typing
 
 import fastapi
 from imbi_common import graph
+from imbi_common.plugins import PluginType
 from imbi_common.plugins.errors import PluginNotFoundError
 from imbi_common.plugins.registry import get_plugin
 
@@ -13,33 +14,37 @@ from imbi_api.plugins import parse_options
 
 class PluginAssignmentRow(typing.TypedDict):
     plugin_id: str
-    tab: typing.Literal['configuration', 'logs', 'deployment', 'lifecycle']
+    plugin_type: PluginType
     default: bool
     options: dict[str, typing.Any]
     identity_plugin_id: typing.NotRequired[str | None]
     env_payloads: typing.NotRequired[dict[str, dict[str, typing.Any]]]
 
 
-def validate_one_default_per_tab(
+def validate_one_default_per_plugin_type(
     assignments: list[PluginAssignmentRow],
 ) -> None:
-    """Ensure exactly one default per tab in the assignment list.
+    """Ensure exactly one default per plugin type in the assignment list.
 
     Raises:
-        ValueError: If a tab has 0 or >1 defaults.
+        ValueError: If a plugin type has 0 or >1 defaults.
     """
-    by_tab: dict[str, list[bool]] = {}
+    by_plugin_type: dict[str, list[bool]] = {}
     for row in assignments:
-        by_tab.setdefault(row['tab'], []).append(row['default'])
+        by_plugin_type.setdefault(row['plugin_type'], []).append(
+            row['default']
+        )
 
-    for tab, defaults in by_tab.items():
+    for plugin_type, defaults in by_plugin_type.items():
         count = sum(1 for d in defaults if d)
         if count == 0:
-            raise ValueError(f'Tab {tab!r} has no default plugin assignment')
+            raise ValueError(
+                f'Plugin type {plugin_type!r} has no default plugin assignment'
+            )
         if count > 1:
             raise ValueError(
-                f'Tab {tab!r} has {count} default plugin assignments;'
-                f' exactly one is required'
+                f'Plugin type {plugin_type!r} has {count} default plugin'
+                f' assignments; exactly one is required'
             )
 
 
@@ -121,7 +126,10 @@ def build_assignment_response(
         plugin_id=plugin['id'],
         plugin_slug=plugin['plugin_slug'],
         label=plugin['label'],
-        tab=edge.get('tab', 'configuration'),
+        # Transitional: read the new ``plugin_type`` edge property,
+        # falling back to the legacy ``tab`` name until the rename
+        # migration has run. Drop the ``tab`` fallback afterward.
+        plugin_type=edge.get('plugin_type', edge.get('tab', 'configuration')),
         default=bool(edge.get('default', False)),
         options=parse_options(edge.get('options')),
         source=source,

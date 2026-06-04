@@ -1,4 +1,4 @@
-"""Plugin resolution — find the correct plugin for a project+tab."""
+"""Plugin resolution — find the plugin for a project + plugin_type."""
 
 import logging
 import typing
@@ -71,10 +71,10 @@ def _merge_env_payloads(
 async def resolve_plugin(
     db: graph.Graph,
     project_id: str,
-    tab: str,
+    plugin_type: str,
     source: str | None,
 ) -> ResolvedPlugin:
-    """Find the plugin assigned to a project for a given tab.
+    """Find the plugin assigned to a project for a given plugin type.
 
     Merges project-type defaults with project-level overrides.
     If multiple plugins are assigned, ``source`` selects which one
@@ -96,10 +96,10 @@ async def resolve_plugin(
     query: typing.LiteralString = """
     MATCH (proj:Project {{id: {project_id}}})
     OPTIONAL MATCH (proj)-[pe:USES_PLUGIN]->(p:Plugin)
-    WHERE pe.tab = {tab}
+    WHERE coalesce(pe.plugin_type, pe.tab) = {plugin_type}
     OPTIONAL MATCH (proj)-[:TYPE]->(pt:ProjectType)
       -[pte:USES_PLUGIN]->(p2:Plugin)
-    WHERE pte.tab = {tab}
+    WHERE coalesce(pte.plugin_type, pte.tab) = {plugin_type}
     WITH
       collect(DISTINCT {{id: p.id, slug: p.plugin_slug,
                          edge_options: pe.options,
@@ -123,7 +123,7 @@ async def resolve_plugin(
     """
     records = await db.execute(
         query,
-        {'project_id': project_id, 'tab': tab},
+        {'project_id': project_id, 'plugin_type': plugin_type},
         ['proj_plugins', 'pt_plugins'],
     )
     if not records:
@@ -176,7 +176,10 @@ async def resolve_plugin(
     if not candidates:
         raise fastapi.HTTPException(
             status_code=404,
-            detail=f'No plugin assigned to tab {tab!r} for this project',
+            detail=(
+                f'No plugin assigned for plugin_type {plugin_type!r}'
+                f' for this project'
+            ),
         )
 
     if source:
@@ -266,9 +269,9 @@ async def resolve_plugin(
 async def resolve_all_plugins(
     db: graph.Graph,
     project_id: str,
-    tab: str,
+    plugin_type: str,
 ) -> list[ResolvedPlugin]:
-    """Return every plugin assigned to ``project_id`` for ``tab``.
+    """Return every plugin assigned to ``project_id`` for ``plugin_type``.
 
     Sibling to :func:`resolve_plugin` for fan-out call sites (e.g.
     lifecycle hooks) that must invoke *every* assigned plugin rather
@@ -287,11 +290,11 @@ async def resolve_all_plugins(
     query: typing.LiteralString = """
     MATCH (proj:Project {{id: {project_id}}})
     OPTIONAL MATCH (proj)-[pe:USES_PLUGIN]->(p:Plugin)
-    WHERE pe.tab = {tab}
+    WHERE coalesce(pe.plugin_type, pe.tab) = {plugin_type}
     OPTIONAL MATCH (tps1:ThirdPartyService)-[:HAS_PLUGIN]->(p)
     OPTIONAL MATCH (proj)-[:TYPE]->(pt:ProjectType)
       -[pte:USES_PLUGIN]->(p2:Plugin)
-    WHERE pte.tab = {tab}
+    WHERE coalesce(pte.plugin_type, pte.tab) = {plugin_type}
     OPTIONAL MATCH (tps2:ThirdPartyService)-[:HAS_PLUGIN]->(p2)
     WITH
       collect(DISTINCT {{id: p.id, slug: p.plugin_slug,
@@ -318,7 +321,7 @@ async def resolve_all_plugins(
     """
     records = await db.execute(
         query,
-        {'project_id': project_id, 'tab': tab},
+        {'project_id': project_id, 'plugin_type': plugin_type},
         ['proj_plugins', 'pt_plugins'],
     )
     if not records:
@@ -454,10 +457,11 @@ async def resolve_analysis_plugins(
 
     The union covers three discovery paths:
 
-    1. ``(:Project)-[:USES_PLUGIN {tab:'analysis'}]->(:Plugin)`` — project
-       override.
-    2. ``(:Project)-[:TYPE]->(:ProjectType)-[:USES_PLUGIN {tab:'analysis'}]
-       ->(:Plugin)`` — project-type default. Project override wins per
+    1. ``(:Project)-[:USES_PLUGIN {plugin_type:'analysis'}]->(:Plugin)`` —
+       project override.
+    2. ``(:Project)-[:TYPE]->(:ProjectType)
+       -[:USES_PLUGIN {plugin_type:'analysis'}]->(:Plugin)`` — project-type
+       default. Project override wins per
        plugin id, mirroring :func:`resolve_all_plugins`.
     3. ``(:Project)-[:EXISTS_IN]->(:ThirdPartyService)-[:HAS_PLUGIN]
        ->(:Plugin)`` filtered to ``plugin_type='analysis'``. The
@@ -476,10 +480,10 @@ async def resolve_analysis_plugins(
     query: typing.LiteralString = """
     MATCH (proj:Project {{id: {project_id}}})
     OPTIONAL MATCH (proj)-[pe:USES_PLUGIN]->(p:Plugin)
-    WHERE pe.tab = 'analysis'
+    WHERE coalesce(pe.plugin_type, pe.tab) = 'analysis'
     OPTIONAL MATCH (proj)-[:TYPE]->(pt:ProjectType)
       -[pte:USES_PLUGIN]->(p2:Plugin)
-    WHERE pte.tab = 'analysis'
+    WHERE coalesce(pte.plugin_type, pte.tab) = 'analysis'
     OPTIONAL MATCH (proj)-[:EXISTS_IN]->(tps:ThirdPartyService)
       -[:HAS_PLUGIN]->(p3:Plugin)
     WHERE p3.plugin_type = 'analysis'

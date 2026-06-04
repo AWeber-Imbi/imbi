@@ -1,6 +1,6 @@
 """Project deployment plugin endpoints.
 
-Pass-through endpoints that resolve the project's ``tab='deployment'``
+Pass-through endpoints that resolve the project's ``plugin_type='deployment'``
 plugin and call its handler methods.  Covers ref / commit discovery,
 comparison, ``deploy`` / ``redeploy`` workflow dispatch (Phase 1), and
 the ``promote`` flow with AI-drafted release notes plus tag + Release

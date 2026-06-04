@@ -25,7 +25,7 @@ from imbi_api.plugins.assignments import PluginAssignmentRow
 
 _ROW_KEYS: tuple[str, ...] = (
     'plugin_id',
-    'tab',
+    'plugin_type',
     'default',
     'options',
     'identity_plugin_id',
@@ -87,7 +87,7 @@ async def replace_assignments(
     edges by guessing the parent key.
 
     Callers must validate plugin ids, identity_plugin_ids, and the
-    one-default-per-tab invariant up front; passing an empty ``rows``
+    one-default-per-plugin-type invariant up front; passing an empty ``rows``
     list clears all assignments.
     """
     parent_head = (
@@ -117,7 +117,7 @@ async def replace_assignments(
             ' WITH parent, count(old) AS _del'
             f' UNWIND {rows_tpl} AS row'
             ' MATCH (p:Plugin {{id: row.plugin_id}})'
-            ' CREATE (parent)-[:USES_PLUGIN {{tab: row.tab,'
+            ' CREATE (parent)-[:USES_PLUGIN {{plugin_type: row.plugin_type,'
             ' default: row.default,'
             ' options: row.options,'
             ' identity_plugin_id: row.identity_plugin_id,'

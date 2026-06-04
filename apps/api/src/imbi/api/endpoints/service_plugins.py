@@ -7,6 +7,7 @@ import fastapi
 import nanoid
 import pydantic
 from imbi_common import graph
+from imbi_common.plugins import PluginType
 from imbi_common.plugins.errors import (
     PluginNotFoundError,
 )
@@ -654,7 +655,7 @@ async def patch_service_plugin_configuration(
 
 class _AssignmentInput(pydantic.BaseModel):
     project_type_slug: str
-    tab: typing.Literal['configuration', 'logs', 'deployment', 'lifecycle']
+    plugin_type: PluginType
     default: bool = False
     options: dict[str, typing.Any] = {}
     identity_plugin_id: str | None = None
@@ -663,7 +664,7 @@ class _AssignmentInput(pydantic.BaseModel):
 class _AssignmentRow(pydantic.BaseModel):
     project_type_slug: str
     project_type_name: str
-    tab: typing.Literal['configuration', 'logs', 'deployment', 'lifecycle']
+    plugin_type: PluginType
     default: bool
     options: dict[str, typing.Any]
     identity_plugin_id: str | None = None
@@ -671,7 +672,7 @@ class _AssignmentRow(pydantic.BaseModel):
 
 _ASSIGNMENT_ROW_FIELDS: tuple[tuple[str, str], ...] = (
     ('project_type_slug', 'pt'),
-    ('tab', 'tab'),
+    ('plugin_type', 'ptype'),
     ('default', 'default'),
     ('options', 'options'),
     ('identity_plugin_id', 'idp'),
@@ -694,7 +695,7 @@ def _assignment_rows_template(
     for i, a in enumerate(body):
         values: dict[str, typing.Any] = {
             'pt': a.project_type_slug,
-            'tab': a.tab,
+            'ptype': a.plugin_type,
             'default': a.default,
             'options': json.dumps(a.options),
             'idp': a.identity_plugin_id or None,
@@ -735,7 +736,11 @@ async def _list_assignments(
             _AssignmentRow(
                 project_type_slug=pt.get('slug', ''),
                 project_type_name=pt.get('name', ''),
-                tab=edge.get('tab', 'configuration'),
+                # Transitional: prefer the new ``plugin_type`` edge
+                # property, fall back to legacy ``tab`` until migrated.
+                plugin_type=edge.get(
+                    'plugin_type', edge.get('tab', 'configuration')
+                ),
                 default=bool(edge.get('default', False)),
                 options=_parse_options(edge.get('options')),
                 identity_plugin_id=coerce_identity_plugin_id(
@@ -795,26 +800,27 @@ async def replace_plugin_assignments(
             detail=f'Plugin {plugin_slug!r} is not loaded',
         ) from exc
 
-    allowed_tab = entry.manifest.plugin_type
-    bad_tab = [a for a in body if a.tab != allowed_tab]
-    if bad_tab:
+    allowed_plugin_type = entry.manifest.plugin_type
+    mismatched = [a for a in body if a.plugin_type != allowed_plugin_type]
+    if mismatched:
         raise fastapi.HTTPException(
             status_code=400,
             detail=(
-                f'Plugin type {allowed_tab!r} can only be assigned to'
-                f' the {allowed_tab!r} tab'
+                f'Assignments for this plugin must use plugin_type'
+                f' {allowed_plugin_type!r}'
             ),
         )
 
     seen: set[tuple[str, str]] = set()
     for a in body:
-        key = (a.project_type_slug, a.tab)
+        key = (a.project_type_slug, a.plugin_type)
         if key in seen:
             raise fastapi.HTTPException(
                 status_code=400,
                 detail=(
                     f'Duplicate assignment for project type'
-                    f' {a.project_type_slug!r} on tab {a.tab!r}'
+                    f' {a.project_type_slug!r} with plugin_type'
+                    f' {a.plugin_type!r}'
                 ),
             )
         seen.add(key)
@@ -860,9 +866,10 @@ async def replace_plugin_assignments(
     # plugin; without it the ``OPTIONAL MATCH`` would emit one row per
     # pre-existing edge and the ``UNWIND`` would multiply the CREATEs.
     #
-    # The trailing demotion runs after the CREATEs: for every (pt, tab)
-    # where this plugin is now default, any *other* plugin that was
-    # default on the same tab is demoted. Plain ``MATCH``/``SET`` only --
+    # The trailing demotion runs after the CREATEs: for every
+    # (pt, plugin_type) where this plugin is now default, any *other*
+    # plugin that was default for the same plugin_type is demoted. Plain
+    # ``MATCH``/``SET`` only --
     # a zero-row match (no default edges, or no competing siblings) is a
     # harmless no-op and the already-applied CREATEs still commit.
     if not body:
@@ -889,14 +896,16 @@ async def replace_plugin_assignments(
         f' UNWIND {rows_tpl} AS row'
         ' MATCH (:Organization {{slug: {org_slug}}})<-[:BELONGS_TO]-'
         '(cpt:ProjectType {{slug: row.project_type_slug}})'
-        ' CREATE (cpt)-[:USES_PLUGIN {{tab: row.tab,'
+        ' CREATE (cpt)-[:USES_PLUGIN {{plugin_type: row.plugin_type,'
         ' default: row.default, options: row.options,'
         ' identity_plugin_id: row.identity_plugin_id}}]->(p)'
         ' WITH p, count(cpt) AS _new'
         ' MATCH (mpt:ProjectType)-[mine:USES_PLUGIN]->(p)'
         ' WHERE mine.default = true'
         ' MATCH (mpt)-[sibling:USES_PLUGIN]->(other:Plugin)'
-        ' WHERE other.id <> {plugin_id} AND sibling.tab = mine.tab'
+        ' WHERE other.id <> {plugin_id}'
+        ' AND coalesce(sibling.plugin_type, sibling.tab) ='
+        ' coalesce(mine.plugin_type, mine.tab)'
         ' AND sibling.default = true'
         ' SET sibling.default = false'
     )

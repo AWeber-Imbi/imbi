@@ -1056,7 +1056,7 @@ class ReplacePluginAssignmentsTestCase(support.SharedAppTestCase):
                     json=[
                         {
                             'project_type_slug': 'web',
-                            'tab': 'configuration',
+                            'plugin_type': 'configuration',
                             'default': True,
                             'options': {'k': 'v'},
                         }
@@ -1090,7 +1090,7 @@ class ReplacePluginAssignmentsTestCase(support.SharedAppTestCase):
         self.assertIn('DELETE old', query)
         self.assertNotIn('UNWIND', query)
 
-    def test_replace_rejects_tab_mismatch(self) -> None:
+    def test_replace_rejects_plugin_type_mismatch(self) -> None:
         self.mock_db.execute.side_effect = [[{'slug': 'ssm'}]]
         with mock.patch(
             'imbi_api.endpoints.service_plugins.get_plugin',
@@ -1102,7 +1102,7 @@ class ReplacePluginAssignmentsTestCase(support.SharedAppTestCase):
                     json=[
                         {
                             'project_type_slug': 'web',
-                            'tab': 'logs',
+                            'plugin_type': 'logs',
                             'default': True,
                             'options': {},
                         }
@@ -1110,11 +1110,11 @@ class ReplacePluginAssignmentsTestCase(support.SharedAppTestCase):
                 )
         self.assertEqual(response.status_code, 400)
 
-    def test_replace_rejects_duplicate_pt_tab(self) -> None:
+    def test_replace_rejects_duplicate_pt_plugin_type(self) -> None:
         self.mock_db.execute.side_effect = [[{'slug': 'ssm'}]]
         row = {
             'project_type_slug': 'web',
-            'tab': 'configuration',
+            'plugin_type': 'configuration',
             'default': True,
             'options': {},
         }
@@ -1142,7 +1142,7 @@ class ReplacePluginAssignmentsTestCase(support.SharedAppTestCase):
                     json=[
                         {
                             'project_type_slug': 'nope',
-                            'tab': 'configuration',
+                            'plugin_type': 'configuration',
                             'default': True,
                             'options': {},
                         }
@@ -1160,7 +1160,7 @@ class AssignmentRowsTemplateTestCase(unittest.TestCase):
 
         a = _AssignmentInput(
             project_type_slug='web',
-            tab='configuration',
+            plugin_type='configuration',
             default=True,
             options={'k': 'v'},
             identity_plugin_id='',
@@ -1168,6 +1168,24 @@ class AssignmentRowsTemplateTestCase(unittest.TestCase):
         tpl, params = _assignment_rows_template([a])
         self.assertIn('{asgn_0_pt}', tpl)
         self.assertEqual(params['asgn_0_pt'], 'web')
+        self.assertEqual(params['asgn_0_ptype'], 'configuration')
         self.assertEqual(params['asgn_0_options'], json.dumps({'k': 'v'}))
         # Empty identity_plugin_id collapses to null.
         self.assertIsNone(params['asgn_0_idp'])
+
+    def test_input_accepts_webhook_and_analysis_plugin_types(self) -> None:
+        # Regression: the assignment body previously hard-coded a tab
+        # Literal of {configuration, logs, deployment, lifecycle}, so a
+        # webhook (or analysis) plugin assignment was rejected with 422
+        # before ever reaching the manifest plugin_type check. The field
+        # now uses imbi_common's PluginType, covering every plugin type.
+        from imbi_api.endpoints.service_plugins import _AssignmentInput
+
+        for plugin_type in ('webhook', 'analysis'):
+            a = _AssignmentInput(
+                project_type_slug='web',
+                plugin_type=plugin_type,
+                default=True,
+                options={},
+            )
+            self.assertEqual(a.plugin_type, plugin_type)

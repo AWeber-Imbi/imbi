@@ -12,6 +12,7 @@ import typing
 
 import pydantic
 from imbi_common import graph, models
+from imbi_common.plugins import PluginType
 
 __all__ = [
     'SECRET_FIELDS',
@@ -880,7 +881,7 @@ class PluginAssignmentCreate(pydantic.BaseModel):
     """Request model for assigning a plugin to a project-type or project."""
 
     plugin_id: str
-    tab: typing.Literal['configuration', 'logs', 'deployment', 'lifecycle']
+    plugin_type: PluginType
     default: bool = False
     options: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
     identity_plugin_id: str | None = None
@@ -899,7 +900,7 @@ class PluginAssignmentResponse(pydantic.BaseModel):
     plugin_id: str
     plugin_slug: str
     label: str
-    tab: typing.Literal['configuration', 'logs', 'deployment', 'lifecycle']
+    plugin_type: PluginType
     default: bool
     options: dict[str, typing.Any] = {}
     source: typing.Literal['project', 'project_type', 'merged'] = (
@@ -1227,7 +1228,7 @@ class WebhookResponse(pydantic.BaseModel):
                 config: dict[str, typing.Any] | list[typing.Any]
                 try:
                     config = json.loads(raw_config) if raw_config else {}
-                except (json.JSONDecodeError, TypeError):
+                except json.JSONDecodeError, TypeError:
                     config = {}
                 rules.append(
                     WebhookRuleResponse(

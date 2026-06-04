@@ -15,67 +15,67 @@ if typing.TYPE_CHECKING:
 
 
 class AssignmentsTestCase(unittest.TestCase):
-    def test_validate_one_default_per_tab_ok(self) -> None:
+    def test_validate_one_default_per_plugin_type_ok(self) -> None:
         from imbi_api.plugins.assignments import (
             PluginAssignmentRow,
-            validate_one_default_per_tab,
+            validate_one_default_per_plugin_type,
         )
 
         rows: list[PluginAssignmentRow] = [
             PluginAssignmentRow(
                 plugin_id='p1',
-                tab='configuration',
+                plugin_type='configuration',
                 default=True,
                 options={},
             ),
             PluginAssignmentRow(
                 plugin_id='p2',
-                tab='logs',
+                plugin_type='logs',
                 default=True,
                 options={},
             ),
         ]
-        validate_one_default_per_tab(rows)
+        validate_one_default_per_plugin_type(rows)
 
-    def test_validate_two_defaults_same_tab_raises(self) -> None:
+    def test_validate_two_defaults_same_plugin_type_raises(self) -> None:
         from imbi_api.plugins.assignments import (
             PluginAssignmentRow,
-            validate_one_default_per_tab,
+            validate_one_default_per_plugin_type,
         )
 
         rows: list[PluginAssignmentRow] = [
             PluginAssignmentRow(
                 plugin_id='p1',
-                tab='configuration',
+                plugin_type='configuration',
                 default=True,
                 options={},
             ),
             PluginAssignmentRow(
                 plugin_id='p2',
-                tab='configuration',
+                plugin_type='configuration',
                 default=True,
                 options={},
             ),
         ]
         with self.assertRaises(ValueError):
-            validate_one_default_per_tab(rows)
+            validate_one_default_per_plugin_type(rows)
 
     def test_validate_no_default_raises(self) -> None:
         from imbi_api.plugins.assignments import (
             PluginAssignmentRow,
-            validate_one_default_per_tab,
+            validate_one_default_per_plugin_type,
         )
 
         rows: list[PluginAssignmentRow] = [
             PluginAssignmentRow(
                 plugin_id='p1',
-                tab='configuration',
+                plugin_type='configuration',
                 default=False,
                 options={},
             ),
         ]
         with self.assertRaises(ValueError):
-            validate_one_default_per_tab(rows)
+            validate_one_default_per_plugin_type(rows)
 
 
 class ParseOptionsTestCase(unittest.TestCase):

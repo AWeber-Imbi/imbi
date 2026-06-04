@@ -2,7 +2,7 @@
 
 When a project state changes -- create, update, archive, unarchive,
 delete, or relocate -- the API dispatches the event to every plugin
-assigned to ``tab='lifecycle'`` (at the project or project-type level).
+assigned to ``plugin_type='lifecycle'`` (project or project-type level).
 Plugins receive a :class:`PluginContext` with hydrated identity and
 return a :class:`LifecycleResult` describing their per-plugin outcome.
 

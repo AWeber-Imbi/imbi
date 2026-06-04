@@ -27,7 +27,7 @@ class AssignmentRowsTemplateTestCase(unittest.TestCase):
     def test_serializes_options_and_env_payloads_as_json(self) -> None:
         row: PluginAssignmentRow = {
             'plugin_id': 'p1',
-            'tab': 'configuration',
+            'plugin_type': 'configuration',
             'default': True,
             'options': {'k': 'v'},
             'identity_plugin_id': None,
@@ -44,7 +44,7 @@ class AssignmentRowsTemplateTestCase(unittest.TestCase):
     def test_empty_env_payloads_collapse_to_null(self) -> None:
         row: PluginAssignmentRow = {
             'plugin_id': 'p1',
-            'tab': 'configuration',
+            'plugin_type': 'configuration',
             'default': True,
             'options': {},
             'identity_plugin_id': None,
@@ -70,7 +70,7 @@ class ReplaceAssignmentsQueryTestCase(unittest.TestCase):
         rows: list[PluginAssignmentRow] = [
             {
                 'plugin_id': 'p1',
-                'tab': 'configuration',
+                'plugin_type': 'configuration',
                 'default': True,
                 'options': {},
                 'identity_plugin_id': None,

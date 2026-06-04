@@ -36,8 +36,8 @@ class ProjectTypePluginsEndpointTestCase(support.SharedAppTestCase):
             mock_get_current_user
         )
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
     def test_list_empty(self) -> None:
@@ -60,7 +60,7 @@ class ProjectTypePluginsEndpointTestCase(support.SharedAppTestCase):
                     'api_version': 1,
                 },
                 'edge': {
-                    'tab': 'configuration',
+                    'plugin_type': 'configuration',
                     'default': True,
                     'options': '{}',
                 },
@@ -82,7 +82,7 @@ class ProjectTypePluginsEndpointTestCase(support.SharedAppTestCase):
                 json=[
                     {
                         'plugin_id': 'p1',
-                        'tab': 'configuration',
+                        'plugin_type': 'configuration',
                         'default': False,
                         'options': {},
                     }
@@ -101,7 +101,7 @@ class ProjectTypePluginsEndpointTestCase(support.SharedAppTestCase):
                 'api_version': 1,
             },
             'edge': {
-                'tab': 'configuration',
+                'plugin_type': 'configuration',
                 'default': True,
                 'options': '{}',
             },
@@ -117,7 +117,7 @@ class ProjectTypePluginsEndpointTestCase(support.SharedAppTestCase):
                 json=[
                     {
                         'plugin_id': 'p1',
-                        'tab': 'configuration',
+                        'plugin_type': 'configuration',
                         'default': True,
                         'options': {},
                     }
@@ -141,7 +141,7 @@ class ProjectTypePluginsEndpointTestCase(support.SharedAppTestCase):
             ),
             'edge': json.dumps(
                 {
-                    'tab': 'configuration',
+                    'plugin_type': 'configuration',
                     'default': True,
                     'options': '{}',
                 }

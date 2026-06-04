@@ -12,7 +12,7 @@ from imbi_api.plugins.assignments import (
     PluginAssignmentRow,
     build_assignment_response,
     validate_identity_plugin_ids,
-    validate_one_default_per_tab,
+    validate_one_default_per_plugin_type,
 )
 
 project_plugins_router = fastapi.APIRouter(tags=['Project Plugins'])
@@ -104,7 +104,7 @@ async def replace_project_plugins(
     rows: list[PluginAssignmentRow] = [
         PluginAssignmentRow(
             plugin_id=a.plugin_id,
-            tab=a.tab,
+            plugin_type=a.plugin_type,
             default=a.default,
             options=a.options,
             identity_plugin_id=a.identity_plugin_id,
@@ -115,7 +115,7 @@ async def replace_project_plugins(
 
     if rows:
         try:
-            validate_one_default_per_tab(rows)
+            validate_one_default_per_plugin_type(rows)
         except ValueError as exc:
             raise fastapi.HTTPException(
                 status_code=400,

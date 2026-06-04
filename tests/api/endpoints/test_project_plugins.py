@@ -36,8 +36,8 @@ class ProjectPluginsEndpointTestCase(support.SharedAppTestCase):
             mock_get_current_user
         )
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
     def test_get_project_plugins_not_found(self) -> None:
@@ -70,7 +70,7 @@ class ProjectPluginsEndpointTestCase(support.SharedAppTestCase):
                         {
                             'plugin': plugin_a,
                             'edge': {
-                                'tab': 'configuration',
+                                'plugin_type': 'configuration',
                                 'default': True,
                                 'options': '{}',
                             },
@@ -83,7 +83,7 @@ class ProjectPluginsEndpointTestCase(support.SharedAppTestCase):
                         {
                             'plugin': plugin_b,
                             'edge': {
-                                'tab': 'logs',
+                                'plugin_type': 'logs',
                                 'default': True,
                                 'options': '{}',
                             },
@@ -110,13 +110,13 @@ class ProjectPluginsEndpointTestCase(support.SharedAppTestCase):
                 json=[
                     {
                         'plugin_id': 'p1',
-                        'tab': 'configuration',
+                        'plugin_type': 'configuration',
                         'default': True,
                         'options': {},
                     },
                     {
                         'plugin_id': 'p2',
-                        'tab': 'configuration',
+                        'plugin_type': 'configuration',
                         'default': True,
                         'options': {},
                     },
@@ -164,7 +164,7 @@ class ProjectPluginsEndpointTestCase(support.SharedAppTestCase):
                             {
                                 'plugin': plugin_raw,
                                 'edge': {
-                                    'tab': 'configuration',
+                                    'plugin_type': 'configuration',
                                     'default': True,
                                     'options': '{}',
                                 },
@@ -181,7 +181,7 @@ class ProjectPluginsEndpointTestCase(support.SharedAppTestCase):
                 json=[
                     {
                         'plugin_id': 'p1',
-                        'tab': 'configuration',
+                        'plugin_type': 'configuration',
                         'default': True,
                         'options': {},
                     }
