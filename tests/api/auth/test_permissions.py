@@ -368,3 +368,55 @@ class ServiceAccountPermissionTestCase(
         self.assertEqual(ctx.service_account.slug, 'deploy-bot')
         self.assertEqual(ctx.auth_method, 'client_credentials')
         self.assertIn('project:read', ctx.permissions)
+
+
+class ApiKeyAccessLogPrincipalTestCase(unittest.IsolatedAsyncioTestCase):
+    """`_authenticate_token` registers the API-key owner for the log."""
+
+    def _ctx(self) -> permissions.AuthContext:
+        return permissions.AuthContext(
+            user=models.User(
+                email='dev@example.com',
+                display_name='Dev',
+                is_active=True,
+                is_admin=False,
+                password_hash='x',
+                created_at=datetime.datetime.now(datetime.UTC),
+            ),
+            session_id='ik_abc123',
+            auth_method='api_key',
+        )
+
+    async def test_api_key_registers_owner(self) -> None:
+        ctx = self._ctx()
+        with (
+            mock.patch.object(
+                permissions,
+                'authenticate_api_key',
+                mock.AsyncMock(return_value=ctx),
+            ),
+            mock.patch.object(
+                permissions.access_log, 'remember_api_key_principal'
+            ) as remember,
+        ):
+            result = await permissions._authenticate_token(
+                mock.AsyncMock(), 'ik_abc123_secret', mock.Mock()
+            )
+        self.assertIs(result, ctx)
+        remember.assert_called_once_with('ik_abc123', 'dev@example.com')
+
+    async def test_jwt_does_not_register(self) -> None:
+        with (
+            mock.patch.object(
+                permissions,
+                'authenticate_jwt',
+                mock.AsyncMock(return_value=self._ctx()),
+            ),
+            mock.patch.object(
+                permissions.access_log, 'remember_api_key_principal'
+            ) as remember,
+        ):
+            await permissions._authenticate_token(
+                mock.AsyncMock(), 'jwt.token.here', mock.Mock()
+            )
+        remember.assert_not_called()

@@ -13,7 +13,7 @@ import fastapi
 import jwt
 import pydantic
 from fastapi import security
-from imbi_common import graph
+from imbi_common import access_log, graph
 from imbi_common.auth import core
 
 from imbi_api import models, settings
@@ -658,7 +658,14 @@ async def _authenticate_token(
     treats the token as a JWT.
     """
     if token.startswith('ik_'):
-        return await authenticate_api_key(db, token, auth_settings)
+        ctx = await authenticate_api_key(db, token, auth_settings)
+        # Cache the key's owner so imbi-common's access log renders the
+        # person (email / service-account slug) instead of the opaque
+        # ``ik_<id>`` it parses from the Authorization header.
+        access_log.remember_api_key_principal(
+            ctx.session_id or '', ctx.principal_name
+        )
+        return ctx
     return await authenticate_jwt(db, token, auth_settings)
 
 
