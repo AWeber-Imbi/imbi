@@ -169,6 +169,21 @@ class ApiBaseResolutionTestCase(unittest.TestCase):
         )
         self.assertEqual('https://ghe.example.com/api/v3', self._base(ctx=ctx))
 
+    def test_own_commit_sync_slug_skipped_on_ghec(self) -> None:
+        # A commit-sync entry's slug starts with "github" but has no host
+        # option; it must not resolve to github.com on a GHEC service —
+        # the real GHEC plugin behind it wins.
+        ctx = _ctx(
+            service_plugins=[
+                ServicePlugin(slug='github-commit-sync', options={}),
+                ServicePlugin(
+                    slug='github-deployment-ec',
+                    options={'host': 'tenant.ghe.com'},
+                ),
+            ]
+        )
+        self.assertEqual('https://api.tenant.ghe.com', self._base(ctx=ctx))
+
     def test_invalid_connected_plugin_host_falls_through(self) -> None:
         ctx = _ctx(
             service_plugins=[

@@ -188,6 +188,11 @@ def _resolve_api_base(
     if explicit:
         return explicit.rstrip('/')
     for plugin in ctx.service_plugins:
+        # Skip our own entry: its slug starts with "github" but carries
+        # no host option, so _github_plugin_host would mis-resolve it to
+        # github.com on a GHEC/GHES service.
+        if plugin.slug == _SELF_SLUG:
+            continue
         host = _github_plugin_host(plugin)
         if host:
             return host_to_api_base(host)
