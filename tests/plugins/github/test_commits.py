@@ -788,3 +788,182 @@ class AppAuthSyncTestCase(unittest.IsolatedAsyncioTestCase):
                 payload=_push(),
             )
         insert.assert_awaited_once()
+
+
+class HostForContextTestCase(unittest.TestCase):
+    def test_resolves_from_connected_github_plugin(self) -> None:
+        ctx = _ctx(service_plugins=[ServicePlugin(slug='github', options={})])
+        self.assertEqual('github.com', commits._resolve_host_for_context(ctx))
+
+    def test_skips_own_slug_for_ghec(self) -> None:
+        # A commit-sync entry must not be read as github.com on a GHEC
+        # service; the real GHEC plugin behind it wins.
+        ctx = _ctx(
+            service_plugins=[
+                ServicePlugin(slug='github-commit-sync', options={}),
+                ServicePlugin(
+                    slug='github-deployment-ec',
+                    options={'host': 'tenant.ghe.com'},
+                ),
+            ]
+        )
+        self.assertEqual(
+            'tenant.ghe.com', commits._resolve_host_for_context(ctx)
+        )
+
+    def test_no_github_plugin_returns_none(self) -> None:
+        ctx = _ctx(service_plugins=[ServicePlugin(slug='sonarqube')])
+        self.assertIsNone(commits._resolve_host_for_context(ctx))
+
+
+class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
+    _REPO = 'https://api.github.com/repos/octo/demo'
+
+    def _ctx(self) -> PluginContext:
+        return _ctx(service_plugins=[ServicePlugin(slug='github', options={})])
+
+    def _mock_default_branch(self, branch: str = 'main') -> respx.Route:
+        return respx.get(self._REPO).mock(
+            return_value=httpx.Response(200, json={'default_branch': branch})
+        )
+
+    @respx.mock
+    async def test_records_full_history_and_tags(self) -> None:
+        self._mock_default_branch()
+        commit_route = respx.get(f'{self._REPO}/commits').mock(
+            return_value=httpx.Response(
+                200, json=[_commit('c' * 40), _commit('d' * 40)]
+            )
+        )
+        respx.get(f'{self._REPO}/tags').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {'name': 'v1.0.0', 'commit': {'sha': 'z' * 40}},
+                    {'name': 'v1.1.0', 'commit': {'sha': 'y' * 40}},
+                ],
+            )
+        )
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            result = await commits.GitHubCommitSyncPlugin().sync_all_history(
+                ctx=self._ctx(), credentials=_CREDS
+            )
+        self.assertEqual((2, 2), result)
+        self.assertEqual(
+            'main', commit_route.calls.last.request.url.params['sha']
+        )
+        self.assertEqual(2, insert.await_count)
+        tables = {call.args[0] for call in insert.await_args_list}
+        self.assertEqual({'commits', 'tags'}, tables)
+        commit_call = next(
+            c for c in insert.await_args_list if c.args[0] == 'commits'
+        )
+        records = commit_call.args[1]
+        self.assertIsInstance(records[0], CommitRecord)
+        self.assertEqual('main', records[0].ref)
+
+    @respx.mock
+    async def test_paginates_commits(self) -> None:
+        self._mock_default_branch()
+        url = f'{self._REPO}/commits'
+        respx.get(url).mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[_commit('1' * 40)],
+                    headers={'link': f'<{url}?page=2>; rel="next"'},
+                ),
+                httpx.Response(200, json=[_commit('2' * 40)]),
+            ]
+        )
+        respx.get(f'{self._REPO}/tags').mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            (
+                commits_recorded,
+                tags_recorded,
+            ) = await commits.GitHubCommitSyncPlugin().sync_all_history(
+                ctx=self._ctx(), credentials=_CREDS
+            )
+        self.assertEqual(2, commits_recorded)
+        self.assertEqual(0, tags_recorded)
+        # Only the commits insert ran; the empty tag list short-circuits.
+        insert.assert_awaited_once()
+
+    @respx.mock
+    async def test_history_truncation_logs(self) -> None:
+        self._mock_default_branch()
+        url = f'{self._REPO}/commits'
+        respx.get(url).mock(
+            return_value=httpx.Response(
+                200,
+                json=[_commit('1' * 40)],
+                headers={'link': f'<{url}?page=2>; rel="next"'},
+            )
+        )
+        respx.get(f'{self._REPO}/tags').mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        with mock.patch.object(commits, '_MAX_HISTORY_PAGES', 1):
+            with mock.patch(_INSERT, new=mock.AsyncMock()):
+                with self.assertLogs(commits.LOGGER, level='WARNING') as cm:
+                    await commits.GitHubCommitSyncPlugin().sync_all_history(
+                        ctx=self._ctx(), credentials=_CREDS
+                    )
+        self.assertTrue(any('truncated history' in x for x in cm.output))
+
+    @respx.mock
+    async def test_no_github_host_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            await commits.GitHubCommitSyncPlugin().sync_all_history(
+                ctx=_ctx(), credentials=_CREDS
+            )
+
+    @respx.mock
+    async def test_clickhouse_failure_swallowed(self) -> None:
+        self._mock_default_branch()
+        respx.get(f'{self._REPO}/commits').mock(
+            return_value=httpx.Response(200, json=[_commit('c' * 40)])
+        )
+        respx.get(f'{self._REPO}/tags').mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        failing = mock.AsyncMock(side_effect=RuntimeError('clickhouse down'))
+        with mock.patch(_INSERT, new=failing):
+            with self.assertLogs(commits.LOGGER, level='ERROR'):
+                result = await (
+                    commits.GitHubCommitSyncPlugin().sync_all_history(
+                        ctx=self._ctx(), credentials=_CREDS
+                    )
+                )
+        self.assertEqual((0, 0), result)
+
+    @respx.mock
+    async def test_app_auth_mints_token(self) -> None:
+        _app_auth.reset_cache()
+        self.addCleanup(_app_auth.reset_cache)
+        token_route = respx.post(
+            'https://api.github.com/app/installations/42/access_tokens'
+        ).mock(
+            return_value=httpx.Response(
+                201, json={'token': 'ghs_minted', 'expires_at': _FAR_FUTURE}
+            )
+        )
+        self._mock_default_branch()
+        respx.get(f'{self._REPO}/commits').mock(
+            return_value=httpx.Response(200, json=[_commit('c' * 40)])
+        )
+        respx.get(f'{self._REPO}/tags').mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        creds = {
+            'app_id': '971',
+            'private_key': _APP_KEY_PEM,
+            'installation_id': '42',
+        }
+        with mock.patch(_INSERT, new=mock.AsyncMock()):
+            await commits.GitHubCommitSyncPlugin().sync_all_history(
+                ctx=self._ctx(), credentials=creds
+            )
+        self.assertEqual(1, token_route.call_count)

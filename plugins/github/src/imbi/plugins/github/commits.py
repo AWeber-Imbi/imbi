@@ -18,6 +18,12 @@ order:
 4. the push payload's ``repository.url`` (already the flavor-correct API
    URL) as a last resort.
 
+The same plugin also exposes :meth:`GitHubCommitSyncPlugin.sync_all_history`
+for an on-demand, host-invoked backfill: there is no push payload, so the
+GitHub host is read from ``ctx.service_plugins`` and ``(owner, repo)`` from
+the project links; it walks the full default-branch history and the
+complete tag list rather than a single push delta.
+
 Commit / tag rows are written to the shared ClickHouse ``commits`` /
 ``tags`` tables via :func:`imbi_common.clickhouse.insert`. Writes are
 best-effort: a storage failure is logged and swallowed so an analytics
@@ -53,6 +59,7 @@ from imbi_plugin_github._hosts import (
     normalize_host,
     require_ghec_tenant_host,
 )
+from imbi_plugin_github._repos import resolve_owner_repo
 from imbi_plugin_github.deployment import (
     _auth_headers,  # pyright: ignore[reportPrivateUsage]
     _next_page_url,  # pyright: ignore[reportPrivateUsage]
@@ -66,11 +73,20 @@ LOGGER = logging.getLogger(__name__)
 
 _HTTP_TIMEOUT_SECONDS = 10.0
 _ZERO_SHA = '0' * 40
+# This plugin's own slug; skipped when reading the GitHub host/flavor
+# from connected ``service_plugins`` so the commit-sync entry can't
+# masquerade as a github.com host on a GHEC/GHES service.
+_SELF_SLUG = 'github-commit-sync'
 # GitHub's compare endpoint caps ``commits[]`` at 250 per page and
 # paginates the rest; bound the walk so a pathological single push
 # (force-push of thousands of commits) can't pin us on one endpoint.
 # 250 * 20 = 5000 commits is far more than any realistic push.
 _MAX_COMPARE_PAGES = 20
+# On-demand full-history sync walks ``GET /commits`` from the default
+# branch head.  100 per page * 100 pages = 10k commits caps a one-shot
+# backfill so a very deep repo can't pin the worker indefinitely; the
+# walk logs a truncation warning when it hits the cap.
+_MAX_HISTORY_PAGES = 100
 
 
 async def _resolve_bearer(
@@ -344,6 +360,93 @@ async def _fetch_recent_commits(
     )
     resp.raise_for_status()
     return typing.cast('list[dict[str, typing.Any]]', resp.json())
+
+
+def _resolve_host_for_context(ctx: PluginContext) -> str | None:
+    """Resolve the GitHub web host for an on-demand sync (no payload).
+
+    Walks the connected GitHub plugins on ``ctx.service_plugins`` and
+    returns the first usable host (github.com, a GHEC tenant, or a GHES
+    appliance), skipping this plugin's own entry so a commit-sync row on a
+    GHEC/GHES service can't be read as github.com.  Unlike the webhook
+    path there is no push payload to fall back to, so the absence of a
+    connected GitHub plugin yields ``None``.
+    """
+    for plugin in ctx.service_plugins:
+        if plugin.slug == _SELF_SLUG:
+            continue
+        host = _github_plugin_host(plugin)
+        if host:
+            return host
+    return None
+
+
+async def _fetch_default_branch(client: httpx.AsyncClient) -> str:
+    """Return the repo's default branch name (``main`` when unknown)."""
+    # httpx normalises ``base_url`` with a trailing slash; GHEC's gateway
+    # 404s on ``/repos/<o>/<r>/`` so request the absolute URL with the
+    # trailing slash stripped, matching the deployment plugin.
+    url = str(client.base_url).rstrip('/')
+    resp = await client.get(url)
+    resp.raise_for_status()
+    meta = typing.cast('dict[str, typing.Any]', resp.json())
+    return str(meta.get('default_branch') or 'main')
+
+
+async def _fetch_all_commits(
+    client: httpx.AsyncClient, branch: str
+) -> list[dict[str, typing.Any]]:
+    """Walk every commit reachable from ``branch`` via Link pagination.
+
+    Capped at ``_MAX_HISTORY_PAGES`` (logged on truncation) so a very deep
+    repo can't pin a one-shot backfill indefinitely.
+    """
+    params: dict[str, str] = {'sha': branch, 'per_page': '100'}
+    out: list[dict[str, typing.Any]] = []
+    for page in range(1, _MAX_HISTORY_PAGES + 1):
+        resp = await client.get('/commits', params=params)
+        resp.raise_for_status()
+        out.extend(typing.cast('list[dict[str, typing.Any]]', resp.json()))
+        next_url = _next_page_url(resp.headers.get('link'))
+        if next_url is None:
+            return out
+        next_page = _query_param(next_url, 'page')
+        if next_page is None:
+            return out
+        params['page'] = next_page
+        if page == _MAX_HISTORY_PAGES:
+            LOGGER.warning(
+                'github-commit-sync truncated history at %d pages (%d '
+                'commits); older commits will not be recorded',
+                _MAX_HISTORY_PAGES,
+                len(out),
+            )
+    return out
+
+
+async def _insert_best_effort(
+    table: str, records: list[pydantic.BaseModel], project_id: str
+) -> int:
+    """Insert ``records`` into ``table``; return rows written (0 on fail).
+
+    ``imbi_common.clickhouse.insert`` rejects an empty list, so an empty
+    set short-circuits to 0.  A storage failure is logged and swallowed,
+    mirroring the webhook actions -- an analytics hiccup must not fail the
+    sync.
+    """
+    if not records:
+        return 0
+    try:
+        await clickhouse.insert(table, records)
+    except Exception:
+        LOGGER.exception(
+            'github-commit-sync: failed to record %d %s rows for project %s',
+            len(records),
+            table,
+            project_id,
+        )
+        return 0
+    return len(records)
 
 
 class SyncCommitsConfig(pydantic.BaseModel):
@@ -651,3 +754,62 @@ class GitHubCommitSyncPlugin(WebhookActionPlugin):
     @classmethod
     def actions(cls) -> list[ActionDescriptor]:
         return [sync_commits_descriptor, sync_tags_descriptor]
+
+    async def sync_all_history(
+        self,
+        *,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> tuple[int, int]:
+        """Record the project's full default-branch history and all tags.
+
+        Host-invoked (no webhook payload): the host instantiates the
+        plugin, builds a :class:`PluginContext` carrying the project's
+        links and the connected ``service_plugins``, resolves this
+        plugin's service ``credentials``, and awaits this method.  The
+        GitHub host/flavor is read from ``service_plugins``, the
+        ``(owner, repo)`` from the project links, and the bearer token
+        from the same PAT-or-App resolution the webhook actions use.
+
+        Walks every commit reachable from the default branch head plus the
+        repo's complete (lightweight) tag list, maps them onto
+        ``CommitRecord`` / ``TagRecord``, and upserts into the ClickHouse
+        ``commits`` / ``tags`` tables.  ``ReplacingMergeTree`` dedupes
+        against rows the webhook already recorded, so re-running is safe.
+
+        Returns ``(commits_recorded, tags_recorded)``.  Raises
+        :class:`ValueError` only when the host or repository can't be
+        resolved; ClickHouse failures are swallowed (the count reflects
+        what was written).
+        """
+        host = _resolve_host_for_context(ctx)
+        if host is None:
+            raise ValueError(
+                'github-commit-sync could not resolve a GitHub host for an '
+                'on-demand sync: connect a GitHub plugin to the service'
+            )
+        base = host_to_api_base(host)
+        owner, repo = resolve_owner_repo(ctx, host, 'github-commit-sync')
+        pushed_at = datetime.datetime.now(datetime.UTC)
+        token = await _resolve_bearer(credentials, base, owner, repo)
+        async with _client(base, owner, repo, token) as client:
+            branch = await _fetch_default_branch(client)
+            raw_commits = await _fetch_all_commits(client, branch)
+            tags = await _reconcile_tags(client, ctx.project_id)
+        commit_records: list[pydantic.BaseModel] = [
+            _commit_record(
+                item,
+                project_id=ctx.project_id,
+                ref=branch,
+                pushed_at=pushed_at,
+            )
+            for item in raw_commits
+            if item.get('sha')
+        ]
+        commits_recorded = await _insert_best_effort(
+            'commits', commit_records, ctx.project_id
+        )
+        tags_recorded = await _insert_best_effort(
+            'tags', list(tags), ctx.project_id
+        )
+        return commits_recorded, tags_recorded
