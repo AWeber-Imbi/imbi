@@ -1,21 +1,38 @@
 """Tests for the GitHub commit / tag history sync webhook plugin."""
 
+import base64
 import typing
 import unittest
 from unittest import mock
 
 import httpx
 import respx
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from imbi_common.models import CommitRecord, TagRecord
 from imbi_common.plugins.base import PluginContext, ServicePlugin
 from imbi_common.plugins.errors import PluginAuthenticationFailed
 
-from imbi_plugin_github import commits
+from imbi_plugin_github import _app_auth, commits
 
 _ZERO = '0' * 40
 _CREDS = {'access_token': 'gho_test'}
 _INSERT = 'imbi_plugin_github.commits.clickhouse.insert'
 _QUERY = 'imbi_plugin_github.commits.clickhouse.query'
+
+
+def _gen_pem() -> str:
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode()
+
+
+# Generated once for the module; signing only needs a valid RSA key.
+_APP_KEY_PEM = _gen_pem()
+_FAR_FUTURE = '2099-01-01T00:00:00Z'
 
 
 def _await_args(m: mock.AsyncMock) -> tuple[typing.Any, ...]:
@@ -361,9 +378,11 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
                     payload=_push(before=base, after=head),
                 )
 
-    async def test_missing_token_raises(self) -> None:
+    async def test_missing_credentials_raises(self) -> None:
         with self.assertRaises(ValueError):
-            commits._token({})
+            await commits._resolve_bearer(
+                {}, 'https://api.github.com', 'octo', 'demo'
+            )
 
 
 class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
@@ -537,7 +556,12 @@ class ManifestTestCase(unittest.TestCase):
         self.assertEqual('github-commit-sync', manifest.slug)
         self.assertEqual('webhook', manifest.plugin_type)
         self.assertEqual(
-            ['access_token'], [c.name for c in manifest.credentials]
+            ['access_token', 'app_id', 'private_key', 'installation_id'],
+            [c.name for c in manifest.credentials],
+        )
+        self.assertTrue(
+            all(not c.required for c in manifest.credentials),
+            'all auth credentials are optional (PAT or App mode)',
         )
 
     def test_actions(self) -> None:
@@ -547,3 +571,220 @@ class ManifestTestCase(unittest.TestCase):
         # ImportString validation resolved the callables at construction.
         self.assertIs(descriptors[0].callable, commits.sync_commits)
         self.assertIs(descriptors[1].callable, commits.sync_tags)
+
+
+class PrivateKeyTestCase(unittest.TestCase):
+    def test_raw_pem_passthrough(self) -> None:
+        self.assertEqual(
+            _APP_KEY_PEM.strip(), _app_auth._load_private_key(_APP_KEY_PEM)
+        )
+
+    def test_base64_pem_decoded(self) -> None:
+        b64 = base64.b64encode(_APP_KEY_PEM.encode()).decode()
+        self.assertEqual(_APP_KEY_PEM, _app_auth._load_private_key(b64))
+
+    def test_garbage_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            _app_auth._load_private_key('not a key at all !!!')
+
+    def test_base64_of_non_pem_raises(self) -> None:
+        b64 = base64.b64encode(b'just some bytes').decode()
+        with self.assertRaises(ValueError):
+            _app_auth._load_private_key(b64)
+
+
+class TokenDeadlineTestCase(unittest.TestCase):
+    def test_missing_expiry_uses_default_ttl(self) -> None:
+        # No expires_at -> a positive deadline (default ~55m) is returned.
+        self.assertGreater(_app_auth._token_deadline(None), 0.0)
+
+    def test_unparseable_expiry_uses_default_ttl(self) -> None:
+        self.assertGreater(_app_auth._token_deadline('not-a-date'), 0.0)
+
+
+class ResolveBearerTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_pat_preferred_over_app(self) -> None:
+        # A PAT short-circuits before any App minting / network call.
+        token = await commits._resolve_bearer(
+            {'access_token': 'gho_x', 'app_id': '971', 'private_key': 'k'},
+            'https://api.github.com',
+            'octo',
+            'demo',
+        )
+        self.assertEqual('gho_x', token)
+
+
+class AppAuthSyncTestCase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        _app_auth.reset_cache()
+
+    def tearDown(self) -> None:
+        _app_auth.reset_cache()
+
+    def _app_creds(
+        self, *, installation_id: str | None = '42'
+    ) -> dict[str, str]:
+        creds = {'app_id': '971', 'private_key': _APP_KEY_PEM}
+        if installation_id is not None:
+            creds['installation_id'] = installation_id
+        return creds
+
+    def _mock_token(self, token: str = 'ghs_minted') -> respx.Route:
+        return respx.post(
+            'https://api.github.com/app/installations/42/access_tokens'
+        ).mock(
+            return_value=httpx.Response(
+                201, json={'token': token, 'expires_at': _FAR_FUTURE}
+            )
+        )
+
+    def _mock_compare(self) -> respx.Route:
+        base, head = 'a' * 40, 'b' * 40
+        return respx.get(
+            f'https://api.github.com/repos/octo/demo/compare/{base}...{head}'
+        ).mock(
+            return_value=httpx.Response(
+                200, json={'commits': [_commit('c' * 40)]}
+            )
+        )
+
+    @respx.mock
+    async def test_app_mints_and_uses_token(self) -> None:
+        token_route = self._mock_token()
+        compare = self._mock_compare()
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            await commits.sync_commits(
+                ctx=_ctx(),
+                credentials=self._app_creds(),
+                external_identifier='',
+                action_config=commits.SyncCommitsConfig(),
+                payload=_push(),
+            )
+        insert.assert_awaited_once()
+        self.assertEqual(1, token_route.call_count)
+        self.assertEqual(
+            'Bearer ghs_minted',
+            compare.calls.last.request.headers['authorization'],
+        )
+
+    @respx.mock
+    async def test_explicit_installation_skips_discovery(self) -> None:
+        discovery = respx.get(
+            'https://api.github.com/repos/octo/demo/installation'
+        )
+        self._mock_token()
+        self._mock_compare()
+        with mock.patch(_INSERT, new=mock.AsyncMock()):
+            await commits.sync_commits(
+                ctx=_ctx(),
+                credentials=self._app_creds(installation_id='42'),
+                external_identifier='',
+                action_config=commits.SyncCommitsConfig(),
+                payload=_push(),
+            )
+        self.assertFalse(discovery.called)
+
+    @respx.mock
+    async def test_discovers_installation_when_absent(self) -> None:
+        discovery = respx.get(
+            'https://api.github.com/repos/octo/demo/installation'
+        ).mock(return_value=httpx.Response(200, json={'id': 42}))
+        token_route = self._mock_token()
+        self._mock_compare()
+        with mock.patch(_INSERT, new=mock.AsyncMock()):
+            await commits.sync_commits(
+                ctx=_ctx(),
+                credentials=self._app_creds(installation_id=None),
+                external_identifier='',
+                action_config=commits.SyncCommitsConfig(),
+                payload=_push(),
+            )
+        self.assertEqual(1, discovery.call_count)
+        self.assertEqual(1, token_route.call_count)
+
+    @respx.mock
+    async def test_token_cached_across_calls(self) -> None:
+        token_route = self._mock_token()
+        self._mock_compare()
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            for _ in range(2):
+                await commits.sync_commits(
+                    ctx=_ctx(),
+                    credentials=self._app_creds(),
+                    external_identifier='',
+                    action_config=commits.SyncCommitsConfig(),
+                    payload=_push(),
+                )
+        self.assertEqual(2, insert.await_count)
+        # Minted once, reused on the second delivery.
+        self.assertEqual(1, token_route.call_count)
+
+    @respx.mock
+    async def test_discovered_installation_and_token_cached(self) -> None:
+        discovery = respx.get(
+            'https://api.github.com/repos/octo/demo/installation'
+        ).mock(return_value=httpx.Response(200, json={'id': 42}))
+        token_route = self._mock_token()
+        self._mock_compare()
+        with mock.patch(_INSERT, new=mock.AsyncMock()):
+            for _ in range(2):
+                await commits.sync_commits(
+                    ctx=_ctx(),
+                    credentials=self._app_creds(installation_id=None),
+                    external_identifier='',
+                    action_config=commits.SyncCommitsConfig(),
+                    payload=_push(),
+                )
+        # Discovery and minting both happen once, then served from cache.
+        self.assertEqual(1, discovery.call_count)
+        self.assertEqual(1, token_route.call_count)
+
+    @respx.mock
+    async def test_stale_cached_install_rediscovered_on_404(self) -> None:
+        # Seed the install cache with a now-stale id, then make minting
+        # against it 404 (uninstall/reinstall). The token call should
+        # evict the stale id, rediscover, and mint against the new one.
+        _app_auth._INSTALL_CACHE[
+            ('971', 'https://api.github.com', 'octo', 'demo')
+        ] = '7'
+        stale = respx.post(
+            'https://api.github.com/app/installations/7/access_tokens'
+        ).mock(return_value=httpx.Response(404, json={'message': 'gone'}))
+        discovery = respx.get(
+            'https://api.github.com/repos/octo/demo/installation'
+        ).mock(return_value=httpx.Response(200, json={'id': 42}))
+        fresh = self._mock_token()
+        token = await _app_auth.installation_token(
+            base='https://api.github.com',
+            app_id='971',
+            private_key=_APP_KEY_PEM,
+            installation_id=None,
+            owner='octo',
+            repo='demo',
+        )
+        self.assertEqual('ghs_minted', token)
+        self.assertEqual(1, stale.call_count)
+        self.assertEqual(1, discovery.call_count)
+        self.assertEqual(1, fresh.call_count)
+        self.assertEqual(
+            '42',
+            _app_auth._INSTALL_CACHE[
+                ('971', 'https://api.github.com', 'octo', 'demo')
+            ],
+        )
+
+    @respx.mock
+    async def test_base64_private_key_accepted(self) -> None:
+        self._mock_token()
+        self._mock_compare()
+        creds = self._app_creds()
+        creds['private_key'] = base64.b64encode(_APP_KEY_PEM.encode()).decode()
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            await commits.sync_commits(
+                ctx=_ctx(),
+                credentials=creds,
+                external_identifier='',
+                action_config=commits.SyncCommitsConfig(),
+                payload=_push(),
+            )
+        insert.assert_awaited_once()

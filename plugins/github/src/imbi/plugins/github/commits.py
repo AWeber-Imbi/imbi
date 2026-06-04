@@ -47,6 +47,7 @@ from imbi_common.plugins.base import (
     WebhookActionPlugin,
 )
 
+from imbi_plugin_github import _app_auth
 from imbi_plugin_github._hosts import (
     host_to_api_base,
     normalize_host,
@@ -72,14 +73,35 @@ _ZERO_SHA = '0' * 40
 _MAX_COMPARE_PAGES = 20
 
 
-def _token(credentials: dict[str, str]) -> str:
+async def _resolve_bearer(
+    credentials: dict[str, str], base: str, owner: str, repo: str
+) -> str:
+    """Resolve the Bearer token used for the repo's GitHub API calls.
+
+    Prefers an explicit PAT (``access_token``/``token``).  Otherwise
+    mints a short-lived GitHub App installation token from ``app_id`` +
+    ``private_key`` (with an optional ``installation_id`` that skips
+    per-repo installation discovery).  Tokens are cached process-wide by
+    :mod:`imbi_plugin_github._app_auth`.
+    """
     token = credentials.get('access_token') or credentials.get('token')
-    if not token:
-        raise ValueError(
-            'github-commit-sync requires a service token; expected '
-            "``credentials['access_token']``"
+    if token:
+        return token
+    app_id = credentials.get('app_id')
+    private_key = credentials.get('private_key')
+    if app_id and private_key:
+        return await _app_auth.installation_token(
+            base=base,
+            app_id=app_id,
+            private_key=private_key,
+            installation_id=credentials.get('installation_id') or None,
+            owner=owner,
+            repo=repo,
         )
-    return token
+    raise ValueError(
+        'github-commit-sync requires either an access_token (PAT) or '
+        'app_id + private_key (GitHub App) credentials'
+    )
 
 
 def _resolve(pointer: jsonpointer.JsonPointer, payload: object) -> object:
@@ -394,7 +416,8 @@ async def sync_commits(
     ref = _branch_short_name(ref_raw if isinstance(ref_raw, str) else '')
     before = _resolve(action_config.before_selector, payload)
     pushed_at = datetime.datetime.now(datetime.UTC)
-    async with _client(base, owner, repo, _token(credentials)) as client:
+    token = await _resolve_bearer(credentials, base, owner, repo)
+    async with _client(base, owner, repo, token) as client:
         if isinstance(before, str) and before and before != _ZERO_SHA:
             raw = await _fetch_compare_commits(client, before, after)
         else:
@@ -510,7 +533,8 @@ async def sync_tags(
     if resolved is None:
         return
     owner, repo, base = resolved
-    async with _client(base, owner, repo, _token(credentials)) as client:
+    token = await _resolve_bearer(credentials, base, owner, repo)
+    async with _client(base, owner, repo, token) as client:
         annotated = await _annotated_tag(client, after)
         records: list[pydantic.BaseModel] = [
             _tag_record(
@@ -566,9 +590,15 @@ sync_tags_descriptor = ActionDescriptor(
 class GitHubCommitSyncPlugin(WebhookActionPlugin):
     """Webhook-action plugin syncing GitHub commit / tag history.
 
-    Declares its own ``access_token`` service credential -- it is *not*
-    folded into the identity / deployment / lifecycle plugins, which run
-    as the acting user and carry no service token.
+    Carries its own service credential -- it is *not* folded into the
+    identity / deployment / lifecycle plugins, which run as the acting
+    user.  Two mutually exclusive auth modes are supported (resolved by
+    :func:`_resolve_bearer`):
+
+    * **PAT** -- a static ``access_token``.
+    * **GitHub App** -- ``app_id`` + ``private_key`` (raw or base64 PEM),
+      with an optional ``installation_id``; the plugin mints a
+      short-lived installation token per call and caches it.
     """
 
     manifest = PluginManifest(
@@ -582,9 +612,39 @@ class GitHubCommitSyncPlugin(WebhookActionPlugin):
         credentials=[
             CredentialField(
                 name='access_token',
-                label='GitHub Token',
-                description='Service token used to fetch commit history.',
-            )
+                label='GitHub Token (PAT)',
+                description=(
+                    'Static personal/service access token. Use this *or* '
+                    'the GitHub App fields below.'
+                ),
+                required=False,
+            ),
+            CredentialField(
+                name='app_id',
+                label='GitHub App ID',
+                description=(
+                    'GitHub App identifier; with a private key the plugin '
+                    'mints short-lived installation tokens.'
+                ),
+                required=False,
+            ),
+            CredentialField(
+                name='private_key',
+                label='GitHub App Private Key',
+                description=(
+                    'App private key, raw PEM or base64-encoded PEM.'
+                ),
+                required=False,
+            ),
+            CredentialField(
+                name='installation_id',
+                label='GitHub App Installation ID',
+                description=(
+                    'Optional. When unset, the installation is discovered '
+                    'from the pushed repository.'
+                ),
+                required=False,
+            ),
         ],
     )
 
