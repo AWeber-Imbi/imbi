@@ -133,7 +133,13 @@ async def _list_impl(
 
     body = {'data': [_row_to_response(r) for r in rows]}
     response = fastapi.responses.JSONResponse(
-        fastapi.encoders.jsonable_encoder(body)
+        # ClickHouse hands back raw bytes for JSON string values that
+        # aren't valid UTF-8 (e.g. cp1252 smart quotes in webhook
+        # payloads); decode leniently so one bad row can't 500 the feed.
+        fastapi.encoders.jsonable_encoder(
+            body,
+            custom_encoder={bytes: lambda o: o.decode(errors='replace')},
+        )
     )
     response.headers['Link'] = build_link_header(request, next_cursor)
     return response

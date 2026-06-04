@@ -175,6 +175,18 @@ class GlobalListTests(_EventsTestBase):
         self.assertIn('Link', response.headers)
         self.assertIn('rel="first"', response.headers['Link'])
 
+    def test_list_tolerates_non_utf8_bytes_in_payload(self) -> None:
+        # ClickHouse returns raw bytes for JSON string values that aren't
+        # valid UTF-8 (e.g. a cp1252 smart quote, 0x91). The endpoint must
+        # decode leniently instead of 500ing on a single bad row.
+        row = _row()
+        row['payload'] = {'title': b'fix \x91thing\x92'}
+        self.mock_query.return_value = [row]
+        response = self.client.get('/events/')
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body['data'][0]['payload']['title'], 'fix �thing�')
+
     def test_list_with_filters(self) -> None:
         self.mock_query.return_value = [_row()]
         response = self.client.get(
