@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/collapsible'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
+import { useCommitSync } from '@/hooks/useCommitSync'
 import { useProjectDeploymentResync } from '@/hooks/useDeploymentResync'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { extractApiErrorDetail } from '@/lib/apiError'
@@ -107,6 +108,10 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
 
   const resyncMutation = useProjectDeploymentResync(orgSlug, project.id)
 
+  // Shares the deployment:write gate: the backend requires a GitHub
+  // deployment plugin (eligibility) plus a connected commit-sync plugin.
+  const commitSync = useCommitSync(orgSlug, project.id, canResyncDeployments)
+
   const report = reportQuery.data
   const results = report?.results ?? []
 
@@ -146,6 +151,16 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
                 variant="outline"
               >
                 {resyncMutation.isPending ? 'Syncing...' : 'Sync Deployments'}
+              </Button>
+            )}
+            {canResyncDeployments && (
+              <Button
+                disabled={commitSync.isSyncing}
+                onClick={() => commitSync.sync()}
+                size="sm"
+                variant="outline"
+              >
+                {commitSync.isSyncing ? 'Syncing...' : 'Sync Commits & Tags'}
               </Button>
             )}
           </CardContent>

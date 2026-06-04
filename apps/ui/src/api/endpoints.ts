@@ -889,6 +889,47 @@ export const runProjectAnalysis = (orgSlug: string, projectId: string) =>
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/analysis/run`,
   )
 
+export interface CommitSyncEnqueueResponse {
+  enqueued: boolean
+}
+
+export type CommitSyncState =
+  | 'failed'
+  | 'idle'
+  | 'queued'
+  | 'running'
+  | 'success'
+
+export interface CommitSyncStatus {
+  commits_synced: null | number
+  error: null | string
+  last_synced_at: null | string
+  requested_by: null | string
+  status: CommitSyncState
+  tags_synced: null | number
+}
+
+// Enqueue a full commit + tag history backfill (background job). 202 +
+// {enqueued} — false when debounced or queueing is unavailable.
+export const syncProjectCommitsAndTags = (
+  orgSlug: string,
+  projectId: string,
+): Promise<CommitSyncEnqueueResponse> =>
+  apiClient.post<CommitSyncEnqueueResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/commits/sync`,
+  )
+
+export const getProjectCommitSyncStatus = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<CommitSyncStatus> =>
+  apiClient.get<CommitSyncStatus>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/commits/sync-status`,
+    undefined,
+    signal,
+  )
+
 export interface ScoreTrend {
   current: null | number
   delta: null | number
