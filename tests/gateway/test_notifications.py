@@ -1403,3 +1403,68 @@ class SafeHeadersUnitTests(helpers.TestCase):
                 {'AUTHORIZATION': 'Bearer s3cret', 'Cookie': 'sid=xyz'}
             ),
         )
+
+
+_sanitize_utf8 = (
+    notifications._sanitize_utf8  # pyright: ignore[reportPrivateUsage]
+)
+_extract_json_body = (
+    notifications._extract_json_body  # pyright: ignore[reportPrivateUsage]
+)
+
+
+class _FakeBodyRequest:
+    """Minimal stand-in exposing the ``body()`` coroutine."""
+
+    def __init__(self, raw: bytes) -> None:
+        self._raw = raw
+
+    async def body(self) -> bytes:
+        return self._raw
+
+
+class Utf8SanitizationTests(helpers.TestCase):
+    def test_replaces_lone_surrogate_in_string(self) -> None:
+        cleaned = typing.cast('str', _sanitize_utf8('hi \ud83d there'))
+        cleaned.encode('utf-8')  # must not raise
+        self.assertNotIn('\ud83d', cleaned)
+
+    def test_recurses_dicts_lists_and_keys(self) -> None:
+        payload = {
+            'msg': 'a\ud800b',
+            'nested': [{'k\ud801': 'v\ud802'}],
+            'count': 3,
+            'flag': True,
+            'none': None,
+        }
+        cleaned = typing.cast('dict[str, typing.Any]', _sanitize_utf8(payload))
+        json.dumps(cleaned).encode('utf-8')  # whole tree now encodable
+        self.assertEqual(3, cleaned['count'])
+        self.assertIs(True, cleaned['flag'])
+        self.assertIsNone(cleaned['none'])
+        inner_key = next(iter(cleaned['nested'][0]))
+        inner_key.encode('utf-8')
+        self.assertNotIn('\ud801', inner_key)
+
+    def test_scalars_pass_through(self) -> None:
+        self.assertEqual(42, _sanitize_utf8(42))
+        self.assertIsNone(_sanitize_utf8(None))
+
+    async def test_extract_body_accepts_non_utf8_bytes(self) -> None:
+        # cp1252 smart quote 0x92 is invalid UTF-8; lenient decode keeps
+        # the request from 422ing and the value is stored as clean UTF-8.
+        raw = (
+            json.dumps({'msg': 'X'})
+            .encode('utf-8')
+            .replace(b'X', b'hi\x92there')
+        )
+        request = typing.cast('fastapi.Request', _FakeBodyRequest(raw))
+        body = await _extract_json_body(request)
+        json.dumps(body).encode('utf-8')  # encodable
+        self.assertIsInstance(body, dict)
+
+    async def test_extract_body_invalid_json_still_422(self) -> None:
+        request = typing.cast('fastapi.Request', _FakeBodyRequest(b'not json'))
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            await _extract_json_body(request)
+        self.assertEqual(422, ctx.exception.status_code)

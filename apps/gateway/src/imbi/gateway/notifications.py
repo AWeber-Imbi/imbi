@@ -787,13 +787,47 @@ def _set_access_log_context(
         request.state.imbi_common_access_log = updates
 
 
+def _sanitize_utf8(value: object) -> object:
+    """Recursively coerce a parsed JSON body to storable UTF-8.
+
+    GitHub (and other senders) occasionally deliver payloads whose JSON
+    strings carry characters that don't round-trip through UTF-8 — most
+    commonly lone surrogates from ``\\uXXXX`` escapes (e.g. a half of an
+    emoji pair in a commit message), or bytes that decoded leniently
+    above. Such ``str`` values are valid in Python but raise when
+    re-encoded to UTF-8, so they break CEL evaluation and the ClickHouse
+    ``payload`` insert downstream. Replace the offending characters here
+    — once, at ingestion — so every consumer sees clean UTF-8.
+
+    Dict keys are sanitized alongside values; non-string scalars
+    (numbers, bools, ``None``) pass through untouched.
+    """
+    if isinstance(value, str):
+        return value.encode('utf-8', 'replace').decode('utf-8')
+    if isinstance(value, dict):
+        items = typing.cast('typing.Any', value).items()
+        return {_sanitize_utf8(k): _sanitize_utf8(v) for k, v in items}
+    if isinstance(value, list):
+        return [
+            _sanitize_utf8(item) for item in typing.cast('typing.Any', value)
+        ]
+    return value
+
+
 async def _extract_json_body(request: fastapi.Request) -> object:
+    # Decode the raw body leniently rather than via ``request.json()``
+    # (which decodes UTF-8 strictly and 422s on a single bad byte) so a
+    # mis-encoded payload is accepted and cleaned instead of rejected;
+    # ``_sanitize_utf8`` then repairs any lone surrogates the JSON parse
+    # produced from ``\\uXXXX`` escapes.
+    raw = await request.body()
     try:
-        return await request.json()
+        body = json.loads(raw.decode('utf-8', 'replace'))
     except ValueError:
         raise fastapi.HTTPException(
             http.HTTPStatus.UNPROCESSABLE_CONTENT
         ) from None
+    return _sanitize_utf8(body)
 
 
 def _payload_dict(body: object) -> dict[str, typing.Any]:

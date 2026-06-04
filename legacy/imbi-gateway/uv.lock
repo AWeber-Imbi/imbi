@@ -664,7 +664,7 @@ wheels = [
 [[package]]
 name = "imbi-common"
 version = "2.9.1"
-source = { editable = "../imbi-common" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
@@ -679,6 +679,10 @@ dependencies = [
     { name = "python-slugify" },
     { name = "typer" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/9a/7a/0dc31034aa22aaa92929eeaf317c6b552e659b5e1557d1bd605edcc6f1cd/imbi_common-2.9.1.tar.gz", hash = "sha256:0808fbe949b3e1c347dcfb7c879c0cc547143e97f85c35c623dfd9971de041a9", size = 336897, upload-time = "2026-06-04T01:38:52.101Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/14/d7/496d7edcbfc0f6a6551c16abd4e368bb756ee444711c350e09d5b736542b/imbi_common-2.9.1-py3-none-any.whl", hash = "sha256:4b445b30461c7d15e3d1635720f32d95f49f38369b5b1939bff5e9c89545bc6c", size = 107627, upload-time = "2026-06-04T01:38:50.624Z" },
+]
 
 [package.optional-dependencies]
 databases = [
@@ -691,72 +695,6 @@ databases = [
 server = [
     { name = "fastapi" },
     { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "anthropic", marker = "extra == 'llm'", specifier = ">=0.40" },
-    { name = "clickhouse-connect", extras = ["async"], marker = "extra == 'databases'", specifier = "==1.0.0" },
-    { name = "cryptography", specifier = ">=42.0.4" },
-    { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.115.0" },
-    { name = "fastembed", marker = "extra == 'databases'", specifier = ">=0.6" },
-    { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=3,<4" },
-    { name = "httpx", specifier = ">=0.28.1,<1" },
-    { name = "jsonpointer", specifier = ">=3.1.1" },
-    { name = "jsonschema-models" },
-    { name = "markdown-it-py", specifier = ">=3.0" },
-    { name = "nanoid", specifier = ">=2.0.0" },
-    { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = "==1.41.1" },
-    { name = "opentelemetry-distro", marker = "extra == 'otel'", specifier = "==0.62b1" },
-    { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'otel'", specifier = "==1.41.1" },
-    { name = "opentelemetry-instrumentation-aiohttp-client", marker = "extra == 'otel'", specifier = "==0.62b1" },
-    { name = "opentelemetry-instrumentation-asyncio", marker = "extra == 'otel'", specifier = "==0.62b1" },
-    { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'otel'", specifier = "==0.62b1" },
-    { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'otel'", specifier = "==0.62b1" },
-    { name = "opentelemetry-instrumentation-mcp", marker = "extra == 'otel'", specifier = "==0.60.0" },
-    { name = "opentelemetry-instrumentation-psycopg", marker = "extra == 'otel'", specifier = "==0.62b1" },
-    { name = "opentelemetry-instrumentation-redis", marker = "extra == 'otel'", specifier = "==0.62b1" },
-    { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = "==1.41.1" },
-    { name = "orjson" },
-    { name = "pgvector", marker = "extra == 'databases'", specifier = ">=0.3" },
-    { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'databases'", specifier = ">=3.3" },
-    { name = "pydantic", extras = ["email"], specifier = ">=2.0" },
-    { name = "pydantic-settings" },
-    { name = "pyjwt", specifier = ">=2.10.1" },
-    { name = "python-slugify" },
-    { name = "sentry-sdk", marker = "extra == 'sentry'", specifier = ">=2.48.0" },
-    { name = "typer", specifier = ">=0.21.1" },
-    { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.40.0" },
-    { name = "valkey", marker = "extra == 'databases'", specifier = ">=6" },
-]
-provides-extras = ["databases", "llm", "mcp", "otel", "sentry", "server"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "basedpyright" },
-    { name = "build" },
-    { name = "click", specifier = "~=8.2.1" },
-    { name = "coverage", extras = ["toml"] },
-    { name = "httpx", specifier = ">=0.28.1,<1" },
-    { name = "mypy", specifier = "~=1.19.1" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "ruff", specifier = "~=0.14.6" },
-    { name = "sentry-sdk", specifier = ">=2.48.0" },
-    { name = "tomli-w", specifier = "~=1.2" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.40.0" },
-]
-dist = [
-    { name = "build" },
-    { name = "twine" },
-    { name = "wheel" },
-]
-docs = [
-    { name = "griffe-pydantic" },
-    { name = "mkdocs", specifier = ">=1.5,<2" },
-    { name = "mkdocs-material", specifier = ">9.5,<10" },
-    { name = "mkdocstrings", extras = ["python"] },
-    { name = "mkdocstrings-python-xref", specifier = ">=1.6,<2" },
 ]
 
 [[package]]
@@ -799,7 +737,7 @@ requires-dist = [
     { name = "cel-python", specifier = ">=0.5.0" },
     { name = "fastapi", specifier = ">=0.135.1" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "imbi-common", extras = ["databases", "server"], editable = "../imbi-common" },
+    { name = "imbi-common", extras = ["databases", "server"], specifier = "==2.9.1" },
     { name = "imbi-plugin-github", marker = "extra == 'plugins'", specifier = "~=1.0" },
     { name = "imbi-plugin-sonarqube", marker = "extra == 'plugins'", specifier = ">=0.0.0" },
     { name = "jsonpointer", specifier = ">=3.1.1" },
