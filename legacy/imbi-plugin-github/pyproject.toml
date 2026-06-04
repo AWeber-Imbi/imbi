@@ -1,6 +1,6 @@
 [project]
 name = "imbi-plugin-github"
-version = "2.9.2"
+version = "2.9.3"
 description = "GitHub identity plugin for Imbi (github.com / GHEC / GHES)"
 readme = "README.md"
 requires-python = ">=3.14"
