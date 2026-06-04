@@ -13,6 +13,7 @@ node so the UI can poll it without a dedicated status store.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import logging
 import typing
@@ -33,6 +34,12 @@ _COMMIT_SYNC_SLUG = 'github-commit-sync'
 # Persisted error strings are truncated so a noisy upstream message can't
 # bloat the Project node.
 _MAX_ERROR_LEN = 500
+# Apache AGE aborts a SET with "Entity failed to be updated: <n>"
+# (heap_update -> TM_Updated) when another transaction updates the same
+# Project vertex concurrently. The worker's authoritative status writes
+# retry the transient conflict so they still land under contention.
+_STATUS_WRITE_RETRIES = 3
+_STATUS_RETRY_BACKOFF = 0.05
 
 SyncState = typing.Literal['idle', 'queued', 'running', 'success', 'failed']
 
@@ -210,6 +217,11 @@ def _now_iso() -> str:
     return datetime.datetime.now(datetime.UTC).isoformat()
 
 
+def _is_write_conflict(exc: Exception) -> bool:
+    """True if *exc* is AGE's concurrent-update conflict (TM_Updated)."""
+    return 'failed to be updated' in str(exc)
+
+
 async def set_status(
     db: graph.Graph,
     project_id: str,
@@ -219,8 +231,17 @@ async def set_status(
     commits: int = 0,
     tags: int = 0,
     error: str = '',
+    retry: bool = True,
 ) -> None:
-    """Persist last-sync state on the ``Project`` node (best-effort)."""
+    """Persist last-sync state on the ``Project`` node (best-effort).
+
+    *retry* re-attempts the write when AGE reports a transient concurrent
+    update, so the worker's authoritative transitions (running -> success/
+    failed) still land if a webhook touches the project mid-write. The
+    enqueue endpoint passes ``retry=False`` for its optimistic ``queued``
+    write: dropping that on conflict is correct, since the worker's newer
+    ``running`` write must win rather than be clobbered back to ``queued``.
+    """
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
     SET p.commit_sync_status = {status},
@@ -231,26 +252,39 @@ async def set_status(
         p.commit_sync_error = {error}
     RETURN p.id AS id
     """
-    try:
-        await db.execute(
-            query,
-            {
-                'project_id': project_id,
-                'status': status,
-                'at': _now_iso(),
-                'by': requested_by,
-                'commits': commits,
-                'tags': tags,
-                'error': error[:_MAX_ERROR_LEN],
-            },
-            ['id'],
-        )
-    except Exception:  # noqa: BLE001
-        LOGGER.warning(
-            'Failed to persist commit-sync status for project %s',
-            project_id,
-            exc_info=True,
-        )
+    params = {
+        'project_id': project_id,
+        'status': status,
+        'at': _now_iso(),
+        'by': requested_by,
+        'commits': commits,
+        'tags': tags,
+        'error': error[:_MAX_ERROR_LEN],
+    }
+    attempts = _STATUS_WRITE_RETRIES if retry else 1
+    for attempt in range(attempts):
+        try:
+            await db.execute(query, params, ['id'])
+            return
+        except Exception as exc:  # noqa: BLE001
+            conflict = _is_write_conflict(exc)
+            if retry and conflict and attempt + 1 < attempts:
+                await asyncio.sleep(_STATUS_RETRY_BACKOFF * (attempt + 1))
+                continue
+            if conflict:
+                LOGGER.debug(
+                    'commit-sync status write for %s lost a concurrent '
+                    'update (status=%s); leaving the newer state in place',
+                    project_id,
+                    status,
+                )
+            else:
+                LOGGER.warning(
+                    'Failed to persist commit-sync status for project %s',
+                    project_id,
+                    exc_info=True,
+                )
+            return
 
 
 def _opt_str(value: object) -> str | None:
@@ -277,7 +311,7 @@ async def read_status(db: graph.Graph, project_id: str) -> CommitSyncStatus:
     MATCH (p:Project {{id: {project_id}}})
     RETURN p.commit_sync_status AS status,
            p.commit_sync_at AS at,
-           p.commit_sync_by AS by,
+           p.commit_sync_by AS requested_by,
            p.commit_sync_commits AS commits,
            p.commit_sync_tags AS tags,
            p.commit_sync_error AS error
@@ -285,7 +319,7 @@ async def read_status(db: graph.Graph, project_id: str) -> CommitSyncStatus:
     records = await db.execute(
         query,
         {'project_id': project_id},
-        ['status', 'at', 'by', 'commits', 'tags', 'error'],
+        ['status', 'at', 'requested_by', 'commits', 'tags', 'error'],
     )
     if not records:
         return CommitSyncStatus()
@@ -307,5 +341,5 @@ async def read_status(db: graph.Graph, project_id: str) -> CommitSyncStatus:
         commits_synced=_opt_int(graph.parse_agtype(row.get('commits'))),
         tags_synced=_opt_int(graph.parse_agtype(row.get('tags'))),
         error=_opt_str(graph.parse_agtype(row.get('error'))),
-        requested_by=_opt_str(graph.parse_agtype(row.get('by'))),
+        requested_by=_opt_str(graph.parse_agtype(row.get('requested_by'))),
     )

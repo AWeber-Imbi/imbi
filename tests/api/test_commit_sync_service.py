@@ -130,13 +130,35 @@ class StatusTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(7, params['commits'])
         self.assertEqual('alice', params['by'])
 
+    async def test_set_status_retries_on_write_conflict(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.side_effect = [
+            Exception('Entity failed to be updated: 3'),
+            [{'id': '"p1"'}],
+        ]
+        with mock.patch.object(service.asyncio, 'sleep'):
+            await service.set_status(db, 'p1', status='running')
+        self.assertEqual(2, db.execute.await_count)
+
+    async def test_set_status_no_retry_drops_conflict(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.side_effect = Exception('Entity failed to be updated: 3')
+        await service.set_status(db, 'p1', status='queued', retry=False)
+        db.execute.assert_awaited_once()
+
+    async def test_set_status_swallows_unrelated_error(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.side_effect = Exception('boom')
+        await service.set_status(db, 'p1', status='running')
+        db.execute.assert_awaited_once()
+
     async def test_read_status_idle_when_unset(self) -> None:
         db = mock.AsyncMock()
         db.execute.return_value = [
             {
                 'status': None,
                 'at': None,
-                'by': None,
+                'requested_by': None,
                 'commits': None,
                 'tags': None,
                 'error': None,
@@ -153,7 +175,7 @@ class StatusTests(unittest.IsolatedAsyncioTestCase):
             {
                 'status': '"success"',
                 'at': '"2026-06-04T12:00:00+00:00"',
-                'by': '"alice"',
+                'requested_by': '"alice"',
                 'commits': 12,
                 'tags': 4,
                 'error': '""',

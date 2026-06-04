@@ -60,8 +60,15 @@ async def sync_commits_and_tags(
         valkey_client, org_slug, project_id, requested_by
     )
     if enqueued:
+        # Optimistic, best-effort: if the worker has already flipped the
+        # project to ``running``, that newer write must win -- so this one
+        # does not retry the concurrent-update conflict.
         await service.set_status(
-            db, project_id, status='queued', requested_by=requested_by
+            db,
+            project_id,
+            status='queued',
+            requested_by=requested_by,
+            retry=False,
         )
     return CommitSyncEnqueueResponse(enqueued=enqueued)
 
