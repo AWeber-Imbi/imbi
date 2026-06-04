@@ -20,3 +20,5 @@ repos:
     rev: v0.7.27
     hooks:
       - id: tombi-format
+        # uv owns uv.lock formatting; avoid tombi reflow churn
+        exclude: ^uv\.lock$
