@@ -667,7 +667,7 @@ wheels = [
 
 [[package]]
 name = "imbi-common"
-version = "2.9.0"
+version = "2.9.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
   { name = "cryptography" },
@@ -683,9 +683,9 @@ dependencies = [
   { name = "python-slugify" },
   { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ff/5e/e7306a4bafa6e23ad8fd6dcdaef552d646233b974b4cfd3352750ff57631/imbi_common-2.9.0.tar.gz", hash = "sha256:6687219808b824bc65af7229a6193cf2bf86e5b348ad2d3928126446c288b9ef", size = 336785, upload-time = "2026-06-03T15:52:11.958Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9a/7a/0dc31034aa22aaa92929eeaf317c6b552e659b5e1557d1bd605edcc6f1cd/imbi_common-2.9.1.tar.gz", hash = "sha256:0808fbe949b3e1c347dcfb7c879c0cc547143e97f85c35c623dfd9971de041a9", size = 336897, upload-time = "2026-06-04T01:38:52.101Z" }
 wheels = [
-  { url = "https://files.pythonhosted.org/packages/c2/dc/3c3e782709e5557620aa37e089233a267b0d73c9da44dbcfad963805f646/imbi_common-2.9.0-py3-none-any.whl", hash = "sha256:a8fad461cc7759e61ba101fa44f047610690805163ab43f8e10c8b97d91f8f0c", size = 107509, upload-time = "2026-06-03T15:52:10.159Z" },
+  { url = "https://files.pythonhosted.org/packages/14/d7/496d7edcbfc0f6a6551c16abd4e368bb756ee444711c350e09d5b736542b/imbi_common-2.9.1-py3-none-any.whl", hash = "sha256:4b445b30461c7d15e3d1635720f32d95f49f38369b5b1939bff5e9c89545bc6c", size = 107627, upload-time = "2026-06-04T01:38:50.624Z" },
 ]
 
 [package.optional-dependencies]
@@ -703,7 +703,7 @@ server = [
 
 [[package]]
 name = "imbi-plugin-logzio"
-version = "2.9.0"
+version = "2.9.1"
 source = { editable = "." }
 dependencies = [
   { name = "httpx" },
@@ -731,7 +731,7 @@ dist = [
 [package.metadata]
 requires-dist = [
   { name = "httpx", specifier = ">=0.27" },
-  { name = "imbi-common", specifier = "==2.9.0" },
+  { name = "imbi-common", specifier = "==2.9.1" },
   { name = "pydantic", specifier = ">=2" },
 ]
 
@@ -739,7 +739,7 @@ requires-dist = [
 dev = [
   { name = "basedpyright" },
   { name = "coverage", extras = ["toml"] },
-  { name = "imbi-common", extras = ["server", "databases"], specifier = "==2.9.0" },
+  { name = "imbi-common", extras = ["server", "databases"], specifier = "==2.9.1" },
   { name = "pre-commit" },
   { name = "pytest" },
   { name = "pytest-asyncio" },
