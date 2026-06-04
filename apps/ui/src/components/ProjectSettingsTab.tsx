@@ -168,7 +168,10 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
   // plugin is present the checkbox is suppressed because there is no
   // remote to delete.
   const hasLifecyclePlugin = useMemo(
-    () => projectPlugins.some((assignment) => assignment.tab === 'lifecycle'),
+    () =>
+      projectPlugins.some(
+        (assignment) => assignment.plugin_type === 'lifecycle',
+      ),
     [projectPlugins],
   )
 
@@ -179,7 +182,7 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
   const deploymentPlugin = useMemo(() => {
     const candidates = projectPlugins.filter(
       (assignment) =>
-        assignment.tab === 'deployment' &&
+        assignment.plugin_type === 'deployment' &&
         assignment.supports_deployment_sync === true,
     )
     return candidates.find((assignment) => assignment.default) ?? candidates[0]

@@ -57,6 +57,7 @@ import type {
   PluginAssignmentCreate,
   PluginAssignmentResponse,
   PluginTab,
+  PluginType,
 } from '@/types'
 
 interface OverrideDraft extends PluginAssignmentCreate {
@@ -172,7 +173,7 @@ export function ProjectPluginsSection({
           default: d.default,
           options: d.options,
           plugin_id: d.plugin_id,
-          tab: d.tab,
+          plugin_type: d.plugin_type,
         })),
       ),
     onError: (err) => {
@@ -208,8 +209,8 @@ export function ProjectPluginsSection({
           options: {} as Record<string, unknown>,
           plugin_id: plugin.id,
           plugin_slug: plugin.plugin_slug,
+          plugin_type: selectedTab,
           source: 'project' as const,
-          tab: selectedTab,
         },
       ]
       // Auto-expand the freshly added row so the option editor is
@@ -249,10 +250,10 @@ export function ProjectPluginsSection({
               {inherited.map((a) => (
                 <div
                   className="border-tertiary bg-secondary flex items-center gap-1.5 rounded border px-2 py-1 text-xs"
-                  key={`${a.plugin_id}:${a.tab}`}
+                  key={`${a.plugin_id}:${a.plugin_type}`}
                 >
                   <span className="text-primary">{a.label}</span>
-                  <Badge variant="secondary">{a.tab}</Badge>
+                  <Badge variant="secondary">{a.plugin_type}</Badge>
                   {a.default && <span className="text-tertiary">default</span>}
                 </div>
               ))}
@@ -304,7 +305,7 @@ export function ProjectPluginsSection({
                     idx={idx}
                     inheritedOptions={
                       inheritedOptionsByKey[
-                        inheritedKey(draft.plugin_id, draft.tab)
+                        inheritedKey(draft.plugin_id, draft.plugin_type)
                       ] ?? {}
                     }
                     isExpanded={expanded.has(idx)}
@@ -430,8 +431,8 @@ function assignmentToDraft(a: PluginAssignmentResponse): OverrideDraft {
     options: a.options ?? {},
     plugin_id: a.plugin_id,
     plugin_slug: a.plugin_slug,
+    plugin_type: a.plugin_type,
     source: a.source,
-    tab: a.tab,
   }
 }
 
@@ -439,7 +440,7 @@ function buildInheritedOptionsByKey(merged: PluginAssignmentResponse[]) {
   const out: Record<string, Record<string, unknown>> = {}
   for (const a of merged) {
     if (a.source !== 'project_type') continue
-    out[inheritedKey(a.plugin_id, a.tab)] = a.options ?? {}
+    out[inheritedKey(a.plugin_id, a.plugin_type)] = a.options ?? {}
   }
   return out
 }
@@ -449,14 +450,14 @@ function draftToCompare(d: {
   label: string
   options: Record<string, unknown>
   plugin_id: string
-  tab: PluginTab
+  plugin_type: PluginType
 }) {
   return {
     default: d.default,
     label: d.label,
     options: d.options,
     plugin_id: d.plugin_id,
-    tab: d.tab,
+    plugin_type: d.plugin_type,
   }
 }
 
@@ -471,11 +472,11 @@ function hasRenderableManifest(
   return manifest.options.length > 0
 }
 
-// Composite key so the same plugin can be assigned on different tabs
-// (e.g. ``configuration`` and ``logs``) without one overwriting the
-// other in the inherited-options lookup.
-function inheritedKey(pluginId: string, tab: PluginTab) {
-  return `${pluginId}:${tab}`
+// Composite key so the same plugin can be assigned under different
+// plugin types (e.g. ``configuration`` and ``logs``) without one
+// overwriting the other in the inherited-options lookup.
+function inheritedKey(pluginId: string, pluginType: PluginType) {
+  return `${pluginId}:${pluginType}`
 }
 
 // Placeholder text shown when the override is empty: prefer the
@@ -627,7 +628,7 @@ function ProjectPluginOverrideRow({
       >
         <TableCell className="font-medium">{draft.label}</TableCell>
         <TableCell>
-          <Badge variant="secondary">{draft.tab}</Badge>
+          <Badge variant="secondary">{draft.plugin_type}</Badge>
         </TableCell>
         <TableCell className="text-secondary text-sm">
           {draft.default ? 'Yes' : 'No'}

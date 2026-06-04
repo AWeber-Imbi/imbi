@@ -446,10 +446,12 @@ export function ProjectDetail({
     queryFn: ({ signal }) => listProjectPlugins(orgSlug, project.id, signal),
     queryKey: ['project-plugins', orgSlug, project.id],
     select: (plugins) => ({
-      deploymentPlugin: plugins.find((a) => a.tab === 'deployment'),
-      hasConfigurationPlugin: plugins.some((a) => a.tab === 'configuration'),
-      hasLifecyclePlugin: plugins.some((a) => a.tab === 'lifecycle'),
-      hasLogsPlugin: plugins.some((a) => a.tab === 'logs'),
+      deploymentPlugin: plugins.find((a) => a.plugin_type === 'deployment'),
+      hasConfigurationPlugin: plugins.some(
+        (a) => a.plugin_type === 'configuration',
+      ),
+      hasLifecyclePlugin: plugins.some((a) => a.plugin_type === 'lifecycle'),
+      hasLogsPlugin: plugins.some((a) => a.plugin_type === 'logs'),
     }),
     staleTime: 5 * 60 * 1000,
   })

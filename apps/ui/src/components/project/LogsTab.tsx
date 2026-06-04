@@ -309,7 +309,8 @@ export function LogsTab({
     staleTime: 5 * 60_000,
   })
 
-  const logAssignments = assignments?.filter((a) => a.tab === 'logs') ?? []
+  const logAssignments =
+    assignments?.filter((a) => a.plugin_type === 'logs') ?? []
   const sources = logAssignments.map((a) => ({
     id: a.plugin_id,
     label: a.label,

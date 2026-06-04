@@ -184,7 +184,7 @@ export function ConfigurationTab({
   })
 
   const configAssignments =
-    assignments?.filter((a) => a.tab === 'configuration') ?? []
+    assignments?.filter((a) => a.plugin_type === 'configuration') ?? []
   const sources = configAssignments.map((a) => ({
     id: a.plugin_id,
     label: a.label,

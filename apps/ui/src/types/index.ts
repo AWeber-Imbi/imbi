@@ -859,10 +859,10 @@ export interface InstalledPlugin {
   options: PluginOptionDef[]
   package_name: string
   package_version: string
-  plugin_type?: 'identity' | PluginTab
+  plugin_type?: PluginType
   requires_identity?: boolean
   slug: string
-  supported_tabs: PluginTab[]
+  supported_tabs: PluginType[]
   supports_deployment_sync?: boolean
   vertex_labels?: PluginVertexLabel[]
   // Body copy shown on the dashboard "unconnected integration" widget.
@@ -1085,15 +1085,15 @@ export interface PluginAssignmentCreate {
   identity_plugin_id?: null | string
   options?: Record<string, unknown>
   plugin_id: string
-  tab: PluginTab
+  plugin_type: PluginType
 }
 
 export interface PluginAssignmentInput {
   default: boolean
   identity_plugin_id?: null | string
   options: Record<string, unknown>
+  plugin_type: PluginType
   project_type_slug: string
-  tab: PluginTab
 }
 
 export interface PluginAssignmentResponse {
@@ -1103,18 +1103,18 @@ export interface PluginAssignmentResponse {
   options: Record<string, unknown>
   plugin_id: string
   plugin_slug: string
+  plugin_type: PluginType
   source: 'merged' | 'project' | 'project_type'
   supports_deployment_sync?: boolean
   supports_histogram?: boolean
-  tab: PluginTab
 }
 export interface PluginAssignmentRow {
   default: boolean
   identity_plugin_id?: null | string
   options: Record<string, unknown>
+  plugin_type: PluginType
   project_type_name: string
   project_type_slug: string
-  tab: PluginTab
 }
 export interface PluginConfigurationResponse {
   auth_type: 'api_token' | 'oauth2'
@@ -1198,7 +1198,19 @@ export interface PluginResponse {
   status: 'active' | 'unavailable'
   used_as_login?: boolean
 }
+// The subset of plugin types that render a project-detail tab. Not
+// every plugin type is a tab (e.g. webhook, analysis): tabs ⊆ plugins.
 export type PluginTab = 'configuration' | 'deployment' | 'lifecycle' | 'logs'
+// A plugin assignment is keyed by the plugin's type. Mirrors
+// imbi_common.plugins.PluginType (the full manifest set).
+export type PluginType =
+  | 'analysis'
+  | 'configuration'
+  | 'deployment'
+  | 'identity'
+  | 'lifecycle'
+  | 'logs'
+  | 'webhook'
 
 export interface PluginUpdate {
   // Pass an explicit empty string to clear; omitting the field leaves

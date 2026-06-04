@@ -64,7 +64,7 @@ import type {
   PluginAssignmentInput,
   PluginAssignmentRow,
   PluginResponse,
-  PluginTab,
+  PluginType,
 } from '@/types'
 
 import { ServicePluginEdgesCard } from './ServicePluginEdgesCard'
@@ -97,8 +97,8 @@ interface DraftAssignment {
   default: boolean
   identity_plugin_id: null | string
   options: Record<string, unknown>
+  plugin_type: PluginType
   project_type_slug: string
-  tab: PluginTab
 }
 
 interface IdentityCardProps {
@@ -784,8 +784,8 @@ function ProjectTypesCard({
         default: a.default,
         identity_plugin_id: a.identity_plugin_id ?? null,
         options: a.options,
+        plugin_type: a.plugin_type,
         project_type_slug: a.project_type_slug,
-        tab: a.tab,
       })),
     )
     setSeedHash(hash)
@@ -826,14 +826,14 @@ function ProjectTypesCard({
       default: a.default,
       identity_plugin_id: a.identity_plugin_id ?? null,
       options: a.options,
+      plugin_type: a.plugin_type,
       project_type_slug: a.project_type_slug,
-      tab: a.tab,
     }))
     return JSON.stringify(drafts) !== JSON.stringify(baseline)
   }, [drafts, existing])
 
-  const supportedTab = (manifest?.supported_tabs[0] ??
-    'configuration') as PluginTab
+  const supportedPluginType = (manifest?.supported_tabs[0] ??
+    'configuration') as PluginType
 
   const handleAdd = (slug: string) => {
     setDrafts((prev) => {
@@ -844,8 +844,8 @@ function ProjectTypesCard({
           default: true,
           identity_plugin_id: null,
           options: {},
+          plugin_type: supportedPluginType,
           project_type_slug: slug,
-          tab: supportedTab,
         },
       ]
     })
@@ -925,7 +925,7 @@ function ProjectTypesCard({
         {drafts.length === 0 ? (
           <div className="border-tertiary text-secondary rounded border border-dashed py-8 text-center text-sm">
             No project type assignments. Add one to surface this plugin under a
-            project type&apos;s {supportedTab} tab.
+            project type&apos;s {supportedPluginType} tab.
           </div>
         ) : (
           <Table>

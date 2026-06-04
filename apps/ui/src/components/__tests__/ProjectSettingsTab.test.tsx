@@ -85,9 +85,9 @@ const DEPLOYMENT_PLUGIN = {
   options: {},
   plugin_id: 'dep-1',
   plugin_slug: 'github-deploy',
+  plugin_type: 'deployment',
   source: 'project',
   supports_deployment_sync: true,
-  tab: 'deployment',
 } as PluginAssignmentResponse
 
 function renderTab() {
@@ -179,8 +179,8 @@ describe('ProjectSettingsTab delete flow', () => {
     options: {},
     plugin_id: 'lc-1',
     plugin_slug: 'github-lifecycle',
+    plugin_type: 'lifecycle',
     source: 'project',
-    tab: 'lifecycle',
   } as PluginAssignmentResponse
 
   beforeEach(async () => {
