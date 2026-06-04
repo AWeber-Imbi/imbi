@@ -10,8 +10,10 @@ The authenticated principal is extracted from the ``Authorization``
 header and rendered in the NCSA-style ``authuser`` slot of the log
 line. JWTs are decoded and signature-verified; valid tokens log the
 local part of the ``sub`` claim (or the full subject if it is not an
-email). API keys (``ik_<id>_<secret>``) log the ``ik_<id>`` prefix
-only. Anything else logs ``-``.
+email). API keys (``ik_<id>_<secret>``) log the owner's cached label
+when the consumer's auth path has registered it via
+:func:`remember_api_key_principal`, otherwise the ``ik_<id>`` prefix.
+Anything else logs ``-``.
 
 Downstream handlers can attach extra context to a request's log line
 by populating ``request.state.imbi_common_access_log`` (equivalently
@@ -28,6 +30,7 @@ the SDK; it is suppressed by passing ``include_trace_context=False``
 to the middleware constructor.
 """
 
+import collections
 import logging
 import typing
 from collections import abc
@@ -39,11 +42,51 @@ from imbi_common.auth import core
 
 LOGGER = logging.getLogger('imbi_common.access')
 
+# Bound the API-key owner cache so a long-lived process can't grow it
+# without limit; owners are stable, so a generous LRU is plenty.
+_API_KEY_PRINCIPAL_CACHE_MAX = 2048
+_api_key_principals: collections.OrderedDict[str, str] = (
+    collections.OrderedDict()
+)
+
 Scope = abc.MutableMapping[str, typing.Any]
 Message = abc.MutableMapping[str, typing.Any]
 Receive = abc.Callable[[], abc.Awaitable[Message]]
 Send = abc.Callable[[Message], abc.Awaitable[None]]
 ASGIApp = abc.Callable[[Scope, Receive, Send], abc.Awaitable[None]]
+
+
+def remember_api_key_principal(key_id: str, label: str) -> None:
+    """Cache the human owner of an API key for the access log.
+
+    The access-log middleware runs synchronously in the response path
+    and can't do its own (async) database lookup, so it can only render
+    the opaque ``ik_<id>`` it parses from the ``Authorization`` header.
+    Consumers resolve the owning user during API-key authentication —
+    call this with the key id (``ik_<id>``) and a human label (e.g. the
+    owner's email) so subsequent log lines for that key show the
+    person, not the key id. A no-op when either value is empty.
+    """
+    if not key_id or not label:
+        return
+    cache = _api_key_principals
+    if key_id in cache:
+        cache.move_to_end(key_id)
+    cache[key_id] = label
+    while len(cache) > _API_KEY_PRINCIPAL_CACHE_MAX:
+        cache.popitem(last=False)
+
+
+def _cached_api_key_principal(key_id: str) -> str | None:
+    label = _api_key_principals.get(key_id)
+    if label is not None:
+        _api_key_principals.move_to_end(key_id)
+    return label
+
+
+def clear_api_key_principals() -> None:
+    """Clear the API-key owner cache (test seam)."""
+    _api_key_principals.clear()
 
 
 class AccessLogMiddleware:
@@ -122,7 +165,7 @@ class AccessLogMiddleware:
         principal = '-'
         if self.include_principal:
             try:
-                principal = _principal_from_scope(scope)
+                principal = _sanitize_log_field(_principal_from_scope(scope))
             except Exception:  # noqa: BLE001 - defensive: never fail logging
                 principal = '-'
         context: list[tuple[object, object]] = []
@@ -180,14 +223,16 @@ def _principal_from_scope(scope: Scope) -> str:
     if not token:
         return '-'
     if token.startswith('ik_'):
-        # API key: ``ik_<key_id>_<secret>`` — log the key id only.
-        # Verifying the secret would require a database lookup, so we
-        # accept the (cheap) tradeoff of logging the claimed key id
-        # before the auth dependency confirms it. The request's status
+        # API key: ``ik_<key_id>_<secret>``. Prefer the owner's cached
+        # label (populated by the consumer's auth path via
+        # ``remember_api_key_principal``) so the line names the person;
+        # fall back to the claimed key id. Verifying the secret here
+        # would require a database lookup, so the request's status still
         # reflects whether validation actually succeeded.
         parts = token.split('_', 2)
         if len(parts) == 3 and parts[1] and parts[2]:
-            return f'ik_{parts[1]}'
+            key_id = f'ik_{parts[1]}'
+            return _cached_api_key_principal(key_id) or key_id
         return '-'
     try:
         claims = core.verify_token(token, settings.get_auth_settings())

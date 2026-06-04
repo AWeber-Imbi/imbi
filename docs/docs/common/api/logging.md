@@ -74,6 +74,34 @@ app.add_middleware(
 )
 ```
 
+### API key principals
+
+JWT requests log the local part of the token subject. API key requests
+(`Authorization: Bearer ik_<id>_<secret>`) log the opaque key id
+(`ik_<id>`) by default, because the middleware runs synchronously in the
+response path and can't resolve the owning user with an async database
+lookup.
+
+To log the human owner instead, register it from the consumer's API-key
+authentication path with `remember_api_key_principal`:
+
+```python
+from imbi_common import access_log
+
+# After validating ``ik_<id>_<secret>`` and loading the owning user:
+access_log.remember_api_key_principal(key_id, user.email)
+```
+
+The label is cached (bounded LRU) keyed by `ik_<id>`, so once auth has
+run for a request the access-log line — and every later line for that
+key — renders the owner instead of the key id. Unregistered keys fall
+back to `ik_<id>`; the request status still reflects whether validation
+actually succeeded.
+
+The rendered principal is escaped (`\r`/`\n` become literal backslash
+sequences) before it is written to the log, so an attacker-controlled
+label cannot forge additional log lines.
+
 ### Attaching per-request context
 
 Handlers and downstream middleware can attach extra context to the

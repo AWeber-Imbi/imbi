@@ -375,6 +375,10 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
 class PrincipalLoggingTests(unittest.IsolatedAsyncioTestCase):
     """Verify the NCSA authuser slot is populated from request auth."""
 
+    def setUp(self) -> None:
+        access_log.clear_api_key_principals()
+        self.addCleanup(access_log.clear_api_key_principals)
+
     async def _emit(
         self,
         headers: abc.Iterable[tuple[bytes, bytes]] = (),
@@ -468,6 +472,49 @@ class PrincipalLoggingTests(unittest.IsolatedAsyncioTestCase):
             include_principal=False,
         )
         self.assertIn(' - - "GET ', message)
+
+    async def test_api_key_remembered_owner_logs_label(self) -> None:
+        access_log.remember_api_key_principal('ik_abc123', 'gavinr@aweber.com')
+        message = await self._emit(
+            headers=[(b'authorization', b'Bearer ik_abc123_sekretsecret')],
+        )
+        self.assertIn(' - gavinr@aweber.com "GET ', message)
+
+    async def test_api_key_uncached_falls_back_to_key_id(self) -> None:
+        access_log.remember_api_key_principal('ik_other', 'someone@x.com')
+        message = await self._emit(
+            headers=[(b'authorization', b'Bearer ik_abc123_sekretsecret')],
+        )
+        self.assertIn(' - ik_abc123 "GET ', message)
+
+    async def test_remember_ignores_empty_values(self) -> None:
+        access_log.remember_api_key_principal('', 'someone@x.com')
+        access_log.remember_api_key_principal('ik_abc123', '')
+        message = await self._emit(
+            headers=[(b'authorization', b'Bearer ik_abc123_sekretsecret')],
+        )
+        self.assertIn(' - ik_abc123 "GET ', message)
+
+    async def test_api_key_owner_label_is_escaped(self) -> None:
+        access_log.remember_api_key_principal(
+            'ik_abc123', 'evil\r\nINJECTED 200'
+        )
+        message = await self._emit(
+            headers=[(b'authorization', b'Bearer ik_abc123_sekretsecret')],
+        )
+        self.assertNotIn('\r', message)
+        self.assertNotIn('\n', message)
+        self.assertIn(r' - evil\r\nINJECTED 200 "GET ', message)
+
+    async def test_api_key_owner_cache_evicts_lru(self) -> None:
+        with mock.patch.object(access_log, '_API_KEY_PRINCIPAL_CACHE_MAX', 1):
+            access_log.remember_api_key_principal('ik_abc123', 'first@x.com')
+            # Pushing a second entry past the cap evicts the oldest.
+            access_log.remember_api_key_principal('ik_zzz', 'second@x.com')
+        message = await self._emit(
+            headers=[(b'authorization', b'Bearer ik_abc123_sekretsecret')],
+        )
+        self.assertIn(' - ik_abc123 "GET ', message)
 
 
 if __name__ == '__main__':
