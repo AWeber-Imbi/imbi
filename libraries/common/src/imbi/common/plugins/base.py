@@ -113,19 +113,26 @@ class OpsLogTemplate(pydantic.BaseModel):
     summary: str | None = None
 
 
+#: The category a plugin declares in its manifest. A plugin assignment
+#: (the ``:USES_PLUGIN`` edge) is keyed by this value; the subset that
+#: renders a project-detail tab (configuration, logs, lifecycle,
+#: deployment) is a UI concern -- not every plugin type is a tab.
+PluginType = typing.Literal[
+    'configuration',
+    'logs',
+    'identity',
+    'deployment',
+    'lifecycle',
+    'webhook',
+    'analysis',
+]
+
+
 class PluginManifest(pydantic.BaseModel):
     slug: str
     name: str
     description: str | None = None
-    plugin_type: typing.Literal[
-        'configuration',
-        'logs',
-        'identity',
-        'deployment',
-        'lifecycle',
-        'webhook',
-        'analysis',
-    ]
+    plugin_type: PluginType
     auth_type: typing.Literal['api_token', 'oauth2', 'oidc', 'aws-iam-ic'] = (
         'api_token'
     )
