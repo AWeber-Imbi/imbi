@@ -90,8 +90,17 @@ class WebhookRule(pydantic.BaseModel):
         return self.handler.split('#', 1)[1]
 
     def evaluate_condition(
-        self, body: object, *, webhook_id: str | None = None
+        self, context: object, *, webhook_id: str | None = None
     ) -> bool | None:
+        """Evaluate ``filter_expression`` against the event ``context``.
+
+        ``context`` is the activation built by
+        :func:`_record_and_build_filter_context` -- the same shape the
+        activity-feed :class:`imbi_common.models.Event` row is
+        materialized into, so a rule filters on ``type``,
+        ``third_party_service``, ``attributed_to``, ``metadata.headers``,
+        and ``payload`` (the webhook body).
+        """
         log_extra: dict[str, typing.Any] = {
             'webhook_id': webhook_id,
             'rule_handler': self.handler,
@@ -102,7 +111,7 @@ class WebhookRule(pydantic.BaseModel):
             env = celpy.Environment()
             ast = env.compile(self.filter_expression)
             prg = env.program(ast)
-            result = prg.evaluate(celpy.json_to_cel(body))
+            result = prg.evaluate(celpy.json_to_cel(context))
             return bool(result)
         except celpy.CELEvalError as e:
             LOGGER.warning(
@@ -278,18 +287,18 @@ async def process_notification(
         webhook_id=webhook_id,
     )
     _set_access_log_context(request, user_id=user_id, event=event_type)
-    await _record_events(
+    context = await _record_and_build_filter_context(
         project_records,
+        headers=request.headers,
         webhook_id=webhook_id,
         service_slug=tps_slug,
         user_id=user_id,
         event_type=event_type,
-        headers=request.headers,
         body=body,
     )
-
     filter_results = [
-        rule.evaluate_condition(body, webhook_id=webhook_id) for rule in rules
+        rule.evaluate_condition(context, webhook_id=webhook_id)
+        for rule in rules
     ]
     if not any(filter_results):
         LOGGER.debug(
@@ -928,25 +937,24 @@ def _resolve_event_type(
 async def _record_events(  # noqa: PLR0913 - all inputs are required event fields
     records: 'abc.Sequence[abc.Mapping[str, typing.Any]]',
     *,
-    webhook_id: str,
     service_slug: str,
     user_id: str | None,
     event_type: str,
-    headers: 'abc.Mapping[str, str]',
-    body: object,
+    metadata: dict[str, typing.Any],
+    payload: dict[str, typing.Any],
 ) -> None:
     """Insert one ``events`` row per matched project into ClickHouse.
+
+    ``metadata`` and ``payload`` are the materialized values shared with
+    the rule filter context (see
+    :func:`_record_and_build_filter_context`) so the recorded row and the
+    filtered-on data are identical.
 
     Best-effort — failures are logged and swallowed so handlers run
     regardless of analytics insert health.
     """
     if not records:
         return
-    metadata: dict[str, typing.Any] = {
-        'webhook_id': webhook_id,
-        'headers': _safe_headers(headers),
-    }
-    payload = _payload_dict(body)
     events = [
         models.Event(
             project_id=graph.parse_agtype(record['project_id']),
@@ -964,3 +972,53 @@ async def _record_events(  # noqa: PLR0913 - all inputs are required event field
         )
     except Exception:
         LOGGER.exception('Failed to record webhook events in ClickHouse')
+
+
+async def _record_and_build_filter_context(  # noqa: PLR0913 - required event fields
+    records: 'abc.Sequence[abc.Mapping[str, typing.Any]]',
+    *,
+    headers: 'abc.Mapping[str, str]',
+    webhook_id: str,
+    service_slug: str,
+    user_id: str | None,
+    event_type: str,
+    body: object,
+) -> dict[str, typing.Any]:
+    """Record the activity-feed events and return the CEL filter context.
+
+    ``metadata`` and ``payload`` are materialized once here so the
+    ClickHouse ``events`` rows and the rule filter context never diverge.
+    The returned activation mirrors the project-independent fields of the
+    :class:`imbi_common.models.Event` row, so a ``filter_expression``
+    matches on exactly what the activity feed records:
+
+    - ``type`` — resolved event type (e.g. the ``X-GitHub-Event`` value)
+    - ``third_party_service`` — service slug
+    - ``attributed_to`` — resolved Imbi user (``''`` when unattributed)
+    - ``metadata.headers`` — request headers, keys lower-cased and
+      sensitive values redacted
+    - ``payload`` — the webhook body
+
+    Per-row identity (``id``, ``project_id``, ``recorded_at``) is omitted:
+    the filter runs once per delivery, not per matched project.
+    """
+    metadata: dict[str, typing.Any] = {
+        'webhook_id': webhook_id,
+        'headers': _safe_headers(headers),
+    }
+    payload = _payload_dict(body)
+    await _record_events(
+        records,
+        service_slug=service_slug,
+        user_id=user_id,
+        event_type=event_type,
+        metadata=metadata,
+        payload=payload,
+    )
+    return {
+        'type': event_type,
+        'third_party_service': service_slug,
+        'attributed_to': user_id or '',
+        'metadata': metadata,
+        'payload': payload,
+    }

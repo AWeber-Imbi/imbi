@@ -607,6 +607,45 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual(self.ext_id, call['external_identifier'])
         self.assertIsNone(ctx.actor_user_id)
 
+    async def test_filter_matches_on_request_header(self) -> None:
+        await self._add_rule(
+            filter_expression='metadata.headers["x-github-event"] == "push"'
+        )
+        body = {'repo': {'id': self.ext_id}}
+        response = await self._post(
+            self.webhook_id, body, headers={'X-GitHub-Event': 'push'}
+        )
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
+
+    async def test_filter_skips_on_non_matching_header(self) -> None:
+        await self._add_rule(
+            filter_expression='metadata.headers["x-github-event"] == "push"'
+        )
+        body = {'repo': {'id': self.ext_id}}
+        response = await self._post(
+            self.webhook_id, body, headers={'X-GitHub-Event': 'deployment'}
+        )
+        self.assertEqual(204, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+
+    async def test_filter_matches_on_resolved_event_type(self) -> None:
+        await self._set_implemented_by(event_type_selector='x-github-event')
+        await self._add_rule(filter_expression='type == "push"')
+        body = {'repo': {'id': self.ext_id}}
+        response = await self._post(
+            self.webhook_id, body, headers={'X-GitHub-Event': 'push'}
+        )
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
+
+    async def test_filter_matches_on_payload_field(self) -> None:
+        await self._add_rule(filter_expression='payload.action == "opened"')
+        body = {'repo': {'id': self.ext_id}, 'action': 'opened'}
+        response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
+
     async def test_connected_plugin_options_reach_context(self) -> None:
         with self.override_environment(
             IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
