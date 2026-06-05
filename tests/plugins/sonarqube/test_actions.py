@@ -73,7 +73,7 @@ class UpdateProjectFromWebhookTests(unittest.IsolatedAsyncioTestCase):
             credentials=_DEFAULT_CREDS,
             external_identifier='proj-1',
             action_config=_config(),
-            payload={},
+            event={},
         )
         self.assertTrue(patch_route.called)
         sent = patch_route.calls.last.request.content
@@ -90,7 +90,7 @@ class UpdateProjectFromWebhookTests(unittest.IsolatedAsyncioTestCase):
                 credentials={},
                 external_identifier='proj-1',
                 action_config=_config(),
-                payload={},
+                event={},
             )
         self.assertEqual(0, respx.calls.call_count)
         self.assertTrue(any('api_token' in line for line in cm.output))
@@ -103,7 +103,7 @@ class UpdateProjectFromWebhookTests(unittest.IsolatedAsyncioTestCase):
                 credentials=_DEFAULT_CREDS,
                 external_identifier='proj-1',
                 action_config=_config(),
-                payload={},
+                event={},
             )
         self.assertEqual(0, respx.calls.call_count)
 
@@ -131,7 +131,7 @@ class UpdateProjectFromWebhookTests(unittest.IsolatedAsyncioTestCase):
                 credentials=_DEFAULT_CREDS,
                 external_identifier='proj-1',
                 action_config=_config(),
-                payload={},
+                event={},
             )
         self.assertTrue(patch_route.called)
         sent = patch_route.calls.last.request.content
@@ -157,7 +157,7 @@ class UpdateProjectFromWebhookTests(unittest.IsolatedAsyncioTestCase):
             credentials=_DEFAULT_CREDS,
             external_identifier='proj-1',
             action_config=_config(),
-            payload={},
+            event={},
         )
         self.assertFalse(patch_route.called)
 
@@ -175,7 +175,7 @@ class UpdateProjectFromWebhookTests(unittest.IsolatedAsyncioTestCase):
                 credentials=_DEFAULT_CREDS,
                 external_identifier='proj-1',
                 action_config=_config(),
-                payload={},
+                event={},
             )
         self.assertFalse(patch_route.called)
 
@@ -186,7 +186,7 @@ class UpdateProjectFromWebhookTests(unittest.IsolatedAsyncioTestCase):
                 credentials=_DEFAULT_CREDS,
                 external_identifier='proj-1',
                 action_config=_config('[]'),
-                payload={},
+                event={},
             )
         self.assertEqual(0, respx.calls.call_count)
 
@@ -206,6 +206,6 @@ class UpdateProjectFromWebhookTests(unittest.IsolatedAsyncioTestCase):
                 credentials=_DEFAULT_CREDS,
                 external_identifier='proj-1',
                 action_config=_config(),
-                payload={},
+                event={},
             )
         self.assertTrue(any('Failed to patch' in line for line in cm.output))

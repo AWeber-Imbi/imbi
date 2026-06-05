@@ -91,11 +91,11 @@ async def update_project_from_webhook(
     credentials: dict[str, str],
     external_identifier: str,
     action_config: MetricMappings,
-    payload: object,
+    event: object,
 ) -> None:
     """Patch Imbi project facts from a SonarQube webhook delivery.
 
-    The webhook ``payload`` is not consulted; the SonarQube component
+    The webhook ``event`` is not consulted; the SonarQube component
     key arrives via ``external_identifier`` (resolved by the gateway
     from ``IMPLEMENTED_BY.identifier_selector``). Resolves the
     SonarQube base URL from ``ctx.assignment_options['service_endpoint']``
@@ -105,7 +105,7 @@ async def update_project_from_webhook(
     webhook. ``action_config`` is a pre-validated :class:`MetricMappings`
     instance -- the host validates the JSON blob before calling.
     """
-    del payload
+    del event
     mappings = action_config.root
     if not mappings:
         LOGGER.debug('No metric mappings configured; nothing to do')
