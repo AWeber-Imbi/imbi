@@ -548,6 +548,9 @@ async def _run_handlers(  # noqa: PLR0913
         actor_user_id=user_id,
         assignment_options=assignment_options,
         service_plugins=list(service_plugins),
+        resolve_user_by_identity=_make_user_resolver(
+            [plugin.slug for plugin in service_plugins]
+        ),
     )
     for rule in rules:
         resolved = _resolve_rule_handler(rule, webhook_id=webhook_id)
@@ -680,6 +683,47 @@ def _filter_to_identity_plugins(slugs: list[str]) -> list[str]:
             continue
         identity_slugs.append(slug)
     return identity_slugs
+
+
+def _make_user_resolver(
+    candidate_plugin_slugs: list[str],
+) -> 'abc.Callable[[str], abc.Awaitable[str | None]] | None':
+    """Build the ``PluginContext.resolve_user_by_identity`` resolver.
+
+    Returns a coroutine mapping an external identity *subject* (e.g. a
+    GitHub numeric user id) to the matching Imbi user's email, so an
+    action (e.g. commit-sync author attribution) can resolve external
+    actors via ``/users/by-identity`` without itself talking to the API.
+    The connected plugins are filtered to identity plugins; ``None`` is
+    returned when none qualify, so the action skips the lookups entirely.
+
+    Mirrors :func:`_resolve_user_id`'s multi-match handling: a subject
+    resolving to two or more *different* users via different identity
+    plugins is treated as unresolved (logged), never mis-attributed.
+    """
+    identity_slugs = _filter_to_identity_plugins(candidate_plugin_slugs)
+    if not identity_slugs:
+        return None
+
+    async def _resolve(subject: str) -> str | None:
+        matches: set[str] = set()
+        async with actions.ImbiClient() as client:
+            for slug in identity_slugs:
+                user_id = await client.find_user_by_identity(slug, subject)
+                if user_id is not None:
+                    matches.add(user_id)
+        if len(matches) > 1:
+            LOGGER.error(
+                'Identity subject %r resolved to multiple Imbi users via '
+                'plugins %r: %r — leaving unattributed',
+                subject,
+                identity_slugs,
+                sorted(matches),
+            )
+            return None
+        return next(iter(matches), None)
+
+    return _resolve
 
 
 def _extract_subject(

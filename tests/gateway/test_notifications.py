@@ -1468,3 +1468,87 @@ class Utf8SanitizationTests(helpers.TestCase):
         with self.assertRaises(fastapi.HTTPException) as ctx:
             await _extract_json_body(request)
         self.assertEqual(422, ctx.exception.status_code)
+
+
+_make_user_resolver = (
+    notifications._make_user_resolver  # pyright: ignore[reportPrivateUsage]
+)
+
+
+class MakeUserResolverUnitTests(helpers.TestCase):
+    """Coverage for the ``PluginContext.resolve_user_by_identity`` factory.
+
+    The factory builds the coroutine an action (e.g. commit-sync author
+    attribution) uses to map an identity subject to an Imbi user email,
+    reusing the same identity-plugin filtering and multi-match handling as
+    the gateway's own delivery-actor resolution.
+    """
+
+    def test_no_identity_plugins_returns_none(self) -> None:
+        with unittest.mock.patch.object(
+            notifications, '_filter_to_identity_plugins', return_value=[]
+        ):
+            self.assertIsNone(_make_user_resolver(['stub-nocreds']))
+
+    async def test_resolves_subject_to_email(self) -> None:
+        with (
+            unittest.mock.patch.object(
+                notifications,
+                '_filter_to_identity_plugins',
+                return_value=['github'],
+            ),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(return_value='alice@example.com'),
+            ) as mock_lookup,
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+        ):
+            resolver = _make_user_resolver(['github'])
+            if resolver is None:
+                self.fail('expected a resolver, got None')
+            self.assertEqual('alice@example.com', await resolver('42'))
+        mock_lookup.assert_awaited_once_with('github', '42')
+
+    async def test_unmatched_subject_returns_none(self) -> None:
+        with (
+            unittest.mock.patch.object(
+                notifications,
+                '_filter_to_identity_plugins',
+                return_value=['github'],
+            ),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(return_value=None),
+            ),
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+        ):
+            resolver = _make_user_resolver(['github'])
+            if resolver is None:
+                self.fail('expected a resolver, got None')
+            self.assertIsNone(await resolver('99'))
+
+    async def test_multiple_distinct_matches_logs_and_returns_none(
+        self,
+    ) -> None:
+        with (
+            unittest.mock.patch.object(
+                notifications,
+                '_filter_to_identity_plugins',
+                return_value=['github', 'gitlab'],
+            ),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(
+                    side_effect=['a@example.com', 'b@example.com']
+                ),
+            ),
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+        ):
+            resolver = _make_user_resolver(['github', 'gitlab'])
+            if resolver is None:
+                self.fail('expected a resolver, got None')
+            with self.assertLogs(notifications.LOGGER, level='ERROR'):
+                self.assertIsNone(await resolver('1'))
