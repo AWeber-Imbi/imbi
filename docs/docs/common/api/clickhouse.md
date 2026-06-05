@@ -73,6 +73,32 @@ await clickhouse.insert(
 )
 ```
 
+## Clustered Deployments
+
+For a clustered ClickHouse deployment, set the `CLICKHOUSE_CLUSTER_NAME`
+environment variable (exposed as `settings.Clickhouse.cluster_name`). When
+set, `setup_schema()` resolves two placeholders in every `schemata.toml` DDL
+statement: `{on_cluster}` becomes an `ON CLUSTER <name>` clause and
+`{replicated}` (which prefixes each table engine) becomes `Replicated`, so
+the schema is created on every node using the `Replicated*` engine variants:
+
+```sql
+-- CLICKHOUSE_CLUSTER_NAME unset (single node)
+CREATE TABLE IF NOT EXISTS imbi.events (...) ENGINE = MergeTree()
+
+-- CLICKHOUSE_CLUSTER_NAME=imbi_prod
+CREATE TABLE IF NOT EXISTS imbi.events ON CLUSTER imbi_prod (...)
+ENGINE = ReplicatedMergeTree()
+```
+
+Every DDL statement in `schemata.toml` must carry the `{on_cluster}`
+placeholder immediately after the object identifier, and every `ENGINE =`
+clause must carry the `{replicated}` placeholder before the engine name;
+both are removed when no cluster name is configured. The `Replicated*`
+engines rely on the server's `default_replica_path` / `default_replica_name`
+macros to supply the Keeper path and replica name — no explicit path is
+injected.
+
 ## Privacy Utilities
 
 ```python

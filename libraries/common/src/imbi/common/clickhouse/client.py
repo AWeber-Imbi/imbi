@@ -45,6 +45,36 @@ class SchemataQuery(pydantic.BaseModel):
     enabled: bool = True
 
 
+#: Placeholder in ``schemata.toml`` DDL replaced with an ``ON CLUSTER
+#: <name>`` clause when ``CLICKHOUSE_CLUSTER_NAME`` is set, or with an empty
+#: string for single-node deployments.
+ON_CLUSTER_PLACEHOLDER = '{on_cluster}'
+
+#: Placeholder preceding a table engine name, replaced with ``Replicated``
+#: when ``CLICKHOUSE_CLUSTER_NAME`` is set so engines become their
+#: ``Replicated*`` variants, or with an empty string otherwise.
+REPLICATED_PLACEHOLDER = '{replicated}'
+
+
+def _render_cluster_placeholders(
+    statement: str, cluster_name: str | None
+) -> str:
+    """Resolve cluster-related placeholders in a DDL statement.
+
+    When ``cluster_name`` is set, ``{on_cluster}`` becomes ``ON CLUSTER
+    <cluster_name> `` and ``{replicated}`` becomes ``Replicated`` so table
+    engines replicate across the cluster (relying on the server's
+    ``default_replica_path``/``default_replica_name`` macros for the Keeper
+    path and replica name). Both placeholders are removed when no cluster
+    name is configured.
+    """
+    on_cluster = f'ON CLUSTER {cluster_name} ' if cluster_name else ''
+    replicated = 'Replicated' if cluster_name else ''
+    return statement.replace(ON_CLUSTER_PLACEHOLDER, on_cluster).replace(
+        REPLICATED_PLACEHOLDER, replicated
+    )
+
+
 class DatabaseError(Exception):
     """Base class for errors raised by the Clickhouse client."""
 
@@ -234,6 +264,7 @@ class Clickhouse:
         """Execute all enabled queries from schemata.toml."""
         queries = self._load_schemata_queries()
         enabled_queries = [q for q in queries if q.enabled]
+        cluster_name = self._settings.cluster_name
 
         LOGGER.info(
             'Executing %d enabled schemata queries', len(enabled_queries)
@@ -241,8 +272,11 @@ class Clickhouse:
 
         for query_obj in enabled_queries:
             LOGGER.debug('Executing schemata query: %s', query_obj.name)
+            statement = _render_cluster_placeholders(
+                query_obj.query, cluster_name
+            )
             try:
-                await self.query(query_obj.query)
+                await self.query(statement)
                 LOGGER.debug(
                     'Successfully executed schemata query: %s', query_obj.name
                 )

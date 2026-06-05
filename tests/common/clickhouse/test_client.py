@@ -64,6 +64,103 @@ class PackagedSchemataTestCase(unittest.TestCase):
         self.assertIn('tags', names)
 
 
+class RenderClusterPlaceholdersTestCase(unittest.TestCase):
+    """Tests for the `_render_cluster_placeholders` resolver."""
+
+    def test_clause_inserted_when_cluster_set(self) -> None:
+        result = client._render_cluster_placeholders(
+            'CREATE TABLE imbi.t {on_cluster}(id String)', 'prod'
+        )
+        self.assertEqual(
+            result, 'CREATE TABLE imbi.t ON CLUSTER prod (id String)'
+        )
+
+    def test_placeholders_removed_when_cluster_unset(self) -> None:
+        for cluster in (None, ''):
+            result = client._render_cluster_placeholders(
+                'CREATE TABLE imbi.t {on_cluster}'
+                '(id String) ENGINE = {replicated}MergeTree()',
+                cluster,
+            )
+            self.assertEqual(
+                result,
+                'CREATE TABLE imbi.t (id String) ENGINE = MergeTree()',
+            )
+
+    def test_view_placeholder(self) -> None:
+        result = client._render_cluster_placeholders(
+            'CREATE VIEW imbi.v {on_cluster}AS SELECT 1', 'prod'
+        )
+        self.assertEqual(
+            result, 'CREATE VIEW imbi.v ON CLUSTER prod AS SELECT 1'
+        )
+
+    def test_replicated_engine_when_cluster_set(self) -> None:
+        result = client._render_cluster_placeholders(
+            'ENGINE = {replicated}ReplacingMergeTree(recorded_at)', 'prod'
+        )
+        self.assertEqual(
+            result, 'ENGINE = ReplicatedReplacingMergeTree(recorded_at)'
+        )
+
+    def test_alter_and_drop_placeholders(self) -> None:
+        """The placeholder works for any DDL, not just CREATE."""
+        self.assertEqual(
+            client._render_cluster_placeholders(
+                'ALTER TABLE imbi.t {on_cluster}ADD COLUMN x String', 'prod'
+            ),
+            'ALTER TABLE imbi.t ON CLUSTER prod ADD COLUMN x String',
+        )
+        self.assertEqual(
+            client._render_cluster_placeholders(
+                'DROP TABLE imbi.t {on_cluster}', 'prod'
+            ),
+            'DROP TABLE imbi.t ON CLUSTER prod ',
+        )
+
+    def test_statement_without_placeholder_unchanged(self) -> None:
+        statement = 'SELECT 1'
+        self.assertEqual(
+            client._render_cluster_placeholders(statement, 'prod'), statement
+        )
+
+    def test_packaged_schemata_have_on_cluster_placeholder(self) -> None:
+        """Every shipped DDL statement carries the {on_cluster} placeholder."""
+        ch = client.Clickhouse.get_instance()
+        for query in ch._load_schemata_queries():
+            self.assertIn(
+                client.ON_CLUSTER_PLACEHOLDER,
+                query.query,
+                f'{query.name} is missing the {{on_cluster}} placeholder',
+            )
+
+    def test_packaged_engines_have_replicated_placeholder(self) -> None:
+        """Every shipped ENGINE clause carries the {replicated} placeholder."""
+        ch = client.Clickhouse.get_instance()
+        for query in ch._load_schemata_queries():
+            if 'ENGINE =' not in query.query:
+                continue
+            self.assertIn(
+                f'ENGINE = {client.REPLICATED_PLACEHOLDER}',
+                query.query,
+                f'{query.name} ENGINE is missing the {{replicated}} prefix',
+            )
+
+    def test_packaged_schemata_render_cleanly(self) -> None:
+        """Rendering leaves no placeholder behind, cluster or not."""
+        ch = client.Clickhouse.get_instance()
+        for query in ch._load_schemata_queries():
+            for cluster in (None, 'prod'):
+                rendered = client._render_cluster_placeholders(
+                    query.query, cluster
+                )
+                self.assertNotIn(client.ON_CLUSTER_PLACEHOLDER, rendered)
+                self.assertNotIn(client.REPLICATED_PLACEHOLDER, rendered)
+                if cluster and 'ENGINE =' in query.query:
+                    self.assertIn(f'ON CLUSTER {cluster}', rendered)
+                    self.assertIn('ENGINE = Replicated', rendered)
+
+
 class TranslateErrorsTestCase(unittest.TestCase):
     """Tests for the `_translate_errors` helper."""
 
@@ -615,6 +712,46 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
 
                 mock_query.assert_not_called()
 
+    async def test_execute_schemata_queries_without_cluster(self) -> None:
+        """Without a cluster name, the placeholder is removed."""
+        ch = client.Clickhouse.get_instance()
+        ch._settings.cluster_name = None
+
+        mock_queries = [
+            client.SchemataQuery(
+                name='q', query='CREATE TABLE imbi.t {on_cluster}(id String)'
+            ),
+        ]
+
+        with mock.patch.object(
+            ch, '_load_schemata_queries', return_value=mock_queries
+        ):
+            with mock.patch.object(ch, 'query', return_value=[]) as mock_query:
+                await ch._execute_schemata_queries()
+
+        mock_query.assert_called_once_with('CREATE TABLE imbi.t (id String)')
+
+    async def test_execute_schemata_queries_with_cluster(self) -> None:
+        """With a cluster name, ON CLUSTER replaces the placeholder."""
+        ch = client.Clickhouse.get_instance()
+        ch._settings.cluster_name = 'prod'
+
+        mock_queries = [
+            client.SchemataQuery(
+                name='q', query='CREATE TABLE imbi.t {on_cluster}(id String)'
+            ),
+        ]
+
+        with mock.patch.object(
+            ch, '_load_schemata_queries', return_value=mock_queries
+        ):
+            with mock.patch.object(ch, 'query', return_value=[]) as mock_query:
+                await ch._execute_schemata_queries()
+
+        mock_query.assert_called_once_with(
+            'CREATE TABLE imbi.t ON CLUSTER prod (id String)'
+        )
+
 
 class OperationsLogSchemaTestCase(unittest.TestCase):
     """Verify the operations_log entry exists in schemata.toml."""
@@ -704,7 +841,7 @@ class EventsSchemaTestCase(unittest.TestCase):
     def test_events_engine(self) -> None:
         schemata = self._load_schemata()
         ddl = schemata['events']['query']
-        self.assertIn('ENGINE = MergeTree()', ddl)
+        self.assertIn('ENGINE = {replicated}MergeTree()', ddl)
         self.assertNotIn('ReplacingMergeTree', ddl)
         self.assertIn('PARTITION BY toYYYYMM(recorded_at)', ddl)
         self.assertIn('ORDER BY (project_id, recorded_at)', ddl)

@@ -158,6 +158,14 @@ class Clickhouse(pydantic_settings.BaseSettings):
     )
     connect_timeout: float = 10.0  # default in clickhouse client
     max_connect_attempts: int = 10
+    cluster_name: str | None = None
+    """Name of the ClickHouse cluster (``CLICKHOUSE_CLUSTER_NAME``).
+
+    When set, ``setup_schema()`` injects ``ON CLUSTER <cluster_name>`` into
+    the ``CREATE`` DDL statements loaded from ``schemata.toml`` so the schema
+    is created across every node of the cluster. Leave unset for a
+    single-node deployment.
+    """
 
 
 class EmbeddingModelConfig(pydantic.BaseModel):
