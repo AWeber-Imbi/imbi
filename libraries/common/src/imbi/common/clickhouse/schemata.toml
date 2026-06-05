@@ -3,7 +3,7 @@
 
 [events]
 query = """
-CREATE TABLE IF NOT EXISTS events (
+CREATE TABLE IF NOT EXISTS imbi.events (
   id                   String           DEFAULT '',
   project_id           LowCardinality(String),
   recorded_at          DateTime64(3, 'UTC'),
@@ -20,7 +20,7 @@ enabled = true
 
 [operations_log]
 query = """
-CREATE TABLE IF NOT EXISTS operations_log (
+CREATE TABLE IF NOT EXISTS imbi.operations_log (
     id                String,
     occurred_at       DateTime64(3, 'UTC'),
     recorded_at       DateTime64(3, 'UTC'),
@@ -48,20 +48,9 @@ ORDER BY (project_id, id);
 """
 enabled = true
 
-[operations_log_add_external_run_id]
-query = """
-ALTER TABLE operations_log
-    ADD COLUMN IF NOT EXISTS external_run_id Nullable(String);
-
-ALTER TABLE operations_log
-    ADD INDEX IF NOT EXISTS idx_ext_run external_run_id
-        TYPE bloom_filter GRANULARITY 4;
-"""
-enabled = true
-
 [pull_requests]
 query = """
-CREATE TABLE IF NOT EXISTS pull_requests (
+CREATE TABLE IF NOT EXISTS imbi.pull_requests (
     project_id      LowCardinality(String),
     pr_id           String,
     pr_number       UInt32,
@@ -119,7 +108,7 @@ enabled = true
 
 [score_history]
 query = """
-CREATE TABLE IF NOT EXISTS score_history (
+CREATE TABLE IF NOT EXISTS imbi.score_history (
   project_id     LowCardinality(String),
   timestamp      DateTime64(3, 'UTC'),
   score          Float32,
@@ -134,7 +123,7 @@ enabled = true
 
 [score_latest_data]
 query = """
-CREATE MATERIALIZED VIEW IF NOT EXISTS score_latest_data
+CREATE MATERIALIZED VIEW IF NOT EXISTS imbi.score_latest_data
 ENGINE = AggregatingMergeTree()
 ORDER BY project_id
 AS SELECT
@@ -142,27 +131,27 @@ AS SELECT
     argMaxState(score, timestamp)     AS latest_score,
     avgState(score)                   AS avg_score,
     maxState(timestamp)               AS last_updated
-FROM score_history
+FROM imbi.score_history
 GROUP BY project_id;
 """
 enabled = true
 
 [score_latest]
 query = """
-CREATE VIEW IF NOT EXISTS score_latest AS
+CREATE VIEW IF NOT EXISTS imbi.score_latest AS
 SELECT
     project_id,
     argMaxMerge(latest_score) AS latest_score,
     avgMerge(avg_score)       AS avg_score,
     maxMerge(last_updated)    AS last_updated
-FROM score_latest_data
+FROM imbi.score_latest_data
 GROUP BY project_id;
 """
 enabled = true
 
 [commits]
 query = """
-CREATE TABLE IF NOT EXISTS commits (
+CREATE TABLE IF NOT EXISTS imbi.commits (
   project_id    LowCardinality(String),
   sha           String,
   short_sha     String DEFAULT substring(sha, 1, 7),
@@ -171,6 +160,7 @@ CREATE TABLE IF NOT EXISTS commits (
   author_name   String DEFAULT '',
   author_email  String DEFAULT '',
   author_login  LowCardinality(String) DEFAULT '',
+  author_user   LowCardinality(String) DEFAULT '',
   committer_name  String DEFAULT '',
   authored_at   DateTime64(3, 'UTC'),
   committed_at  Nullable(DateTime64(3, 'UTC')),
@@ -178,14 +168,14 @@ CREATE TABLE IF NOT EXISTS commits (
   pushed_at     DateTime64(3, 'UTC'),
   recorded_at   DateTime64(3, 'UTC')
 ) ENGINE = ReplacingMergeTree(recorded_at)
-PARTITION BY toYYYYMM(authored_at)
+PARTITION BY toYear(authored_at)
 ORDER BY (project_id, sha);
 """
 enabled = true
 
 [tags]
 query = """
-CREATE TABLE IF NOT EXISTS tags (
+CREATE TABLE IF NOT EXISTS imbi.tags (
   project_id    LowCardinality(String),
   name          String,
   sha           String,
@@ -196,6 +186,7 @@ CREATE TABLE IF NOT EXISTS tags (
   url           String DEFAULT '',
   recorded_at   DateTime64(3, 'UTC')
 ) ENGINE = ReplacingMergeTree(recorded_at)
+PARTITION BY toYear(recorded_at)
 ORDER BY (project_id, name);
 """
 enabled = true

@@ -1741,6 +1741,7 @@ class CommitRecordTestCase(unittest.TestCase):
         'author_name',
         'author_email',
         'author_login',
+        'author_user',
         'committer_name',
         'authored_at',
         'committed_at',
@@ -1763,6 +1764,7 @@ class CommitRecordTestCase(unittest.TestCase):
         self.assertEqual(record.author_name, '')
         self.assertEqual(record.author_email, '')
         self.assertEqual(record.author_login, '')
+        self.assertEqual(record.author_user, '')
         self.assertEqual(record.committer_name, '')
         self.assertIsNone(record.committed_at)
         self.assertEqual(record.url, '')

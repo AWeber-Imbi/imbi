@@ -450,6 +450,20 @@ class PluginContext(pydantic.BaseModel):
     # relationship without re-querying the graph.  Empty when the
     # project exists in no services.
     service_connections: list[ServiceConnection] = []
+    # Host-injected resolver mapping an external identity *subject* (e.g.
+    # a GitHub numeric user id) to the matching Imbi user's email, or
+    # ``None`` when no active ``IdentityConnection`` matches.  Lets an
+    # action attribute external actors (e.g. commit authors) to Imbi
+    # users without knowing how the host reaches the identity store --
+    # the gateway wires an HTTP ``/users/by-identity`` lookup, the
+    # imbi-api worker a direct graph query.  ``None`` when the host wires
+    # no resolver.  It is a live callable, not data, so it is excluded
+    # from serialization and never set on a deserialized context.
+    resolve_user_by_identity: typing.Annotated[
+        collections.abc.Callable[[str], collections.abc.Awaitable[str | None]]
+        | None,
+        pydantic.Field(default=None, exclude=True, repr=False),
+    ] = None
 
 
 class ConfigValue(pydantic.BaseModel):

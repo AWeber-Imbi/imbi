@@ -46,7 +46,7 @@ class PackagedSchemataTestCase(unittest.TestCase):
         self.assertIn('commits', schemata)
         self.assertTrue(schemata['commits'].get('enabled'))
         query = str(schemata['commits']['query'])
-        self.assertIn('CREATE TABLE IF NOT EXISTS commits', query)
+        self.assertIn('CREATE TABLE IF NOT EXISTS imbi.commits', query)
         self.assertIn('ORDER BY (project_id, sha)', query)
 
     def test_tags_table_defined_and_enabled(self) -> None:
@@ -54,7 +54,7 @@ class PackagedSchemataTestCase(unittest.TestCase):
         self.assertIn('tags', schemata)
         self.assertTrue(schemata['tags'].get('enabled'))
         query = str(schemata['tags']['query'])
-        self.assertIn('CREATE TABLE IF NOT EXISTS tags', query)
+        self.assertIn('CREATE TABLE IF NOT EXISTS imbi.tags', query)
         self.assertIn('ORDER BY (project_id, name)', query)
 
     def test_every_entry_loads_as_schemata_query(self) -> None:

@@ -938,6 +938,10 @@ class CommitRecord(pydantic.BaseModel):
     author_name: str = ''
     author_email: str = ''
     author_login: str = ''
+    #: Email of the Imbi user the commit author resolves to via identity
+    #: attribution (the principal used by ``Release.created_by``); ``''``
+    #: when the author maps to no active ``IdentityConnection``.
+    author_user: str = ''
     committer_name: str = ''
     authored_at: datetime.datetime
     committed_at: datetime.datetime | None = None

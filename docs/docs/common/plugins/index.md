@@ -191,6 +191,18 @@ host/flavor for a commit-history sync) reads it from the matching
 sibling here rather than re-declaring it on every rule. The list is
 empty when the host resolved no service or it has no connected plugins.
 
+`resolve_user_by_identity` is an optional host-injected coroutine that
+maps an external identity *subject* (e.g. a provider's numeric user id)
+to the matching Imbi user's email, or `None` when no active
+`IdentityConnection` matches. An action uses it to attribute external
+actors — such as the authors of synced commits — to Imbi users without
+knowing how the host reaches the identity store: the gateway wires an
+HTTP `/users/by-identity` lookup, the imbi-api worker a direct graph
+query. It is a live callable rather than data, so it is excluded from
+serialization and is `None` on any deserialized context (and whenever
+the host wires no resolver). Callers should cache results, as a
+full-history sync can otherwise repeat the lookup for every commit.
+
 ::: imbi_common.plugins.PluginContext
 
 ::: imbi_common.plugins.ServicePlugin
