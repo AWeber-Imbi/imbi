@@ -37,8 +37,11 @@ class DatastoreStatus(pydantic.BaseModel):
     status: typing.Literal['ok', 'error']
     latency_ms: float | None = None
     # Bytes on disk (Postgres/ClickHouse) or resident memory (Valkey,
-    # which is in-memory). ``None`` when the size probe failed.
+    # which is in-memory). ``None`` when the size probe failed. For
+    # ClickHouse this is the Imbi application database; ``total_bytes``
+    # carries the whole-server footprint (incl. ``system.*``).
     size_bytes: int | None = None
+    total_bytes: int | None = None
     detail: str | None = None
 
 
@@ -134,13 +137,19 @@ async def _check_postgres(db: graph.Graph) -> DatastoreStatus:
 
 
 async def _check_clickhouse() -> DatastoreStatus:
-    """Probe ClickHouse and read total on-disk size of active parts."""
+    """Probe ClickHouse for the app-database and whole-server disk size.
+
+    ``size`` is the active-part footprint of the connected (Imbi)
+    database; ``total`` spans every database, including ``system.*``.
+    """
     start = time.perf_counter()
     try:
         rows = await asyncio.wait_for(
             clickhouse.query(
-                'SELECT sum(bytes_on_disk) AS size FROM system.parts'
-                " WHERE active AND database != 'system'"
+                'SELECT'
+                ' sumIf(bytes_on_disk, database = currentDatabase()) AS size,'
+                ' sum(bytes_on_disk) AS total'
+                ' FROM system.parts WHERE active'
             ),
             _CHECK_TIMEOUT,
         )
@@ -152,14 +161,16 @@ async def _check_clickhouse() -> DatastoreStatus:
             status='error',
             detail=str(err),
         )
-    raw = rows[0].get('size') if rows else None
-    size = int(raw) if raw is not None else None
+    row = rows[0] if rows else {}
+    size_raw = row.get('size')
+    total_raw = row.get('total')
     return DatastoreStatus(
         name='ClickHouse',
         role='Timeseries data',
         status='ok',
         latency_ms=_ms(start),
-        size_bytes=size,
+        size_bytes=int(size_raw) if size_raw is not None else None,
+        total_bytes=int(total_raw) if total_raw is not None else None,
     )
 
 
