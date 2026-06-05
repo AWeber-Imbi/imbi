@@ -41,6 +41,31 @@ async def _load_user_memberships(
     ]
 
 
+async def _load_user_teams(
+    db: graph.Graph, email: str
+) -> list[dict[str, str]]:
+    """Return the user's MEMBER_OF teams as plain dicts."""
+    query = """
+    MATCH (u:User {{email: {email}}})-[:MEMBER_OF]->(t:Team)
+          -[:BELONGS_TO]->(o:Organization)
+    RETURN t.name, t.slug, o.slug
+    ORDER BY o.slug, t.slug
+    """
+    records = await db.execute(
+        query,
+        {'email': email},
+        columns=['team_name', 'team_slug', 'org_slug'],
+    )
+    return [
+        {
+            'team_name': graph.parse_agtype(r['team_name']),
+            'team_slug': graph.parse_agtype(r['team_slug']),
+            'organization_slug': graph.parse_agtype(r['org_slug']),
+        }
+        for r in records
+    ]
+
+
 def _normalize_membership_input(
     value: typing.Any,
 ) -> list[dict[str, str]]:
@@ -444,6 +469,8 @@ async def get_current_user_profile(
 
     memberships = await _load_user_memberships(db, user.email)
     organizations = [models.OrgMembership(**m) for m in memberships]
+    team_records = await _load_user_teams(db, user.email)
+    teams = [models.TeamMembership(**t) for t in team_records]
 
     return models.CurrentUserResponse(
         email=user.email,
@@ -457,6 +484,7 @@ async def get_current_user_profile(
         email_notifications=user.email_notifications,
         organizations=organizations,
         permissions=sorted(auth.permissions),
+        teams=teams,
     )
 
 

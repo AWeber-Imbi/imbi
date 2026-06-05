@@ -55,6 +55,7 @@ __all__ = [
     'ServiceApplicationSecrets',
     'Session',
     'TOTPSecret',
+    'TeamMembership',
     'ThirdPartyService',
     'ThirdPartyServiceCreate',
     'ThirdPartyServiceResponse',
@@ -222,6 +223,15 @@ class OrgMembership(pydantic.BaseModel):
     organization_name: str
     organization_slug: str
     role: str
+
+
+class TeamMembership(pydantic.BaseModel):
+    """Team membership for API responses."""
+
+    model_config = pydantic.ConfigDict(extra='ignore')
+    team_name: str
+    team_slug: str
+    organization_slug: str
 
 
 class Role(models.Node):  # type: ignore[misc]
@@ -445,12 +455,14 @@ class CurrentUserResponse(UserResponse):
     """Response model for the authenticated user's own profile.
 
     Extends ``UserResponse`` with the caller's effective permission set
-    so the UI can gate features in a single request. Only exposed via
+    and team memberships so the UI can gate features and offer
+    membership-scoped filters in a single request. Only exposed via
     ``GET /users/me`` — the per-email endpoint deliberately omits
     permissions to avoid disclosing one user's grants to another.
     """
 
     permissions: list[str] = []
+    teams: list[TeamMembership] = []
 
 
 class PasswordChangeRequest(pydantic.BaseModel):

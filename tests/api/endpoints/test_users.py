@@ -50,8 +50,8 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
         )
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -340,12 +340,23 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             mock_get_current_user
         )
-        self.mock_db.execute.return_value = [
-            {
-                'org_name': 'Default',
-                'org_slug': 'default',
-                'role': 'developer',
-            },
+        # Two queries fire in order: org memberships, then team
+        # memberships.
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'org_name': 'Default',
+                    'org_slug': 'default',
+                    'role': 'developer',
+                },
+            ],
+            [
+                {
+                    'team_name': 'Platform',
+                    'team_slug': 'platform',
+                    'org_slug': 'default',
+                },
+            ],
         ]
 
         with mock.patch(
@@ -364,6 +375,16 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
             ['project:read', 'scoring_policy:rescore'],
         )
         self.assertEqual(len(data['organizations']), 1)
+        self.assertEqual(
+            data['teams'],
+            [
+                {
+                    'team_name': 'Platform',
+                    'team_slug': 'platform',
+                    'organization_slug': 'default',
+                },
+            ],
+        )
 
     def test_get_current_user_profile_rejects_service_account(self) -> None:
         """GET /users/me requires a human user, not a service account."""
@@ -999,8 +1020,8 @@ class OrgMembershipEndpointsTestCase(support.SharedAppTestCase):
         )
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -1455,8 +1476,8 @@ class ServiceAccountGuardRailsTestCase(support.SharedAppTestCase):
         )
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
         self.client = testclient.TestClient(self.test_app)

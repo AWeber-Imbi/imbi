@@ -78,6 +78,7 @@ ServiceApplicationResponse = _domain.ServiceApplicationResponse
 ServiceApplicationSecrets = _domain.ServiceApplicationSecrets
 Session = _domain.Session
 TOTPSecret = _domain.TOTPSecret
+TeamMembership = _domain.TeamMembership
 TokenMetadata = _domain.TokenMetadata
 Upload = _domain.Upload
 User = _domain.User
@@ -112,7 +113,7 @@ def parse_scopes(value: typing.Any) -> list[str]:
                 parsed = json.loads(stripped)
                 if isinstance(parsed, list):
                     return [str(v) for v in typing.cast(list[object], parsed)]
-            except (json.JSONDecodeError, ValueError):
+            except json.JSONDecodeError, ValueError:
                 pass
         inner = stripped.strip('{}')
         return inner.split(',') if inner else []
