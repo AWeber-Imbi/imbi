@@ -44,6 +44,16 @@ type == "deployment_status" && payload.deployment_status.state == "success"
 Header names in `metadata.headers` are lower-cased, so always index with the
 lower-case form (`metadata.headers["x-github-event"]`).
 
+## Action handler_config uses the same shape
+
+Action `handler_config` CEL expressions (`committish_expression`,
+`version_expression`) and JSON-Pointer selectors (`title_selector`,
+`status_selector`, …) resolve against this **same** event context. So the
+webhook body is under `/payload` for pointers and `payload.<field>` for CEL —
+identical to a rule's `filter_expression`. For example, a body field is
+`payload.deployment.sha` in both a filter and a `committish_expression`, and a
+selector reads `/payload/deployment/ref`.
+
 ## Redacted headers
 
 Headers that may carry credentials or webhook signatures are replaced with

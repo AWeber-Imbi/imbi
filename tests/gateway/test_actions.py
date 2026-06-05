@@ -14,6 +14,21 @@ from tests import helpers
 _TOKEN = 'test-token'  # noqa: S105
 
 
+def _event(
+    body: object,
+    **overrides: typing.Any,  # noqa: ANN401 — passthrough event overrides
+) -> dict[str, typing.Any]:
+    """Wrap a webhook body in the event context handlers now receive."""
+    return {
+        'type': '',
+        'third_party_service': '',
+        'attributed_to': '',
+        'metadata': {'headers': {}},
+        'payload': body,
+        **overrides,
+    }
+
+
 def _ctx(
     *,
     org_slug: str = 'org',
@@ -33,7 +48,7 @@ class UpdateProjectTests(helpers.TestCase):
     async def test_single_rule_builds_correct_patch(self) -> None:
         body = {'repo': {'name': 'my-repo'}}
         config = actions.UpdateProjectConfig.model_validate_json(
-            '[{"path": "/name", "from": "/repo/name"}]'
+            '[{"path": "/name", "from": "/payload/repo/name"}]'
         )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
@@ -49,7 +64,7 @@ class UpdateProjectTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload=body,
+                event=_event(body),
             )
 
         mock_patch.assert_called_once_with(
@@ -61,7 +76,8 @@ class UpdateProjectTests(helpers.TestCase):
     async def test_multiple_rules_produce_multiple_operations(self) -> None:
         body = {'a': 1, 'b': 2}
         config = actions.UpdateProjectConfig.model_validate_json(
-            '[{"path": "/x", "from": "/a"}, {"path": "/y", "from": "/b"}]'
+            '[{"path": "/x", "from": "/payload/a"},'
+            ' {"path": "/y", "from": "/payload/b"}]'
         )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
@@ -77,7 +93,7 @@ class UpdateProjectTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload=body,
+                event=_event(body),
             )
 
         mock_patch.assert_called_once_with(
@@ -105,7 +121,7 @@ class UpdateProjectTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload={},
+                event=_event({}),
             )
 
         mock_patch.assert_called_once_with('org', 'proj', [])
@@ -113,7 +129,7 @@ class UpdateProjectTests(helpers.TestCase):
     async def test_missing_pointer_in_body_raises(self) -> None:
         body = {'foo': 'bar'}
         config = actions.UpdateProjectConfig.model_validate_json(
-            '[{"path": "/x", "from": "/does/not/exist"}]'
+            '[{"path": "/x", "from": "/payload/does/not/exist"}]'
         )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
@@ -124,7 +140,7 @@ class UpdateProjectTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload=body,
+                event=_event(body),
             )
 
 
@@ -227,9 +243,9 @@ _RELEASE_ID = 'rel-nanoid-abc'
 
 def _create_release_config(
     raw: str = (
-        '{"title_selector": "/deployment/ref",'
-        ' "committish_expression": "substring(deployment.sha, 0, 7)",'
-        ' "version_expression": "deployment.ref"}'
+        '{"title_selector": "/payload/deployment/ref",'
+        ' "committish_expression": "substring(payload.deployment.sha, 0, 7)",'
+        ' "version_expression": "payload.deployment.ref"}'
     ),
 ) -> actions.CreateReleaseConfig:
     return actions.CreateReleaseConfig.model_validate_json(raw)
@@ -237,10 +253,10 @@ def _create_release_config(
 
 def _deployment_event_config(
     raw: str = (
-        '{"environment_selector": "/deployment_status/environment",'
-        ' "committish_expression": "substring(deployment.sha, 0, 7)",'
-        ' "version_expression": "deployment.ref",'
-        ' "status_selector": "/deployment_status/state"}'
+        '{"environment_selector": "/payload/deployment_status/environment",'
+        ' "committish_expression": "substring(payload.deployment.sha, 0, 7)",'
+        ' "version_expression": "payload.deployment.ref",'
+        ' "status_selector": "/payload/deployment_status/state"}'
     ),
 ) -> actions.AddDeploymentEventConfig:
     return actions.AddDeploymentEventConfig.model_validate_json(raw)
@@ -280,7 +296,7 @@ class CreateReleaseTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=_create_release_config(),
-                payload=_DEPLOYMENT_BODY,
+                event=_event(_DEPLOYMENT_BODY),
             )
 
         mock_create.assert_called_once()
@@ -308,7 +324,7 @@ class CreateReleaseTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=_create_release_config(),
-                payload=_DEPLOYMENT_BODY,
+                event=_event(_DEPLOYMENT_BODY),
             )
 
         body_arg = mock_create.call_args.args[2]
@@ -317,14 +333,15 @@ class CreateReleaseTests(helpers.TestCase):
     async def test_committish_expression_is_required(self) -> None:
         with self.assertRaises(pydantic.ValidationError):
             _create_release_config(
-                '{"title_selector": "/deployment/ref",'
-                ' "version_expression": "deployment.ref"}'
+                '{"title_selector": "/payload/deployment/ref",'
+                ' "version_expression": "payload.deployment.ref"}'
             )
 
     async def test_omits_tag_when_version_expression_absent(self) -> None:
         config = _create_release_config(
-            '{"title_selector": "/deployment/ref",'
-            ' "committish_expression": "substring(deployment.sha, 0, 7)"}'
+            '{"title_selector": "/payload/deployment/ref",'
+            ' "committish_expression": "substring(payload.deployment.sha,'
+            ' 0, 7)"}'
         )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
@@ -340,7 +357,7 @@ class CreateReleaseTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload=_DEPLOYMENT_BODY,
+                event=_event(_DEPLOYMENT_BODY),
             )
 
         body_arg = mock_create.call_args.args[2]
@@ -349,9 +366,10 @@ class CreateReleaseTests(helpers.TestCase):
 
     async def test_title_selector_used(self) -> None:
         config = _create_release_config(
-            '{"title_selector": "/deployment/description",'
-            ' "version_expression": "deployment.ref",'
-            ' "committish_expression": "substring(deployment.sha, 0, 7)"}'
+            '{"title_selector": "/payload/deployment/description",'
+            ' "version_expression": "payload.deployment.ref",'
+            ' "committish_expression": "substring(payload.deployment.sha,'
+            ' 0, 7)"}'
         )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
@@ -367,7 +385,7 @@ class CreateReleaseTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload=_DEPLOYMENT_BODY,
+                event=_event(_DEPLOYMENT_BODY),
             )
 
         body_arg = mock_create.call_args.args[2]
@@ -378,13 +396,13 @@ class CreateReleaseTests(helpers.TestCase):
         config = _create_release_config(
             json.dumps(
                 {
-                    'title_selector': '/deployment/ref',
-                    'committish_expression': 'deployment.sha',
+                    'title_selector': '/payload/deployment/ref',
+                    'committish_expression': 'payload.deployment.sha',
                     'version_expression': (
-                        'deployment.ref.matches('
+                        'payload.deployment.ref.matches('
                         "'^[0-9]+[.][0-9]+[.][0-9]+$'"
-                        ') ? deployment.ref'
-                        " : 'sha-' + deployment.sha"
+                        ') ? payload.deployment.ref'
+                        " : 'sha-' + payload.deployment.sha"
                     ),
                 }
             )
@@ -403,9 +421,9 @@ class CreateReleaseTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload={
-                    'deployment': {'ref': 'feature/x', 'sha': 'abcdef1234'}
-                },
+                event=_event(
+                    {'deployment': {'ref': 'feature/x', 'sha': 'abcdef1234'}}
+                ),
             )
             self.assertEqual(
                 'sha-abcdef1234', mock_create.call_args.args[2]['tag']
@@ -416,25 +434,35 @@ class CreateReleaseTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload={'deployment': {'ref': '1.2.3', 'sha': 'abcdef1234'}},
+                event=_event(
+                    {'deployment': {'ref': '1.2.3', 'sha': 'abcdef1234'}}
+                ),
             )
             self.assertEqual('1.2.3', mock_create.call_args.args[2]['tag'])
 
     async def test_substring_function_available(self) -> None:
         cfg = {
-            'title_selector': '/deployment/ref',
-            'version_expression': 'deployment.ref',
+            'title_selector': '/payload/deployment/ref',
+            'version_expression': 'payload.deployment.ref',
         }
         config = _create_release_config(
             json.dumps(
                 cfg
-                | {'committish_expression': 'substring(deployment.sha, 0, 7)'}
+                | {
+                    'committish_expression': (
+                        'substring(payload.deployment.sha, 0, 7)'
+                    )
+                }
             )
         )
         method_config = _create_release_config(
             json.dumps(
                 cfg
-                | {'committish_expression': 'deployment.sha.substring(0, 7)'}
+                | {
+                    'committish_expression': (
+                        'payload.deployment.sha.substring(0, 7)'
+                    )
+                }
             )
         )
         with (
@@ -451,9 +479,9 @@ class CreateReleaseTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload={
-                    'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}
-                },
+                event=_event(
+                    {'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}}
+                ),
             )
             self.assertEqual(
                 'abcdef1', mock_create.call_args.args[2]['committish']
@@ -464,9 +492,9 @@ class CreateReleaseTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=method_config,
-                payload={
-                    'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}
-                },
+                event=_event(
+                    {'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}}
+                ),
             )
             self.assertEqual(
                 'abcdef1', mock_create.call_args.args[2]['committish']
@@ -476,9 +504,11 @@ class CreateReleaseTests(helpers.TestCase):
         config = _create_release_config(
             json.dumps(
                 {
-                    'title_selector': '/deployment/ref',
-                    'committish_expression': 'deployment.sha.substring(8)',
-                    'version_expression': 'deployment.ref',
+                    'title_selector': '/payload/deployment/ref',
+                    'committish_expression': (
+                        'payload.deployment.sha.substring(8)'
+                    ),
+                    'version_expression': 'payload.deployment.ref',
                 }
             )
         )
@@ -496,9 +526,9 @@ class CreateReleaseTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload={
-                    'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}
-                },
+                event=_event(
+                    {'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}}
+                ),
             )
             self.assertEqual(
                 '34567890', mock_create.call_args.args[2]['committish']
@@ -508,12 +538,15 @@ class CreateReleaseTests(helpers.TestCase):
         config = _create_release_config(
             json.dumps(
                 {
-                    'title_selector': '/deployment/ref',
+                    'title_selector': '/payload/deployment/ref',
                     'version_expression': (
-                        "deployment.ref.matches('^[0-9]+[.][0-9]+[.][0-9]+$')"
-                        ' ? deployment.ref : null'
+                        'payload.deployment.ref.matches'
+                        "('^[0-9]+[.][0-9]+[.][0-9]+$')"
+                        ' ? payload.deployment.ref : null'
                     ),
-                    'committish_expression': 'substring(deployment.sha, 0, 7)',
+                    'committish_expression': (
+                        'substring(payload.deployment.sha, 0, 7)'
+                    ),
                 }
             )
         )
@@ -531,9 +564,9 @@ class CreateReleaseTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload={
-                    'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}
-                },
+                event=_event(
+                    {'deployment': {'ref': 'main', 'sha': 'abcdef1234567890'}}
+                ),
             )
 
         mock_create.assert_called_once()
@@ -545,10 +578,11 @@ class CreateReleaseTests(helpers.TestCase):
         config = _create_release_config(
             json.dumps(
                 {
-                    'title_selector': '/deployment/ref',
-                    'version_expression': 'deployment.ref',
+                    'title_selector': '/payload/deployment/ref',
+                    'version_expression': 'payload.deployment.ref',
                     'committish_expression': (
-                        "deployment.sha != '' ? deployment.sha : null"
+                        "payload.deployment.sha != ''"
+                        ' ? payload.deployment.sha : null'
                     ),
                 }
             )
@@ -568,7 +602,7 @@ class CreateReleaseTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload={'deployment': {'ref': 'v1.2.3', 'sha': ''}},
+                event=_event({'deployment': {'ref': 'v1.2.3', 'sha': ''}}),
             )
 
         mock_create.assert_not_called()
@@ -581,9 +615,10 @@ class CreateReleaseTests(helpers.TestCase):
 
     async def test_invalid_version_expression_propagates(self) -> None:
         config = _create_release_config(
-            '{"title_selector": "/deployment/ref",'
+            '{"title_selector": "/payload/deployment/ref",'
             ' "version_expression": "this is not valid CEL",'
-            ' "committish_expression": "substring(deployment.sha, 0, 7)"}'
+            ' "committish_expression": "substring(payload.deployment.sha,'
+            ' 0, 7)"}'
         )
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
@@ -594,13 +629,13 @@ class CreateReleaseTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload=_DEPLOYMENT_BODY,
+                event=_event(_DEPLOYMENT_BODY),
             )
 
     async def test_invalid_committish_expression_propagates(self) -> None:
         config = _create_release_config(
-            '{"title_selector": "/deployment/ref",'
-            ' "version_expression": "deployment.ref",'
+            '{"title_selector": "/payload/deployment/ref",'
+            ' "version_expression": "payload.deployment.ref",'
             ' "committish_expression": "this is not valid CEL"}'
         )
         with (
@@ -612,7 +647,7 @@ class CreateReleaseTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload=_DEPLOYMENT_BODY,
+                event=_event(_DEPLOYMENT_BODY),
             )
 
     async def test_409_is_treated_as_idempotent(self) -> None:
@@ -631,7 +666,7 @@ class CreateReleaseTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=_create_release_config(),
-                payload=_DEPLOYMENT_BODY,
+                event=_event(_DEPLOYMENT_BODY),
             )
 
         self.assertTrue(any('already exists' in line for line in cm.output))
@@ -654,7 +689,7 @@ class AddDeploymentEventTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=_deployment_event_config(),
-                payload=_STATUS_BODY,
+                event=_event(_STATUS_BODY),
             )
 
         mock_list.assert_called_once_with(
@@ -667,9 +702,10 @@ class AddDeploymentEventTests(helpers.TestCase):
     async def test_committish_expression_is_required(self) -> None:
         with self.assertRaises(pydantic.ValidationError):
             _deployment_event_config(
-                '{"environment_selector": "/deployment_status/environment",'
-                ' "version_expression": "deployment.ref",'
-                ' "status_selector": "/deployment_status/state"}'
+                '{"environment_selector":'
+                ' "/payload/deployment_status/environment",'
+                ' "version_expression": "payload.deployment.ref",'
+                ' "status_selector": "/payload/deployment_status/state"}'
             )
 
     async def test_lookup_uses_committish_only_when_version_absent(
@@ -678,9 +714,13 @@ class AddDeploymentEventTests(helpers.TestCase):
         config = _deployment_event_config(
             json.dumps(
                 {
-                    'environment_selector': '/deployment_status/environment',
-                    'committish_expression': 'substring(deployment.sha, 0, 7)',
-                    'status_selector': '/deployment_status/state',
+                    'environment_selector': (
+                        '/payload/deployment_status/environment'
+                    ),
+                    'committish_expression': (
+                        'substring(payload.deployment.sha, 0, 7)'
+                    ),
+                    'status_selector': '/payload/deployment_status/state',
                 }
             )
         )
@@ -699,7 +739,7 @@ class AddDeploymentEventTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload=_STATUS_BODY,
+                event=_event(_STATUS_BODY),
             )
 
         mock_list.assert_called_once_with(
@@ -713,13 +753,18 @@ class AddDeploymentEventTests(helpers.TestCase):
         config = _deployment_event_config(
             json.dumps(
                 {
-                    'environment_selector': '/deployment_status/environment',
-                    'committish_expression': 'substring(deployment.sha, 0, 7)',
-                    'version_expression': (
-                        "deployment.ref.matches('^[0-9]+[.][0-9]+[.][0-9]+$')"
-                        ' ? deployment.ref : null'
+                    'environment_selector': (
+                        '/payload/deployment_status/environment'
                     ),
-                    'status_selector': '/deployment_status/state',
+                    'committish_expression': (
+                        'substring(payload.deployment.sha, 0, 7)'
+                    ),
+                    'version_expression': (
+                        'payload.deployment.ref.matches'
+                        "('^[0-9]+[.][0-9]+[.][0-9]+$')"
+                        ' ? payload.deployment.ref : null'
+                    ),
+                    'status_selector': '/payload/deployment_status/state',
                 }
             )
         )
@@ -745,7 +790,7 @@ class AddDeploymentEventTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload=payload,
+                event=_event(payload),
             )
 
         mock_list.assert_called_once_with(
@@ -757,11 +802,14 @@ class AddDeploymentEventTests(helpers.TestCase):
         config = _deployment_event_config(
             json.dumps(
                 {
-                    'environment_selector': '/deployment_status/environment',
-                    'committish_expression': (
-                        "deployment.sha != '' ? deployment.sha : null"
+                    'environment_selector': (
+                        '/payload/deployment_status/environment'
                     ),
-                    'status_selector': '/deployment_status/state',
+                    'committish_expression': (
+                        "payload.deployment.sha != ''"
+                        ' ? payload.deployment.sha : null'
+                    ),
+                    'status_selector': '/payload/deployment_status/state',
                 }
             )
         )
@@ -787,7 +835,7 @@ class AddDeploymentEventTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload=payload,
+                event=_event(payload),
             )
 
         mock_list.assert_not_called()
@@ -815,7 +863,7 @@ class AddDeploymentEventTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=_deployment_event_config(),
-                payload=_STATUS_BODY,
+                event=_event(_STATUS_BODY),
             )
 
         mock_record.assert_not_called()
@@ -827,11 +875,15 @@ class AddDeploymentEventTests(helpers.TestCase):
         config = _deployment_event_config(
             json.dumps(
                 {
-                    'environment_selector': '/deployment_status/environment',
-                    'committish_expression': 'substring(deployment.sha, 0, 7)',
-                    'version_expression': 'deployment.ref',
-                    'status_selector': '/deployment_status/state',
-                    'note_selector': '/deployment/url',
+                    'environment_selector': (
+                        '/payload/deployment_status/environment'
+                    ),
+                    'committish_expression': (
+                        'substring(payload.deployment.sha, 0, 7)'
+                    ),
+                    'version_expression': 'payload.deployment.ref',
+                    'status_selector': '/payload/deployment_status/state',
+                    'note_selector': '/payload/deployment/url',
                 }
             )
         )
@@ -850,7 +902,7 @@ class AddDeploymentEventTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload=_STATUS_BODY,
+                event=_event(_STATUS_BODY),
             )
 
         event_body = mock_record.call_args.args[4]
@@ -882,7 +934,7 @@ class AddDeploymentEventTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=_deployment_event_config(),
-                payload=payload,
+                event=_event(payload),
             )
 
         self.assertEqual('failed', mock_record.call_args.args[4]['status'])
@@ -910,7 +962,7 @@ class AddDeploymentEventTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=_deployment_event_config(),
-                payload=payload,
+                event=_event(payload),
             )
 
         mock_list.assert_not_called()
@@ -936,7 +988,7 @@ class AddDeploymentEventTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=_deployment_event_config(),
-                payload=_STATUS_BODY,
+                event=_event(_STATUS_BODY),
             )
 
         self.assertTrue(
@@ -1233,7 +1285,7 @@ class StatusMapTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=_deployment_event_config(),
-                payload=payload,
+                event=_event(payload),
             )
         return str(mock_record.call_args.args[4]['status'])
 
@@ -1276,17 +1328,18 @@ class IngestSbomConfigTests(helpers.TestCase):
 
     def test_minimal_config(self) -> None:
         config = actions.IngestSbomConfig.model_validate_json(
-            '{"version_expression": "version"}'
+            '{"version_expression": "payload.version"}'
         )
-        self.assertEqual(config.version_expression, 'version')
-        # Empty pointer defaults to the entire payload.
-        self.assertEqual(str(config.sbom_selector), '')
+        self.assertEqual(config.version_expression, 'payload.version')
+        # Empty pointer defaults to the entire event payload.
+        self.assertEqual(str(config.sbom_selector), '/payload')
 
     def test_sbom_selector_pointer(self) -> None:
         config = actions.IngestSbomConfig.model_validate_json(
-            '{"version_expression": "version", "sbom_selector": "/sbom"}'
+            '{"version_expression": "payload.version",'
+            ' "sbom_selector": "/payload/sbom"}'
         )
-        self.assertEqual(str(config.sbom_selector), '/sbom')
+        self.assertEqual(str(config.sbom_selector), '/payload/sbom')
 
     def test_missing_required_version_expression(self) -> None:
         with self.assertRaises(pydantic.ValidationError):
@@ -1296,11 +1349,13 @@ class IngestSbomConfigTests(helpers.TestCase):
 class IngestSbomTests(helpers.TestCase):
     """Behavior of ``actions.ingest_sbom`` end-to-end (mocking the API)."""
 
-    def _config(self, sbom_pointer: str = '/sbom') -> actions.IngestSbomConfig:
+    def _config(
+        self, sbom_pointer: str = '/payload/sbom'
+    ) -> actions.IngestSbomConfig:
         return actions.IngestSbomConfig.model_validate_json(
             json.dumps(
                 {
-                    'version_expression': 'version',
+                    'version_expression': 'payload.version',
                     'sbom_selector': sbom_pointer,
                 }
             )
@@ -1328,7 +1383,7 @@ class IngestSbomTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=self._config(),
-                payload=envelope,
+                event=_event(envelope),
             )
 
         mock_list.assert_awaited_once_with('myorg', 'proj-1', tag='2.0.0')
@@ -1357,7 +1412,7 @@ class IngestSbomTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=self._config(),
-                payload=envelope,
+                event=_event(envelope),
             )
 
         mock_list.assert_awaited_once()
@@ -1390,7 +1445,7 @@ class IngestSbomTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=self._config(),
-                payload=envelope,
+                event=_event(envelope),
             )
         mock_list.assert_awaited_once()
         mock_put.assert_awaited_once()
@@ -1415,7 +1470,7 @@ class IngestSbomTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=self._config(),
-                payload=envelope,
+                event=_event(envelope),
             )
 
         mock_list.assert_not_awaited()
@@ -1444,7 +1499,7 @@ class IngestSbomTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=self._config(),
-                payload=envelope,
+                event=_event(envelope),
             )
 
         mock_list.assert_not_awaited()
@@ -1471,9 +1526,10 @@ class IngestSbomTests(helpers.TestCase):
             json.dumps(
                 {
                     'version_expression': (
-                        'ref_name == "main" ? substring(sha, 0, 7) : ref_name'
+                        'payload.ref_name == "main"'
+                        ' ? substring(payload.sha, 0, 7) : payload.ref_name'
                     ),
-                    'sbom_selector': '/sbom',
+                    'sbom_selector': '/payload/sbom',
                 }
             )
         )
@@ -1497,7 +1553,7 @@ class IngestSbomTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload=envelope,
+                event=_event(envelope),
             )
 
         mock_list.assert_awaited_once_with('org', 'proj', tag='deadbee')
@@ -1521,9 +1577,10 @@ class IngestSbomTests(helpers.TestCase):
             json.dumps(
                 {
                     'version_expression': (
-                        'ref_name == "main" ? substring(sha, 0, 7) : ref_name'
+                        'payload.ref_name == "main"'
+                        ' ? substring(payload.sha, 0, 7) : payload.ref_name'
                     ),
-                    'sbom_selector': '/sbom',
+                    'sbom_selector': '/payload/sbom',
                 }
             )
         )
@@ -1547,7 +1604,7 @@ class IngestSbomTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload=envelope,
+                event=_event(envelope),
             )
 
         mock_list.assert_awaited_once_with('org', 'proj', tag='release/2.0.x')
@@ -1559,7 +1616,10 @@ class IngestSbomTests(helpers.TestCase):
         envelope = {'ref_name': None, 'sbom': {'specVersion': '1.7'}}
         config = actions.IngestSbomConfig.model_validate_json(
             json.dumps(
-                {'version_expression': 'ref_name', 'sbom_selector': '/sbom'}
+                {
+                    'version_expression': 'payload.ref_name',
+                    'sbom_selector': '/payload/sbom',
+                }
             )
         )
         with (
@@ -1580,7 +1640,7 @@ class IngestSbomTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=config,
-                payload=envelope,
+                event=_event(envelope),
             )
 
         mock_list.assert_not_awaited()
@@ -1594,9 +1654,9 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
         self, *, title_selector: str | None = None
     ) -> actions.IngestSbomConfig:
         config: dict[str, str] = {
-            'version_expression': 'version',
-            'sbom_selector': '/sbom',
-            'committish_expression': 'committish',
+            'version_expression': 'payload.version',
+            'sbom_selector': '/payload/sbom',
+            'committish_expression': 'payload.committish',
         }
         if title_selector is not None:
             config['title_selector'] = title_selector
@@ -1644,7 +1704,7 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=self._config(),
-                payload=envelope,
+                event=_event(envelope),
             )
 
         mock_list.assert_awaited_once_with('myorg', 'proj-1', tag='1.2.3')
@@ -1694,7 +1754,7 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=self._config(),
-                payload=envelope,
+                event=_event(envelope),
             )
 
         body = mock_create.call_args.args[2]
@@ -1727,8 +1787,8 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
                 ctx=_ctx(),
                 credentials={},
                 external_identifier='',
-                action_config=self._config(title_selector='/title'),
-                payload=envelope,
+                action_config=self._config(title_selector='/payload/title'),
+                event=_event(envelope),
             )
 
         self.assertEqual(
@@ -1765,7 +1825,7 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=self._config(),
-                payload=envelope,
+                event=_event(envelope),
             )
 
         mock_create.assert_not_awaited()
@@ -1804,7 +1864,7 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=self._config(),
-                payload=envelope,
+                event=_event(envelope),
             )
 
         mock_create.assert_not_awaited()
@@ -1842,7 +1902,7 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=self._config(),
-                payload=envelope,
+                event=_event(envelope),
             )
 
         mock_put.assert_awaited_once_with(
@@ -1876,7 +1936,7 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
                 credentials={},
                 external_identifier='',
                 action_config=self._config(),
-                payload=envelope,
+                event=_event(envelope),
             )
 
         mock_put.assert_not_awaited()

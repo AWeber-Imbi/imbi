@@ -35,7 +35,7 @@ async def stub_action(
     credentials: dict[str, str],
     external_identifier: str,
     action_config: 'StubActionConfig',
-    payload: object,
+    event: object,
 ) -> None:
     ACTION_CALLS.append(
         {
@@ -43,7 +43,7 @@ async def stub_action(
             'credentials': credentials,
             'external_identifier': external_identifier,
             'action_config': action_config,
-            'payload': payload,
+            'event': event,
         }
     )
 
@@ -54,9 +54,9 @@ async def raising_action(
     credentials: dict[str, str],
     external_identifier: str,
     action_config: 'StubActionConfig',
-    payload: object,
+    event: object,
 ) -> None:
-    del ctx, credentials, external_identifier, action_config, payload
+    del ctx, credentials, external_identifier, action_config, event
     raise RuntimeError('test error')
 
 
@@ -602,7 +602,8 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual(self.org_slug, ctx.org_slug)
         self.assertEqual(self.proj_id, ctx.project_id)
         self.assertEqual(f'proj-{self.proj_id[:8]}', ctx.project_slug)
-        self.assertEqual(body, call['payload'])
+        event = typing.cast('dict[str, typing.Any]', call['event'])
+        self.assertEqual(body, event['payload'])
         self.assertEqual({}, call['credentials'])
         self.assertEqual(self.ext_id, call['external_identifier'])
         self.assertIsNone(ctx.actor_user_id)

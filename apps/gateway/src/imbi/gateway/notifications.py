@@ -335,7 +335,7 @@ async def process_notification(
                 else None
             ),
             external_identifier=str(resolved),
-            payload=body,
+            event=context,
             user_id=user_id,
             rules=matched_rules,
             plugins_by_slug=plugins_by_slug,
@@ -532,7 +532,7 @@ async def _run_handlers(  # noqa: PLR0913
     service_slug: str,
     service_endpoint: str | None,
     external_identifier: str,
-    payload: object,
+    event: dict[str, typing.Any],
     user_id: str | None,
     rules: 'abc.Iterable[WebhookRule]',
     plugins_by_slug: dict[str, dict[str, str]],
@@ -599,7 +599,7 @@ async def _run_handlers(  # noqa: PLR0913
                 credentials=credentials,
                 external_identifier=external_identifier,
                 action_config=config,
-                payload=payload,
+                event=event,
             )
         except Exception:
             LOGGER.exception(

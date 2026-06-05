@@ -40,7 +40,10 @@ class UpdateProjectRule(pydantic.BaseModel):
         json_pointer.JsonPointer,
         pydantic.Field(
             alias='from',
-            description='JSON Pointer on the webhook payload to read.',
+            description=(
+                'JSON Pointer on the event context to read; the webhook '
+                'body is under "/payload" (e.g. "/payload/repo/name").'
+            ),
         ),
     ]
 
@@ -242,39 +245,43 @@ class IngestSbomConfig(pydantic.BaseModel):
     ``version_expression`` is a CEL expression that resolves the
     release-identity string the SBoM applies to (typically the
     project's tag, or a SHA-derived alias for branch builds — e.g.
-    ``ref_name == "main" ? substring(sha, 0, 7) : ref_name``). It is
-    an expression rather than a JSON pointer because the producer
-    typically emits raw ``github.ref_name`` / ``github.sha`` style
-    fields and the choice of which to use as the release identity
-    is workflow-conditional. Symmetric with
+    ``payload.ref_name == "main" ? substring(payload.sha, 0, 7) :
+    payload.ref_name``). It is an expression rather than a JSON pointer
+    because the producer typically emits raw ``github.ref_name`` /
+    ``github.sha`` style fields and the choice of which to use as the
+    release identity is workflow-conditional. Symmetric with
     :class:`CreateReleaseConfig` and
     :class:`AddDeploymentEventConfig`.
 
     ``sbom_selector`` points at the CycloneDX document itself;
-    defaults to the top of the payload so a build job that posts
-    the SBoM verbatim without an envelope still works.
+    defaults to ``/payload`` (the whole webhook body) so a build job
+    that posts the SBoM verbatim without an envelope still works.
 
     ``committish_expression`` opts the handler into auto-creating
     the release on the first SBoM. When set, the resolved value is
     lowercased and truncated to the first 7 hex characters before
     being sent to the API. Producers commonly post a full
     ``github.sha`` and let the CEL pass it through unchanged
-    (``"sha"`` is a valid expression). When unset, missing releases
-    are logged and skipped.
+    (``"payload.sha"`` is a valid expression). When unset, missing
+    releases are logged and skipped.
 
     ``title_selector`` is an optional JSON pointer at the release
     title used when auto-creating; defaults to ``"Release <version>"``
     when omitted or the pointer does not resolve. Stays a pointer
     (not an expression) for symmetry with :class:`CreateReleaseConfig`,
-    where the title is always a static field on the payload.
+    where the title is always a static field on the body.
+
+    All JSON-Pointer selectors resolve against the event context, so
+    the webhook body lives under ``/payload`` (e.g. ``/payload/...``);
+    CEL expressions read ``payload.<field>``.
     """
 
     version_expression: str
     sbom_selector: json_pointer.JsonPointer = pydantic.Field(
-        default_factory=lambda: jsonpointer.JsonPointer(''),
+        default_factory=lambda: jsonpointer.JsonPointer('/payload'),
         description=(
-            'JSON Pointer at the CycloneDX document inside the webhook '
-            'payload. Defaults to "" (the entire payload).'
+            'JSON Pointer at the CycloneDX document inside the event '
+            'context. Defaults to "/payload" (the entire webhook body).'
         ),
     )
     committish_expression: str | None = pydantic.Field(
@@ -326,10 +333,10 @@ def _cel_substring(
 _CEL_FUNCTIONS: dict[str, celpy.CELFunction] = {'substring': _cel_substring}
 
 
-def _evaluate_cel(expression: str, body: object) -> str | None:
+def _evaluate_cel(expression: str, event: object) -> str | None:
     env = celpy.Environment()
     program = env.program(env.compile(expression), functions=_CEL_FUNCTIONS)
-    result = program.evaluate(celpy.json_to_cel(body))
+    result = program.evaluate(celpy.json_to_cel(event))
     if result is None:
         return None
     return str(result)
@@ -341,14 +348,15 @@ async def update_project(
     credentials: dict[str, str],
     external_identifier: str,
     action_config: UpdateProjectConfig,
-    payload: object,
+    event: object,
 ) -> None:
-    """Patch the matched Imbi project with values pulled from the payload.
+    """Patch the matched Imbi project with values pulled from the event.
 
     Patch attribution is the gateway's service token, so
     ``ctx.actor_user_id`` and ``credentials`` are unused here.
     ``action_config`` arrives pre-validated as
-    :class:`UpdateProjectConfig`.
+    :class:`UpdateProjectConfig`; its ``from`` pointers resolve against
+    the event context, so the webhook body is under ``/payload``.
     """
     del credentials, external_identifier
     LOGGER.info('Updating project /%s/%s', ctx.org_slug, ctx.project_id)
@@ -357,7 +365,7 @@ async def update_project(
         {
             'op': 'add',
             'path': str(update.path),
-            'value': update.from_.resolve(payload),
+            'value': update.from_.resolve(event),
         }
         for update in action_config.root
     ]
@@ -371,24 +379,26 @@ async def create_release(
     credentials: dict[str, str],
     external_identifier: str,
     action_config: CreateReleaseConfig,
-    payload: object,
+    event: object,
 ) -> None:
     """Processes a deployment notification and ensures the release exists.
 
     The committish is the result of evaluating the CEL
-    ``committish_expression`` (typically ``substring(deployment.sha,
-    0, 7)``) and is required; when it evaluates to null the action is
-    skipped because the Imbi API requires the short SHA. The tag is the
-    result of evaluating the CEL ``version_expression`` (optional);
-    when omitted or evaluated to null the tag is left off the release.
-    The title is taken from the JSONPointer ``title_selector``.
-    ``ctx.actor_user_id`` (the resolved Imbi user's email) is passed
-    as ``created_by`` when present; otherwise the API defaults to the
-    gateway's service principal. ``action_config`` arrives pre-validated.
+    ``committish_expression`` (typically
+    ``substring(payload.deployment.sha, 0, 7)``) and is required; when
+    it evaluates to null the action is skipped because the Imbi API
+    requires the short SHA. The tag is the result of evaluating the CEL
+    ``version_expression`` (optional); when omitted or evaluated to null
+    the tag is left off the release. The title is taken from the
+    JSONPointer ``title_selector`` (resolved against the event, so the
+    body is under ``/payload``). ``ctx.actor_user_id`` (the resolved
+    Imbi user's email) is passed as ``created_by`` when present;
+    otherwise the API defaults to the gateway's service principal.
+    ``action_config`` arrives pre-validated.
     """
     del credentials, external_identifier
     committish_value = _evaluate_cel(
-        action_config.committish_expression, payload
+        action_config.committish_expression, event
     )
     if committish_value is None:
         LOGGER.warning(
@@ -399,13 +409,11 @@ async def create_release(
         return
     create_body: dict[str, object] = {
         'committish': committish_value,
-        'title': str(action_config.title_selector.resolve(payload)),
+        'title': str(action_config.title_selector.resolve(event)),
     }
     version_value: str | None = None
     if action_config.version_expression is not None:
-        version_value = _evaluate_cel(
-            action_config.version_expression, payload
-        )
+        version_value = _evaluate_cel(action_config.version_expression, event)
         if version_value is not None:
             create_body['tag'] = version_value
     if ctx.actor_user_id is not None:
@@ -428,7 +436,7 @@ async def add_deployment_event(
     credentials: dict[str, str],
     external_identifier: str,
     action_config: AddDeploymentEventConfig,
-    payload: object,
+    event: object,
 ) -> None:
     """Processes a deployment_status notification.
 
@@ -437,16 +445,18 @@ async def add_deployment_event(
     ``list_releases`` endpoint filtered by ``committish`` (required) and
     optionally ``tag``; the first matching release's nano-id is used to
     target the deployment endpoint. ``record_deployment`` has no
-    ``created_by`` field so ``ctx.actor_user_id`` is unused here.
+    ``created_by`` field so ``ctx.actor_user_id`` is unused here. All
+    selectors resolve against the event context (body under ``/payload``)
+    and CEL expressions read ``payload.<field>``.
     """
     del credentials, external_identifier
-    raw_state = str(action_config.status_selector.resolve(payload))
+    raw_state = str(action_config.status_selector.resolve(event))
     status = _STATUS_MAP.get(raw_state)
     if status is None:
         LOGGER.warning('Unmapped deployment status %r — skipping', raw_state)
         return
     committish_value = _evaluate_cel(
-        action_config.committish_expression, payload
+        action_config.committish_expression, event
     )
     if committish_value is None:
         LOGGER.warning(
@@ -457,14 +467,14 @@ async def add_deployment_event(
         return
     tag_value: str | None = None
     if action_config.version_expression is not None:
-        tag_value = _evaluate_cel(action_config.version_expression, payload)
-    environment = str(action_config.environment_selector.resolve(payload))
+        tag_value = _evaluate_cel(action_config.version_expression, event)
+    environment = str(action_config.environment_selector.resolve(event))
     event_body: dict[str, object] = {'status': status}
     if action_config.note_selector is not None:
-        event_body['note'] = str(action_config.note_selector.resolve(payload))
+        event_body['note'] = str(action_config.note_selector.resolve(event))
     if action_config.external_run_id_selector is not None:
         event_body['external_run_id'] = str(
-            action_config.external_run_id_selector.resolve(payload)
+            action_config.external_run_id_selector.resolve(event)
         )
     async with ImbiClient() as client:
         releases = await client.list_releases(
@@ -502,15 +512,15 @@ async def ingest_sbom(
     credentials: dict[str, str],
     external_identifier: str,
     action_config: IngestSbomConfig,
-    payload: object,
+    event: object,
 ) -> None:
     """Forward a CycloneDX 1.7 SBoM to the Imbi API for the matched release.
 
-    Resolves the release-identity string from the payload via
+    Resolves the release-identity string from the event via
     ``version_expression`` (CEL — typically conditional on
-    ``ref_name``/``sha``) and looks the release up by tag. The Imbi
-    API is the source of truth for release identity. When no
-    release matches *and* ``committish_expression`` is configured,
+    ``payload.ref_name``/``payload.sha``) and looks the release up by
+    tag. The Imbi API is the source of truth for release identity. When
+    no release matches *and* ``committish_expression`` is configured,
     the release is auto-created from the resolved committish + tag
     (+ optional title) before the SBoM is PUT. When
     ``committish_expression`` is unset, missing releases drop the
@@ -519,7 +529,7 @@ async def ingest_sbom(
     """
     del credentials, external_identifier
     try:
-        tag_value = _evaluate_cel(action_config.version_expression, payload)
+        tag_value = _evaluate_cel(action_config.version_expression, event)
     except celpy.CELEvalError as exc:
         LOGGER.warning(
             'version_expression %r raised %s for project %s; SBoM dropped',
@@ -537,7 +547,7 @@ async def ingest_sbom(
         )
         return
     try:
-        sbom_document = action_config.sbom_selector.resolve(payload)
+        sbom_document = action_config.sbom_selector.resolve(event)
     except jsonpointer.JsonPointerException:
         LOGGER.warning(
             'SBoM selector %r did not resolve for project %s; SBoM dropped',
@@ -554,7 +564,7 @@ async def ingest_sbom(
         return
     async with ImbiClient() as client:
         release_id = await _resolve_release_for_sbom(
-            client, ctx, action_config, payload, tag_value
+            client, ctx, action_config, event, tag_value
         )
         if release_id is None:
             return
@@ -570,7 +580,7 @@ async def _resolve_release_for_sbom(
     client: ImbiClient,
     ctx: 'plugin_base.PluginContext',
     action_config: IngestSbomConfig,
-    payload: object,
+    event: object,
     tag_value: str,
 ) -> str | None:
     """Return the release id for the SBoM, creating one if configured.
@@ -585,7 +595,7 @@ async def _resolve_release_for_sbom(
         return str(releases[0]['id'])
 
     create_body = _build_release_create_body(
-        action_config, payload, ctx, tag_value
+        action_config, event, ctx, tag_value
     )
     if create_body is None:
         return None
@@ -594,7 +604,7 @@ async def _resolve_release_for_sbom(
 
 def _build_release_create_body(
     action_config: IngestSbomConfig,
-    payload: object,
+    event: object,
     ctx: 'plugin_base.PluginContext',
     tag_value: str,
 ) -> dict[str, object] | None:
@@ -614,7 +624,7 @@ def _build_release_create_body(
         return None
 
     committish = _resolve_committish(
-        action_config.committish_expression, payload
+        action_config.committish_expression, event
     )
     if committish is None:
         LOGGER.warning(
@@ -625,7 +635,7 @@ def _build_release_create_body(
         )
         return None
 
-    title = _resolve_title(action_config.title_selector, payload, tag_value)
+    title = _resolve_title(action_config.title_selector, event, tag_value)
     body: dict[str, object] = {
         'committish': committish,
         'title': title,
@@ -669,25 +679,25 @@ async def _create_release_for_sbom(
     return str(response.json()['id'])
 
 
-def _resolve_committish(expression: str, payload: object) -> str | None:
+def _resolve_committish(expression: str, event: object) -> str | None:
     """Evaluate the committish CEL expression, normalize, validate.
 
     Trims to the first 7 lowercase hex chars to match the API's
     ``Release.committish`` regex (``^[0-9a-f]{7}$``). Returns
     ``None`` when the expression evaluates to null, raises a
     ``CELEvalError`` (e.g. a referenced field is missing from the
-    payload), or yields an empty string. The auto-create branch
-    is intentionally forgiving — a config-vs-payload mismatch on
+    event), or yields an empty string. The auto-create branch
+    is intentionally forgiving — a config-vs-event mismatch on
     the optional ``committish_expression`` drops the SBoM with a
     warning rather than 500ing the webhook.
 
-    The expression is typically the bare field reference ``"sha"``
-    (producers post the full ``github.sha`` and let the 7-char
-    truncation here handle the API contract), but it can be
+    The expression is typically the bare field reference
+    ``"payload.sha"`` (producers post the full ``github.sha`` and let
+    the 7-char truncation here handle the API contract), but it can be
     conditional CEL just like ``version_expression``.
     """
     try:
-        resolved = _evaluate_cel(expression, payload)
+        resolved = _evaluate_cel(expression, event)
     except celpy.CELEvalError:
         return None
     if resolved is None:
@@ -699,12 +709,12 @@ def _resolve_committish(expression: str, payload: object) -> str | None:
 
 
 def _resolve_title(
-    selector: json_pointer.JsonPointer | None, payload: object, tag_value: str
+    selector: json_pointer.JsonPointer | None, event: object, tag_value: str
 ) -> str:
     """Resolve the optional title selector with a sensible default."""
     if selector is not None:
         try:
-            resolved = selector.resolve(payload)
+            resolved = selector.resolve(event)
         except jsonpointer.JsonPointerException:
             resolved = None
         if resolved is not None:
