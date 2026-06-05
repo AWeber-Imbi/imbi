@@ -427,9 +427,9 @@ class LoadPluginsLifecycleTestCase(unittest.TestCase):
 
 
 async def _sample_webhook_action(
-    *, ctx, credentials, external_identifier, action_config, payload
+    *, ctx, credentials, external_identifier, action_config, event
 ):
-    _ = (ctx, credentials, external_identifier, action_config, payload)
+    _ = (ctx, credentials, external_identifier, action_config, event)
 
 
 class _SampleWebhookConfig(pydantic.BaseModel):

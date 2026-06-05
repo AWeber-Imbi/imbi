@@ -863,9 +863,9 @@ async def _sample_action(
     credentials,
     external_identifier,
     action_config,
-    payload,
+    event,
 ):
-    _ = (ctx, credentials, external_identifier, action_config, payload)
+    _ = (ctx, credentials, external_identifier, action_config, event)
 
 
 class _SampleActionConfig(pydantic.BaseModel):

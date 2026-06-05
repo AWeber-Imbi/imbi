@@ -78,7 +78,7 @@ async def update_project_from_webhook(
     credentials: dict[str, str],
     external_identifier: str,
     action_config: UpdateConfig,
-    payload: object,
+    event: object,
 ) -> None:
     ...
 ```
@@ -102,9 +102,16 @@ The host invokes the action callable with keyword-only arguments:
   `config_model`, never a raw JSON string. Operators set the underlying
   `handler_config` on the rule; the host validates and constructs the
   model before dispatching.
-- **`payload`** — the raw inbound webhook body, forwarded verbatim for
-  the cases that need it (most plugins rely on `ctx` and
-  `external_identifier` instead).
+- **`event`** — the event context for the delivery, mirroring the
+  project-independent fields of the `Event` row the host records:
+  `type` (resolved event type, e.g. a GitHub `X-GitHub-Event`),
+  `third_party_service` (service slug), `attributed_to` (resolved Imbi
+  user, `''` when unattributed), `metadata.headers` (request headers,
+  keys lower-cased and sensitive values redacted), and `payload` (the
+  raw webhook body). `config_model` JSON-Pointer selectors resolve
+  against this object, so the body lives under `/payload`; CEL
+  expressions read `payload.<field>` (plus `type`, `metadata`, …). Most
+  plugins rely on `ctx` and `external_identifier` instead.
 
 ## Rules of thumb
 

@@ -1173,7 +1173,23 @@ class LifecyclePlugin(abc.ABC):
 #: as an empty string when not in play), ``action_config`` (a
 #: **pre-validated** instance of the action's
 #: :attr:`ActionDescriptor.config_model`, never a raw JSON string), and
-#: ``payload`` (the raw webhook body).
+#: ``event`` (the event context).
+#:
+#: ``event`` mirrors the project-independent fields of the
+#: :class:`~imbi_common.models.Event` row the host records for the
+#: delivery, so an action reads the same data a ``WebhookRule`` filter
+#: matches on:
+#:
+#: - ``type`` -- resolved event type (e.g. a GitHub ``X-GitHub-Event``)
+#: - ``third_party_service`` -- service slug
+#: - ``attributed_to`` -- resolved Imbi user (``''`` when unattributed)
+#: - ``metadata.headers`` -- request headers, keys lower-cased and
+#:   sensitive values redacted
+#: - ``payload`` -- the raw webhook body
+#:
+#: ``config_model`` JSON-Pointer selectors therefore resolve against the
+#: event (the body lives under ``/payload``), and CEL expressions read
+#: ``payload.<field>`` (plus ``type`` / ``metadata`` / etc.).
 WebhookActionCallable = collections.abc.Callable[
     ...,
     collections.abc.Awaitable[None],
