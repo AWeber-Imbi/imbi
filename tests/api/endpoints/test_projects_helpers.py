@@ -2,7 +2,7 @@
 
 Covers the private helpers added in the release-committish work:
 ``_fetch_pr_counts``, ``_resolve_display_names``,
-``_fetch_current_releases`` and ``_lookup_ops_log_performed_by``.
+``_fetch_current_releases`` and ``lookup_ops_log_performed_by``.
 """
 
 import datetime
@@ -298,13 +298,13 @@ class FetchCurrentReleasesTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class LookupOpsLogPerformedByTestCase(unittest.IsolatedAsyncioTestCase):
-    """Coverage for ``_lookup_ops_log_performed_by``."""
+    """Coverage for ``lookup_ops_log_performed_by``."""
 
     async def test_empty_targets_short_circuits(self) -> None:
         with mock.patch(
             'imbi_api.endpoints.projects.ch_client.Clickhouse.get_instance'
         ) as gi:
-            result = await projects._lookup_ops_log_performed_by([])
+            result = await projects.lookup_ops_log_performed_by([])
         self.assertEqual(result, {})
         gi.assert_not_called()
 
@@ -331,7 +331,7 @@ class LookupOpsLogPerformedByTestCase(unittest.IsolatedAsyncioTestCase):
             'imbi_api.endpoints.projects.ch_client.Clickhouse.get_instance',
             return_value=ch,
         ):
-            result = await projects._lookup_ops_log_performed_by(
+            result = await projects.lookup_ops_log_performed_by(
                 [('p1', 'prod', '1.0.0')]
             )
         self.assertEqual(
@@ -345,7 +345,7 @@ class LookupOpsLogPerformedByTestCase(unittest.IsolatedAsyncioTestCase):
             'imbi_api.endpoints.projects.ch_client.Clickhouse.get_instance',
             return_value=ch,
         ):
-            result = await projects._lookup_ops_log_performed_by(
+            result = await projects.lookup_ops_log_performed_by(
                 [('p1', 'prod', '1.0.0')]
             )
         self.assertEqual(result, {})

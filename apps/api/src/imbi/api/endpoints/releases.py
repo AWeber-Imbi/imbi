@@ -27,6 +27,7 @@ from imbi_api import sbom
 from imbi_api.auth import permissions
 from imbi_api.endpoints._helpers import fetch_or_404
 from imbi_api.endpoints.operations_log import complete_opslog_entry
+from imbi_api.endpoints.projects import lookup_ops_log_performed_by
 from imbi_api.plugins import call_with_timeout
 from imbi_api.scoring import OptionalValkeyClient
 from imbi_api.scoring import queue as score_queue
@@ -165,6 +166,10 @@ class CurrentReleaseEnvironment(pydantic.BaseModel):
     last_event_at: datetime.datetime | None = None
     external_run_url: str | None = None
     ci_status: CheckStatus | None = None
+    #: Deployer of the latest event when observed from a remote (e.g. the
+    #: GitHub ``deployment.creator.login``). ``None`` for in-product deploys,
+    #: where the operator is captured in the operations log instead.
+    performed_by: str | None = None
 
 
 # -- Helpers ------------------------------------------------------------
@@ -713,6 +718,22 @@ async def list_current_releases(
         db, org_slug, project_id, auth, by_env
     )
 
+    # Backfill performed_by from operations_log for events whose AGE edge
+    # left it null (in-product deploy/promote path), mirroring the
+    # project-detail current-releases view so both agree.
+    enrich_targets: list[tuple[str, str, str]] = []
+    for env, release_raw, event in by_env.values():
+        if event is None or event.performed_by is not None:
+            continue
+        if release_raw is None:
+            continue
+        version = str(
+            release_raw.get('tag') or release_raw.get('committish') or ''
+        )
+        if version:
+            enrich_targets.append((project_id, env['slug'], version))
+    performed_by_by_key = await lookup_ops_log_performed_by(enrich_targets)
+
     sortable: list[tuple[int, str, CurrentReleaseEnvironment]] = []
     for env, release_raw, event in by_env.values():
         release_resp = (
@@ -720,6 +741,18 @@ async def list_current_releases(
             if release_raw is not None
             else None
         )
+        performed_by = event.performed_by if event else None
+        if (
+            performed_by is None
+            and event is not None
+            and release_raw is not None
+        ):
+            version = str(
+                release_raw.get('tag') or release_raw.get('committish') or ''
+            )
+            performed_by = performed_by_by_key.get(
+                (project_id, env['slug'], version)
+            )
         item = CurrentReleaseEnvironment(
             environment=ReleaseEnvironmentRef(
                 slug=env['slug'], name=env['name']
@@ -729,6 +762,7 @@ async def list_current_releases(
             last_event_at=event.timestamp if event else None,
             external_run_url=event.external_run_url if event else None,
             ci_status=ci_status_by_slug.get(env['slug']),
+            performed_by=performed_by,
         )
         sortable.append((env.get('sort_order') or 0, env['name'], item))
 

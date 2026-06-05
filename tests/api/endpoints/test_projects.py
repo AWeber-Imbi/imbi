@@ -675,8 +675,15 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         self.assertEqual(response.status_code, 200)
 
-    def test_patch_project_environments_uses_merge(self) -> None:
-        """Env edges use MERGE so retries cannot duplicate them."""
+    def test_patch_project_environments_uses_inline_create(self) -> None:
+        """Env edges are re-created with inline props (not SET r = {map}).
+
+        Some Apache AGE builds silently no-op a full-property
+        ``SET r = {map}`` on a relationship, dropping every edge
+        attribute. The update path deletes the old DEPLOYED_IN edges
+        and re-creates them with inline properties, matching the
+        create path, so edge attributes persist reliably.
+        """
         existing = self._project_data(
             environments=[
                 {
@@ -719,8 +726,9 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
             for call in self.mock_db.execute.call_args_list
             if 'old_env:DEPLOYED_IN' in call.args[0]
         )
-        self.assertIn('MERGE (p)-[r:DEPLOYED_IN]->(e)', update_query)
-        self.assertNotIn('CREATE (p)-[:DEPLOYED_IN', update_query)
+        self.assertIn('CREATE (p)-[:DEPLOYED_IN', update_query)
+        self.assertNotIn('MERGE (p)-[r:DEPLOYED_IN]->(e)', update_query)
+        self.assertNotIn('SET r =', update_query)
 
     def test_patch_project_team_change(self) -> None:
         """Patch a project to change its team."""
