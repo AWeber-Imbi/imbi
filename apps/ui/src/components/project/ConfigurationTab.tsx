@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { Link } from 'react-router-dom'
+
 import {
   useMutation,
   useQueries,
@@ -774,9 +776,9 @@ function ConfigLoadError({ error }: { error: unknown }) {
     error.status === 401 &&
     typeof detail === 'object' &&
     detail?.error === 'identity_required'
-  const startUrl =
+  const pluginId =
     isIdentityRequired && typeof detail === 'object'
-      ? detail.start_url
+      ? detail.plugin_id
       : undefined
 
   if (isIdentityRequired) {
@@ -787,16 +789,16 @@ function ConfigLoadError({ error }: { error: unknown }) {
           The configuration plugin needs an authenticated identity for your
           user.
         </div>
-        {startUrl && (
-          <a
-            className="text-amber-text inline-flex items-center text-xs font-medium hover:underline"
-            href={startUrl}
-            rel="noreferrer"
-            target="_blank"
-          >
-            Connect now →
-          </a>
-        )}
+        <Link
+          className="text-amber-text inline-flex items-center text-xs font-medium hover:underline"
+          to={
+            pluginId
+              ? `/settings/connections?connect=${encodeURIComponent(pluginId)}`
+              : '/settings/connections'
+          }
+        >
+          Connect now →
+        </Link>
       </div>
     )
   }
