@@ -24,6 +24,7 @@ import { matchSorter } from 'match-sorter'
 import { getProjectsSlim, type ProjectListItem } from '@/api/endpoints'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useTheme } from '@/contexts/ThemeContext'
+import { useAuth } from '@/hooks/useAuth'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useSearchShortcut } from '@/hooks/useSearchShortcut'
 import { deriveChipColors } from '@/lib/chip-colors'
@@ -99,7 +100,21 @@ export function ProjectsView() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { selectedOrganization } = useOrganization()
+  const { user } = useAuth()
   const orgSlug = selectedOrganization?.slug || ''
+
+  // Team slugs the current user belongs to, scoped to the selected org.
+  // Sourced from GET /users/me so the "My Teams" toggle can filter
+  // client-side with no extra request, mirroring "My PRs".
+  const myTeamSlugs = useMemo(
+    () =>
+      new Set(
+        (user?.teams ?? [])
+          .filter((t) => t.organization_slug === orgSlug)
+          .map((t) => t.team_slug),
+      ),
+    [user, orgSlug],
+  )
 
   const [storedView] = useState(() =>
     typeof window === 'undefined'
@@ -132,6 +147,7 @@ export function ProjectsView() {
   const hasDrift = searchParams.get('has_drift') === '1'
   const hasOpenPRs = searchParams.get('has_open_prs') === '1'
   const hasMyOpenPRs = searchParams.get('has_my_open_prs') === '1'
+  const hasMyTeams = searchParams.get('has_my_teams') === '1'
 
   const setViewMode = (v: 'grid' | 'list') => {
     if (typeof window !== 'undefined') {
@@ -190,6 +206,7 @@ export function ProjectsView() {
   const toggleDrift = toggleBoolParam('has_drift')
   const toggleOpenPRs = toggleBoolParam('has_open_prs')
   const toggleMyOpenPRs = toggleBoolParam('has_my_open_prs')
+  const toggleMyTeams = toggleBoolParam('has_my_teams')
 
   const toggleFilter = (param: string, slug: string) =>
     setSearchParams(
@@ -278,6 +295,9 @@ export function ProjectsView() {
     if (hasMyOpenPRs) {
       all = all.filter((p) => (p.viewer_open_pr_count ?? 0) > 0)
     }
+    if (hasMyTeams) {
+      all = all.filter((p) => myTeamSlugs.has(p.team.slug))
+    }
     if (hasDrift) {
       all = all.filter((p) => driftedProjectIds.has(p.id))
     }
@@ -325,6 +345,8 @@ export function ProjectsView() {
     hasDrift,
     hasOpenPRs,
     hasMyOpenPRs,
+    hasMyTeams,
+    myTeamSlugs,
   ])
 
   const totalOpenPRs = useMemo(
@@ -338,6 +360,10 @@ export function ProjectsView() {
         0,
       ),
     [projects],
+  )
+  const totalMyTeamProjects = useMemo(
+    () => (projects ?? []).filter((p) => myTeamSlugs.has(p.team.slug)).length,
+    [projects, myTeamSlugs],
   )
 
   const activeTeamSet = new Set(teamsParam.split(',').filter(Boolean))
@@ -411,6 +437,14 @@ export function ProjectsView() {
                 onClick={toggleMyOpenPRs}
                 value={totalMyOpenPRs}
                 variant="info"
+              />
+              <StatBadge
+                active={hasMyTeams}
+                disabled={isLoading}
+                label="My Teams"
+                onClick={toggleMyTeams}
+                value={totalMyTeamProjects}
+                variant="teal"
               />
             </div>
 

@@ -1438,6 +1438,15 @@ export interface TeamMember {
   last_login?: null | string
 }
 
+// Mirror of the backend `TeamMembership` model returned on
+// GET /users/me. Lets the UI offer membership-scoped filters (e.g. the
+// "My Teams" toggle on the projects list) without extra requests.
+export interface TeamMembership {
+  organization_slug: string
+  team_name: string
+  team_slug: string
+}
+
 // Third-Party Service types
 export type ThirdPartyService = Schemas['ThirdPartyServiceResponse']
 
@@ -1460,9 +1469,10 @@ export interface UseAuthReturn {
 }
 
 // `UserResponse` stays hand-written: it's a UI-side extension of `User`
-// (inherits `username`, `user_type`, etc.). `permissions` and `is_admin` are
-// populated by GET /users/me (the backend's CurrentUserResponse); other
-// optional fields (`groups`, `roles`) are not yet exposed by the API.
+// (inherits `username`, `user_type`, etc.). `permissions`, `is_admin`, and
+// `teams` are populated by GET /users/me (the backend's
+// CurrentUserResponse); other optional fields (`groups`, `roles`) are not
+// yet exposed by the API.
 export interface UserResponse extends User {
   avatar_url?: null | string
   created_at?: string
@@ -1473,6 +1483,7 @@ export interface UserResponse extends User {
   last_login?: null | string
   permissions?: string[]
   roles?: string[]
+  teams?: TeamMembership[]
   updated_at?: string
 }
 
