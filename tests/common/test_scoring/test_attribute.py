@@ -304,3 +304,56 @@ class AnalysisResultScoreTests(unittest.TestCase):
         self.assertEqual(0.0, score)
         self.assertEqual(0.0, contribs[0].mapped_score)
         self.assertIsNone(contribs[0].value)
+
+
+class DeploymentStatusScoreTests(unittest.TestCase):
+    def _policy(self, **overrides: object) -> models.DeploymentStatusPolicy:
+        defaults: dict[str, object] = {
+            'name': 'Prod deploy health',
+            'slug': 'prod-deploy-health',
+            'environment_slug': 'production',
+            'weight': 50,
+        }
+        defaults.update(overrides)
+        return models.DeploymentStatusPolicy(**defaults)  # type: ignore[arg-type]
+
+    def test_success_full_score(self) -> None:
+        score, contribs = attribute.compute_base_score(
+            types.SimpleNamespace(),
+            [self._policy()],
+            deployment_statuses={'production': 'success'},
+        )
+        self.assertEqual(100.0, score)
+        self.assertEqual('production', contribs[0].environment_slug)
+        self.assertEqual('deployment_status', contribs[0].category)
+        self.assertEqual('success', contribs[0].value)
+
+    def test_failed_zero(self) -> None:
+        score, _ = attribute.compute_base_score(
+            types.SimpleNamespace(),
+            [self._policy()],
+            deployment_statuses={'production': 'failed'},
+        )
+        self.assertEqual(0.0, score)
+
+    def test_no_deployment_uses_missing_key(self) -> None:
+        # Project not deployed to the env yet → neutral by default, so a
+        # never-deployed project is not penalized.
+        score, contribs = attribute.compute_base_score(
+            types.SimpleNamespace(),
+            [self._policy()],
+            deployment_statuses={},
+        )
+        self.assertEqual(100.0, score)
+        self.assertIsNone(contribs[0].value)
+        self.assertEqual(100.0, contribs[0].mapped_score)
+
+    def test_other_environment_ignored(self) -> None:
+        # A failed deploy in a different env must not affect a policy
+        # scoped to production.
+        score, _ = attribute.compute_base_score(
+            types.SimpleNamespace(),
+            [self._policy()],
+            deployment_statuses={'staging': 'failed'},
+        )
+        self.assertEqual(100.0, score)

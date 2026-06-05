@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import typing
+
+import pydantic
 
 from imbi_common import graph, models
 from imbi_common.scoring import attribute, policies
-from imbi_common.scoring.models import AnalysisResultPolicy, ScoreBreakdown
+from imbi_common.scoring.models import (
+    AnalysisResultPolicy,
+    DeploymentStatusPolicy,
+    ScoreBreakdown,
+)
 
 
 async def compute_score(
@@ -47,8 +54,13 @@ async def _compute(
     analysis_results: dict[str, str] = {}
     if any(isinstance(p, AnalysisResultPolicy) for p in applicable):
         analysis_results = await _load_analysis_results(database, project.id)
+    deployment_statuses: dict[str, str] = {}
+    if any(isinstance(p, DeploymentStatusPolicy) for p in applicable):
+        deployment_statuses = await _load_deployment_statuses(
+            database, project.id
+        )
     base_score, contributions = attribute.compute_base_score(
-        extended_project, applicable, analysis_results
+        extended_project, applicable, analysis_results, deployment_statuses
     )
     floored = max(0.0, base_score)
     breakdown = ScoreBreakdown(
@@ -89,3 +101,66 @@ async def _load_analysis_results(
         if isinstance(slug, str) and isinstance(status, str):
             out[slug] = status
     return out
+
+
+_DEPLOYMENT_STATUS_QUERY: typing.LiteralString = (
+    'MATCH (p:Project {{id: {project_id}}})'
+    '-[:HAS_RELEASE]->(:Release)'
+    '-[d:DEPLOYED_TO]->(e:Environment)'
+    ' RETURN e.slug AS slug, d.deployments AS deployments'
+)
+
+
+async def _load_deployment_statuses(
+    database: graph.Graph,
+    project_id: str,
+) -> dict[str, str]:
+    """Fetch ``{environment_slug: latest_status}`` for *project_id*.
+
+    For each environment the status is taken from the
+    ``DeploymentEvent`` with the latest ``timestamp`` across every
+    release the project has deployed there — the same "current per
+    environment" derivation the release-train endpoint uses.
+    Environments with no parseable events are omitted and scored through
+    the policy's ``'missing'`` key.
+    """
+    rows = await database.execute(
+        _DEPLOYMENT_STATUS_QUERY,
+        {'project_id': project_id},
+        columns=['slug', 'deployments'],
+    )
+    latest: dict[str, models.DeploymentEvent] = {}
+    for row in rows:
+        slug = graph.parse_agtype(row['slug'])
+        if not isinstance(slug, str):
+            continue
+        for event in _parse_deployment_events(row['deployments']):
+            current = latest.get(slug)
+            if current is None or event.timestamp > current.timestamp:
+                latest[slug] = event
+    return {slug: event.status for slug, event in latest.items()}
+
+
+def _parse_deployment_events(
+    raw: typing.Any,
+) -> list[models.DeploymentEvent]:
+    """Parse a ``d.deployments`` agtype value into events, tolerantly.
+
+    AGE round-trips the list as a JSON string; malformed entries are
+    skipped rather than failing the whole score computation.
+    """
+    parsed: typing.Any = graph.parse_agtype(raw)
+    if isinstance(parsed, str):
+        try:
+            parsed = json.loads(parsed)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(parsed, list):
+        return []
+    events: list[models.DeploymentEvent] = []
+    for item in parsed:  # pyright: ignore[reportUnknownVariableType]
+        try:
+            events.append(models.DeploymentEvent.model_validate(item))
+        except pydantic.ValidationError:
+            continue
+    return events

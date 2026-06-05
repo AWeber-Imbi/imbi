@@ -9,6 +9,7 @@ from imbi_common.scoring.models import (
     AgePolicy,
     AnalysisResultPolicy,
     AttributePolicy,
+    DeploymentStatusPolicy,
     LinkPresencePolicy,
     PolicyContribution,
     PresencePolicy,
@@ -20,6 +21,7 @@ Policy = (
     | LinkPresencePolicy
     | AgePolicy
     | AnalysisResultPolicy
+    | DeploymentStatusPolicy
 )
 
 
@@ -27,6 +29,7 @@ def compute_base_score(
     project: typing.Any,
     policies: list[Policy],
     analysis_results: dict[str, str] | None = None,
+    deployment_statuses: dict[str, str] | None = None,
 ) -> tuple[float, list[PolicyContribution]]:
     """Compute base score and per-policy contributions.
 
@@ -36,16 +39,22 @@ def compute_base_score(
     ``analysis_results`` is a ``{result_slug: status}`` mapping
     pre-loaded from the project's latest analysis report. Required for
     ``AnalysisResultPolicy`` evaluation; unused by the other categories.
+
+    ``deployment_statuses`` is a ``{environment_slug: status}`` mapping
+    of the project's latest deployment status per environment. Required
+    for ``DeploymentStatusPolicy`` evaluation; an environment absent from
+    the mapping is scored through the policy's ``'missing'`` key.
     """
     if not policies:
         return 100.0, []
 
     results = analysis_results or {}
+    deployments = deployment_statuses or {}
     total_weight = sum(p.weight for p in policies)
     contributions: list[PolicyContribution] = []
     weighted_sum = 0.0
     for policy in policies:
-        value, mapped = _evaluate(project, policy, results)
+        value, mapped = _evaluate(project, policy, results, deployments)
         score = 0.0 if mapped is None else mapped
         weighted_sum += score * policy.weight
         if total_weight > 0:
@@ -59,6 +68,7 @@ def compute_base_score(
                 attribute_name=getattr(policy, 'attribute_name', None),
                 link_slug=getattr(policy, 'link_slug', None),
                 result_slug=getattr(policy, 'result_slug', None),
+                environment_slug=getattr(policy, 'environment_slug', None),
                 value=value,
                 mapped_score=score,
                 weight=policy.weight,
@@ -74,6 +84,7 @@ def _evaluate(
     project: typing.Any,
     policy: Policy,
     analysis_results: dict[str, str],
+    deployment_statuses: dict[str, str],
 ) -> tuple[typing.Any, float | None]:
     if isinstance(policy, LinkPresencePolicy):
         raw = _get_value(project, 'links')
@@ -93,6 +104,9 @@ def _evaluate(
         return sample, policy.evaluate(links)
     if isinstance(policy, AnalysisResultPolicy):
         status = analysis_results.get(policy.result_slug)
+        return status, policy.evaluate(status)
+    if isinstance(policy, DeploymentStatusPolicy):
+        status = deployment_statuses.get(policy.environment_slug)
         return status, policy.evaluate(status)
     value = _get_value(project, policy.attribute_name)
     if isinstance(policy, PresencePolicy):

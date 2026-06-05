@@ -102,6 +102,28 @@ class ComputeScoreTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await engine.compute_score(graph, 'nope')
 
+    async def test_deployment_policy_triggers_status_load(self) -> None:
+        project = _project()
+        graph = mock.AsyncMock()
+        graph.match.side_effect = [[project], [project]]
+        policy = scoring_models.DeploymentStatusPolicy(
+            name='prod',
+            slug='prod',
+            environment_slug='production',
+            weight=50,
+        )
+        with mock.patch(
+            'imbi_common.scoring.engine.policies.applicable_policies',
+            new=mock.AsyncMock(return_value=([policy], models.Project)),
+        ):
+            with mock.patch(
+                'imbi_common.scoring.engine._load_deployment_statuses',
+                new=mock.AsyncMock(return_value={'production': 'failed'}),
+            ) as load_mock:
+                score, _ = await engine.compute_score(graph, 'proj-id')
+        load_mock.assert_awaited_once()
+        self.assertEqual(0.0, score)
+
     async def test_extended_model_used_for_attribute_lookup(self) -> None:
         """Reload project with extended model so blueprint attrs are set."""
 
@@ -121,9 +143,9 @@ class ComputeScoreTests(unittest.IsolatedAsyncioTestCase):
             captured: list[object] = []
             orig = engine.attribute.compute_base_score
 
-            def _capture(proj, pols, results=None):
+            def _capture(proj, pols, results=None, deployments=None):
                 captured.append(proj)
-                return orig(proj, pols, results)
+                return orig(proj, pols, results, deployments)
 
             with mock.patch(
                 'imbi_common.scoring.engine.attribute.compute_base_score',
@@ -133,3 +155,70 @@ class ComputeScoreTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsInstance(captured[0], _Extended)
         self.assertIs(_Extended, graph.match.call_args_list[1].args[0])
+
+
+class ParseDeploymentEventsTests(unittest.TestCase):
+    def test_parses_json_string_list(self) -> None:
+        raw = (
+            '[{"timestamp": "2026-06-01T00:00:00+00:00", "status": "success"}]'
+        )
+        events = engine._parse_deployment_events(raw)
+        self.assertEqual(1, len(events))
+        self.assertEqual('success', events[0].status)
+
+    def test_malformed_json_returns_empty(self) -> None:
+        self.assertEqual([], engine._parse_deployment_events('not json'))
+
+    def test_non_list_returns_empty(self) -> None:
+        self.assertEqual([], engine._parse_deployment_events('{"a": 1}'))
+
+    def test_none_returns_empty(self) -> None:
+        self.assertEqual([], engine._parse_deployment_events(None))
+
+    def test_skips_invalid_event(self) -> None:
+        raw = (
+            '[{"status": "success", "timestamp": "2026-06-01T00:00:00+00:00"},'
+            ' {"nope": true}]'
+        )
+        events = engine._parse_deployment_events(raw)
+        self.assertEqual(1, len(events))
+
+
+class LoadDeploymentStatusesTests(unittest.IsolatedAsyncioTestCase):
+    async def test_latest_per_environment(self) -> None:
+        graph = mock.AsyncMock()
+        graph.execute.return_value = [
+            {
+                'slug': 'production',
+                'deployments': (
+                    '[{"timestamp": "2026-06-01T00:00:00+00:00",'
+                    ' "status": "success"}]'
+                ),
+            },
+            {
+                'slug': 'production',
+                'deployments': (
+                    '[{"timestamp": "2026-06-03T00:00:00+00:00",'
+                    ' "status": "failed"}]'
+                ),
+            },
+            {
+                'slug': 'staging',
+                'deployments': (
+                    '[{"timestamp": "2026-06-02T00:00:00+00:00",'
+                    ' "status": "success"}]'
+                ),
+            },
+        ]
+        result = await engine._load_deployment_statuses(graph, 'proj-id')
+        self.assertEqual(
+            {'production': 'failed', 'staging': 'success'}, result
+        )
+
+    async def test_no_events_omits_environment(self) -> None:
+        graph = mock.AsyncMock()
+        graph.execute.return_value = [
+            {'slug': 'production', 'deployments': None},
+        ]
+        result = await engine._load_deployment_statuses(graph, 'proj-id')
+        self.assertEqual({}, result)

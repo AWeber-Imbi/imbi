@@ -378,6 +378,20 @@ class DiscriminatedUnionTests(unittest.TestCase):
         )
         self.assertIsInstance(policy, models.AnalysisResultPolicy)
 
+    def test_deployment_status_validates(self) -> None:
+        adapter = pydantic.TypeAdapter(models.ScoringPolicy)
+        policy = adapter.validate_python(
+            {
+                'name': 'Prod deploy health',
+                'slug': 'prod-deploy-health',
+                'category': 'deployment_status',
+                'environment_slug': 'production',
+                'weight': 30,
+                'status_score_map': {'success': 100, 'failed': 0},
+            }
+        )
+        self.assertIsInstance(policy, models.DeploymentStatusPolicy)
+
 
 class AnalysisResultPolicyTests(unittest.TestCase):
     def _policy(self, **overrides: object) -> models.AnalysisResultPolicy:
@@ -417,3 +431,66 @@ class AnalysisResultPolicyTests(unittest.TestCase):
     def test_invalid_score_rejected(self) -> None:
         with self.assertRaises(pydantic.ValidationError):
             self._policy(status_score_map={'pass': 200, 'warn': 50, 'fail': 0})
+
+
+class DeploymentStatusPolicyTests(unittest.TestCase):
+    def _policy(self, **overrides: object) -> models.DeploymentStatusPolicy:
+        defaults: dict[str, object] = {
+            'name': 'Prod deploy health',
+            'slug': 'prod-deploy-health',
+            'environment_slug': 'production',
+            'weight': 30,
+        }
+        defaults.update(overrides)
+        return models.DeploymentStatusPolicy(**defaults)  # type: ignore[arg-type]
+
+    def test_default_status_map(self) -> None:
+        policy = self._policy()
+        self.assertEqual(100.0, policy.evaluate('success'))
+        self.assertEqual(100.0, policy.evaluate('in_progress'))
+        self.assertEqual(100.0, policy.evaluate('pending'))
+        self.assertEqual(0.0, policy.evaluate('failed'))
+
+    def test_missing_uses_missing_key(self) -> None:
+        # No deployment in the environment (status is None) resolves
+        # through the synthetic 'missing' key — neutral by default.
+        self.assertEqual(100.0, self._policy().evaluate(None))
+
+    def test_unmapped_status_falls_back_to_missing(self) -> None:
+        # rolled_back is a real status; omitting it from the map must
+        # never implicitly score it 0 — it falls back to 'missing'.
+        self.assertEqual(100.0, self._policy().evaluate('rolled_back'))
+
+    def test_explicit_status_overrides_fallback(self) -> None:
+        policy = self._policy(
+            status_score_map={'success': 100, 'failed': 0, 'rolled_back': 25}
+        )
+        self.assertEqual(25.0, policy.evaluate('rolled_back'))
+
+    def test_missing_without_missing_key_is_none(self) -> None:
+        # When the author omits 'missing', an absent deployment yields
+        # None so the engine treats it like any other absent value (0).
+        policy = self._policy(status_score_map={'success': 100, 'failed': 0})
+        self.assertIsNone(policy.evaluate(None))
+
+    def test_custom_missing_penalizes(self) -> None:
+        policy = self._policy(
+            status_score_map={'success': 100, 'failed': 0, 'missing': 0}
+        )
+        self.assertEqual(0.0, policy.evaluate(None))
+
+    def test_status_map_accepts_json_string(self) -> None:
+        policy = models.DeploymentStatusPolicy.model_validate(
+            {
+                'name': 'Prod deploy health',
+                'slug': 'prod-deploy-health',
+                'environment_slug': 'production',
+                'weight': 30,
+                'status_score_map': '{"success": 100, "failed": 0}',
+            }
+        )
+        self.assertEqual(100.0, policy.evaluate('success'))
+
+    def test_invalid_score_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            self._policy(status_score_map={'success': 101, 'failed': 0})

@@ -175,6 +175,78 @@ class AnalysisResultPolicy(_PolicyBase):
         return float(mapped) if mapped is not None else None
 
 
+#: Status carried by a ``DeploymentEvent`` on a
+#: ``Release -[:DEPLOYED_TO]-> Environment`` edge. Duplicated here as a
+#: plain literal to avoid importing the models module into the scoring
+#: package (which would invert the dependency direction).
+DeploymentStatusLiteral = typing.Literal[
+    'pending',
+    'in_progress',
+    'success',
+    'failed',
+    'rolled_back',
+]
+
+
+class DeploymentStatusPolicy(_PolicyBase):
+    """Score a project by its latest deployment status in an environment.
+
+    The scoring engine resolves the project's current deployment status
+    in ``environment_slug`` — the ``status`` of the most recent
+    ``DeploymentEvent`` across the project's releases deployed there —
+    then maps it to a 0-100 score via ``status_score_map``.
+
+    The synthetic ``'missing'`` key scores environments the project has
+    not deployed to yet (default 100, i.e. no penalty). A status present
+    on the edge but absent from the map falls back to the ``'missing'``
+    score, so omitting a status (e.g. ``'rolled_back'``) can never
+    implicitly score it 0.
+    """
+
+    category: typing.Literal['deployment_status'] = 'deployment_status'
+    environment_slug: str
+    status_score_map: dict[str, int] = pydantic.Field(
+        default_factory=lambda: {
+            'success': 100,
+            'in_progress': 100,
+            'pending': 100,
+            'failed': 0,
+            'missing': 100,
+        }
+    )
+
+    @pydantic.field_validator('status_score_map', mode='before')
+    @classmethod
+    def _parse_json_status_map(cls, v: object) -> object:
+        if isinstance(v, str):
+            return json.loads(v)
+        return v
+
+    @pydantic.model_validator(mode='after')
+    def _validate_status_map(self) -> typing.Self:
+        for score in self.status_score_map.values():
+            if not 0 <= score <= 100:
+                raise ValueError(
+                    'status_score_map values must be between 0 and 100'
+                )
+        return self
+
+    def evaluate(self, status: typing.Any) -> float | None:
+        """Map a deployment status to its score.
+
+        ``status`` is ``None`` when the project has no deployment in the
+        target environment; that resolves through the ``'missing'`` key.
+        A status with no explicit entry also falls back to ``'missing'``.
+        Returns ``None`` only when neither the status nor ``'missing'`` is
+        mapped, letting the engine treat it like any other absent value.
+        """
+        key = 'missing' if status is None else str(status)
+        mapped = self.status_score_map.get(key)
+        if mapped is None and key != 'missing':
+            mapped = self.status_score_map.get('missing')
+        return float(mapped) if mapped is not None else None
+
+
 class AgePolicy(_PolicyBase):
     """Score based on age of a datetime attribute.
 
@@ -249,7 +321,8 @@ ScoringPolicy = typing.Annotated[
     | PresencePolicy
     | LinkPresencePolicy
     | AgePolicy
-    | AnalysisResultPolicy,
+    | AnalysisResultPolicy
+    | DeploymentStatusPolicy,
     pydantic.Field(discriminator='category'),
 ]
 
@@ -358,11 +431,17 @@ class PolicyContribution(pydantic.BaseModel):
 
     policy_slug: str
     category: typing.Literal[
-        'attribute', 'presence', 'link_presence', 'age', 'analysis_result'
+        'attribute',
+        'presence',
+        'link_presence',
+        'age',
+        'analysis_result',
+        'deployment_status',
     ] = 'attribute'
     attribute_name: str | None = None
     link_slug: str | None = None
     result_slug: str | None = None
+    environment_slug: str | None = None
     value: typing.Any | None = None
     mapped_score: float
     weight: int
