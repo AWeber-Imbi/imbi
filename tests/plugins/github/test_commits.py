@@ -77,6 +77,17 @@ def _push(
     }
 
 
+def _event(body: dict[str, typing.Any]) -> dict[str, typing.Any]:
+    """Wrap a push body in the event context handlers now receive."""
+    return {
+        'type': '',
+        'third_party_service': '',
+        'attributed_to': '',
+        'metadata': {'headers': {}},
+        'payload': body,
+    }
+
+
 def _commit(
     sha: str, *, login: str = 'octocat', author_id: int = 583231
 ) -> dict[str, object]:
@@ -103,25 +114,32 @@ def _commit(
 class ConfigTestCase(unittest.TestCase):
     def test_sync_commits_defaults(self) -> None:
         cfg = commits.SyncCommitsConfig()
-        self.assertEqual(cfg.before_selector.path, '/before')
-        self.assertEqual(cfg.after_selector.path, '/after')
-        self.assertEqual(cfg.ref_selector.path, '/ref')
-        self.assertEqual(cfg.repository_selector.path, '/repository/full_name')
-        self.assertEqual(cfg.repo_api_url_selector.path, '/repository/url')
+        self.assertEqual(cfg.before_selector.path, '/payload/before')
+        self.assertEqual(cfg.after_selector.path, '/payload/after')
+        self.assertEqual(cfg.ref_selector.path, '/payload/ref')
+        self.assertEqual(
+            cfg.repository_selector.path, '/payload/repository/full_name'
+        )
+        self.assertEqual(
+            cfg.repo_api_url_selector.path, '/payload/repository/url'
+        )
         self.assertIsNone(cfg.api_base_url)
         self.assertEqual(cfg.initial_limit, 100)
 
     def test_sync_tags_defaults(self) -> None:
         cfg = commits.SyncTagsConfig()
-        self.assertEqual(cfg.ref_selector.path, '/ref')
-        self.assertEqual(cfg.after_selector.path, '/after')
+        self.assertEqual(cfg.ref_selector.path, '/payload/ref')
+        self.assertEqual(cfg.after_selector.path, '/payload/after')
         self.assertFalse(cfg.reconcile_all)
 
     def test_selector_override_from_json(self) -> None:
         cfg = commits.SyncCommitsConfig.model_validate(
-            {'after_selector': '/head', 'api_base_url': 'https://x/api/v3'}
+            {
+                'after_selector': '/payload/head',
+                'api_base_url': 'https://x/api/v3',
+            }
         )
-        self.assertEqual(cfg.after_selector.path, '/head')
+        self.assertEqual(cfg.after_selector.path, '/payload/head')
         self.assertEqual(cfg.api_base_url, 'https://x/api/v3')
 
 
@@ -138,7 +156,7 @@ class ApiBaseResolutionTestCase(unittest.TestCase):
             ctx,
             explicit,
             cfg.repo_api_url_selector,
-            {'repository': {'url': repo_url}},
+            _event({'repository': {'url': repo_url}}),
         )
 
     def test_explicit_override_wins(self) -> None:
@@ -242,7 +260,7 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
                 credentials=_CREDS,
                 external_identifier='',
                 action_config=commits.SyncCommitsConfig(),
-                payload=_push(before=base, after=head),
+                event=_event(_push(before=base, after=head)),
             )
         insert.assert_awaited_once()
         table, records = _await_args(insert)
@@ -267,13 +285,13 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
                 credentials=_CREDS,
                 external_identifier='',
                 action_config=commits.SyncCommitsConfig(),
-                payload=_push(after=_ZERO),
+                event=_event(_push(after=_ZERO)),
             )
         insert.assert_not_awaited()
 
     async def test_missing_owner_repo_short_circuits(self) -> None:
-        payload = _push()
-        del payload['repository']
+        body = _push()
+        del body['repository']
         with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
             with self.assertLogs(commits.LOGGER, level='WARNING'):
                 await commits.sync_commits(
@@ -281,7 +299,7 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
                     credentials=_CREDS,
                     external_identifier='',
                     action_config=commits.SyncCommitsConfig(),
-                    payload=payload,
+                    event=_event(body),
                 )
         insert.assert_not_awaited()
 
@@ -298,7 +316,7 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
                     credentials=_CREDS,
                     external_identifier='',
                     action_config=commits.SyncCommitsConfig(),
-                    payload=_push(before=_ZERO, after=head),
+                    event=_event(_push(before=_ZERO, after=head)),
                 )
         insert.assert_awaited_once()
         _, records = _await_args(insert)
@@ -323,7 +341,7 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
                     credentials=_CREDS,
                     external_identifier='',
                     action_config=commits.SyncCommitsConfig(),
-                    payload=_push(before=_ZERO, after=head),
+                    event=_event(_push(before=_ZERO, after=head)),
                 )
         self.assertTrue(route.called)
         insert.assert_awaited_once()
@@ -349,7 +367,7 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
                 credentials=_CREDS,
                 external_identifier='',
                 action_config=commits.SyncCommitsConfig(),
-                payload=_push(before=base, after=head),
+                event=_event(_push(before=base, after=head)),
             )
         _, records = _await_args(insert)
         self.assertEqual(2, len(records))
@@ -373,7 +391,7 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
                         credentials=_CREDS,
                         external_identifier='',
                         action_config=commits.SyncCommitsConfig(),
-                        payload=_push(before=base, after=head),
+                        event=_event(_push(before=base, after=head)),
                     )
         self.assertTrue(any('truncated' in line for line in cm.output))
 
@@ -395,7 +413,7 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
                     credentials=_CREDS,
                     external_identifier='',
                     action_config=commits.SyncCommitsConfig(),
-                    payload=_push(before=base, after=head),
+                    event=_event(_push(before=base, after=head)),
                 )
 
     async def test_missing_credentials_raises(self) -> None:
@@ -428,7 +446,7 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
                 credentials=_CREDS,
                 external_identifier='',
                 action_config=commits.SyncTagsConfig(),
-                payload=self._tag_push(after=sha),
+                event=_event(self._tag_push(after=sha)),
             )
         table, records = _await_args(insert)
         self.assertEqual('tags', table)
@@ -462,7 +480,7 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
                 credentials=_CREDS,
                 external_identifier='',
                 action_config=commits.SyncTagsConfig(),
-                payload=self._tag_push(after=sha),
+                event=_event(self._tag_push(after=sha)),
             )
         _, records = _await_args(insert)
         self.assertEqual('Release 1.2.3', records[0].message)
@@ -498,7 +516,7 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
                 credentials=_CREDS,
                 external_identifier='',
                 action_config=commits.SyncTagsConfig(reconcile_all=True),
-                payload=self._tag_push(after=sha),
+                event=_event(self._tag_push(after=sha)),
             )
         _, records = _await_args(insert)
         names = {r.name for r in records}
@@ -548,7 +566,7 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
                 credentials=_CREDS,
                 external_identifier='',
                 action_config=commits.SyncTagsConfig(reconcile_all=True),
-                payload=self._tag_push(after=sha),
+                event=_event(self._tag_push(after=sha)),
             )
         _, records = _await_args(insert)
         names = {r.name for r in records}
@@ -575,20 +593,20 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
                     credentials=_CREDS,
                     external_identifier='',
                     action_config=commits.SyncTagsConfig(),
-                    payload=self._tag_push(after=sha),
+                    event=_event(self._tag_push(after=sha)),
                 )
         insert.assert_not_awaited()
 
     async def test_non_tag_ref_short_circuits(self) -> None:
-        payload = self._tag_push()
-        payload['ref'] = 'refs/heads/main'
+        body = self._tag_push()
+        body['ref'] = 'refs/heads/main'
         with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
             await commits.sync_tags(
                 ctx=_ctx(),
                 credentials=_CREDS,
                 external_identifier='',
                 action_config=commits.SyncTagsConfig(),
-                payload=payload,
+                event=_event(body),
             )
         insert.assert_not_awaited()
 
@@ -599,7 +617,7 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
                 credentials=_CREDS,
                 external_identifier='',
                 action_config=commits.SyncTagsConfig(),
-                payload=self._tag_push(after=_ZERO),
+                event=_event(self._tag_push(after=_ZERO)),
             )
         insert.assert_not_awaited()
 
@@ -712,7 +730,7 @@ class AppAuthSyncTestCase(unittest.IsolatedAsyncioTestCase):
                 credentials=self._app_creds(),
                 external_identifier='',
                 action_config=commits.SyncCommitsConfig(),
-                payload=_push(),
+                event=_event(_push()),
             )
         insert.assert_awaited_once()
         self.assertEqual(1, token_route.call_count)
@@ -734,7 +752,7 @@ class AppAuthSyncTestCase(unittest.IsolatedAsyncioTestCase):
                 credentials=self._app_creds(installation_id='42'),
                 external_identifier='',
                 action_config=commits.SyncCommitsConfig(),
-                payload=_push(),
+                event=_event(_push()),
             )
         self.assertFalse(discovery.called)
 
@@ -751,7 +769,7 @@ class AppAuthSyncTestCase(unittest.IsolatedAsyncioTestCase):
                 credentials=self._app_creds(installation_id=None),
                 external_identifier='',
                 action_config=commits.SyncCommitsConfig(),
-                payload=_push(),
+                event=_event(_push()),
             )
         self.assertEqual(1, discovery.call_count)
         self.assertEqual(1, token_route.call_count)
@@ -767,7 +785,7 @@ class AppAuthSyncTestCase(unittest.IsolatedAsyncioTestCase):
                     credentials=self._app_creds(),
                     external_identifier='',
                     action_config=commits.SyncCommitsConfig(),
-                    payload=_push(),
+                    event=_event(_push()),
                 )
         self.assertEqual(2, insert.await_count)
         # Minted once, reused on the second delivery.
@@ -787,7 +805,7 @@ class AppAuthSyncTestCase(unittest.IsolatedAsyncioTestCase):
                     credentials=self._app_creds(installation_id=None),
                     external_identifier='',
                     action_config=commits.SyncCommitsConfig(),
-                    payload=_push(),
+                    event=_event(_push()),
                 )
         # Discovery and minting both happen once, then served from cache.
         self.assertEqual(1, discovery.call_count)
@@ -839,7 +857,7 @@ class AppAuthSyncTestCase(unittest.IsolatedAsyncioTestCase):
                 credentials=creds,
                 external_identifier='',
                 action_config=commits.SyncCommitsConfig(),
-                payload=_push(),
+                event=_event(_push()),
             )
         insert.assert_awaited_once()
 
@@ -1263,7 +1281,7 @@ class SyncCommitsThrottleTestCase(unittest.IsolatedAsyncioTestCase):
                     credentials=_CREDS,
                     external_identifier='',
                     action_config=commits.SyncCommitsConfig(),
-                    payload=_push(before=base, after=head),
+                    event=_event(_push(before=base, after=head)),
                 )
         slept.assert_awaited_once_with(3.0)
         insert.assert_awaited_once()
@@ -1277,7 +1295,7 @@ class ResolveUserCacheTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         commits._USER_CACHE.clear()
 
-    async def test_hits_and_misses_cached(self) -> None:
+    async def test_hits_cached_misses_requeried(self) -> None:
         resolver = mock.AsyncMock(
             side_effect=lambda s: 'a@e.com' if s == '1' else None
         )
@@ -1286,12 +1304,16 @@ class ResolveUserCacheTestCase(unittest.IsolatedAsyncioTestCase):
             'a@e.com', await commits._resolve_user(resolver, base, '1')
         )
         self.assertIsNone(await commits._resolve_user(resolver, base, '2'))
-        # Repeats are served from cache -- both the hit and the miss.
+        # The hit is served from cache on repeat; the miss is re-queried
+        # so a contributor who links their identity later is eventually
+        # resolved instead of being memoized as unresolved.
         self.assertEqual(
             'a@e.com', await commits._resolve_user(resolver, base, '1')
         )
         self.assertIsNone(await commits._resolve_user(resolver, base, '2'))
-        self.assertEqual(2, resolver.await_count)
+        self.assertEqual(3, resolver.await_count)
+        self.assertIn((base, '1'), commits._USER_CACHE)
+        self.assertNotIn((base, '2'), commits._USER_CACHE)
 
     async def test_key_scoped_by_base(self) -> None:
         resolver = mock.AsyncMock(return_value='x@e.com')
@@ -1326,6 +1348,22 @@ class ResolveUserCacheTestCase(unittest.IsolatedAsyncioTestCase):
         # Distinct ids 7 and 8 only -- the duplicate is collapsed.
         self.assertEqual(2, resolver.await_count)
 
+    async def test_author_users_skips_resolver_errors(self) -> None:
+        def _resolve(subject: str) -> str:
+            if subject == '9':
+                raise RuntimeError('identity store unavailable')
+            return 'ok@e.com'
+
+        resolver = mock.AsyncMock(side_effect=_resolve)
+        raw: list[dict[str, typing.Any]] = [
+            {'author': {'id': 9}},  # resolver raises -> skipped
+            {'author': {'id': 10}},  # resolves normally
+        ]
+        # A failing lookup is best-effort: it is logged and dropped, the
+        # other authors still resolve, and the sync is not aborted.
+        out = await commits._resolve_author_users(raw, resolver, 'base')
+        self.assertEqual({'10': 'ok@e.com'}, out)
+
     async def test_author_users_without_resolver_is_empty(self) -> None:
         out = await commits._resolve_author_users(
             [{'author': {'id': 1}}], None, 'base'
@@ -1356,7 +1394,7 @@ class AuthorAttributionTestCase(unittest.IsolatedAsyncioTestCase):
                 credentials=_CREDS,
                 external_identifier='',
                 action_config=commits.SyncCommitsConfig(),
-                payload=_push(before=base, after=head),
+                event=_event(_push(before=base, after=head)),
             )
         _, records = _await_args(insert)
         self.assertEqual('dev@example.com', records[0].author_user)
@@ -1376,7 +1414,7 @@ class AuthorAttributionTestCase(unittest.IsolatedAsyncioTestCase):
                 credentials=_CREDS,
                 external_identifier='',
                 action_config=commits.SyncCommitsConfig(),
-                payload=_push(before=base, after=head),
+                event=_event(_push(before=base, after=head)),
             )
         _, records = _await_args(insert)
         self.assertEqual('', records[0].author_user)

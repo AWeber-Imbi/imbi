@@ -254,11 +254,11 @@ async def _resolve_bearer(
     )
 
 
-def _resolve(pointer: jsonpointer.JsonPointer, payload: object) -> object:
-    """Resolve a JSON Pointer against the payload, ``None`` if absent."""
+def _resolve(pointer: jsonpointer.JsonPointer, event: object) -> object:
+    """Resolve a JSON Pointer against the event, ``None`` if absent."""
     return typing.cast(
         'object',
-        pointer.resolve(payload, None),  # pyright: ignore[reportUnknownMemberType]
+        pointer.resolve(event, None),  # pyright: ignore[reportUnknownMemberType]
     )
 
 
@@ -316,7 +316,7 @@ def _resolve_api_base(
     ctx: PluginContext,
     explicit: str | None,
     repo_url_pointer: jsonpointer.JsonPointer,
-    payload: object,
+    event: object,
 ) -> str | None:
     """Pick the GitHub API base for this call (see module docstring)."""
     if explicit:
@@ -333,11 +333,11 @@ def _resolve_api_base(
     endpoint = ctx.assignment_options.get('service_endpoint')
     if isinstance(endpoint, str) and endpoint:
         return endpoint.rstrip('/')
-    base = _api_base_from_repo_url(_resolve(repo_url_pointer, payload))
+    base = _api_base_from_repo_url(_resolve(repo_url_pointer, event))
     if base:
         LOGGER.info(
-            'github-commit-sync falling back to payload repository.url for '
-            'the API base; no api_base_url, connected GitHub plugin, or '
+            "github-commit-sync falling back to the event's repository.url "
+            'for the API base; no api_base_url, connected GitHub plugin, or '
             'service_endpoint was available'
         )
         return base
@@ -345,9 +345,9 @@ def _resolve_api_base(
 
 
 def _owner_repo(
-    selector: jsonpointer.JsonPointer, payload: object
+    selector: jsonpointer.JsonPointer, event: object
 ) -> tuple[str, str] | None:
-    full_name = _resolve(selector, payload)
+    full_name = _resolve(selector, event)
     if not isinstance(full_name, str) or '/' not in full_name:
         return None
     owner, _, repo = full_name.partition('/')
@@ -359,14 +359,14 @@ def _owner_repo(
 def _resolve_repo_and_base(
     ctx: PluginContext,
     action_config: SyncCommitsConfig | SyncTagsConfig,
-    payload: object,
+    event: object,
 ) -> tuple[str, str, str] | None:
     """Resolve ``(owner, repo, api_base)`` for an action.
 
     Returns ``None`` (after logging) when the owner/repo or API base
     can't be determined, so both action callables share one short-circuit.
     """
-    owner_repo = _owner_repo(action_config.repository_selector, payload)
+    owner_repo = _owner_repo(action_config.repository_selector, event)
     if owner_repo is None:
         LOGGER.warning('github-commit-sync: no owner/repo in push payload')
         return None
@@ -374,7 +374,7 @@ def _resolve_repo_and_base(
         ctx,
         action_config.api_base_url,
         action_config.repo_api_url_selector,
-        payload,
+        event,
     )
     if base is None:
         LOGGER.warning(
@@ -403,12 +403,14 @@ ResolveUser = collections.abc.Callable[
 # Process-wide, bounded LRU cache of resolved commit-author identities,
 # keyed by ``(api_base, subject)``.  The subject is GitHub's numeric user
 # id, which is only unique *per host* (github.com id 42 != a GHES id 42),
-# so the resolved API base scopes the key.  Both hits and misses are
-# cached -- a full-history resync of a repo with many external
-# contributors would otherwise re-query the identity store for every
-# commit on every run.  An ``OrderedDict`` gives LRU eviction once the
-# cache exceeds ``_USER_CACHE_MAX`` entries.
-_USER_CACHE: collections.OrderedDict[tuple[str, str], str | None] = (
+# so the resolved API base scopes the key.  Only *successful* resolutions
+# are cached: within a single sync :func:`_resolve_author_users` already
+# de-dupes subjects, and leaving misses uncached means a contributor who
+# links their Imbi identity later is picked up on the next sync instead
+# of being stuck unresolved for the process's lifetime.  An
+# ``OrderedDict`` gives LRU eviction once the cache exceeds
+# ``_USER_CACHE_MAX`` entries.
+_USER_CACHE: collections.OrderedDict[tuple[str, str], str] = (
     collections.OrderedDict()
 )
 _USER_CACHE_MAX = 8192
@@ -420,15 +422,19 @@ async def _resolve_user(
     """Resolve a GitHub user id to an Imbi email, LRU-cached per host.
 
     ``subject`` is the GitHub numeric user id (the identity-plugin
-    subject).  Results -- hits *and* misses -- are memoized under
-    ``(base, subject)`` so each distinct author is resolved at most once
-    across the process's lifetime.
+    subject).  Only successful resolutions are memoized under
+    ``(base, subject)``; a miss is returned but not cached, so a
+    contributor who links their Imbi identity later resolves on a
+    subsequent sync rather than being memoized as unresolved for the
+    process's lifetime.
     """
     key = (base, subject)
     if key in _USER_CACHE:
         _USER_CACHE.move_to_end(key)
         return _USER_CACHE[key]
     email = await resolver(subject)
+    if email is None:
+        return None
     _USER_CACHE[key] = email
     _USER_CACHE.move_to_end(key)
     if len(_USER_CACHE) > _USER_CACHE_MAX:
@@ -458,7 +464,16 @@ async def _resolve_author_users(
             subjects.add(str(gid))
     out: dict[str, str] = {}
     for subject in subjects:
-        email = await _resolve_user(resolver, base, subject)
+        try:
+            email = await _resolve_user(resolver, base, subject)
+        except Exception as exc:  # noqa: BLE001 - attribution is best-effort
+            LOGGER.warning(
+                'github-commit-sync: failed to resolve author %s; '
+                'leaving unattributed: %s',
+                subject,
+                exc,
+            )
+            continue
         if email:
             out[subject] = email
     return out
@@ -675,46 +690,58 @@ async def _insert_best_effort(
 
 
 class SyncCommitsConfig(pydantic.BaseModel):
-    """``WebhookRule.handler_config`` for ``sync_commits``."""
+    """``WebhookRule.handler_config`` for ``sync_commits``.
+
+    Selectors resolve against the event context, so the push body lives
+    under ``/payload`` (e.g. ``/payload/after``).
+    """
 
     before_selector: JsonPointer = pydantic.Field(
-        default_factory=lambda: jsonpointer.JsonPointer('/before')
+        default_factory=lambda: jsonpointer.JsonPointer('/payload/before')
     )
     after_selector: JsonPointer = pydantic.Field(
-        default_factory=lambda: jsonpointer.JsonPointer('/after')
+        default_factory=lambda: jsonpointer.JsonPointer('/payload/after')
     )
     ref_selector: JsonPointer = pydantic.Field(
-        default_factory=lambda: jsonpointer.JsonPointer('/ref')
+        default_factory=lambda: jsonpointer.JsonPointer('/payload/ref')
     )
     repository_selector: JsonPointer = pydantic.Field(
         default_factory=lambda: jsonpointer.JsonPointer(
-            '/repository/full_name'
+            '/payload/repository/full_name'
         )
     )
     api_base_url: str | None = None
     repo_api_url_selector: JsonPointer = pydantic.Field(
-        default_factory=lambda: jsonpointer.JsonPointer('/repository/url')
+        default_factory=lambda: jsonpointer.JsonPointer(
+            '/payload/repository/url'
+        )
     )
     initial_limit: int = 100
 
 
 class SyncTagsConfig(pydantic.BaseModel):
-    """``WebhookRule.handler_config`` for ``sync_tags``."""
+    """``WebhookRule.handler_config`` for ``sync_tags``.
+
+    Selectors resolve against the event context, so the push body lives
+    under ``/payload`` (e.g. ``/payload/ref``).
+    """
 
     ref_selector: JsonPointer = pydantic.Field(
-        default_factory=lambda: jsonpointer.JsonPointer('/ref')
+        default_factory=lambda: jsonpointer.JsonPointer('/payload/ref')
     )
     after_selector: JsonPointer = pydantic.Field(
-        default_factory=lambda: jsonpointer.JsonPointer('/after')
+        default_factory=lambda: jsonpointer.JsonPointer('/payload/after')
     )
     repository_selector: JsonPointer = pydantic.Field(
         default_factory=lambda: jsonpointer.JsonPointer(
-            '/repository/full_name'
+            '/payload/repository/full_name'
         )
     )
     api_base_url: str | None = None
     repo_api_url_selector: JsonPointer = pydantic.Field(
-        default_factory=lambda: jsonpointer.JsonPointer('/repository/url')
+        default_factory=lambda: jsonpointer.JsonPointer(
+            '/payload/repository/url'
+        )
     )
     reconcile_all: bool = False
 
@@ -725,7 +752,7 @@ async def sync_commits(
     credentials: dict[str, str],
     external_identifier: str,
     action_config: SyncCommitsConfig,
-    payload: object,
+    event: object,
 ) -> None:
     """Sync the commits in a ``push`` delivery into the ``commits`` table.
 
@@ -733,16 +760,16 @@ async def sync_commits(
     action does not filter refs itself.
     """
     del external_identifier
-    after = _resolve(action_config.after_selector, payload)
+    after = _resolve(action_config.after_selector, event)
     if not isinstance(after, str) or not after or after == _ZERO_SHA:
         return  # branch delete / no head -- nothing to sync
-    resolved = _resolve_repo_and_base(ctx, action_config, payload)
+    resolved = _resolve_repo_and_base(ctx, action_config, event)
     if resolved is None:
         return
     owner, repo, base = resolved
-    ref_raw = _resolve(action_config.ref_selector, payload)
+    ref_raw = _resolve(action_config.ref_selector, event)
     ref = _branch_short_name(ref_raw if isinstance(ref_raw, str) else '')
-    before = _resolve(action_config.before_selector, payload)
+    before = _resolve(action_config.before_selector, event)
     pushed_at = datetime.datetime.now(datetime.UTC)
     token = await _resolve_bearer(credentials, base, owner, repo)
     async with _client(base, owner, repo, token) as client:
@@ -905,16 +932,16 @@ async def sync_tags(
     credentials: dict[str, str],
     external_identifier: str,
     action_config: SyncTagsConfig,
-    payload: object,
+    event: object,
 ) -> None:
     """Sync the tag in a ``push`` delivery into the ``tags`` table."""
     del external_identifier
-    ref_raw = _resolve(action_config.ref_selector, payload)
+    ref_raw = _resolve(action_config.ref_selector, event)
     prefix = 'refs/tags/'
     if not isinstance(ref_raw, str) or not ref_raw.startswith(prefix):
         return
     name = ref_raw[len(prefix) :]
-    after = _resolve(action_config.after_selector, payload)
+    after = _resolve(action_config.after_selector, event)
     if (
         not name
         or not isinstance(after, str)
@@ -922,7 +949,7 @@ async def sync_tags(
         or after == _ZERO_SHA
     ):
         return  # tag delete / no target
-    resolved = _resolve_repo_and_base(ctx, action_config, payload)
+    resolved = _resolve_repo_and_base(ctx, action_config, event)
     if resolved is None:
         return
     owner, repo, base = resolved
