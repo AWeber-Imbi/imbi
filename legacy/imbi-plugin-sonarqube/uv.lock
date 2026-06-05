@@ -612,7 +612,7 @@ wheels = [
 
 [[package]]
 name = "imbi-common"
-version = "2.9.2"
+version = "2.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
@@ -628,9 +628,9 @@ dependencies = [
     { name = "python-slugify" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/aa/0d/39325e67d4fa8de59ee2962339cc5c7dcd0891298c034b23950b003d120e/imbi_common-2.9.2.tar.gz", hash = "sha256:236b0a7baee0125c4af9449c1a99326d49813466e7b0732b4ebbcb618a7f8cf6", size = 338283, upload-time = "2026-06-04T17:42:41.652Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/de/6a/b7787ed646f005df3fcda4c82d4920cb15691f2cd8ac51c6cb30e40f9332/imbi_common-2.10.0.tar.gz", hash = "sha256:0117b56a1d7a7008320df7a4728cf80f044e5493b9253f43ac9642aed379fbca", size = 343896, upload-time = "2026-06-05T23:33:14.061Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ec/86/88ff71441a35836c791fbd7565e1a2359bddf60b91376eb132fd0d2d3dce/imbi_common-2.9.2-py3-none-any.whl", hash = "sha256:f72db0695a0e7406e99e2a7c4497883f76f3025af82e904e3bfd2d2c013d52de", size = 108246, upload-time = "2026-06-04T17:42:40.216Z" },
+    { url = "https://files.pythonhosted.org/packages/e7/b6/03d44defd7b1d657db9334f4c940f286ec6a1b5145d331f8a948195472f0/imbi_common-2.10.0-py3-none-any.whl", hash = "sha256:87e914a36f626a2f280273caf4ace7ebc8a40d779b5d18b16431628fb628fe88", size = 111442, upload-time = "2026-06-05T23:33:12.598Z" },
 ]
 
 [package.optional-dependencies]
@@ -648,7 +648,7 @@ server = [
 
 [[package]]
 name = "imbi-plugin-sonarqube"
-version = "2.9.2"
+version = "2.10.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -671,14 +671,14 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
-    { name = "imbi-common", specifier = "==2.9.2" },
+    { name = "imbi-common", specifier = "==2.10.0" },
     { name = "pydantic", specifier = ">=2" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "coverage", extras = ["toml"] },
-    { name = "imbi-common", extras = ["server", "databases"], specifier = "==2.9.2" },
+    { name = "imbi-common", extras = ["server", "databases"], specifier = "==2.10.0" },
     { name = "pre-commit" },
     { name = "pyrefly", specifier = "~=1.0" },
     { name = "pytest" },
