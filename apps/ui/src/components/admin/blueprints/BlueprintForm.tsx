@@ -385,6 +385,14 @@ export function BlueprintForm({
       if (dupes.length > 0) {
         errors.schema = `Duplicate property name: ${dupes[0]}`
       }
+      // Property names must be lowercase, underscore-delimited (snake_case):
+      // start with a lowercase letter, then lowercase letters/digits/_.
+      const badName = names.find((n) => n && !/^[a-z][a-z0-9_]*$/.test(n))
+      if (badName) {
+        errors.schema =
+          `Property name "${badName}" must be lowercase and ` +
+          'underscore-delimited (e.g. acceptance_test_status)'
+      }
     }
 
     setValidationErrors(errors)

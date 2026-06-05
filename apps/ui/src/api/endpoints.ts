@@ -262,6 +262,10 @@ export interface ProjectSchemaSection {
   description?: null | string
   name: string
   properties: Record<string, ProjectSchemaSectionProperty>
+  // `environment` for relationship (DEPLOYED_IN) blueprints whose properties
+  // describe per-environment edge attributes; `project` (default) for node
+  // blueprints describing project-level attributes.
+  scope?: 'environment' | 'project'
   slug: string
 }
 
@@ -278,6 +282,12 @@ export interface ProjectSchemaSectionProperty {
   minimum?: null | number
   title?: null | string
   type?: null | string
+  // Optional value-display transform applied to the rendered string
+  // (independent of `x-ui` color/icon resolution, which keys off the raw
+  // value). `format: "humanize"` → underscores/hyphens to spaces + Title Case.
+  'x-display'?: null | {
+    format?: null | string
+  }
   'x-ui'?: null | {
     'color-age'?: Record<string, string>
     'color-map'?: Record<string, string>
@@ -333,6 +343,21 @@ export const createProject = (orgSlug: string, project: ProjectCreate) =>
   apiClient.post<Project>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/`,
     project,
+  )
+
+// Targeted update of a project's DEPLOYED_IN edge attributes for one
+// environment (per-key set; a `null` value removes the property). Unlike a
+// project PATCH this touches only that one edge, so it's safe for inline
+// edits. Returns the updated edge properties.
+export const patchEnvironmentEdge = (
+  orgSlug: string,
+  projectId: string,
+  envSlug: string,
+  updates: Record<string, unknown>,
+) =>
+  apiClient.patch<Record<string, unknown>>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(envSlug)}`,
+    updates,
   )
 
 export const patchProject = (

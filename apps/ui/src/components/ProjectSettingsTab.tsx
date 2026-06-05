@@ -8,15 +8,10 @@ import { toast } from 'sonner'
 import {
   archiveProject,
   deleteProject,
-  listEnvironments,
   listLinkDefinitions,
   listProjectPlugins,
-  patchProject,
-  rescoreProject,
   unarchiveProject,
 } from '@/api/endpoints'
-import { EditEnvironmentsCard } from '@/components/EditEnvironmentsCard'
-import { EditIdentifiersCard } from '@/components/EditIdentifiersCard'
 import { EditLinksCard } from '@/components/EditLinksCard'
 import { IntegrationsCard } from '@/components/IntegrationsCard'
 import { ProjectPluginsSection } from '@/components/project/ProjectPluginsSection'
@@ -32,25 +27,17 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { useOrganization } from '@/contexts/OrganizationContext'
-import { useAuth } from '@/hooks/useAuth'
-import { useProjectDeploymentResync } from '@/hooks/useDeploymentResync'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { extractApiErrorDetail } from '@/lib/apiError'
-import { sortEnvironments } from '@/lib/utils'
 import type { Project } from '@/types'
 
+// fallow-ignore-next-line complexity
 export function ProjectSettingsTab({ project }: { project: Project }) {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug || ''
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const { user } = useAuth()
-  const isAdmin = user?.is_admin === true
-  const canRescore =
-    isAdmin || (user?.permissions ?? []).includes('scoring_policy:rescore')
-  const canResyncDeployments =
-    isAdmin || (user?.permissions ?? []).includes('project:deployment:write')
-  const { patch, scheduleScoreRefresh } = useProjectPatch(orgSlug, project.id)
+  const { patch } = useProjectPatch(orgSlug, project.id)
   const [deleteConfirmSlug, setDeleteConfirmSlug] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteRepository, setDeleteRepository] = useState(true)
@@ -147,15 +134,6 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
     },
   })
 
-  const rescoreMutation = useMutation({
-    mutationFn: () => rescoreProject(project.id),
-    onError: mutationErrorHandler('recompute score'),
-    onSuccess: () => {
-      toast.success('Score recompute enqueued')
-      scheduleScoreRefresh()
-    },
-  })
-
   const { data: projectPlugins = [] } = useQuery({
     enabled: !!orgSlug && !!project.id,
     queryFn: ({ signal }) => listProjectPlugins(orgSlug, project.id, signal),
@@ -175,21 +153,6 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
     [projectPlugins],
   )
 
-  // Pick the project's deployment plugin (project-level or inherited)
-  // and only render the resync card when its manifest opts in. Multiple
-  // deployment assignments are rare; we resync the default one and
-  // expose ``source`` via the existing endpoint flag if needed later.
-  const deploymentPlugin = useMemo(() => {
-    const candidates = projectPlugins.filter(
-      (assignment) =>
-        assignment.plugin_type === 'deployment' &&
-        assignment.supports_deployment_sync === true,
-    )
-    return candidates.find((assignment) => assignment.default) ?? candidates[0]
-  }, [projectPlugins])
-
-  const resyncMutation = useProjectDeploymentResync(orgSlug, project.id)
-
   const {
     data: linkDefs = [],
     isError: linkDefsError,
@@ -198,17 +161,6 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
     enabled: !!orgSlug,
     queryFn: ({ signal }) => listLinkDefinitions(orgSlug, signal),
     queryKey: ['linkDefinitions', orgSlug],
-  })
-
-  const sortedEnvironments = useMemo(
-    () => sortEnvironments(project.environments || []),
-    [project.environments],
-  )
-
-  const { data: availableEnvironments = [] } = useQuery({
-    enabled: !!orgSlug,
-    queryFn: ({ signal }) => listEnvironments(orgSlug, signal),
-    queryKey: ['environments', orgSlug],
   })
 
   return (
@@ -237,60 +189,9 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
         />
       )}
 
-      <EditEnvironmentsCard
-        availableEnvironments={availableEnvironments}
-        environments={sortedEnvironments}
-        onPatch={async (envData) => {
-          try {
-            await patchProject(orgSlug, project.id, [
-              { op: 'replace', path: '/environments', value: envData },
-            ])
-          } catch (error) {
-            toast.error(`Save failed: ${extractApiErrorDetail(error)}`)
-            throw error
-          }
-          invalidateProject()
-        }}
-      />
-
-      <EditIdentifiersCard
-        identifiers={project.identifiers || {}}
-        onPatch={(entries) => patch('/identifiers', entries)}
-      />
-
       <IntegrationsCard orgSlug={orgSlug} projectId={project.id} />
 
       <ProjectPluginsSection orgSlug={orgSlug} projectId={project.id} />
-
-      {(canRescore || (canResyncDeployments && deploymentPlugin)) && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Utility Functions</CardTitle>
-          </CardHeader>
-          <CardContent className="flex gap-2">
-            {canRescore && (
-              <Button
-                disabled={rescoreMutation.isPending}
-                onClick={() => rescoreMutation.mutate()}
-                size="sm"
-                variant="outline"
-              >
-                {rescoreMutation.isPending ? 'Enqueuing...' : 'Recompute Score'}
-              </Button>
-            )}
-            {canResyncDeployments && deploymentPlugin && (
-              <Button
-                disabled={resyncMutation.isPending}
-                onClick={() => resyncMutation.mutate()}
-                size="sm"
-                variant="outline"
-              >
-                {resyncMutation.isPending ? 'Syncing...' : 'Sync Deployments'}
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
       <Card className="border-amber-300">
         <CardHeader>

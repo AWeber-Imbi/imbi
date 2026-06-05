@@ -4,6 +4,7 @@ import type {
   ProjectSchemaResponse,
   ProjectSchemaSectionProperty,
 } from '@/api/endpoints'
+import { AttributeValue } from '@/components/ui/attribute-value'
 import {
   HoverCard,
   HoverCardContent,
@@ -12,20 +13,10 @@ import {
 import { isFieldEditable } from '@/components/ui/inline-edit/field-policy'
 import { InlineField } from '@/components/ui/inline-edit/InlineField'
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { getIcon } from '@/lib/icons'
-import {
-  COLOR_TEXT,
   formatFieldKey,
   formatFieldValue,
   resolveFieldValue,
 } from '@/lib/project-field-formatting'
-import { resolveColor, resolveIcon } from '@/lib/ui-maps'
-import type { XUiMaps } from '@/lib/ui-maps'
 import type { Project } from '@/types'
 
 interface AttributeField {
@@ -34,8 +25,6 @@ interface AttributeField {
   key: string
   label: string
   rawValue: unknown
-  title?: string
-  uiMaps: XUiMaps
   value: null | string
 }
 
@@ -53,7 +42,6 @@ interface ProjectAttributesSectionProps {
 }
 
 const LABEL_CLASS = 'text-tertiary'
-const VALUE_CLASS = 'text-primary'
 const MUTED_CLASS = 'text-tertiary'
 const DIVIDER_CLASS = 'border-tertiary'
 
@@ -68,8 +56,6 @@ const ProjectAttributeRow = memo(function ProjectAttributeRow({
     key,
     label: fieldLabel,
     rawValue,
-    title: fieldTitle,
-    uiMaps,
     value: fieldValue,
   } = field
 
@@ -78,38 +64,10 @@ const ProjectAttributeRow = memo(function ProjectAttributeRow({
     [patch, key],
   )
 
-  const mappedColor = resolveColor(uiMaps, rawValue)
-  const mappedIcon = resolveIcon(uiMaps, rawValue)
-  const FieldIcon = mappedIcon ? getIcon(mappedIcon) : null
-  const textColorClass = mappedColor
-    ? (COLOR_TEXT[mappedColor] ?? VALUE_CLASS)
-    : VALUE_CLASS
   const editable = isFieldEditable(key, def)
   const richDisplay =
     fieldValue !== null ? (
-      <span className="flex items-center gap-1.5">
-        {FieldIcon && (
-          <FieldIcon className={`size-3.5 shrink-0 ${textColorClass}`} />
-        )}
-        {fieldTitle ? (
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  className={`text-sm ${textColorClass} cursor-help underline decoration-dotted`}
-                >
-                  {fieldValue}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{fieldTitle}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : (
-          <span className={`text-sm ${textColorClass}`}>{fieldValue}</span>
-        )}
-      </span>
+      <AttributeValue def={def} rawValue={rawValue} />
     ) : null
 
   const labelNode = fieldDescription ? (
@@ -158,35 +116,25 @@ export function ProjectAttributesSection({
   project,
   projectSchema,
 }: ProjectAttributesSectionProps) {
+  // fallow-ignore-next-line complexity
   const attributeFields = useMemo<AttributeField[]>(() => {
     if (!projectSchema) return []
     const seen = new Set<string>()
     const fields: AttributeField[] = []
     for (const section of projectSchema.sections) {
+      // Environment-scoped (relationship-blueprint) attributes are rendered
+      // per-environment in the Environments card, not as project attributes.
+      if (section.scope === 'environment') continue
       for (const [key, def] of Object.entries(section.properties)) {
         if (seen.has(key) || key === 'url') continue
         seen.add(key)
         const raw = resolveFieldValue(key, section, project)
-        const isDate = def.format === 'date-time' || def.format === 'date'
-        const xUi = def['x-ui']
         fields.push({
           def,
           description: def.description ?? undefined,
           key,
           label: def.title || formatFieldKey(key),
           rawValue: raw,
-          title:
-            isDate && raw != null
-              ? new Date(String(raw)).toLocaleString()
-              : undefined,
-          uiMaps: {
-            colorAge: xUi?.['color-age'] ?? undefined,
-            colorMap: xUi?.['color-map'] ?? undefined,
-            colorRange: xUi?.['color-range'] ?? undefined,
-            iconAge: xUi?.['icon-age'] ?? undefined,
-            iconMap: xUi?.['icon-map'] ?? undefined,
-            iconRange: xUi?.['icon-range'] ?? undefined,
-          },
           value: formatFieldValue(raw, def),
         })
       }

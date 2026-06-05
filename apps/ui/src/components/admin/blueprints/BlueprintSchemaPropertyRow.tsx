@@ -21,6 +21,7 @@ import type { SchemaProperty } from '@/types'
 
 import {
   ARRAY_ITEM_TYPES,
+  DISPLAY_FORMATS,
   PROPERTY_TYPES,
   STRING_FORMATS,
 } from './blueprint-schema-utils'
@@ -56,6 +57,10 @@ export function BlueprintSchemaPropertyRow({
   uiMapEntries,
   updateProperty,
 }: BlueprintSchemaPropertyRowProps) {
+  // Property names must be lowercase, underscore-delimited (snake_case).
+  // Save is also blocked in BlueprintForm.validateForm; this is the inline cue.
+  const nameInvalid =
+    prop.name.trim() !== '' && !/^[a-z][a-z0-9_]*$/.test(prop.name)
   return (
     <div className="border-input bg-secondary rounded-lg border">
       {/* Property Row */}
@@ -108,13 +113,21 @@ export function BlueprintSchemaPropertyRow({
         </div>
 
         <Input
-          className="flex-1 font-mono text-sm"
+          aria-invalid={nameInvalid}
+          className={`flex-1 font-mono text-sm${
+            nameInvalid ? ' border-danger focus-visible:ring-danger' : ''
+          }`}
           onChange={(e) =>
             updateProperty(prop.id, {
               name: e.target.value,
             })
           }
           placeholder="Property name"
+          title={
+            nameInvalid
+              ? 'Must be lowercase, underscore-delimited (e.g. acceptance_test_status)'
+              : undefined
+          }
           value={prop.name}
         />
 
@@ -260,7 +273,7 @@ export function BlueprintSchemaPropertyRow({
           </div>
 
           {prop.type === 'string' && (
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               <div>
                 <Label className="text-secondary mb-1 block text-xs">
                   Format
@@ -321,6 +334,33 @@ export function BlueprintSchemaPropertyRow({
                   type="number"
                   value={prop.maxLength ?? ''}
                 />
+              </div>
+              <div>
+                <Label className="text-secondary mb-1 block text-xs">
+                  Display Format
+                </Label>
+                {/* Optional human-readable transform applied to the rendered
+                    value (serialized as x-display.format). 'none' clears it. */}
+                <Select
+                  onValueChange={(v) =>
+                    updateProperty(prop.id, {
+                      displayFormat: v === 'none' ? undefined : v,
+                    })
+                  }
+                  value={prop.displayFormat || 'none'}
+                >
+                  <SelectTrigger aria-label="Display Format">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">(none)</SelectItem>
+                    {DISPLAY_FORMATS.map((f) => (
+                      <SelectItem key={f.value} value={f.value}>
+                        {f.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           )}

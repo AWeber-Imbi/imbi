@@ -64,6 +64,17 @@ export const STRING_FORMATS = [
   'uuid',
 ]
 
+// Value-display transforms (serialized as `x-display.format`). Applied to the
+// rendered value only; `x-ui` color/icon resolution still keys off the raw
+// value. Mirrors `applyDisplayFormat` in `lib/project-field-formatting`.
+export const DISPLAY_FORMATS: { label: string; value: string }[] = [
+  { label: 'Humanize (Title Case, _ → space)', value: 'humanize' },
+  { label: 'Title Case', value: 'titlecase' },
+  { label: 'UPPERCASE', value: 'uppercase' },
+  { label: 'lowercase', value: 'lowercase' },
+  { label: 'Capitalize first letter', value: 'capitalize' },
+]
+
 export type SchemaEditorMode = 'code' | 'visual'
 
 export function buildJsonSchema(
@@ -130,6 +141,10 @@ export function buildJsonSchema(
       propSchema['x-ui'] = xUiObj
     }
 
+    if (prop.displayFormat) {
+      propSchema['x-display'] = { format: prop.displayFormat }
+    }
+
     props[prop.name] = propSchema
     if (prop.required) required.push(prop.name)
   }
@@ -154,6 +169,9 @@ export function schemaToProperties(
 
   for (const [name, propSchema] of Object.entries(props)) {
     const xUi = propSchema['x-ui'] as Record<string, unknown> | undefined
+    const xDisplay = propSchema['x-display'] as
+      | Record<string, unknown>
+      | undefined
     const items = propSchema.items as Record<string, unknown> | undefined
     result.push({
       colorAge: xUi?.['color-age'] as Record<string, string> | undefined,
@@ -164,6 +182,7 @@ export function schemaToProperties(
           ? String(propSchema.default)
           : undefined,
       description: propSchema.description as string | undefined,
+      displayFormat: xDisplay?.format as string | undefined,
       editable: xUi?.['editable'] === false ? false : undefined,
       enumValues: propSchema.enum as string[] | undefined,
       format: propSchema.format as string | undefined,

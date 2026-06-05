@@ -85,6 +85,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useBalancedEnvLayout } from '@/hooks/useBalancedEnvLayout'
 import { useClipboard } from '@/hooks/useClipboard'
 import { useProjectTypes, useTeams } from '@/hooks/useOrgResources'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
@@ -162,6 +163,17 @@ export function ProjectDetail({
     [project.environments],
   )
 
+  // Decides whether the Environments card nests under Project details or spans
+  // the full width below both overview columns (see hook for the rule).
+  const {
+    activityHeaderRef,
+    activityInnerRef,
+    activityMaxHeightPx,
+    detailsRef,
+    healthRef,
+    spanFull: envSpanFull,
+  } = useBalancedEnvLayout()
+
   const { data: currentReleases = [], isPending: releasesPending } = useQuery({
     enabled: !!orgSlug && !!project.id,
     queryFn: ({ signal }) => listCurrentReleases(orgSlug, project.id, signal),
@@ -177,6 +189,8 @@ export function ProjectDetail({
     {
       ciStatus: 'fail' | 'pass' | 'warn' | null
       committish: string
+      notes: null | string
+      performedBy: null | string
       runUrl: null | string
       status: string
       tag: null | string
@@ -188,6 +202,8 @@ export function ProjectDetail({
       {
         ciStatus: 'fail' | 'pass' | 'warn' | null
         committish: string
+        notes: null | string
+        performedBy: null | string
         runUrl: null | string
         status: string
         tag: null | string
@@ -203,6 +219,8 @@ export function ProjectDetail({
       out[row.environment.slug] = {
         ciStatus: ci,
         committish: row.release.committish,
+        notes: row.release.description ?? null,
+        performedBy: row.performed_by ?? null,
         runUrl: row.external_run_url,
         status: row.current_status ?? '',
         tag: row.release.tag ?? null,
@@ -1023,11 +1041,11 @@ export function ProjectDetail({
           })}
         </TabsList>
 
-        <TabsContent value="overview">
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[3fr_2fr] lg:items-start">
+        <TabsContent className="space-y-6" value="overview">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
             {/* Left column: Details */}
             <div className="space-y-6">
-              <Card>
+              <Card ref={detailsRef}>
                 <CardHeader>
                   <CardTitle>Project details</CardTitle>
                 </CardHeader>
@@ -1106,18 +1124,22 @@ export function ProjectDetail({
                 </CardContent>
               </Card>
 
-              {/* Environments */}
-              {sortedEnvironments.length > 0 && (
+              {/* Environments — nests here when the right column is taller
+                  than Project details; otherwise drops below (see envSpanFull). */}
+              {!envSpanFull && sortedEnvironments.length > 0 && (
                 <ProjectEnvironmentsCard
                   deploymentStatus={deploymentStatus}
                   environments={sortedEnvironments}
+                  orgSlug={orgSlug}
+                  projectId={project.id}
+                  projectSchema={projectSchema}
                 />
               )}
             </div>
 
-            {/* Right column: Health score + Activity */}
+            {/* Right column: Health score + Activity. */}
             <div className="flex flex-col gap-6">
-              <Card>
+              <Card ref={healthRef}>
                 <CardHeader>
                   <CardTitle>Health &amp; compliance</CardTitle>
                 </CardHeader>
@@ -1162,8 +1184,14 @@ export function ProjectDetail({
                   )}
               </Card>
 
-              <Card className="flex flex-col" style={{ maxHeight: '600px' }}>
-                <CardHeader className="flex flex-row items-center justify-between">
+              <Card
+                className="flex min-h-0 flex-col"
+                style={{ maxHeight: `${activityMaxHeightPx}px` }}
+              >
+                <CardHeader
+                  className="flex flex-row items-center justify-between"
+                  ref={activityHeaderRef}
+                >
                   <CardTitle>Recent activity</CardTitle>
                   <button className="text-secondary hover:bg-secondary hover:text-primary inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors">
                     <Filter className="size-3" />
@@ -1171,15 +1199,29 @@ export function ProjectDetail({
                   </button>
                 </CardHeader>
                 <CardContent className="min-h-0 flex-1 overflow-y-auto p-0">
-                  <ProjectActivityLog
-                    orgSlug={project.team.organization.slug}
-                    projectId={project.id}
-                    projectSlug={project.slug}
-                  />
+                  <div ref={activityInnerRef}>
+                    <ProjectActivityLog
+                      orgSlug={project.team.organization.slug}
+                      projectId={project.id}
+                      projectSlug={project.slug}
+                    />
+                  </div>
                 </CardContent>
               </Card>
             </div>
           </div>
+
+          {/* Environments — full-width row below both columns when the right
+              column is shorter than Project details. */}
+          {envSpanFull && sortedEnvironments.length > 0 && (
+            <ProjectEnvironmentsCard
+              deploymentStatus={deploymentStatus}
+              environments={sortedEnvironments}
+              orgSlug={orgSlug}
+              projectId={project.id}
+              projectSchema={projectSchema}
+            />
+          )}
         </TabsContent>
 
         {hasConfigurationPlugin && (

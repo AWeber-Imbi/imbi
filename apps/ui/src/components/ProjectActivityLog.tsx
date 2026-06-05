@@ -538,7 +538,7 @@ function Timestamp({ ts }: { ts: Date }) {
 
 function ValueChip({ children }: { children: React.ReactNode }) {
   return (
-    <code className="bg-secondary text-primary inline rounded px-1.5 py-0.5 font-mono text-xs">
+    <code className="bg-secondary text-primary inline rounded px-1.5 py-0.5 font-mono text-xs break-all">
       {children}
     </code>
   )

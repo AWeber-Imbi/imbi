@@ -23,6 +23,34 @@ const WORD_OVERRIDES: Record<string, string> = {
   sonarqube: 'SonarQube',
 }
 
+// Blueprint `x-display` value transforms, keyed by `format`:
+//   - `humanize`   — replace `_`/`-` with spaces and Title-Case each word
+//   - `titlecase`  — Title-Case each word (separators left intact)
+//   - `uppercase`  — UPPER CASE
+//   - `lowercase`  — lower case
+//   - `capitalize` — capitalize the first character only
+const DISPLAY_TRANSFORMS: Record<string, (value: string) => string> = {
+  capitalize: (v) => (v ? v[0].toUpperCase() + v.slice(1) : v),
+  humanize: (v) => humanizeValue(v),
+  lowercase: (v) => v.toLowerCase(),
+  titlecase: (v) => v.replace(/\b\w/g, (c) => c.toUpperCase()),
+  uppercase: (v) => v.toUpperCase(),
+}
+
+/**
+ * Apply a blueprint `x-display` transform to an already-formatted value.
+ * Unknown/absent transforms return the value as-is.
+ */
+export function applyDisplayFormat(
+  value: string,
+  xDisplay?: null | { format?: null | string },
+): string {
+  const transform = xDisplay?.format
+    ? DISPLAY_TRANSFORMS[xDisplay.format]
+    : undefined
+  return transform ? transform(value) : value
+}
+
 export function formatFieldKey(key: null | string | undefined): string {
   if (!key) return ''
   return key
@@ -134,4 +162,15 @@ export function resolveFieldValue(
     }
   }
   return undefined
+}
+
+/** Replace `_`/`-` separators with spaces and Title-Case each word. */
+function humanizeValue(value: string): string {
+  return value
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .map((word) => (word ? word[0].toUpperCase() + word.slice(1) : word))
+    .join(' ')
 }
