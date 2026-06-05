@@ -142,7 +142,7 @@ function deriveScores(projects: { score: null | number; slug: string }[]) {
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
-  const units = ['KB', 'MB', 'GB', 'TB']
+  const units = ['KiB', 'MiB', 'GiB', 'TiB']
   let value = bytes / 1024
   let i = 0
   while (value >= 1024 && i < units.length - 1) {
@@ -392,7 +392,9 @@ function DatastoreRow({ ds }: { ds: DatastoreStatus }) {
         </div>
         {ok && ds.size_bytes != null && (
           <div className="text-tertiary font-mono text-[11px]">
-            {formatBytes(ds.size_bytes)}
+            {ds.total_bytes != null
+              ? `${formatBytes(ds.size_bytes)} of ${formatBytes(ds.total_bytes)}`
+              : formatBytes(ds.size_bytes)}
           </div>
         )}
       </div>

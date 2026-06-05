@@ -495,6 +495,9 @@ export interface CurrentReleaseEnvironment {
   environment: { name: string; slug: string }
   external_run_url: null | string
   last_event_at: null | string
+  // Deployer of the latest event when observed from a remote (e.g. the
+  // GitHub actor); null for in-product deploys.
+  performed_by?: null | string
   release: null | Release
 }
 
@@ -523,6 +526,7 @@ export interface DatastoreStatus {
   role: string
   size_bytes?: null | number
   status: 'error' | 'ok'
+  total_bytes?: null | number
 }
 
 export type DeploymentAction = 'deploy' | 'redeploy'
@@ -1329,6 +1333,9 @@ export interface SchemaProperty {
   colorRange?: Record<string, string>
   defaultValue?: string
   description?: string
+  // Human-readable display transform applied to the rendered value
+  // (serialized as `x-display.format`; see DISPLAY_FORMATS).
+  displayFormat?: string
   editable?: boolean
   enumValues?: string[]
   format?: string
