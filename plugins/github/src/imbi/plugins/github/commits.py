@@ -34,6 +34,8 @@ recording behaves.
 from __future__ import annotations
 
 import asyncio
+import collections
+import collections.abc
 import datetime
 import logging
 import time
@@ -394,12 +396,88 @@ def _client(base: str, owner: str, repo: str, token: str) -> httpx.AsyncClient:
     )
 
 
+ResolveUser = collections.abc.Callable[
+    [str], collections.abc.Awaitable[str | None]
+]
+
+# Process-wide, bounded LRU cache of resolved commit-author identities,
+# keyed by ``(api_base, subject)``.  The subject is GitHub's numeric user
+# id, which is only unique *per host* (github.com id 42 != a GHES id 42),
+# so the resolved API base scopes the key.  Both hits and misses are
+# cached -- a full-history resync of a repo with many external
+# contributors would otherwise re-query the identity store for every
+# commit on every run.  An ``OrderedDict`` gives LRU eviction once the
+# cache exceeds ``_USER_CACHE_MAX`` entries.
+_USER_CACHE: collections.OrderedDict[tuple[str, str], str | None] = (
+    collections.OrderedDict()
+)
+_USER_CACHE_MAX = 8192
+
+
+async def _resolve_user(
+    resolver: ResolveUser, base: str, subject: str
+) -> str | None:
+    """Resolve a GitHub user id to an Imbi email, LRU-cached per host.
+
+    ``subject`` is the GitHub numeric user id (the identity-plugin
+    subject).  Results -- hits *and* misses -- are memoized under
+    ``(base, subject)`` so each distinct author is resolved at most once
+    across the process's lifetime.
+    """
+    key = (base, subject)
+    if key in _USER_CACHE:
+        _USER_CACHE.move_to_end(key)
+        return _USER_CACHE[key]
+    email = await resolver(subject)
+    _USER_CACHE[key] = email
+    _USER_CACHE.move_to_end(key)
+    if len(_USER_CACHE) > _USER_CACHE_MAX:
+        _USER_CACHE.popitem(last=False)
+    return email
+
+
+async def _resolve_author_users(
+    raw: list[dict[str, typing.Any]],
+    resolver: ResolveUser | None,
+    base: str,
+) -> dict[str, str]:
+    """Map each commit's GitHub author id to a resolved Imbi email.
+
+    Returns an empty map when the host wired no resolver.  Distinct
+    author ids are resolved once each (LRU-cached across syncs); misses
+    are dropped, so the map carries only positive matches and
+    :func:`_author_user` falls back to ``''`` for everyone else.
+    """
+    if resolver is None:
+        return {}
+    subjects: set[str] = set()
+    for item in raw:
+        gh_author: dict[str, typing.Any] = item.get('author') or {}
+        gid = gh_author.get('id')
+        if gid is not None:
+            subjects.add(str(gid))
+    out: dict[str, str] = {}
+    for subject in subjects:
+        email = await _resolve_user(resolver, base, subject)
+        if email:
+            out[subject] = email
+    return out
+
+
+def _author_user(item: dict[str, typing.Any], user_map: dict[str, str]) -> str:
+    """Resolved Imbi email for a commit's author, ``''`` when unmatched."""
+    gh_author: dict[str, typing.Any] = item.get('author') or {}
+    gid = gh_author.get('id')
+    return user_map.get(str(gid), '') if gid is not None else ''
+
+
 def _commit_record(
     item: dict[str, typing.Any],
     *,
     project_id: str,
     ref: str,
     pushed_at: datetime.datetime,
+    author_user: str = '',
 ) -> CommitRecord:
     """Map a GitHub commit object onto a :class:`CommitRecord`.
 
@@ -424,6 +502,7 @@ def _commit_record(
         author_name=str(author_meta.get('name') or ''),
         author_email=str(author_meta.get('email') or ''),
         author_login=str(gh_author.get('login') or ''),
+        author_user=author_user,
         committer_name=str(committer_meta.get('name') or ''),
         authored_at=authored_at or pushed_at,
         committed_at=_parse_iso(committer_meta.get('date')),
@@ -684,9 +763,16 @@ async def sync_commits(
                     action_config.initial_limit,
                     max_wait=_WEBHOOK_MAX_WAIT_SECONDS,
                 )
+    user_map = await _resolve_author_users(
+        raw, ctx.resolve_user_by_identity, base
+    )
     records: list[pydantic.BaseModel] = [
         _commit_record(
-            item, project_id=ctx.project_id, ref=ref, pushed_at=pushed_at
+            item,
+            project_id=ctx.project_id,
+            ref=ref,
+            pushed_at=pushed_at,
+            author_user=_author_user(item, user_map),
         )
         for item in raw
         if item.get('sha')
@@ -1011,12 +1097,16 @@ class GitHubCommitSyncPlugin(WebhookActionPlugin):
             tags = await _reconcile_tags(
                 client, ctx.project_id, max_wait=_BACKFILL_MAX_WAIT_SECONDS
             )
+        user_map = await _resolve_author_users(
+            raw_commits, ctx.resolve_user_by_identity, base
+        )
         commit_records: list[pydantic.BaseModel] = [
             _commit_record(
                 item,
                 project_id=ctx.project_id,
                 ref=branch,
                 pushed_at=pushed_at,
+                author_user=_author_user(item, user_map),
             )
             for item in raw_commits
             if item.get('sha')

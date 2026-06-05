@@ -126,6 +126,14 @@ default-groups = ["dev"]
 exclude-newer = "7 days"
 exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "imbi-plugin-aws" = false, "imbi-plugin-github" = false, "imbi-plugin-logzio" = false, "imbi-plugin-oidc" = false, "imbi-plugin-pagerduty" = false, "imbi-plugin-sentry" = false, "imbi-plugin-sonarqube" = false }
 
+# TEMPORARY: point imbi-common at main for the unreleased commit-author
+# attribution fields (PluginContext.resolve_user_by_identity,
+# CommitRecord.author_user) that are not yet on PyPI. Revert to the
+# published ``imbi-common[...]==2.9.3`` pin when the next imbi-common
+# release is cut and re-lock.
+[tool.uv.sources]
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", rev = "4cb45e021d9d4f5c79572b8b7702af8f908cdf79" }
+
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true

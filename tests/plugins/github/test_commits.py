@@ -45,6 +45,7 @@ def _ctx(
     *,
     service_plugins: list[ServicePlugin] | None = None,
     service_endpoint: str | None = None,
+    resolve_user: commits.ResolveUser | None = None,
 ) -> PluginContext:
     options: dict[str, object] = {'service_slug': 'github'}
     if service_endpoint is not None:
@@ -56,6 +57,7 @@ def _ctx(
         assignment_options=options,
         service_plugins=service_plugins or [],
         project_links={'github-repository': 'https://github.com/octo/demo'},
+        resolve_user_by_identity=resolve_user,
     )
 
 
@@ -75,11 +77,13 @@ def _push(
     }
 
 
-def _commit(sha: str, *, login: str = 'octocat') -> dict[str, object]:
+def _commit(
+    sha: str, *, login: str = 'octocat', author_id: int = 583231
+) -> dict[str, object]:
     return {
         'sha': sha,
         'html_url': f'https://github.com/octo/demo/commit/{sha}',
-        'author': {'login': login},
+        'author': {'login': login, 'id': author_id},
         'commit': {
             'message': 'Subject line\n\nbody',
             'author': {
@@ -1265,3 +1269,156 @@ class SyncCommitsThrottleTestCase(unittest.IsolatedAsyncioTestCase):
         insert.assert_awaited_once()
         _, records = _await_args(insert)
         self.assertEqual(1, len(records))
+
+
+class ResolveUserCacheTestCase(unittest.IsolatedAsyncioTestCase):
+    """LRU caching of commit-author identity resolution."""
+
+    def setUp(self) -> None:
+        commits._USER_CACHE.clear()
+
+    async def test_hits_and_misses_cached(self) -> None:
+        resolver = mock.AsyncMock(
+            side_effect=lambda s: 'a@e.com' if s == '1' else None
+        )
+        base = 'https://api.github.com'
+        self.assertEqual(
+            'a@e.com', await commits._resolve_user(resolver, base, '1')
+        )
+        self.assertIsNone(await commits._resolve_user(resolver, base, '2'))
+        # Repeats are served from cache -- both the hit and the miss.
+        self.assertEqual(
+            'a@e.com', await commits._resolve_user(resolver, base, '1')
+        )
+        self.assertIsNone(await commits._resolve_user(resolver, base, '2'))
+        self.assertEqual(2, resolver.await_count)
+
+    async def test_key_scoped_by_base(self) -> None:
+        resolver = mock.AsyncMock(return_value='x@e.com')
+        await commits._resolve_user(resolver, 'https://api.github.com', '42')
+        await commits._resolve_user(resolver, 'https://ghe.corp/api/v3', '42')
+        # Same subject, different host -> two distinct lookups (a GitHub
+        # id is only unique per host).
+        self.assertEqual(2, resolver.await_count)
+
+    async def test_lru_eviction(self) -> None:
+        resolver = mock.AsyncMock(return_value='e@e.com')
+        with mock.patch.object(commits, '_USER_CACHE_MAX', 2):
+            await commits._resolve_user(resolver, 'b', '1')
+            await commits._resolve_user(resolver, 'b', '2')
+            await commits._resolve_user(resolver, 'b', '3')
+        self.assertNotIn(('b', '1'), commits._USER_CACHE)
+        self.assertIn(('b', '3'), commits._USER_CACHE)
+
+    async def test_author_users_dedups_and_drops_misses(self) -> None:
+        resolver = mock.AsyncMock(
+            side_effect=lambda s: 'dev@e.com' if s == '7' else None
+        )
+        raw: list[dict[str, typing.Any]] = [
+            {'author': {'id': 7}},
+            {'author': {'id': 7}},  # duplicate id
+            {'author': {'id': 8}},  # resolves to a miss
+            {'author': None},  # unlinked commit
+            {},  # no author key
+        ]
+        out = await commits._resolve_author_users(raw, resolver, 'base')
+        self.assertEqual({'7': 'dev@e.com'}, out)
+        # Distinct ids 7 and 8 only -- the duplicate is collapsed.
+        self.assertEqual(2, resolver.await_count)
+
+    async def test_author_users_without_resolver_is_empty(self) -> None:
+        out = await commits._resolve_author_users(
+            [{'author': {'id': 1}}], None, 'base'
+        )
+        self.assertEqual({}, out)
+
+
+class AuthorAttributionTestCase(unittest.IsolatedAsyncioTestCase):
+    """End-to-end author -> Imbi user attribution on the sync actions."""
+
+    _REPO = 'https://api.github.com/repos/octo/demo'
+
+    def setUp(self) -> None:
+        commits._USER_CACHE.clear()
+
+    @respx.mock
+    async def test_sync_commits_stamps_author_user(self) -> None:
+        base, head = 'a' * 40, 'b' * 40
+        respx.get(f'{self._REPO}/compare/{base}...{head}').mock(
+            return_value=httpx.Response(
+                200, json={'commits': [_commit('c' * 40, author_id=42)]}
+            )
+        )
+        resolver = mock.AsyncMock(return_value='dev@example.com')
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            await commits.sync_commits(
+                ctx=_ctx(resolve_user=resolver),
+                credentials=_CREDS,
+                external_identifier='',
+                action_config=commits.SyncCommitsConfig(),
+                payload=_push(before=base, after=head),
+            )
+        _, records = _await_args(insert)
+        self.assertEqual('dev@example.com', records[0].author_user)
+        resolver.assert_awaited_once_with('42')
+
+    @respx.mock
+    async def test_sync_commits_without_resolver_leaves_blank(self) -> None:
+        base, head = 'a' * 40, 'b' * 40
+        respx.get(f'{self._REPO}/compare/{base}...{head}').mock(
+            return_value=httpx.Response(
+                200, json={'commits': [_commit('c' * 40)]}
+            )
+        )
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            await commits.sync_commits(
+                ctx=_ctx(),
+                credentials=_CREDS,
+                external_identifier='',
+                action_config=commits.SyncCommitsConfig(),
+                payload=_push(before=base, after=head),
+            )
+        _, records = _await_args(insert)
+        self.assertEqual('', records[0].author_user)
+
+    @respx.mock
+    async def test_full_history_resolves_each_author_once(self) -> None:
+        respx.get(self._REPO).mock(
+            return_value=httpx.Response(200, json={'default_branch': 'main'})
+        )
+        # Two commits by the same author + one by another.
+        respx.get(f'{self._REPO}/commits').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    _commit('c' * 40, author_id=42),
+                    _commit('d' * 40, author_id=42),
+                    _commit('e' * 40, author_id=99),
+                ],
+            )
+        )
+        respx.get(f'{self._REPO}/git/matching-refs/tags').mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        resolver = mock.AsyncMock(
+            side_effect=lambda s: 'dev@example.com' if s == '42' else None
+        )
+        ctx = _ctx(
+            service_plugins=[ServicePlugin(slug='github', options={})],
+            resolve_user=resolver,
+        )
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            await commits.GitHubCommitSyncPlugin().sync_all_history(
+                ctx=ctx, credentials=_CREDS
+            )
+        commit_call = next(
+            c for c in insert.await_args_list if c.args[0] == 'commits'
+        )
+        by_sha = {r.sha: r.author_user for r in commit_call.args[1]}
+        self.assertEqual('dev@example.com', by_sha['c' * 40])
+        self.assertEqual('dev@example.com', by_sha['d' * 40])
+        self.assertEqual('', by_sha['e' * 40])
+        # Two distinct authors -> two lookups despite three commits.
+        self.assertEqual(
+            {'42', '99'}, {c.args[0] for c in resolver.await_args_list}
+        )
