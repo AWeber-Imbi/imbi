@@ -33,8 +33,10 @@ recording behaves.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import logging
+import time
 import typing
 import urllib.parse
 
@@ -87,6 +89,136 @@ _MAX_COMPARE_PAGES = 20
 # backfill so a very deep repo can't pin the worker indefinitely; the
 # walk logs a truncation warning when it hits the cap.
 _MAX_HISTORY_PAGES = 100
+
+# Per-context ceilings on how long a *single* rate-limit pause may block
+# before the sync gives up best-effort (logged).  The webhook actions
+# (``sync_commits`` / ``sync_tags``) run inside the gateway's request
+# path, so they pause only briefly and bail when GitHub's reset is
+# further out -- a later push re-syncs the gap (``ReplacingMergeTree``
+# dedupes).  The on-demand backfill (``sync_all_history``) runs in a
+# background worker and can wait out a full primary-limit reset.
+_WEBHOOK_MAX_WAIT_SECONDS = 60.0
+_BACKFILL_MAX_WAIT_SECONDS = 900.0
+# GitHub's documented floor to wait when a secondary (abuse) rate-limit
+# response carries neither ``retry-after`` nor an exhausted
+# ``x-ratelimit-*`` to time the resume from.
+_SECONDARY_LIMIT_WAIT_SECONDS = 60.0
+# Small cushion added to a primary-limit reset wait so minor clock skew
+# between us and GitHub can't wake us a hair early into a re-throttle.
+_RESET_BUFFER_SECONDS = 1.0
+# Pathological-loop guard: how many times one request may be paused and
+# retried before giving up.  A primary reset / ``retry-after`` normally
+# clears the limit on the first retry, so this only bounds a misbehaving
+# endpoint.
+_MAX_THROTTLE_RETRIES = 3
+
+
+def _header_int(response: httpx.Response, name: str) -> int | None:
+    """Parse an integer response header, ``None`` when absent/malformed."""
+    raw = response.headers.get(name)
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _throttle_wait(response: httpx.Response) -> float | None:
+    """Seconds to pause for GitHub's rate-limit headers, else ``None``.
+
+    Detects both throttle styles GitHub documents and reads the resume
+    time straight from the response:
+
+    * **secondary limit** -- a ``retry-after`` header (any status): honor
+      it verbatim;
+    * **primary limit** -- ``x-ratelimit-remaining: 0`` with an
+      ``x-ratelimit-reset`` epoch: wait until the reset (plus a small
+      clock-skew cushion);
+    * a 403/429 that exhausted the quota but gives no reset -> the
+      conservative ``_SECONDARY_LIMIT_WAIT_SECONDS`` floor.
+
+    Returns ``None`` for anything that is *not* a throttle signal --
+    including a non-rate-limit 403 (e.g. insufficient scope), which must
+    fall through to the caller's normal error handling rather than be
+    mistaken for a pause.  A successful response that merely depleted the
+    quota (``remaining == 0`` on a 2xx) also yields a wait, so the caller
+    can pause pre-emptively before the next request.
+    """
+    retry_after = response.headers.get('retry-after')
+    if retry_after is not None:
+        try:
+            return max(0.0, float(retry_after))
+        except ValueError:
+            return _SECONDARY_LIMIT_WAIT_SECONDS
+    if _header_int(response, 'x-ratelimit-remaining') == 0:
+        reset = _header_int(response, 'x-ratelimit-reset')
+        if reset is not None:
+            return max(0.0, reset - time.time()) + _RESET_BUFFER_SECONDS
+        if response.status_code in (403, 429):
+            return _SECONDARY_LIMIT_WAIT_SECONDS
+    return None
+
+
+async def _request(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    *,
+    max_wait: float,
+    **kwargs: typing.Any,
+) -> httpx.Response:
+    """Issue a request, pausing and resuming on GitHub rate limits.
+
+    On a throttled response (403/429 carrying a rate-limit signal) sleeps
+    for the interval GitHub states in its headers, then retries -- up to
+    ``_MAX_THROTTLE_RETRIES`` times and never longer than *max_wait* on a
+    single pause.  When the stated wait exceeds *max_wait* (or the retries
+    are exhausted) the throttled response is handed back unchanged so the
+    caller's ``raise_for_status`` surfaces it and the sync bails
+    best-effort.  After a *successful* response that exhausted the
+    remaining quota, pauses pre-emptively (subject to the same cap) so the
+    next call doesn't spend a round-trip on a guaranteed rejection.
+    """
+    attempts = 0
+    while True:
+        response = await client.request(method, url, **kwargs)
+        wait = _throttle_wait(response)
+        if wait is None:
+            return response
+        if response.status_code not in (403, 429):
+            # Pre-emptive: the request succeeded but drained the quota;
+            # pause (bounded) so the next call isn't a guaranteed 403,
+            # then hand back the good response.
+            if wait <= max_wait:
+                LOGGER.info(
+                    'github-commit-sync quota exhausted on %s; pausing '
+                    '%.0fs before continuing',
+                    url,
+                    wait,
+                )
+                await asyncio.sleep(wait)
+            return response
+        if wait > max_wait or attempts >= _MAX_THROTTLE_RETRIES:
+            LOGGER.warning(
+                'github-commit-sync rate-limited on %s (wait %.0fs, cap '
+                '%.0fs, attempt %d); bailing best-effort',
+                url,
+                wait,
+                max_wait,
+                attempts + 1,
+            )
+            return response
+        attempts += 1
+        LOGGER.warning(
+            'github-commit-sync rate-limited on %s; pausing %.0fs then '
+            'retrying (attempt %d/%d)',
+            url,
+            wait,
+            attempts,
+            _MAX_THROTTLE_RETRIES,
+        )
+        await asyncio.sleep(wait)
 
 
 async def _resolve_bearer(
@@ -301,7 +433,7 @@ def _commit_record(
 
 
 async def _fetch_compare_commits(
-    client: httpx.AsyncClient, base: str, head: str
+    client: httpx.AsyncClient, base: str, head: str, *, max_wait: float
 ) -> list[dict[str, typing.Any]]:
     """``GET /compare/{base}...{head}`` following the Link pagination."""
     quoted = urllib.parse.quote(f'{base}...{head}', safe='.')
@@ -309,7 +441,9 @@ async def _fetch_compare_commits(
     params: dict[str, str] = {'per_page': '250'}
     commits: list[dict[str, typing.Any]] = []
     for page in range(1, _MAX_COMPARE_PAGES + 1):
-        resp = await client.get(path, params=params)
+        resp = await _request(
+            client, 'GET', path, params=params, max_wait=max_wait
+        )
         resp.raise_for_status()
         payload = typing.cast('dict[str, typing.Any]', resp.json())
         commits.extend(payload.get('commits') or [])
@@ -356,12 +490,15 @@ async def _last_known_sha(project_id: str) -> str | None:
 
 
 async def _fetch_recent_commits(
-    client: httpx.AsyncClient, head: str, limit: int
+    client: httpx.AsyncClient, head: str, limit: int, *, max_wait: float
 ) -> list[dict[str, typing.Any]]:
     """Bounded ``GET /commits?sha={head}`` fallback for new branches."""
-    resp = await client.get(
+    resp = await _request(
+        client,
+        'GET',
         '/commits',
         params={'sha': head, 'per_page': str(max(1, min(limit, 100)))},
+        max_wait=max_wait,
     )
     resp.raise_for_status()
     return typing.cast('list[dict[str, typing.Any]]', resp.json())
@@ -386,20 +523,22 @@ def _resolve_host_for_context(ctx: PluginContext) -> str | None:
     return None
 
 
-async def _fetch_default_branch(client: httpx.AsyncClient) -> str:
+async def _fetch_default_branch(
+    client: httpx.AsyncClient, *, max_wait: float
+) -> str:
     """Return the repo's default branch name (``main`` when unknown)."""
     # httpx normalises ``base_url`` with a trailing slash; GHEC's gateway
     # 404s on ``/repos/<o>/<r>/`` so request the absolute URL with the
     # trailing slash stripped, matching the deployment plugin.
     url = str(client.base_url).rstrip('/')
-    resp = await client.get(url)
+    resp = await _request(client, 'GET', url, max_wait=max_wait)
     resp.raise_for_status()
     meta = typing.cast('dict[str, typing.Any]', resp.json())
     return str(meta.get('default_branch') or 'main')
 
 
 async def _fetch_all_commits(
-    client: httpx.AsyncClient, branch: str
+    client: httpx.AsyncClient, branch: str, *, max_wait: float
 ) -> list[dict[str, typing.Any]]:
     """Walk every commit reachable from ``branch`` via Link pagination.
 
@@ -409,7 +548,9 @@ async def _fetch_all_commits(
     params: dict[str, str] = {'sha': branch, 'per_page': '100'}
     out: list[dict[str, typing.Any]] = []
     for page in range(1, _MAX_HISTORY_PAGES + 1):
-        resp = await client.get('/commits', params=params)
+        resp = await _request(
+            client, 'GET', '/commits', params=params, max_wait=max_wait
+        )
         resp.raise_for_status()
         out.extend(typing.cast('list[dict[str, typing.Any]]', resp.json()))
         next_url = _next_page_url(resp.headers.get('link'))
@@ -527,14 +668,21 @@ async def sync_commits(
     token = await _resolve_bearer(credentials, base, owner, repo)
     async with _client(base, owner, repo, token) as client:
         if isinstance(before, str) and before and before != _ZERO_SHA:
-            raw = await _fetch_compare_commits(client, before, after)
+            raw = await _fetch_compare_commits(
+                client, before, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
+            )
         else:
             last = await _last_known_sha(ctx.project_id)
             if last:
-                raw = await _fetch_compare_commits(client, last, after)
+                raw = await _fetch_compare_commits(
+                    client, last, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
+                )
             else:
                 raw = await _fetch_recent_commits(
-                    client, after, action_config.initial_limit
+                    client,
+                    after,
+                    action_config.initial_limit,
+                    max_wait=_WEBHOOK_MAX_WAIT_SECONDS,
                 )
     records: list[pydantic.BaseModel] = [
         _commit_record(
@@ -556,10 +704,10 @@ async def sync_commits(
 
 
 async def _annotated_tag(
-    client: httpx.AsyncClient, sha: str
+    client: httpx.AsyncClient, sha: str, *, max_wait: float
 ) -> dict[str, typing.Any] | None:
     """Fetch annotated-tag metadata, ``None`` for a lightweight tag."""
-    resp = await client.get(f'/git/tags/{sha}')
+    resp = await _request(client, 'GET', f'/git/tags/{sha}', max_wait=max_wait)
     if resp.status_code != 200:
         return None
     return typing.cast('dict[str, typing.Any]', resp.json())
@@ -613,7 +761,7 @@ def _tag_record(
 
 
 async def _reconcile_tags(
-    client: httpx.AsyncClient, project_id: str
+    client: httpx.AsyncClient, project_id: str, *, max_wait: float
 ) -> list[TagRecord]:
     """Upsert the repo's full tag list via the git-refs API.
 
@@ -626,7 +774,13 @@ async def _reconcile_tags(
     prefix = 'refs/tags/'
     params: dict[str, str] = {'per_page': '100'}
     while True:
-        resp = await client.get('/git/matching-refs/tags', params=params)
+        resp = await _request(
+            client,
+            'GET',
+            '/git/matching-refs/tags',
+            params=params,
+            max_wait=max_wait,
+        )
         resp.raise_for_status()
         rows = typing.cast('list[dict[str, typing.Any]]', resp.json())
         for row in rows:
@@ -637,7 +791,7 @@ async def _reconcile_tags(
                 continue
             name = ref[len(prefix) :]
             annotated = (
-                await _annotated_tag(client, sha)
+                await _annotated_tag(client, sha, max_wait=max_wait)
                 if obj.get('type') == 'tag'
                 else None
             )
@@ -688,7 +842,9 @@ async def sync_tags(
     owner, repo, base = resolved
     token = await _resolve_bearer(credentials, base, owner, repo)
     async with _client(base, owner, repo, token) as client:
-        annotated = await _annotated_tag(client, after)
+        annotated = await _annotated_tag(
+            client, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
+        )
         records: list[pydantic.BaseModel] = [
             _tag_record(
                 project_id=ctx.project_id,
@@ -699,7 +855,9 @@ async def sync_tags(
             )
         ]
         if action_config.reconcile_all:
-            extra = await _reconcile_tags(client, ctx.project_id)
+            extra = await _reconcile_tags(
+                client, ctx.project_id, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
+            )
             seen = {name}
             records.extend(r for r in extra if r.name not in seen)
     try:
@@ -844,9 +1002,15 @@ class GitHubCommitSyncPlugin(WebhookActionPlugin):
         pushed_at = datetime.datetime.now(datetime.UTC)
         token = await _resolve_bearer(credentials, base, owner, repo)
         async with _client(base, owner, repo, token) as client:
-            branch = await _fetch_default_branch(client)
-            raw_commits = await _fetch_all_commits(client, branch)
-            tags = await _reconcile_tags(client, ctx.project_id)
+            branch = await _fetch_default_branch(
+                client, max_wait=_BACKFILL_MAX_WAIT_SECONDS
+            )
+            raw_commits = await _fetch_all_commits(
+                client, branch, max_wait=_BACKFILL_MAX_WAIT_SECONDS
+            )
+            tags = await _reconcile_tags(
+                client, ctx.project_id, max_wait=_BACKFILL_MAX_WAIT_SECONDS
+            )
         commit_records: list[pydantic.BaseModel] = [
             _commit_record(
                 item,

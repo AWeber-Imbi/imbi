@@ -1,6 +1,7 @@
 """Tests for the GitHub commit / tag history sync webhook plugin."""
 
 import base64
+import time
 import typing
 import unittest
 from unittest import mock
@@ -1095,3 +1096,172 @@ class WebBaseTestCase(unittest.TestCase):
             'https://ghe.example.com',
             commits._web_base('https://ghe.example.com/api/v3'),
         )
+
+
+class ThrottleWaitTestCase(unittest.TestCase):
+    """Unit coverage for :func:`commits._throttle_wait` header parsing."""
+
+    def test_retry_after_honored(self) -> None:
+        resp = httpx.Response(403, headers={'retry-after': '12'})
+        self.assertEqual(12.0, commits._throttle_wait(resp))
+
+    def test_retry_after_malformed_floors(self) -> None:
+        resp = httpx.Response(429, headers={'retry-after': 'soon'})
+        self.assertEqual(
+            commits._SECONDARY_LIMIT_WAIT_SECONDS,
+            commits._throttle_wait(resp),
+        )
+
+    def test_primary_limit_waits_until_reset(self) -> None:
+        reset = int(time.time()) + 30
+        resp = httpx.Response(
+            403,
+            headers={
+                'x-ratelimit-remaining': '0',
+                'x-ratelimit-reset': str(reset),
+            },
+        )
+        wait = commits._throttle_wait(resp)
+        assert wait is not None
+        self.assertGreater(wait, 25.0)
+        self.assertLessEqual(wait, 31.0 + commits._RESET_BUFFER_SECONDS)
+
+    def test_primary_limit_without_reset_floors(self) -> None:
+        resp = httpx.Response(403, headers={'x-ratelimit-remaining': '0'})
+        self.assertEqual(
+            commits._SECONDARY_LIMIT_WAIT_SECONDS,
+            commits._throttle_wait(resp),
+        )
+
+    def test_non_ratelimit_403_falls_through(self) -> None:
+        resp = httpx.Response(403, json={'message': 'Not accessible'})
+        self.assertIsNone(commits._throttle_wait(resp))
+
+    def test_healthy_response_no_wait(self) -> None:
+        resp = httpx.Response(200, headers={'x-ratelimit-remaining': '4999'})
+        self.assertIsNone(commits._throttle_wait(resp))
+
+    def test_exhausted_2xx_yields_preemptive_wait(self) -> None:
+        reset = int(time.time()) + 10
+        resp = httpx.Response(
+            200,
+            headers={
+                'x-ratelimit-remaining': '0',
+                'x-ratelimit-reset': str(reset),
+            },
+        )
+        self.assertIsNotNone(commits._throttle_wait(resp))
+
+
+class RequestTestCase(unittest.IsolatedAsyncioTestCase):
+    """Pause/resume behavior of :func:`commits._request`."""
+
+    @staticmethod
+    def _client(first: httpx.Response, *rest: httpx.Response) -> mock.Mock:
+        # A single response is repeated enough times to outlast the
+        # retry loop; an explicit sequence is replayed verbatim.
+        responses = (
+            [first, *rest]
+            if rest
+            else [first] * (commits._MAX_THROTTLE_RETRIES + 2)
+        )
+        client = mock.Mock()
+        client.request = mock.AsyncMock(side_effect=responses)
+        return client
+
+    async def test_reactive_retry_then_success(self) -> None:
+        client = self._client(
+            httpx.Response(403, headers={'retry-after': '7'}),
+            httpx.Response(200, json={'ok': True}),
+        )
+        with mock.patch.object(
+            commits.asyncio, 'sleep', new=mock.AsyncMock()
+        ) as slept:
+            resp = await commits._request(client, 'GET', '/x', max_wait=60.0)
+        self.assertEqual(200, resp.status_code)
+        slept.assert_awaited_once_with(7.0)
+        self.assertEqual(2, client.request.await_count)
+
+    async def test_preemptive_pause_on_exhausted_2xx(self) -> None:
+        reset = int(time.time()) + 5
+        client = self._client(
+            httpx.Response(
+                200,
+                headers={
+                    'x-ratelimit-remaining': '0',
+                    'x-ratelimit-reset': str(reset),
+                },
+                json={'ok': True},
+            ),
+        )
+        with mock.patch.object(
+            commits.asyncio, 'sleep', new=mock.AsyncMock()
+        ) as slept:
+            resp = await commits._request(client, 'GET', '/x', max_wait=60.0)
+        self.assertEqual(200, resp.status_code)
+        slept.assert_awaited_once()
+        # The good response is returned, not retried.
+        self.assertEqual(1, client.request.await_count)
+
+    async def test_wait_exceeding_cap_bails_without_sleeping(self) -> None:
+        reset = int(time.time()) + 10_000
+        client = self._client(
+            httpx.Response(
+                403,
+                headers={
+                    'x-ratelimit-remaining': '0',
+                    'x-ratelimit-reset': str(reset),
+                },
+            ),
+        )
+        with mock.patch.object(
+            commits.asyncio, 'sleep', new=mock.AsyncMock()
+        ) as slept:
+            resp = await commits._request(client, 'GET', '/x', max_wait=60.0)
+        self.assertEqual(403, resp.status_code)
+        slept.assert_not_awaited()
+        self.assertEqual(1, client.request.await_count)
+
+    async def test_retries_exhausted_bails(self) -> None:
+        client = self._client(
+            httpx.Response(429, headers={'retry-after': '1'})
+        )
+        with mock.patch.object(
+            commits.asyncio, 'sleep', new=mock.AsyncMock()
+        ) as slept:
+            resp = await commits._request(client, 'GET', '/x', max_wait=60.0)
+        self.assertEqual(429, resp.status_code)
+        self.assertEqual(commits._MAX_THROTTLE_RETRIES, slept.await_count)
+        self.assertEqual(
+            commits._MAX_THROTTLE_RETRIES + 1, client.request.await_count
+        )
+
+
+class SyncCommitsThrottleTestCase(unittest.IsolatedAsyncioTestCase):
+    """End-to-end: a throttled compare pauses then resumes."""
+
+    @respx.mock
+    async def test_compare_resumes_after_throttle(self) -> None:
+        base, head = 'a' * 40, 'b' * 40
+        url = f'https://api.github.com/repos/octo/demo/compare/{base}...{head}'
+        respx.get(url).mock(
+            side_effect=[
+                httpx.Response(403, headers={'retry-after': '3'}),
+                httpx.Response(200, json={'commits': [_commit('1' * 40)]}),
+            ]
+        )
+        with mock.patch.object(
+            commits.asyncio, 'sleep', new=mock.AsyncMock()
+        ) as slept:
+            with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+                await commits.sync_commits(
+                    ctx=_ctx(),
+                    credentials=_CREDS,
+                    external_identifier='',
+                    action_config=commits.SyncCommitsConfig(),
+                    payload=_push(before=base, after=head),
+                )
+        slept.assert_awaited_once_with(3.0)
+        insert.assert_awaited_once()
+        _, records = _await_args(insert)
+        self.assertEqual(1, len(records))
