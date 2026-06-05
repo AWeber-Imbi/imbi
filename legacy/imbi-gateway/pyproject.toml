@@ -1,6 +1,6 @@
 [project]
 name = "imbi-gateway"
-version = "2.9.2"
+version = "2.10.0"
 description = "Imbi webhook receiver"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -10,7 +10,7 @@ dependencies = [
   "cel-python>=0.5.0",
   "fastapi>=0.135.1",
   "httpx>=0.28.1",
-  "imbi-common[databases,server]==2.9.2",
+  "imbi-common[databases,server]==2.10.0",
   "jsonpointer>=3.1.1",
   "psycopg[binary,pool]~=3.3.2",
   "pydantic~=2.12",
@@ -138,10 +138,3 @@ exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
-
-# TEMPORARY: point imbi-common at main for the unreleased commit-author
-# identity resolver (PluginContext.resolve_user_by_identity) injected
-# below. Revert to the published imbi-common[...]==2.9.3 pin when the
-# next imbi-common release is cut and re-lock.
-[tool.uv.sources]
-imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", rev = "4cb45e021d9d4f5c79572b8b7702af8f908cdf79" }
