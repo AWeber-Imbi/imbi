@@ -18,6 +18,7 @@ from imbi_common.scoring import (
     AgePolicy,
     AnalysisResultPolicy,
     AttributePolicy,
+    DeploymentStatusPolicy,
     LinkPresencePolicy,
     PresencePolicy,
     clear_score,
@@ -32,6 +33,7 @@ Policy = (
     | LinkPresencePolicy
     | AgePolicy
     | AnalysisResultPolicy
+    | DeploymentStatusPolicy
 )
 
 STREAM = 'imbi:score-recompute'
@@ -54,6 +56,7 @@ ChangeReason = typing.Literal[
     'policy_change',
     'bulk_rescore',
     'scheduled_recompute',
+    'deployment_status_change',
 ]
 
 
@@ -162,13 +165,16 @@ async def affected_projects(
     """Project ids that the policy applies to.
 
     For attribute/presence/age policies, ``policy.attribute_name`` must
-    exist on the blueprint-extended Project model. For link_presence
-    and analysis_result policies, no attribute check is required —
-    they key off project links / analysis-report results instead. In
-    all cases, the result is intersected with the policy's TARGETS
-    edges when set.
+    exist on the blueprint-extended Project model. For link_presence,
+    analysis_result, and deployment_status policies, no attribute check
+    is required — they key off project links / analysis-report results
+    / deployment edges instead. In all cases, the result is intersected
+    with the policy's TARGETS edges when set.
     """
-    if not isinstance(policy, (LinkPresencePolicy, AnalysisResultPolicy)):
+    if not isinstance(
+        policy,
+        (LinkPresencePolicy, AnalysisResultPolicy, DeploymentStatusPolicy),
+    ):
         extended = await blueprints.get_model(db, models.Project)
         if policy.attribute_name not in extended.model_fields:
             return []

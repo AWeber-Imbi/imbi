@@ -31,6 +31,7 @@ PolicyType = (
     | scoring_common.LinkPresencePolicy
     | scoring_common.AgePolicy
     | scoring_common.AnalysisResultPolicy
+    | scoring_common.DeploymentStatusPolicy
 )
 
 
@@ -58,6 +59,7 @@ _NODE_PROPERTY_KEYS: frozenset[str] = frozenset(
         'attribute_name',
         'link_slug',
         'result_slug',
+        'environment_slug',
         'present_score',
         'missing_score',
         'value_score_map',

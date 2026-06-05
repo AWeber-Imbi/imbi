@@ -58,7 +58,12 @@ class PolicyCreate(pydantic.BaseModel):
     slug: str
     description: str | None = None
     category: typing.Literal[
-        'attribute', 'presence', 'link_presence', 'age', 'analysis_result'
+        'attribute',
+        'presence',
+        'link_presence',
+        'age',
+        'analysis_result',
+        'deployment_status',
     ] = 'attribute'
     weight: int = pydantic.Field(ge=0, le=100)
     enabled: bool = True
@@ -67,6 +72,7 @@ class PolicyCreate(pydantic.BaseModel):
     attribute_name: str | None = None
     link_slug: str | None = None
     result_slug: str | None = None
+    environment_slug: str | None = None
     present_score: int | None = pydantic.Field(default=None, ge=0, le=100)
     missing_score: int | None = pydantic.Field(default=None, ge=0, le=100)
     value_score_map: dict[str, int] | None = None
@@ -85,6 +91,7 @@ class PolicyUpdate(pydantic.BaseModel):
     attribute_name: str | None = None
     link_slug: str | None = None
     result_slug: str | None = None
+    environment_slug: str | None = None
     weight: int | None = pydantic.Field(default=None, ge=0, le=100)
     enabled: bool | None = None
     priority: int | None = None

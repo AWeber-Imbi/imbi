@@ -28,6 +28,8 @@ from imbi_api.auth import permissions
 from imbi_api.endpoints._helpers import fetch_or_404
 from imbi_api.endpoints.operations_log import complete_opslog_entry
 from imbi_api.plugins import call_with_timeout
+from imbi_api.scoring import OptionalValkeyClient
+from imbi_api.scoring import queue as score_queue
 
 LOGGER = logging.getLogger(__name__)
 
@@ -1170,6 +1172,7 @@ async def record_deployment(
     env_slug: str,
     data: DeploymentEventInput,
     db: graph.Pool,
+    valkey_client: OptionalValkeyClient,
     _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -1257,6 +1260,12 @@ async def record_deployment(
             data.external_run_id,
             datetime.datetime.now(datetime.UTC),
         )
+
+    # A DeploymentStatusPolicy may score this project on its current
+    # deployment status, so a new event can change the score.
+    await score_queue.enqueue_recompute(
+        valkey_client, project_id, 'deployment_status_change'
+    )
 
     return _edge_to_response(env, deployments)
 

@@ -612,6 +612,35 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         self.assertEqual(len(body['deployments']), 2)
         self.assertEqual(body['current_status'], 'success')
 
+    def test_record_deployment_enqueues_rescore(self) -> None:
+        # Recording an event must trigger a score recompute, since a
+        # DeploymentStatusPolicy can score the project on its status.
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+            [{'env': self._env(), 'deployments': None}],
+            [{'deployments': None}],
+        ]
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.releases.score_queue.enqueue_recompute',
+                new=mock.AsyncMock(return_value=True),
+            ) as enqueue,
+        ):
+            response = self.client.post(
+                self._url(f'/{RELEASE_ID}/environments/production'),
+                json={'status': 'failed'},
+            )
+        self.assertEqual(response.status_code, 200)
+        enqueue.assert_awaited_once()
+        self.assertEqual(
+            enqueue.await_args.args[1:],
+            (PROJECT_ID, 'deployment_status_change'),
+        )
+
     def test_record_deployment_env_missing(self) -> None:
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],

@@ -102,6 +102,52 @@ class ScoringPolicyEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(data['slug'], 'python-version')
         self.assertEqual(self.mock_valkey.xadd.await_count, 2)
 
+    def test_create_deployment_status_policy(self) -> None:
+        props = {
+            'id': 'd1id',
+            'name': 'Prod Deploy Health',
+            'slug': 'prod-deploy-health',
+            'category': 'deployment_status',
+            'environment_slug': 'production',
+            'weight': 30,
+            'enabled': True,
+            'priority': 0,
+            'description': None,
+            'status_score_map': {'success': 100, 'failed': 0, 'missing': 100},
+        }
+        self.mock_db.execute = mock.AsyncMock(
+            side_effect=[
+                [{'sp': props}],
+                [{'sp': props, 'targets': []}],
+                [],
+            ]
+        )
+        with mock.patch(
+            'imbi_api.endpoints.scoring_policies.score_queue.'
+            'affected_projects',
+            mock.AsyncMock(return_value=['p1']),
+        ):
+            response = self.client.post(
+                '/scoring/policies/',
+                json={
+                    'name': 'Prod Deploy Health',
+                    'slug': 'prod-deploy-health',
+                    'category': 'deployment_status',
+                    'environment_slug': 'production',
+                    'weight': 30,
+                    'status_score_map': {
+                        'success': 100,
+                        'failed': 0,
+                        'missing': 100,
+                    },
+                },
+            )
+        self.assertEqual(response.status_code, 201, response.text)
+        data = response.json()
+        self.assertEqual(data['category'], 'deployment_status')
+        self.assertEqual(data['environment_slug'], 'production')
+        self.assertEqual(data['status_score_map']['failed'], 0)
+
     def test_get_policy_not_found(self) -> None:
         self.mock_db.execute = mock.AsyncMock(return_value=[])
         response = self.client.get('/scoring/policies/missing')

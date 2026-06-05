@@ -55,3 +55,26 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
         ):
             ids = await queue.affected_projects(db, policy)
         self.assertEqual(ids, [])
+
+    async def test_deployment_status_policy_skips_attr_check(self) -> None:
+        # deployment_status policies key off the deployment edge, not a
+        # Project attribute, so affected_projects must not gate on a
+        # blueprint attribute (and must not call get_model at all).
+        from imbi_common.scoring import DeploymentStatusPolicy
+
+        from imbi_api.scoring import queue
+
+        policy = DeploymentStatusPolicy(
+            name='Prod deploy health',
+            slug='prod-deploy-health',
+            environment_slug='production',
+            weight=30,
+        )
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[{'id': 'p1'}, {'id': 'p2'}])
+        with mock.patch(
+            'imbi_api.scoring.queue.blueprints.get_model',
+            mock.AsyncMock(side_effect=AssertionError('should not be called')),
+        ):
+            ids = await queue.affected_projects(db, policy)
+        self.assertEqual(ids, ['p1', 'p2'])

@@ -236,9 +236,10 @@ exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "
 url = "https://pypi.org/simple"
 default = true
 
-# TEMPORARY: point imbi-common at main for the unreleased commit-author
-# identity resolver (PluginContext.resolve_user_by_identity) wired up in
-# commit_sync/service.py. Revert to the published imbi-common[...]==2.9.3
-# pin when the next imbi-common release is cut and re-lock.
+# TEMPORARY: point imbi-common at main for unreleased symbols — the
+# commit-author identity resolver (PluginContext.resolve_user_by_identity,
+# wired in commit_sync/service.py) and DeploymentStatusPolicy (scoring).
+# Revert to the published imbi-common[...]==2.10.0 pin when the next
+# imbi-common release is cut and re-lock.
 [tool.uv.sources]
-imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", rev = "4cb45e021d9d4f5c79572b8b7702af8f908cdf79" }
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }
