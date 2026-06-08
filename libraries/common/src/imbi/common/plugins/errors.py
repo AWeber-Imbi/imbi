@@ -34,6 +34,23 @@ class PluginAuthenticationFailed(Exception):
     """
 
 
+class PluginRateLimited(Exception):
+    """Raised when a plugin exhausts an upstream API's rate limit.
+
+    Carries ``retry_at`` -- a Unix epoch (``time.time()``-comparable) at
+    which the upstream says work may resume -- so the host can pause and
+    keep the job queued rather than fail it.  Distinct from
+    :class:`PluginAuthenticationFailed` (refresh-and-retry) and
+    :class:`PluginUnavailableError` (upstream outage): this error tells
+    the host's queue layer to back off until ``retry_at`` and try again,
+    not to dead-letter the work.
+    """
+
+    def __init__(self, retry_at: float, message: str = '') -> None:
+        self.retry_at: float = retry_at
+        super().__init__(message or f'Rate limited until epoch {retry_at:.0f}')
+
+
 class PluginSchemaCollisionError(Exception):
     """Raised when a plugin declares a vlabel that collides with another
     plugin or with core's static schemata.

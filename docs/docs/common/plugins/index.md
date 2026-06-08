@@ -305,6 +305,7 @@ exception. The author-relevant ones:
 | -------------------------------- | ---------------------------------------------------------------------------------------------- |
 | `PluginCredentialsMissing`       | A required credential is absent or empty in the `credentials` dict.                            |
 | `PluginAuthenticationFailed`     | The upstream rejected the call for an auth reason (HTTP 401, expired token); host may refresh and retry once. |
+| `PluginRateLimited`              | The upstream's rate limit is exhausted; carries `retry_at` (epoch) so the host can pause and keep the job queued rather than fail it. |
 | `PluginTimeoutError`             | An upstream call exceeded the plugin's internal timeout budget.                                |
 | `PluginUnavailableError`         | The upstream service is reachable but cannot serve the request (degraded, locked).             |
 | `CursorExpiredError`             | A logs `query.cursor` is no longer valid and the caller must restart paging.                   |
@@ -318,6 +319,8 @@ are host-side — plugin code should not raise `PluginNotFoundError`.
 ::: imbi_common.plugins.PluginCredentialsMissing
 
 ::: imbi_common.plugins.PluginAuthenticationFailed
+
+::: imbi_common.plugins.PluginRateLimited
 
 ::: imbi_common.plugins.PluginTimeoutError
 

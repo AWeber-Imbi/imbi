@@ -5,6 +5,7 @@ from imbi_common.plugins.errors import (
     PluginAuthenticationFailed,
     PluginCredentialsMissing,
     PluginNotFoundError,
+    PluginRateLimited,
     PluginTimeoutError,
     PluginUnavailableError,
 )
@@ -52,3 +53,22 @@ class ErrorsTestCase(unittest.TestCase):
     def test_plugin_authentication_failed_can_be_raised(self) -> None:
         with self.assertRaises(PluginAuthenticationFailed):
             raise PluginAuthenticationFailed('401 from upstream')
+
+    def test_plugin_rate_limited_is_exception(self) -> None:
+        self.assertTrue(issubclass(PluginRateLimited, Exception))
+
+    def test_plugin_rate_limited_carries_retry_at(self) -> None:
+        exc = PluginRateLimited(retry_at=1234.0)
+        self.assertEqual(1234.0, exc.retry_at)
+
+    def test_plugin_rate_limited_default_message(self) -> None:
+        exc = PluginRateLimited(retry_at=1234.5)
+        self.assertEqual('Rate limited until epoch 1234', str(exc))
+
+    def test_plugin_rate_limited_custom_message(self) -> None:
+        exc = PluginRateLimited(retry_at=1234.0, message='primary limit')
+        self.assertEqual('primary limit', str(exc))
+
+    def test_plugin_rate_limited_can_be_raised(self) -> None:
+        with self.assertRaises(PluginRateLimited):
+            raise PluginRateLimited(retry_at=1234.0)
