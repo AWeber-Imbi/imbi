@@ -232,6 +232,12 @@ max-complexity = 15
 exclude-newer = "7 days"
 exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "imbi-plugin-aws" = false, "imbi-plugin-github" = false, "imbi-plugin-logzio" = false, "imbi-plugin-oidc" = false, "imbi-plugin-pagerduty" = false, "imbi-plugin-sentry" = false, "imbi-plugin-sonarqube" = false }
 
+# TEMPORARY: PluginRateLimited landed on imbi-common main but isn't on
+# PyPI yet (still 2.10.0). Track main until imbi-common 2.11 is released,
+# then drop this source and bump the pin to ==2.11.x.
+[tool.uv.sources]
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }
+
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true

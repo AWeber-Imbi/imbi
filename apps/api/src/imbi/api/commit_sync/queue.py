@@ -13,10 +13,12 @@ import asyncio
 import logging
 import os
 import socket
+import time
 import typing
 from collections import abc
 
 from imbi_common import graph
+from imbi_common.plugins.errors import PluginRateLimited
 from valkey import asyncio as valkey
 
 from imbi_api.commit_sync.service import (
@@ -33,6 +35,18 @@ DEBOUNCE_PREFIX = 'imbi:commit-sync:debounce'
 DEBOUNCE_SECONDS = 10
 MAX_DELIVERIES = 3
 CLAIM_IDLE_MS = 120_000
+# A GitHub rate-limit reset can be an hour out -- farther than the
+# plugin's per-call wait cap -- so the plugin raises PluginRateLimited
+# instead of failing the job.  The worker records the resume time here and
+# every worker honors it before reading, so one exhausted token pauses the
+# whole consumer (the backfill runs against a single token) until GitHub
+# resumes, rather than burning MAX_DELIVERIES and dead-lettering the work.
+PAUSE_KEY = 'imbi:commit-sync:paused-until'
+# Longest single sleep while paused; bounded so a *stop* signal is honored
+# promptly and a long reset is re-checked rather than slept through blind.
+PAUSE_POLL_CAP_SECONDS = 30
+# Cushion on the pause key's TTL so it outlives the resume time it carries.
+PAUSE_KEY_BUFFER_SECONDS = 5
 
 LOGGER = logging.getLogger(__name__)
 
@@ -106,6 +120,20 @@ async def _process_message(db: graph.Graph, fields: dict[str, str]) -> None:
             error=str(exc),
         )
         return
+    except PluginRateLimited:
+        # Transient: GitHub's rate limit is exhausted.  Keep the job queued
+        # (the consumer pauses until the reset and retries) instead of
+        # marking it failed -- the failure path would dead-letter it before
+        # the limit clears.  _handle_entries sets the pause from the
+        # re-raised exception's retry_at.
+        LOGGER.warning(
+            'commit-sync rate-limited for %s; left queued until GitHub resets',
+            project_id,
+        )
+        await set_status(
+            db, project_id, status='queued', requested_by=requested_by
+        )
+        raise
     except Exception:
         # Persist a generic, user-safe message; the polling endpoint
         # exposes this status, so keep raw exception detail in logs only.
@@ -143,6 +171,30 @@ def _decode_fields(
         )
         for k, v in raw.items()
     }
+
+
+async def _paused_remaining(client: valkey.Valkey) -> float:
+    """Seconds left on the global rate-limit pause, ``0.0`` when clear."""
+    try:
+        raw = await client.get(PAUSE_KEY)
+    except Exception:  # noqa: BLE001
+        return 0.0
+    if raw is None:
+        return 0.0
+    try:
+        until = float(raw.decode() if isinstance(raw, bytes) else raw)
+    except ValueError:
+        return 0.0
+    return max(0.0, until - time.time())
+
+
+async def _pause_until(client: valkey.Valkey, retry_at: float) -> None:
+    """Record the resume time so every worker backs off until *retry_at*."""
+    ttl = max(1, int(retry_at - time.time()) + PAUSE_KEY_BUFFER_SECONDS)
+    try:
+        await client.set(PAUSE_KEY, str(retry_at), ex=ttl)
+    except Exception:
+        LOGGER.exception('failed to set commit-sync pause marker')
 
 
 async def _claim_stale(
@@ -215,6 +267,19 @@ async def _handle_entries(
             continue
         try:
             await _process_message(db, fields)
+        except PluginRateLimited as exc:
+            # Don't ack, don't dead-letter: leave the job pending and pause
+            # every worker until GitHub resets.  Stop the batch -- its
+            # siblings hit the same token -- and let the next reclaim drain
+            # it once the pause clears.
+            await _pause_until(client, exc.retry_at)
+            LOGGER.warning(
+                'commit-sync paused ~%.0fs (GitHub rate limit); %d job(s) '
+                'left queued',
+                max(0.0, exc.retry_at - time.time()),
+                len(entries),
+            )
+            return
         except Exception:
             LOGGER.exception('commit-sync failed for %s', fields)
             continue
@@ -236,6 +301,10 @@ async def consume_commit_sync(
     await ensure_group(client)
     LOGGER.info('Commit-sync consumer loop running (consumer=%s)', consumer)
     while stop is None or not stop.is_set():
+        paused = await _paused_remaining(client)
+        if paused > 0:
+            await asyncio.sleep(min(paused, PAUSE_POLL_CAP_SECONDS))
+            continue
         stale = await _claim_stale(client, consumer)
         if stale:
             try:
@@ -244,6 +313,10 @@ async def consume_commit_sync(
                 LOGGER.exception('commit-sync stale-entry handling failed')
                 await asyncio.sleep(1)
                 continue
+        # Stale handling may have just paused us; don't read new work into
+        # a guaranteed re-throttle -- loop back and honor the pause.
+        if await _paused_remaining(client) > 0:
+            continue
         try:
             response = await client.xreadgroup(
                 GROUP,
