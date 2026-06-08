@@ -620,7 +620,17 @@ class ServiceWritebackTestCase(unittest.TestCase):
     def test_service_writeback_defaults(self) -> None:
         wb = ServiceWriteback(identifier='1', canonical_url='https://x/1')
         self.assertEqual(wb.dashboard_links, {})
+        self.assertIsNone(wb.webhook_secret_enc)
         self.assertFalse(wb.remove)
+
+    def test_service_writeback_webhook_secret_round_trip(self) -> None:
+        wb = ServiceWriteback(
+            identifier='1',
+            canonical_url='https://x/1',
+            webhook_secret_enc='gAAAAAB-ciphertext',
+        )
+        restored = ServiceWriteback.model_validate(wb.model_dump())
+        self.assertEqual(restored.webhook_secret_enc, 'gAAAAAB-ciphertext')
 
     def test_service_connection_canonical_url_optional(self) -> None:
         conn = ServiceConnection(service_slug='github', identifier='1')

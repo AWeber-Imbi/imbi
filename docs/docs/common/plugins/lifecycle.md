@@ -106,6 +106,12 @@ host persists it as the
 `dashboard_links` into `Project.links`. Set `remove=True` to delete the
 edge (e.g. on project delete or relocation away from the service).
 
+Set `webhook_secret_enc` to store an **already-encrypted** secret on the
+same edge — e.g. a per-subscription webhook signing secret that a
+gateway reads back to verify inbound deliveries. The plugin encrypts the
+value; the host persists it verbatim and never decrypts it, and `None`
+leaves any existing edge secret untouched.
+
 The host owns the plugin↔service binding: the writeback targets the
 service surfaced as
 [`ctx.third_party_service_slug`][imbi_common.plugins.PluginContext], so

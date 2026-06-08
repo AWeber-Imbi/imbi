@@ -364,6 +364,13 @@ class ServiceWriteback(pydantic.BaseModel):
     #: Human-facing dashboard URLs to merge into ``Project.links``,
     #: keyed by the ``Project.links`` key (typically the service slug).
     dashboard_links: dict[str, str] = {}
+    #: Optional encrypted secret to store on the ``EXISTS_IN`` edge
+    #: alongside ``identifier`` -- e.g. a per-subscription webhook signing
+    #: secret a gateway later reads to verify inbound deliveries.  The
+    #: plugin is responsible for encrypting it (the host persists the
+    #: value verbatim and never decrypts it); ``None`` leaves any existing
+    #: edge secret untouched.
+    webhook_secret_enc: str | None = None
     #: When ``True`` the host removes the ``EXISTS_IN`` edge and the
     #: ``dashboard_links`` keys instead of upserting them -- e.g. on
     #: project delete or relocation away from this service.
