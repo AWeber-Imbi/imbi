@@ -30,7 +30,7 @@ default is `['archived', 'unarchived']`.
 | `on_project_archived`      | `archived`               | Required.                                                               |
 | `on_project_unarchived`    | `unarchived`             | Inverse of archive.                                                     |
 | `on_project_deleted`       | `deleted`                | Invoked after the node is removed; `404` from the remote is a skip.     |
-| `on_project_relocated`     | `relocated`              | Transfer the remote to a new target; set `ctx.link_writeback`.          |
+| `on_project_relocated`     | `relocated`              | Move the remote to a new target; set `ctx.link_writeback`. For team-driven targets, `ctx.previous_team_slug` is the team before the move and `ctx.team_slug` the team after. |
 
 ```python
 from imbi_common.plugins import (
@@ -60,7 +60,25 @@ class GitHubLifecyclePlugin(LifecyclePlugin):
         ...
 ```
 
+## Push-sync
+
+A lifecycle plugin whose `on_project_updated` hook is a safe **upsert**
+— creating the remote when it is missing and updating it otherwise —
+should set `manifest.supports_lifecycle_sync = True`. The flag tells the
+host it is safe to re-run `on_project_updated` on demand to reconcile the
+remote with current Imbi state, and the UI uses it to gate the "Sync
+lifecycle" affordances on the project and admin service pages. Leave it
+`False` (the default) when `on_project_updated` is not idempotent or the
+plugin has no update hook.
+
 ## Relocation preview
+
+When relocation is keyed off something other than the project's types
+(e.g. its owning team), compare `ctx.previous_team_slug` against
+`ctx.team_slug` in `on_project_relocated` to decide whether the routing
+target actually changed, and **no-op when it has not** — the host fires
+`relocated` to every lifecycle plugin on the service, so each must
+ignore moves that do not affect its own target.
 
 `resolve_relocation_target` lets the host answer "would changing this
 project's types move its repository?" without inlining plugin-specific

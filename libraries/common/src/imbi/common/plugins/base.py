@@ -125,6 +125,7 @@ PluginType = typing.Literal[
     'lifecycle',
     'webhook',
     'analysis',
+    'incidents',
 ]
 
 
@@ -145,6 +146,13 @@ class PluginManifest(pydantic.BaseModel):
     # "Resync deployments" controls on project settings and admin TPS
     # pages; non-deployment plugins should leave it ``False``.
     supports_deployment_sync: bool = False
+    # Lifecycle plugins whose ``on_project_updated`` hook is a safe
+    # upsert (creating the remote when missing, updating it otherwise)
+    # set this to ``True``.  The UI uses it to gate the "Sync lifecycle"
+    # controls on project settings and admin TPS pages, which push the
+    # current Imbi state to the remote on demand; non-lifecycle plugins
+    # should leave it ``False``.
+    supports_lifecycle_sync: bool = False
     login_capable: bool = False
     requires_identity: bool = False
     default_scopes: list[str] = []
@@ -407,6 +415,14 @@ class PluginContext(pydantic.BaseModel):
     # type-driven targets can decide what to do.  Empty list for events
     # where the host has no prior snapshot.
     previous_project_type_slugs: list[str] = []
+    # Team slug as it stood *before* an in-flight ``on_project_relocated``
+    # (i.e. before the team-assignment change).  ``None`` for all other
+    # events; ``team_slug`` continues to carry the current team.  Lets
+    # team-keyed lifecycle plugins map the old team to its old routing
+    # target and the new team to the new one (e.g. PagerDuty escalation
+    # policy).  Default ``None`` keeps the field backward-compatible for
+    # existing plugin packages.
+    previous_team_slug: str | None = None
     # Project display name, populated by the host on create / update
     # events.  Plugins use this for human-facing artifacts (e.g. PR
     # bodies); GitHub repos do not expose a separate display-name
@@ -525,6 +541,30 @@ class LogResult(pydantic.BaseModel):
     next_cursor: str | None = None
     total: int | None = None
     warnings: list[str] = []
+
+
+class IncidentView(pydantic.BaseModel):
+    """A single incident row in an :class:`IncidentResult`."""
+
+    id: str
+    title: str
+    status: str
+    # ``None`` because some incident payloads omit urgency (e.g.
+    # maintenance-window or low-signal sources); callers should not
+    # assume it is always present.
+    urgency: str | None = None
+    created_at: datetime.datetime
+    resolved_at: datetime.datetime | None = None
+    url: str
+    service: str | None = None
+
+
+class IncidentResult(pydantic.BaseModel):
+    incidents: list[IncidentView] = []
+    next_cursor: str | None = None
+    # ``None`` when the source does not report a total without a full
+    # scan (live-query sources typically cannot).
+    total: int | None = None
 
 
 class ConfigurationPlugin(abc.ABC):
@@ -1316,3 +1356,29 @@ class AnalysisPlugin(abc.ABC):
         ctx: PluginContext,
         credentials: dict[str, str],
     ) -> list[AnalysisResultItem]: ...
+
+
+class IncidentsPlugin(abc.ABC):
+    """Plugins must not stash global state.
+
+    A new instance is created per request.  Incidents plugins live-query
+    a third-party incident-management system (e.g. PagerDuty) for the
+    incidents tied to a project's service and return them for the
+    project-detail Incidents tab.  There is no local incident store; the
+    source of record stays authoritative and the tab is read-only.
+    """
+
+    manifest: PluginManifest
+
+    @abc.abstractmethod
+    async def list_incidents(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        *,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        statuses: list[str] | None = None,
+        cursor: str | None = None,
+        limit: int = 100,
+    ) -> IncidentResult: ...

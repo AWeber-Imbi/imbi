@@ -632,6 +632,7 @@ class PluginContextLifecycleFieldsTestCase(unittest.TestCase):
         ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
         self.assertIsNone(ctx.previous_project_slug)
         self.assertEqual(ctx.previous_project_type_slugs, [])
+        self.assertIsNone(ctx.previous_team_slug)
         self.assertIsNone(ctx.project_name)
         self.assertIsNone(ctx.project_description)
         self.assertIsNone(ctx.project_ui_url)
@@ -641,8 +642,10 @@ class PluginContextLifecycleFieldsTestCase(unittest.TestCase):
             project_id='p',
             project_slug='new-slug',
             org_slug='o',
+            team_slug='platform',
             previous_project_slug='old-slug',
             previous_project_type_slugs=['api'],
+            previous_team_slug='legacy',
             project_type_slugs=['library'],
             project_name='Billing Service',
             project_description='Handles invoices.',
@@ -651,6 +654,8 @@ class PluginContextLifecycleFieldsTestCase(unittest.TestCase):
         restored = PluginContext.model_validate(ctx.model_dump())
         self.assertEqual(restored.previous_project_slug, 'old-slug')
         self.assertEqual(restored.previous_project_type_slugs, ['api'])
+        self.assertEqual(restored.previous_team_slug, 'legacy')
+        self.assertEqual(restored.team_slug, 'platform')
         self.assertEqual(restored.project_type_slugs, ['library'])
         self.assertEqual(restored.project_name, 'Billing Service')
         self.assertEqual(restored.project_description, 'Handles invoices.')
@@ -1027,3 +1032,129 @@ class AnalysisPluginTestCase(unittest.TestCase):
             slug='fake', name='Fake', plugin_type='analysis'
         )
         self.assertEqual(manifest.plugin_type, 'analysis')
+
+
+class ManifestLifecycleSyncFlagTestCase(unittest.TestCase):
+    def test_supports_lifecycle_sync_defaults_false(self) -> None:
+        manifest = PluginManifest(
+            slug='lc',
+            name='Lifecycle',
+            plugin_type='lifecycle',
+        )
+        self.assertFalse(manifest.supports_lifecycle_sync)
+
+    def test_supports_lifecycle_sync_round_trip(self) -> None:
+        manifest = PluginManifest(
+            slug='lc',
+            name='Lifecycle',
+            plugin_type='lifecycle',
+            supports_lifecycle_sync=True,
+        )
+        restored = PluginManifest.model_validate(manifest.model_dump())
+        self.assertTrue(restored.supports_lifecycle_sync)
+
+
+class IncidentModelsTestCase(unittest.TestCase):
+    def test_incident_view_defaults(self) -> None:
+        view = plugin_base.IncidentView(
+            id='PINC1',
+            title='High CPU',
+            status='triggered',
+            created_at=datetime.datetime.now(datetime.UTC),
+            url='https://example.pagerduty.com/incidents/PINC1',
+        )
+        self.assertIsNone(view.urgency)
+        self.assertIsNone(view.resolved_at)
+        self.assertIsNone(view.service)
+
+    def test_incident_view_round_trip(self) -> None:
+        opened = datetime.datetime(2026, 6, 8, 14, 0, tzinfo=datetime.UTC)
+        resolved = opened + datetime.timedelta(minutes=30)
+        view = plugin_base.IncidentView(
+            id='PINC1',
+            title='High CPU',
+            status='resolved',
+            urgency='high',
+            created_at=opened,
+            resolved_at=resolved,
+            url='https://example.pagerduty.com/incidents/PINC1',
+            service='Production Web App',
+        )
+        restored = plugin_base.IncidentView.model_validate(view.model_dump())
+        self.assertEqual(restored.urgency, 'high')
+        self.assertEqual(restored.resolved_at, resolved)
+        self.assertEqual(restored.service, 'Production Web App')
+
+    def test_incident_result_defaults(self) -> None:
+        result = plugin_base.IncidentResult()
+        self.assertEqual(result.incidents, [])
+        self.assertIsNone(result.next_cursor)
+        self.assertIsNone(result.total)
+
+
+class IncidentsPluginTestCase(unittest.TestCase):
+    def test_incidents_plugin_type_accepted(self) -> None:
+        manifest = PluginManifest(
+            slug='pd-incidents',
+            name='PagerDuty Incidents',
+            plugin_type='incidents',
+        )
+        self.assertEqual(manifest.plugin_type, 'incidents')
+
+    def test_subclass_must_implement_list_incidents(self) -> None:
+        class _Incomplete(plugin_base.IncidentsPlugin):
+            pass
+
+        with self.assertRaises(TypeError):
+            _Incomplete()  # type: ignore[abstract]
+
+    def test_concrete_subclass_returns_result(self) -> None:
+        class _FakeIncidents(plugin_base.IncidentsPlugin):
+            manifest = plugin_base.PluginManifest(
+                slug='pd-incidents',
+                name='PagerDuty Incidents',
+                plugin_type='incidents',
+            )
+
+            async def list_incidents(
+                self,
+                ctx: plugin_base.PluginContext,
+                credentials: dict[str, str],
+                *,
+                start_time: datetime.datetime,
+                end_time: datetime.datetime,
+                statuses: list[str] | None = None,
+                cursor: str | None = None,
+                limit: int = 100,
+            ) -> plugin_base.IncidentResult:
+                del ctx, credentials, statuses, cursor, limit
+                del start_time, end_time
+                return plugin_base.IncidentResult(
+                    incidents=[
+                        plugin_base.IncidentView(
+                            id='PINC1',
+                            title='High CPU',
+                            status='triggered',
+                            created_at=datetime.datetime.now(datetime.UTC),
+                            url='https://example.pagerduty.com/i/PINC1',
+                        )
+                    ]
+                )
+
+        import asyncio
+
+        instance = _FakeIncidents()
+        ctx = plugin_base.PluginContext(
+            project_id='p', project_slug='p', org_slug='o'
+        )
+        now = datetime.datetime.now(datetime.UTC)
+        result = asyncio.run(
+            instance.list_incidents(
+                ctx,
+                {},
+                start_time=now - datetime.timedelta(days=1),
+                end_time=now,
+            )
+        )
+        self.assertEqual(len(result.incidents), 1)
+        self.assertEqual(result.incidents[0].id, 'PINC1')
