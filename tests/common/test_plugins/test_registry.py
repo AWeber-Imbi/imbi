@@ -735,6 +735,48 @@ class LoadPluginsAnalysisTestCase(unittest.TestCase):
         self.assertIn('mis-analysis', result.errors)
         self.assertEqual(result.loaded, [])
 
+    def test_load_incidents_plugin_round_trip(self) -> None:
+        # Ensure the load_plugins() issubclass gate and type-routing
+        # map accept IncidentsPlugin subclasses.
+        manifest = base.PluginManifest(
+            slug='fake-incidents',
+            name='Fake Incidents',
+            plugin_type='incidents',
+        )
+
+        class _FakeIncidents(base.IncidentsPlugin):
+            async def list_incidents(  # type: ignore[override]
+                self,
+                ctx,
+                credentials,
+                *,
+                start_time,
+                end_time,
+                statuses=None,
+                cursor=None,
+                limit=100,
+            ) -> base.IncidentResult:
+                return base.IncidentResult()
+
+        _FakeIncidents.manifest = manifest  # type: ignore[attr-defined]
+
+        ep = unittest.mock.MagicMock()
+        ep.name = 'fake-incidents'
+        ep.load.return_value = _FakeIncidents
+        ep.dist.name = 'imbi-plugin-fake-incidents'
+        ep.dist.version = '1.0'
+
+        with unittest.mock.patch(
+            'importlib.metadata.entry_points', return_value=[ep]
+        ):
+            result = registry.load_plugins()
+
+        self.assertIn('fake-incidents', result.loaded)
+        self.assertEqual(result.errors, {})
+        entry = registry.get_plugin('fake-incidents')
+        self.assertIs(entry.handler_cls, _FakeIncidents)
+        self.assertEqual(entry.manifest.plugin_type, 'incidents')
+
     def tearDown(self) -> None:
         _reset_registry()
 

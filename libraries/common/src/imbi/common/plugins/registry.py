@@ -12,6 +12,7 @@ from imbi_common.plugins.base import (
     ConfigurationPlugin,
     DeploymentPlugin,
     IdentityPlugin,
+    IncidentsPlugin,
     LifecyclePlugin,
     LogsPlugin,
     PluginManifest,
@@ -32,6 +33,7 @@ PluginHandler = (
     | LifecyclePlugin
     | WebhookActionPlugin
     | AnalysisPlugin
+    | IncidentsPlugin
 )
 
 
@@ -45,6 +47,7 @@ class RegistryEntry:
         | type[LifecyclePlugin]
         | type[WebhookActionPlugin]
         | type[AnalysisPlugin]
+        | type[IncidentsPlugin]
     )
     manifest: PluginManifest
     package_name: str
@@ -69,7 +72,8 @@ _PLUGIN_TYPE_BASES: dict[
     | type[DeploymentPlugin]
     | type[LifecyclePlugin]
     | type[WebhookActionPlugin]
-    | type[AnalysisPlugin],
+    | type[AnalysisPlugin]
+    | type[IncidentsPlugin],
 ] = {
     'configuration': ConfigurationPlugin,
     'logs': LogsPlugin,
@@ -78,6 +82,7 @@ _PLUGIN_TYPE_BASES: dict[
     'lifecycle': LifecyclePlugin,
     'webhook': WebhookActionPlugin,
     'analysis': AnalysisPlugin,
+    'incidents': IncidentsPlugin,
 }
 
 
@@ -147,19 +152,20 @@ def load_plugins() -> LoadResult:
                 LifecyclePlugin,
                 WebhookActionPlugin,
                 AnalysisPlugin,
+                IncidentsPlugin,
             ),
         ):
             LOGGER.error(
                 'Plugin %r does not implement ConfigurationPlugin, '
                 'LogsPlugin, IdentityPlugin, DeploymentPlugin, '
-                'LifecyclePlugin, WebhookActionPlugin, or '
-                'AnalysisPlugin; skipping',
+                'LifecyclePlugin, WebhookActionPlugin, AnalysisPlugin, '
+                'or IncidentsPlugin; skipping',
                 ep.name,
             )
             errors[ep.name] = (
                 'Plugin must subclass ConfigurationPlugin, LogsPlugin, '
                 'IdentityPlugin, DeploymentPlugin, LifecyclePlugin, '
-                'WebhookActionPlugin, or AnalysisPlugin'
+                'WebhookActionPlugin, AnalysisPlugin, or IncidentsPlugin'
             )
             continue
 
