@@ -56,6 +56,7 @@ from imbi_common.plugins.base import (
     ServicePlugin,
     WebhookActionPlugin,
 )
+from imbi_common.plugins.errors import PluginRateLimited
 
 from imbi_plugin_github import _app_auth
 from imbi_plugin_github._hosts import (
@@ -140,6 +141,12 @@ def _throttle_wait(response: httpx.Response) -> float | None:
     * a 403/429 that exhausted the quota but gives no reset -> the
       conservative ``_SECONDARY_LIMIT_WAIT_SECONDS`` floor.
 
+    GHES/GHEC sometimes return a secondary (abuse) limit as a 403/429 with
+    *none* of the standard headers -- only the documented body message
+    ("You have exceeded a secondary rate limit ..."); that phrase is
+    matched as a last resort so such a response pauses on the floor rather
+    than being mistaken for a hard failure.
+
     Returns ``None`` for anything that is *not* a throttle signal --
     including a non-rate-limit 403 (e.g. insufficient scope), which must
     fall through to the caller's normal error handling rather than be
@@ -159,7 +166,25 @@ def _throttle_wait(response: httpx.Response) -> float | None:
             return max(0.0, reset - time.time()) + _RESET_BUFFER_SECONDS
         if response.status_code in (403, 429):
             return _SECONDARY_LIMIT_WAIT_SECONDS
+    if response.status_code in (403, 429) and _is_secondary_limit_body(
+        response
+    ):
+        return _SECONDARY_LIMIT_WAIT_SECONDS
     return None
+
+
+def _is_secondary_limit_body(response: httpx.Response) -> bool:
+    """True if a 403/429 body carries GitHub's secondary-limit message.
+
+    Matched conservatively on the documented phrase so a genuine
+    permission 403 (which the caller must surface) is never mistaken for
+    a throttle.
+    """
+    try:
+        body = response.text
+    except (UnicodeDecodeError, httpx.ResponseNotRead):
+        return False
+    return 'secondary rate limit' in body.lower()
 
 
 async def _request(
@@ -176,11 +201,13 @@ async def _request(
     for the interval GitHub states in its headers, then retries -- up to
     ``_MAX_THROTTLE_RETRIES`` times and never longer than *max_wait* on a
     single pause.  When the stated wait exceeds *max_wait* (or the retries
-    are exhausted) the throttled response is handed back unchanged so the
-    caller's ``raise_for_status`` surfaces it and the sync bails
-    best-effort.  After a *successful* response that exhausted the
-    remaining quota, pauses pre-emptively (subject to the same cap) so the
-    next call doesn't spend a round-trip on a guaranteed rejection.
+    are exhausted) :class:`PluginRateLimited` is raised carrying the epoch
+    at which GitHub will resume, so the host can pause the work and keep it
+    queued rather than fail it; on the webhook path the caller swallows it
+    (a later push re-syncs the gap).  After a *successful* response that
+    exhausted the remaining quota, pauses pre-emptively (subject to the
+    same cap) so the next call doesn't spend a round-trip on a guaranteed
+    rejection.
     """
     attempts = 0
     while True:
@@ -204,13 +231,19 @@ async def _request(
         if wait > max_wait or attempts >= _MAX_THROTTLE_RETRIES:
             LOGGER.warning(
                 'github-commit-sync rate-limited on %s (wait %.0fs, cap '
-                '%.0fs, attempt %d); bailing best-effort',
+                '%.0fs, attempt %d); pausing job until GitHub resumes',
                 url,
                 wait,
                 max_wait,
                 attempts + 1,
             )
-            return response
+            raise PluginRateLimited(
+                retry_at=time.time() + wait,
+                message=(
+                    f'github-commit-sync rate-limited on {url}; '
+                    f'resume in {wait:.0f}s'
+                ),
+            )
         attempts += 1
         LOGGER.warning(
             'github-commit-sync rate-limited on %s; pausing %.0fs then '
@@ -772,24 +805,33 @@ async def sync_commits(
     before = _resolve(action_config.before_selector, event)
     pushed_at = datetime.datetime.now(datetime.UTC)
     token = await _resolve_bearer(credentials, base, owner, repo)
-    async with _client(base, owner, repo, token) as client:
-        if isinstance(before, str) and before and before != _ZERO_SHA:
-            raw = await _fetch_compare_commits(
-                client, before, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
-            )
-        else:
-            last = await _last_known_sha(ctx.project_id)
-            if last:
+    try:
+        async with _client(base, owner, repo, token) as client:
+            if isinstance(before, str) and before and before != _ZERO_SHA:
                 raw = await _fetch_compare_commits(
-                    client, last, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
+                    client, before, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
                 )
             else:
-                raw = await _fetch_recent_commits(
-                    client,
-                    after,
-                    action_config.initial_limit,
-                    max_wait=_WEBHOOK_MAX_WAIT_SECONDS,
-                )
+                last = await _last_known_sha(ctx.project_id)
+                if last:
+                    raw = await _fetch_compare_commits(
+                        client, last, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
+                    )
+                else:
+                    raw = await _fetch_recent_commits(
+                        client,
+                        after,
+                        action_config.initial_limit,
+                        max_wait=_WEBHOOK_MAX_WAIT_SECONDS,
+                    )
+    except PluginRateLimited as exc:
+        LOGGER.warning(
+            'github-commit-sync: rate-limited syncing commits for project '
+            '%s; skipping this push (a later push re-syncs the gap): %s',
+            ctx.project_id,
+            exc,
+        )
+        return
     user_map = await _resolve_author_users(
         raw, ctx.resolve_user_by_identity, base
     )
@@ -954,25 +996,34 @@ async def sync_tags(
         return
     owner, repo, base = resolved
     token = await _resolve_bearer(credentials, base, owner, repo)
-    async with _client(base, owner, repo, token) as client:
-        annotated = await _annotated_tag(
-            client, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
+    try:
+        async with _client(base, owner, repo, token) as client:
+            annotated = await _annotated_tag(
+                client, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
+            )
+            records: list[pydantic.BaseModel] = [
+                _tag_record(
+                    project_id=ctx.project_id,
+                    name=name,
+                    sha=after,
+                    annotated=annotated,
+                    url=_tag_web_url(client, name),
+                )
+            ]
+            if action_config.reconcile_all:
+                extra = await _reconcile_tags(
+                    client, ctx.project_id, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
+                )
+                seen = {name}
+                records.extend(r for r in extra if r.name not in seen)
+    except PluginRateLimited as exc:
+        LOGGER.warning(
+            'github-commit-sync: rate-limited syncing tags for project '
+            '%s; skipping this push (a later push re-syncs the gap): %s',
+            ctx.project_id,
+            exc,
         )
-        records: list[pydantic.BaseModel] = [
-            _tag_record(
-                project_id=ctx.project_id,
-                name=name,
-                sha=after,
-                annotated=annotated,
-                url=_tag_web_url(client, name),
-            )
-        ]
-        if action_config.reconcile_all:
-            extra = await _reconcile_tags(
-                client, ctx.project_id, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
-            )
-            seen = {name}
-            records.extend(r for r in extra if r.name not in seen)
+        return
     try:
         await clickhouse.insert('tags', records)
     except Exception:
@@ -1102,7 +1153,10 @@ class GitHubCommitSyncPlugin(WebhookActionPlugin):
         Returns ``(commits_recorded, tags_recorded)``.  Raises
         :class:`ValueError` only when the host or repository can't be
         resolved; ClickHouse failures are swallowed (the count reflects
-        what was written).
+        what was written).  Propagates :class:`PluginRateLimited` when a
+        GitHub rate-limit reset is further out than
+        ``_BACKFILL_MAX_WAIT_SECONDS`` so the host can pause the worker and
+        keep the job queued until GitHub resumes rather than fail it.
         """
         host = _resolve_host_for_context(ctx)
         if host is None:

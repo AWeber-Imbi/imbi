@@ -12,7 +12,10 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from imbi_common.models import CommitRecord, TagRecord
 from imbi_common.plugins.base import PluginContext, ServicePlugin
-from imbi_common.plugins.errors import PluginAuthenticationFailed
+from imbi_common.plugins.errors import (
+    PluginAuthenticationFailed,
+    PluginRateLimited,
+)
 
 from imbi_plugin_github import _app_auth, commits
 
@@ -952,6 +955,28 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
     @respx.mock
+    async def test_rate_limit_beyond_cap_propagates(self) -> None:
+        # The backfill path must NOT swallow PluginRateLimited: it
+        # propagates to the host's queue, which pauses until the reset
+        # and keeps the job queued rather than failing it.
+        respx.get(self._REPO).mock(
+            return_value=httpx.Response(
+                403,
+                headers={
+                    'x-ratelimit-remaining': '0',
+                    'x-ratelimit-reset': str(int(time.time()) + 10_000),
+                },
+            )
+        )
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            with self.assertRaises(PluginRateLimited) as caught:
+                await commits.GitHubCommitSyncPlugin().sync_all_history(
+                    ctx=self._ctx(), credentials=_CREDS
+                )
+        self.assertGreater(caught.exception.retry_at, time.time() + 9_000)
+        insert.assert_not_awaited()
+
+    @respx.mock
     async def test_paginates_commits(self) -> None:
         self._mock_default_branch()
         url = f'{self._REPO}/commits'
@@ -1159,6 +1184,21 @@ class ThrottleWaitTestCase(unittest.TestCase):
         resp = httpx.Response(403, json={'message': 'Not accessible'})
         self.assertIsNone(commits._throttle_wait(resp))
 
+    def test_secondary_limit_body_without_headers_floors(self) -> None:
+        resp = httpx.Response(
+            403,
+            json={
+                'message': (
+                    'You have exceeded a secondary rate limit. Please wait '
+                    'a few minutes before you try again.'
+                )
+            },
+        )
+        self.assertEqual(
+            commits._SECONDARY_LIMIT_WAIT_SECONDS,
+            commits._throttle_wait(resp),
+        )
+
     def test_healthy_response_no_wait(self) -> None:
         resp = httpx.Response(200, headers={'x-ratelimit-remaining': '4999'})
         self.assertIsNone(commits._throttle_wait(resp))
@@ -1225,7 +1265,7 @@ class RequestTestCase(unittest.IsolatedAsyncioTestCase):
         # The good response is returned, not retried.
         self.assertEqual(1, client.request.await_count)
 
-    async def test_wait_exceeding_cap_bails_without_sleeping(self) -> None:
+    async def test_wait_exceeding_cap_raises_rate_limited(self) -> None:
         reset = int(time.time()) + 10_000
         client = self._client(
             httpx.Response(
@@ -1239,20 +1279,22 @@ class RequestTestCase(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(
             commits.asyncio, 'sleep', new=mock.AsyncMock()
         ) as slept:
-            resp = await commits._request(client, 'GET', '/x', max_wait=60.0)
-        self.assertEqual(403, resp.status_code)
+            with self.assertRaises(PluginRateLimited) as caught:
+                await commits._request(client, 'GET', '/x', max_wait=60.0)
+        # Bails to the host without sleeping, carrying the resume time.
+        self.assertGreater(caught.exception.retry_at, time.time() + 9_000)
         slept.assert_not_awaited()
         self.assertEqual(1, client.request.await_count)
 
-    async def test_retries_exhausted_bails(self) -> None:
+    async def test_retries_exhausted_raises_rate_limited(self) -> None:
         client = self._client(
             httpx.Response(429, headers={'retry-after': '1'})
         )
         with mock.patch.object(
             commits.asyncio, 'sleep', new=mock.AsyncMock()
         ) as slept:
-            resp = await commits._request(client, 'GET', '/x', max_wait=60.0)
-        self.assertEqual(429, resp.status_code)
+            with self.assertRaises(PluginRateLimited):
+                await commits._request(client, 'GET', '/x', max_wait=60.0)
         self.assertEqual(commits._MAX_THROTTLE_RETRIES, slept.await_count)
         self.assertEqual(
             commits._MAX_THROTTLE_RETRIES + 1, client.request.await_count
@@ -1287,6 +1329,70 @@ class SyncCommitsThrottleTestCase(unittest.IsolatedAsyncioTestCase):
         insert.assert_awaited_once()
         _, records = _await_args(insert)
         self.assertEqual(1, len(records))
+
+    @respx.mock
+    async def test_rate_limited_beyond_cap_is_swallowed(self) -> None:
+        # A reset further out than the webhook cap makes _request raise
+        # PluginRateLimited; the webhook action swallows it (a later push
+        # re-syncs) rather than letting it 5xx the gateway.
+        base, head = 'a' * 40, 'b' * 40
+        url = f'https://api.github.com/repos/octo/demo/compare/{base}...{head}'
+        respx.get(url).mock(
+            return_value=httpx.Response(
+                403,
+                headers={
+                    'x-ratelimit-remaining': '0',
+                    'x-ratelimit-reset': str(int(time.time()) + 10_000),
+                },
+            )
+        )
+        with mock.patch.object(commits.asyncio, 'sleep', new=mock.AsyncMock()):
+            with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+                await commits.sync_commits(
+                    ctx=_ctx(),
+                    credentials=_CREDS,
+                    external_identifier='',
+                    action_config=commits.SyncCommitsConfig(),
+                    event=_event(_push(before=base, after=head)),
+                )
+        insert.assert_not_awaited()
+
+    @respx.mock
+    async def test_tags_rate_limited_beyond_cap_is_swallowed(self) -> None:
+        # Mirror of the sync_commits swallow path for the tags webhook:
+        # a reset further out than the cap makes _request raise
+        # PluginRateLimited, which sync_tags swallows (a later push
+        # re-syncs) rather than letting it 5xx the gateway.
+        sha = 't' * 40
+        respx.get(
+            f'https://api.github.com/repos/octo/demo/git/tags/{sha}'
+        ).mock(
+            return_value=httpx.Response(
+                403,
+                headers={
+                    'x-ratelimit-remaining': '0',
+                    'x-ratelimit-reset': str(int(time.time()) + 10_000),
+                },
+            )
+        )
+        push = {
+            'ref': 'refs/tags/v1.2.3',
+            'after': sha,
+            'repository': {
+                'full_name': 'octo/demo',
+                'url': 'https://api.github.com/repos/octo/demo',
+            },
+        }
+        with mock.patch.object(commits.asyncio, 'sleep', new=mock.AsyncMock()):
+            with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+                await commits.sync_tags(
+                    ctx=_ctx(),
+                    credentials=_CREDS,
+                    external_identifier='',
+                    action_config=commits.SyncTagsConfig(),
+                    event=_event(push),
+                )
+        insert.assert_not_awaited()
 
 
 class ResolveUserCacheTestCase(unittest.IsolatedAsyncioTestCase):
