@@ -15,7 +15,56 @@ import anthropic
 
 from imbi_slackbot import client, mcp
 
+if typing.TYPE_CHECKING:
+    import collections.abc
+
 LOGGER = logging.getLogger(__name__)
+
+# A status callback receives a short human-readable progress string.
+StatusCallback = typing.Callable[[str], 'collections.abc.Awaitable[None]']
+
+# Tool results larger than this (characters, ~4 chars/token) are replaced
+# with an error so a single chatty tool cannot blow up the context window
+# across rounds.
+_DEFAULT_MAX_TOOL_RESULT_CHARS = 200_000
+
+_RATE_LIMIT_MESSAGE = (
+    "I'm being rate limited right now. Please try again in a moment."
+)
+_OVERLOADED_MESSAGE = (
+    'The model is overloaded right now. Please try again in a moment.'
+)
+_TOO_LONG_MESSAGE = (
+    'This conversation got too long for me to process. Try starting a '
+    'new thread or narrowing your question.'
+)
+_GENERIC_ERROR_MESSAGE = (
+    'Sorry — I hit an error talking to the model. Please try again.'
+)
+_TOOL_RESULT_TOO_LARGE = (
+    'ERROR: the tool returned too much data to process. Narrow the '
+    'request (filter, paginate, or ask for fewer fields) and try again.'
+)
+
+
+def _map_api_error(exc: anthropic.APIError) -> str:
+    """Map an Anthropic API error to a user-facing message."""
+    if isinstance(exc, anthropic.RateLimitError):
+        return _RATE_LIMIT_MESSAGE
+    status = getattr(exc, 'status_code', None)
+    if status == 529 or isinstance(exc, anthropic.InternalServerError):
+        return _OVERLOADED_MESSAGE
+    message = str(getattr(exc, 'message', '') or exc).lower()
+    if 'prompt is too long' in message or 'too many tokens' in message:
+        return _TOO_LONG_MESSAGE
+    return _GENERIC_ERROR_MESSAGE
+
+
+def _describe_tools(tool_uses: list[dict[str, typing.Any]]) -> str:
+    """Build a short status string naming the tools about to run."""
+    names = sorted({str(t['name']) for t in tool_uses})
+    listed = ', '.join(f'`{name}`' for name in names)
+    return f'Looking up data with {listed}…'
 
 
 def _collect(
@@ -74,6 +123,8 @@ async def run_turn(
     model: str,
     max_tokens: int,
     max_rounds: int,
+    on_status: StatusCallback | None = None,
+    max_tool_result_chars: int = _DEFAULT_MAX_TOOL_RESULT_CHARS,
 ) -> str:
     """Run one user turn through Claude and the tool loop.
 
@@ -86,6 +137,10 @@ async def run_turn(
         model: Claude model id.
         max_tokens: Max output tokens per response.
         max_rounds: Max tool-use rounds before giving up.
+        on_status: Optional async callback invoked with a short progress
+            string each time tools are about to run.
+        max_tool_result_chars: Tool results larger than this are replaced
+            with an error to protect the context window.
 
     Returns:
         The assistant's final text (concatenated across rounds).
@@ -113,12 +168,9 @@ async def run_turn(
                 'anthropic.types.Message',
                 await api_client.messages.create(**kwargs),
             )
-        except anthropic.APIError:
+        except anthropic.APIError as exc:
             LOGGER.exception('Anthropic API error')
-            return (
-                'Sorry — I hit an error talking to the model. '
-                'Please try again.'
-            )
+            return _map_api_error(exc)
 
         text, assistant_blocks, tool_uses = _collect(response.content)
         if text:
@@ -129,6 +181,9 @@ async def run_turn(
 
         messages.append({'role': 'assistant', 'content': assistant_blocks})
 
+        if on_status is not None:
+            await on_status(_describe_tools(tool_uses))
+
         tool_results: list[dict[str, typing.Any]] = []
         for tool_use in tool_uses:
             result_text, is_error = await manager.execute_tool(
@@ -136,6 +191,14 @@ async def run_turn(
                 tool_use['input'],
                 auth_token,
             )
+            if len(result_text) > max_tool_result_chars:
+                LOGGER.warning(
+                    'Tool %s returned %d chars (> %d); replacing with error',
+                    tool_use['name'],
+                    len(result_text),
+                    max_tool_result_chars,
+                )
+                result_text, is_error = _TOOL_RESULT_TOO_LARGE, True
             tool_results.append(
                 _tool_result_block(
                     tool_use['id'], result_text, is_error=is_error

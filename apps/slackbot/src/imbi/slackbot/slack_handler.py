@@ -2,30 +2,38 @@
 
 Builds a slack-bolt app that responds to @-mentions and direct messages
 by resolving the Slack user to an Imbi user, minting a per-user token,
-reconstructing the thread's context, and running the Claude tool loop.
+reconstructing the thread's context, running the Claude tool loop while
+showing progress, and rendering the reply as Slack-native formatting.
 
 """
 
 from __future__ import annotations
 
 import logging
-import re
 import typing
 
 from slack_bolt.adapter.socket_mode.async_handler import (
     AsyncSocketModeHandler,
 )
 from slack_bolt.async_app import AsyncApp
+from slack_sdk import errors
 
-from imbi_slackbot import agent, identity, mcp, settings, system_prompt
+from imbi_slackbot import (
+    agent,
+    identity,
+    inflight,
+    mcp,
+    messages,
+    settings,
+    slackdwn,
+    system_prompt,
+)
 
 # slack_sdk's AsyncWebClient is only loosely typed; treat it as Any
 # rather than thread Unknown generics through every call site.
 SlackClient = typing.Any
 
 LOGGER = logging.getLogger(__name__)
-
-_MENTION_RE = re.compile(r'<@[A-Z0-9]+(?:\|[^>]+)?>')
 
 _NO_USER_MESSAGE = (
     "I couldn't match your Slack account to an Imbi user. Imbi matches "
@@ -35,49 +43,95 @@ _NO_USER_MESSAGE = (
 _EMPTY_MESSAGE = (
     'Hi! Ask me anything about your Imbi projects, teams, or data.'
 )
+_ERROR_MESSAGE = 'Sorry — something went wrong handling your request.'
 
 _app: AsyncApp | None = None
 _handler: AsyncSocketModeHandler | None = None
 _bot_user_id: str | None = None
 
 
-def _strip_mentions(text: str) -> str:
-    """Remove Slack ``<@USER>`` mention tokens from text."""
-    return _MENTION_RE.sub('', text).strip()
+class _StatusReporter:
+    """Post and update an in-thread status message during processing.
 
-
-def _reconstruct_messages(
-    replies: list[dict[str, typing.Any]],
-    bot_user_id: str,
-    max_messages: int,
-) -> list[dict[str, typing.Any]]:
-    """Turn Slack thread messages into Anthropic message history.
-
-    Bot messages become ``assistant`` turns, everything else ``user``.
-    Consecutive same-role turns are coalesced and any leading assistant
-    turns are dropped so the history alternates and starts with a user
-    message, as the Anthropic API requires.
+    Adds a status-emoji reaction to the triggering message and posts a
+    single status message that is edited as the tool loop progresses,
+    then both are cleared once the real answer is ready. All Slack calls
+    are best-effort: a failure to show progress never fails the request.
 
     """
-    turns: list[dict[str, typing.Any]] = []
-    for msg in replies[-max_messages:]:
-        if msg.get('subtype'):
-            continue
-        author = msg.get('user')
-        if not author:
-            continue
-        role = 'assistant' if author == bot_user_id else 'user'
-        text = _strip_mentions(msg.get('text') or '')
-        if not text:
-            continue
-        if turns and turns[-1]['role'] == role:
-            turns[-1]['content'] = f'{turns[-1]["content"]}\n\n{text}'
-        else:
-            turns.append({'role': role, 'content': text})
 
-    while turns and turns[0]['role'] == 'assistant':
-        turns.pop(0)
-    return turns
+    def __init__(
+        self,
+        client: SlackClient,
+        channel: str,
+        thread_ts: str,
+        event_ts: str,
+        slackbot_settings: settings.Slackbot,
+    ) -> None:
+        self._client = client
+        self._channel = channel
+        self._thread_ts = thread_ts
+        self._event_ts = event_ts
+        self._enabled = slackbot_settings.progress_updates
+        self._emoji = slackbot_settings.status_emoji
+        self._status_ts: str | None = None
+        self._emoji_added = False
+
+    async def start(self) -> None:
+        """Add the status reaction and post the initial status message."""
+        if not self._enabled:
+            return
+        try:
+            await self._client.reactions_add(
+                channel=self._channel,
+                timestamp=self._event_ts,
+                name=self._emoji,
+            )
+            self._emoji_added = True
+        except errors.SlackApiError:
+            LOGGER.debug('Could not add status reaction', exc_info=True)
+        await self.update('Thinking…')
+
+    async def update(self, text: str) -> None:
+        """Post (or edit) the status message with ``text``."""
+        if not self._enabled:
+            return
+        body = f'_{text}_'
+        try:
+            if self._status_ts is None:
+                response = await self._client.chat_postMessage(
+                    channel=self._channel,
+                    text=body,
+                    thread_ts=self._thread_ts,
+                )
+                self._status_ts = response['ts'] if response else None
+            else:
+                await self._client.chat_update(
+                    channel=self._channel, ts=self._status_ts, text=body
+                )
+        except errors.SlackApiError:
+            LOGGER.debug('Could not update status message', exc_info=True)
+
+    async def finish(self) -> None:
+        """Delete the status message and remove the status reaction."""
+        if self._status_ts is not None:
+            try:
+                await self._client.chat_delete(
+                    channel=self._channel, ts=self._status_ts
+                )
+            except errors.SlackApiError:
+                LOGGER.debug('Could not delete status message', exc_info=True)
+            self._status_ts = None
+        if self._emoji_added:
+            try:
+                await self._client.reactions_remove(
+                    channel=self._channel,
+                    timestamp=self._event_ts,
+                    name=self._emoji,
+                )
+            except errors.SlackApiError:
+                LOGGER.debug('Could not remove status reaction', exc_info=True)
+            self._emoji_added = False
 
 
 async def _load_thread(
@@ -93,11 +147,11 @@ async def _load_thread(
             ts=thread_ts,
             limit=200,
         )
-        messages: list[dict[str, typing.Any]] = response.get('messages') or []
+        thread: list[dict[str, typing.Any]] = response.get('messages') or []
     except Exception:
         LOGGER.exception('Failed to fetch thread %s/%s', channel, thread_ts)
-        messages = []
-    return messages or [fallback]
+        thread = []
+    return thread or [fallback]
 
 
 async def handle_event(
@@ -114,6 +168,29 @@ async def handle_event(
         return
     thread_ts = event.get('thread_ts') or ts
 
+    async with inflight.track():
+        await _process(
+            event,
+            slack_client,
+            bot_user_id=bot_user_id,
+            channel=channel,
+            ts=ts,
+            thread_ts=thread_ts,
+            slack_user_id=slack_user_id,
+        )
+
+
+async def _process(
+    event: dict[str, typing.Any],
+    slack_client: SlackClient,
+    *,
+    bot_user_id: str,
+    channel: str,
+    ts: str,
+    thread_ts: str,
+    slack_user_id: str,
+) -> None:
+    """Resolve the user, run the turn, and post the rendered reply."""
     user = await identity.resolve(slack_client, slack_user_id)
     if user is None:
         await slack_client.chat_postMessage(
@@ -123,15 +200,23 @@ async def handle_event(
 
     slackbot_settings = settings.get_slackbot_settings()
     replies = await _load_thread(slack_client, channel, thread_ts, event)
-    messages = _reconstruct_messages(
-        replies, bot_user_id, slackbot_settings.max_thread_messages
+    convo = await messages.reconstruct(
+        slack_client,
+        slackbot_settings.slack_bot_token,
+        replies,
+        bot_user_id,
+        slackbot_settings.max_thread_messages,
     )
-    if not messages:
+    if not convo:
         await slack_client.chat_postMessage(
             channel=channel, text=_EMPTY_MESSAGE, thread_ts=thread_ts
         )
         return
 
+    reporter = _StatusReporter(
+        slack_client, channel, thread_ts, ts, slackbot_settings
+    )
+    await reporter.start()
     try:
         token = identity.mint_token(user)
         manager = mcp.get_manager()
@@ -140,22 +225,24 @@ async def handle_event(
             user, manager.get_tool_names()
         )
         answer = await agent.run_turn(
-            messages=messages,
+            messages=convo,
             system=system,
             tools=tools,
             auth_token=token,
             model=slackbot_settings.model,
             max_tokens=slackbot_settings.max_tokens,
             max_rounds=slackbot_settings.max_tool_rounds,
+            max_tool_result_chars=slackbot_settings.max_tool_result_chars,
+            on_status=reporter.update,
         )
     except Exception:
         LOGGER.exception('Failed to handle event in %s/%s', channel, ts)
-        answer = 'Sorry — something went wrong handling your request.'
-    await slack_client.chat_postMessage(
-        channel=channel,
-        text=answer or _EMPTY_MESSAGE,
-        thread_ts=thread_ts,
-    )
+        answer = _ERROR_MESSAGE
+    finally:
+        await reporter.finish()
+
+    sender = slackdwn.MarkdownSender(slack_client)
+    await sender.send(channel, answer or _EMPTY_MESSAGE, thread_ts)
 
 
 def _build_app(bot_token: str) -> AsyncApp:
@@ -213,8 +300,9 @@ async def initialize() -> None:
 
 
 async def aclose() -> None:
-    """Close the Socket Mode connection."""
+    """Drain in-flight work and close the Socket Mode connection."""
     global _app, _handler, _bot_user_id
+    await inflight.wait_for_drain()
     if _handler is not None:
         await _handler.close_async()  # type: ignore[no-untyped-call]
         _handler = None

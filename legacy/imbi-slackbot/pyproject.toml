@@ -12,6 +12,7 @@ dependencies = [
   "fastmcp>=3.0.0",
   "httpx>=0.28.1",
   "imbi-common[databases,mcp,server]==2.10.0",
+  "markdown-it-py>=3.0",
   "pydantic~=2.12",
   "sentry-sdk>=2.48.0",
   "slack-bolt>=1.21",
@@ -165,6 +166,7 @@ max-complexity = 15
 [tool.ruff.lint.per-file-ignores]
 "src/imbi_slackbot/client.py" = ["PLW0603"]
 "src/imbi_slackbot/identity.py" = ["PLW0603"]
+"src/imbi_slackbot/inflight.py" = ["PLW0603"]
 "src/imbi_slackbot/links.py" = ["PLW0603"]
 "src/imbi_slackbot/mcp.py" = ["PLW0603"]
 "src/imbi_slackbot/settings.py" = ["PLW0603"]

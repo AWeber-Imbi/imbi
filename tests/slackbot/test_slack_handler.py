@@ -1,24 +1,64 @@
 from unittest import mock
 
-from imbi_slackbot import identity, settings, slack_handler
+from imbi_slackbot import identity, inflight, settings, slack_handler
 from tests import helpers
+
+
+class Resp(dict):
+    """A Slack response that supports both ``r['x']`` and ``r.data['x']``."""
+
+    @property
+    def data(self):
+        return self
 
 
 class FakeSlackClient:
     def __init__(self, replies=None, replies_error=False) -> None:
-        self._replies = replies
+        self._replies = replies or []
         self._error = replies_error
         self.posts: list = []
+        self.updates: list = []
+        self.deletes: list = []
+        self.reactions: list = []
 
-    async def conversations_replies(self, channel, ts, limit):
+    async def conversations_replies(self, channel, ts, limit=None):
         if self._error:
             raise RuntimeError('nope')
-        return {'messages': self._replies or []}
+        return Resp(messages=list(self._replies))
 
-    async def chat_postMessage(self, channel, text, thread_ts):
+    async def users_info(self, user):
+        return Resp(user={'profile': {'display_name': user}})
+
+    async def chat_postMessage(
+        self,
+        channel,
+        thread_ts=None,
+        text=None,
+        markdown_text=None,
+        blocks=None,
+    ):
         self.posts.append(
-            {'channel': channel, 'text': text, 'thread_ts': thread_ts}
+            {
+                'text': text,
+                'markdown_text': markdown_text,
+                'blocks': blocks,
+                'thread_ts': thread_ts,
+            }
         )
+        return Resp(ts=f'ts{len(self.posts)}')
+
+    async def chat_update(self, channel, ts, text=None, **_kw):
+        self.updates.append({'ts': ts, 'text': text})
+        return Resp(ts=ts)
+
+    async def chat_delete(self, channel, ts):
+        self.deletes.append(ts)
+
+    async def reactions_add(self, channel, timestamp, name):
+        self.reactions.append(('add', name))
+
+    async def reactions_remove(self, channel, timestamp, name):
+        self.reactions.append(('remove', name))
 
 
 class FakeManager:
@@ -27,71 +67,6 @@ class FakeManager:
 
     def get_tool_names(self) -> list:
         return ['list']
-
-
-class StripMentionTests(helpers.TestCase):
-    def test_strip(self) -> None:
-        self.assertEqual(
-            'hello there',
-            slack_handler._strip_mentions('<@U123> hello there'),
-        )
-
-    def test_strip_labeled(self) -> None:
-        self.assertEqual(
-            'hello there',
-            slack_handler._strip_mentions('<@U123|alice> hello there'),
-        )
-
-
-class ReconstructTests(helpers.TestCase):
-    def test_roles_and_mention_strip(self) -> None:
-        replies = [
-            {'user': 'U1', 'text': '<@BOT> hi'},
-            {'user': 'BOT', 'text': 'hello'},
-            {'user': 'U1', 'text': 'thanks'},
-        ]
-        msgs = slack_handler._reconstruct_messages(replies, 'BOT', 30)
-        self.assertEqual(3, len(msgs))
-        self.assertEqual('user', msgs[0]['role'])
-        self.assertEqual('hi', msgs[0]['content'])
-        self.assertEqual('assistant', msgs[1]['role'])
-
-    def test_coalesce_consecutive(self) -> None:
-        replies = [
-            {'user': 'U1', 'text': 'one'},
-            {'user': 'U1', 'text': 'two'},
-        ]
-        msgs = slack_handler._reconstruct_messages(replies, 'BOT', 30)
-        self.assertEqual(1, len(msgs))
-        self.assertEqual('one\n\ntwo', msgs[0]['content'])
-
-    def test_drops_leading_assistant(self) -> None:
-        replies = [
-            {'user': 'BOT', 'text': 'earlier'},
-            {'user': 'U1', 'text': 'hi'},
-        ]
-        msgs = slack_handler._reconstruct_messages(replies, 'BOT', 30)
-        self.assertEqual(1, len(msgs))
-        self.assertEqual('user', msgs[0]['role'])
-
-    def test_skips_subtype_and_no_user_and_empty(self) -> None:
-        replies = [
-            {'subtype': 'channel_join', 'user': 'U1', 'text': 'joined'},
-            {'text': 'no user'},
-            {'user': 'U1', 'text': '   '},
-            {'user': 'U1', 'text': 'real'},
-        ]
-        msgs = slack_handler._reconstruct_messages(replies, 'BOT', 30)
-        self.assertEqual(1, len(msgs))
-        self.assertEqual('real', msgs[0]['content'])
-
-    def test_cap(self) -> None:
-        replies = [{'user': 'U1', 'text': f'm{i}'} for i in range(10)]
-        msgs = slack_handler._reconstruct_messages(replies, 'BOT', 3)
-        # Last 3 coalesce into a single user turn.
-        self.assertEqual(1, len(msgs))
-        self.assertIn('m9', msgs[0]['content'])
-        self.assertNotIn('m0', msgs[0]['content'])
 
 
 class LoadThreadTests(helpers.TestCase):
@@ -144,33 +119,35 @@ class InitializeTests(helpers.TestCase):
         settings._slackbot_settings = None
         await super().asyncTearDown()
 
+    @staticmethod
+    def _patch_settings(*, enabled, bot_token, app_token):
+        # A stub avoids the developer's local .env (read directly by
+        # pydantic-settings) leaking real tokens into token-gating tests.
+        stub = mock.Mock(
+            enabled=enabled,
+            slack_bot_token=bot_token,
+            slack_app_token=app_token,
+        )
+        return mock.patch.object(
+            slack_handler.settings,
+            'get_slackbot_settings',
+            return_value=stub,
+        )
+
     async def test_disabled_does_not_connect(self) -> None:
-        with self.override_environment(
-            ANTHROPIC_API_KEY=None,
-            SLACK_BOT_TOKEN=None,
-            SLACK_APP_TOKEN=None,
-            IMBI_SLACKBOT_ENABLED=None,
-        ):
+        with self._patch_settings(enabled=False, bot_token='', app_token=''):
             await slack_handler.initialize()
         self.assertIsNone(slack_handler._handler)
 
     async def test_enabled_without_tokens(self) -> None:
-        with self.override_environment(
-            ANTHROPIC_API_KEY=None,
-            SLACK_BOT_TOKEN=None,
-            SLACK_APP_TOKEN=None,
-            IMBI_SLACKBOT_ENABLED='true',
-        ):
+        with self._patch_settings(enabled=True, bot_token='', app_token=''):
             await slack_handler.initialize()
         self.assertIsNone(slack_handler._handler)
 
     async def test_connects_and_dispatches(self) -> None:
         with (
-            self.override_environment(
-                ANTHROPIC_API_KEY='sk-test',
-                SLACK_BOT_TOKEN='xoxb',
-                SLACK_APP_TOKEN='xapp',
-                IMBI_SLACKBOT_ENABLED=None,
+            self._patch_settings(
+                enabled=True, bot_token='xoxb', app_token='xapp'
             ),
             mock.patch.object(slack_handler, 'AsyncApp', FakeApp),
             mock.patch.object(
@@ -211,6 +188,7 @@ class HandleEventTests(helpers.TestCase):
     def setUp(self) -> None:
         super().setUp()
         settings._slackbot_settings = None
+        inflight.reset()
         system_prompt_patch = mock.patch.object(
             slack_handler.system_prompt,
             'build_system_prompt',
@@ -230,9 +208,10 @@ class HandleEventTests(helpers.TestCase):
         for patch in self._patches:
             patch.stop()
         settings._slackbot_settings = None
+        inflight.reset()
         super().tearDown()
 
-    async def test_happy_path(self) -> None:
+    async def test_happy_path_renders_answer(self) -> None:
         user = identity.ImbiUser('ada@example.com', 'Ada')
         event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': '<@BOT> hi'}
         client = FakeSlackClient(replies=[])
@@ -249,8 +228,15 @@ class HandleEventTests(helpers.TestCase):
             ),
         ):
             await slack_handler.handle_event(event, client, bot_user_id='BOT')
-        self.assertEqual('the answer', client.posts[-1]['text'])
+        # The answer is rendered through the Markdown sender (markdown_text),
+        # the status reaction is added then removed, and the status message
+        # is posted then deleted.
+        self.assertEqual('the answer', client.posts[-1]['markdown_text'])
         self.assertEqual('1', client.posts[-1]['thread_ts'])
+        self.assertEqual(
+            [('add', mock.ANY), ('remove', mock.ANY)], client.reactions
+        )
+        self.assertEqual(1, len(client.deletes))
 
     async def test_run_turn_failure_posts_fallback(self) -> None:
         user = identity.ImbiUser('ada@example.com', 'Ada')
@@ -269,7 +255,35 @@ class HandleEventTests(helpers.TestCase):
             ),
         ):
             await slack_handler.handle_event(event, client, bot_user_id='BOT')
-        self.assertIn('something went wrong', client.posts[-1]['text'])
+        self.assertIn(
+            'something went wrong', client.posts[-1]['markdown_text']
+        )
+        # Status message is still cleaned up on failure.
+        self.assertEqual(1, len(client.deletes))
+        self.assertIn(('remove', mock.ANY), client.reactions)
+
+    async def test_progress_updates_disabled(self) -> None:
+        user = identity.ImbiUser('ada@example.com', 'Ada')
+        event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': '<@BOT> hi'}
+        client = FakeSlackClient(replies=[])
+        with (
+            self.override_environment(IMBI_SLACKBOT_PROGRESS_UPDATES='false'),
+            mock.patch.object(
+                slack_handler.identity,
+                'resolve',
+                new=mock.AsyncMock(return_value=user),
+            ),
+            mock.patch.object(
+                slack_handler.agent,
+                'run_turn',
+                new=mock.AsyncMock(return_value='the answer'),
+            ),
+        ):
+            settings._slackbot_settings = None
+            await slack_handler.handle_event(event, client, bot_user_id='BOT')
+        self.assertEqual([], client.reactions)
+        self.assertEqual([], client.deletes)
+        self.assertEqual('the answer', client.posts[-1]['markdown_text'])
 
     async def test_unknown_user(self) -> None:
         event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': 'hi'}

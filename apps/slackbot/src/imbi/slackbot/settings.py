@@ -21,9 +21,16 @@ class Slackbot(pydantic_settings.BaseSettings):
     model: str = 'claude-sonnet-4-6'
     max_tokens: int = 16384
     max_tool_rounds: int = 10
+    # Tool results larger than this (characters) are replaced with an
+    # error so a single chatty tool cannot blow up the context window.
+    max_tool_result_chars: int = 200_000
     # How many of a Slack thread's most recent messages to replay to
     # Claude when reconstructing conversation context.
     max_thread_messages: int = 30
+    # Post a status message + status-emoji reaction while a request is
+    # being processed, updating it as tools run.
+    progress_updates: bool = True
+    status_emoji: str = 'hourglass_flowing_sand'
     # How long (seconds) to cache a Slack -> Imbi user resolution before
     # re-checking the directory and graph.
     identity_cache_ttl: int = 900

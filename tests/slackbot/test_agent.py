@@ -159,3 +159,105 @@ class RunTurnTests(helpers.TestCase):
         client = FakeClient([err])
         answer = await self._run(client, FakeManager([]))
         self.assertIn('error', answer.lower())
+
+    async def _run_tools(self, client, manager, **overrides):
+        kwargs = {
+            'messages': [{'role': 'user', 'content': 'q'}],
+            'system': 'sys',
+            'tools': [{'name': 'list'}],
+            'auth_token': 'tok',
+            'model': 'm',
+            'max_tokens': 100,
+            'max_rounds': 5,
+        }
+        kwargs.update(overrides)
+        patches = self._patch(client, manager)
+        for patch in patches:
+            patch.start()
+        try:
+            return await agent.run_turn(**kwargs)
+        finally:
+            for patch in patches:
+                patch.stop()
+
+    async def test_on_status_called_with_tools(self) -> None:
+        client = FakeClient(
+            [
+                Response([_tool('t1', 'list', {})], 'tool_use'),
+                Response([_text('done')], 'end_turn'),
+            ]
+        )
+        statuses: list[str] = []
+
+        async def on_status(text: str) -> None:
+            statuses.append(text)
+
+        await self._run_tools(
+            client, FakeManager([('ok', False)]), on_status=on_status
+        )
+        self.assertEqual(['Looking up data with `list`…'], statuses)
+
+    async def test_large_tool_result_replaced(self) -> None:
+        client = FakeClient(
+            [
+                Response([_tool('t1', 'list', {})], 'tool_use'),
+                Response([_text('done')], 'end_turn'),
+            ]
+        )
+        await self._run_tools(
+            client,
+            FakeManager([('x' * 50, False)]),
+            max_tool_result_chars=10,
+        )
+        working = client.messages.calls[-1]['messages']
+        tool_result = working[2]['content'][0]
+        self.assertTrue(tool_result['is_error'])
+        self.assertIn('too much data', tool_result['content'])
+
+
+class MapErrorTests(helpers.TestCase):
+    @staticmethod
+    def _resp(status: int) -> httpx.Response:
+        return httpx.Response(
+            status, request=httpx.Request('POST', 'http://x')
+        )
+
+    def test_rate_limit(self) -> None:
+        err = anthropic.RateLimitError(
+            'r', response=self._resp(429), body=None
+        )
+        self.assertEqual(agent._RATE_LIMIT_MESSAGE, agent._map_api_error(err))
+
+    def test_overloaded_529(self) -> None:
+        err = anthropic.APIStatusError(
+            'o', response=self._resp(529), body=None
+        )
+        self.assertEqual(agent._OVERLOADED_MESSAGE, agent._map_api_error(err))
+
+    def test_internal_server_error(self) -> None:
+        err = anthropic.InternalServerError(
+            'o', response=self._resp(500), body=None
+        )
+        self.assertEqual(agent._OVERLOADED_MESSAGE, agent._map_api_error(err))
+
+    def test_prompt_too_long(self) -> None:
+        err = anthropic.BadRequestError(
+            'prompt is too long', response=self._resp(400), body=None
+        )
+        self.assertEqual(agent._TOO_LONG_MESSAGE, agent._map_api_error(err))
+
+    def test_generic(self) -> None:
+        err = anthropic.BadRequestError(
+            'nope', response=self._resp(400), body=None
+        )
+        self.assertEqual(
+            agent._GENERIC_ERROR_MESSAGE, agent._map_api_error(err)
+        )
+
+    def test_describe_tools_sorted_unique(self) -> None:
+        self.assertEqual(
+            'Looking up data with `a`, `b`…',
+            agent._describe_tools(
+                [{'name': 'b'}, {'name': 'a'}, {'name': 'a'}]
+            ),
+        )
