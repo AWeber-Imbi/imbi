@@ -1149,7 +1149,7 @@ docs = [
 [[package]]
 name = "imbi-common"
 version = "2.10.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main#0b6d80eaf5d474b7b75fd71498e6f3cad4666f70" }
+source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main#fda46230d4e45020102b99ae0ed804b2c2b9104a" }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },

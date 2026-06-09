@@ -25,6 +25,8 @@ from .project_analysis import project_analysis_router
 from .project_commit_sync import project_commit_sync_router
 from .project_configuration import project_configuration_router
 from .project_deployments import project_deployments_router
+from .project_incidents import project_incidents_router
+from .project_lifecycle import project_lifecycle_router
 from .project_logs import project_logs_router
 from .project_plugins import project_plugins_router
 from .project_type_plugins import project_type_plugins_router
@@ -134,6 +136,14 @@ organizations_router.include_router(
 organizations_router.include_router(
     project_logs_router,
     prefix='/{org_slug}/projects/{project_id}/logs',
+)
+organizations_router.include_router(
+    project_incidents_router,
+    prefix='/{org_slug}/projects/{project_id}/incidents',
+)
+organizations_router.include_router(
+    project_lifecycle_router,
+    prefix='/{org_slug}/projects/{project_id}/lifecycle',
 )
 organizations_router.include_router(
     project_deployments_router,

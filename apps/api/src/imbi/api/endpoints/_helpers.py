@@ -405,6 +405,7 @@ async def persist_service_writeback(
                 slug,
                 writeback.identifier,
                 writeback.canonical_url,
+                writeback.webhook_secret_enc,
             )
             await merge_project_links(
                 db, ctx.project_id, add=writeback.dashboard_links
@@ -432,9 +433,26 @@ async def _merge_exists_in(
     tps_slug: str,
     identifier: str,
     canonical_url: str,
+    webhook_secret_enc: str | None = None,
 ) -> None:
-    """Upsert the ``EXISTS_IN`` edge for ``(project, service)``."""
-    query: typing.LiteralString = """
+    """Upsert the ``EXISTS_IN`` edge for ``(project, service)``.
+
+    ``webhook_secret_enc`` is an opaque, already-encrypted secret (the
+    plugin encrypts it; this never decrypts or re-encrypts it) stored on
+    the edge alongside ``identifier`` for a gateway to read back at
+    webhook-delivery time. When ``None`` the ``SET`` omits it, so an
+    existing edge's secret is left untouched.
+    """
+    # Conditionally append the secret to the SET clause so a writeback
+    # without one cannot null out a previously-stored secret. Both
+    # branches are string literals, keeping the query a ``LiteralString``.
+    secret_set: typing.LiteralString = (
+        ',\n        ei.webhook_secret_enc = {webhook_secret_enc}'
+        if webhook_secret_enc is not None
+        else ''
+    )
+    query: typing.LiteralString = (
+        """
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
@@ -442,20 +460,22 @@ async def _merge_exists_in(
           -[:BELONGS_TO]->(o)
     MERGE (p)-[ei:EXISTS_IN]->(tps)
     SET ei.identifier = {identifier},
-        ei.canonical_url = {canonical_url}
+        ei.canonical_url = {canonical_url}"""
+        + secret_set
+        + """
     RETURN ei.identifier AS identifier
     """
-    await db.execute(
-        query,
-        {
-            'org_slug': org_slug,
-            'project_id': project_id,
-            'tps_slug': tps_slug,
-            'identifier': identifier,
-            'canonical_url': canonical_url,
-        },
-        ['identifier'],
     )
+    params: dict[str, typing.Any] = {
+        'org_slug': org_slug,
+        'project_id': project_id,
+        'tps_slug': tps_slug,
+        'identifier': identifier,
+        'canonical_url': canonical_url,
+    }
+    if webhook_secret_enc is not None:
+        params['webhook_secret_enc'] = webhook_secret_enc
+    await db.execute(query, params, ['identifier'])
 
 
 async def _delete_exists_in(

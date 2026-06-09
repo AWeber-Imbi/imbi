@@ -931,6 +931,37 @@ class PluginAssignmentResponse(pydantic.BaseModel):
     # card on the project settings page (and the admin TPS page) so
     # the UI doesn't surface a button that the API will 400 on.
     supports_deployment_sync: bool = False
+    # Set on lifecycle plugins whose ``on_project_updated`` is a safe
+    # upsert -- gates the "Sync lifecycle" controls on the project
+    # settings page (and the admin TPS page), which push current Imbi
+    # state to the remote on demand.
+    supports_lifecycle_sync: bool = False
+
+
+class LifecycleSyncError(pydantic.BaseModel):
+    """One non-fatal failure encountered during a lifecycle sync."""
+
+    project_id: str
+    detail: str
+
+
+class LifecycleSyncSummary(pydantic.BaseModel):
+    """Aggregate outcome of a lifecycle push-sync run.
+
+    A sync re-dispatches each project's ``on_project_updated`` -- an
+    upsert that creates the remote when missing and updates it
+    otherwise -- so the per-project outcome is the plugin's
+    ``LifecycleResult.status``: ``synced`` counts ``ok`` results,
+    ``skipped`` counts ``skipped`` (e.g. an unmapped team), and
+    ``failed`` counts ``failed`` results plus dispatches that raised
+    (each captured in ``errors``).
+    """
+
+    projects: int = 0
+    synced: int = 0
+    skipped: int = 0
+    failed: int = 0
+    errors: list[LifecycleSyncError] = []
 
 
 # -- Configuration / Logs response models ---------------------------------

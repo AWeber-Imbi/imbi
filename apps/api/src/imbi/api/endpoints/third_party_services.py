@@ -31,6 +31,7 @@ from imbi_api.endpoints.project_deployments import (
     ResyncSummary,
     resync_for_project,
 )
+from imbi_api.endpoints.project_lifecycle import lifecycle_sync_for_project
 from imbi_api.graph_sql import props_template, set_clause
 
 LOGGER = logging.getLogger(__name__)
@@ -460,19 +461,20 @@ async def _tps_exists(
     return bool(rows)
 
 
-async def _projects_using_tps_for_deployment(
+async def _projects_using_tps(
     db: graph.Graph,
     *,
     org_slug: str,
     slug: str,
+    plugin_type: str,
 ) -> list[str]:
-    """Return project ids whose deployment plugin is owned by this TPS.
+    """Return project ids whose ``plugin_type`` plugin is owned by this TPS.
 
     Walks both project-level and project-type-level ``USES_PLUGIN``
-    edges with ``plugin_type='deployment'`` whose target ``Plugin`` is owned
+    edges with the given ``plugin_type`` whose target ``Plugin`` is owned
     (via ``HAS_PLUGIN``) by the named ThirdPartyService.  Returns a
-    de-duplicated, deterministic list so the resync fan-out is stable
-    across calls.
+    de-duplicated, deterministic list so the fan-out is stable across
+    calls.
 
     Raises ``HTTPException(404)`` when the TPS does not exist so the
     caller doesn't conflate "unknown service" with "no projects".
@@ -483,7 +485,7 @@ async def _projects_using_tps_for_deployment(
             detail=f'Third-party service with slug {slug!r} not found',
         )
     # Scope both Project branches to the requested organization via the
-    # OWNED_BY -> BELONGS_TO path so a TPS-wide resync triggered against
+    # OWNED_BY -> BELONGS_TO path so a TPS-wide sync triggered against
     # one org can't sweep in projects in another org that happen to use
     # the same plugin node.
     query: typing.LiteralString = """
@@ -492,18 +494,18 @@ async def _projects_using_tps_for_deployment(
     MATCH (tps)-[:HAS_PLUGIN]->(plugin:Plugin)
     OPTIONAL MATCH (p:Project)-[upe:USES_PLUGIN]->(plugin),
                    (p)-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->(o)
-    WHERE coalesce(upe.plugin_type, upe.tab) = 'deployment'
+    WHERE coalesce(upe.plugin_type, upe.tab) = {plugin_type}
     OPTIONAL MATCH (p2:Project)-[:TYPE]
         ->(:ProjectType)-[upte:USES_PLUGIN]->(plugin),
                    (p2)-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->(o)
-    WHERE coalesce(upte.plugin_type, upte.tab) = 'deployment'
+    WHERE coalesce(upte.plugin_type, upte.tab) = {plugin_type}
     WITH collect(DISTINCT p.id) AS direct_ids,
          collect(DISTINCT p2.id) AS typed_ids
     RETURN direct_ids + typed_ids AS project_ids
     """
     rows = await db.execute(
         query,
-        {'slug': slug, 'org_slug': org_slug},
+        {'slug': slug, 'org_slug': org_slug, 'plugin_type': plugin_type},
         ['project_ids'],
     )
     if not rows:
@@ -515,6 +517,18 @@ async def _projects_using_tps_for_deployment(
         else []
     )
     return sorted({str(pid) for pid in parsed if pid})
+
+
+async def _projects_using_tps_for_deployment(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    slug: str,
+) -> list[str]:
+    """Project ids whose deployment plugin is owned by this TPS."""
+    return await _projects_using_tps(
+        db, org_slug=org_slug, slug=slug, plugin_type='deployment'
+    )
 
 
 def _accumulate(into: ResyncSummary, summary: ResyncSummary) -> None:
@@ -598,6 +612,76 @@ async def resync_service_deployments(
     results = await asyncio.gather(*(_run(pid) for pid in project_ids))
     for result in results:
         _accumulate(aggregate, result)
+    return aggregate
+
+
+def _accumulate_lifecycle(
+    into: models.LifecycleSyncSummary,
+    summary: models.LifecycleSyncSummary,
+) -> None:
+    """Sum counts from a per-project lifecycle sync into the aggregate."""
+    into.projects += summary.projects
+    into.synced += summary.synced
+    into.skipped += summary.skipped
+    into.failed += summary.failed
+    into.errors.extend(summary.errors)
+
+
+@third_party_services_router.post('/{slug}/lifecycle/sync')
+async def sync_service_lifecycle(
+    org_slug: str,
+    slug: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('third_party_service:update'),
+        ),
+    ],
+) -> models.LifecycleSyncSummary:
+    """Push Imbi state to the remote for every project using this TPS.
+
+    Enumerates the projects whose lifecycle plugin is owned by the named
+    ThirdPartyService and re-dispatches each project's
+    ``on_project_updated`` upsert with bounded concurrency (shared with
+    the deployment-resync budget to keep a single admin click from
+    saturating the remote's rate limit).  Returns aggregate per-project
+    counts plus a per-project error list, recovering partially rather
+    than failing the whole batch on one bad project.
+    """
+    project_ids = await _projects_using_tps(
+        db, org_slug=org_slug, slug=slug, plugin_type='lifecycle'
+    )
+    aggregate = models.LifecycleSyncSummary()
+    if not project_ids:
+        return aggregate
+
+    async def _run(project_id: str) -> models.LifecycleSyncSummary:
+        async with _TPS_RESYNC_SEMAPHORE:
+            try:
+                return await lifecycle_sync_for_project(
+                    db,
+                    org_slug=org_slug,
+                    project_id=project_id,
+                    auth=auth,
+                )
+            except Exception as exc:
+                LOGGER.exception(
+                    'Lifecycle sync failed for project=%s', project_id
+                )
+                summary = models.LifecycleSyncSummary(projects=1)
+                summary.failed += 1
+                summary.errors.append(
+                    models.LifecycleSyncError(
+                        project_id=project_id,
+                        detail=f'{type(exc).__name__}: {exc}',
+                    )
+                )
+                return summary
+
+    results = await asyncio.gather(*(_run(pid) for pid in project_ids))
+    for result in results:
+        _accumulate_lifecycle(aggregate, result)
     return aggregate
 
 

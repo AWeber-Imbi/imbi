@@ -2585,7 +2585,15 @@ async def patch_project(
         if isinstance(s, str) and s
     ]
     types_changed = set(new_type_slugs) != set(current_type_slugs)
-    if transfer_repository and types_changed:
+    # A team reassignment is also a relocation for team-keyed lifecycle
+    # plugins (e.g. PagerDuty repoints the service's escalation policy to
+    # the new team's).  Unlike the type-driven repo move, it is not gated
+    # on ``transfer_repository`` -- it fires whenever the owning team
+    # changes.  Type-keyed plugins (e.g. GitHub) see ``current_type_slugs``
+    # unchanged and no-op.
+    new_team_slug = update_data.team_slug
+    team_changed = bool(new_team_slug) and new_team_slug != current_team_slug
+    if (transfer_repository and types_changed) or team_changed:
         try:
             relocate_results = await dispatch_lifecycle(
                 db,
@@ -2595,6 +2603,7 @@ async def patch_project(
                 auth,
                 previous_project_slug=previous_slug if slug_changed else None,
                 previous_project_type_slugs=current_type_slugs,
+                previous_team_slug=current_team_slug if team_changed else None,
                 project_name=response.name,
                 project_description=response.description,
                 project_ui_url=_build_project_ui_url(org_slug, project_id),

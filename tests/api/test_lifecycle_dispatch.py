@@ -684,6 +684,15 @@ class BundleAndContextPropagationTestCase(unittest.TestCase):
             'https://imbi.example.com/projects/proj-1',
         )
 
+    def test_propagates_previous_team_slug(self) -> None:
+        # dispatch packs ``previous_team_slug`` onto the context
+        # regardless of event; the relocated endpoint path supplies it.
+        out = self._capture_ctx(
+            event='updated',
+            previous_team_slug='platform',
+        )
+        self.assertEqual(out.ctx.previous_team_slug, 'platform')
+
 
 class BuildLifecycleContextBundleTestCase(unittest.TestCase):
     """:func:`build_lifecycle_context_bundle` packages the three lookups."""

@@ -114,11 +114,15 @@ def build_assignment_response(
     """Build a PluginAssignmentResponse from parsed plugin/edge dicts."""
     supports_histogram = False
     supports_deployment_sync = False
+    supports_lifecycle_sync = False
     try:
         manifest = get_plugin(plugin['plugin_slug']).manifest
         supports_histogram = bool(manifest.supports_histogram)
         supports_deployment_sync = bool(
             getattr(manifest, 'supports_deployment_sync', False)
+        )
+        supports_lifecycle_sync = bool(
+            getattr(manifest, 'supports_lifecycle_sync', False)
         )
     except PluginNotFoundError:
         pass
@@ -139,6 +143,7 @@ def build_assignment_response(
         env_payloads=_parse_env_payloads(edge.get('env_payloads')),
         supports_histogram=supports_histogram,
         supports_deployment_sync=supports_deployment_sync,
+        supports_lifecycle_sync=supports_lifecycle_sync,
     )
 
 

@@ -147,12 +147,37 @@ class PersistServiceWritebackTestCase(unittest.TestCase):
             'github-enterprise-cloud',
             '134741',
             'https://api.x.ghe.com/repositories/134741',
+            None,
         )
         merge_links.assert_awaited_once()
         self.assertEqual(
             merge_links.await_args.kwargs['add'],
             {'github-enterprise-cloud': 'https://x/o/r'},
         )
+
+    def test_upsert_path_passes_webhook_secret(self) -> None:
+        db = mock.AsyncMock()
+        ctx = _ctx(
+            third_party_service_slug='pagerduty',
+            service_writeback=ServiceWriteback(
+                identifier='PSVC1',
+                canonical_url='https://api.pagerduty.com/services/PSVC1',
+                webhook_secret_enc='gAAAAAB-ciphertext',
+            ),
+        )
+        with (
+            mock.patch.object(
+                _helpers, '_merge_exists_in', new=mock.AsyncMock()
+            ) as merge_edge,
+            mock.patch.object(
+                _helpers,
+                'merge_project_links',
+                new=mock.AsyncMock(return_value=False),
+            ),
+        ):
+            asyncio.run(_helpers.persist_service_writeback(db, ctx))
+        # secret is threaded through as the trailing positional arg
+        self.assertEqual(merge_edge.await_args.args[6], 'gAAAAAB-ciphertext')
 
     def test_remove_path(self) -> None:
         db = mock.AsyncMock()
@@ -199,6 +224,36 @@ class PersistServiceWritebackTestCase(unittest.TestCase):
         ):
             # must not raise
             asyncio.run(_helpers.persist_service_writeback(db, ctx))
+
+
+class MergeExistsInTestCase(unittest.TestCase):
+    def test_omits_secret_when_none(self) -> None:
+        db = mock.AsyncMock()
+        asyncio.run(
+            _helpers._merge_exists_in(
+                db, 'org-1', 'proj-1', 'pagerduty', 'PSVC1', 'https://api/1'
+            )
+        )
+        query, params = db.execute.await_args.args[:2]
+        self.assertNotIn('webhook_secret_enc', query)
+        self.assertNotIn('webhook_secret_enc', params)
+
+    def test_sets_secret_when_provided(self) -> None:
+        db = mock.AsyncMock()
+        asyncio.run(
+            _helpers._merge_exists_in(
+                db,
+                'org-1',
+                'proj-1',
+                'pagerduty',
+                'PSVC1',
+                'https://api/1',
+                'gAAAAAB-ciphertext',
+            )
+        )
+        query, params = db.execute.await_args.args[:2]
+        self.assertIn('ei.webhook_secret_enc = {webhook_secret_enc}', query)
+        self.assertEqual(params['webhook_secret_enc'], 'gAAAAAB-ciphertext')
 
 
 if __name__ == '__main__':

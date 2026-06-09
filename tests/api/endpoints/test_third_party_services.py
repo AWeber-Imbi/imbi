@@ -638,6 +638,65 @@ class ThirdPartyServiceEndpointsTestCase(support.SharedAppTestCase):
         response = self.client.post(self._resync_url())
         self.assertEqual(response.status_code, 403)
 
+    # -- Lifecycle sync (TPS-wide) --
+
+    def _lifecycle_sync_url(self) -> str:
+        return (
+            '/organizations/engineering/third-party-services/'
+            'github-enterprise-cloud/lifecycle/sync'
+        )
+
+    def test_lifecycle_sync_iterates_projects_and_aggregates(self) -> None:
+        self.mock_db.execute.return_value = [
+            {'project_ids': ['proj-a', 'proj-b']}
+        ]
+        from imbi_api.domain.models import (
+            LifecycleSyncError,
+            LifecycleSyncSummary,
+        )
+
+        responses = {
+            'proj-a': LifecycleSyncSummary(projects=1, synced=1),
+            'proj-b': LifecycleSyncSummary(
+                projects=1,
+                failed=1,
+                errors=[
+                    LifecycleSyncError(
+                        project_id='proj-b', detail='pagerduty: boom'
+                    )
+                ],
+            ),
+        }
+
+        async def _stub(_db, *, org_slug, project_id, auth):
+            return responses[project_id]
+
+        target = (
+            'imbi_api.endpoints.third_party_services'
+            '.lifecycle_sync_for_project'
+        )
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(target, side_effect=_stub) as patched,
+        ):
+            response = self.client.post(self._lifecycle_sync_url())
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(data['projects'], 2)
+        self.assertEqual(data['synced'], 1)
+        self.assertEqual(data['failed'], 1)
+        self.assertEqual(len(data['errors']), 1)
+        self.assertEqual(data['errors'][0]['project_id'], 'proj-b')
+        self.assertEqual(patched.await_count, 2)
+
+    def test_lifecycle_sync_unknown_tps_returns_404(self) -> None:
+        self.mock_db.execute.return_value = []
+        response = self.client.post(self._lifecycle_sync_url())
+        self.assertEqual(response.status_code, 404, response.text)
+        self.assertIn('not found', response.json()['detail'])
+
 
 class ServiceWebhooksEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for list_service_webhooks endpoint."""

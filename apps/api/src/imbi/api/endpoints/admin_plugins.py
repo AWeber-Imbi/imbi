@@ -163,6 +163,9 @@ def _serialize(
         'supports_deployment_sync': bool(
             getattr(entry.manifest, 'supports_deployment_sync', False)
         ),
+        'supports_lifecycle_sync': bool(
+            getattr(entry.manifest, 'supports_lifecycle_sync', False)
+        ),
         'options': [o.model_dump() for o in entry.manifest.options],
         'credentials': [c.model_dump() for c in entry.manifest.credentials],
         'vertex_labels': [
@@ -198,6 +201,7 @@ def _placeholder(package_name: str) -> dict[str, typing.Any]:
         'docs_url': None,
         'supported_tabs': [],
         'supports_deployment_sync': False,
+        'supports_lifecycle_sync': False,
         'options': [],
         'credentials': [],
         'vertex_labels': [],

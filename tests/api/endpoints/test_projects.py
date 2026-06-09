@@ -1582,6 +1582,60 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 200)
         mock_dispatch.assert_not_awaited()
 
+    def test_patch_dispatches_relocated_on_team_change(self) -> None:
+        """A team reassignment relocates, with no transfer flag needed.
+
+        Team-keyed lifecycle plugins (e.g. PagerDuty) repoint on an
+        owning-team change, so a bare ``/team_slug`` patch dispatches
+        ``relocated`` carrying ``previous_team_slug`` -- and does so
+        without ``?transfer_repository=true`` and without a type change.
+        """
+        existing = self._project_data()
+        updated = self._project_data(
+            team={
+                'name': 'Backend',
+                'slug': 'backend',
+                'organization': {
+                    'name': 'Engineering',
+                    'slug': 'engineering',
+                },
+            },
+        )
+        self.mock_db.execute.side_effect = [
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+            [{'slug': 'backend'}],
+            [{'pt_slug': 'api-service', 'found': True}],
+            [{'project': updated, 'outbound_count': 0, 'inbound_count': 0}],
+        ]
+        self._dispatch_patcher.stop()
+        with (
+            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                new=mock.AsyncMock(return_value=[]),
+            ) as mock_dispatch,
+        ):
+            mock_get_model.return_value = models.Project
+            response = self.client.patch(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/team_slug',
+                        'value': 'backend',
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        mock_dispatch.assert_awaited_once()
+        call = mock_dispatch.await_args
+        self.assertEqual(call.args[3], 'relocated')
+        self.assertEqual(call.kwargs['previous_team_slug'], 'platform')
+
     def test_delete_with_delete_repository_false_skips_dispatch(
         self,
     ) -> None:
