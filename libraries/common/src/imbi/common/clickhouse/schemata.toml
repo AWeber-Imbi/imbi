@@ -199,6 +199,7 @@ CREATE TABLE IF NOT EXISTS imbi.commits {on_cluster}(
   author_login  LowCardinality(String) DEFAULT '',
   author_user   LowCardinality(String) DEFAULT '',
   committer_name  String DEFAULT '',
+  ci_status     LowCardinality(String) DEFAULT 'unknown',
   authored_at   DateTime64(3, 'UTC'),
   committed_at  Nullable(DateTime64(3, 'UTC')),
   url           String DEFAULT '',
@@ -207,6 +208,17 @@ CREATE TABLE IF NOT EXISTS imbi.commits {on_cluster}(
 ) ENGINE = {replicated}ReplacingMergeTree(recorded_at)
 PARTITION BY toYear(authored_at)
 ORDER BY (project_id, sha);
+"""
+enabled = true
+
+# Idempotent migration so existing installs gain ci_status (the CREATE TABLE
+# above is IF NOT EXISTS and is a no-op once imbi.commits exists). Runs after
+# [commits]; ADD COLUMN IF NOT EXISTS is safe to re-run and harmless on fresh
+# installs that already created the column.
+[commits_add_ci_status]
+query = """
+ALTER TABLE imbi.commits {on_cluster}
+  ADD COLUMN IF NOT EXISTS ci_status LowCardinality(String) DEFAULT 'unknown';
 """
 enabled = true
 

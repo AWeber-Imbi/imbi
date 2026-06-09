@@ -944,6 +944,10 @@ class CommitRecord(pydantic.BaseModel):
     #: when the author maps to no active ``IdentityConnection``.
     author_user: str = ''
     committer_name: str = ''
+    #: Rolled-up CI/check state for the commit: ``'pass'`` | ``'fail'`` |
+    #: ``'warn'`` | ``'unknown'``. Defaults to ``'unknown'``; providers that
+    #: expose check status populate it during sync (see imbi-plugin-github).
+    ci_status: typing.Literal['pass', 'fail', 'warn', 'unknown'] = 'unknown'
     authored_at: datetime.datetime
     committed_at: datetime.datetime | None = None
     url: str = ''
