@@ -897,3 +897,35 @@ class EventsLatestViewSchemaTestCase(unittest.TestCase):
         self.assertLess(
             names.index('events_add_version'), names.index('events_latest')
         )
+
+
+class PullRequestMVSchemaTestCase(unittest.TestCase):
+    """Verify pull_requests_mv matches both event ``type`` encodings.
+
+    Legacy gateway rows store the resolved per-source label directly
+    in ``type`` (e.g. ``'pull_request'``); newer rows store
+    ``type = 'webhook'`` with the label in ``metadata.event_type``.
+    The MV must match both or PR capture silently stops when the
+    gateway encoding changes.
+    """
+
+    def _load_schemata(self) -> dict:
+        pkg = importlib.resources.files('imbi_common.clickhouse')
+        toml_bytes = (pkg / 'schemata.toml').read_bytes()
+        return tomllib.loads(toml_bytes.decode())
+
+    def test_mv_present_and_enabled(self) -> None:
+        schemata = self._load_schemata()
+        self.assertIn('pull_request_mv', schemata)
+        self.assertTrue(schemata['pull_request_mv']['enabled'])
+
+    def test_mv_matches_webhook_category_rows(self) -> None:
+        ddl = str(self._load_schemata()['pull_request_mv']['query'])
+        self.assertIn("type = 'webhook'", ddl)
+        self.assertIn(
+            "CAST(metadata.event_type, 'String') = 'pull_request'", ddl
+        )
+
+    def test_mv_matches_legacy_rows(self) -> None:
+        ddl = str(self._load_schemata()['pull_request_mv']['query'])
+        self.assertIn("type = 'pull_request'", ddl)

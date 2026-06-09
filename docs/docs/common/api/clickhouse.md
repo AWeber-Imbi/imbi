@@ -59,6 +59,13 @@ through `events_latest`, which uses a window function to return one
 row per `id` (highest `version`, breaking ties by `recorded_at`)
 even before a merge has run. Inserts always go to `events`.
 
+The `events.type` column holds the event *category* (`'webhook'`
+for inbound webhook deliveries); the resolved per-source label
+(e.g. `'pull_request'`, `'push'`) lives in `metadata.event_type`.
+Rows written before this split stored the label directly in
+`type`, so `pull_requests_mv` matches both encodings — filter or
+join on either form when reading historical data.
+
 `commits` and `tags` are provider-agnostic commit/tag history keyed by
 `project_id`. Their `ReplacingMergeTree` engines collapse duplicate rows
 (by `recorded_at`) on merge, so re-syncing an overlapping commit range
