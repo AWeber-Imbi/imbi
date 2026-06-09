@@ -19,7 +19,9 @@ class SettingsTests(helpers.TestCase):
             IMBI_SLACKBOT_ENABLED=None,
             IMBI_INTERNAL_API_URL=None,
         ):
-            cfg = settings.Slackbot()
+            # ``_env_file=None`` ignores the developer's local .env so the
+            # popped variables resolve to their defaults, not .env values.
+            cfg = settings.Slackbot(_env_file=None)
         self.assertFalse(cfg.enabled)
         self.assertEqual('claude-sonnet-4-6', cfg.model)
         self.assertEqual('http://localhost:8000', cfg.api_url)
@@ -48,7 +50,7 @@ class SettingsTests(helpers.TestCase):
             SLACK_APP_TOKEN=None,
             IMBI_SLACKBOT_ENABLED=None,
         ):
-            cfg = settings.Slackbot()
+            cfg = settings.Slackbot(_env_file=None)
         self.assertFalse(cfg.enabled)
 
     def test_api_url_override(self) -> None:

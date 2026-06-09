@@ -18,12 +18,21 @@ The bot also needs `ANTHROPIC_API_KEY`, the shared `IMBI_AUTH_JWT_SECRET`, and
 ## Required scopes & why
 
 - `app_mentions:read` — receive `@imbi` mentions in channels.
-- `chat:write` — post replies.
+- `chat:write` — post replies and the transient "thinking…" status message.
 - `users:read` + `users:read.email` — **the identity bridge**: resolve the
   Slack user to their email, which is matched against the Imbi `User` record.
+  `users:read` also resolves display names for thread attribution.
 - `im:history`, `im:read` — read and respond in direct messages.
 - `channels:history`, `groups:history` — read thread context
   (`conversations.replies`) when mentioned in public/private channels.
+- `reactions:write` — add/remove the status-emoji reaction shown while a
+  request is being processed.
+- `files:read` — download files a user attaches (images, PDFs, text) so they
+  can be passed to the model.
+- `files:write` — upload long code blocks and oversized tables as file
+  snippets.
+- `canvases:write` — render Markdown tables as a channel canvas (falls back
+  to a `files:write` snippet when unavailable).
 
 ## Manifest
 
@@ -46,6 +55,10 @@ oauth_config:
       - im:read
       - channels:history
       - groups:history
+      - reactions:write
+      - files:read
+      - files:write
+      - canvases:write
 settings:
   event_subscriptions:
     bot_events:
