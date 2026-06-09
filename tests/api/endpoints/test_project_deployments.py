@@ -1765,6 +1765,74 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(data['commits'], [])
         self.assertEqual(data['suggested_tag'], 'v2.0.1')
 
+    def test_release_drift_picks_highest_semver_not_newest(self) -> None:
+        """A late-synced lower version must not out-rank the latest release."""
+        older = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        newer = datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC)
+        self._patch_query(
+            [
+                [
+                    # v4.1.3 (a backport) was tagged most recently, but
+                    # v7.1.0 is the highest version -> the real base.
+                    {
+                        'name': 'v4.1.3',
+                        'sha': 'sha413',
+                        'tagged_at': newer,
+                        'recorded_at': newer,
+                    },
+                    {
+                        'name': 'v7.1.0',
+                        'sha': 'sha710',
+                        'tagged_at': older,
+                        'recorded_at': older,
+                    },
+                ],
+                [{'sha': 'headsha'}],
+                [{'authored_at': older}],
+                [self._commit_row('feat1', message='feat: new thing')],
+                [{'c': 2}],
+            ]
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(f'{self._BASE}/release-drift')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['latest_tag'], 'v7.1.0')
+        self.assertEqual(data['latest_tag_sha'], 'sha710')
+        # A feat commit bumps the minor off v7.1.0, not off v4.1.3.
+        self.assertEqual(data['suggested_tag'], 'v7.2.0')
+
+    def test_release_drift_latest_tag_at_falls_back_to_recorded_at(
+        self,
+    ) -> None:
+        """``latest_tag_at`` uses ``recorded_at`` when ``tagged_at`` null."""
+        recorded = datetime.datetime(2026, 3, 2, tzinfo=datetime.UTC)
+        self._patch_query(
+            [
+                [
+                    {
+                        'name': 'v1.0.0',
+                        'sha': 'tagsha',
+                        'tagged_at': None,
+                        'recorded_at': recorded,
+                    }
+                ],
+                [{'sha': 'headsha'}],
+                [{'authored_at': recorded}],
+                [self._commit_row('feat1', message='feat: new thing')],
+                [{'c': 1}],
+            ]
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(f'{self._BASE}/release-drift')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIsNotNone(data['latest_tag_at'])
+        self.assertEqual(
+            datetime.datetime.fromisoformat(data['latest_tag_at']),
+            recorded,
+        )
+
     def test_release_history_joins_tags_and_nodes(self) -> None:
         when = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
         self._patch_query(
@@ -1829,6 +1897,73 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         # Tag with no matching Release node -> null metadata, unknown CI.
         self.assertIsNone(data[1]['notes_markdown'])
         self.assertEqual(data[1]['ci_status'], 'unknown')
+
+    def test_release_history_head_is_highest_semver_not_newest(self) -> None:
+        """The head of history is the highest semver, ignoring timestamps.
+
+        A late-synced lower version (newer timestamp) must not out-rank the
+        highest semver tag, mirroring the drift base selection.  This guards
+        against re-introducing a timestamp-limited candidate window that could
+        drop the highest version before the semver sort runs.
+        """
+        older = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        newer = datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC)
+        self._patch_query(
+            [
+                [
+                    {
+                        'name': 'v4.1.3',
+                        'sha': 'sha413',
+                        'tagged_at': newer,
+                        'tagger_name': 'Rel Bot',
+                        'url': '',
+                        'recorded_at': newer,
+                    },
+                    {
+                        'name': 'v7.1.0',
+                        'sha': 'sha710',
+                        'tagged_at': older,
+                        'tagger_name': 'Rel Bot',
+                        'url': '',
+                        'recorded_at': older,
+                    },
+                ],
+                # ci_status lookup
+                [],
+            ]
+        )
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(f'{self._BASE}/release-history')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual([e['tag'] for e in data], ['v7.1.0', 'v4.1.3'])
+
+    def test_release_history_limit_applies_after_semver_sort(self) -> None:
+        """``limit`` slices the semver-sorted list, keeping top versions."""
+        when = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        self._patch_query(
+            [
+                [
+                    {
+                        'name': f'v{major}.0.0',
+                        'sha': f'sha{major}',
+                        'tagged_at': when,
+                        'tagger_name': 'Rel Bot',
+                        'url': '',
+                        'recorded_at': when,
+                    }
+                    for major in (1, 5, 3, 2, 4)
+                ],
+                [],
+            ]
+        )
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(f'{self._BASE}/release-history?limit=2')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual([e['tag'] for e in data], ['v5.0.0', 'v4.0.0'])
 
     def test_cut_release_creates_tag_and_release_no_deploy(self) -> None:
         triggered: dict[str, bool] = {'called': False}

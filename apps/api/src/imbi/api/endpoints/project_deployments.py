@@ -1720,6 +1720,49 @@ def _release_notes_system() -> str:
     )
 
 
+def _semver_sort_key(name: str) -> tuple[int, int, int] | None:
+    """``(major, minor, patch)`` for version ordering; ``None`` if not semver.
+
+    Pre-release / build metadata is ignored for ordering -- good enough to
+    pick the newest *released* version and to sort the history list.
+    """
+    match = _SEMVER_RE.match(name)
+    if not match:
+        return None
+    major, minor, patch = (int(part) for part in match.groups())
+    return (major, minor, patch)
+
+
+def _release_tag_order_key(
+    name: str, when: typing.Any
+) -> tuple[bool, tuple[int, int, int], str]:
+    """Sort key ranking the latest *release* first.
+
+    Semver-shaped tags outrank non-semver ones; within those, the highest
+    version wins, with the newer timestamp as a tie-break. This deliberately
+    ignores tag/commit *timestamps* for the primary ordering so a backported
+    or late-synced lower version (e.g. ``v4.1.3`` tagged after ``v7.1.0``)
+    can't masquerade as the latest release.
+    """
+    key = _semver_sort_key(name)
+    when_key = when.isoformat() if isinstance(when, datetime.datetime) else ''
+    return (key is not None, key or (0, 0, 0), when_key)
+
+
+def _latest_release_tag(
+    rows: list[dict[str, typing.Any]],
+) -> dict[str, typing.Any] | None:
+    """Pick the latest release tag (highest semver) from ``tags`` rows."""
+    if not rows:
+        return None
+    return max(
+        rows,
+        key=lambda r: _release_tag_order_key(
+            str(r['name']), r.get('tagged_at') or r.get('recorded_at')
+        ),
+    )
+
+
 def _bump_semver(last_tag: str | None, bump: SemverBump) -> str:
     """Bump a semver-shaped tag.  Falls back to ``v0.1.0`` when missing."""
     raw = (last_tag or 'v0.0.0').lstrip('v')
@@ -2206,15 +2249,23 @@ async def get_release_drift(
     the commits authored after the tag's commit.  With no prior tag the
     drift is the full (capped) history and the suggestion is ``v0.1.0``.
     """
+    # Fetch all tags and pick the latest *release* by semver (not by
+    # timestamp): a late-synced or backported lower version must not be
+    # treated as the base, or the "commits since the last tag" delta below
+    # is computed from the wrong tag.
     tag_rows = await clickhouse.query(
-        'SELECT name, sha, tagged_at FROM tags FINAL '
-        'WHERE project_id = {project_id:String} '
-        'ORDER BY coalesce(tagged_at, recorded_at) DESC LIMIT 1',
+        'SELECT name, sha, tagged_at, recorded_at FROM tags FINAL '
+        'WHERE project_id = {project_id:String}',
         {'project_id': project_id},
     )
-    latest_tag = str(tag_rows[0]['name']) if tag_rows else None
-    latest_tag_sha = str(tag_rows[0]['sha']) if tag_rows else None
-    latest_tag_at = tag_rows[0].get('tagged_at') if tag_rows else None
+    latest = _latest_release_tag(tag_rows)
+    latest_tag = str(latest['name']) if latest else None
+    latest_tag_sha = str(latest['sha']) if latest else None
+    latest_tag_at = (
+        (latest.get('tagged_at') or latest.get('recorded_at'))
+        if latest
+        else None
+    )
 
     head_rows = await clickhouse.query(
         'SELECT sha FROM commits FINAL '
@@ -2300,11 +2351,14 @@ async def get_release_history(
 ) -> list[ReleaseHistoryEntry]:
     """Release history: ClickHouse tags joined to their ``Release`` nodes."""
     capped = max(1, min(limit, 100))
+    # Fetch all tags (not a timestamp-limited window) so the semver sort
+    # below ranks the full candidate set: a high-semver tag with an old or
+    # late-synced timestamp must still be able to reach the head of the list,
+    # consistent with the drift base selection.
     tag_rows = await clickhouse.query(
         'SELECT name, sha, tagged_at, tagger_name, url, recorded_at '
-        'FROM tags FINAL WHERE project_id = {project_id:String} '
-        'ORDER BY coalesce(tagged_at, recorded_at) DESC LIMIT {limit:UInt32}',
-        {'project_id': project_id, 'limit': capped},
+        'FROM tags FINAL WHERE project_id = {project_id:String}',
+        {'project_id': project_id},
     )
     nodes = await _release_nodes_by_tag(db, org_slug, project_id)
     ci_by_sha = await _ci_status_by_sha(
@@ -2332,7 +2386,14 @@ async def get_release_history(
                 package_url=None,
             )
         )
-    return entries
+    # Order by released version (highest semver first) so the head of the
+    # list is the current release -- consistent with the drift base, which
+    # is also chosen by semver rather than timestamp.
+    entries.sort(
+        key=lambda e: _release_tag_order_key(e.tag, e.published_at),
+        reverse=True,
+    )
+    return entries[:capped]
 
 
 @project_deployments_router.post('/releases/cut', status_code=201)
