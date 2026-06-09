@@ -32,7 +32,7 @@ export function ReleaseCommitPicker({
 }: ReleaseCommitPickerProps) {
   const selIdx = commits.findIndex((c) => c.sha === selectedSha)
   return (
-    <div className="border-tertiary bg-primary overflow-hidden rounded-md border">
+    <div className="border-tertiary bg-primary max-h-120 overflow-y-auto rounded-md border">
       {commits.map((c, idx) => (
         <CommitRow
           active={c.sha === selectedSha}
@@ -83,7 +83,7 @@ function CommitRow({ active, commit, held, idx, onSelect }: CommitRowProps) {
         <Badge variant="neutral">{idx === 0 ? 'tip' : `−${idx}`}</Badge>
       </button>
       {active && body ? (
-        <pre className="bg-action/5 text-secondary overflow-x-auto px-3 pt-1 pb-3 pl-13 font-mono text-xs whitespace-pre-wrap">
+        <pre className="bg-action/5 text-secondary max-h-40 overflow-auto px-3 pt-1 pb-3 pl-13 font-mono text-xs whitespace-pre-wrap">
           {body}
         </pre>
       ) : null}

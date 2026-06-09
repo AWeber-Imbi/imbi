@@ -9,7 +9,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { SEMVER_RE } from '@/lib/semver'
-import type { DraftReleaseNotesResponse, ReleaseDrift } from '@/types'
+import type {
+  DraftReleaseNotesResponse,
+  ReleaseDrift,
+  SemverBump,
+} from '@/types'
 
 import { ReleaseCommitPicker } from './ReleaseCommitPicker'
 import { useCutReleaseMutation } from './useCutReleaseMutation'
@@ -43,6 +47,13 @@ export function ReleaseReadyCard({
   const [notes, setNotes] = useState<string>('')
   const [tagDirty, setTagDirty] = useState(false)
   const [notesDirty, setNotesDirty] = useState(false)
+  // What the AI draft actually proposed, once it has run. Drives the hint
+  // line so it reflects the real draft rather than the server's keyword
+  // heuristic (drift.suggested_*), which can disagree.
+  const [aiSuggestion, setAiSuggestion] = useState<null | {
+    bump: SemverBump
+    version: string
+  }>(null)
 
   // AI drafting needs a base tag to compare against; for the first-ever
   // release there's nothing to diff, so notes are authored by hand.
@@ -56,6 +67,7 @@ export function ReleaseReadyCard({
       }),
   })
   const seedFromDraft = (data: DraftReleaseNotesResponse) => {
+    setAiSuggestion({ bump: data.bump, version: data.version })
     if (!tagDirty) setTag(data.version)
     if (!notesDirty) setNotes(data.notes_markdown)
   }
@@ -98,6 +110,7 @@ export function ReleaseReadyCard({
     setNotes('')
     setTagDirty(false)
     setNotesDirty(false)
+    setAiSuggestion(null)
   }
   const submit = () => {
     if (!selectedSha) return
@@ -125,7 +138,8 @@ export function ReleaseReadyCard({
             <span className="font-mono">
               {drift.head_sha?.slice(0, 7) ?? '—'}
             </span>{' '}
-            · cutting <span className="font-mono">{drift.suggested_tag}</span>
+            · cutting{' '}
+            <span className="font-mono">{tag || drift.suggested_tag}</span>
           </div>
         </div>
       </div>
@@ -163,10 +177,14 @@ export function ReleaseReadyCard({
           {canDraft ? (
             <div className="flex items-center justify-between">
               <span className="text-tertiary text-xs">
-                {drift.suggested_bump
-                  ? `AI suggests a ${drift.suggested_bump} bump → `
-                  : ''}
-                <span className="font-mono">{drift.suggested_tag}</span>
+                {aiSuggestion
+                  ? `AI suggests a ${aiSuggestion.bump} bump → `
+                  : drift.suggested_bump
+                    ? `Suggested ${drift.suggested_bump} bump → `
+                    : ''}
+                <span className="font-mono">
+                  {aiSuggestion?.version ?? drift.suggested_tag}
+                </span>
               </span>
               <Button
                 disabled={!selectedSha || draftMutation.isPending}
@@ -176,6 +194,10 @@ export function ReleaseReadyCard({
                     { headSha: selectedSha },
                     {
                       onSuccess: (data) => {
+                        setAiSuggestion({
+                          bump: data.bump,
+                          version: data.version,
+                        })
                         setTagDirty(false)
                         setNotesDirty(false)
                         setTag(data.version)
