@@ -1646,3 +1646,284 @@ class UpdateProjectLinkTestCase(unittest.IsolatedAsyncioTestCase):
             )
         self.assertFalse(changed)
         db.execute.assert_not_called()
+
+
+class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
+    """recent-commits / release-drift / release-history / releases/cut."""
+
+    _BASE = '/organizations/myorg/projects/proj1/deployments'
+
+    def _patch_query(self, results: list[typing.Any]) -> mock.AsyncMock:
+        """Patch ``clickhouse.query``; ``results`` is one entry per call."""
+        m = mock.AsyncMock(side_effect=results)
+        patcher = mock.patch(f'{_MODULE}.clickhouse.query', new=m)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return m
+
+    @staticmethod
+    def _commit_row(
+        sha: str,
+        *,
+        message: str = 'fix: a thing',
+        author: str = 'Alice',
+        ci_status: str = 'pass',
+    ) -> dict[str, typing.Any]:
+        return {
+            'sha': sha,
+            'short_sha': sha[:7],
+            'message': message,
+            'author': author,
+            'authored_at': datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            'ci_status': ci_status,
+            'url': f'https://gh/commit/{sha}',
+        }
+
+    def test_recent_commits_maps_rows(self) -> None:
+        query = self._patch_query(
+            [
+                [
+                    self._commit_row('abc1234def'),
+                    self._commit_row('999', author=''),
+                ]
+            ]
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(f'{self._BASE}/recent-commits')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data[0]['short_sha'], 'abc1234')
+        self.assertEqual(data[0]['ci_status'], 'pass')
+        # Empty author coerces to null.
+        self.assertIsNone(data[1]['author'])
+        # Default limit clamps to 25.
+        self.assertEqual(query.await_args.args[1]['limit'], 25)
+
+    def test_recent_commits_clamps_limit_and_passes_ref(self) -> None:
+        query = self._patch_query([[]])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                f'{self._BASE}/recent-commits?limit=9000&ref=main'
+            )
+        self.assertEqual(response.status_code, 200)
+        params = query.await_args.args[1]
+        self.assertEqual(params['limit'], 200)
+        self.assertEqual(params['ref'], 'main')
+
+    def test_release_drift_with_tag(self) -> None:
+        when = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        self._patch_query(
+            [
+                [{'name': 'v1.0.0', 'sha': 'tagsha', 'tagged_at': when}],
+                [{'sha': 'headsha'}],
+                [{'authored_at': when}],
+                [self._commit_row('feat1', message='feat: new thing')],
+                [{'c': 1}],
+            ]
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(f'{self._BASE}/release-drift')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['latest_tag'], 'v1.0.0')
+        self.assertEqual(data['head_sha'], 'headsha')
+        self.assertEqual(data['commits_since_tag'], 1)
+        self.assertEqual(data['suggested_bump'], 'minor')
+        self.assertEqual(data['suggested_tag'], 'v1.1.0')
+
+    def test_release_drift_no_tag(self) -> None:
+        self._patch_query(
+            [
+                [],  # no tags
+                [{'sha': 'headsha'}],
+                [self._commit_row('c1', message='feat: first feature')],
+                [{'c': 1}],
+            ]
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(f'{self._BASE}/release-drift')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIsNone(data['latest_tag'])
+        # No prior tag + a feat commit -> minor bump off v0.0.0 -> v0.1.0.
+        self.assertEqual(data['suggested_tag'], 'v0.1.0')
+        self.assertEqual(data['commits_since_tag'], 1)
+
+    def test_release_drift_tag_commit_not_synced(self) -> None:
+        self._patch_query(
+            [
+                [{'name': 'v2.0.0', 'sha': 'missing', 'tagged_at': None}],
+                [{'sha': 'headsha'}],
+                [],  # base commit not in ClickHouse
+            ]
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(f'{self._BASE}/release-drift')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['commits_since_tag'], 0)
+        self.assertEqual(data['commits'], [])
+        self.assertEqual(data['suggested_tag'], 'v2.0.1')
+
+    def test_release_history_joins_tags_and_nodes(self) -> None:
+        when = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        self._patch_query(
+            [
+                [
+                    {
+                        'name': 'v1.0.0',
+                        'sha': 'sha10',
+                        'tagged_at': when,
+                        'tagger_name': 'Rel Bot',
+                        'url': 'https://gh/releases/tag/v1.0.0',
+                        'recorded_at': when,
+                    },
+                    {
+                        'name': 'v0.9.0',
+                        'sha': 'sha09',
+                        'tagged_at': None,
+                        'tagger_name': '',
+                        'url': '',
+                        'recorded_at': when,
+                    },
+                ],
+                # ci_status lookup
+                [{'sha': 'sha10', 'ci_status': 'pass'}],
+            ]
+        )
+
+        def _mock_execute(query, params, columns):
+            del query, params, columns
+            return [
+                {
+                    'release': json.dumps(
+                        {
+                            'tag': 'v1.0.0',
+                            'title': 'Release 1.0.0',
+                            'description': '## Notes',
+                            'created_by': 'gr',
+                            'links': json.dumps(
+                                [
+                                    {
+                                        'type': 'github_release',
+                                        'url': 'https://gh/releases/v1.0.0',
+                                    }
+                                ]
+                            ),
+                        }
+                    )
+                }
+            ]
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_mock_execute)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(f'{self._BASE}/release-history')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 2)
+        first = data[0]
+        self.assertEqual(first['tag'], 'v1.0.0')
+        self.assertEqual(first['notes_markdown'], '## Notes')
+        self.assertEqual(first['release_url'], 'https://gh/releases/v1.0.0')
+        self.assertEqual(first['ci_status'], 'pass')
+        # Tag with no matching Release node -> null metadata, unknown CI.
+        self.assertIsNone(data[1]['notes_markdown'])
+        self.assertEqual(data[1]['ci_status'], 'unknown')
+
+    def test_cut_release_creates_tag_and_release_no_deploy(self) -> None:
+        triggered: dict[str, bool] = {'called': False}
+
+        class _NoDeploy(_FakeDeploymentPlugin):
+            async def trigger_deployment(  # type: ignore[override]
+                self, ctx, credentials, ref_or_sha, inputs=None
+            ):
+                triggered['called'] = True
+                return await super().trigger_deployment(
+                    ctx, credentials, ref_or_sha, inputs
+                )
+
+        self.mocks['resolve_plugin'].return_value = ResolvedPlugin(
+            plugin_id='p-1',
+            plugin_slug='github-deployment',
+            entry=RegistryEntry(
+                handler_cls=_NoDeploy,
+                manifest=_NoDeploy.manifest,
+                package_name='x',
+                package_version='1',
+            ),
+            options={'owner': 'octo', 'repo': 'demo'},
+        )
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                f'{self._BASE}/releases/cut',
+                json={
+                    'committish': '1a9c610',
+                    'tag': 'v6.5.0',
+                    'release_notes_markdown': '## Notes',
+                },
+            )
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data['tag'], 'v6.5.0')
+        self.assertEqual(data['committish'], '1a9c610')
+        self.assertTrue(data['recorded'])
+        self.assertEqual(data['release_url'], 'https://gh/releases/v6.5.0')
+        self.assertIsNone(data['warning'])
+        # No deployment is dispatched for a library release.
+        self.assertFalse(triggered['called'])
+
+    def test_cut_release_rejects_non_semver_tag(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                f'{self._BASE}/releases/cut',
+                json={'committish': '1a9c610', 'tag': 'main'},
+            )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('semver', response.json()['detail'])
+
+    def test_cut_release_rejects_non_sha_committish(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                f'{self._BASE}/releases/cut',
+                json={'committish': 'main', 'tag': 'v1.2.3'},
+            )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('git SHA', response.json()['detail'])
+
+    def test_cut_release_degrades_create_release_failure_to_warning(
+        self,
+    ) -> None:
+        class _BoomRelease(_FakeDeploymentPlugin):
+            async def create_release(  # type: ignore[override]
+                self,
+                ctx,
+                credentials,
+                tag,
+                name,
+                body_markdown,
+                prerelease=False,
+            ):
+                raise RuntimeError('boom')
+
+        self.mocks['resolve_plugin'].return_value = ResolvedPlugin(
+            plugin_id='p-1',
+            plugin_slug='github-deployment',
+            entry=RegistryEntry(
+                handler_cls=_BoomRelease,
+                manifest=_BoomRelease.manifest,
+                package_name='x',
+                package_version='1',
+            ),
+            options={},
+        )
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                f'{self._BASE}/releases/cut',
+                json={'committish': '1a9c610', 'tag': 'v6.5.0'},
+            )
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertIsNotNone(data['warning'])
+        self.assertIn('create_release', data['warning'])

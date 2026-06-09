@@ -196,6 +196,83 @@ class PromotionOption(pydantic.BaseModel):
     commits_pending: int | None = None
 
 
+class RecentCommit(pydantic.BaseModel):
+    """A commit row read from the ClickHouse ``commits`` table.
+
+    Powers the Releases-tab commit picker / drift list.  ``ci_status``
+    is the rolled-up check state captured at sync time (``'unknown'``
+    when not yet hydrated).  The table carries no PR number, so none is
+    surfaced here.
+    """
+
+    sha: str
+    short_sha: str
+    message: str
+    author: str | None = None
+    authored_at: datetime.datetime
+    ci_status: str = 'unknown'
+    url: str | None = None
+
+
+class ReleaseDriftResponse(pydantic.BaseModel):
+    """Commits awaiting a release: the delta between the latest tag and HEAD.
+
+    Computed entirely from the ClickHouse ``commits`` / ``tags`` tables.
+    ``commits`` is newest-first and capped; ``commits_since_tag`` is the
+    exact count (uncapped).  ``suggested_tag`` / ``suggested_bump`` are a
+    cheap conventional-commit heuristic the UI can override.
+    """
+
+    latest_tag: str | None = None
+    latest_tag_sha: str | None = None
+    latest_tag_at: datetime.datetime | None = None
+    head_sha: str | None = None
+    commits_since_tag: int = 0
+    commits: list[RecentCommit] = []
+    suggested_bump: SemverBump = 'patch'
+    suggested_tag: str = 'v0.1.0'
+
+
+class ReleaseHistoryEntry(pydantic.BaseModel):
+    """One published release: a ClickHouse tag joined to its Release node."""
+
+    tag: str
+    sha: str
+    short_sha: str
+    published_at: datetime.datetime | None = None
+    author: str | None = None
+    ci_status: str = 'unknown'
+    title: str | None = None
+    notes_markdown: str | None = None
+    release_url: str | None = None
+    tag_url: str | None = None
+    package_url: str | None = None
+
+
+class ReleaseCutRequest(pydantic.BaseModel):
+    """Body for ``POST /deployments/releases/cut``.
+
+    Cuts a git tag + GitHub release at ``committish`` with no deployment
+    step -- the build-and-release-only (library / image) flow.
+    """
+
+    committish: str
+    tag: str
+    release_name: str | None = None
+    release_notes_markdown: str = ''
+    prerelease: bool = False
+
+
+class ReleaseCutResponse(pydantic.BaseModel):
+    """Response shape for a successful ``releases/cut`` action."""
+
+    tag: str
+    release_url: str | None = None
+    committish: str
+    recorded: bool = False
+    warning: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -1187,7 +1264,7 @@ async def _handle_deploy(
     )
 
 
-async def _promote_cut_release(
+async def _cut_tag_and_release(
     db: graph.Graph,
     *,
     ctx: PluginContext,
@@ -1195,28 +1272,34 @@ async def _promote_cut_release(
     handler: DeploymentPlugin,
     credentials: dict[str, str],
     auth: permissions.AuthContext,
-    body: PromoteActionRequest,
+    from_committish: str,
+    tag: str,
+    release_name: str | None,
+    release_notes_markdown: str,
+    prerelease: bool,
     warnings: list[str],
     project_id: str,
+    log_context: str = '',
 ) -> typing.Any:
-    """Cut a tag + create a release at ``body.from_committish``.
+    """Cut a git tag + create a release at ``from_committish``.
 
-    The repo's ``on: release: [published]`` workflow handles the
-    deploy, so we don't dispatch from here.  Failures degrade to a
-    warning appended to ``warnings`` rather than raising -- a flaky
+    The shared core behind both ``promote`` (which then deploys) and the
+    library ``releases/cut`` action (which does not).  Failures degrade
+    to a warning appended to ``warnings`` rather than raising -- a flaky
     GitHub API shouldn't bury the audit trail.  Returns the
-    plugin-returned ReleaseInfo on success (or ``None`` when the
-    plugin has no ``create_release``).
+    plugin-returned ReleaseInfo on success (or ``None`` when the plugin
+    has no ``create_release``).  ``log_context`` is an opaque label
+    (e.g. the target env, or ``'release-cut'``) used only in log lines.
     """
-    tag_message = body.release_name or body.tag
+    tag_message = release_name or tag
 
     async def _create_tag(c: PluginContext) -> typing.Any:
         return await call_with_timeout(
             handler.create_tag(
                 c,
                 _resolve_credentials(c, credentials),
-                sha=body.from_committish,
-                tag=body.tag,
+                sha=from_committish,
+                tag=tag,
                 message=tag_message,
             )
         )
@@ -1230,22 +1313,22 @@ async def _promote_cut_release(
             status_code=400,
             detail=(
                 f'Plugin {resolved.plugin_slug!r} does not support '
-                'creating tags; promote is not available.'
+                'creating tags; this action is not available.'
             ),
         ) from exc
     except Exception as exc:
         if _is_already_exists_error(exc):
             LOGGER.debug(
                 'create_tag: tag %s already exists for project=%s, continuing',
-                body.tag,
+                tag,
                 project_id,
             )
         else:
             LOGGER.exception(
-                'create_tag failed for project=%s env=%s tag=%s',
+                'create_tag failed for project=%s context=%s tag=%s',
                 project_id,
-                body.to_environment,
-                body.tag,
+                log_context,
+                tag,
             )
             warnings.append(_promote_warning('create_tag', exc))
 
@@ -1254,10 +1337,10 @@ async def _promote_cut_release(
             handler.create_release(
                 c,
                 _resolve_credentials(c, credentials),
-                tag=body.tag,
-                name=body.release_name or body.tag,
-                body_markdown=body.release_notes_markdown,
-                prerelease=body.prerelease,
+                tag=tag,
+                name=release_name or tag,
+                body_markdown=release_notes_markdown,
+                prerelease=prerelease,
             )
         )
 
@@ -1267,7 +1350,7 @@ async def _promote_cut_release(
         )
     except NotImplementedError:
         LOGGER.info(
-            'Plugin %r has no create_release; tag-only promote',
+            'Plugin %r has no create_release; tag-only',
             resolved.plugin_slug,
         )
         return None
@@ -1275,18 +1358,54 @@ async def _promote_cut_release(
         if _is_already_exists_error(exc):
             LOGGER.debug(
                 'create_release: %s already exists for project=%s',
-                body.tag,
+                tag,
                 project_id,
             )
         else:
             LOGGER.exception(
-                'create_release failed for project=%s env=%s tag=%s',
+                'create_release failed for project=%s context=%s tag=%s',
                 project_id,
-                body.to_environment,
-                body.tag,
+                log_context,
+                tag,
             )
             warnings.append(_promote_warning('create_release', exc))
         return None
+
+
+async def _promote_cut_release(
+    db: graph.Graph,
+    *,
+    ctx: PluginContext,
+    resolved: ResolvedPlugin,
+    handler: DeploymentPlugin,
+    credentials: dict[str, str],
+    auth: permissions.AuthContext,
+    body: PromoteActionRequest,
+    warnings: list[str],
+    project_id: str,
+) -> typing.Any:
+    """Cut a tag + create a release for a promote (then the caller deploys).
+
+    Thin wrapper over :func:`_cut_tag_and_release` so ``_handle_promote``
+    is unchanged; the repo's ``on: release: [published]`` workflow handles
+    the deploy.
+    """
+    return await _cut_tag_and_release(
+        db,
+        ctx=ctx,
+        resolved=resolved,
+        handler=handler,
+        credentials=credentials,
+        auth=auth,
+        from_committish=body.from_committish,
+        tag=body.tag,
+        release_name=body.release_name,
+        release_notes_markdown=body.release_notes_markdown,
+        prerelease=body.prerelease,
+        warnings=warnings,
+        project_id=project_id,
+        log_context=body.to_environment,
+    )
 
 
 async def _handle_promote(
@@ -1933,3 +2052,393 @@ async def list_promotion_options(  # noqa: C901
             )
         )
     return options
+
+
+# ---------------------------------------------------------------------------
+# Releases tab (build-and-release-only projects)
+#
+# These endpoints back the project-detail "Releases" tab for projects with
+# no environments.  Commit / tag history is read from the ClickHouse
+# ``commits`` / ``tags`` tables (synced by the VCS plugin); release notes
+# come from the graph ``Release`` nodes; and ``releases/cut`` cuts a tag +
+# GitHub release with no deployment step.
+# ---------------------------------------------------------------------------
+
+
+def _recent_commit_from_row(row: dict[str, typing.Any]) -> RecentCommit:
+    """Map a ClickHouse ``commits`` row onto a :class:`RecentCommit`."""
+    sha = str(row['sha'])
+    author = row.get('author')
+    url = row.get('url')
+    return RecentCommit(
+        sha=sha,
+        short_sha=str(row.get('short_sha') or sha[:7]),
+        message=str(row.get('message') or ''),
+        author=str(author) if author else None,
+        authored_at=row['authored_at'],
+        ci_status=str(row.get('ci_status') or 'unknown'),
+        url=str(url) if url else None,
+    )
+
+
+async def _ci_status_by_sha(
+    project_id: str, shas: list[str]
+) -> dict[str, str]:
+    """Look up ``ci_status`` for a bounded set of shas, ``{}`` when empty.
+
+    Uses enumerated string params (the sha list is small and bounded by
+    the caller) rather than an Array binding, keeping to the parameter
+    features already exercised elsewhere in the codebase.
+    """
+    if not shas:
+        return {}
+    sha_params = {f'sha{i}': sha for i, sha in enumerate(shas)}
+    placeholders = ', '.join(f'{{sha{i}:String}}' for i in range(len(shas)))
+    # placeholders are generated indices; all values are bound params.
+    sql = (
+        'SELECT sha, ci_status FROM commits FINAL '  # noqa: S608
+        'WHERE project_id = {project_id:String} '
+        f'AND sha IN ({placeholders})'
+    )
+    rows = await clickhouse.query(
+        sql, {'project_id': project_id, **sha_params}
+    )
+    return {str(r['sha']): str(r.get('ci_status') or 'unknown') for r in rows}
+
+
+def _release_url_from_links(raw: typing.Any) -> str | None:
+    """Extract the ``github_release`` URL from a Release node's links."""
+    if not raw:
+        return None
+    data = json.loads(raw) if isinstance(raw, str) else raw
+    if not isinstance(data, list):
+        return None
+    for item in data:  # type: ignore[reportUnknownVariableType]
+        if not isinstance(item, dict):
+            continue
+        kind = item.get('type')  # type: ignore[reportUnknownMemberType]
+        if kind != 'github_release':
+            continue
+        url = item.get('url')  # type: ignore[reportUnknownMemberType]
+        if isinstance(url, str) and url:
+            return url
+    return None
+
+
+async def _release_nodes_by_tag(
+    db: graph.Graph, org_slug: str, project_id: str
+) -> dict[str, dict[str, typing.Any]]:
+    """Map ``tag -> Release node`` for the project's tagged releases."""
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    MATCH (p)-[:HAS_RELEASE]->(r:Release)
+    WHERE r.tag IS NOT NULL
+    RETURN r{{.*}} AS release
+    """
+    rows = await db.execute(
+        query,
+        {'project_id': project_id, 'org_slug': org_slug},
+        ['release'],
+    )
+    out: dict[str, dict[str, typing.Any]] = {}
+    for row in rows:
+        node = typing.cast(
+            'dict[str, typing.Any]', graph.parse_agtype(row['release'])
+        )
+        tag = node.get('tag')
+        if tag:
+            out[str(tag)] = node
+    return out
+
+
+@project_deployments_router.get('/recent-commits')
+async def list_recent_commits(
+    org_slug: str,
+    project_id: str,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:read'),
+        ),
+    ],
+    limit: int = 25,
+    ref: str | None = None,
+) -> list[RecentCommit]:
+    """Recent commits for the project, newest first, from ClickHouse.
+
+    Ordered by push then author time across all synced refs; pass ``ref``
+    to scope to one branch.  Capped at 200.
+    """
+    capped = max(1, min(limit, 200))
+    sql = (
+        'SELECT sha, short_sha, message, author_name AS author, '
+        'authored_at, ci_status, url FROM commits FINAL '
+        'WHERE project_id = {project_id:String} '
+        "AND ({ref:String} = '' OR ref = {ref:String}) "
+        'ORDER BY pushed_at DESC, authored_at DESC LIMIT {limit:UInt32}'
+    )
+    rows = await clickhouse.query(
+        sql,
+        {'project_id': project_id, 'ref': ref or '', 'limit': capped},
+    )
+    return [_recent_commit_from_row(row) for row in rows]
+
+
+_DRIFT_COMMIT_CAP = 100
+
+
+@project_deployments_router.get('/release-drift')
+async def get_release_drift(
+    org_slug: str,
+    project_id: str,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:read'),
+        ),
+    ],
+) -> ReleaseDriftResponse:
+    """Commits awaiting a release: the delta from the latest tag to HEAD.
+
+    Computed from ClickHouse: find the latest tag, the HEAD commit, and
+    the commits authored after the tag's commit.  With no prior tag the
+    drift is the full (capped) history and the suggestion is ``v0.1.0``.
+    """
+    tag_rows = await clickhouse.query(
+        'SELECT name, sha, tagged_at FROM tags FINAL '
+        'WHERE project_id = {project_id:String} '
+        'ORDER BY coalesce(tagged_at, recorded_at) DESC LIMIT 1',
+        {'project_id': project_id},
+    )
+    latest_tag = str(tag_rows[0]['name']) if tag_rows else None
+    latest_tag_sha = str(tag_rows[0]['sha']) if tag_rows else None
+    latest_tag_at = tag_rows[0].get('tagged_at') if tag_rows else None
+
+    head_rows = await clickhouse.query(
+        'SELECT sha FROM commits FINAL '
+        'WHERE project_id = {project_id:String} '
+        'ORDER BY pushed_at DESC, authored_at DESC LIMIT 1',
+        {'project_id': project_id},
+    )
+    head_sha = str(head_rows[0]['sha']) if head_rows else None
+
+    since: datetime.datetime | None = None
+    if latest_tag_sha:
+        base_rows = await clickhouse.query(
+            'SELECT authored_at FROM commits FINAL '
+            'WHERE project_id = {project_id:String} AND sha = {sha:String} '
+            'LIMIT 1',
+            {'project_id': project_id, 'sha': latest_tag_sha},
+        )
+        if not base_rows:
+            # Tag exists but its commit isn't synced -- we can't bound the
+            # delta, so report no drift rather than dumping all history.
+            return ReleaseDriftResponse(
+                latest_tag=latest_tag,
+                latest_tag_sha=latest_tag_sha,
+                latest_tag_at=latest_tag_at,
+                head_sha=head_sha,
+                commits_since_tag=0,
+                commits=[],
+                suggested_bump='patch',
+                suggested_tag=_bump_semver(latest_tag, 'patch'),
+            )
+        since = base_rows[0]['authored_at']
+
+    where = 'project_id = {project_id:String}'
+    params: dict[str, typing.Any] = {'project_id': project_id}
+    if since is not None:
+        where += ' AND authored_at > {since:DateTime64(3)}'
+        params['since'] = since
+
+    commit_rows = await clickhouse.query(
+        # WHERE is a fixed string; all values are bound params.
+        'SELECT sha, short_sha, message, author_name AS author, '  # noqa: S608
+        'authored_at, ci_status, url FROM commits FINAL '
+        f'WHERE {where} '
+        'ORDER BY authored_at DESC LIMIT {cap:UInt32}',
+        {**params, 'cap': _DRIFT_COMMIT_CAP},
+    )
+    count_rows = await clickhouse.query(
+        f'SELECT count() AS c FROM commits FINAL WHERE {where}',  # noqa: S608
+        params,
+    )
+    commits_since_tag = int(count_rows[0]['c']) if count_rows else 0
+    commits = [_recent_commit_from_row(row) for row in commit_rows]
+
+    classify_input = [
+        Commit(sha=c.sha, short_sha=c.short_sha, message=c.message)
+        for c in commits
+    ]
+    bump = _classify_bump(classify_input)
+    return ReleaseDriftResponse(
+        latest_tag=latest_tag,
+        latest_tag_sha=latest_tag_sha,
+        latest_tag_at=latest_tag_at,
+        head_sha=head_sha,
+        commits_since_tag=commits_since_tag,
+        commits=commits,
+        suggested_bump=bump,
+        suggested_tag=_bump_semver(latest_tag, bump),
+    )
+
+
+@project_deployments_router.get('/release-history')
+async def get_release_history(
+    org_slug: str,
+    project_id: str,
+    db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:read'),
+        ),
+    ],
+    limit: int = 20,
+) -> list[ReleaseHistoryEntry]:
+    """Release history: ClickHouse tags joined to their ``Release`` nodes."""
+    capped = max(1, min(limit, 100))
+    tag_rows = await clickhouse.query(
+        'SELECT name, sha, tagged_at, tagger_name, url, recorded_at '
+        'FROM tags FINAL WHERE project_id = {project_id:String} '
+        'ORDER BY coalesce(tagged_at, recorded_at) DESC LIMIT {limit:UInt32}',
+        {'project_id': project_id, 'limit': capped},
+    )
+    nodes = await _release_nodes_by_tag(db, org_slug, project_id)
+    ci_by_sha = await _ci_status_by_sha(
+        project_id, [str(r['sha']) for r in tag_rows if r.get('sha')]
+    )
+    entries: list[ReleaseHistoryEntry] = []
+    for row in tag_rows:
+        name = str(row['name'])
+        sha = str(row['sha'])
+        node = nodes.get(name) or {}
+        tagger = row.get('tagger_name')
+        created_by = node.get('created_by')
+        entries.append(
+            ReleaseHistoryEntry(
+                tag=name,
+                sha=sha,
+                short_sha=sha[:7],
+                published_at=row.get('tagged_at') or row.get('recorded_at'),
+                author=str(tagger) if tagger else (created_by or None),
+                ci_status=ci_by_sha.get(sha, 'unknown'),
+                title=node.get('title'),
+                notes_markdown=node.get('description'),
+                release_url=_release_url_from_links(node.get('links')),
+                tag_url=str(row['url']) if row.get('url') else None,
+                package_url=None,
+            )
+        )
+    return entries
+
+
+@project_deployments_router.post('/releases/cut', status_code=201)
+async def cut_release(
+    org_slug: str,
+    project_id: str,
+    body: ReleaseCutRequest,
+    background: fastapi.BackgroundTasks,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:write'),
+        ),
+    ],
+    source: str | None = None,
+) -> ReleaseCutResponse:
+    """Cut a git tag + GitHub release at ``committish`` -- no deployment.
+
+    The build-and-release-only (library / image) flow: validate the
+    semver tag and committish, cut the tag + release via the deployment
+    plugin (reusing the promote machinery minus the deploy step), upsert
+    the matching ``Release`` node, and record an audit row.
+    """
+    if not versioning.is_semver_tag(body.tag):
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                f'Release tag {body.tag!r} is not a semver tag '
+                '(e.g. "v1.2.3").'
+            ),
+        )
+    if not versioning.is_commitish(body.committish):
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                f'Release committish {body.committish!r} is not a git SHA '
+                '(7-40 hex chars).'
+            ),
+        )
+
+    resolved, ctx, credentials = await _resolve_and_context(
+        db, org_slug, project_id, auth, source=source
+    )
+    handler = _handler(resolved)
+
+    warnings: list[str] = []
+    release_info = await _cut_tag_and_release(
+        db,
+        ctx=ctx,
+        resolved=resolved,
+        handler=handler,
+        credentials=credentials,
+        auth=auth,
+        from_committish=body.committish,
+        tag=body.tag,
+        release_name=body.release_name,
+        release_notes_markdown=body.release_notes_markdown,
+        prerelease=body.prerelease,
+        warnings=warnings,
+        project_id=project_id,
+        log_context='release-cut',
+    )
+    release_url = (release_info.html_url if release_info else None) or (
+        release_info.url if release_info else None
+    )
+
+    await persist_link_writeback(db, ctx)
+
+    committish = body.committish[:7].lower()
+    await _upsert_release_node(
+        db,
+        project_id=project_id,
+        tag=body.tag,
+        committish=committish,
+        title=body.release_name or body.tag,
+        notes_markdown=body.release_notes_markdown,
+        release_url=release_url,
+        created_by=auth.principal_name,
+    )
+
+    LOGGER.info(
+        'Release cut: project=%s tag=%s committish=%s plugin=%s actor=%s',
+        project_id,
+        body.tag,
+        committish,
+        resolved.plugin_slug,
+        ctx.actor_user_id,
+    )
+    background.add_task(
+        _record_deployment_audit,
+        project_id=project_id,
+        project_slug=ctx.project_slug,
+        environment_slug='',
+        recorded_by=auth.principal_name,
+        action='release',
+        tag=body.tag,
+        committish=committish,
+        plugin_slug=resolved.plugin_slug,
+        run_url=None,
+        release_url=release_url,
+    )
+    return ReleaseCutResponse(
+        tag=body.tag,
+        release_url=release_url,
+        committish=committish,
+        recorded=True,
+        warning='; '.join(warnings) if warnings else None,
+    )
