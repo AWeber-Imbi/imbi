@@ -294,6 +294,7 @@ export interface ProjectTypeCreate {
   description?: null | string
   icon?: null | string
   name: string
+  releasable?: boolean
   slug: string
 }
 

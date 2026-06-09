@@ -493,11 +493,15 @@ export function ProjectDetail({
   const deploymentIdentityPluginId =
     deploymentPlugin?.identity_plugin_id ?? null
 
-  // Build-and-release-only projects: a deployment plugin is assigned but the
-  // project has no environments to roll out to, so the "Releases" tab shows
-  // instead. (The Deployments tab for env-having projects is a future task;
-  // inverting this condition is the single switch that will gate it.)
-  const isReleaseOnly = !!deploymentPlugin && sortedEnvironments.length === 0
+  // Build-and-release-only projects: a deployment plugin is assigned and the
+  // project's type is marked ``releasable`` (library / image — published via
+  // tag + GitHub release with no deploy step), so the "Releases" tab shows.
+  // ``releasable`` and ``deployable`` are mutually exclusive on the project
+  // type; the future Deployments tab gates on the latter (see isDeployable).
+  const isReleasable = (project.project_types ?? []).some(
+    (pt) => (pt as { releasable?: boolean }).releasable === true,
+  )
+  const isReleaseOnly = !!deploymentPlugin && isReleasable
 
   // Per-user identity connections — used to gate deploy/promote on the
   // current user actually having an active connection to the deployment

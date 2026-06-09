@@ -56,6 +56,20 @@ export function ProjectTypeForm({
   const [deployable, setDeployable] = useState<boolean>(
     (projectType as null | { deployable?: boolean })?.deployable ?? false,
   )
+  const [releasable, setReleasable] = useState<boolean>(
+    (projectType as null | { releasable?: boolean })?.releasable ?? false,
+  )
+  // Deployable and releasable are mutually exclusive (the backend rejects
+  // both); turning one on clears the other so the form can't submit an
+  // invalid pair.
+  const handleDeployableChange = (checked: boolean) => {
+    setDeployable(checked)
+    if (checked) setReleasable(false)
+  }
+  const handleReleasableChange = (checked: boolean) => {
+    setReleasable(checked)
+    if (checked) setDeployable(false)
+  }
   const handleIconChange = useIconWithCleanup(icon, setIcon)
   const [orgSlug, setOrgSlug] = useState(
     projectType?.organization.slug || selectedOrganization?.slug || '',
@@ -104,6 +118,7 @@ export function ProjectTypeForm({
       description: description.trim() || null,
       icon: icon.trim() || null,
       name: name.trim(),
+      releasable,
       slug: slug.trim(),
       ...dynamicFormData,
     })
@@ -287,14 +302,38 @@ export function ProjectTypeForm({
                   </Label>
                   <p className="text-tertiary text-xs">
                     Enable deployment tracking and release-train features for
-                    projects of this type.
+                    projects of this type. Mutually exclusive with releasable.
                   </p>
                 </div>
                 <Switch
                   checked={deployable}
                   disabled={isLoading}
                   id="project-type-deployable"
-                  onCheckedChange={setDeployable}
+                  onCheckedChange={handleDeployableChange}
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="border-input flex items-start justify-between gap-3 rounded-lg border p-3">
+                <div>
+                  <Label
+                    className="text-foreground text-sm font-medium"
+                    htmlFor="project-type-releasable"
+                  >
+                    Releasable
+                  </Label>
+                  <p className="text-tertiary text-xs">
+                    Enable the Releases tab for projects of this type — cut a
+                    tag and GitHub release with no deploy step. Mutually
+                    exclusive with deployable.
+                  </p>
+                </div>
+                <Switch
+                  checked={releasable}
+                  disabled={isLoading}
+                  id="project-type-releasable"
+                  onCheckedChange={handleReleasableChange}
                 />
               </div>
             </div>
