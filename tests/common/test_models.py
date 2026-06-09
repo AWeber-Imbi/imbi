@@ -669,11 +669,16 @@ class CommentModelTestCase(unittest.TestCase):
         self.assertEqual(edge.rel_type, 'IN_THREAD')
         self.assertEqual(edge.direction, 'OUTGOING')
 
-    def test_body_is_not_embeddable(self) -> None:
+    def test_body_is_embeddable(self) -> None:
         info = models.Comment.model_fields['body']
-        self.assertFalse(
-            any(isinstance(meta, models.Embeddable) for meta in info.metadata)
+        spec = next(
+            (m for m in info.metadata if isinstance(m, models.Embeddable)),
+            None,
         )
+        self.assertIsNotNone(spec)
+        assert spec is not None
+        self.assertTrue(spec.chunk)
+        self.assertEqual(spec.mimetype, 'text/markdown')
 
     def test_mentions_from_json_string(self) -> None:
         """mentions parses an AGE JSON-string into a list."""

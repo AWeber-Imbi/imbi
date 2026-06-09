@@ -73,7 +73,7 @@ def _embeddable_descriptors(
 
 
 def _embeddable_fields(
-    node: models.Node,
+    node: models.GraphModel,
 ) -> list[tuple[str, str | None, models.Embeddable]]:
     """Return ``(name, value, spec)`` for embeddable fields.
 
@@ -241,7 +241,7 @@ class Graph:
     ) -> GraphModelT:
         """Create a node and its relationships in the graph."""
         await self._execute_batch(cypher.create(node))
-        if isinstance(node, models.Node):
+        if _embeddable_descriptors(type(node)):
             await self._auto_embed(node)
         return node
 
@@ -261,7 +261,7 @@ class Graph:
                 stmt.cypher,
                 stmt.params,
             )
-            if isinstance(node, models.Node):
+            if _embeddable_descriptors(type(node)):
                 await self._delete_embeddings_where(
                     conn,
                     node_label=type(node).__name__,
@@ -338,7 +338,7 @@ class Graph:
         await self._execute_batch(
             cypher.merge(node, match_on),
         )
-        if isinstance(node, models.Node):
+        if _embeddable_descriptors(type(node)):
             await self._auto_embed(node)
         return node
 
@@ -500,7 +500,7 @@ class Graph:
     # Auto-embedding
     # ----------------------------------------------------------
 
-    async def _auto_embed(self, node: models.Node) -> None:
+    async def _auto_embed(self, node: models.GraphModel) -> None:
         """Generate and store embeddings for embeddable fields.
 
         Failures are logged but do not propagate — the graph

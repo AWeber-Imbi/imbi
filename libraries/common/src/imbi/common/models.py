@@ -590,8 +590,9 @@ class Comment(GraphModel):
     """A single comment within a ``CommentThread``.
 
     ``mentions`` and ``acknowledged_by`` hold email addresses and
-    round-trip through AGE as agtype arrays.  ``body`` is plain
-    markdown text and is intentionally NOT embeddable.
+    round-trip through AGE as agtype arrays.  ``body`` is markdown
+    text and is embedded so semantic search can surface comments
+    alongside other corpus content.
 
     """
 
@@ -600,7 +601,10 @@ class Comment(GraphModel):
         Edge(rel_type='IN_THREAD', direction='OUTGOING'),
     ]
     author: str
-    body: str
+    body: typing.Annotated[
+        str,
+        Embeddable(chunk=True, mimetype='text/markdown'),
+    ]
     mentions: list[str] = []
     acknowledged_by: list[str] = []
     edited: bool = False

@@ -415,6 +415,31 @@ class EmbeddableFieldsTests(unittest.TestCase):
         self.assertIn('description', by_name)
         self.assertIsNone(by_name['description'])
 
+    def test_graphmodel_types_are_embeddable(self) -> None:
+        """GraphModel subclasses expose Embeddable fields too.
+
+        Document, Release, Comment, and Component are not ``Node``
+        subclasses but carry ``Embeddable`` fields; ``_embeddable_fields``
+        must surface them so ``_auto_embed`` populates the corpus.
+        """
+        document = models.Document.model_construct(content='hello world')
+        release = models.Release.model_construct(description='notes')
+        comment = models.Comment.model_construct(body='a remark')
+        component = models.Component.model_construct(
+            name='express',
+            description='web framework',
+        )
+        cases = [
+            (document, {'content'}),
+            (release, {'description'}),
+            (comment, {'body'}),
+            (component, {'name', 'description'}),
+        ]
+        for node, expected in cases:
+            with self.subTest(node=type(node).__name__):
+                names = {f[0] for f in client._embeddable_fields(node)}
+                self.assertEqual(names, expected)
+
 
 class DeleteEmbeddingsWhereTests(
     unittest.IsolatedAsyncioTestCase,
