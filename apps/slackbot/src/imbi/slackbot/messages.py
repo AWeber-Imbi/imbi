@@ -100,9 +100,12 @@ async def _convert_mentions(
         return text
     for user_id in seen:
         name = await _display_name(slack_client, user_id, cache)
-        text = re.sub(
-            rf'<@{re.escape(user_id)}(?:\|[^>]+)?>', f'@{name}', text
-        )
+        replacement = f'@{name}'
+
+        def _replace(_match: re.Match[str], value: str = replacement) -> str:
+            return value
+
+        text = re.sub(rf'<@{re.escape(user_id)}(?:\|[^>]+)?>', _replace, text)
     return text
 
 
@@ -154,18 +157,30 @@ async def _file_blocks(
         if not url:
             continue
         try:
-            response = await http_client.get(url, follow_redirects=False)
+            async with http_client.stream(
+                'GET', url, follow_redirects=False
+            ) as response:
+                if response.status_code != 200:
+                    LOGGER.warning(
+                        'Unable to download Slack file %s: HTTP %s',
+                        url,
+                        response.status_code,
+                    )
+                    continue
+                mimetype = response.headers.get(
+                    'content-type', 'application/octet-stream'
+                )
+                data = bytearray()
+                oversized = False
+                async for chunk in response.aiter_bytes():
+                    data.extend(chunk)
+                    if len(data) > MAX_FILE_BYTES:
+                        oversized = True
+                        break
         except httpx.HTTPError:
             LOGGER.warning('Failed to download Slack file %s', url)
             continue
-        if response.status_code != 200:
-            LOGGER.warning(
-                'Unable to download Slack file %s: HTTP %s',
-                url,
-                response.status_code,
-            )
-            continue
-        if len(response.content) > MAX_FILE_BYTES:
+        if oversized:
             blocks.append(
                 _text_block(
                     f'ERROR: file exceeds the maximum size of '
@@ -173,10 +188,7 @@ async def _file_blocks(
                 )
             )
             continue
-        mimetype = response.headers.get(
-            'content-type', 'application/octet-stream'
-        )
-        blocks.append(_file_to_block(mimetype, response.content))
+        blocks.append(_file_to_block(mimetype, bytes(data)))
     return blocks
 
 

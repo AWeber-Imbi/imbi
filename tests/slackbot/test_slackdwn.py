@@ -12,9 +12,17 @@ class Resp:
 
 
 class FakeWebClient:
-    def __init__(self, fail_markdown=False, fail_canvas=False) -> None:
+    def __init__(
+        self,
+        fail_markdown=False,
+        fail_canvas=False,
+        fail_upload=False,
+        fail_replies=False,
+    ) -> None:
         self.fail_markdown = fail_markdown
         self.fail_canvas = fail_canvas
+        self.fail_upload = fail_upload
+        self.fail_replies = fail_replies
         self.posts: list = []
         self.uploads: list = []
         self.canvas: dict | None = None
@@ -38,6 +46,8 @@ class FakeWebClient:
     async def files_upload_v2(
         self, channel, content, filename, title, snippet_type, thread_ts
     ):
+        if self.fail_upload:
+            raise errors.SlackApiError('noupload', {'error': 'x'})
         self.uploads.append(
             {
                 'filename': filename,
@@ -48,6 +58,8 @@ class FakeWebClient:
         return Resp({'files': [{'id': 'F1'}]})
 
     async def conversations_replies(self, channel, ts):
+        if self.fail_replies:
+            raise errors.SlackApiError('noreplies', {'error': 'x'})
         return Resp({'messages': [{'ts': 'filets', 'files': [{'id': 'F1'}]}]})
 
     async def conversations_canvases_create(
@@ -186,6 +198,19 @@ class SendTests(helpers.TestCase):
         self.assertIn('<http://x|link>', rendered)
         self.assertIn('divider', [b['type'] for b in blocks])
 
+    async def test_blocks_nested_lists_preserve_order(self) -> None:
+        client = FakeWebClient()
+        sender = slackdwn.MarkdownSender(client)
+        text = '- a\n    - a1\n    - a2\n- b\n'
+        await sender._send_as_blocks('C', text, '1.0')
+        blocks = client.posts[0]['blocks']
+        rendered = '\n'.join(b.get('text', {}).get('text', '') for b in blocks)
+        # Nested list items render in source order, exercising the LIFO
+        # list-item-close stack handling.
+        for item in ('a', 'a1', 'a2', 'b'):
+            self.assertIn(item, rendered)
+        self.assertLess(rendered.index('a1'), rendered.rindex('b'))
+
     async def test_canvas_permalink_failure_uses_plain_link(self) -> None:
         client = FakeWebClient()
         client.files_info = mock.AsyncMock(  # type: ignore[method-assign]
@@ -202,3 +227,22 @@ class SendTests(helpers.TestCase):
         )
         sender = slackdwn.MarkdownSender(client)
         self.assertIsNone(await sender._get_file_ts('C', '1.0', 'MISSING'))
+
+    async def test_code_block_upload_error_degrades(self) -> None:
+        client = FakeWebClient(fail_upload=True)
+        sender = slackdwn.MarkdownSender(client)
+        with mock.patch.object(slackdwn.asyncio, 'sleep'):
+            result = await sender._send_as_blocks('C', _CODE, '1.0')
+        self.assertNotIn('filets', result)
+
+    async def test_table_snippet_upload_error_degrades(self) -> None:
+        client = FakeWebClient(fail_canvas=True, fail_upload=True)
+        sender = slackdwn.MarkdownSender(client)
+        with mock.patch.object(slackdwn.asyncio, 'sleep'):
+            result = await sender.send('C', _TABLE, '1.0')
+        self.assertEqual([], result)
+
+    async def test_get_file_ts_api_error_returns_none(self) -> None:
+        client = FakeWebClient(fail_replies=True)
+        sender = slackdwn.MarkdownSender(client)
+        self.assertIsNone(await sender._get_file_ts('C', '1.0', 'F1'))

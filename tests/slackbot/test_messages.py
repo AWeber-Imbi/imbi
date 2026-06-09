@@ -23,16 +23,33 @@ class FakeResp:
         self.headers = headers or {}
         self.content = content
 
+    async def aiter_bytes(self):
+        # Yield in chunks so the size guard is exercised mid-stream.
+        chunk = 64 * 1024
+        for offset in range(0, len(self.content), chunk) or [0]:
+            yield self.content[offset : offset + chunk]
+
+
+class _Stream:
+    def __init__(self, resp) -> None:
+        self._resp = resp
+
+    async def __aenter__(self):
+        if isinstance(self._resp, Exception):
+            raise self._resp
+        return self._resp
+
+    async def __aexit__(self, *_exc):
+        return False
+
 
 class FakeHTTP:
     def __init__(self, resp) -> None:
         self._resp = resp
         self.closed = False
 
-    async def get(self, url, follow_redirects=False):
-        if isinstance(self._resp, Exception):
-            raise self._resp
-        return self._resp
+    def stream(self, method, url, follow_redirects=False):
+        return _Stream(self._resp)
 
     async def aclose(self):
         self.closed = True

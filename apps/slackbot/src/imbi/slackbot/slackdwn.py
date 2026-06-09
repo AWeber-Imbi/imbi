@@ -308,7 +308,7 @@ class MarkdownSender:
         state: _BlockState,
         token: markdown_token.Token,
     ) -> None:
-        state.stack.remove(token.tag)
+        state.stack = self._stack_remove(state.stack, token.tag)
 
     async def _handle_paragraph_close(
         self,
@@ -627,14 +627,18 @@ class MarkdownSender:
         """Upload a fenced code block as a file snippet."""
         title = f'Code: {token.info}' if token.info else 'Code Block'
         filetype = token.info.lower() if token.info else 'text'
-        response = await self.client.files_upload_v2(
-            channel=channel_id,
-            content=token.content,
-            filename=f'{title}.{filetype}',
-            title=title,
-            snippet_type=self._get_snippet_type(filetype),
-            thread_ts=thread_ts,
-        )
+        try:
+            response = await self.client.files_upload_v2(
+                channel=channel_id,
+                content=token.content,
+                filename=f'{title}.{filetype}',
+                title=title,
+                snippet_type=self._get_snippet_type(filetype),
+                thread_ts=thread_ts,
+            )
+        except errors.SlackApiError:
+            LOGGER.exception('Error uploading code snippet to Slack')
+            return []
         # Give Slack time to process, otherwise ordering is wrong.
         await asyncio.sleep(1)
         response_ts: list[str] = []
@@ -651,14 +655,18 @@ class MarkdownSender:
         thread_ts: str,
     ) -> list[str]:
         """Upload a formatted table as a text snippet."""
-        response = await self.client.files_upload_v2(
-            channel=channel_id,
-            content=content,
-            filename='Table.text',
-            title='Table',
-            snippet_type='text',
-            thread_ts=thread_ts,
-        )
+        try:
+            response = await self.client.files_upload_v2(
+                channel=channel_id,
+                content=content,
+                filename='Table.text',
+                title='Table',
+                snippet_type='text',
+                thread_ts=thread_ts,
+            )
+        except errors.SlackApiError:
+            LOGGER.exception('Error uploading table snippet to Slack')
+            return []
         await asyncio.sleep(1)
         response_ts: list[str] = []
         for file in response.data['files']:
@@ -671,9 +679,15 @@ class MarkdownSender:
         self, channel_id: str, thread_ts: str, file_id: str
     ) -> str | None:
         """Resolve the message ts that carries an uploaded file."""
-        result = await self.client.conversations_replies(
-            channel=channel_id, ts=thread_ts
-        )
+        try:
+            result = await self.client.conversations_replies(
+                channel=channel_id, ts=thread_ts
+            )
+        except errors.SlackApiError:
+            LOGGER.warning(
+                'conversations.replies failed while resolving file ts'
+            )
+            return None
         for message in result.data['messages']:
             for file in message.get('files', []):
                 if file['id'] == file_id:
