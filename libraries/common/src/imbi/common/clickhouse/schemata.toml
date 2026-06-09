@@ -23,10 +23,35 @@ CREATE TABLE IF NOT EXISTS imbi.events {on_cluster}(
   third_party_service  LowCardinality(String) DEFAULT '',
   attributed_to        LowCardinality(String) DEFAULT '',
   metadata             JSON,
-  payload              JSON
-) ENGINE = {replicated}MergeTree()
+  payload              JSON,
+  version              UInt8 DEFAULT 0
+) ENGINE = {replicated}ReplacingMergeTree(version)
 PARTITION BY toYYYYMM(recorded_at)
-ORDER BY (project_id, recorded_at);
+ORDER BY (project_id, id);
+"""
+enabled = true
+
+[events_add_version]
+query = """
+ALTER TABLE imbi.events {on_cluster}
+    ADD COLUMN IF NOT EXISTS version UInt8 DEFAULT 0;
+"""
+enabled = true
+
+[events_latest]
+query = """
+CREATE VIEW IF NOT EXISTS imbi.events_latest {on_cluster}AS
+SELECT id, project_id, recorded_at, type, third_party_service,
+       attributed_to, metadata, payload, version
+FROM (
+    SELECT *,
+           row_number() OVER (
+               PARTITION BY id
+               ORDER BY version DESC, recorded_at DESC
+           ) AS _rn
+    FROM imbi.events
+)
+WHERE _rn = 1;
 """
 enabled = true
 

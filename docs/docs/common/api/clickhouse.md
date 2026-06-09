@@ -41,11 +41,23 @@ applied by `setup_schema()`. Notable tables:
 
 | Table            | Engine               | Order key                   | Written by                                   |
 | ---------------- | -------------------- | --------------------------- | -------------------------------------------- |
-| `events`         | `MergeTree`          | `(project_id, recorded_at)` | `imbi-gateway` raw webhook deliveries        |
+| `events`         | `ReplacingMergeTree` | `(project_id, id)`          | `imbi-gateway` raw webhook deliveries        |
 | `pull_requests`  | `ReplacingMergeTree` | `(project_id, pr_id)`       | `pull_requests_mv` over `events`             |
 | `operations_log` | `ReplacingMergeTree` | `(project_id, id)`          | ops-log writers                              |
 | `commits`        | `ReplacingMergeTree` | `(project_id, sha)`         | a VCS plugin via [`CommitRecord`](models.md) |
 | `tags`           | `ReplacingMergeTree` | `(project_id, name)`        | a VCS plugin via [`TagRecord`](models.md)    |
+
+The `events` row carries a `version UInt8 DEFAULT 0` column and a
+sibling `events_latest` view. Writers that update an event after
+its initial insert (e.g. backfilling webhook dispatch outcomes
+into `metadata` once handlers finish) re-insert with the same
+`id` and a higher `version`. The `ReplacingMergeTree(version)`
+engine, keyed on `(project_id, id)`, collapses those re-inserts to
+the highest-`version` row per event on merge. Because merges are
+asynchronous, reads that need the latest state immediately go
+through `events_latest`, which uses a window function to return one
+row per `id` (highest `version`, breaking ties by `recorded_at`)
+even before a merge has run. Inserts always go to `events`.
 
 `commits` and `tags` are provider-agnostic commit/tag history keyed by
 `project_id`. Their `ReplacingMergeTree` engines collapse duplicate rows
@@ -84,11 +96,11 @@ the schema is created on every node using the `Replicated*` engine variants:
 
 ```sql
 -- CLICKHOUSE_CLUSTER_NAME unset (single node)
-CREATE TABLE IF NOT EXISTS imbi.events (...) ENGINE = MergeTree()
+CREATE TABLE IF NOT EXISTS imbi.events (...) ENGINE = ReplacingMergeTree(version)
 
 -- CLICKHOUSE_CLUSTER_NAME=imbi_prod
 CREATE TABLE IF NOT EXISTS imbi.events ON CLUSTER imbi_prod (...)
-ENGINE = ReplicatedMergeTree()
+ENGINE = ReplicatedReplacingMergeTree(version)
 ```
 
 Every DDL statement in `schemata.toml` must carry the `{on_cluster}`

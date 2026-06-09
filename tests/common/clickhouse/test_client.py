@@ -834,6 +834,7 @@ class EventsSchemaTestCase(unittest.TestCase):
             'attributed_to',
             'metadata',
             'payload',
+            'version',
         ]
         for col in expected_columns:
             self.assertIn(col, ddl, f'Column {col!r} missing from DDL')
@@ -841,7 +842,58 @@ class EventsSchemaTestCase(unittest.TestCase):
     def test_events_engine(self) -> None:
         schemata = self._load_schemata()
         ddl = schemata['events']['query']
-        self.assertIn('ENGINE = {replicated}MergeTree()', ddl)
-        self.assertNotIn('ReplacingMergeTree', ddl)
+        self.assertIn('ENGINE = {replicated}ReplacingMergeTree(version)', ddl)
         self.assertIn('PARTITION BY toYYYYMM(recorded_at)', ddl)
-        self.assertIn('ORDER BY (project_id, recorded_at)', ddl)
+        self.assertIn('ORDER BY (project_id, id)', ddl)
+
+    def test_events_version_column_default(self) -> None:
+        schemata = self._load_schemata()
+        ddl = schemata['events']['query']
+        self.assertIn('version              UInt8 DEFAULT 0', ddl)
+
+    def test_events_add_version_migration_present(self) -> None:
+        schemata = self._load_schemata()
+        self.assertIn('events_add_version', schemata)
+        self.assertTrue(schemata['events_add_version']['enabled'])
+        query = str(schemata['events_add_version']['query'])
+        self.assertIn('ALTER TABLE imbi.events {on_cluster}', query)
+        self.assertIn(
+            'ADD COLUMN IF NOT EXISTS version UInt8 DEFAULT 0', query
+        )
+
+
+class EventsLatestViewSchemaTestCase(unittest.TestCase):
+    """Verify the events_latest view is shipped in schemata.toml."""
+
+    def _load_schemata(self) -> dict:
+        pkg = importlib.resources.files('imbi_common.clickhouse')
+        toml_bytes = (pkg / 'schemata.toml').read_bytes()
+        return tomllib.loads(toml_bytes.decode())
+
+    def test_view_present(self) -> None:
+        schemata = self._load_schemata()
+        self.assertIn('events_latest', schemata)
+
+    def test_view_enabled(self) -> None:
+        schemata = self._load_schemata()
+        self.assertTrue(schemata['events_latest']['enabled'])
+
+    def test_view_definition(self) -> None:
+        schemata = self._load_schemata()
+        ddl = str(schemata['events_latest']['query'])
+        self.assertIn(
+            'CREATE VIEW IF NOT EXISTS imbi.events_latest {on_cluster}', ddl
+        )
+        self.assertIn('PARTITION BY id', ddl)
+        self.assertIn('ORDER BY version DESC', ddl)
+        self.assertIn('FROM imbi.events', ddl)
+
+    def test_view_declared_after_events_table(self) -> None:
+        """Schemata are applied in declared order; the view depends on
+        the table existing and on the version column being present."""
+        schemata = self._load_schemata()
+        names = list(schemata.keys())
+        self.assertLess(names.index('events'), names.index('events_latest'))
+        self.assertLess(
+            names.index('events_add_version'), names.index('events_latest')
+        )

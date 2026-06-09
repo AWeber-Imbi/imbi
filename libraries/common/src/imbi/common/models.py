@@ -906,6 +906,7 @@ class Event(pydantic.BaseModel):
     attributed_to: str = ''
     metadata: dict[str, typing.Any] = {}
     payload: dict[str, typing.Any] = {}
+    version: int = pydantic.Field(default=0, ge=0, lt=2**8)
 
     @pydantic.field_validator('attributed_to', mode='before')
     @classmethod

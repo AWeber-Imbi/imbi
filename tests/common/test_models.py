@@ -972,6 +972,7 @@ class EventTestCase(unittest.TestCase):
             'attributed_to',
             'metadata',
             'payload',
+            'version',
         ]
         self.assertEqual(keys, expected)
 
@@ -983,6 +984,19 @@ class EventTestCase(unittest.TestCase):
         b = self._make()
         a.metadata['k'] = 'v'
         self.assertEqual(b.metadata, {})
+
+    def test_version_defaults_to_zero(self) -> None:
+        event = self._make()
+        self.assertEqual(event.version, 0)
+
+    def test_version_can_be_set(self) -> None:
+        event = self._make(version=1)
+        self.assertEqual(event.version, 1)
+
+    def test_version_rejects_values_outside_uint8(self) -> None:
+        for value in (-1, 256):
+            with self.assertRaises(pydantic.ValidationError):
+                self._make(version=value)
 
 
 def _make_project() -> models.Project:
