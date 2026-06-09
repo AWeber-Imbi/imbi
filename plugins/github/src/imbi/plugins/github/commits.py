@@ -50,6 +50,7 @@ from imbi_common.json_pointer import JsonPointer
 from imbi_common.models import CommitRecord, TagRecord
 from imbi_common.plugins.base import (
     ActionDescriptor,
+    CheckStatus,
     CredentialField,
     PluginContext,
     PluginManifest,
@@ -67,10 +68,13 @@ from imbi_plugin_github._hosts import (
 from imbi_plugin_github._repos import resolve_owner_repo
 from imbi_plugin_github.deployment import (
     _auth_headers,  # pyright: ignore[reportPrivateUsage]
+    _check_runs_to_status,  # pyright: ignore[reportPrivateUsage]
+    _checks_disabled,  # pyright: ignore[reportPrivateUsage]
     _next_page_url,  # pyright: ignore[reportPrivateUsage]
     _parse_iso,  # pyright: ignore[reportPrivateUsage]
     _query_param,  # pyright: ignore[reportPrivateUsage]
     _raise_on_401,  # pyright: ignore[reportPrivateUsage]
+    _record_checks_disabled,  # pyright: ignore[reportPrivateUsage]
     _short_sha,  # pyright: ignore[reportPrivateUsage]
 )
 
@@ -92,6 +96,11 @@ _MAX_COMPARE_PAGES = 20
 # backfill so a very deep repo can't pin the worker indefinitely; the
 # walk logs a truncation warning when it hits the cap.
 _MAX_HISTORY_PAGES = 100
+# CI status is hydrated with one ``/check-runs`` call per commit, which is
+# prohibitively expensive across a full-history backfill.  Bound it to the
+# most-recent commits (the only ones whose CI is still meaningful and
+# unexpired); older commits keep the ``'unknown'`` default.
+_BACKFILL_CI_LIMIT = 25
 
 # Per-context ceilings on how long a *single* rate-limit pause may block
 # before the sync gives up best-effort (logged).  The webhook actions
@@ -526,6 +535,7 @@ def _commit_record(
     ref: str,
     pushed_at: datetime.datetime,
     author_user: str = '',
+    ci_status: CheckStatus = 'unknown',
 ) -> CommitRecord:
     """Map a GitHub commit object onto a :class:`CommitRecord`.
 
@@ -533,7 +543,8 @@ def _commit_record(
     email + linked login + committer), which the UI-facing
     ``Commit``/``_commit_from_payload`` mapping drops, so it maps the raw
     item directly while reusing the low-level ``_short_sha`` / ``_parse_iso``
-    helpers.
+    helpers.  ``ci_status`` is supplied by the caller (hydrated from
+    ``/check-runs``); it defaults to ``'unknown'`` when not resolved.
     """
     sha = str(item.get('sha') or '')
     commit_meta: dict[str, typing.Any] = item.get('commit') or {}
@@ -552,6 +563,7 @@ def _commit_record(
         author_login=str(gh_author.get('login') or ''),
         author_user=author_user,
         committer_name=str(committer_meta.get('name') or ''),
+        ci_status=ci_status,
         authored_at=authored_at or pushed_at,
         committed_at=_parse_iso(committer_meta.get('date')),
         url=str(item.get('html_url') or ''),
@@ -629,6 +641,92 @@ async def _fetch_recent_commits(
     )
     resp.raise_for_status()
     return typing.cast('list[dict[str, typing.Any]]', resp.json())
+
+
+async def _ci_status(
+    client: httpx.AsyncClient,
+    sha: str,
+    *,
+    credentials: dict[str, str],
+    base: str,
+    owner: str,
+    repo: str,
+    max_wait: float,
+) -> CheckStatus:
+    """Roll up ``/commits/{sha}/check-runs`` into a ci_status string.
+
+    Reuses the deployment plugin's ``/check-runs`` mapping and its 403
+    "checks disabled" cache so a token without the scope spends one 403
+    rather than one per commit.  Degrades to ``'unknown'`` on a 403, any
+    non-200, a parse error, a network error, or a rate-limit pause -- CI
+    status is best-effort metadata and must never fail the sync, mirroring
+    the swallow-and-continue contract the rest of this module follows.
+    """
+    if _checks_disabled(credentials, base, owner, repo):
+        return 'unknown'
+    try:
+        resp = await _request(
+            client, 'GET', f'/commits/{sha}/check-runs', max_wait=max_wait
+        )
+        if resp.status_code == 403:
+            _record_checks_disabled(credentials, base, owner, repo)
+            return 'unknown'
+        if resp.status_code != 200:
+            return 'unknown'
+        payload = typing.cast('dict[str, typing.Any]', resp.json())
+    except Exception:  # noqa: BLE001 - CI status is best-effort metadata
+        return 'unknown'
+    return _check_runs_to_status(payload)
+
+
+async def _hydrate_ci(
+    client: httpx.AsyncClient,
+    shas: list[str],
+    *,
+    credentials: dict[str, str],
+    base: str,
+    owner: str,
+    repo: str,
+    max_wait: float,
+) -> dict[str, CheckStatus]:
+    """Resolve ``ci_status`` for ``shas`` -> ``{sha: status}``.
+
+    Probes the head commit first so a 403 (missing scope / Actions
+    disabled) populates the cache and short-circuits the rest, mirroring
+    the deployment plugin's commit picker.  Shas absent from the returned
+    map fall back to ``'unknown'`` at the call site.
+    """
+    out: dict[str, CheckStatus] = {}
+    if not shas or _checks_disabled(credentials, base, owner, repo):
+        return out
+    head, *tail = shas
+    out[head] = await _ci_status(
+        client,
+        head,
+        credentials=credentials,
+        base=base,
+        owner=owner,
+        repo=repo,
+        max_wait=max_wait,
+    )
+    if not tail or _checks_disabled(credentials, base, owner, repo):
+        return out
+    results = await asyncio.gather(
+        *(
+            _ci_status(
+                client,
+                sha,
+                credentials=credentials,
+                base=base,
+                owner=owner,
+                repo=repo,
+                max_wait=max_wait,
+            )
+            for sha in tail
+        )
+    )
+    out.update(dict(zip(tail, results, strict=True)))
+    return out
 
 
 def _resolve_host_for_context(ctx: PluginContext) -> str | None:
@@ -805,6 +903,7 @@ async def sync_commits(
     before = _resolve(action_config.before_selector, event)
     pushed_at = datetime.datetime.now(datetime.UTC)
     token = await _resolve_bearer(credentials, base, owner, repo)
+    ci_by_sha: dict[str, CheckStatus] = {}
     try:
         async with _client(base, owner, repo, token) as client:
             if isinstance(before, str) and before and before != _ZERO_SHA:
@@ -824,6 +923,15 @@ async def sync_commits(
                         action_config.initial_limit,
                         max_wait=_WEBHOOK_MAX_WAIT_SECONDS,
                     )
+            ci_by_sha = await _hydrate_ci(
+                client,
+                [str(i['sha']) for i in raw if i.get('sha')],
+                credentials=credentials,
+                base=base,
+                owner=owner,
+                repo=repo,
+                max_wait=_WEBHOOK_MAX_WAIT_SECONDS,
+            )
     except PluginRateLimited as exc:
         LOGGER.warning(
             'github-commit-sync: rate-limited syncing commits for project '
@@ -842,6 +950,7 @@ async def sync_commits(
             ref=ref,
             pushed_at=pushed_at,
             author_user=_author_user(item, user_map),
+            ci_status=ci_by_sha.get(str(item['sha']), 'unknown'),
         )
         for item in raw
         if item.get('sha')
@@ -1178,6 +1287,22 @@ class GitHubCommitSyncPlugin(WebhookActionPlugin):
             tags = await _reconcile_tags(
                 client, ctx.project_id, max_wait=_BACKFILL_MAX_WAIT_SECONDS
             )
+            # CI status only for the most-recent commits: one /check-runs
+            # call per commit is too costly across full history, and old
+            # commits' CI is no longer meaningful.
+            ci_by_sha = await _hydrate_ci(
+                client,
+                [
+                    str(i['sha'])
+                    for i in raw_commits[:_BACKFILL_CI_LIMIT]
+                    if i.get('sha')
+                ],
+                credentials=credentials,
+                base=base,
+                owner=owner,
+                repo=repo,
+                max_wait=_BACKFILL_MAX_WAIT_SECONDS,
+            )
         user_map = await _resolve_author_users(
             raw_commits, ctx.resolve_user_by_identity, base
         )
@@ -1188,6 +1313,7 @@ class GitHubCommitSyncPlugin(WebhookActionPlugin):
                 ref=branch,
                 pushed_at=pushed_at,
                 author_user=_author_user(item, user_map),
+                ci_status=ci_by_sha.get(str(item['sha']), 'unknown'),
             )
             for item in raw_commits
             if item.get('sha')

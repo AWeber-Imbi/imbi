@@ -17,7 +17,7 @@ from imbi_common.plugins.errors import (
     PluginRateLimited,
 )
 
-from imbi_plugin_github import _app_auth, commits
+from imbi_plugin_github import _app_auth, commits, deployment
 
 _ZERO = '0' * 40
 _CREDS = {'access_token': 'gho_test'}
@@ -112,6 +112,17 @@ def _commit(
             },
         },
     }
+
+
+def _check_runs(
+    conclusion: str | None = 'success', *, status: str = 'completed'
+) -> dict[str, object]:
+    """A ``/check-runs`` payload with a single run."""
+    return {'check_runs': [{'status': status, 'conclusion': conclusion}]}
+
+
+def _check_runs_url(sha: str) -> str:
+    return f'https://api.github.com/repos/octo/demo/commits/{sha}/check-runs'
 
 
 class ConfigTestCase(unittest.TestCase):
@@ -424,6 +435,97 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
             await commits._resolve_bearer(
                 {}, 'https://api.github.com', 'octo', 'demo'
             )
+
+
+class SyncCommitsCiStatusTestCase(unittest.IsolatedAsyncioTestCase):
+    """CI status hydration during ``sync_commits``."""
+
+    def setUp(self) -> None:
+        # The /check-runs 403 cache is process-wide module state on the
+        # deployment plugin; clear it so a 403 recorded by one test can't
+        # short-circuit hydration in another.
+        deployment._CHECKS_DISABLED_TOKENS.clear()
+
+    def _mock_compare(self, *shas: str) -> None:
+        base, head = 'a' * 40, 'b' * 40
+        respx.get(
+            f'https://api.github.com/repos/octo/demo/compare/{base}...{head}'
+        ).mock(
+            return_value=httpx.Response(
+                200, json={'commits': [_commit(s) for s in shas]}
+            )
+        )
+
+    async def _run(self) -> list[CommitRecord]:
+        base, head = 'a' * 40, 'b' * 40
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            await commits.sync_commits(
+                ctx=_ctx(),
+                credentials=_CREDS,
+                external_identifier='',
+                action_config=commits.SyncCommitsConfig(),
+                event=_event(_push(before=base, after=head)),
+            )
+        _, records = _await_args(insert)
+        return records
+
+    @respx.mock
+    async def test_hydrates_pass_and_fail(self) -> None:
+        self._mock_compare('c' * 40, 'd' * 40)
+        respx.get(_check_runs_url('c' * 40)).mock(
+            return_value=httpx.Response(200, json=_check_runs('success'))
+        )
+        respx.get(_check_runs_url('d' * 40)).mock(
+            return_value=httpx.Response(200, json=_check_runs('failure'))
+        )
+        records = await self._run()
+        self.assertEqual('pass', records[0].ci_status)
+        self.assertEqual('fail', records[1].ci_status)
+
+    @respx.mock
+    async def test_403_degrades_and_caches(self) -> None:
+        self._mock_compare('c' * 40, 'd' * 40)
+        route = respx.get(url__regex=r'.+/commits/.+/check-runs$').mock(
+            return_value=httpx.Response(403)
+        )
+        records = await self._run()
+        # Head probe 403s and records the repo as checks-disabled, so the
+        # tail commit is never probed -- one call, both 'unknown'.
+        self.assertEqual(1, route.call_count)
+        self.assertEqual(
+            ['unknown', 'unknown'], [r.ci_status for r in records]
+        )
+
+    @respx.mock
+    async def test_in_progress_is_unknown(self) -> None:
+        self._mock_compare('c' * 40)
+        respx.get(_check_runs_url('c' * 40)).mock(
+            return_value=httpx.Response(
+                200, json=_check_runs(None, status='in_progress')
+            )
+        )
+        records = await self._run()
+        self.assertEqual('unknown', records[0].ci_status)
+
+    @respx.mock
+    async def test_network_error_degrades_to_unknown(self) -> None:
+        self._mock_compare('c' * 40)
+        respx.get(_check_runs_url('c' * 40)).mock(
+            side_effect=httpx.ConnectError('boom')
+        )
+        records = await self._run()
+        self.assertEqual('unknown', records[0].ci_status)
+
+    @respx.mock
+    async def test_non_403_http_error_degrades_to_unknown(self) -> None:
+        # A non-200, non-403 response (e.g. 500) is not cached as
+        # checks-disabled, so it degrades to 'unknown' per commit.
+        self._mock_compare('c' * 40)
+        respx.get(_check_runs_url('c' * 40)).mock(
+            return_value=httpx.Response(500)
+        )
+        records = await self._run()
+        self.assertEqual('unknown', records[0].ci_status)
 
 
 class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
@@ -953,6 +1055,35 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
             },
             urls,
         )
+
+    @respx.mock
+    async def test_bounds_ci_status_to_recent_commits(self) -> None:
+        deployment._CHECKS_DISABLED_TOKENS.clear()
+        self._mock_default_branch()
+        respx.get(f'{self._REPO}/commits').mock(
+            return_value=httpx.Response(
+                200, json=[_commit('c' * 40), _commit('d' * 40)]
+            )
+        )
+        respx.get(f'{self._REPO}/git/matching-refs/tags').mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        ci_route = respx.get(url__regex=r'.+/commits/.+/check-runs$').mock(
+            return_value=httpx.Response(200, json=_check_runs('success'))
+        )
+        with mock.patch.object(commits, '_BACKFILL_CI_LIMIT', 1):
+            with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+                await commits.GitHubCommitSyncPlugin().sync_all_history(
+                    ctx=self._ctx(), credentials=_CREDS
+                )
+        # Only the most-recent commit is hydrated; the rest stay 'unknown'.
+        self.assertEqual(1, ci_route.call_count)
+        commit_call = next(
+            c for c in insert.await_args_list if c.args[0] == 'commits'
+        )
+        records = commit_call.args[1]
+        self.assertEqual('pass', records[0].ci_status)
+        self.assertEqual('unknown', records[1].ci_status)
 
     @respx.mock
     async def test_rate_limit_beyond_cap_propagates(self) -> None:
