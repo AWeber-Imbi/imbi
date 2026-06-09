@@ -35,7 +35,10 @@ async def _get_org_node_ids(
 
     Covers: the org itself, direct BELONGS_TO children (Team, Environment,
     ProjectType, ThirdPartyService, Tag, DocumentTemplate, LinkDefinition),
-    Projects, Documents, and Releases.
+    Projects, Documents, Releases, Comments, and the Components reachable
+    through the org's release dependency graph. Components are shared,
+    cross-org identities, so they are scoped to those an org actually
+    depends on rather than enumerated globally.
     """
     org_rows = await db.execute(
         'MATCH (o:Organization {{slug: {org_slug}}}) RETURN o.id AS org_id',
@@ -85,6 +88,31 @@ async def _get_org_node_ids(
         'MATCH (:Organization {{slug: {org_slug}}})<-[:BELONGS_TO]-'
         '(:Team)<-[:OWNED_BY]-(:Project)-[:HAS_RELEASE]->(r:Release)'
         ' RETURN r.id AS nid',
+        {'org_slug': org_slug},
+        columns=['nid'],
+    ):
+        nid = graph.parse_agtype(row['nid'])
+        if nid:
+            node_ids.add(nid)
+
+    for row in await db.execute(
+        'MATCH (c:Comment)-[:IN_THREAD]->(:CommentThread)-[:ON_DOCUMENT]->'
+        '(:Document)-[:ATTACHED_TO]->(:Project)-[:OWNED_BY]->(:Team)'
+        '-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})'
+        ' RETURN c.id AS nid',
+        {'org_slug': org_slug},
+        columns=['nid'],
+    ):
+        nid = graph.parse_agtype(row['nid'])
+        if nid:
+            node_ids.add(nid)
+
+    for row in await db.execute(
+        'MATCH (comp:Component)-[:HAS_RELEASE]->(:ComponentRelease)'
+        '<-[:USES_COMPONENT_RELEASE]-(:Release)<-[:HAS_RELEASE]-(:Project)'
+        '-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->'
+        '(:Organization {{slug: {org_slug}}})'
+        ' RETURN comp.id AS nid',
         {'org_slug': org_slug},
         columns=['nid'],
     ):

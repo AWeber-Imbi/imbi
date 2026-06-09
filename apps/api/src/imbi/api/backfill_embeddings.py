@@ -45,10 +45,13 @@ _NODE_TYPES: list[type[models.Node]] = [
 ]
 
 # GraphModel types that have Embeddable fields but are not Node subclasses.
-# match() still works via model_construct fallback; _auto_embed accepts any
-# GraphModel even though its type annotation says Node.
+# match() still works via model_construct fallback; _auto_embed embeds any
+# GraphModel that declares Embeddable fields.
 _GRAPH_MODEL_TYPES: list[type[models.GraphModel]] = [
     models.Document,
+    models.Release,
+    models.Comment,
+    models.Component,
 ]
 
 _DEFAULT_CONCURRENCY = 4

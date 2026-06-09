@@ -65,7 +65,7 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
         )
 
     def _setup_org(self, node_ids: list[str] | None = None) -> None:
-        """Configure mock_db.execute for the five org-membership queries.
+        """Configure mock_db.execute for the org-membership queries.
 
         The search handler calls db.execute in this order:
           1. org lookup -> [{org_id: ...}] or []
@@ -73,6 +73,8 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
           3. Project nodes -> [{nid: ...}, ...]
           4. Document nodes -> []
           5. Release nodes -> []
+          6. Comment nodes -> []
+          7. Component nodes -> []
         """
         if node_ids is None:
             node_ids = ['proj-1']
@@ -80,6 +82,8 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
             [{'org_id': '"org-abc"'}],
             [],
             [{'nid': f'"{nid}"'} for nid in node_ids],
+            [],
+            [],
             [],
             [],
         ]
@@ -304,6 +308,8 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
             [{'nid': '"proj-1"'}],  # Project: valid nid included
             [{'nid': '""'}],  # Document: falsy nid skipped
             [{'nid': '""'}],  # Release: falsy nid skipped
+            [{'nid': '""'}],  # Comment: falsy nid skipped
+            [{'nid': '""'}],  # Component: falsy nid skipped
         ]
         self.mock_db.search.return_value = [
             self._make_result(node_id='proj-1'),
@@ -322,6 +328,8 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
             [],  # Projects
             [],  # Documents
             [],  # Releases
+            [],  # Comments
+            [],  # Components
         ]
         self.mock_db.search.return_value = [
             self._make_result(node_id='team-1', node_label='Team'),
@@ -340,6 +348,8 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
             [],  # Projects
             [{'nid': '"doc-1"'}],  # Documents
             [],  # Releases
+            [],  # Comments
+            [],  # Components
         ]
         self.mock_db.search.return_value = [
             self._make_result(node_id='doc-1', node_label='Document'),
@@ -358,6 +368,8 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
             [],  # Projects
             [],  # Documents
             [{'nid': '"rel-1"'}],  # Releases
+            [],  # Comments
+            [],  # Components
         ]
         self.mock_db.search.return_value = [
             self._make_result(node_id='rel-1', node_label='Release'),
@@ -367,6 +379,50 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
         data = response.json()
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['node_id'], 'rel-1')
+
+    def test_comment_node_ids_included(self) -> None:
+        """Comment IN_THREAD query nodes are included in org scope."""
+        self.mock_db.execute.side_effect = [
+            [{'org_id': '"org-abc"'}],
+            [],  # BELONGS_TO
+            [],  # Projects
+            [],  # Documents
+            [],  # Releases
+            [{'nid': '"comment-1"'}],  # Comments
+            [],  # Components
+        ]
+        self.mock_db.search.return_value = [
+            self._make_result(
+                node_id='comment-1',
+                node_label='Comment',
+                attribute='body',
+            ),
+        ]
+        response = self.client.get(f'{_BASE_URL}?q=test')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['node_id'], 'comment-1')
+
+    def test_component_node_ids_included(self) -> None:
+        """Component dependency-graph query nodes are in org scope."""
+        self.mock_db.execute.side_effect = [
+            [{'org_id': '"org-abc"'}],
+            [],  # BELONGS_TO
+            [],  # Projects
+            [],  # Documents
+            [],  # Releases
+            [],  # Comments
+            [{'nid': '"comp-1"'}],  # Components
+        ]
+        self.mock_db.search.return_value = [
+            self._make_result(node_id='comp-1', node_label='Component'),
+        ]
+        response = self.client.get(f'{_BASE_URL}?q=test')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['node_id'], 'comp-1')
 
     def test_limit_reached_mid_batch_stops_inner_loop(self) -> None:
         """Inner loop breaks early when limit is reached mid-batch."""
@@ -421,6 +477,8 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
             [{'nid': '""'}],  # Project: falsy nid skipped
             [],  # Documents
             [],  # Releases
+            [],  # Comments
+            [],  # Components
         ]
         self.mock_db.search.return_value = []
         response = self.client.get(f'{_BASE_URL}?q=test')
