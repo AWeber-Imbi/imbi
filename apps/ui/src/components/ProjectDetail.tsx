@@ -61,6 +61,7 @@ import { ProjectDoctorTab } from '@/components/ProjectDoctorTab'
 import { ProjectEnvironmentsCard } from '@/components/ProjectEnvironmentsCard'
 import { ProjectRelationshipsTab } from '@/components/ProjectRelationshipsTab'
 import { ProjectSettingsTab } from '@/components/ProjectSettingsTab'
+import { ReleasesTab } from '@/components/releases/ReleasesTab'
 import { RelocatePreviewDialog } from '@/components/RelocatePreviewDialog'
 import { ScoreHistoryTab } from '@/components/ScoreHistoryTab'
 import { Button } from '@/components/ui/button'
@@ -109,6 +110,7 @@ const VALID_TABS = [
   'configuration',
   'dependencies',
   'relationships',
+  'releases',
   'logs',
   'incidents',
   'documents',
@@ -491,6 +493,12 @@ export function ProjectDetail({
   const deploymentIdentityPluginId =
     deploymentPlugin?.identity_plugin_id ?? null
 
+  // Build-and-release-only projects: a deployment plugin is assigned but the
+  // project has no environments to roll out to, so the "Releases" tab shows
+  // instead. (The Deployments tab for env-having projects is a future task;
+  // inverting this condition is the single switch that will gate it.)
+  const isReleaseOnly = !!deploymentPlugin && sortedEnvironments.length === 0
+
   // Per-user identity connections — used to gate deploy/promote on the
   // current user actually having an active connection to the deployment
   // provider. Without this, chips render as buttons that 401 on click.
@@ -624,6 +632,7 @@ export function ProjectDetail({
       (activeTab === 'configuration' && !hasConfigurationPlugin) ||
       (activeTab === 'logs' && !hasLogsPlugin) ||
       (activeTab === 'incidents' && !hasIncidentsPlugin) ||
+      (activeTab === 'releases' && !isReleaseOnly) ||
       (activeTab === 'pull-requests' && !hasLifecyclePlugin)
     ) {
       navigate(`/projects/${project.id}`, { replace: true })
@@ -634,6 +643,7 @@ export function ProjectDetail({
     hasIncidentsPlugin,
     hasLifecyclePlugin,
     hasLogsPlugin,
+    isReleaseOnly,
     navigate,
     project.id,
     projectPluginsFetched,
@@ -767,6 +777,7 @@ export function ProjectDetail({
       ? [{ id: 'incidents' as const, label: 'Incidents' }]
       : []),
     { id: 'operations-log', label: 'Operations Log' },
+    ...(isReleaseOnly ? [{ id: 'releases' as const, label: 'Releases' }] : []),
     ...(hasLifecyclePlugin
       ? [
           {
@@ -1296,6 +1307,11 @@ export function ProjectDetail({
             showSummary={false}
           />
         </TabsContent>
+        {isReleaseOnly && (
+          <TabsContent value="releases">
+            <ReleasesTab orgSlug={orgSlug} project={project} />
+          </TabsContent>
+        )}
         {hasLifecyclePlugin && (
           <TabsContent value="pull-requests">
             <ProjectPullRequestsTab orgSlug={orgSlug} projectId={project.id} />

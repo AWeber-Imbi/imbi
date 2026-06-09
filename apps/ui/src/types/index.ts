@@ -501,6 +501,22 @@ export interface CurrentReleaseEnvironment {
   release: null | Release
 }
 
+export interface CutReleaseRequest {
+  committish: string
+  prerelease?: boolean
+  release_name?: null | string
+  release_notes_markdown?: null | string
+  tag: string
+}
+
+export interface CutReleaseResponse {
+  committish: string
+  recorded: boolean
+  release_url: null | string
+  tag: string
+  warning?: null | string
+}
+
 // Dashboard types are hand-written: the /admin/dashboard/* endpoints are
 // not in the committed OpenAPI snapshot yet. (DatastoreStatus /
 // ServiceStatus live in their own alphabetical slots for module sort.)
@@ -1133,6 +1149,7 @@ export interface PluginAssignmentResponse {
   supports_histogram?: boolean
   supports_lifecycle_sync?: boolean
 }
+
 export interface PluginAssignmentRow {
   default: boolean
   identity_plugin_id?: null | string
@@ -1141,6 +1158,7 @@ export interface PluginAssignmentRow {
   project_type_name: string
   project_type_slug: string
 }
+
 export interface PluginConfigurationResponse {
   auth_type: 'api_token' | 'oauth2'
   fields: PluginCredentialField[]
@@ -1154,7 +1172,6 @@ export interface PluginCreate {
   plugin_slug: string
   service_application_slug?: null | string
 }
-
 export interface PluginCredentialField {
   description: null | string
   label: string
@@ -1168,6 +1185,7 @@ export interface PluginEdge {
   target: PluginEntity
   target_label: string
 }
+
 export interface PluginEdgeLabel {
   from_labels: string[]
   name: string
@@ -1184,7 +1202,6 @@ export interface PluginEdgePut {
 // vertex_labels manifest entry).  Shape varies per plugin model_ref;
 // the host returns whatever Pydantic.model_dump() produced.
 export type PluginEntity = Record<string, unknown> & { id: string }
-
 export interface PluginEntityCreate {
   [key: string]: unknown
 }
@@ -1196,7 +1213,6 @@ export interface PluginEntitySchema {
   title?: string
   type: 'object'
 }
-
 export interface PluginOptionDef {
   choices?: null | string[]
   default?: boolean | null | number | string
@@ -1223,6 +1239,7 @@ export interface PluginResponse {
   status: 'active' | 'unavailable'
   used_as_login?: boolean
 }
+
 // The subset of plugin types that render a project-detail tab. Not
 // every plugin type is a tab (e.g. webhook, analysis): tabs ⊆ plugins.
 export type PluginTab =
@@ -1231,6 +1248,7 @@ export type PluginTab =
   | 'incidents'
   | 'lifecycle'
   | 'logs'
+
 // A plugin assignment is keyed by the plugin's type. Mirrors
 // imbi_common.plugins.PluginType (the full manifest set).
 export type PluginType =
@@ -1270,9 +1288,20 @@ export interface PluginVertexLabel {
   }
 }
 export type ProjectRelationship = Schemas['ProjectRelationship']
+
 export type ProjectRelationshipsResponse =
   Schemas['ProjectRelationshipsResponse']
-
+// Releases tab (build-and-release-only projects). Commit/tag data is read
+// from ClickHouse; release notes come from the graph Release nodes.
+export interface RecentCommit {
+  author?: null | string
+  authored_at: string
+  ci_status: DeploymentCommitCiStatus
+  message: string
+  sha: string
+  short_sha: string
+  url?: null | string
+}
 export interface Release {
   committish: string
   created_at: string
@@ -1303,13 +1332,37 @@ export interface ReleaseDependencyComponent {
   supplier?: null | string
   version: string
 }
-
 export interface ReleaseDependencyIdentifier {
   kind: string
   value: string
 }
 
 export type ReleaseDependencyScope = 'excluded' | 'optional' | 'required'
+
+export interface ReleaseDrift {
+  commits: RecentCommit[]
+  commits_since_tag: number
+  head_sha: null | string
+  latest_tag: null | string
+  latest_tag_at: null | string
+  latest_tag_sha: null | string
+  suggested_bump: SemverBump
+  suggested_tag: string
+}
+
+export interface ReleaseHistoryEntry {
+  author?: null | string
+  ci_status: DeploymentCommitCiStatus
+  notes_markdown?: null | string
+  package_url?: null | string
+  published_at?: null | string
+  release_url?: null | string
+  sha: string
+  short_sha: string
+  tag: string
+  tag_url?: null | string
+  title?: null | string
+}
 
 export interface ReleaseLink {
   label?: null | string
