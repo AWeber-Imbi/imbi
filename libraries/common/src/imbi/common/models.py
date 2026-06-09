@@ -312,8 +312,22 @@ class Environment(Node):
 
 
 class ProjectType(Node):
+    # ``deployable`` projects deploy into environments (Deployments tab);
+    # ``releasable`` projects publish an artifact via tag + release with no
+    # deploy step (Releases tab). The two are mutually exclusive: a type is
+    # one or the other, or neither.
     deployable: bool = False
+    releasable: bool = False
     organization: BelongsToOrganization
+
+    @pydantic.model_validator(mode='after')
+    def validate_deployable_releasable_exclusive(self) -> typing.Self:
+        """Reject a type marked both deployable and releasable."""
+        if self.deployable and self.releasable:
+            raise ValueError(
+                'deployable and releasable are mutually exclusive'
+            )
+        return self
 
 
 class ServiceApplication(GraphModel):

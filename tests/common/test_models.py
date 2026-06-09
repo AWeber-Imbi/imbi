@@ -287,6 +287,30 @@ class NodeModelTestCase(unittest.TestCase):
         )
         self.assertTrue(project_type.deployable)
 
+    def test_project_type_releasable(self) -> None:
+        """Explicit override for the releasable flag round-trips."""
+        org = models.Organization(name='Org', slug='org')
+        project_type = models.ProjectType(
+            name='Backend Library',
+            slug='backend-libraries',
+            organization=org,
+            releasable=True,
+        )
+        self.assertTrue(project_type.releasable)
+        self.assertFalse(project_type.deployable)
+
+    def test_project_type_deployable_releasable_exclusive(self) -> None:
+        """A type cannot be both deployable and releasable."""
+        org = models.Organization(name='Org', slug='org')
+        with self.assertRaises(pydantic.ValidationError):
+            models.ProjectType(
+                name='Web Service',
+                slug='web-service',
+                organization=org,
+                deployable=True,
+                releasable=True,
+            )
+
     def test_node_timestamps_defaults(self) -> None:
         """Test that created_at defaults to now, updated_at to None."""
         org = models.Organization(
