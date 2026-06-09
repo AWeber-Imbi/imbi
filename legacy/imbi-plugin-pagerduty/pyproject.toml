@@ -1,0 +1,129 @@
+[project]
+name = "imbi-plugin-pagerduty"
+version = "2.10.0"
+description = "PagerDuty lifecycle, webhook, and incidents plugins for Imbi"
+readme = "README.md"
+requires-python = ">=3.14"
+license = { text = "BSD-3-Clause" }
+authors = [{ name = "Gavin M. Roy", email = "gavinr@aweber.com" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+  "httpx>=0.27",
+  "imbi-common[databases]==2.10.0",
+  "pydantic>=2",
+]
+
+[project.entry-points."imbi.plugins"]
+pagerduty-lifecycle = "imbi_plugin_pagerduty.lifecycle:PagerDutyLifecyclePlugin"
+pagerduty-webhook = "imbi_plugin_pagerduty.webhook:PagerDutyWebhookPlugin"
+pagerduty-incidents = "imbi_plugin_pagerduty.incidents:PagerDutyIncidentsPlugin"
+
+[dependency-groups]
+dev = [
+  "basedpyright",
+  "coverage[toml]",
+  "imbi-common[server,databases]==2.10.0",
+  "pre-commit",
+  "pytest",
+  "pytest-asyncio",
+  "respx",
+  "ruff~=0.14.6",
+]
+dist = ["build", "twine", "wheel"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.coverage.report]
+exclude_also = ["typing.TYPE_CHECKING"]
+fail_under = 85
+show_missing = true
+
+[tool.coverage.run]
+branch = true
+source = ["src/imbi_plugin_pagerduty"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/imbi_plugin_pagerduty"]
+
+[tool.pyright]
+executionEnvironments = [
+  { root = "src" },
+  { root = "tests", reportPrivateUsage = false },
+]
+deprecateTypingAliases = true
+reportMissingSuperCall = "hint"
+reportMissingTypeStubs = false
+typeCheckingMode = "strict"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 79
+target-version = "py314"
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint]
+select = [
+  "BLE",
+  "C4",
+  "C90",
+  "E",
+  "W",
+  "F",
+  "G",
+  "I",
+  "N",
+  "Q",
+  "S",
+  "ASYNC",
+  "B",
+  "DTZ",
+  "FURB",
+  "RUF",
+  "T20",
+  "UP",
+]
+ignore = [
+  "ASYNC109",
+  "N818",
+  "RSE",
+  "S105",
+  "TRY003",
+  "TRY400",
+  "UP047",
+]
+flake8-quotes = { inline-quotes = "single" }
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S"]
+
+[tool.uv]
+default-groups = ["dev"]
+exclude-newer = "7 days"
+exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "imbi-plugin-aws" = false, "imbi-plugin-github" = false, "imbi-plugin-logzio" = false, "imbi-plugin-oidc" = false, "imbi-plugin-pagerduty" = false, "imbi-plugin-sentry" = false, "imbi-plugin-sonarqube" = false }
+
+# TEMPORARY: tracks unreleased imbi-common (incidents plugin contract,
+# ServiceWriteback.webhook_secret_enc) on main. Drop this source and bump
+# the pin to ==2.11.x once imbi-common 2.11 is released.
+[tool.uv.sources]
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true

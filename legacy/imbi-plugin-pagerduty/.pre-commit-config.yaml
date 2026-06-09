@@ -1,0 +1,39 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: debug-statements
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.6
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/tombi-toml/tombi-pre-commit
+    rev: v0.7.25
+    hooks:
+      - id: tombi-format
+        # uv owns uv.lock's formatting; tombi reflows it (2- vs 4-space),
+        # producing whole-file churn on every dependency change.
+        exclude: ^uv\.lock$
+
+  - repo: local
+    hooks:
+      - id: basedpyright
+        name: basedpyright
+        language: system
+        types: [python]
+        pass_filenames: false
+        entry: uv
+        args:
+          - run
+          - basedpyright
+          - src
