@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import json
 import typing
 import unittest.mock
@@ -629,6 +631,196 @@ class ProcessNotificationTests(helpers.TestCase):
         )
         self.assertEqual(204, response.status_code)
         self.assertEqual([], ACTION_CALLS)
+
+    async def _set_edge_secret(self, secret: str) -> None:
+        """Encrypt ``secret`` onto the project's EXISTS_IN edge."""
+        enc = TokenEncryption.get_instance().encrypt(secret)
+        await self.g.execute(
+            'MATCH (:Project {{id: {pid}}})'
+            '      -[ei:EXISTS_IN {{identifier: {ext_id}}}]->()'
+            ' SET ei.webhook_secret_enc = {enc} RETURN 1 AS r',
+            {'pid': self.proj_id, 'ext_id': self.ext_id, 'enc': enc},
+            ['r'],
+        )
+
+    async def _set_project_edge_secret(
+        self, project_id: str, secret: str
+    ) -> None:
+        """Encrypt ``secret`` onto a specific project's EXISTS_IN edge."""
+        enc = TokenEncryption.get_instance().encrypt(secret)
+        await self.g.execute(
+            'MATCH (:Project {{id: {pid}}})'
+            '      -[ei:EXISTS_IN {{identifier: {ext_id}}}]->()'
+            ' SET ei.webhook_secret_enc = {enc} RETURN 1 AS r',
+            {'pid': project_id, 'ext_id': self.ext_id, 'enc': enc},
+            ['r'],
+        )
+
+    async def _post_raw(
+        self, raw: bytes, headers: dict[str, str]
+    ) -> httpx.Response:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=self.app), base_url='http://test'
+        ) as client:
+            return await client.post(
+                f'/notifications/{self.webhook_id}',
+                content=raw,
+                headers={'content-type': 'application/json', **headers},
+            )
+
+    @staticmethod
+    def _sign(secret: str, raw: bytes) -> str:
+        digest = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+        return f'v1={digest}'
+
+    async def test_valid_signature_accepted(self) -> None:
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                await self._set_edge_secret('whsec')
+                await self._add_rule(filter_expression='true')
+                raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+                resp = await self._post_raw(
+                    raw, {'X-PagerDuty-Signature': self._sign('whsec', raw)}
+                )
+                self.assertEqual(202, resp.status_code)
+                self.assertEqual(1, len(ACTION_CALLS))
+            finally:
+                TokenEncryption.reset_instance()
+
+    async def test_multi_token_signature_accepted(self) -> None:
+        # Comma-separated tokens (secret rotation) verify if any matches.
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                await self._set_edge_secret('whsec')
+                await self._add_rule(filter_expression='true')
+                raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+                header = f'v1=deadbeef,{self._sign("whsec", raw)}'
+                resp = await self._post_raw(
+                    raw, {'X-PagerDuty-Signature': header}
+                )
+                self.assertEqual(202, resp.status_code)
+                self.assertEqual(1, len(ACTION_CALLS))
+            finally:
+                TokenEncryption.reset_instance()
+
+    async def test_tampered_body_dropped(self) -> None:
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                await self._set_edge_secret('whsec')
+                await self._add_rule(filter_expression='true')
+                signed = json.dumps({'repo': {'id': self.ext_id}}).encode()
+                sig = self._sign('whsec', signed)
+                # Same id (so the project still resolves) but extra bytes,
+                # so the signature no longer matches the delivered body.
+                tampered = json.dumps(
+                    {'repo': {'id': self.ext_id}, 'evil': True}
+                ).encode()
+                resp = await self._post_raw(
+                    tampered, {'X-PagerDuty-Signature': sig}
+                )
+                self.assertEqual(204, resp.status_code)
+                self.assertEqual([], ACTION_CALLS)
+            finally:
+                TokenEncryption.reset_instance()
+
+    async def test_missing_signature_header_dropped(self) -> None:
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                await self._set_edge_secret('whsec')
+                await self._add_rule(filter_expression='true')
+                raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+                resp = await self._post_raw(raw, {})
+                self.assertEqual(204, resp.status_code)
+                self.assertEqual([], ACTION_CALLS)
+            finally:
+                TokenEncryption.reset_instance()
+
+    async def test_undecryptable_secret_dropped(self) -> None:
+        # A stored secret that isn't valid ciphertext fails closed
+        # rather than 5xx-ing or letting the delivery through.
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                await self.g.execute(
+                    'MATCH (:Project {{id: {pid}}})'
+                    '      -[ei:EXISTS_IN {{identifier: {ext_id}}}]->()'
+                    ' SET ei.webhook_secret_enc = {enc} RETURN 1 AS r',
+                    {
+                        'pid': self.proj_id,
+                        'ext_id': self.ext_id,
+                        'enc': 'not-valid-ciphertext',
+                    },
+                    ['r'],
+                )
+                await self._add_rule(filter_expression='true')
+                raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+                resp = await self._post_raw(
+                    raw, {'X-PagerDuty-Signature': 'v1=whatever'}
+                )
+                self.assertEqual(204, resp.status_code)
+                self.assertEqual([], ACTION_CALLS)
+            finally:
+                TokenEncryption.reset_instance()
+
+    async def test_multi_project_divergent_secret_fails_closed(self) -> None:
+        # When external_id fans out to two projects with different
+        # secrets, a signature valid for only one edge must not let the
+        # delivery through: every secret-bearing edge has to verify, so
+        # acceptance is not dependent on row order.
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                second_id = await self._create_extra_project()
+                await self._set_edge_secret('whsec')
+                await self._set_project_edge_secret(second_id, 'other-secret')
+                await self._add_rule(filter_expression='true')
+                raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+                # Signed only for the first project's secret.
+                resp = await self._post_raw(
+                    raw, {'X-PagerDuty-Signature': self._sign('whsec', raw)}
+                )
+                self.assertEqual(204, resp.status_code)
+                self.assertEqual([], ACTION_CALLS)
+            finally:
+                TokenEncryption.reset_instance()
+
+    async def test_multi_project_all_secrets_verify_accepted(self) -> None:
+        # Same external_id, two projects, the request is signed with the
+        # shared secret carried by every edge: the delivery is accepted
+        # and fans out to both projects.
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                second_id = await self._create_extra_project()
+                await self._set_edge_secret('whsec')
+                await self._set_project_edge_secret(second_id, 'whsec')
+                await self._add_rule(filter_expression='true')
+                raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+                resp = await self._post_raw(
+                    raw, {'X-PagerDuty-Signature': self._sign('whsec', raw)}
+                )
+                self.assertEqual(202, resp.status_code)
+                self.assertEqual(2, len(ACTION_CALLS))
+            finally:
+                TokenEncryption.reset_instance()
 
     async def test_filter_matches_on_resolved_event_type(self) -> None:
         await self._set_implemented_by(event_type_selector='x-github-event')

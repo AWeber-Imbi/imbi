@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import http
 import json
 import logging
@@ -248,29 +250,14 @@ async def process_notification(
         )
         return
 
-    project_records = await db.execute(
-        'MATCH (p:Project)'
-        '      -[:EXISTS_IN {{identifier: {external_id}}}]'
-        '      ->(tps:ThirdPartyService {{slug: {tps_slug}}}) '
-        'OPTIONAL MATCH (p)-[:OWNED_BY]->(t:Team)'
-        ' RETURN p.id AS project_id, p.slug AS project_slug,'
-        '        t.slug AS team_slug',
-        {'external_id': str(resolved), 'tps_slug': tps_slug},
-        ['project_id', 'project_slug', 'team_slug'],
+    project_records = await _resolve_project_and_verify(
+        db,
+        request,
+        external_id=str(resolved),
+        tps_slug=tps_slug,
+        webhook_id=webhook_id,
     )
-    if not project_records:
-        LOGGER.warning(
-            'Ignoring notification: no project found for external_id=%r'
-            ' (webhook_id=%r tps=%r)',
-            str(resolved),
-            webhook_id,
-            tps_slug,
-            extra={
-                'webhook_id': webhook_id,
-                'tps_slug': tps_slug,
-                'external_identifier': str(resolved),
-            },
-        )
+    if project_records is None:
         return
 
     user_id = await _resolve_user_id(
@@ -419,6 +406,127 @@ def _plugin_options(raw: object) -> dict[str, typing.Any]:
         if isinstance(parsed, dict):
             return typing.cast('dict[str, typing.Any]', parsed)
     return {}
+
+
+def _verify_webhook_signature(
+    *,
+    secret_enc: str,
+    raw_body: bytes,
+    signature_header: str | None,
+    webhook_id: str | None,
+    tps_slug: str,
+) -> bool:
+    """Verify an HMAC-signed inbound delivery; fail closed.
+
+    The matched ``EXISTS_IN`` edge carries an encrypted per-service
+    signing secret (e.g. a PagerDuty V3 webhook-subscription secret).
+    The signature header is one or more comma-separated ``v1=<hex>``
+    tokens, each an HMAC-SHA256 of the raw request body keyed by the
+    decrypted secret; the delivery is accepted if any token matches
+    (constant-time, so a secret rotation that briefly emits two
+    signatures still verifies). Returns ``False`` -- meaning drop the
+    delivery -- on a missing header, decrypt failure, or no match.
+
+    Note: the header name is PagerDuty's; PagerDuty is the only producer
+    of edge signing secrets today. A second signed integration would add
+    a per-TPS scheme selector rather than another hard-coded header.
+    """
+    if not signature_header:
+        LOGGER.warning(
+            'Signature required but header missing; dropping delivery '
+            '(webhook_id=%r tps=%r)',
+            webhook_id,
+            tps_slug,
+            extra={'webhook_id': webhook_id, 'tps_slug': tps_slug},
+        )
+        return False
+    try:
+        secret = TokenEncryption.get_instance().decrypt(secret_enc)
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Webhook signing secret decrypt failed; dropping delivery '
+            '(webhook_id=%r tps=%r)',
+            webhook_id,
+            tps_slug,
+            extra={'webhook_id': webhook_id, 'tps_slug': tps_slug},
+        )
+        return False
+    if not secret:
+        return False
+    expected = (
+        'v1=' + hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+    )
+    for token in signature_header.split(','):
+        if hmac.compare_digest(token.strip(), expected):
+            return True
+    LOGGER.warning(
+        'Webhook signature verification failed; dropping delivery '
+        '(webhook_id=%r tps=%r)',
+        webhook_id,
+        tps_slug,
+        extra={'webhook_id': webhook_id, 'tps_slug': tps_slug},
+    )
+    return False
+
+
+async def _resolve_project_and_verify(
+    db: graph.Pool,
+    request: fastapi.Request,
+    *,
+    external_id: str,
+    tps_slug: str,
+    webhook_id: str | None,
+) -> list[dict[str, typing.Any]] | None:
+    """Resolve the project(s) for an inbound delivery and verify it.
+
+    Matches ``(:Project)-[:EXISTS_IN {identifier}]->(:tps)`` and returns
+    the rows. Returns ``None`` -- meaning the caller should drop the
+    delivery -- when no project matches, or when any matched edge carries
+    a webhook signing secret and the request's signature does not verify
+    against it (parse-then-verify, fail closed). When ``external_id``
+    fans out to multiple projects, every secret-bearing edge must verify
+    against the same request body, so acceptance is not row-order
+    dependent. TPS that don't sign deliveries store no secret and pass
+    straight through.
+    """
+    project_records: list[dict[str, typing.Any]] = await db.execute(
+        'MATCH (p:Project)'
+        '      -[ei:EXISTS_IN {{identifier: {external_id}}}]'
+        '      ->(tps:ThirdPartyService {{slug: {tps_slug}}}) '
+        'OPTIONAL MATCH (p)-[:OWNED_BY]->(t:Team)'
+        ' RETURN p.id AS project_id, p.slug AS project_slug,'
+        '        t.slug AS team_slug,'
+        '        ei.webhook_secret_enc AS webhook_secret_enc',
+        {'external_id': external_id, 'tps_slug': tps_slug},
+        ['project_id', 'project_slug', 'team_slug', 'webhook_secret_enc'],
+    )
+    if not project_records:
+        LOGGER.warning(
+            'Ignoring notification: no project found for external_id=%r'
+            ' (webhook_id=%r tps=%r)',
+            external_id,
+            webhook_id,
+            tps_slug,
+            extra={
+                'webhook_id': webhook_id,
+                'tps_slug': tps_slug,
+                'external_identifier': external_id,
+            },
+        )
+        return None
+    raw_body = await request.body()
+    signature_header = request.headers.get('x-pagerduty-signature')
+    for record in project_records:
+        secret_enc = graph.parse_agtype(record.get('webhook_secret_enc'))
+        if secret_enc and not _verify_webhook_signature(
+            secret_enc=str(secret_enc),
+            raw_body=raw_body,
+            signature_header=signature_header,
+            webhook_id=webhook_id,
+            tps_slug=tps_slug,
+        ):
+            return None
+    return project_records
 
 
 def _decrypt_plugin_credentials(
