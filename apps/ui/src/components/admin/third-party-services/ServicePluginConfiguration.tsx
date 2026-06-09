@@ -57,6 +57,7 @@ import {
 } from '@/components/ui/table'
 import { useServiceDeploymentResync } from '@/hooks/useDeploymentResync'
 import { useExpandableRows } from '@/hooks/useExpandableRows'
+import { useServiceLifecycleSync } from '@/hooks/useLifecycleSync'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
 import type {
@@ -188,9 +189,58 @@ export function ServicePluginConfiguration({
           {manifest?.supports_deployment_sync === true && (
             <ResyncCard orgSlug={orgSlug} serviceSlug={serviceSlug} />
           )}
+          {manifest?.supports_lifecycle_sync === true && (
+            <LifecycleSyncCard orgSlug={orgSlug} serviceSlug={serviceSlug} />
+          )}
         </>
       )}
     </div>
+  )
+}
+
+// ------------------------- Lifecycle sync ------------------------------
+
+function LifecycleSyncCard({
+  orgSlug,
+  serviceSlug,
+}: {
+  orgSlug: string
+  serviceSlug: string
+}) {
+  const [showConfirm, setShowConfirm] = useState(false)
+  const sync = useServiceLifecycleSync(orgSlug, serviceSlug)
+  const onConfirm = () => {
+    sync.mutate(undefined, { onSettled: () => setShowConfirm(false) })
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Sync lifecycle for all projects</CardTitle>
+        <CardDescription>
+          Push current Imbi state to the remote for every project that uses this
+          plugin -- re-running each project's upsert to create missing remotes
+          and update existing ones, with bounded concurrency.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {showConfirm ? (
+          <ResyncConfirm
+            isPending={sync.isPending}
+            onCancel={() => setShowConfirm(false)}
+            onConfirm={onConfirm}
+          />
+        ) : (
+          <Button
+            disabled={sync.isPending}
+            onClick={() => setShowConfirm(true)}
+            size="sm"
+            variant="outline"
+          >
+            Sync All Projects
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

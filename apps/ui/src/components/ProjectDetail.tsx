@@ -52,6 +52,7 @@ import { DeploymentRunWatcher } from '@/components/deploy/DeploymentRunWatcher'
 import { ProjectDocumentsTab } from '@/components/documents/ProjectDocumentsTab'
 import { OperationsLog } from '@/components/OperationsLog'
 import { ConfigurationTab } from '@/components/project/ConfigurationTab'
+import { IncidentsTab } from '@/components/project/IncidentsTab'
 import { LogsTab } from '@/components/project/LogsTab'
 import { ProjectPullRequestsTab } from '@/components/project/ProjectPullRequestsTab'
 import { ProjectActivityLog } from '@/components/ProjectActivityLog'
@@ -109,6 +110,7 @@ const VALID_TABS = [
   'dependencies',
   'relationships',
   'logs',
+  'incidents',
   'documents',
   'operations-log',
   'pull-requests',
@@ -468,6 +470,7 @@ export function ProjectDetail({
       hasConfigurationPlugin: plugins.some(
         (a) => a.plugin_type === 'configuration',
       ),
+      hasIncidentsPlugin: plugins.some((a) => a.plugin_type === 'incidents'),
       hasLifecyclePlugin: plugins.some((a) => a.plugin_type === 'lifecycle'),
       hasLogsPlugin: plugins.some((a) => a.plugin_type === 'logs'),
     }),
@@ -478,6 +481,8 @@ export function ProjectDetail({
     (projectPluginsView?.hasConfigurationPlugin ?? false)
   const hasLogsPlugin =
     projectPluginsSuccess && (projectPluginsView?.hasLogsPlugin ?? false)
+  const hasIncidentsPlugin =
+    projectPluginsSuccess && (projectPluginsView?.hasIncidentsPlugin ?? false)
   const hasLifecyclePlugin =
     projectPluginsSuccess && (projectPluginsView?.hasLifecyclePlugin ?? false)
   const deploymentPlugin = projectPluginsSuccess
@@ -618,6 +623,7 @@ export function ProjectDetail({
     if (
       (activeTab === 'configuration' && !hasConfigurationPlugin) ||
       (activeTab === 'logs' && !hasLogsPlugin) ||
+      (activeTab === 'incidents' && !hasIncidentsPlugin) ||
       (activeTab === 'pull-requests' && !hasLifecyclePlugin)
     ) {
       navigate(`/projects/${project.id}`, { replace: true })
@@ -625,6 +631,7 @@ export function ProjectDetail({
   }, [
     activeTab,
     hasConfigurationPlugin,
+    hasIncidentsPlugin,
     hasLifecyclePlugin,
     hasLogsPlugin,
     navigate,
@@ -756,6 +763,9 @@ export function ProjectDetail({
           : 'Documents',
     },
     ...(hasLogsPlugin ? [{ id: 'logs' as const, label: 'Logs' }] : []),
+    ...(hasIncidentsPlugin
+      ? [{ id: 'incidents' as const, label: 'Incidents' }]
+      : []),
     { id: 'operations-log', label: 'Operations Log' },
     ...(hasLifecyclePlugin
       ? [
@@ -1252,6 +1262,11 @@ export function ProjectDetail({
               orgSlug={orgSlug}
               projectId={project.id}
             />
+          </TabsContent>
+        )}
+        {hasIncidentsPlugin && (
+          <TabsContent value="incidents">
+            <IncidentsTab orgSlug={orgSlug} projectId={project.id} />
           </TabsContent>
         )}
         <TabsContent value="documents">

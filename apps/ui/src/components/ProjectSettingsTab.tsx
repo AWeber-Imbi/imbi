@@ -27,6 +27,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useProjectLifecycleSync } from '@/hooks/useLifecycleSync'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import type { Project } from '@/types'
@@ -153,6 +154,8 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
     [projectPlugins],
   )
 
+  const lifecycleSync = useProjectLifecycleSync(orgSlug, project.id)
+
   const {
     data: linkDefs = [],
     isError: linkDefsError,
@@ -192,6 +195,29 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
       <IntegrationsCard orgSlug={orgSlug} projectId={project.id} />
 
       <ProjectPluginsSection orgSlug={orgSlug} projectId={project.id} />
+
+      {hasLifecyclePlugin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Sync lifecycle</CardTitle>
+            <CardDescription className="text-secondary">
+              Push this project&apos;s current state to its lifecycle remotes
+              (e.g. create or update the PagerDuty service), re-running each
+              lifecycle plugin&apos;s upsert.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              disabled={lifecycleSync.isPending}
+              onClick={() => lifecycleSync.mutate()}
+              size="sm"
+              variant="outline"
+            >
+              {lifecycleSync.isPending ? 'Syncing...' : 'Sync Lifecycle'}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="border-amber-300">
         <CardHeader>

@@ -44,6 +44,7 @@ import type {
   IdentityConnectionResponse,
   IdentityConnectionStartRequest,
   IdentityConnectionStartResponse,
+  IncidentResult,
   InstalledPlugin,
   Integration,
   IntegrationCreate,
@@ -1994,6 +1995,37 @@ export const resyncServiceDeployments = (
     `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/deployments/resync`,
   )
 
+// Lifecycle push-sync
+
+export interface LifecycleSyncError {
+  detail: string
+  project_id: string
+}
+
+export interface LifecycleSyncSummary {
+  errors: LifecycleSyncError[]
+  failed: number
+  projects: number
+  skipped: number
+  synced: number
+}
+
+export const syncProjectLifecycle = (
+  orgSlug: string,
+  projectId: string,
+): Promise<LifecycleSyncSummary> =>
+  apiClient.post<LifecycleSyncSummary>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/lifecycle/sync`,
+  )
+
+export const syncServiceLifecycle = (
+  orgSlug: string,
+  serviceSlug: string,
+): Promise<LifecycleSyncSummary> =>
+  apiClient.post<LifecycleSyncSummary>(
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/lifecycle/sync`,
+  )
+
 // Identity Plugins (org-scoped)
 export interface IdentityPluginRef {
   label: string
@@ -2185,6 +2217,37 @@ export const searchProjectLogs = (
   }
   return apiClient.get<LogResultResponse>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/logs/`,
+    query,
+    signal,
+  )
+}
+
+export interface IncidentSearchParams {
+  cursor?: string
+  end_time?: string
+  limit?: number
+  source?: string
+  start_time?: string
+  status?: string[]
+}
+
+export const searchProjectIncidents = (
+  orgSlug: string,
+  projectId: string,
+  params?: IncidentSearchParams,
+  signal?: AbortSignal,
+) => {
+  const query: Record<string, string | string[]> = {}
+  if (params) {
+    if (params.source) query.source = params.source
+    if (params.start_time) query.start_time = params.start_time
+    if (params.end_time) query.end_time = params.end_time
+    if (params.cursor) query.cursor = params.cursor
+    if (params.limit != null) query.limit = String(params.limit)
+    if (params.status?.length) query.status = params.status
+  }
+  return apiClient.get<IncidentResult>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/incidents/`,
     query,
     signal,
   )

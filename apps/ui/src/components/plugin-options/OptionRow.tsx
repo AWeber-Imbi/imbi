@@ -2,6 +2,7 @@ import * as React from 'react'
 
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { KeyValueEditor } from '@/components/ui/key-value-editor'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -112,12 +113,21 @@ function IntegerControl({ id, onChange, placeholder, value }: ControlProps) {
   )
 }
 
+function MappingControl({ onChange, value }: ControlProps) {
+  const record =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, number | string>)
+      : {}
+  return <KeyValueEditor onChange={(next) => onChange(next)} value={record} />
+}
+
 const CONTROLS_BY_TYPE: Record<
   PluginOptionDef['type'],
   (p: ControlProps) => React.ReactNode
 > = {
   boolean: (p) => <BooleanControl {...p} />,
   integer: (p) => <IntegerControl {...p} />,
+  mapping: (p) => <MappingControl {...p} />,
   secret: (p) => <TextControl {...p} />,
   string: (p) => <TextControl {...p} />,
 }

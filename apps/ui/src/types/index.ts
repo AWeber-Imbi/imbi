@@ -841,6 +841,25 @@ export interface IdentityPollingDescriptor {
   verification_uri_complete: null | string
 }
 
+// Mirrors imbi_common.plugins.IncidentResult / IncidentView, returned by
+// GET /organizations/{org}/projects/{id}/incidents/.
+export interface IncidentResult {
+  incidents: IncidentView[]
+  next_cursor: null | string
+  total: null | number
+}
+
+export interface IncidentView {
+  created_at: string
+  id: string
+  resolved_at?: null | string
+  service?: null | string
+  status: string
+  title: string
+  urgency?: null | string
+  url: string
+}
+
 export interface InstalledPlugin {
   api_version: number
   auth_type: 'api_token' | 'aws-iam-ic' | 'oauth2' | 'oidc'
@@ -868,6 +887,7 @@ export interface InstalledPlugin {
   slug: string
   supported_tabs: PluginType[]
   supports_deployment_sync?: boolean
+  supports_lifecycle_sync?: boolean
   vertex_labels?: PluginVertexLabel[]
   // Body copy shown on the dashboard "unconnected integration" widget.
   // Resolved server-side (override > manifest > null).  ``_default`` is
@@ -1111,6 +1131,7 @@ export interface PluginAssignmentResponse {
   source: 'merged' | 'project' | 'project_type'
   supports_deployment_sync?: boolean
   supports_histogram?: boolean
+  supports_lifecycle_sync?: boolean
 }
 export interface PluginAssignmentRow {
   default: boolean
@@ -1183,7 +1204,7 @@ export interface PluginOptionDef {
   label: string
   name: string
   required: boolean
-  type: 'boolean' | 'integer' | 'secret' | 'string'
+  type: 'boolean' | 'integer' | 'mapping' | 'secret' | 'string'
 }
 
 // Plugin types (hand-written until api-generated.ts snapshot is refreshed)
@@ -1204,7 +1225,12 @@ export interface PluginResponse {
 }
 // The subset of plugin types that render a project-detail tab. Not
 // every plugin type is a tab (e.g. webhook, analysis): tabs ⊆ plugins.
-export type PluginTab = 'configuration' | 'deployment' | 'lifecycle' | 'logs'
+export type PluginTab =
+  | 'configuration'
+  | 'deployment'
+  | 'incidents'
+  | 'lifecycle'
+  | 'logs'
 // A plugin assignment is keyed by the plugin's type. Mirrors
 // imbi_common.plugins.PluginType (the full manifest set).
 export type PluginType =
@@ -1212,6 +1238,7 @@ export type PluginType =
   | 'configuration'
   | 'deployment'
   | 'identity'
+  | 'incidents'
   | 'lifecycle'
   | 'logs'
   | 'webhook'
