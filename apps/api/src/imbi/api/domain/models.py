@@ -936,6 +936,10 @@ class PluginAssignmentResponse(pydantic.BaseModel):
     # settings page (and the admin TPS page), which push current Imbi
     # state to the remote on demand.
     supports_lifecycle_sync: bool = False
+    # Parent third-party service (``ThirdPartyService -[:HAS_PLUGIN]->
+    # Plugin``) so the UI can show which service powers the tab.
+    service_name: str | None = None
+    service_icon: str | None = None
 
 
 class LifecycleSyncError(pydantic.BaseModel):

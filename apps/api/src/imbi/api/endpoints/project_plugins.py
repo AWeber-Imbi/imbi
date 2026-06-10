@@ -37,10 +37,14 @@ async def get_project_plugins(
           (o:Organization {{slug: {org_slug}}})
     OPTIONAL MATCH (proj)-[:TYPE]->(pt:ProjectType)
                    -[pte:USES_PLUGIN]->(p2:Plugin)
+    OPTIONAL MATCH (s2:ThirdPartyService)-[:HAS_PLUGIN]->(p2)
     WITH proj, collect({{plugin: p2{{.*}}, edge: pte{{.*}},
+                         service: s2{{.*}},
                          src: 'project_type'}}) AS pt_rows
     OPTIONAL MATCH (proj)-[pe:USES_PLUGIN]->(p:Plugin)
+    OPTIONAL MATCH (s:ThirdPartyService)-[:HAS_PLUGIN]->(p)
     WITH pt_rows, collect({{plugin: p{{.*}}, edge: pe{{.*}},
+                            service: s{{.*}},
                             src: 'project'}}) AS proj_rows
     RETURN pt_rows, proj_rows
     """
@@ -69,6 +73,7 @@ async def get_project_plugins(
             merged[plugin['id']] = {
                 'plugin': plugin,
                 'edge': graph.parse_agtype(row.get('edge')) or {},
+                'service': graph.parse_agtype(row.get('service')),
                 'source': 'project_type',
             }
     for row in proj_rows:
@@ -77,11 +82,14 @@ async def get_project_plugins(
             merged[plugin['id']] = {
                 'plugin': plugin,
                 'edge': graph.parse_agtype(row.get('edge')) or {},
+                'service': graph.parse_agtype(row.get('service')),
                 'source': 'project',
             }
 
     return [
-        build_assignment_response(v['plugin'], v['edge'], v['source'])
+        build_assignment_response(
+            v['plugin'], v['edge'], v['source'], v['service']
+        )
         for v in merged.values()
         if v['plugin'].get('id')
     ]

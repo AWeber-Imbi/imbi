@@ -110,6 +110,7 @@ def build_assignment_response(
     plugin: dict[str, typing.Any],
     edge: dict[str, typing.Any],
     source: typing.Literal['project', 'project_type', 'merged'],
+    service: dict[str, typing.Any] | None = None,
 ) -> models.PluginAssignmentResponse:
     """Build a PluginAssignmentResponse from parsed plugin/edge dicts."""
     supports_histogram = False
@@ -144,6 +145,8 @@ def build_assignment_response(
         supports_histogram=supports_histogram,
         supports_deployment_sync=supports_deployment_sync,
         supports_lifecycle_sync=supports_lifecycle_sync,
+        service_name=(service or {}).get('name'),
+        service_icon=(service or {}).get('icon'),
     )
 
 
