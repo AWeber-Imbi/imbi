@@ -112,6 +112,31 @@ function truncate(s: string, max: number): string {
 export const EMPTY_ACTIVE: ReadonlySet<string> = new Set()
 
 /**
+ * Display name + subhead for the vertex a document is attached to —
+ * the "Project" column of the org-wide index. Projects show their
+ * comma-delimited type names; project types and users are labelled
+ * by kind.
+ */
+// fallow-ignore-next-line complexity
+export function attachmentDisplay(document: Document): {
+  name: string
+  sub: string
+} {
+  const attached = document.attached_to
+  if (!attached) return { name: '—', sub: '' }
+  if (attached.kind === 'project') {
+    return {
+      name: attached.name,
+      sub: (attached.project_types ?? []).join(', '),
+    }
+  }
+  if (attached.kind === 'project_type') {
+    return { name: attached.name, sub: 'Project type' }
+  }
+  return { name: attached.name || attached.id, sub: 'Personal' }
+}
+
+/**
  * Templates with no project-type restriction apply everywhere; otherwise a
  * template is only offered when it targets one of this project's types.
  */

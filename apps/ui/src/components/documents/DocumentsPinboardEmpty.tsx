@@ -10,12 +10,16 @@ import { filterTemplatesByProjectType } from './documentsHelpers'
 import { DocumentTagChip } from './DocumentTagChip'
 
 interface Props {
+  context?: 'project' | 'project_type' | 'user'
+  emptyHeading?: string
   onCreate: (template?: DocumentTemplate) => void
   orgSlug: string
   projectTypeSlugs?: string[]
 }
 
 export function DocumentsPinboardEmpty({
+  context = 'project',
+  emptyHeading = 'No documents yet for this project',
   onCreate,
   orgSlug,
   projectTypeSlugs,
@@ -26,14 +30,14 @@ export function DocumentsPinboardEmpty({
     isLoading: templatesLoading,
   } = useQuery<DocumentTemplate[]>({
     enabled: !!orgSlug,
-    queryFn: ({ signal }) => listDocumentTemplates(orgSlug, signal),
-    queryKey: ['documentTemplates', orgSlug],
+    queryFn: ({ signal }) => listDocumentTemplates(orgSlug, signal, context),
+    queryKey: ['documentTemplates', orgSlug, context],
   })
 
-  const visibleTemplates = filterTemplatesByProjectType(
-    templates,
-    projectTypeSlugs,
-  )
+  const visibleTemplates =
+    context === 'project'
+      ? filterTemplatesByProjectType(templates, projectTypeSlugs)
+      : templates
 
   return (
     <div className="border-tertiary bg-primary flex flex-col items-center gap-4 rounded-lg border px-10 py-14 text-center">
@@ -46,7 +50,7 @@ export function DocumentsPinboardEmpty({
       </div>
 
       <h2 className="text-h2 m-0 font-medium tracking-[-0.015em]">
-        No documents yet for this project
+        {emptyHeading}
       </h2>
       <p className="text-secondary m-0 max-w-180 text-sm leading-[1.6]">
         Documents capture decisions, reviews, and patterns that outlive any one

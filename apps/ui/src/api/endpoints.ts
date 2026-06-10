@@ -458,14 +458,16 @@ export const deleteLinkDefinition = (orgSlug: string, slug: string) =>
     `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/${encodeURIComponent(slug)}`,
   )
 
-// Document Templates (org-scoped)
+// Document Templates (org-scoped). `context` keeps only templates whose
+// type matches the attachment context (or is 'global').
 export const listDocumentTemplates = async (
   orgSlug: string,
   signal?: AbortSignal,
+  context?: 'project' | 'project_type' | 'user',
 ): Promise<DocumentTemplate[]> => {
   const response = await apiClient.get<DocumentTemplate[]>(
     `/organizations/${encodeURIComponent(orgSlug)}/document-templates/`,
-    undefined,
+    context ? { context } : undefined,
     signal,
   )
   return Array.isArray(response) ? response : []
@@ -1708,6 +1710,81 @@ export const deleteProjectDocument = (
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}`,
   )
 
+// Org-wide document index. Rows carry `attached_to` (project,
+// project type, or user), `comment_count`, and the author's display
+// name for the Documents index/feed.
+export const listOrgDocuments = async (
+  orgSlug: string,
+  params?: {
+    cursor?: string
+    limit?: number
+    project_id?: string
+    project_type?: string
+    tag?: string
+    user?: string
+  },
+  signal?: AbortSignal,
+): Promise<Document[]> => {
+  const response = await apiClient.get<DocumentListResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/documents/`,
+    params,
+    signal,
+  )
+  return response?.data ?? []
+}
+
+// Attachment-agnostic single-document operations — work regardless of
+// whether the document hangs off a project, a project type, or a user.
+export const patchOrgDocument = (
+  orgSlug: string,
+  documentId: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<Document>(
+    `/organizations/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(documentId)}`,
+    operations,
+  )
+
+export const deleteOrgDocument = (orgSlug: string, documentId: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(documentId)}`,
+  )
+
+// Documents attached to a user (org member).
+export const listUserDocuments = async (
+  orgSlug: string,
+  email: string,
+  signal?: AbortSignal,
+): Promise<Document[]> => {
+  const response = await apiClient.get<DocumentListResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/users/${encodeURIComponent(email)}/documents/`,
+    undefined,
+    signal,
+  )
+  return response?.data ?? []
+}
+
+export const createUserDocument = (
+  orgSlug: string,
+  email: string,
+  data: DocumentCreate,
+) =>
+  apiClient.post<Document>(
+    `/organizations/${encodeURIComponent(orgSlug)}/users/${encodeURIComponent(email)}/documents/`,
+    data,
+  )
+
+// Documents attached to a project type.
+export const createProjectTypeDocument = (
+  orgSlug: string,
+  typeSlug: string,
+  data: DocumentCreate,
+) =>
+  apiClient.post<Document>(
+    `/organizations/${encodeURIComponent(orgSlug)}/project-types/${encodeURIComponent(typeSlug)}/documents/`,
+    data,
+  )
+
 // Project integrations (EXISTS_IN edges). One row per third-party
 // service the project exists in; `createProjectService` also persists
 // the optional dashboard URL into the project's links.
@@ -1746,16 +1823,21 @@ export const deleteProjectService = (
 // Document comments. Hand-written like the document endpoints above; the
 // comments API is not yet in the committed openapi snapshot. Base path:
 // /organizations/{orgSlug}/projects/{projectId}/documents/{documentId}/comments
+// for project documents, or the attachment-agnostic
+// /organizations/{orgSlug}/documents/{documentId}/comments when
+// `projectId` is null (user- and project-type-attached documents).
 const documentCommentsPath = (
   orgSlug: string,
-  projectId: string,
+  projectId: null | string,
   documentId: string,
 ) =>
-  `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}/comments`
+  projectId === null
+    ? `/organizations/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(documentId)}/comments`
+    : `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}/comments`
 
 export const listDocumentComments = async (
   orgSlug: string,
-  projectId: string,
+  projectId: null | string,
   documentId: string,
   signal?: AbortSignal,
 ): Promise<CommentThread[]> => {
@@ -1769,7 +1851,7 @@ export const listDocumentComments = async (
 
 export const createCommentThread = (
   orgSlug: string,
-  projectId: string,
+  projectId: null | string,
   documentId: string,
   body: CreateThreadBody,
 ) =>
@@ -1780,7 +1862,7 @@ export const createCommentThread = (
 
 export const addCommentReply = (
   orgSlug: string,
-  projectId: string,
+  projectId: null | string,
   documentId: string,
   threadId: string,
   body: AddReplyBody,
@@ -1792,7 +1874,7 @@ export const addCommentReply = (
 
 export const resolveCommentThread = (
   orgSlug: string,
-  projectId: string,
+  projectId: null | string,
   documentId: string,
   threadId: string,
   resolved: boolean,
@@ -1804,7 +1886,7 @@ export const resolveCommentThread = (
 
 export const editComment = (
   orgSlug: string,
-  projectId: string,
+  projectId: null | string,
   documentId: string,
   threadId: string,
   commentId: string,
@@ -1821,7 +1903,7 @@ export const editComment = (
 
 export const acknowledgeComment = (
   orgSlug: string,
-  projectId: string,
+  projectId: null | string,
   documentId: string,
   threadId: string,
   commentId: string,
@@ -1833,7 +1915,7 @@ export const acknowledgeComment = (
 
 export const deleteComment = (
   orgSlug: string,
-  projectId: string,
+  projectId: null | string,
   documentId: string,
   threadId: string,
   commentId: string,

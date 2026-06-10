@@ -15,17 +15,17 @@ const STORAGE_PREFIX = 'imbi:comment-last-visit:'
  */
 export function useCommentLastVisit(
   orgSlug: string,
-  projectId: string,
+  projectId: null | string,
   documentId: string,
 ): number | undefined {
   const [lastVisit, setLastVisit] = useState<number | undefined>(undefined)
 
   useEffect(() => {
-    if (!orgSlug || !projectId || !documentId) {
+    if (!orgSlug || !documentId) {
       setLastVisit(undefined)
       return
     }
-    const key = `${STORAGE_PREFIX}${orgSlug}:${projectId}:${documentId}`
+    const key = `${STORAGE_PREFIX}${orgSlug}:${projectId ?? 'org'}:${documentId}`
     let previous: number | undefined
     try {
       const raw = window.localStorage.getItem(key)

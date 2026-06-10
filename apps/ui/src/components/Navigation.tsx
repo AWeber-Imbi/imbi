@@ -7,6 +7,7 @@ import {
   BarChart3,
   Building2,
   ChevronDown,
+  FileText,
   FolderKanban,
   LogOut,
   Moon,
@@ -63,6 +64,12 @@ export function Navigation({ currentView }: NavigationProps) {
         id: 'projects',
         label: 'Projects',
         path: '/projects',
+      },
+      {
+        icon: FileText,
+        id: 'documents',
+        label: 'Documents',
+        path: '/documents',
       },
       {
         icon: Activity,

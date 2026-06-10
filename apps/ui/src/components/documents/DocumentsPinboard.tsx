@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 
-import { ArrowUpRight, Pin } from 'lucide-react'
+import { Pin } from 'lucide-react'
 
 import {
   Card,
@@ -9,23 +9,19 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { IconTooltip } from '@/components/ui/tooltip'
 import { UserDisplay } from '@/components/ui/user-display'
 import { cn } from '@/lib/utils'
 import type { Document, DocumentTemplate } from '@/types'
 
+import { DocumentRowTail, DocumentTagsCell } from './DocumentRowCells'
 import { DocumentsFilterRail } from './DocumentsFilterRail'
-import {
-  deriveExcerpt,
-  documentTitle,
-  formatUpdated,
-  tagCounts,
-  uniqueTagsFromDocuments,
-} from './documentsHelpers'
+import { deriveExcerpt, documentTitle, formatUpdated } from './documentsHelpers'
 import { DocumentTagChip } from './DocumentTagChip'
 import { NewDocumentMenu } from './NewDocumentMenu'
+import { useTagFilter } from './useTagFilter'
 
 interface Props {
+  context?: 'project' | 'project_type' | 'user'
   displayNames?: Map<string, string>
   documents: Document[]
   onCreate: (template?: DocumentTemplate) => void
@@ -33,9 +29,15 @@ interface Props {
   onTogglePin: (document: Document) => void
   orgSlug: string
   projectTypeSlugs?: string[]
+  /**
+   * Hide the Author column where it is redundant — e.g. the user profile
+   * Documents tab, where every document belongs to the profiled user.
+   */
+  showAuthor?: boolean
 }
 
 export function DocumentsPinboard({
+  context = 'project',
   displayNames,
   documents,
   onCreate,
@@ -43,48 +45,24 @@ export function DocumentsPinboard({
   onTogglePin,
   orgSlug,
   projectTypeSlugs,
+  showAuthor = true,
 }: Props) {
-  const [active, setActive] = useState<Set<string>>(new Set())
-  const [search, setSearch] = useState('')
-
-  const tags = useMemo(() => uniqueTagsFromDocuments(documents), [documents])
-  const counts = useMemo(() => tagCounts(documents), [documents])
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return documents.filter((n) => {
-      for (const slug of active) {
-        if (!n.tags.some((t) => t.slug === slug)) return false
-      }
-      if (!q) return true
-      const title = documentTitle(n).toLowerCase()
-      const content = n.content.toLowerCase()
-      return title.includes(q) || content.includes(q)
-    })
-  }, [documents, active, search])
+  const filter = useTagFilter(documents, pinboardHaystack)
+  const { filtered } = filter
 
   const pinned = useMemo(() => filtered.filter((n) => n.is_pinned), [filtered])
   const rest = useMemo(() => filtered.filter((n) => !n.is_pinned), [filtered])
 
-  const toggle = useCallback((slug: string) => {
-    setActive((prev) => {
-      const next = new Set(prev)
-      if (next.has(slug)) next.delete(slug)
-      else next.add(slug)
-      return next
-    })
-  }, [])
-
   return (
     <div className="grid grid-cols-[220px_1fr] gap-5">
       <DocumentsFilterRail
-        active={active}
-        counts={counts}
-        onClear={() => setActive(new Set())}
-        onSearchChange={setSearch}
-        onToggle={toggle}
-        search={search}
-        tags={tags}
+        active={filter.active}
+        counts={filter.counts}
+        onClear={filter.clear}
+        onSearchChange={filter.setSearch}
+        onToggle={filter.toggle}
+        search={filter.search}
+        tags={filter.tags}
         totalFiltered={filtered.length}
       />
 
@@ -104,6 +82,7 @@ export function DocumentsPinboard({
           )}
           <NewDocumentMenu
             className={cn(pinned.length === 0 && 'ml-auto')}
+            context={context}
             onCreate={onCreate}
             orgSlug={orgSlug}
             projectTypeSlugs={projectTypeSlugs}
@@ -114,14 +93,11 @@ export function DocumentsPinboard({
           <div className="border-tertiary bg-primary overflow-hidden rounded-lg border">
             <div
               className="border-tertiary bg-secondary text-overline text-tertiary grid items-center gap-3.5 border-b px-3.5 py-2 uppercase"
-              style={{
-                gridTemplateColumns:
-                  'minmax(0, 1.6fr) minmax(0, 1fr) 100px 60px 60px',
-              }}
+              style={{ gridTemplateColumns: gridColumns(showAuthor) }}
             >
               <span>Document</span>
               <span>Tags</span>
-              <span>Author</span>
+              {showAuthor && <span>Author</span>}
               <span className="text-right">Updated</span>
               <span />
             </div>
@@ -132,6 +108,7 @@ export function DocumentsPinboard({
                 key={n.id}
                 onOpen={onOpen}
                 onTogglePin={onTogglePin}
+                showAuthor={showAuthor}
               />
             ))}
             {rest.length === 0 && (
@@ -146,6 +123,12 @@ export function DocumentsPinboard({
       </div>
     </div>
   )
+}
+
+function gridColumns(showAuthor: boolean): string {
+  return showAuthor
+    ? 'minmax(0, 1.6fr) minmax(0, 1fr) 100px 60px 60px'
+    : 'minmax(0, 1.6fr) minmax(0, 1fr) 60px 60px'
 }
 
 function HeroCard({
@@ -207,23 +190,21 @@ function IndexRow({
   document,
   onOpen,
   onTogglePin,
+  showAuthor,
 }: {
   displayNames?: Map<string, string>
   document: Document
   onOpen: (documentId: string) => void
   onTogglePin: (document: Document) => void
+  showAuthor: boolean
 }) {
-  const pinned = document.is_pinned
   const title = documentTitle(document)
   const excerpt = deriveExcerpt(document.content)
-  const author = document.created_by
   return (
     <div
       className="border-tertiary hover:bg-secondary grid cursor-pointer items-center gap-3.5 border-b px-3.5 py-2.5 last:border-b-0"
       onClick={() => onOpen(document.id)}
-      style={{
-        gridTemplateColumns: 'minmax(0, 1.6fr) minmax(0, 1fr) 100px 60px 60px',
-      }}
+      style={{ gridTemplateColumns: gridColumns(showAuthor) }}
     >
       <div className="min-w-0">
         <div className="text-primary truncate text-[13.5px] font-medium">
@@ -231,65 +212,18 @@ function IndexRow({
         </div>
         <div className="text-tertiary mt-0.5 truncate text-xs">{excerpt}</div>
       </div>
-      <div className="flex flex-wrap gap-1">
-        {document.tags.slice(0, 3).map((t) => (
-          <DocumentTagChip key={t.slug} tag={t} />
-        ))}
-      </div>
-      <UserDisplay
-        className="text-secondary text-xs"
+      <DocumentTagsCell document={document} />
+      <DocumentRowTail
         displayNames={displayNames}
-        email={author}
-        size={18}
+        document={document}
+        onOpen={onOpen}
+        onTogglePin={onTogglePin}
+        showAuthor={showAuthor}
       />
-      <div className="text-tertiary text-right font-mono text-[11.5px]">
-        {formatUpdated(document)}
-      </div>
-      <div className="flex justify-end gap-0.5">
-        <RowIconButton
-          onClick={(e) => {
-            e.stopPropagation()
-            onTogglePin(document)
-          }}
-          title={pinned ? 'Unpin document' : 'Pin document'}
-        >
-          <Pin
-            className={cn('size-3', pinned ? 'text-warning' : 'text-tertiary')}
-          />
-        </RowIconButton>
-        <RowIconButton
-          onClick={(e) => {
-            e.stopPropagation()
-            onOpen(document.id)
-          }}
-          title="Open document"
-        >
-          <ArrowUpRight className="text-tertiary size-3" />
-        </RowIconButton>
-      </div>
     </div>
   )
 }
 
-function RowIconButton({
-  children,
-  onClick,
-  title,
-}: {
-  children: React.ReactNode
-  onClick: (e: React.MouseEvent) => void
-  title: string
-}) {
-  return (
-    <IconTooltip label={title}>
-      <button
-        aria-label={title}
-        className="text-tertiary hover:bg-tertiary inline-flex size-[22px] cursor-pointer items-center justify-center rounded border-0 bg-transparent"
-        onClick={onClick}
-        type="button"
-      >
-        {children}
-      </button>
-    </IconTooltip>
-  )
+function pinboardHaystack(document: Document): string {
+  return `${documentTitle(document)} ${document.content}`
 }

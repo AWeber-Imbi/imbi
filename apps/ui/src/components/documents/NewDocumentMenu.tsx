@@ -20,6 +20,13 @@ import { DocumentTagChip } from './DocumentTagChip'
 
 interface Props {
   className?: string
+  /**
+   * Attachment context the new document will be created in. Drives which
+   * templates are offered (matching-type plus 'global' templates).
+   * 'org' is the top-level Documents page, where the attachment is picked
+   * in the editor — every template except project-only ones applies.
+   */
+  context?: 'org' | 'project' | 'project_type' | 'user'
   onCreate: (template?: DocumentTemplate) => void
   orgSlug: string
   projectTypeSlugs?: string[]
@@ -34,22 +41,31 @@ const ITEM_CLASS =
  * available to this project. When there are no templates it degrades to a plain
  * button that creates a blank document directly.
  */
+// fallow-ignore-next-line complexity
 export function NewDocumentMenu({
   className,
+  context = 'project',
   onCreate,
   orgSlug,
   projectTypeSlugs,
 }: Props) {
   const { data: templates = [], isLoading } = useQuery<DocumentTemplate[]>({
     enabled: !!orgSlug,
-    queryFn: ({ signal }) => listDocumentTemplates(orgSlug, signal),
-    queryKey: ['documentTemplates', orgSlug],
+    queryFn: ({ signal }) =>
+      listDocumentTemplates(
+        orgSlug,
+        signal,
+        context === 'org' ? undefined : context,
+      ),
+    queryKey: ['documentTemplates', orgSlug, context],
   })
 
-  const visibleTemplates = filterTemplatesByProjectType(
-    templates,
-    projectTypeSlugs,
-  )
+  const visibleTemplates =
+    context === 'project'
+      ? filterTemplatesByProjectType(templates, projectTypeSlugs)
+      : context === 'org'
+        ? templates.filter((t) => t.type !== 'project')
+        : templates
 
   // Nothing to choose between — keep the fast path as a plain button.
   // (On error we get no templates, so degrade rather than show an empty menu.)

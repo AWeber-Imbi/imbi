@@ -649,16 +649,30 @@ export interface DeploymentTriggerResponse {
 }
 
 export interface Document {
+  attached_to?: DocumentAttachment | null
+  comment_count?: number
   content: string
   created_at: string
   created_by: string
+  created_by_name?: null | string
   id: string
   is_pinned: boolean
-  project_id: string
+  project_id: null | string
   tags: TagRef[]
   title: string
   updated_at?: null | string
   updated_by?: null | string
+}
+
+// The vertex a document is attached to. `id` is the project id, the
+// project-type slug, or the user email depending on `kind`; `team` and
+// `project_types` are only populated for projects.
+export interface DocumentAttachment {
+  id: string
+  kind: 'project' | 'project_type' | 'user'
+  name: string
+  project_types?: string[]
+  team?: null | string
 }
 
 export interface DocumentCreate {
@@ -669,9 +683,6 @@ export interface DocumentCreate {
 
 export type DocumentListResponse = CollectionResponse<Document>
 
-// Document Templates. Inlined for the same reason as Document/Tag — the
-// committed openapi.json snapshot predates these endpoints. Switch to
-// `Schemas['DocumentTemplateResponse']` etc. once the snapshot is refreshed.
 export interface DocumentTemplate {
   content: string
   created_at: string
@@ -685,6 +696,7 @@ export interface DocumentTemplate {
   sort_order: number
   tags: TagRef[]
   title?: null | string
+  type?: DocumentTemplateType
   updated_at?: null | string
 }
 
@@ -698,7 +710,20 @@ export interface DocumentTemplateCreate {
   sort_order?: number
   tags?: string[]
   title?: null | string
+  type?: DocumentTemplateType
 }
+
+// Document Templates. Inlined for the same reason as Document/Tag — the
+// committed openapi.json snapshot predates these endpoints. Switch to
+// `Schemas['DocumentTemplateResponse']` etc. once the snapshot is refreshed.
+// Which attachment contexts may use a template: 'project', 'user', and
+// 'project_type' restrict the template to documents attached to that
+// vertex kind; 'global' applies everywhere.
+export type DocumentTemplateType =
+  | 'global'
+  | 'project'
+  | 'project_type'
+  | 'user'
 
 export interface DraftReleaseNotesRequest {
   base_sha: string

@@ -1,12 +1,14 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 
 import { useQuery } from '@tanstack/react-query'
 
-import { getAdminUser } from '@/api/endpoints'
+import { getAdminUser, listUserDocuments } from '@/api/endpoints'
 import { CommandBar } from '@/components/CommandBar'
 import { Navigation } from '@/components/Navigation'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { fetchContributions, fetchIdentities, fetchStats } from './api'
@@ -15,16 +17,33 @@ import { OrganizationMemberships } from './OrganizationMemberships'
 import { ProfileHeader } from './ProfileHeader'
 import { RecentActivity } from './RecentActivity'
 import { StatisticsCard } from './StatisticsCard'
+import { UserDocumentsTab } from './UserDocumentsTab'
 
+// fallow-ignore-next-line complexity
 export function UserProfilePage() {
-  const { email: rawEmail } = useParams<{ email: string }>()
+  const navigate = useNavigate()
+  const {
+    email: rawEmail,
+    subAction,
+    subId,
+    tab,
+  } = useParams<{
+    email: string
+    subAction?: string
+    subId?: string
+    tab?: string
+  }>()
   const email = useMemo(
     () => (rawEmail ? decodeURIComponent(rawEmail) : ''),
     [rawEmail],
   )
   usePageTitle(email ? `Profile · ${email}` : 'User profile')
 
+  const { selectedOrganization } = useOrganization()
+  const orgSlug = selectedOrganization?.slug || ''
+
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const activeTab = tab === 'documents' ? 'documents' : 'activity'
 
   const userQuery = useQuery({
     enabled: !!email,
@@ -50,6 +69,25 @@ export function UserProfilePage() {
     queryKey: ['user-identities', email],
   })
 
+  // Shares the UserDocumentsTab query key so the tab-count chip and the
+  // tab content come from the same cache entry.
+  const documentsQuery = useQuery({
+    enabled: !!email && !!orgSlug,
+    queryFn: ({ signal }) => listUserDocuments(orgSlug, email, signal),
+    queryKey: ['userDocuments', orgSlug, email],
+  })
+  const documentCount = documentsQuery.data?.length ?? 0
+
+  const handleTabChange = useCallback(
+    (next: string) => {
+      const base = `/users/${encodeURIComponent(email)}`
+      navigate(next === 'documents' ? `${base}/documents` : base, {
+        replace: true,
+      })
+    },
+    [navigate, email],
+  )
+
   return (
     <div className="bg-tertiary text-primary min-h-screen">
       <Navigation currentView="users" />
@@ -69,19 +107,47 @@ export function UserProfilePage() {
                 identities={identitiesQuery.data}
                 user={userQuery.data}
               />
-              <ContributionHeatmap
-                data={contributionsQuery.data}
-                isLoading={contributionsQuery.isLoading}
-              />
-              <StatisticsCard data={statsQuery.data} />
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                <div className="lg:col-span-1">
-                  <OrganizationMemberships user={userQuery.data} />
-                </div>
-                <div className="lg:col-span-2">
-                  <RecentActivity email={email} />
-                </div>
-              </div>
+              <Tabs onValueChange={handleTabChange} value={activeTab}>
+                <TabsList className="mb-4">
+                  <TabsTrigger value="activity">Activity</TabsTrigger>
+                  <TabsTrigger value="documents">
+                    {documentCount > 0
+                      ? `Documents (${documentCount})`
+                      : 'Documents'}
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent className="space-y-4" value="activity">
+                  <ContributionHeatmap
+                    data={contributionsQuery.data}
+                    isLoading={contributionsQuery.isLoading}
+                  />
+                  <StatisticsCard data={statsQuery.data} />
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                    <div className="lg:col-span-1">
+                      <OrganizationMemberships user={userQuery.data} />
+                    </div>
+                    <div className="lg:col-span-2">
+                      <RecentActivity email={email} />
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="documents">
+                  {orgSlug && (
+                    <UserDocumentsTab
+                      email={email}
+                      initialAction={
+                        activeTab === 'documents' ? subAction : undefined
+                      }
+                      initialDocumentId={
+                        activeTab === 'documents' ? subId : undefined
+                      }
+                      orgSlug={orgSlug}
+                    />
+                  )}
+                </TabsContent>
+              </Tabs>
             </>
           )}
         </div>

@@ -27,6 +27,11 @@ const OperationsLogPage = lazy(() =>
     default: m.OperationsLogPage,
   })),
 )
+const DocumentsIndexPage = lazy(() =>
+  import('./pages/DocumentsIndexPage').then((m) => ({
+    default: m.DocumentsIndexPage,
+  })),
+)
 const AdminPage = lazy(() =>
   import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })),
 )
@@ -121,6 +126,14 @@ function App() {
                 <Route
                   element={
                     <ProtectedRoute>
+                      <DocumentsIndexPage />
+                    </ProtectedRoute>
+                  }
+                  path="/documents/:subId?/:subAction?"
+                />
+                <Route
+                  element={
+                    <ProtectedRoute>
                       <ReportsPage />
                     </ProtectedRoute>
                   }
@@ -148,7 +161,7 @@ function App() {
                       <UserProfilePage />
                     </ProtectedRoute>
                   }
-                  path="/users/:email"
+                  path="/users/:email/:tab?/:subId?/:subAction?"
                 />
                 <Route
                   element={<Navigate replace to="/operations-log" />}

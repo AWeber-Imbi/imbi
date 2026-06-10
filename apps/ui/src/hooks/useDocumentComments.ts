@@ -60,7 +60,7 @@ interface ThreadVars {
  */
 export function useDocumentComments(
   orgSlug: string,
-  projectId: string,
+  projectId: null | string,
   documentId: string,
   currentUserEmail: string,
 ): Result {
@@ -71,7 +71,7 @@ export function useDocumentComments(
   )
 
   const { data: comments = [], isFetching: commentsBusy } = useQuery({
-    enabled: !!orgSlug && !!projectId && !!documentId,
+    enabled: !!orgSlug && !!documentId,
     queryFn: ({ signal }) =>
       listDocumentComments(orgSlug, projectId, documentId, signal),
     queryKey: commentsKey,

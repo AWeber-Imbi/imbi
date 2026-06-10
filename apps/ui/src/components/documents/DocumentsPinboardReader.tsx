@@ -82,7 +82,7 @@ interface Props {
   onResolveThread: (threadId: string, resolved: boolean) => void
   onTogglePin: () => void
   orgSlug: string
-  projectId: string
+  projectId: null | string
 }
 
 // fallow-ignore-next-line complexity
