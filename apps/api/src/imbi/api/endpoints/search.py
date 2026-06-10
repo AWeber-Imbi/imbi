@@ -18,13 +18,23 @@ _BATCH_GROWTH = 2
 
 
 class SearchResult(pydantic.BaseModel):
-    """A single vector search result."""
+    """A single vector search result.
+
+    ``name``, ``slug``, and ``project_id`` are enrichment fields the UI
+    uses to build a route to the node: ``slug`` for the admin-scoped
+    node types, ``project_id`` for the project-nested Document and
+    Release detail pages. They are ``None`` for nodes that don't carry
+    the corresponding property.
+    """
 
     node_label: str
     node_id: str
     attribute: str
     chunk_text: str
     distance: float
+    name: str | None = None
+    slug: str | None = None
+    project_id: str | None = None
 
 
 async def _get_org_node_ids(
@@ -123,6 +133,75 @@ async def _get_org_node_ids(
     return node_ids
 
 
+async def _enrich_results(
+    db: graph.Graph,
+    results: list[SearchResult],
+) -> None:
+    """Populate ``name``/``slug``/``project_id`` for UI routing.
+
+    Resolves the display name and slug for every result node (grouped by
+    label so each lookup hits the label index), plus the parent project
+    id for Documents and Releases whose detail routes are nested under a
+    project. Mutates *results* in place.
+    """
+    if not results:
+        return
+
+    by_label: dict[str, list[str]] = {}
+    for r in results:
+        by_label.setdefault(r.node_label, []).append(r.node_id)
+
+    base: dict[str, dict[str, typing.Any]] = {}
+    for label, label_ids in by_label.items():
+        for row in await db.execute(
+            f'MATCH (n:{label}) WHERE n.id IN {{ids}}'
+            ' RETURN n.id AS id, n.name AS name, n.slug AS slug,'
+            '        n.title AS title',
+            {'ids': label_ids},
+            columns=['id', 'name', 'slug', 'title'],
+        ):
+            nid = graph.parse_agtype(row['id'])
+            if nid:
+                base[nid] = {
+                    'name': graph.parse_agtype(row['name']),
+                    'slug': graph.parse_agtype(row['slug']),
+                    'title': graph.parse_agtype(row['title']),
+                }
+
+    project_by_id: dict[str, str] = {}
+    parent_queries = (
+        (
+            'Document',
+            'MATCH (d:Document)-[:ATTACHED_TO]->(p:Project)'
+            ' WHERE d.id IN {ids} RETURN d.id AS id, p.id AS project_id',
+        ),
+        (
+            'Release',
+            'MATCH (p:Project)-[:HAS_RELEASE]->(r:Release)'
+            ' WHERE r.id IN {ids} RETURN r.id AS id, p.id AS project_id',
+        ),
+    )
+    for label, query in parent_queries:
+        ids = by_label.get(label)
+        if not ids:
+            continue
+        for row in await db.execute(
+            query,
+            {'ids': ids},
+            columns=['id', 'project_id'],
+        ):
+            nid = graph.parse_agtype(row['id'])
+            pid = graph.parse_agtype(row['project_id'])
+            if nid and pid:
+                project_by_id[nid] = pid
+
+    for r in results:
+        info = base.get(r.node_id, {})
+        r.name = info.get('name') or info.get('title')
+        r.slug = info.get('slug')
+        r.project_id = project_by_id.get(r.node_id)
+
+
 @search_router.get('/search')
 async def search(
     org_slug: str,
@@ -194,4 +273,5 @@ async def search(
 
         batch_size *= _BATCH_GROWTH
 
+    await _enrich_results(db, out)
     return out

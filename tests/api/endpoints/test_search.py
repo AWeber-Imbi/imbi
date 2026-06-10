@@ -1,6 +1,7 @@
 """Tests for the org-scoped vector similarity search endpoint."""
 
 import datetime
+import json
 import unittest
 from unittest import mock
 
@@ -10,6 +11,7 @@ from imbi_common.graph.client import SearchResult
 
 from imbi_api import models
 from imbi_api.auth import permissions
+from imbi_api.endpoints import search as search_endpoint
 from tests import support
 
 _ORG_SLUG = 'test-org'
@@ -45,6 +47,16 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
         )
+
+        # Enrichment issues its own db.execute calls after the scope/search
+        # loop; stub it out so these tests can keep a fixed execute sequence
+        # for just the org-enumeration queries. Enrichment has dedicated
+        # coverage in EnrichResultsTestCase.
+        enrich_patcher = mock.patch(
+            'imbi_api.endpoints.search._enrich_results',
+        )
+        self.mock_enrich = enrich_patcher.start()
+        self.addCleanup(enrich_patcher.stop)
 
         self.client = TestClient(self.test_app)
 
@@ -102,6 +114,8 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual(data[0]['node_id'], 'proj-1')
         self.assertEqual(data[0]['attribute'], 'description')
         self.assertAlmostEqual(data[0]['distance'], 0.12)
+        # The handler enriches results for UI routing before returning.
+        self.mock_enrich.assert_awaited_once()
 
     def test_org_not_found_returns_404(self) -> None:
         self._setup_org_not_found()
@@ -511,6 +525,101 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual(data[0]['node_id'], 'target')
         # Only one db.search call (limit met mid-batch, no second call needed).
         self.assertEqual(self.mock_db.search.await_count, 1)
+
+
+def _ag(value: object) -> str:
+    """Encode a Python value the way db.execute returns an agtype scalar."""
+    return 'null' if value is None else json.dumps(value)
+
+
+class EnrichResultsTestCase(unittest.IsolatedAsyncioTestCase):
+    """Direct coverage for _enrich_results (name/slug/project_id)."""
+
+    def setUp(self) -> None:
+        # node_id -> base properties (name/slug/title) by graph label.
+        self.base = {
+            'proj-1': {'name': 'Kafka', 'slug': 'kafka', 'title': None},
+            'team-1': {'name': 'Platform', 'slug': 'platform', 'title': None},
+            'doc-1': {'name': None, 'slug': None, 'title': 'SSL Runbook'},
+            'rel-1': {'name': None, 'slug': None, 'title': 'v2.1.0'},
+        }
+        # child node_id -> parent project id.
+        self.parents = {'doc-1': 'proj-1', 'rel-1': 'proj-1'}
+
+        def fake_execute(query, params=None, columns=None, raw=False):
+            ids = (params or {}).get('ids', [])
+            if 'project_id' in query:
+                return [
+                    {'id': _ag(i), 'project_id': _ag(self.parents[i])}
+                    for i in ids
+                    if i in self.parents
+                ]
+            return [
+                {
+                    'id': _ag(i),
+                    'name': _ag(self.base[i]['name']),
+                    'slug': _ag(self.base[i]['slug']),
+                    'title': _ag(self.base[i]['title']),
+                }
+                for i in ids
+                if i in self.base
+            ]
+
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.mock_db.execute.side_effect = fake_execute
+
+    @staticmethod
+    def _result(node_label: str, node_id: str) -> search_endpoint.SearchResult:
+        return search_endpoint.SearchResult(
+            node_label=node_label,
+            node_id=node_id,
+            attribute='description',
+            chunk_text='…',
+            distance=0.1,
+        )
+
+    async def test_empty_results_short_circuits(self) -> None:
+        await search_endpoint._enrich_results(self.mock_db, [])
+        self.mock_db.execute.assert_not_awaited()
+
+    async def test_node_name_and_slug(self) -> None:
+        results = [self._result('Project', 'proj-1')]
+        await search_endpoint._enrich_results(self.mock_db, results)
+        self.assertEqual(results[0].name, 'Kafka')
+        self.assertEqual(results[0].slug, 'kafka')
+        self.assertIsNone(results[0].project_id)
+
+    async def test_document_uses_title_and_parent_project(self) -> None:
+        results = [self._result('Document', 'doc-1')]
+        await search_endpoint._enrich_results(self.mock_db, results)
+        self.assertEqual(results[0].name, 'SSL Runbook')
+        self.assertIsNone(results[0].slug)
+        self.assertEqual(results[0].project_id, 'proj-1')
+
+    async def test_release_uses_title_and_parent_project(self) -> None:
+        results = [self._result('Release', 'rel-1')]
+        await search_endpoint._enrich_results(self.mock_db, results)
+        self.assertEqual(results[0].name, 'v2.1.0')
+        self.assertEqual(results[0].project_id, 'proj-1')
+
+    async def test_mixed_labels_enriched_together(self) -> None:
+        results = [
+            self._result('Project', 'proj-1'),
+            self._result('Team', 'team-1'),
+            self._result('Document', 'doc-1'),
+        ]
+        await search_endpoint._enrich_results(self.mock_db, results)
+        by_id = {r.node_id: r for r in results}
+        self.assertEqual(by_id['team-1'].slug, 'platform')
+        self.assertEqual(by_id['doc-1'].project_id, 'proj-1')
+        self.assertIsNone(by_id['proj-1'].project_id)
+
+    async def test_unresolved_node_leaves_fields_none(self) -> None:
+        results = [self._result('Tag', 'tag-missing')]
+        await search_endpoint._enrich_results(self.mock_db, results)
+        self.assertIsNone(results[0].name)
+        self.assertIsNone(results[0].slug)
+        self.assertIsNone(results[0].project_id)
 
 
 if __name__ == '__main__':
