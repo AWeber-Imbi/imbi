@@ -1341,23 +1341,131 @@ class ProcessNotificationTests(helpers.TestCase):
                 headers={'X-GitHub-Event': 'deployment_status'},
             )
         self.assertEqual(202, response.status_code)
-        mock_insert.assert_awaited_once()
-        assert mock_insert.await_args is not None  # noqa: S101 - test narrowing
-        table_arg, events_arg = mock_insert.await_args.args
-        self.assertEqual('events', table_arg)
-        self.assertEqual(2, len(events_arg))
+        # phase 1 (version=0) plus phase 2 (version=1).
+        self.assertEqual(2, mock_insert.await_count)
+        phase1_call, phase2_call = mock_insert.await_args_list
+        phase1_table, phase1_events = phase1_call.args
+        phase2_table, phase2_events = phase2_call.args
+        self.assertEqual('events', phase1_table)
+        self.assertEqual('events', phase2_table)
+        self.assertEqual(2, len(phase1_events))
+        self.assertEqual(2, len(phase2_events))
         self.assertEqual(
             {self.proj_id, second_proj_id},
-            {ev.project_id for ev in events_arg},
+            {ev.project_id for ev in phase1_events},
         )
-        for ev in events_arg:
-            self.assertEqual('deployment_status', ev.type)
+        for ev in phase1_events:
+            self.assertEqual(0, ev.version)
+            self.assertEqual([], ev.metadata['handlers'])
+            # Top-level ``type`` is the event category — every gateway
+            # row is a webhook delivery. The resolved per-source
+            # event-type label lives in ``metadata.event_type``.
+            self.assertEqual('webhook', ev.type)
+            self.assertEqual('deployment_status', ev.metadata['event_type'])
             self.assertEqual(body, ev.payload)
             self.assertEqual(self.webhook_id, ev.metadata['webhook_id'])
             self.assertEqual(
                 'deployment_status',
                 ev.metadata['headers'].get('x-github-event'),
             )
+        # phase 2 reuses the phase-1 ids per project and carries the
+        # handler outcomes.
+        phase1_by_pid = {ev.project_id: ev for ev in phase1_events}
+        for ev in phase2_events:
+            self.assertEqual(1, ev.version)
+            self.assertEqual(phase1_by_pid[ev.project_id].id, ev.id)
+            self.assertEqual(
+                phase1_by_pid[ev.project_id].recorded_at, ev.recorded_at
+            )
+            handlers = ev.metadata['handlers']
+            self.assertEqual(1, len(handlers))
+            self.assertEqual('stub-nocreds#do_thing', handlers[0]['handler'])
+            self.assertEqual('succeeded', handlers[0]['status'])
+            self.assertIn('duration_ms', handlers[0])
+
+    async def test_phase2_records_failed_handler_outcome(self) -> None:
+        await self._add_rule(handler='stub-nocreds#boom')
+        body = {'repo': {'id': self.ext_id}}
+        with unittest.mock.patch.object(
+            clickhouse, 'insert', new=unittest.mock.AsyncMock()
+        ) as mock_insert:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(2, mock_insert.await_count)
+        _, phase2_events = mock_insert.await_args_list[1].args
+        handlers = phase2_events[0].metadata['handlers']
+        self.assertEqual(1, len(handlers))
+        self.assertEqual('stub-nocreds#boom', handlers[0]['handler'])
+        self.assertEqual('failed', handlers[0]['status'])
+        self.assertIn('RuntimeError', handlers[0]['error'])
+        self.assertIn('test error', handlers[0]['error'])
+        self.assertIn('duration_ms', handlers[0])
+
+    async def test_phase2_records_skipped_when_handler_unresolvable(
+        self,
+    ) -> None:
+        await self._add_rule(handler='stub-nocreds#nonexistent_action')
+        body = {'repo': {'id': self.ext_id}}
+        with unittest.mock.patch.object(
+            clickhouse, 'insert', new=unittest.mock.AsyncMock()
+        ) as mock_insert:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(2, mock_insert.await_count)
+        _, phase2_events = mock_insert.await_args_list[1].args
+        handlers = phase2_events[0].metadata['handlers']
+        self.assertEqual(1, len(handlers))
+        self.assertEqual('skipped', handlers[0]['status'])
+        self.assertNotIn('duration_ms', handlers[0])
+
+    async def test_phase2_not_recorded_when_filter_does_not_match(
+        self,
+    ) -> None:
+        # filter='false' returns from process_notification before any
+        # handler runs, so phase-2 disposition recording must be
+        # skipped to avoid noisy empty inserts.
+        await self._add_rule(filter_expression='false')
+        body = {'repo': {'id': self.ext_id}}
+        with unittest.mock.patch.object(
+            clickhouse, 'insert', new=unittest.mock.AsyncMock()
+        ) as mock_insert:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(204, response.status_code)
+        mock_insert.assert_awaited_once()
+        _, events_arg = mock_insert.await_args_list[0].args
+        self.assertEqual(0, events_arg[0].version)
+
+    async def test_phase2_insert_failure_logs_and_does_not_500(self) -> None:
+        await self._add_rule(filter_expression='true')
+        body = {'repo': {'id': self.ext_id}}
+        phase2_call = 2
+        call_count = 0
+
+        async def insert_side_effect(*_args: object, **_kw: object) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == phase2_call:
+                raise RuntimeError('phase-2 boom')
+
+        with (
+            unittest.mock.patch.object(
+                clickhouse,
+                'insert',
+                new=unittest.mock.AsyncMock(side_effect=insert_side_effect),
+            ),
+            self.assertLogs('imbi_gateway.notifications', level='ERROR') as cm,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
+        self.assertEqual(2, call_count)
+        self.assertTrue(
+            any(
+                'Failed to record webhook event dispositions in ClickHouse'
+                in line
+                for line in cm.output
+            )
+        )
 
     async def test_event_recorded_when_filter_does_not_match(self) -> None:
         await self._add_rule(filter_expression='false')

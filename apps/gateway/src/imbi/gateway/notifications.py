@@ -4,6 +4,7 @@ import http
 import json
 import logging
 import re
+import time
 import typing
 
 import celpy
@@ -58,6 +59,26 @@ def _safe_headers(headers: 'abc.Mapping[str, str]') -> dict[str, str]:
         key: ('[redacted]' if key.lower() in _SENSITIVE_HEADERS else value)
         for key, value in headers.items()
     }
+
+
+#: Identifier of a ``Project`` node — the value of ``project.id`` in
+#: the graph and of ``project_id`` on activity-feed event rows. Any
+#: string passed around under this alias must originate there.
+type ProjectId = str
+
+
+class HandlerOutcome(pydantic.BaseModel):
+    """Disposition of one webhook-rule handler for one project.
+
+    Serialized with ``exclude_none`` into ``metadata.handlers`` on the
+    phase-2 activity-feed row by :class:`DeliveryRecorder`, so skipped
+    handlers carry no ``duration_ms`` and successes carry no ``error``.
+    """
+
+    handler: str
+    status: typing.Literal['succeeded', 'failed', 'skipped']
+    error: str | None = None
+    duration_ms: int | None = None
 
 
 class WebhookRule(pydantic.BaseModel):
@@ -141,7 +162,7 @@ class WebhookRule(pydantic.BaseModel):
 
 
 @router.post('/{webhook_id}', include_in_schema=False)
-async def process_notification(
+async def process_notification(  # noqa: PLR0915 - linear webhook pipeline reads top-down
     webhook_id: str,
     *,
     db: graph.Pool,
@@ -274,8 +295,10 @@ async def process_notification(
         webhook_id=webhook_id,
     )
     _set_access_log_context(request, user_id=user_id, event=event_type)
+    recorder = DeliveryRecorder()
     context = await _record_and_build_filter_context(
         project_records,
+        recorder=recorder,
         headers=request.headers,
         webhook_id=webhook_id,
         service_slug=tps_slug,
@@ -301,34 +324,41 @@ async def process_notification(
         for rule, enabled in zip(rules, filter_results, strict=True)
         if enabled
     ]
-    for proj_record in project_records:
-        await _run_handlers(
-            org_slug=str(org['slug']),
-            project_id=str(graph.parse_agtype(proj_record['project_id'])),
-            project_slug=str(
-                graph.parse_agtype(proj_record['project_slug'])
-                if proj_record.get('project_slug') is not None
-                else ''
-            ),
-            team_slug=(
-                str(graph.parse_agtype(proj_record['team_slug']))
-                if proj_record.get('team_slug') is not None
-                else None
-            ),
-            service_slug=tps_slug,
-            service_endpoint=(
-                str(service['api_endpoint'])
-                if service.get('api_endpoint') is not None
-                else None
-            ),
-            external_identifier=str(resolved),
-            event=context,
-            user_id=user_id,
-            rules=matched_rules,
-            plugins_by_slug=plugins_by_slug,
-            service_plugins=service_plugins,
-            webhook_id=webhook_id,
-        )
+    try:
+        for proj_record in project_records:
+            project_id: ProjectId = str(
+                graph.parse_agtype(proj_record['project_id'])
+            )
+            await _run_handlers(
+                org_slug=str(org['slug']),
+                project_id=project_id,
+                project_slug=str(
+                    graph.parse_agtype(proj_record['project_slug'])
+                    if proj_record.get('project_slug') is not None
+                    else ''
+                ),
+                team_slug=(
+                    str(graph.parse_agtype(proj_record['team_slug']))
+                    if proj_record.get('team_slug') is not None
+                    else None
+                ),
+                service_slug=tps_slug,
+                service_endpoint=(
+                    str(service['api_endpoint'])
+                    if service.get('api_endpoint') is not None
+                    else None
+                ),
+                external_identifier=str(resolved),
+                event=context,
+                user_id=user_id,
+                rules=matched_rules,
+                plugins_by_slug=plugins_by_slug,
+                service_plugins=service_plugins,
+                webhook_id=webhook_id,
+                outcomes=recorder.outcomes_for(project_id),
+            )
+    finally:
+        await recorder.record_dispositions()
 
     # indicates that we actually did something
     response.status_code = http.HTTPStatus.ACCEPTED
@@ -634,7 +664,7 @@ def _resolve_rule_handler(
 async def _run_handlers(  # noqa: PLR0913
     *,
     org_slug: str,
-    project_id: str,
+    project_id: ProjectId,
     project_slug: str,
     team_slug: str | None,
     service_slug: str,
@@ -644,6 +674,7 @@ async def _run_handlers(  # noqa: PLR0913
     user_id: str | None,
     rules: 'abc.Iterable[WebhookRule]',
     plugins_by_slug: dict[str, dict[str, str]],
+    outcomes: list[HandlerOutcome],
     service_plugins: 'abc.Sequence[plugin_base.ServicePlugin]' = (),
     webhook_id: str | None = None,
 ) -> None:
@@ -672,6 +703,13 @@ async def _run_handlers(  # noqa: PLR0913
     for rule in rules:
         resolved = _resolve_rule_handler(rule, webhook_id=webhook_id)
         if resolved is None:
+            outcomes.append(
+                HandlerOutcome(
+                    handler=rule.handler,
+                    status='skipped',
+                    error='handler not resolvable',
+                )
+            )
             continue
         entry, descriptor = resolved
         credentials = _credentials_for_plugin(
@@ -681,12 +719,19 @@ async def _run_handlers(  # noqa: PLR0913
             rule_handler=rule.handler,
         )
         if credentials is None:
+            outcomes.append(
+                HandlerOutcome(
+                    handler=rule.handler,
+                    status='skipped',
+                    error='missing credentials',
+                )
+            )
             continue
         try:
             config = descriptor.config_model.model_validate_json(
                 rule.handler_config
             )
-        except pydantic.ValidationError:
+        except pydantic.ValidationError as err:
             LOGGER.exception(
                 'Invalid handler_config for rule %r (webhook_id=%r tps=%r);'
                 ' skipping rule',
@@ -700,7 +745,15 @@ async def _run_handlers(  # noqa: PLR0913
                     'rule_ordinal': rule.ordinal,
                 },
             )
+            outcomes.append(
+                HandlerOutcome(
+                    handler=rule.handler,
+                    status='skipped',
+                    error=f'invalid handler_config: {err}',
+                )
+            )
             continue
+        started = time.monotonic()
         try:
             await descriptor.callable(
                 ctx=ctx,
@@ -709,7 +762,7 @@ async def _run_handlers(  # noqa: PLR0913
                 action_config=config,
                 event=event,
             )
-        except Exception:
+        except Exception as err:
             LOGGER.exception(
                 'Failure executing rule %r (webhook_id=%r tps=%r'
                 ' project=%s/%s)',
@@ -727,6 +780,22 @@ async def _run_handlers(  # noqa: PLR0913
                     'project_id': project_id,
                     'rule': rule,
                 },
+            )
+            outcomes.append(
+                HandlerOutcome(
+                    handler=rule.handler,
+                    status='failed',
+                    error=f'{type(err).__name__}: {err}',
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                )
+            )
+        else:
+            outcomes.append(
+                HandlerOutcome(
+                    handler=rule.handler,
+                    status='succeeded',
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                )
             )
 
 
@@ -1042,49 +1111,125 @@ def _resolve_event_type(
     return selector
 
 
-async def _record_events(  # noqa: PLR0913 - all inputs are required event fields
-    records: 'abc.Sequence[abc.Mapping[str, typing.Any]]',
-    *,
-    service_slug: str,
-    user_id: str | None,
-    event_type: str,
-    metadata: dict[str, typing.Any],
-    payload: dict[str, typing.Any],
-) -> None:
-    """Insert one ``events`` row per matched project into ClickHouse.
+class DeliveryRecorder:
+    """Two-phase activity-feed recording for one webhook delivery.
 
-    ``metadata`` and ``payload`` are the materialized values shared with
-    the rule filter context (see
-    :func:`_record_and_build_filter_context`) so the recorded row and the
-    filtered-on data are identical.
+    :meth:`record_received` inserts one phase-1 ``events`` row per
+    matched project before any handler runs. Handler outcomes are then
+    appended to the per-project lists handed out by
+    :meth:`outcomes_for`, and :meth:`record_dispositions` re-inserts
+    each row with its outcomes under the same ``id`` and
+    ``recorded_at`` with ``version = 1`` so the ``events_latest`` view
+    collapses the pair into the latest disposition.
 
-    Best-effort — failures are logged and swallowed so handlers run
-    regardless of analytics insert health.
+    Both inserts are best-effort — failures are logged and swallowed
+    so handlers run (and the delivery is accepted) regardless of
+    analytics insert health. If the phase-2 insert fails, the phase-1
+    row remains the source of truth.
     """
-    if not records:
-        return
-    events = [
-        models.Event(
-            project_id=graph.parse_agtype(record['project_id']),
-            type=event_type,
-            third_party_service=service_slug,
-            attributed_to=user_id or '',
-            metadata=metadata,
-            payload=payload,
-        )
-        for record in records
-    ]
-    try:
-        await clickhouse.insert(
-            'events', typing.cast('list[pydantic.BaseModel]', events)
-        )
-    except Exception:
-        LOGGER.exception('Failed to record webhook events in ClickHouse')
+
+    def __init__(self) -> None:
+        self._events: dict[ProjectId, models.Event] = {}
+        self._outcomes: dict[ProjectId, list[HandlerOutcome]] = {}
+
+    async def record_received(  # noqa: PLR0913 - all inputs are required event fields
+        self,
+        records: 'abc.Sequence[abc.Mapping[str, typing.Any]]',
+        *,
+        service_slug: str,
+        user_id: str | None,
+        event_type: str,
+        metadata: dict[str, typing.Any],
+        payload: dict[str, typing.Any],
+    ) -> None:
+        """Insert one phase-1 ``events`` row per matched project.
+
+        ``metadata`` and ``payload`` are the materialized values
+        shared with the rule filter context (see
+        :func:`_record_and_build_filter_context`) so the recorded row
+        and the filtered-on data never diverge; each row extends the
+        shared metadata with ``event_type`` and an empty ``handlers``
+        list.
+        """
+        if not records:
+            return
+        # ``version`` distinguishes the phase-1 row (0) from the phase-2
+        # reinsert (1) so events_latest collapses to the populated
+        # disposition. The field ships in the imbi-common revision this
+        # repo pins for the webhook-history feature.
+        events = [
+            models.Event(
+                project_id=str(graph.parse_agtype(record['project_id'])),
+                # Category: every gateway-recorded row is an inbound
+                # webhook delivery. The per-source resolved event-type
+                # (e.g. 'pull_request', 'push', the SonarQube selector
+                # literal) lives in ``metadata.event_type`` so the
+                # events table can host non-webhook rows later without
+                # overloading this column.
+                type='webhook',
+                third_party_service=service_slug,
+                attributed_to=user_id or '',
+                metadata={
+                    **metadata,
+                    'event_type': event_type,
+                    'handlers': [],
+                },
+                payload=payload,
+                version=0,
+            )
+            for record in records
+        ]
+        try:
+            await clickhouse.insert(
+                'events', typing.cast('list[pydantic.BaseModel]', events)
+            )
+        except Exception:
+            LOGGER.exception('Failed to record webhook events in ClickHouse')
+        self._events = {event.project_id: event for event in events}
+
+    def outcomes_for(self, project_id: ProjectId) -> list[HandlerOutcome]:
+        """Return the outcome list to append to for ``project_id``."""
+        return self._outcomes.setdefault(project_id, [])
+
+    async def record_dispositions(self) -> None:
+        """Insert phase-2 rows that backfill handler outcomes."""
+        if not self._events:
+            return
+        # ``version=1`` marks the phase-2 reinsert; see ``record_received``.
+        phase2 = [
+            models.Event(
+                id=event.id,
+                project_id=event.project_id,
+                recorded_at=event.recorded_at,
+                type=event.type,
+                third_party_service=event.third_party_service,
+                attributed_to=event.attributed_to,
+                metadata={
+                    **event.metadata,
+                    'handlers': [
+                        outcome.model_dump(exclude_none=True)
+                        for outcome in self._outcomes.get(project_id, [])
+                    ],
+                },
+                payload=event.payload,
+                version=1,
+            )
+            for project_id, event in self._events.items()
+        ]
+        try:
+            await clickhouse.insert(
+                'events', typing.cast('list[pydantic.BaseModel]', phase2)
+            )
+        except Exception:
+            LOGGER.exception(
+                'Failed to record webhook event dispositions in ClickHouse'
+            )
 
 
 async def _record_and_build_filter_context(  # noqa: PLR0913 - required event fields
     records: 'abc.Sequence[abc.Mapping[str, typing.Any]]',
     *,
+    recorder: DeliveryRecorder,
     headers: 'abc.Mapping[str, str]',
     webhook_id: str,
     service_slug: str,
@@ -1095,8 +1240,9 @@ async def _record_and_build_filter_context(  # noqa: PLR0913 - required event fi
     """Record the activity-feed events and return the CEL filter context.
 
     ``metadata`` and ``payload`` are materialized once here so the
-    ClickHouse ``events`` rows and the rule filter context never diverge.
-    The returned activation mirrors the project-independent fields of the
+    ClickHouse ``events`` rows recorded through ``recorder`` and the
+    rule filter context never diverge. The returned activation mirrors
+    the project-independent fields of the
     :class:`imbi_common.models.Event` row, so a ``filter_expression``
     matches on exactly what the activity feed records:
 
@@ -1115,7 +1261,7 @@ async def _record_and_build_filter_context(  # noqa: PLR0913 - required event fi
         'headers': _safe_headers(headers),
     }
     payload = _payload_dict(body)
-    await _record_events(
+    await recorder.record_received(
         records,
         service_slug=service_slug,
         user_id=user_id,
