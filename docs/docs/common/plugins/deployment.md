@@ -112,7 +112,11 @@ implement only what the remote supports.
   returned `RemoteDeployment` must carry a stable `external_run_id` so
   the host can dedupe. Status values use the host's canonical
   `DeploymentEventStatus` vocabulary (`pending`, `in_progress`,
-  `success`, `failed`, `rolled_back`).
+  `success`, `failed`, `rolled_back`). To attribute the deployer to an
+  Imbi user, populate `creator` (the remote login, for display) and
+  `creator_subject` (the remote's stable identity subject — e.g. the
+  numeric GitHub user id); the host resolves the latter through the
+  service's identity plugins.
 
 ## Link write-back
 

@@ -868,6 +868,11 @@ class RemoteDeployment(pydantic.BaseModel):
     #: deployment on the remote. ``None`` when the remote doesn't expose
     #: the creator or the plugin can't determine one.
     creator: str | None = None
+    #: The remote provider's stable unique id for the creator (the
+    #: identity *subject* — e.g. the numeric GitHub user id as a string),
+    #: used to resolve the deployer to an Imbi user via identity
+    #: attribution. ``None`` when the remote doesn't expose it.
+    creator_subject: str | None = None
 
 
 class DeploymentPlugin(abc.ABC):
