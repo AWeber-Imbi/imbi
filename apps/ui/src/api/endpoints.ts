@@ -2582,8 +2582,11 @@ export interface SearchResult {
   attribute: string
   chunk_text: string
   distance: number
+  name?: null | string
   node_id: string
   node_label: string
+  project_id?: null | string
+  slug?: null | string
 }
 
 export const searchOrganization = (

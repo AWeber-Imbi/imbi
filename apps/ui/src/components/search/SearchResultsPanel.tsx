@@ -9,6 +9,7 @@ import {
   getConfidenceLabel,
   type SearchResult,
 } from '@/api/search'
+import { getResultPath } from '@/components/search/getResultPath'
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
@@ -94,6 +95,13 @@ const ENTITY_STYLES: Record<
     label: 'Release',
     round: true,
     text: 'text-entity-domain',
+  },
+  Role: {
+    dot: 'bg-entity-config',
+    hex: '#7A7873',
+    label: 'Role',
+    round: true,
+    text: 'text-entity-config',
   },
   Tag: {
     dot: 'bg-entity-domain',
@@ -392,11 +400,6 @@ export function SearchResultsPanel({
   )
 }
 
-function getResultPath(result: SearchResult): null | string {
-  if (result.node_label === 'Project') return `/projects/${result.node_id}`
-  return null
-}
-
 function highlightKeywords(text: string, query: string): React.ReactNode {
   if (!query.trim()) return text
   const words = query
@@ -445,7 +448,8 @@ function ResultCard({
 
   const isNameAttr = result.attribute === 'name'
   const enriched = enrichment.get(result.node_id)
-  const entityName = enriched?.name ?? nameByNodeId.get(result.node_id)
+  const entityName =
+    enriched?.name ?? result.name ?? nameByNodeId.get(result.node_id)
   const title =
     entityName ??
     (isNameAttr
