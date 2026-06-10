@@ -609,6 +609,36 @@ export const listPluginOpsLogTemplates = async (
 }
 
 // Events
+
+export interface AdminEventsFilters {
+  attributed_to?: string
+  /** Filters on `metadata.event_type` (e.g. `'pull_request'`) — the
+   *  per-source label the gateway resolved from the webhook's
+   *  configured selector. Used together with `type='webhook'` to
+   *  narrow within the webhook category. */
+  event_type?: string
+  project_id?: string
+  since?: string
+  third_party_service?: string
+  /** Event *category*. `'webhook'` for inbound webhook deliveries.
+   *  Wider categories (e.g. system-generated events) may land in
+   *  the same table later. */
+  type?: string
+  until?: string
+}
+
+/**
+ * Per-handler dispatch outcome attached to webhook events by the
+ * gateway's phase-2 metadata write. `status` may be 'succeeded',
+ * 'failed', or 'skipped'; `error` and `duration_ms` are optional.
+ */
+export interface EventHandlerOutcome {
+  duration_ms?: number
+  error?: string
+  handler: string
+  status: string
+}
+
 export interface EventRecord {
   attributed_to: string
   id: string
@@ -618,6 +648,9 @@ export interface EventRecord {
   recorded_at: string
   third_party_service: string
   type: string
+  /** Increments with each phase of the gateway's two-phase recording.
+   *  0 = phase-1 (initial record), 1 = phase-2 (dispatch outcome). */
+  version?: number
 }
 
 export interface EventsPage {
@@ -628,6 +661,35 @@ export interface EventsPage {
 interface EventsEnvelope {
   data: EventRecord[]
 }
+
+export const listAdminEvents = async (
+  params: { cursor?: string; filters?: AdminEventsFilters; limit?: number },
+  signal?: AbortSignal,
+): Promise<EventsPage> => {
+  const query: Record<string, unknown> = { limit: params.limit ?? 100 }
+  if (params.cursor) query.cursor = params.cursor
+  if (params.filters) {
+    for (const [k, v] of Object.entries(params.filters)) {
+      if (v) query[k] = v
+    }
+  }
+  const { data, headers } = await apiClient.getWithHeaders<EventsEnvelope>(
+    '/events/',
+    query,
+    signal,
+  )
+  return {
+    entries: Array.isArray(data?.data) ? data.data : [],
+    nextCursor: parseNextCursor(headers),
+  }
+}
+
+export const getEvent = (eventId: string, signal?: AbortSignal) =>
+  apiClient.get<EventRecord>(
+    `/events/${encodeURIComponent(eventId)}`,
+    undefined,
+    signal,
+  )
 
 export const listProjectEvents = async (
   params: {

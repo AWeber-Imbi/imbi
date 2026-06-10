@@ -11,6 +11,7 @@ import {
   FileJson,
   FolderTree,
   Globe,
+  History,
   KeyRound,
   Layers,
   LayoutDashboard,
@@ -47,6 +48,7 @@ import { ServiceAccountManagement } from './admin/ServiceAccountManagement'
 import { TeamManagement } from './admin/TeamManagement'
 import { ThirdPartyServiceManagement } from './admin/ThirdPartyServiceManagement'
 import { UserManagement } from './admin/UserManagement'
+import { WebhookHistory } from './admin/WebhookHistory'
 import { WebhookManagement } from './admin/WebhookManagement'
 
 type AdminSection =
@@ -67,6 +69,7 @@ type AdminSection =
   | 'teams'
   | 'third-party-services'
   | 'users'
+  | 'webhook-history'
   | 'webhooks'
 
 // The admin section shown when none is specified in the URL.
@@ -90,6 +93,7 @@ const VALID_SECTIONS: AdminSection[] = [
   'teams',
   'third-party-services',
   'users',
+  'webhook-history',
   'webhooks',
 ]
 
@@ -189,6 +193,14 @@ export function Admin() {
       icon: Webhook,
       id: 'webhooks',
       label: 'Webhooks',
+      scope: 'org',
+    },
+    {
+      description:
+        'Browse recent inbound webhook deliveries and dispatch outcomes',
+      icon: History,
+      id: 'webhook-history',
+      label: 'Webhook History',
       scope: 'org',
     },
   ]
@@ -386,6 +398,9 @@ export function Admin() {
               <ThirdPartyServiceManagement />
             )}
             {currentSection === 'webhooks' && <WebhookManagement />}
+            {currentSection === 'webhook-history' && (
+              <WebhookHistory eventId={slug} />
+            )}
             {currentSection === 'link-definitions' && (
               <LinkDefinitionManagement />
             )}
