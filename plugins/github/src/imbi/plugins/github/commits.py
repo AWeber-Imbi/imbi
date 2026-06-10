@@ -977,6 +977,73 @@ async def _annotated_tag(
     return typing.cast('dict[str, typing.Any]', resp.json())
 
 
+async def _commit_date(
+    client: httpx.AsyncClient, sha: str, *, max_wait: float
+) -> datetime.datetime | None:
+    """Committer date of commit *sha*, ``None`` when unavailable.
+
+    Lightweight tags carry no tagger date, so their target commit's
+    date stands in for ``tagged_at`` — otherwise the ClickHouse row
+    falls back to ``recorded_at`` (sync time) and every release in the
+    UI reads "just now" after a full reconcile.
+    """
+    resp = await _request(
+        client, 'GET', f'/git/commits/{sha}', max_wait=max_wait
+    )
+    if resp.status_code != 200:
+        return None
+    data = typing.cast('dict[str, typing.Any]', resp.json())
+    committer: dict[str, typing.Any] = data.get('committer') or {}
+    return _parse_iso(committer.get('date'))
+
+
+async def _release_published_for_tag(
+    client: httpx.AsyncClient, name: str, *, max_wait: float
+) -> datetime.datetime | None:
+    """Published date of the GitHub release for tag *name*, if any."""
+    resp = await _request(
+        client,
+        'GET',
+        f'/releases/tags/{urllib.parse.quote(name, safe="")}',
+        max_wait=max_wait,
+    )
+    if resp.status_code != 200:
+        return None
+    data = typing.cast('dict[str, typing.Any]', resp.json())
+    return _parse_iso(data.get('published_at'))
+
+
+async def _release_published_map(
+    client: httpx.AsyncClient, *, max_wait: float
+) -> dict[str, datetime.datetime]:
+    """Map tag name -> GitHub release published date for the repo.
+
+    One paginated ``/releases`` sweep instead of a per-tag lookup;
+    drafts (``published_at`` null) are skipped.
+    """
+    out: dict[str, datetime.datetime] = {}
+    params: dict[str, str] = {'per_page': '100'}
+    while True:
+        resp = await _request(
+            client, 'GET', '/releases', params=params, max_wait=max_wait
+        )
+        if resp.status_code != 200:
+            return out
+        rows = typing.cast('list[dict[str, typing.Any]]', resp.json())
+        for row in rows:
+            tag = row.get('tag_name')
+            published = _parse_iso(row.get('published_at'))
+            if tag and published:
+                out[str(tag)] = published
+        next_url = _next_page_url(resp.headers.get('link'))
+        if next_url is None:
+            return out
+        next_page = _query_param(next_url, 'page')
+        if next_page is None:
+            return out
+        params['page'] = next_page
+
+
 def _web_base(api_base: str) -> str:
     """Map a REST API base to the web host (inverse of the routing table).
 
@@ -1008,9 +1075,24 @@ def _tag_record(
     sha: str,
     annotated: dict[str, typing.Any] | None = None,
     url: str = '',
+    published_at: datetime.datetime | None = None,
+    fallback_tagged_at: datetime.datetime | None = None,
 ) -> TagRecord:
+    """Build the ClickHouse row for one tag.
+
+    ``tagged_at`` preference: the GitHub release's published date
+    (*published_at*), then the annotated tag's tagger date, then the
+    target commit's committer date (*fallback_tagged_at*, lightweight
+    tags only).
+    """
     if annotated is None:
-        return TagRecord(project_id=project_id, name=name, sha=sha, url=url)
+        return TagRecord(
+            project_id=project_id,
+            name=name,
+            sha=sha,
+            url=url,
+            tagged_at=published_at or fallback_tagged_at,
+        )
     tagger: dict[str, typing.Any] = annotated.get('tagger') or {}
     return TagRecord(
         project_id=project_id,
@@ -1020,7 +1102,7 @@ def _tag_record(
         message=str(annotated.get('message') or ''),
         tagger_name=str(tagger.get('name') or ''),
         tagger_email=str(tagger.get('email') or ''),
-        tagged_at=_parse_iso(tagger.get('date')),
+        tagged_at=published_at or _parse_iso(tagger.get('date')),
     )
 
 
@@ -1037,6 +1119,8 @@ async def _reconcile_tags(
     out: list[TagRecord] = []
     prefix = 'refs/tags/'
     params: dict[str, str] = {'per_page': '100'}
+    # Lazily fetched on the first tag so tag-less repos cost nothing.
+    released: dict[str, datetime.datetime] | None = None
     while True:
         resp = await _request(
             client,
@@ -1054,6 +1138,11 @@ async def _reconcile_tags(
             if not ref.startswith(prefix) or not sha:
                 continue
             name = ref[len(prefix) :]
+            if released is None:
+                released = await _release_published_map(
+                    client, max_wait=max_wait
+                )
+            published = released.get(name)
             annotated = (
                 await _annotated_tag(client, sha, max_wait=max_wait)
                 if obj.get('type') == 'tag'
@@ -1066,6 +1155,12 @@ async def _reconcile_tags(
                     sha=sha,
                     annotated=annotated,
                     url=_tag_web_url(client, name),
+                    published_at=published,
+                    fallback_tagged_at=(
+                        await _commit_date(client, sha, max_wait=max_wait)
+                        if annotated is None and published is None
+                        else None
+                    ),
                 )
             )
         next_url = _next_page_url(resp.headers.get('link'))
@@ -1110,6 +1205,9 @@ async def sync_tags(
             annotated = await _annotated_tag(
                 client, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
             )
+            published = await _release_published_for_tag(
+                client, name, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
+            )
             records: list[pydantic.BaseModel] = [
                 _tag_record(
                     project_id=ctx.project_id,
@@ -1117,6 +1215,14 @@ async def sync_tags(
                     sha=after,
                     annotated=annotated,
                     url=_tag_web_url(client, name),
+                    published_at=published,
+                    fallback_tagged_at=(
+                        await _commit_date(
+                            client, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
+                        )
+                        if annotated is None and published is None
+                        else None
+                    ),
                 )
             ]
             if action_config.reconcile_all:
