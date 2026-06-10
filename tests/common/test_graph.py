@@ -422,16 +422,22 @@ class EmbeddableFieldsTests(unittest.TestCase):
         subclasses but carry ``Embeddable`` fields; ``_embeddable_fields``
         must surface them so ``_auto_embed`` populates the corpus.
         """
-        document = models.Document.model_construct(content='hello world')
-        release = models.Release.model_construct(description='notes')
+        document = models.Document.model_construct(
+            title='Runbook',
+            content='hello world',
+        )
+        release = models.Release.model_construct(
+            title='v1.0.0',
+            description='notes',
+        )
         comment = models.Comment.model_construct(body='a remark')
         component = models.Component.model_construct(
             name='express',
             description='web framework',
         )
         cases = [
-            (document, {'content'}),
-            (release, {'description'}),
+            (document, {'content', 'title'}),
+            (release, {'description', 'title'}),
             (comment, {'body'}),
             (component, {'name', 'description'}),
         ]

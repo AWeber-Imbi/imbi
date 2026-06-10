@@ -563,7 +563,7 @@ class Document(GraphModel):
         list[Tag],
         Edge(rel_type='TAGGED_WITH', direction='OUTGOING'),
     ] = []
-    title: str
+    title: typing.Annotated[str, Embeddable()]
     content: typing.Annotated[
         str,
         Embeddable(chunk=True, mimetype='text/markdown'),
@@ -797,7 +797,7 @@ class Release(GraphModel):
         Edge(rel_type='USES_COMPONENT_RELEASE', direction='OUTGOING'),
     ] = []
     tag: str | None = None
-    title: str
+    title: typing.Annotated[str, Embeddable()]
     description: typing.Annotated[
         str | None,
         Embeddable(chunk=True, mimetype='text/markdown'),
