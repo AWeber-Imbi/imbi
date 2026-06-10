@@ -22,6 +22,10 @@ def _row(
     entry_id: str = 'evt-1',
     project_id: str = 'p1',
 ) -> dict[str, typing.Any]:
+    # ``metadata`` and ``payload`` come back from ClickHouse as
+    # ``toJSONString``-serialized text (see ``_SELECT_COLUMNS`` in
+    # the events endpoint module); the helper handles the JSON
+    # parse.
     return {
         'id': entry_id,
         'project_id': project_id,
@@ -30,8 +34,8 @@ def _row(
         'type': 'project-change',
         'third_party_service': 'internal',
         'attributed_to': 'alice@example.com',
-        'metadata': {},
-        'payload': {'field': 'name', 'old': 'A', 'new': 'B'},
+        'metadata': '{}',
+        'payload': '{"field":"name","old":"A","new":"B"}',
     }
 
 
@@ -163,6 +167,36 @@ class RowToResponseTests(unittest.TestCase):
         assert isinstance(recorded, datetime.datetime)
         self.assertEqual(recorded.tzinfo, datetime.UTC)
 
+    def test_metadata_parsed_from_json_text(self) -> None:
+        """``toJSONString`` returns JSON text; the helper parses it
+        back to a Python dict for serialization."""
+        out = events._row_to_response(
+            {
+                'id': 'a',
+                'metadata': '{"webhook_id":"w-1","handlers":[]}',
+                'payload': '{"ref":"main"}',
+            }
+        )
+        self.assertEqual('w-1', out['metadata']['webhook_id'])
+        self.assertEqual([], out['metadata']['handlers'])
+        self.assertEqual('main', out['payload']['ref'])
+
+    def test_bytes_metadata_decoded_then_parsed(self) -> None:
+        """If clickhouse-connect hands back the JSON text as bytes
+        (e.g. with a Latin-1 byte inside a string value), decode
+        with replacement before parsing."""
+        out = events._row_to_response(
+            {'id': 'a', 'metadata': b'{"foo":"AB\x80C"}'}
+        )
+        self.assertEqual('AB�C', out['metadata']['foo'])
+
+    def test_malformed_json_in_metadata_does_not_500(self) -> None:
+        out = events._row_to_response(
+            {'id': 'a', 'metadata': 'not actually json'}
+        )
+        self.assertEqual('not actually json', out['metadata']['__raw__'])
+        self.assertIn('invalid JSON', out['metadata']['__error__'])
+
 
 class GlobalListTests(_EventsTestBase):
     def test_list_returns_200(self) -> None:
@@ -195,6 +229,7 @@ class GlobalListTests(_EventsTestBase):
                 'project_id': 'p1',
                 'type': 'project-change',
                 'attributed_to': 'alice@example.com',
+                'third_party_service': 'github-enterprise-cloud',
             },
         )
         self.assertEqual(response.status_code, 200)
@@ -203,6 +238,37 @@ class GlobalListTests(_EventsTestBase):
         self.assertEqual(params['project_id'], 'p1')
         self.assertEqual(params['type'], 'project-change')
         self.assertEqual(params['attributed_to'], 'alice@example.com')
+        self.assertEqual(
+            params['third_party_service'], 'github-enterprise-cloud'
+        )
+        sql = call.args[0]
+        self.assertIn('third_party_service =', sql)
+
+    def test_list_filters_by_event_type_through_metadata(self) -> None:
+        """``event_type`` filters on ``metadata.event_type`` so the
+        webhook-history view can narrow within ``type=webhook``."""
+        self.mock_query.return_value = [_row()]
+        response = self.client.get(
+            '/events/',
+            params={'type': 'webhook', 'event_type': 'pull_request'},
+        )
+        self.assertEqual(response.status_code, 200)
+        call = self.mock_query.await_args
+        sql = call.args[0]
+        params = call.args[1]
+        self.assertEqual(params['type'], 'webhook')
+        self.assertEqual(params['event_type'], 'pull_request')
+        self.assertIn('metadata.event_type', sql)
+
+    def test_list_reads_through_events_latest_view(self) -> None:
+        """Coalesced read: queries go through the events_latest view so
+        the phase-1 / phase-2 disposition writes from imbi-gateway are
+        collapsed to one row per id."""
+        self.mock_query.return_value = []
+        response = self.client.get('/events/')
+        self.assertEqual(response.status_code, 200)
+        sql = self.mock_query.await_args.args[0]
+        self.assertIn('FROM events_latest', sql)
 
     def test_list_with_since_until(self) -> None:
         self.mock_query.return_value = []
@@ -288,6 +354,60 @@ class GlobalListTests(_EventsTestBase):
         self.assertIn('cursor_ts', params)
         self.assertEqual(params['cursor_id'], 'evt-x')
         self.assertIn('(recorded_at, id) <', sql)
+
+
+class GetEventByIdTests(_EventsTestBase):
+    """Tests for the GET /events/{event_id} deep-link endpoint."""
+
+    def test_returns_event_when_found(self) -> None:
+        self.mock_query.return_value = [_row(entry_id='evt-deep-link')]
+        response = self.client.get('/events/evt-deep-link')
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body['id'], 'evt-deep-link')
+
+    def test_reads_through_events_latest_view(self) -> None:
+        self.mock_query.return_value = [_row(entry_id='evt-1')]
+        response = self.client.get('/events/evt-1')
+        self.assertEqual(response.status_code, 200)
+        sql = self.mock_query.await_args.args[0]
+        self.assertIn('FROM events_latest', sql)
+        params = self.mock_query.await_args.args[1]
+        self.assertEqual(params['event_id'], 'evt-1')
+
+    def test_returns_404_when_not_found(self) -> None:
+        self.mock_query.return_value = []
+        response = self.client.get('/events/nope')
+        self.assertEqual(response.status_code, 404)
+
+    def test_tolerates_non_utf8_bytes_in_payload(self) -> None:
+        # The by-id lookup must share the list feed's lenient decode
+        # policy: a non-UTF-8 byte in a payload string can't 500 it.
+        row = _row(entry_id='evt-1')
+        row['payload'] = {'title': b'fix \x91thing\x92'}
+        self.mock_query.return_value = [row]
+        response = self.client.get('/events/evt-1')
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body['payload']['title'], 'fix �thing�')
+
+    def test_non_admin_denied(self) -> None:
+        non_admin = api_models.User(
+            email='basic@example.com',
+            display_name='Basic',
+            is_active=True,
+            is_admin=False,
+            is_service_account=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.auth = api_permissions.AuthContext(
+            user=non_admin,
+            session_id='s',
+            auth_method='jwt',
+            permissions={'project:read'},
+        )
+        response = self.client.get('/events/evt-1')
+        self.assertEqual(response.status_code, 403)
 
 
 class ProjectScopedListTests(_EventsTestBase):
