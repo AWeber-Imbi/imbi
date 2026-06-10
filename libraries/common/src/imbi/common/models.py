@@ -548,17 +548,25 @@ class Tag(Node):
 
 
 class Document(GraphModel):
-    """A free-form, taggable document attached to a ``Project``.
+    """A free-form, taggable document.
 
-    ``content`` is markdown and is embedded so future semantic search
-    can surface documents alongside other corpus content.
+    A document is attached to exactly one owning vertex via an
+    ``ATTACHED_TO`` edge — a ``Project``, a ``ProjectType``, or a
+    ``User`` (the ``User`` vertex is defined by ``imbi-api``, so only
+    the project and project-type edges are typed here).  ``content``
+    is markdown and is embedded so future semantic search can surface
+    documents alongside other corpus content.
 
     """
 
     project: typing.Annotated[
-        Project,
+        Project | None,
         Edge(rel_type='ATTACHED_TO', direction='OUTGOING'),
-    ]
+    ] = None
+    project_type: typing.Annotated[
+        ProjectType | None,
+        Edge(rel_type='ATTACHED_TO', direction='OUTGOING'),
+    ] = None
     tags: typing.Annotated[
         list[Tag],
         Edge(rel_type='TAGGED_WITH', direction='OUTGOING'),
@@ -636,16 +644,26 @@ class Comment(GraphModel):
 
 
 class DocumentTemplate(Node):
-    """Reusable starter content for a project ``Document``.
+    """Reusable starter content for a ``Document``.
 
     Templates are scoped to an organization and seed a new document's
-    title, content, and tag set. ``project_type_slugs`` restricts
-    which project types may use the template; an empty list means
-    the template applies to every project type in the organization.
+    title, content, and tag set. ``type`` declares which attachment
+    contexts may use the template: ``'project'`` for project
+    documents, ``'user'`` for user documents, ``'project_type'`` for
+    project-type documents, and ``'global'`` for every context.
+    ``project_type_slugs`` further restricts which project types may
+    use the template; an empty list means the template applies to
+    every project type in the organization.
 
     """
 
     organization: BelongsToOrganization
+    type: typing.Literal[
+        'project',
+        'global',
+        'user',
+        'project_type',
+    ] = 'project'
     title: str | None = None
     content: typing.Annotated[
         str,

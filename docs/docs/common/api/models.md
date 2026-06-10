@@ -28,7 +28,16 @@ schema extension.
   `[:IDENTIFIED_BY]`
 
 ### Collaboration Models
-- **CommentThread**: A thread of comments anchored to a project
+- **Document**: A free-form, taggable markdown document attached to
+  exactly one owning vertex via `[:ATTACHED_TO]` — a `Project`, a
+  `ProjectType`, or a `User` (the `User` vertex is defined by
+  `imbi-api`, so only the project and project-type edges are typed
+  on the model).
+- **DocumentTemplate**: Reusable starter content for a `Document`.
+  `type` declares which attachment contexts may use the template:
+  `project`, `user`, `project_type`, or `global` (every context);
+  `project_type_slugs` optionally narrows project types further.
+- **CommentThread**: A thread of comments anchored to a
   `Document` via `[:ON_DOCUMENT]`. `kind` is `page` (whole-document)
   or `inline` (text-anchored); inline anchors are flattened into the
   `anchor_quote` / `anchor_prefix` / `anchor_suffix` / `anchor_start`

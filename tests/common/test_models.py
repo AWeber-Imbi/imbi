@@ -517,10 +517,76 @@ class DocumentTemplateModelTestCase(unittest.TestCase):
         self.assertEqual(template.project_type_slugs, [])
         self.assertEqual(template.sort_order, 0)
         self.assertIsNone(template.title)
+        self.assertEqual(template.type, 'project')
+
+    def test_document_template_type_values(self) -> None:
+        for value in ('project', 'global', 'user', 'project_type'):
+            template = models.DocumentTemplate(
+                name='Runbook',
+                slug='runbook',
+                organization=self._org(),
+                type=value,
+            )
+            self.assertEqual(template.type, value)
+
+    def test_document_template_rejects_unknown_type(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.DocumentTemplate(
+                name='Runbook',
+                slug='runbook',
+                organization=self._org(),
+                type='team',
+            )
 
     def test_document_template_requires_organization(self) -> None:
         with self.assertRaises(pydantic.ValidationError):
             models.DocumentTemplate(name='ADR', slug='adr')
+
+
+class DocumentModelTestCase(unittest.TestCase):
+    """Test cases for the Document model's attachment edges."""
+
+    def test_document_without_attachment_edges(self) -> None:
+        document = models.Document(
+            title='Runbook',
+            content='# Runbook\n',
+            created_by='alice@example.com',
+        )
+        self.assertIsNone(document.project)
+        self.assertIsNone(document.project_type)
+
+    def test_document_attached_to_project(self) -> None:
+        document = models.Document(
+            project=_make_project(),
+            title='Runbook',
+            content='# Runbook\n',
+            created_by='alice@example.com',
+        )
+        self.assertIsNotNone(document.project)
+        self.assertIsNone(document.project_type)
+
+    def test_document_attached_to_project_type(self) -> None:
+        org = models.Organization(name='Org', slug='org')
+        project_type = models.ProjectType(
+            name='HTTP API', slug='http-api', organization=org
+        )
+        document = models.Document(
+            project_type=project_type,
+            title='Runbook',
+            content='# Runbook\n',
+            created_by='alice@example.com',
+        )
+        self.assertIsNone(document.project)
+        self.assertIs(document.project_type, project_type)
+
+    def test_document_attachment_edges_share_rel_type(self) -> None:
+        rel_types = set()
+        for name in ('project', 'project_type'):
+            field = models.Document.model_fields[name]
+            for meta in field.metadata:
+                if isinstance(meta, models.Edge):
+                    rel_types.add(meta.rel_type)
+        self.assertEqual(rel_types, {'ATTACHED_TO'})
 
 
 def _make_document() -> models.Document:
