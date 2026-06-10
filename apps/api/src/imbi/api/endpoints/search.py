@@ -49,6 +49,10 @@ async def _get_org_node_ids(
     through the org's release dependency graph. Components are shared,
     cross-org identities, so they are scoped to those an org actually
     depends on rather than enumerated globally.
+
+    Archived projects are excluded, along with the Documents, Releases,
+    Comments, and Components reached through them, so search never
+    surfaces content from an archived project.
     """
     org_rows = await db.execute(
         'MATCH (o:Organization {{slug: {org_slug}}}) RETURN o.id AS org_id',
@@ -75,7 +79,9 @@ async def _get_org_node_ids(
 
     for row in await db.execute(
         'MATCH (p:Project)-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->'
-        '(:Organization {{slug: {org_slug}}}) RETURN p.id AS nid',
+        '(:Organization {{slug: {org_slug}}})'
+        ' WHERE coalesce(p.archived, false) = false'
+        ' RETURN p.id AS nid',
         {'org_slug': org_slug},
         columns=['nid'],
     ):
@@ -84,8 +90,9 @@ async def _get_org_node_ids(
             node_ids.add(nid)
 
     for row in await db.execute(
-        'MATCH (d:Document)-[:ATTACHED_TO]->(:Project)-[:OWNED_BY]->'
+        'MATCH (d:Document)-[:ATTACHED_TO]->(p:Project)-[:OWNED_BY]->'
         '(:Team)-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})'
+        ' WHERE coalesce(p.archived, false) = false'
         ' RETURN d.id AS nid',
         {'org_slug': org_slug},
         columns=['nid'],
@@ -96,7 +103,8 @@ async def _get_org_node_ids(
 
     for row in await db.execute(
         'MATCH (:Organization {{slug: {org_slug}}})<-[:BELONGS_TO]-'
-        '(:Team)<-[:OWNED_BY]-(:Project)-[:HAS_RELEASE]->(r:Release)'
+        '(:Team)<-[:OWNED_BY]-(p:Project)-[:HAS_RELEASE]->(r:Release)'
+        ' WHERE coalesce(p.archived, false) = false'
         ' RETURN r.id AS nid',
         {'org_slug': org_slug},
         columns=['nid'],
@@ -107,8 +115,9 @@ async def _get_org_node_ids(
 
     for row in await db.execute(
         'MATCH (c:Comment)-[:IN_THREAD]->(:CommentThread)-[:ON_DOCUMENT]->'
-        '(:Document)-[:ATTACHED_TO]->(:Project)-[:OWNED_BY]->(:Team)'
+        '(:Document)-[:ATTACHED_TO]->(p:Project)-[:OWNED_BY]->(:Team)'
         '-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})'
+        ' WHERE coalesce(p.archived, false) = false'
         ' RETURN c.id AS nid',
         {'org_slug': org_slug},
         columns=['nid'],
@@ -119,9 +128,10 @@ async def _get_org_node_ids(
 
     for row in await db.execute(
         'MATCH (comp:Component)-[:HAS_RELEASE]->(:ComponentRelease)'
-        '<-[:USES_COMPONENT_RELEASE]-(:Release)<-[:HAS_RELEASE]-(:Project)'
+        '<-[:USES_COMPONENT_RELEASE]-(:Release)<-[:HAS_RELEASE]-(p:Project)'
         '-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->'
         '(:Organization {{slug: {org_slug}}})'
+        ' WHERE coalesce(p.archived, false) = false'
         ' RETURN comp.id AS nid',
         {'org_slug': org_slug},
         columns=['nid'],
