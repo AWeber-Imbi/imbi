@@ -43,6 +43,11 @@ class OrganizationRef(pydantic.BaseModel):
     slug: str
 
 
+DocumentTemplateType = typing.Literal[
+    'project', 'global', 'user', 'project_type'
+]
+
+
 class DocumentTemplateBase(pydantic.BaseModel):
     name: str = pydantic.Field(min_length=1)
     slug: str = pydantic.Field(min_length=1)
@@ -50,6 +55,13 @@ class DocumentTemplateBase(pydantic.BaseModel):
     icon: pydantic.HttpUrl | str | None = None
     title: str | None = None
     content: str = ''
+    type: DocumentTemplateType = pydantic.Field(
+        default='project',
+        description=(
+            'Which attachment contexts may use this template: project, '
+            'user, or project_type documents; global applies everywhere.'
+        ),
+    )
     tags: list[str] = pydantic.Field(
         default=[],
         description='Tag slugs to attach. Must already exist in the org.',
@@ -69,6 +81,7 @@ class DocumentTemplateUpdate(pydantic.BaseModel):
     icon: pydantic.HttpUrl | str | None = None
     title: str | None = None
     content: str | None = None
+    type: DocumentTemplateType | None = None
     tags: list[str] | None = None
     project_type_slugs: list[str] | None = None
     sort_order: int | None = None
@@ -82,6 +95,7 @@ class DocumentTemplateResponse(pydantic.BaseModel):
     icon: pydantic.HttpUrl | str | None = None
     title: str | None = None
     content: str = ''
+    type: DocumentTemplateType = 'project'
     tags: list[TagRef] = []
     project_type_slugs: list[str] = []
     sort_order: int = 0
@@ -124,6 +138,10 @@ def _parse_template_row(
     template['tags'] = tags
     template.setdefault('project_type_slugs', [])
     template.setdefault('sort_order', 0)
+    # Rows written before the ``type`` column landed are project
+    # templates — that was the only attachment context at the time.
+    if not template.get('type'):
+        template['type'] = 'project'
     return template
 
 
@@ -267,6 +285,7 @@ async def create_document_template(
         'icon': str(data.icon) if data.icon else None,
         'title': data.title,
         'content': data.content,
+        'type': data.type,
         'project_type_slugs': data.project_type_slugs,
         'sort_order': data.sort_order,
         'created_at': now.isoformat(),
@@ -313,12 +332,17 @@ async def list_document_templates(
         ),
     ],
     project_type: str | None = None,
+    context: typing.Literal['project', 'user', 'project_type'] | None = None,
 ) -> list[dict[str, typing.Any]]:
     """List document templates for an organization.
 
     ``project_type`` (optional): when provided, only templates that
     apply to the given project-type slug are returned. Templates with
     an empty ``project_type_slugs`` apply to every project type.
+
+    ``context`` (optional): when provided, only templates whose
+    ``type`` matches the attachment context (or is ``'global'``) are
+    returned.
     """
     query: str = (
         """
@@ -343,6 +367,11 @@ async def list_document_templates(
         )
         slugs: list[str] = [str(s) for s in (raw_slugs or [])]
         if project_type is not None and slugs and project_type not in slugs:
+            continue
+        if context is not None and template['type'] not in (
+            context,
+            'global',
+        ):
             continue
         results.append(template)
     return results
@@ -478,6 +507,7 @@ async def update_document_template(
         'icon': existing.get('icon'),
         'title': existing.get('title'),
         'content': existing.get('content', ''),
+        'type': existing.get('type', 'project'),
         'project_type_slugs': existing.get('project_type_slugs', []),
         'sort_order': existing.get('sort_order', 0),
     }
@@ -524,6 +554,7 @@ async def patch_document_template(
         'icon': existing.get('icon'),
         'title': existing.get('title'),
         'content': existing.get('content', ''),
+        'type': existing.get('type', 'project'),
         'tags': [t['slug'] for t in existing.get('tags', [])],
         'project_type_slugs': existing.get('project_type_slugs', []),
         'sort_order': existing.get('sort_order', 0),

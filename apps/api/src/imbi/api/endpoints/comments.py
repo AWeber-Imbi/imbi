@@ -1,6 +1,6 @@
-"""Page-level threaded comments on project documents.
+"""Page-level threaded comments on documents.
 
-Comments hang off a project ``Document`` via a ``CommentThread`` vertex
+Comments hang off a ``Document`` via a ``CommentThread`` vertex
 (``ON_DOCUMENT`` edge) containing one or more ``Comment`` vertices
 (``IN_THREAD`` edge). The root comment is the oldest comment in a thread;
 replies follow in ``created_at`` order.
@@ -39,7 +39,7 @@ _COMMENT_EVENT_TYPE: typing.LiteralString = 'document-comment'
 
 async def _emit_comment_event(
     *,
-    project_id: str,
+    project_id: str | None,
     document_id: str,
     thread_id: str,
     comment_id: str,
@@ -59,7 +59,7 @@ async def _emit_comment_event(
             [
                 [
                     nanoid.generate(),
-                    project_id,
+                    project_id or '',
                     datetime.datetime.now(datetime.UTC),
                     _COMMENT_EVENT_TYPE,
                     'internal',
@@ -265,22 +265,40 @@ _COMMENTS_TAIL: typing.LiteralString = """
     RETURN t, d, comments
 """
 
-# Document-ownership join used by every query to scope to project -> org.
+# Document-ownership join used by every query to scope the document to
+# the organization through whichever vertex it is attached to (project,
+# project type, or user). When ``{project_id}`` is non-null the document
+# must additionally be attached to that project — this keeps the
+# project-scoped comment routes from resolving another project's
+# document.
 _DOC_JOIN: typing.LiteralString = """
     MATCH (d:Document {{id: {document_id}}})
-          -[:ATTACHED_TO]->(:Project {{id: {project_id}}})
+    OPTIONAL MATCH (d)-[:ATTACHED_TO]->(p:Project)
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    OPTIONAL MATCH (d)-[:ATTACHED_TO]->(pt:ProjectType)
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    OPTIONAL MATCH (d)-[:ATTACHED_TO]->(u:User)
+          -[:MEMBER_OF]->(:Organization {{slug: {org_slug}}})
+    WITH d, p, pt, u
+    WHERE ({project_id} IS NULL
+           AND (p IS NOT NULL OR pt IS NOT NULL OR u IS NOT NULL))
+       OR (p IS NOT NULL AND p.id = {project_id})
+    WITH DISTINCT d
 """
 
 
 async def _verify_document(
     db: graph.Pool,
     org_slug: str,
-    project_id: str,
+    project_id: str | None,
     document_id: str,
 ) -> None:
-    """Raise 404 unless the document belongs to the project -> org."""
+    """Raise 404 unless the document belongs to the org.
+
+    When ``project_id`` is provided the document must be attached to
+    that project.
+    """
     query: str = _DOC_JOIN + 'RETURN d.id AS id'
     records = await db.execute(
         query,
@@ -301,7 +319,7 @@ async def _verify_document(
 async def _fetch_thread(
     db: graph.Pool,
     org_slug: str,
-    project_id: str,
+    project_id: str | None,
     document_id: str,
     thread_id: str,
 ) -> dict[str, typing.Any] | None:
@@ -332,7 +350,7 @@ async def _fetch_thread(
 async def _fetch_comment(
     db: graph.Pool,
     org_slug: str,
-    project_id: str,
+    project_id: str | None,
     document_id: str,
     thread_id: str,
     comment_id: str,
@@ -366,13 +384,13 @@ async def _fetch_comment(
 @comments_router.get('', response_model=CommentThreadListResponse)
 async def list_comment_threads(
     org_slug: str,
-    project_id: str,
     document_id: str,
     db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('document:read')),
     ],
+    project_id: str | None = None,
 ) -> dict[str, typing.Any]:
     """List every comment thread on a document, comments oldest-first."""
     await _verify_document(db, org_slug, project_id, document_id)
@@ -402,7 +420,6 @@ async def list_comment_threads(
 )
 async def create_comment_thread(
     org_slug: str,
-    project_id: str,
     document_id: str,
     data: CommentThreadCreate,
     db: graph.Pool,
@@ -410,6 +427,7 @@ async def create_comment_thread(
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('comment:create')),
     ],
+    project_id: str | None = None,
 ) -> dict[str, typing.Any]:
     """Create a thread, its ``ON_DOCUMENT`` edge, and the root comment."""
     await _verify_document(db, org_slug, project_id, document_id)
@@ -511,7 +529,6 @@ async def create_comment_thread(
 )
 async def create_reply(
     org_slug: str,
-    project_id: str,
     document_id: str,
     thread_id: str,
     data: CommentBodyCreate,
@@ -520,6 +537,7 @@ async def create_reply(
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('comment:create')),
     ],
+    project_id: str | None = None,
 ) -> dict[str, typing.Any]:
     """Add a reply comment to an existing thread."""
     now = datetime.datetime.now(datetime.UTC)
@@ -582,7 +600,6 @@ async def create_reply(
 @comments_router.patch('/{thread_id}', response_model=CommentThreadResponse)
 async def patch_comment_thread(
     org_slug: str,
-    project_id: str,
     document_id: str,
     thread_id: str,
     operations: list[json_patch.PatchOperation],
@@ -591,6 +608,7 @@ async def patch_comment_thread(
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('comment:write')),
     ],
+    project_id: str | None = None,
 ) -> dict[str, typing.Any]:
     """Resolve or reopen a thread via JSON Patch (only ``/resolved``)."""
     existing = await _fetch_thread(
@@ -659,7 +677,6 @@ async def patch_comment_thread(
 )
 async def patch_comment(
     org_slug: str,
-    project_id: str,
     document_id: str,
     thread_id: str,
     comment_id: str,
@@ -669,6 +686,7 @@ async def patch_comment(
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('comment:write')),
     ],
+    project_id: str | None = None,
 ) -> dict[str, typing.Any]:
     """Edit a comment via JSON Patch (only ``/body`` and ``/mentions``).
 
@@ -747,7 +765,6 @@ async def patch_comment(
 )
 async def acknowledge_comment(
     org_slug: str,
-    project_id: str,
     document_id: str,
     thread_id: str,
     comment_id: str,
@@ -756,6 +773,7 @@ async def acknowledge_comment(
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('comment:write')),
     ],
+    project_id: str | None = None,
 ) -> dict[str, typing.Any]:
     """Toggle the principal in the comment's ``acknowledged_by`` array."""
     existing = await _fetch_comment(
@@ -807,7 +825,6 @@ async def acknowledge_comment(
 @comments_router.delete('/{thread_id}/comments/{comment_id}', status_code=204)
 async def delete_comment(
     org_slug: str,
-    project_id: str,
     document_id: str,
     thread_id: str,
     comment_id: str,
@@ -816,6 +833,7 @@ async def delete_comment(
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('comment:delete')),
     ],
+    project_id: str | None = None,
 ) -> None:
     """Delete a comment. Author-only. Deletes the thread if it was the
     root and no other comments remain.

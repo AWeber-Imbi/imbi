@@ -104,6 +104,88 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(body['slug'], 'adr')
         self.assertEqual(body['organization']['slug'], 'engineering')
         self.assertEqual(body['tags'], [])
+        # Rows without a stored type surface as project templates and
+        # the create defaults to 'project'.
+        self.assertEqual(body['type'], 'project')
+        create_call = self.mock_db.execute.await_args_list[1]
+        self.assertEqual(create_call.args[1]['type'], 'project')
+
+    def test_create_with_type(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [],
+            [
+                {
+                    'nt': self._template_row(type='user')['nt'],
+                    'o': self._template_row()['o'],
+                }
+            ],
+            [self._template_row(type='user')],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.post(
+                '/organizations/engineering/document-templates/',
+                json={
+                    'name': 'ADR',
+                    'slug': 'adr',
+                    'content': '# Context',
+                    'type': 'user',
+                },
+            )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()['type'], 'user')
+        create_call = self.mock_db.execute.await_args_list[1]
+        self.assertEqual(create_call.args[1]['type'], 'user')
+
+    def test_create_invalid_type_rejected(self) -> None:
+        response = self.client.post(
+            '/organizations/engineering/document-templates/',
+            json={
+                'name': 'ADR',
+                'slug': 'adr',
+                'content': '# Context',
+                'type': 'team',
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_list_filter_by_context(self) -> None:
+        """``context=`` keeps matching-type and global templates."""
+        self.mock_db.execute.return_value = [
+            {
+                'nt': self._template_row(slug='proj', type='project')['nt'],
+                'o': self._template_row()['o'],
+                'tags': [],
+            },
+            {
+                'nt': self._template_row(slug='everywhere', type='global')[
+                    'nt'
+                ],
+                'o': self._template_row()['o'],
+                'tags': [],
+            },
+            {
+                'nt': self._template_row(slug='personal', type='user')['nt'],
+                'o': self._template_row()['o'],
+                'tags': [],
+            },
+            # Legacy row without a type behaves as a project template.
+            {
+                'nt': self._template_row(slug='legacy')['nt'],
+                'o': self._template_row()['o'],
+                'tags': [],
+            },
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.get(
+                '/organizations/engineering/document-templates/?context=user'
+            )
+        self.assertEqual(response.status_code, 200)
+        slugs = [t['slug'] for t in response.json()]
+        self.assertEqual(slugs, ['everywhere', 'personal'])
 
     def test_create_with_tags(self) -> None:
         # Calls: validate_tags, dup check, create, attach_tags, fetch

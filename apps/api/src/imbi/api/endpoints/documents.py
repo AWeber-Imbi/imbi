@@ -1,10 +1,16 @@
-"""Project documents with tag support.
+"""Documents with tag support, attachable to multiple vertex kinds.
 
-Documents are project-scoped via a required ``ATTACHED_TO`` edge and may
-optionally be tagged with org-scoped ``Tag`` nodes via ``TAGGED_WITH``.
-The top-level ``documents_router`` supports cross-project search filtered
-by tag; ``documents_project_router`` handles CRUD scoped to a single
-project.
+A document is attached to exactly one owning vertex via an
+``ATTACHED_TO`` edge — a ``Project``, a ``ProjectType``, or a ``User``
+— and may optionally be tagged with org-scoped ``Tag`` nodes via
+``TAGGED_WITH``.
+
+The top-level ``documents_router`` supports the org-wide index
+(filterable by tag, project, project type, or user) plus generic
+single-document read/write/delete that works regardless of where the
+document is attached. ``documents_project_router``,
+``documents_project_type_router``, and ``documents_user_router``
+handle list + create scoped to a single attachment target.
 """
 
 import datetime
@@ -30,6 +36,8 @@ LOGGER = logging.getLogger(__name__)
 
 documents_router = fastapi.APIRouter(tags=['Documents'])
 documents_project_router = fastapi.APIRouter(tags=['Documents'])
+documents_project_type_router = fastapi.APIRouter(tags=['Documents'])
+documents_user_router = fastapi.APIRouter(tags=['Documents'])
 
 DEFAULT_LIMIT: int = 50
 MAX_LIMIT: int = 500
@@ -38,7 +46,10 @@ _DOCUMENT_READONLY_PATHS: frozenset[str] = frozenset(
     [
         '/id',
         '/project_id',
+        '/attached_to',
+        '/comment_count',
         '/created_by',
+        '/created_by_name',
         '/created_at',
         '/updated_by',
         '/updated_at',
@@ -51,16 +62,34 @@ class TagRef(pydantic.BaseModel):
     slug: str
 
 
+class AttachmentRef(pydantic.BaseModel):
+    """The vertex a document hangs off of.
+
+    ``id`` is the project id, the project-type slug, or the user
+    email depending on ``kind``. ``team`` and ``project_types`` are
+    only populated for ``kind='project'``.
+    """
+
+    kind: typing.Literal['project', 'project_type', 'user']
+    id: str
+    name: str
+    team: str | None = None
+    project_types: list[str] = []
+
+
 class DocumentResponse(pydantic.BaseModel):
     id: str
     title: str = ''
     content: str
     created_by: str
+    created_by_name: str | None = None
     created_at: datetime.datetime
     updated_by: str | None = None
     updated_at: datetime.datetime | None = None
-    project_id: str
+    project_id: str | None = None
+    attached_to: AttachmentRef | None = None
     is_pinned: bool = False
+    comment_count: int = 0
     tags: list[TagRef] = []
 
 
@@ -77,11 +106,25 @@ class DocumentListResponse(pydantic.BaseModel):
     data: list[DocumentResponse]
 
 
+def _str_list(value: typing.Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    items = typing.cast('list[object]', value)
+    return [str(v) for v in items]
+
+
 def _parse_document_row(
     record: dict[str, typing.Any],
 ) -> dict[str, typing.Any]:
     document: dict[str, typing.Any] = graph.parse_agtype(record['n'])
-    project: dict[str, typing.Any] = graph.parse_agtype(record['p'])
+    project: dict[str, typing.Any] | None = graph.parse_agtype(record['p'])
+    team: dict[str, typing.Any] | None = graph.parse_agtype(record['team'])
+    project_type: dict[str, typing.Any] | None = graph.parse_agtype(
+        record['pt']
+    )
+    user: dict[str, typing.Any] | None = graph.parse_agtype(record['u'])
+    ptype_names = _str_list(graph.parse_agtype(record['ptype_names']))
+    author: dict[str, typing.Any] | None = graph.parse_agtype(record['author'])
     raw_tags: list[typing.Any] = graph.parse_agtype(record['tags']) or []
     tags: list[dict[str, str]] = []
     for t in raw_tags:
@@ -94,24 +137,94 @@ def _parse_document_row(
         tags.append(
             {'name': str(entry.get('name', '')), 'slug': str(slug)},
         )
-    document['project_id'] = project.get('id', '')
+
+    attached: dict[str, typing.Any] | None = None
+    if project:
+        attached = {
+            'kind': 'project',
+            'id': str(project.get('id', '')),
+            'name': str(project.get('name', '')),
+            'team': str(team.get('name', '')) if team else None,
+            'project_types': ptype_names,
+        }
+    elif project_type:
+        attached = {
+            'kind': 'project_type',
+            'id': str(project_type.get('slug', '')),
+            'name': str(project_type.get('name', '')),
+        }
+    elif user:
+        attached = {
+            'kind': 'user',
+            'id': str(user.get('email', '')),
+            'name': str(user.get('display_name', '')),
+        }
+
+    document['project_id'] = project.get('id', '') if project else None
+    document['attached_to'] = attached
     document['tags'] = tags
+    document['comment_count'] = int(
+        graph.parse_agtype(record['comment_count']) or 0
+    )
+    document['created_by_name'] = (
+        str(author.get('display_name', '')) or None if author else None
+    )
     # Defaults for rows written before these columns landed.
     document['is_pinned'] = bool(document.get('is_pinned', False))
     document['title'] = str(document.get('title') or '')
     return document
 
 
-# Tail fragment used by every query that returns a document. Always
-# runs on ``n, p`` already in scope and emits ``n, p, tags`` columns.
-_TAGS_TAIL: typing.LiteralString = """
-    OPTIONAL MATCH (n)-[:TAGGED_WITH]->(tag:Tag)
-    WITH n, p, collect(CASE WHEN tag IS NOT NULL
-                            THEN tag{{.name, .slug}}
-                            END) AS raw_tags
-    WITH n, p, [t IN raw_tags WHERE t IS NOT NULL] AS tags
-    RETURN n, p, tags
+# Resolves the document's attachment target. Requires ``o`` (the org)
+# and ``n`` (the document) in scope; emits ``n, o, p, team, pt, u``
+# with the org-membership guarantee enforced. Filter fragments are
+# appended to the WHERE clause by callers.
+_ATTACHMENT_MATCH: typing.LiteralString = """
+    OPTIONAL MATCH (n)-[:ATTACHED_TO]->(p:Project)
+          -[:OWNED_BY]->(team:Team)-[:BELONGS_TO]->(o)
+    OPTIONAL MATCH (n)-[:ATTACHED_TO]->(pt:ProjectType)-[:BELONGS_TO]->(o)
+    OPTIONAL MATCH (n)-[:ATTACHED_TO]->(u:User)-[:MEMBER_OF]->(o)
+    WITH n, o, p, team, pt, u
+    WHERE (p IS NOT NULL OR pt IS NOT NULL OR u IS NOT NULL)
 """
+
+# Enrichment tail used by every query that returns a document. Runs
+# with ``n, p, team, pt, u`` in scope and emits the full column set.
+# Aggregates run stepwise so each OPTIONAL MATCH cannot multiply the
+# rows of the next.
+_ENRICH_TAIL: typing.LiteralString = """
+    OPTIONAL MATCH (p)-[:TYPE]->(ptype:ProjectType)
+    WITH n, p, team, pt, u,
+         collect(CASE WHEN ptype IS NOT NULL
+                      THEN ptype.name END) AS raw_ptype_names
+    WITH n, p, team, pt, u,
+         [x IN raw_ptype_names WHERE x IS NOT NULL] AS ptype_names
+    OPTIONAL MATCH (n)-[:TAGGED_WITH]->(tag:Tag)
+    WITH n, p, team, pt, u, ptype_names,
+         collect(CASE WHEN tag IS NOT NULL
+                      THEN tag{{.name, .slug}}
+                      END) AS raw_tags
+    WITH n, p, team, pt, u, ptype_names,
+         [t IN raw_tags WHERE t IS NOT NULL] AS tags
+    OPTIONAL MATCH (c:Comment)-[:IN_THREAD]->(:CommentThread)
+          -[:ON_DOCUMENT]->(n)
+    WITH n, p, team, pt, u, ptype_names, tags,
+         count(c) AS comment_count
+    OPTIONAL MATCH (author:User {{email: n.created_by}})
+    RETURN n, p, team, pt, u, ptype_names, tags, comment_count, author
+"""
+
+_DOCUMENT_COLUMNS: list[str] = [
+    'n',
+    'p',
+    'team',
+    'pt',
+    'u',
+    'ptype_names',
+    'tags',
+    'comment_count',
+    'author',
+]
 
 
 async def _attach_tags(
@@ -187,6 +300,64 @@ async def _validate_tag_slugs(
         )
 
 
+_DOCUMENT_CREATE_FRAGMENT: typing.LiteralString = """
+    CREATE (n:Document {{
+        id: {id},
+        title: {title},
+        content: {content},
+        created_by: {created_by},
+        created_at: {created_at},
+        is_pinned: {is_pinned}
+    }})
+    CREATE (n)-[:ATTACHED_TO]->(target)
+    RETURN n.id AS id
+"""
+
+
+async def _create_document_impl(
+    db: graph.Pool,
+    auth: permissions.AuthContext,
+    org_slug: str,
+    data: DocumentCreate,
+    anchor_match: typing.LiteralString,
+    anchor_params: dict[str, typing.Any],
+    not_found_detail: str,
+) -> dict[str, typing.Any]:
+    """Create a document attached to the vertex bound as ``target``."""
+    tag_slugs = list(dict.fromkeys(data.tags))
+    await _validate_tag_slugs(db, org_slug, tag_slugs)
+
+    now = datetime.datetime.now(datetime.UTC)
+    document_id = nanoid.generate()
+    records = await db.execute(
+        anchor_match + _DOCUMENT_CREATE_FRAGMENT,
+        {
+            **anchor_params,
+            'org_slug': org_slug,
+            'id': document_id,
+            'title': data.title,
+            'content': data.content,
+            'created_by': auth.principal_name,
+            'created_at': now.isoformat(),
+            'is_pinned': False,
+        },
+        columns=['id'],
+    )
+    if not records:
+        raise fastapi.HTTPException(status_code=404, detail=not_found_detail)
+
+    if tag_slugs:
+        await _attach_tags(db, org_slug, document_id, tag_slugs)
+
+    document = await _fetch_document(db, org_slug, document_id)
+    if document is None:
+        raise fastapi.HTTPException(
+            status_code=500,
+            detail='Document created but could not be read back',
+        )
+    return document
+
+
 @documents_project_router.post(
     '/', status_code=201, response_model=DocumentResponse
 )
@@ -201,56 +372,78 @@ async def create_document(
     ],
 ) -> dict[str, typing.Any]:
     """Create a document attached to a project, optionally with tags."""
-    tag_slugs = list(dict.fromkeys(data.tags))
-    await _validate_tag_slugs(db, org_slug, tag_slugs)
-
-    now = datetime.datetime.now(datetime.UTC)
-    document_id = nanoid.generate()
-    create_query: typing.LiteralString = """
-    MATCH (p:Project {{id: {project_id}}})
+    anchor: typing.LiteralString = """
+    MATCH (target:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-    CREATE (n:Document {{
-        id: {id},
-        title: {title},
-        content: {content},
-        created_by: {created_by},
-        created_at: {created_at},
-        is_pinned: {is_pinned}
-    }})
-    CREATE (n)-[:ATTACHED_TO]->(p)
-    RETURN n.id AS id
     """
-    records = await db.execute(
-        create_query,
-        {
-            'org_slug': org_slug,
-            'project_id': project_id,
-            'id': document_id,
-            'title': data.title,
-            'content': data.content,
-            'created_by': auth.principal_name,
-            'created_at': now.isoformat(),
-            'is_pinned': False,
-        },
-        columns=['id'],
+    return await _create_document_impl(
+        db,
+        auth,
+        org_slug,
+        data,
+        anchor,
+        {'project_id': project_id},
+        f'Project {project_id!r} not found',
     )
-    if not records:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'Project {project_id!r} not found',
-        )
 
-    if tag_slugs:
-        await _attach_tags(db, org_slug, document_id, tag_slugs)
 
-    document = await _fetch_document(db, org_slug, project_id, document_id)
-    if document is None:
-        raise fastapi.HTTPException(
-            status_code=500,
-            detail='Document created but could not be read back',
-        )
-    return document
+@documents_project_type_router.post(
+    '/', status_code=201, response_model=DocumentResponse
+)
+async def create_project_type_document(
+    org_slug: str,
+    type_slug: str,
+    data: DocumentCreate,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('document:create')),
+    ],
+) -> dict[str, typing.Any]:
+    """Create a document attached to a project type."""
+    anchor: typing.LiteralString = """
+    MATCH (target:ProjectType {{slug: {type_slug}}})
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    """
+    return await _create_document_impl(
+        db,
+        auth,
+        org_slug,
+        data,
+        anchor,
+        {'type_slug': type_slug},
+        f'Project type {type_slug!r} not found',
+    )
+
+
+@documents_user_router.post(
+    '/', status_code=201, response_model=DocumentResponse
+)
+async def create_user_document(
+    org_slug: str,
+    email: str,
+    data: DocumentCreate,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('document:create')),
+    ],
+) -> dict[str, typing.Any]:
+    """Create a document attached to a user (org member)."""
+    anchor: typing.LiteralString = """
+    MATCH (target:User {{email: {email}}})
+          -[:MEMBER_OF]->(:Organization {{slug: {org_slug}}})
+    """
+    return await _create_document_impl(
+        db,
+        auth,
+        org_slug,
+        data,
+        anchor,
+        {'email': email},
+        f'User {email!r} not found',
+    )
 
 
 async def _list_documents_impl(
@@ -258,8 +451,10 @@ async def _list_documents_impl(
     request: fastapi.Request,
     db: graph.Pool,
     org_slug: str,
-    project_id: str | None,
-    tag_slug: str | None,
+    project_id: str | None = None,
+    project_type_slug: str | None = None,
+    user_email: str | None = None,
+    tag_slug: str | None = None,
     limit: int,
     cursor: str | None,
 ) -> fastapi.Response:
@@ -269,14 +464,31 @@ async def _list_documents_impl(
             detail=f'limit must be 1..{MAX_LIMIT}',
         )
 
+    attachment_filters = sum(
+        value is not None
+        for value in (project_id, project_type_slug, user_email)
+    )
+    if attachment_filters > 1:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Only one attachment filter (project, project_type, '
+            'user) may be specified at a time',
+        )
+
     params: dict[str, typing.Any] = {
         'org_slug': org_slug,
         'row_limit': limit + 1,
     }
-    project_predicate = ''
+    filters = ''
     if project_id is not None:
-        project_predicate = ' AND p.id = {project_id}'
+        filters += ' AND p.id = {project_id}'
         params['project_id'] = project_id
+    if project_type_slug is not None:
+        filters += ' AND pt.slug = {project_type_slug}'
+        params['project_type_slug'] = project_type_slug
+    if user_email is not None:
+        filters += ' AND u.email = {user_email}'
+        params['user_email'] = user_email
 
     tag_match = ''
     if tag_slug is not None:
@@ -295,8 +507,8 @@ async def _list_documents_impl(
             )
         cursor_ts, cursor_id = decoded
         cursor_clause = (
-            ' WHERE n.created_at < {cursor_ts}'
-            ' OR (n.created_at = {cursor_ts} AND n.id < {cursor_id})'
+            ' AND (n.created_at < {cursor_ts}'
+            ' OR (n.created_at = {cursor_ts} AND n.id < {cursor_id}))'
         )
         params['cursor_ts'] = cursor_ts.isoformat()
         params['cursor_id'] = cursor_id
@@ -304,21 +516,21 @@ async def _list_documents_impl(
     query: str = (
         """
     MATCH (o:Organization {{slug: {org_slug}}})
-    MATCH (n:Document)-[:ATTACHED_TO]->(p:Project)
-          -[:OWNED_BY]->(:Team)-[:BELONGS_TO]->(o)
-    WHERE 1 = 1"""
-        + project_predicate
+    MATCH (n:Document)"""
         + tag_match
+        + _ATTACHMENT_MATCH
+        + filters
         + cursor_clause
         + """
-    WITH DISTINCT n, p, n.created_at AS sort_ts, n.id AS sort_id
+    WITH DISTINCT n, p, team, pt, u,
+         n.created_at AS sort_ts, n.id AS sort_id
     ORDER BY sort_ts DESC, sort_id DESC
     LIMIT {row_limit}
     """
-        + _TAGS_TAIL
+        + _ENRICH_TAIL
     )
 
-    records = await db.execute(query, params, columns=['n', 'p', 'tags'])
+    records = await db.execute(query, params, columns=_DOCUMENT_COLUMNS)
     next_cursor: str | None = None
     parsed = [_parse_document_row(r) for r in records]
     if len(parsed) > limit:
@@ -355,13 +567,21 @@ async def list_documents(
     cursor: str | None = None,
     tag: str | None = None,
     project_id: str | None = None,
+    project_type: str | None = None,
+    user: str | None = None,
 ) -> fastapi.Response:
-    """Cross-project document search. Filter by tag slug and/or project id."""
+    """Org-wide document index.
+
+    Filter by tag slug, project id, project-type slug, and/or user
+    email.
+    """
     return await _list_documents_impl(
         request=request,
         db=db,
         org_slug=org_slug,
         project_id=project_id,
+        project_type_slug=project_type,
+        user_email=user,
         tag_slug=tag,
         limit=limit,
         cursor=cursor,
@@ -394,34 +614,117 @@ async def list_project_documents(
     )
 
 
+@documents_project_type_router.get('/', response_model=DocumentListResponse)
+async def list_project_type_documents(
+    request: fastapi.Request,
+    org_slug: str,
+    type_slug: str,
+    db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('document:read')),
+    ],
+    limit: int = DEFAULT_LIMIT,
+    cursor: str | None = None,
+    tag: str | None = None,
+) -> fastapi.Response:
+    """List documents attached to a specific project type."""
+    return await _list_documents_impl(
+        request=request,
+        db=db,
+        org_slug=org_slug,
+        project_type_slug=type_slug,
+        tag_slug=tag,
+        limit=limit,
+        cursor=cursor,
+    )
+
+
+@documents_user_router.get('/', response_model=DocumentListResponse)
+async def list_user_documents(
+    request: fastapi.Request,
+    org_slug: str,
+    email: str,
+    db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('document:read')),
+    ],
+    limit: int = DEFAULT_LIMIT,
+    cursor: str | None = None,
+    tag: str | None = None,
+) -> fastapi.Response:
+    """List documents attached to a specific user."""
+    return await _list_documents_impl(
+        request=request,
+        db=db,
+        org_slug=org_slug,
+        user_email=email,
+        tag_slug=tag,
+        limit=limit,
+        cursor=cursor,
+    )
+
+
+def _scope_filter(
+    project_id: str | None,
+) -> tuple[typing.LiteralString, dict[str, typing.Any]]:
+    """Optional project constraint for the generic document queries."""
+    if project_id is None:
+        return '', {}
+    return ' AND p.id = {project_id}', {'project_id': project_id}
+
+
 async def _fetch_document(
     db: graph.Pool,
     org_slug: str,
-    project_id: str,
     document_id: str,
+    project_id: str | None = None,
 ) -> dict[str, typing.Any] | None:
+    scope, scope_params = _scope_filter(project_id)
     query: str = (
         """
-    MATCH (n:Document {{id: {document_id}}})
-          -[:ATTACHED_TO]->(p:Project {{id: {project_id}}})
-          -[:OWNED_BY]->(:Team)
-          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-    WITH DISTINCT n, p
+    MATCH (o:Organization {{slug: {org_slug}}})
+    MATCH (n:Document {{id: {document_id}}})"""
+        + _ATTACHMENT_MATCH
+        + scope
+        + """
+    WITH DISTINCT n, p, team, pt, u
     """
-        + _TAGS_TAIL
+        + _ENRICH_TAIL
     )
     records = await db.execute(
         query,
         {
             'document_id': document_id,
-            'project_id': project_id,
             'org_slug': org_slug,
+            **scope_params,
         },
-        columns=['n', 'p', 'tags'],
+        columns=_DOCUMENT_COLUMNS,
     )
     if not records:
         return None
     return _parse_document_row(records[0])
+
+
+@documents_router.get('/{document_id}', response_model=DocumentResponse)
+async def get_org_document(
+    org_slug: str,
+    document_id: str,
+    db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('document:read')),
+    ],
+) -> dict[str, typing.Any]:
+    """Retrieve a single document regardless of attachment kind."""
+    return await fetch_or_404(
+        _fetch_document,
+        db,
+        org_slug,
+        document_id,
+        detail=f'Document {document_id!r} not found',
+    )
 
 
 @documents_project_router.get(
@@ -437,13 +740,13 @@ async def get_document(
         fastapi.Depends(permissions.require_permission('document:read')),
     ],
 ) -> dict[str, typing.Any]:
-    """Retrieve a single document."""
+    """Retrieve a single project document."""
     return await fetch_or_404(
         _fetch_document,
         db,
         org_slug,
-        project_id,
         document_id,
+        project_id,
         detail=f'Document {document_id!r} not found',
     )
 
@@ -479,22 +782,15 @@ def _resolve_patched_field(
     return fallback
 
 
-@documents_project_router.patch(
-    '/{document_id}', response_model=DocumentResponse
-)
-async def patch_document(
+async def _patch_document_impl(
+    db: graph.Pool,
+    auth: permissions.AuthContext,
     org_slug: str,
-    project_id: str,
     document_id: str,
     operations: list[json_patch.PatchOperation],
-    db: graph.Pool,
-    auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('document:write')),
-    ],
+    project_id: str | None = None,
 ) -> dict[str, typing.Any]:
-    """Update document content and/or tag attachments via JSON Patch."""
-    existing = await _fetch_document(db, org_slug, project_id, document_id)
+    existing = await _fetch_document(db, org_slug, document_id, project_id)
     if existing is None:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Document {document_id!r} not found'
@@ -555,12 +851,15 @@ async def patch_document(
         bool(existing.get('is_pinned', False)),
     )
 
+    scope, scope_params = _scope_filter(project_id)
     now = datetime.datetime.now(datetime.UTC)
-    set_query: typing.LiteralString = """
-    MATCH (n:Document {{id: {document_id}}})
-          -[:ATTACHED_TO]->(:Project {{id: {project_id}}})
-          -[:OWNED_BY]->(:Team)
-          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    set_query: str = (
+        """
+    MATCH (o:Organization {{slug: {org_slug}}})
+    MATCH (n:Document {{id: {document_id}}})"""
+        + _ATTACHMENT_MATCH
+        + scope
+        + """
     SET n.title = {title},
         n.content = {content},
         n.updated_by = {updated_by},
@@ -568,17 +867,18 @@ async def patch_document(
         n.is_pinned = {is_pinned}
     RETURN n.id AS id
     """
+    )
     records = await db.execute(
         set_query,
         {
             'org_slug': org_slug,
-            'project_id': project_id,
             'document_id': document_id,
             'title': new_title,
             'content': new_content,
             'updated_by': auth.principal_name,
             'updated_at': now.isoformat(),
             'is_pinned': new_is_pinned,
+            **scope_params,
         },
         columns=['id'],
     )
@@ -591,12 +891,95 @@ async def patch_document(
         await _detach_all_tags(db, document_id)
         await _attach_tags(db, org_slug, document_id, new_tags)
 
-    document = await _fetch_document(db, org_slug, project_id, document_id)
+    document = await _fetch_document(db, org_slug, document_id, project_id)
     if document is None:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Document {document_id!r} not found'
         )
     return document
+
+
+@documents_router.patch('/{document_id}', response_model=DocumentResponse)
+async def patch_org_document(
+    org_slug: str,
+    document_id: str,
+    operations: list[json_patch.PatchOperation],
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('document:write')),
+    ],
+) -> dict[str, typing.Any]:
+    """Update a document via JSON Patch regardless of attachment kind."""
+    return await _patch_document_impl(
+        db, auth, org_slug, document_id, operations
+    )
+
+
+@documents_project_router.patch(
+    '/{document_id}', response_model=DocumentResponse
+)
+async def patch_document(
+    org_slug: str,
+    project_id: str,
+    document_id: str,
+    operations: list[json_patch.PatchOperation],
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('document:write')),
+    ],
+) -> dict[str, typing.Any]:
+    """Update document content and/or tag attachments via JSON Patch."""
+    return await _patch_document_impl(
+        db, auth, org_slug, document_id, operations, project_id
+    )
+
+
+async def _delete_document_impl(
+    db: graph.Pool,
+    org_slug: str,
+    document_id: str,
+    project_id: str | None = None,
+) -> None:
+    scope, scope_params = _scope_filter(project_id)
+    query: str = (
+        """
+    MATCH (o:Organization {{slug: {org_slug}}})
+    MATCH (n:Document {{id: {document_id}}})"""
+        + _ATTACHMENT_MATCH
+        + scope
+        + """
+    DETACH DELETE n
+    RETURN 1 AS deleted
+    """
+    )
+    records = await db.execute(
+        query,
+        {
+            'document_id': document_id,
+            'org_slug': org_slug,
+            **scope_params,
+        },
+    )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'Document {document_id!r} not found'
+        )
+
+
+@documents_router.delete('/{document_id}', status_code=204)
+async def delete_org_document(
+    org_slug: str,
+    document_id: str,
+    db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('document:delete')),
+    ],
+) -> None:
+    """Delete a document regardless of attachment kind."""
+    await _delete_document_impl(db, org_slug, document_id)
 
 
 @documents_project_router.delete('/{document_id}', status_code=204)
@@ -610,24 +993,5 @@ async def delete_document(
         fastapi.Depends(permissions.require_permission('document:delete')),
     ],
 ) -> None:
-    """Delete a document."""
-    query: typing.LiteralString = """
-    MATCH (n:Document {{id: {document_id}}})
-          -[:ATTACHED_TO]->(p:Project {{id: {project_id}}})
-          -[:OWNED_BY]->(:Team)
-          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-    DETACH DELETE n
-    RETURN n
-    """
-    records = await db.execute(
-        query,
-        {
-            'document_id': document_id,
-            'project_id': project_id,
-            'org_slug': org_slug,
-        },
-    )
-    if not records:
-        raise fastapi.HTTPException(
-            status_code=404, detail=f'Document {document_id!r} not found'
-        )
+    """Delete a project document."""
+    await _delete_document_impl(db, org_slug, document_id, project_id)

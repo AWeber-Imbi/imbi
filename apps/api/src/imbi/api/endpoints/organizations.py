@@ -15,7 +15,12 @@ from imbi_api.relationships import RelationshipSpec, build_relationships
 
 from .comments import comments_router
 from .document_templates import document_templates_router
-from .documents import documents_project_router, documents_router
+from .documents import (
+    documents_project_router,
+    documents_project_type_router,
+    documents_router,
+    documents_user_router,
+)
 from .environments import environments_router
 from .events import events_project_router
 from .identity_plugins import identity_plugins_router
@@ -104,10 +109,24 @@ organizations_router.include_router(
     prefix='/{org_slug}/projects/{project_id}/documents',
 )
 organizations_router.include_router(
+    documents_project_type_router,
+    prefix='/{org_slug}/project-types/{type_slug}/documents',
+)
+organizations_router.include_router(
+    documents_user_router,
+    prefix='/{org_slug}/users/{email}/documents',
+)
+organizations_router.include_router(
     comments_router,
     prefix=(
         '/{org_slug}/projects/{project_id}/documents/{document_id}/comments'
     ),
+)
+# Attachment-agnostic comment routes — the same handlers resolve the
+# document through whichever vertex it is attached to.
+organizations_router.include_router(
+    comments_router,
+    prefix='/{org_slug}/documents/{document_id}/comments',
 )
 organizations_router.include_router(
     document_templates_router,
