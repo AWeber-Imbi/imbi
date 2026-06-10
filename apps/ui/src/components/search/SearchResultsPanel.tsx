@@ -175,7 +175,7 @@ export function SearchResultsPanel({
 }: SearchResultsPanelProps) {
   const navigate = useNavigate()
   const { selectedOrganization } = useOrganization()
-  const [labelFilter, setLabelFilter] = useState<null | string>(null)
+  const [labelFilter, setLabelFilter] = useState<null | string>('Project')
   const [refineOpen, setRefineOpen] = useState(false)
   const queryStartRef = useRef<null | number>(null)
   const [elapsedMs, setElapsedMs] = useState<null | number>(null)
@@ -183,6 +183,8 @@ export function SearchResultsPanel({
   useEffect(() => {
     queryStartRef.current = Date.now()
     setElapsedMs(null)
+    // Every new search starts on the Project pill, not "All".
+    setLabelFilter('Project')
   }, [query])
 
   useEffect(() => {
@@ -216,10 +218,6 @@ export function SearchResultsPanel({
     [visibleResults],
   )
 
-  const filteredResults = labelFilter
-    ? navigableResults.filter((r) => r.node_label === labelFilter)
-    : navigableResults
-
   const countsByLabel = useMemo(
     () =>
       navigableResults.reduce<Record<string, number>>((acc, r) => {
@@ -228,6 +226,16 @@ export function SearchResultsPanel({
       }, {}),
     [navigableResults],
   )
+
+  // Search defaults to the Project pill; fall back to showing all results
+  // when the current query returned no rows for the selected label, so the
+  // list is never empty while other results exist.
+  const effectiveFilter =
+    labelFilter && countsByLabel[labelFilter] ? labelFilter : null
+
+  const filteredResults = effectiveFilter
+    ? navigableResults.filter((r) => r.node_label === effectiveFilter)
+    : navigableResults
 
   const topResult = navigableResults[0]
   const topLabel = topResult ? getConfidenceLabel(topResult.distance) : null
@@ -268,7 +276,7 @@ export function SearchResultsPanel({
     return (
       <button
         className={`flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 font-mono text-xs transition-colors ${
-          labelFilter === nodeLabel
+          effectiveFilter === nodeLabel
             ? 'bg-foreground text-background dark:bg-action dark:text-black'
             : 'text-muted-foreground hover:text-foreground'
         }`}
@@ -370,7 +378,7 @@ export function SearchResultsPanel({
       <div className="border-border flex items-center gap-1 overflow-x-auto border-b px-3 py-2">
         <button
           className={`flex shrink-0 items-center gap-1 rounded-full px-2.5 py-0.5 font-mono text-xs font-medium transition-colors ${
-            labelFilter === null
+            effectiveFilter === null
               ? 'bg-foreground text-background dark:bg-action dark:text-black'
               : 'text-muted-foreground hover:text-foreground'
           }`}
