@@ -1,6 +1,6 @@
 [project]
 name = "imbi-plugin-github"
-version = "2.10.0"
+version = "2.11.0"
 description = "GitHub identity plugin for Imbi (github.com / GHEC / GHES)"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27",
-  "imbi-common[databases]==2.10.0",
+  "imbi-common[databases]==2.11.0",
   "pydantic>=2",
   "pyjwt[crypto]>=2.8",
 ]
@@ -37,7 +37,7 @@ github-commit-sync = "imbi_plugin_github.commits:GitHubCommitSyncPlugin"
 dev = [
   "basedpyright",
   "coverage[toml]",
-  "imbi-common[server,databases]==2.10.0",
+  "imbi-common[server,databases]==2.11.0",
   "pre-commit",
   "pytest",
   "pytest-asyncio",
@@ -125,12 +125,6 @@ max-complexity = 15
 default-groups = ["dev"]
 exclude-newer = "7 days"
 exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "imbi-plugin-aws" = false, "imbi-plugin-github" = false, "imbi-plugin-logzio" = false, "imbi-plugin-oidc" = false, "imbi-plugin-pagerduty" = false, "imbi-plugin-sentry" = false, "imbi-plugin-sonarqube" = false }
-
-# TEMPORARY: PluginRateLimited landed on imbi-common main but isn't on
-# PyPI yet (still 2.10.0). Track main until imbi-common 2.11 is released,
-# then drop this source and bump the pin to ==2.11.x.
-[tool.uv.sources]
-imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
