@@ -27,6 +27,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { useLoginToEmail } from '@/hooks/useLoginToEmail'
 import { useSearchShortcut } from '@/hooks/useSearchShortcut'
 import { deriveChipColors } from '@/lib/chip-colors'
 import { formatRelativeDate } from '@/lib/formatDate'
@@ -726,6 +727,22 @@ export function ProjectsView() {
   )
 }
 
+// Resolve a release's ``performed_by`` to an email when possible so the
+// attribution chip renders a consistent display name + Gravatar:
+// ``performed_by`` may be a raw remote login, an email, or an already
+// resolved display name. Emails pass through; a bare login is mapped to
+// the matching Imbi user's email via the local-part lookup; anything
+// unmatched returns ``undefined`` so the caller falls back to the actor
+// string verbatim.
+export function resolveActorEmail(
+  actor: null | string | undefined,
+  loginToEmail: Map<string, string>,
+): string | undefined {
+  if (!actor) return undefined
+  if (actor.includes('@')) return actor
+  return loginToEmail.get(actor)
+}
+
 function abbreviateEnvName(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
   if (parts.length === 0) return ''
@@ -1173,14 +1190,19 @@ function ReleaseStamp({
 }: {
   release?: null | { deployed_at: string; performed_by?: null | string }
 }) {
+  const { displayNames, loginToEmail } = useLoginToEmail()
+  const actor = release?.performed_by ?? null
+  const actorEmail = resolveActorEmail(actor, loginToEmail)
   return (
     <p className="text-tertiary mt-1 flex items-center justify-between text-xs">
       {release ? (
         <>
           <span className="min-w-0">
-            {release.performed_by ? (
+            {actor ? (
               <UserIdentity
-                actor={release.performed_by}
+                actor={actor}
+                displayNames={displayNames}
+                email={actorEmail}
                 linkToProfile={false}
                 size="small"
               />
