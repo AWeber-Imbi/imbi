@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DynamicDetailFields } from '@/components/ui/dynamic-fields'
 import { EntityIcon } from '@/components/ui/entity-icon'
+import { Sk } from '@/components/ui/skeleton'
 import { ENVIRONMENT_BASE_FIELDS_SET } from '@/lib/constants'
 import { queryKeys } from '@/lib/queryKeys'
 import { extractDynamicFields } from '@/lib/utils'
@@ -23,7 +24,7 @@ export function EnvironmentDetail({
   onBack,
   onEdit,
 }: EnvironmentDetailProps) {
-  const { data: envSchema } = useQuery({
+  const { data: envSchema, isLoading: schemaLoading } = useQuery({
     queryFn: ({ signal }) => getEnvironmentSchema(signal),
     queryKey: ['environmentSchema'],
     staleTime: 5 * 60 * 1000,
@@ -121,6 +122,7 @@ export function EnvironmentDetail({
                 )}
               </div>
             </div>
+            {schemaLoading && <DynamicFieldsSkeleton />}
             {envSchema && (
               <DynamicDetailFields
                 data={extractDynamicFields(
@@ -149,5 +151,18 @@ export function EnvironmentDetail({
         />
       ))}
     </div>
+  )
+}
+
+function DynamicFieldsSkeleton() {
+  return (
+    <>
+      {[0, 1].map((i) => (
+        <div className="flex flex-col gap-1.5" key={i}>
+          <Sk h={12} w={96} />
+          <Sk h={14} w="60%" />
+        </div>
+      ))}
+    </>
   )
 }

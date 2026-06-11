@@ -2,13 +2,13 @@ import {
   ArrowUp,
   Check,
   GitMerge,
-  Loader2,
   Plug,
   PlugZap,
   RefreshCw,
 } from 'lucide-react'
 
 import { EntityIcon } from '@/components/ui/entity-icon'
+import { Sk } from '@/components/ui/skeleton'
 import {
   Tooltip,
   TooltipContent,
@@ -153,12 +153,7 @@ function ConnectionStatus({
     )
   }
   if (readiness === 'loading') {
-    return (
-      <span className="text-tertiary inline-flex items-center gap-1.5 text-xs">
-        <Loader2 className="animate-spin" size={13} />
-        Checking deployment access…
-      </span>
-    )
+    return <Sk line w={148} />
   }
   return (
     <span className="text-tertiary inline-flex items-center gap-1.5 text-xs">

@@ -30,7 +30,6 @@ import {
   searchProjectLogs,
 } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
-import { LoadingState } from '@/components/ui/loading-state'
 import {
   Popover,
   PopoverContent,
@@ -40,6 +39,7 @@ import {
   SegmentedControl,
   SegmentedControlItem,
 } from '@/components/ui/segmented-control'
+import { Sk, Swap } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   IconTooltip,
@@ -965,13 +965,15 @@ export function LogsTab({
           doesn't yet implement it, so we hide the strip rather than
           showing an empty chart. */}
       {config.showHistogram && activeAssignment?.supports_histogram && (
-        <Histogram
-          buckets={buckets}
-          levels={levels}
-          onBucketSelect={setSelectedBucket}
-          selectedBucket={selectedBucket}
-          total={logResult?.total ?? buckets.reduce((s, b) => s + b.count, 0)}
-        />
+        <Swap ready={histData !== undefined} skeleton={<HistogramSkeleton />}>
+          <Histogram
+            buckets={buckets}
+            levels={levels}
+            onBucketSelect={setSelectedBucket}
+            selectedBucket={selectedBucket}
+            total={logResult?.total ?? buckets.reduce((s, b) => s + b.count, 0)}
+          />
+        </Swap>
       )}
 
       {/* Log table */}
@@ -1000,13 +1002,9 @@ export function LogsTab({
           }}
         >
           {isFetching && failureCount > 0 && displayEntries.length === 0 ? (
-            <div className="py-10 text-center">
-              <LoadingState
-                label={`Retrying… (attempt ${failureCount + 1} of 4)`}
-              />
-            </div>
+            <LogTableSkeleton rows={4} />
           ) : isFetching && displayEntries.length === 0 ? (
-            <LoadingState label="Loading logs…" />
+            <LogTableSkeleton />
           ) : logError && displayEntries.length === 0 ? (
             <div className="py-10 text-center">
               <div className="text-danger mb-1 text-sm font-medium">
@@ -1056,8 +1054,8 @@ export function LogsTab({
               })}
               <div style={{ height: botPad }} />
               {logResult?.next_cursor && (
-                <div className="py-3 text-center" ref={loadTriggerRef}>
-                  {isFetching && <LoadingState label="Loading more…" />}
+                <div ref={loadTriggerRef}>
+                  {isFetching && <LogTableSkeleton rows={3} />}
                 </div>
               )}
             </>
@@ -1329,6 +1327,40 @@ function Histogram({
           )
         })}
       </div>
+    </div>
+  )
+}
+
+// Footprint-matched skeleton for the histogram strip: the events/header
+// row above a band of 60 thin bars at varied heights, sized to the live
+// chart's 60px bar area. Purely presentational.
+function HistogramSkeleton() {
+  return (
+    <div className="bg-tertiary rounded-md border p-3">
+      <div className="mb-2 flex items-baseline justify-between">
+        <Sk line w={72} />
+        <Sk line w={96} />
+      </div>
+      <div
+        style={{
+          alignItems: 'flex-end',
+          display: 'flex',
+          gap: '1px',
+          height: '64px',
+        }}
+      >
+        {Array.from({ length: 60 }, (_, i) => (
+          // Deterministic pseudo-random heights so bars read as a chart.
+          <Sk
+            h={8 + ((i * 37) % 52)}
+            key={i}
+            r={1}
+            style={{ flex: '1 1 0%' }}
+            w="auto"
+          />
+        ))}
+      </div>
+      <div className="mt-1 border-t pt-1" style={{ height: '16px' }} />
     </div>
   )
 }
@@ -1632,6 +1664,29 @@ function LogRow({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// Footprint-matched skeleton for the log table body: rows on the same
+// 5-column grid (chevron · time · env chip · level chip · message) as
+// `LogRow`. Purely presentational.
+function LogTableSkeleton({ rows = 14 }: { rows?: number }) {
+  return (
+    <div aria-busy>
+      {Array.from({ length: rows }, (_, i) => (
+        <div
+          className="border-tertiary grid items-center gap-2.5 border-b px-3 py-2.5 last:border-0"
+          key={i}
+          style={{ gridTemplateColumns: '16px 164px 96px 58px minmax(0,1fr)' }}
+        >
+          <Sk h={12} r={2} w={12} />
+          <Sk line w={140} />
+          <Sk h={16} r={3} w={64} />
+          <Sk h={16} r={3} w={44} />
+          <Sk line w={`${55 + ((i * 17) % 40)}%`} />
+        </div>
+      ))}
     </div>
   )
 }

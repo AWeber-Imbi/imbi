@@ -152,8 +152,6 @@ export function OrganizationManagement() {
       createLabel="New Organization"
       error={error}
       errorTitle="Failed to load organizations"
-      isLoading={isLoading}
-      loadingLabel="Loading organizations..."
       onCreate={goToCreate}
       onSearchChange={setSearchQuery}
       search={searchQuery}
@@ -274,6 +272,7 @@ export function OrganizationManagement() {
         getRowHref={(org) => editPath(org.slug)}
         getRowKey={(org) => org.slug}
         isDeleting={deleteMutation.isPending}
+        loading={isLoading}
         onDelete={handleDelete}
         rows={filteredOrgs}
       />

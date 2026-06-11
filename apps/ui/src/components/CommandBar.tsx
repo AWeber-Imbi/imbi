@@ -19,6 +19,7 @@ import { createConversation, sendMessageSSE } from '@/api/assistant'
 import { getConfidenceLabel, searchOrg, type SearchResult } from '@/api/search'
 import { Button } from '@/components/ui/button'
 import { Keystroke } from '@/components/ui/keystroke'
+import { SkText } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Tooltip,
@@ -525,6 +526,7 @@ export function CommandBar() {
                   ))}
                   {isStreaming && (
                     <>
+                      {!activeToolUse && !streamingContent && <ThinkingNotes />}
                       {activeToolUse && (
                         <ToolUseIndicator toolName={activeToolUse.name} />
                       )}
@@ -685,6 +687,23 @@ function precedingUserIndex(
     if (messages[i].role === 'user') return i
   }
   return -1
+}
+
+/**
+ * Pre-first-token "thinking" placeholder: an amber sparkle orb + label and an
+ * amber skeleton paragraph, shown only in the streaming gap before any tool
+ * call or text token arrives. Replaced by the live stream once tokens land.
+ */
+function ThinkingNotes() {
+  return (
+    <div className="border-amber-border border-l-2 pl-4">
+      <div className="text-amber-text mb-2 flex items-center gap-1.5 font-mono text-xs">
+        <Sparkles className="size-3" />
+        Imbot is thinking…
+      </div>
+      <SkText ai widths={['90%', '96%', '72%']} />
+    </div>
+  )
 }
 
 function useDebounced<T>(value: T, ms: number): T {

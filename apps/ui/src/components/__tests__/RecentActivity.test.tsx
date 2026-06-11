@@ -69,11 +69,13 @@ beforeEach(() => {
 })
 
 describe('RecentActivity', () => {
-  it('renders the loading state', () => {
-    render(<RecentActivity activities={[]} isLoading />, {
+  it('renders a skeleton placeholder while loading', () => {
+    const { container } = render(<RecentActivity activities={[]} isLoading />, {
       wrapper: wrapper(qc),
     })
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    // The loading affordance is a footprint-matched skeleton, not text.
+    expect(container.querySelector('.sk')).toBeInTheDocument()
+    expect(screen.queryByText('Loading...')).not.toBeInTheDocument()
   })
 
   it('renders the empty state', () => {
@@ -167,8 +169,8 @@ describe('RecentActivity', () => {
     expect(onLoadMore).toHaveBeenCalled()
   })
 
-  it('disables the load more button while loading more', () => {
-    render(
+  it('swaps the load more button for a skeleton while loading more', () => {
+    const { container } = render(
       <RecentActivity
         activities={[makeOps()]}
         isLoadingMore
@@ -176,6 +178,8 @@ describe('RecentActivity', () => {
       />,
       { wrapper: wrapper(qc) },
     )
-    expect(screen.getByText('Loading more...')).toBeInTheDocument()
+    // While loading more, the button is replaced by a skeleton placeholder.
+    expect(container.querySelector('.sk')).toBeInTheDocument()
+    expect(screen.queryByText('Load more activity')).not.toBeInTheDocument()
   })
 })

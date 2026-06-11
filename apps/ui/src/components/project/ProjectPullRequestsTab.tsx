@@ -14,7 +14,7 @@ import { DiffBar } from '@/components/pull-requests/DiffBar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Sk } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -243,13 +243,7 @@ export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
               </TableCell>
             </TableRow>
           ) : isLoading && allPRs.length === 0 ? (
-            Array.from({ length: 5 }).map((_, i) => (
-              <TableRow className="border-border hover:bg-transparent" key={i}>
-                <TableCell className="px-4 py-3" colSpan={7}>
-                  <Skeleton className="h-4" />
-                </TableCell>
-              </TableRow>
-            ))
+            Array.from({ length: 5 }, (_, i) => <PrRowSkeleton key={i} />)
           ) : filtered.length === 0 ? (
             <TableRow className="hover:bg-transparent">
               <TableCell
@@ -337,6 +331,51 @@ function PrRow({
       </TableCell>
       <TableCell className="text-tertiary px-4 py-3 text-right text-xs tabular-nums">
         {relTime(pr.updated_at)}
+      </TableCell>
+    </TableRow>
+  )
+}
+
+// Footprint-matched skeleton for a single PR row. Mirrors `PrRow`'s 7
+// columns: state icon + number · title · state badge · author avatar ·
+// files count · diff bar · relative timestamp. Purely presentational.
+function PrRowSkeleton() {
+  return (
+    <TableRow className="border-border hover:bg-transparent">
+      <TableCell className="px-4 py-3">
+        <div className="flex items-center gap-1.5">
+          <Sk circle h={14} w={14} />
+          <Sk line w={20} />
+        </div>
+      </TableCell>
+      <TableCell className="px-4 py-3">
+        <Sk line w="60%" />
+      </TableCell>
+      <TableCell className="px-4 py-3">
+        <div className="flex justify-center">
+          <Sk h={18} r={9999} w={52} />
+        </div>
+      </TableCell>
+      <TableCell className="px-4 py-3">
+        <div className="flex items-center justify-center gap-1.5">
+          <Sk circle h={20} w={20} />
+          <Sk line w={72} />
+        </div>
+      </TableCell>
+      <TableCell className="px-4 py-3 text-right">
+        <div className="flex justify-end">
+          <Sk line w={20} />
+        </div>
+      </TableCell>
+      <TableCell className="px-4 py-3">
+        <div className="flex justify-end">
+          <Sk h={6} r={9999} w={88} />
+        </div>
+      </TableCell>
+      <TableCell className="px-4 py-3 text-right">
+        <div className="flex justify-end">
+          <Sk line w={40} />
+        </div>
       </TableCell>
     </TableRow>
   )

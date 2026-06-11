@@ -26,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from './dialog'
+import { Sk } from './skeleton'
 import {
   Table,
   TableBody,
@@ -79,8 +80,12 @@ interface AdminTableProps<T> {
   getRowLabel?: (row: T) => string
   isDeleting?: boolean
   isRowClickable?: (row: T) => boolean
+  /** Render footprint-matched skeleton rows instead of data while loading. */
+  loading?: boolean
   onDelete?: (row: T) => void
   rows: T[]
+  /** Number of skeleton rows to show while loading. */
+  skeletonRows?: number
 }
 
 const HEADER_ALIGN: Record<string, string> = {
@@ -93,6 +98,20 @@ const CELL_ALIGN: Record<string, string> = {
   center: 'text-center',
   left: 'text-left',
   right: 'text-right',
+}
+
+const CELL_JUSTIFY: Record<string, string> = {
+  center: 'justify-center',
+  left: 'justify-start',
+  right: 'justify-end',
+}
+
+// Skeleton line width per column alignment — left columns hold the primary
+// label (wide), centered/right columns hold codes, counts, dates (narrow).
+const SKELETON_WIDTH: Record<string, number | string> = {
+  center: 64,
+  left: '60%',
+  right: 40,
 }
 
 interface AdminRowActionsProps<T> {
@@ -139,8 +158,10 @@ export function AdminTable<T>({
   getRowLabel,
   isDeleting = false,
   isRowClickable,
+  loading = false,
   onDelete,
   rows,
+  skeletonRows = 5,
 }: AdminTableProps<T>) {
   const navigate = useNavigate()
   const [deleteTarget, setDeleteTarget] = useState<null | T>(null)
@@ -311,8 +332,38 @@ export function AdminTable<T>({
                 )}
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {rows.length === 0 ? (
+            <TableBody aria-busy={loading || undefined}>
+              {loading ? (
+                Array.from({ length: skeletonRows }).map((_, i) => (
+                  <TableRow key={`skeleton-${i}`}>
+                    {columns.map((col) => (
+                      <TableCell
+                        className={CELL_ALIGN[col.cellAlign ?? 'left']}
+                        key={col.key}
+                      >
+                        <div
+                          className={cn(
+                            'flex',
+                            CELL_JUSTIFY[col.cellAlign ?? 'left'],
+                          )}
+                        >
+                          <Sk
+                            line
+                            w={SKELETON_WIDTH[col.cellAlign ?? 'left']}
+                          />
+                        </div>
+                      </TableCell>
+                    ))}
+                    {showActions && (
+                      <TableCell className="text-right">
+                        <div className="flex justify-end">
+                          <Sk h={20} r={4} w={20} />
+                        </div>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))
+              ) : rows.length === 0 ? (
                 <TableRow>
                   <TableCell
                     className="text-muted-foreground py-12 text-center"

@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import type { ProjectRelationship } from '@/types'
 
@@ -193,9 +194,7 @@ export function EditRelationshipsDialog({
           {/* Project list */}
           <div className="-mx-6 mt-4 h-100 overflow-y-auto border-y px-6 py-1">
             {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="size-5 animate-spin rounded-full border-2 border-current border-t-transparent opacity-50" />
-              </div>
+              <RelationshipListSkeleton />
             ) : isError ? (
               <p className="py-8 text-center text-sm text-red-600 dark:text-red-400">
                 Failed to load projects. Please try again.
@@ -284,5 +283,18 @@ export function EditRelationshipsDialog({
         )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+function RelationshipListSkeleton() {
+  return (
+    <div className="space-y-1">
+      {[180, 150, 200, 130, 170, 160, 140].map((w, i) => (
+        <div className="flex items-center gap-3 px-2 py-2" key={i}>
+          <Sk h={16} r={2} w={16} />
+          <Sk h={14} w={w} />
+        </div>
+      ))}
+    </div>
   )
 }

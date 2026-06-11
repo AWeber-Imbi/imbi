@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Sk } from '@/components/ui/skeleton'
 
 interface StatWidgetProps {
   // When set, the card renders a real link so cmd/ctrl/middle-click open a
@@ -54,13 +54,9 @@ export function StatWidget({
       <CardHeader className="pb-2">
         <CardTitle className="text-secondary font-normal">{title}</CardTitle>
       </CardHeader>
-      <CardContent className="mt-auto">
+      <CardContent aria-busy={isLoading} className="mt-auto">
         {isLoading ? (
-          <Skeleton
-            aria-label={`Loading ${title}`}
-            className="bg-tertiary/40 inline-block h-8 w-20"
-            role="status"
-          />
+          <Sk h={30} r={6} w={80} />
         ) : isError ? (
           <p className="text-danger text-sm">Unavailable</p>
         ) : (

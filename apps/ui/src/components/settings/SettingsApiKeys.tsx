@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Sk } from '@/components/ui/skeleton'
 import { useClipboard } from '@/hooks/useClipboard'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { formatDate } from '@/lib/formatDate'
@@ -86,7 +87,7 @@ export function SettingsApiKeys() {
         </div>
 
         {isLoading ? (
-          <p className="text-tertiary text-[13.5px]">Loading...</p>
+          <ApiKeysSkeleton />
         ) : listError ? (
           <div className="bg-danger/10 text-danger rounded-lg p-4 text-[13.5px]">
             {extractApiErrorDetail(listError, 'Failed to load API keys')}
@@ -307,6 +308,37 @@ export function SettingsApiKeys() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+function ApiKeyRowSkeleton() {
+  return (
+    <div
+      className="border-input bg-secondary/50 rounded-lg p-4"
+      style={{ borderStyle: 'solid', borderWidth: '0.5px' }}
+    >
+      <div className="mb-3 flex items-start justify-between">
+        <div className="space-y-2">
+          <Sk h={14} w={160} />
+          <Sk line w={220} />
+        </div>
+        <Sk h={28} w={72} />
+      </div>
+      <div className="flex items-center gap-2">
+        <Sk h={36} r={6} w="100%" />
+        <Sk h={36} r={6} w={36} />
+      </div>
+    </div>
+  )
+}
+
+function ApiKeysSkeleton() {
+  return (
+    <div aria-busy className="space-y-4">
+      {Array.from({ length: 3 }, (_, i) => (
+        <ApiKeyRowSkeleton key={i} />
+      ))}
     </div>
   )
 }

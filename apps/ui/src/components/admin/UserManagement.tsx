@@ -13,7 +13,6 @@ import {
 } from '@/api/endpoints'
 import { AdminTable } from '@/components/ui/admin-table'
 import { ErrorBanner } from '@/components/ui/error-banner'
-import { LoadingState } from '@/components/ui/loading-state'
 import {
   Select,
   SelectContent,
@@ -21,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Sk } from '@/components/ui/skeleton'
 import { useAdminCrud } from '@/hooks/useAdminCrud'
 import { useAdminNav } from '@/hooks/useAdminNav'
 import { extractApiErrorDetail } from '@/lib/apiError'
@@ -175,7 +175,7 @@ export function UserManagement() {
   // so UserForm never gets user={null} and detail doesn't flash back to list.
   if ((viewMode === 'edit' || viewMode === 'detail') && !!selectedUserEmail) {
     if (selectedUserLoading) {
-      return <LoadingState label="Loading user..." />
+      return <UserDetailSkeleton />
     }
     if (selectedUserError) {
       return (
@@ -250,8 +250,6 @@ export function UserManagement() {
           </Select>
         </>
       }
-      isLoading={isLoading}
-      loadingLabel="Loading users..."
       onCreate={goToCreate}
       onSearchChange={setSearchQuery}
       search={searchQuery}
@@ -342,8 +340,37 @@ export function UserManagement() {
         }
         getRowHref={(user) => editPath(user.email)}
         getRowKey={(user) => user.email}
+        loading={isLoading}
         rows={filteredUsers}
       />
     </AdminSection>
+  )
+}
+
+function UserDetailSkeleton() {
+  return (
+    <div className="space-y-6">
+      <Sk h={36} r={6} w={88} />
+      <div className="border-tertiary rounded-lg border">
+        <div className="flex items-center gap-3 border-b px-6 py-5">
+          <Sk circle h={48} w={48} />
+          <div className="flex flex-col gap-2">
+            <Sk h={16} w={180} />
+            <Sk line w={220} />
+          </div>
+        </div>
+        <div className="border-tertiary border-b px-6 py-5">
+          <Sk h={28} r={4} w={120} />
+        </div>
+        <div className="grid grid-cols-2 gap-6 p-6">
+          {[0, 1, 2, 3].map((i) => (
+            <div className="flex flex-col gap-2" key={i}>
+              <Sk line w={100} />
+              <Sk line w="60%" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }

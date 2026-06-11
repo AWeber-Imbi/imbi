@@ -5,7 +5,6 @@ import { Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
-import { LoadingState } from '@/components/ui/loading-state'
 
 interface AdminSectionProps {
   /** List content (stats, table, etc.). */
@@ -20,10 +19,6 @@ interface AdminSectionProps {
   headerActions?: ReactNode
   /** Optional extra controls rendered in the header (filters, etc.). */
   headerExtras?: ReactNode
-  /** Whether the list query is loading. */
-  isLoading: boolean
-  /** Loading label, e.g. "Loading teams...". */
-  loadingLabel: string
   onCreate: () => void
   onSearchChange: (value: string) => void
   /** Controlled search value. */
@@ -32,6 +27,9 @@ interface AdminSectionProps {
   searchPlaceholder: string
 }
 
+// The search input and create button are static chrome — they render
+// immediately. The loading affordance lives in the child table (pass
+// `loading` to AdminTable) so the page never shows a centered label.
 export function AdminSection({
   children,
   createLabel,
@@ -39,17 +37,11 @@ export function AdminSection({
   errorTitle,
   headerActions,
   headerExtras,
-  isLoading,
-  loadingLabel,
   onCreate,
   onSearchChange,
   search,
   searchPlaceholder,
 }: AdminSectionProps) {
-  if (isLoading) {
-    return <LoadingState label={loadingLabel} />
-  }
-
   if (error) {
     return <ErrorBanner error={error} title={errorTitle} />
   }

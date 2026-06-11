@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Sk } from '@/components/ui/skeleton'
 import {
   Tooltip,
   TooltipContent,
@@ -563,15 +563,53 @@ function resolveAuthorInfo(
   }
 }
 
+function SkeletonRow() {
+  return (
+    <tr className="border-tertiary border-b">
+      <td className="px-4 py-3">
+        <Sk line w={48} />
+      </td>
+      <td className="px-4 py-3">
+        <Sk h={18} r={4} w={56} />
+      </td>
+      <td className="px-4 py-3">
+        <Sk line w={120} />
+      </td>
+      <td className="px-4 py-3">
+        <Sk line w={32} />
+      </td>
+      <td className="px-4 py-3">
+        <Sk line w="80%" />
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex justify-center">
+          <Sk circle h={24} w={24} />
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex justify-center">
+          <Sk line w={20} />
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex justify-center">
+          <Sk h={10} r={4} w={120} />
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex justify-end">
+          <Sk line w={48} />
+        </div>
+      </td>
+    </tr>
+  )
+}
+
 function SkeletonRows() {
   return (
     <>
       {Array.from({ length: 6 }).map((_, i) => (
-        <tr className="border-tertiary border-b" key={i}>
-          <td className="px-4 py-3" colSpan={9}>
-            <Skeleton className="h-4" />
-          </td>
-        </tr>
+        <SkeletonRow key={i} />
       ))}
     </>
   )

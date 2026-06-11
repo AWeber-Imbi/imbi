@@ -3,6 +3,7 @@ import { lazy, Suspense, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Sk } from '@/components/ui/skeleton'
 import { useGraphQuery } from '@/contexts/GraphQueryContext'
 import { inspectRow } from '@/lib/graphInspection'
 import type {
@@ -110,8 +111,8 @@ export function ResultCard({ card }: ResultCardProps) {
                   {card.tab === 'graph' && (
                     <Suspense
                       fallback={
-                        <div className="text-tertiary flex h-full items-center justify-center text-xs">
-                          Loading graph…
+                        <div className="h-full p-3">
+                          <Sk h="100%" r={6} w="100%" />
                         </div>
                       }
                     >

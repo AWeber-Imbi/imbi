@@ -1,4 +1,6 @@
-import { Loader2 } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
+
+import { Sk } from '@/components/ui/skeleton'
 
 interface ToolUseIndicatorProps {
   toolName: string
@@ -18,9 +20,12 @@ export function ToolUseIndicator({ toolName }: ToolUseIndicatorProps) {
   const friendlyName = TOOL_FRIENDLY_NAMES[toolName] ?? `Running ${toolName}`
 
   return (
-    <div className="text-warning/70 flex items-center gap-2 py-1 pl-4 font-mono text-xs">
-      <Loader2 className="size-3 animate-spin" />
-      <span>{friendlyName}...</span>
+    <div className="flex flex-col gap-1.5 py-1 pl-4">
+      <div className="text-amber-text flex items-center gap-2 font-mono text-xs">
+        <Sparkles className="size-3" />
+        <span>{friendlyName}…</span>
+      </div>
+      <Sk ai line w="60%" />
     </div>
   )
 }

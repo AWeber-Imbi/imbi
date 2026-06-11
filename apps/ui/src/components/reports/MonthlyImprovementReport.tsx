@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { Team } from '@/types'
 
@@ -185,9 +186,7 @@ export function MonthlyImprovementReport() {
         </div>
 
         {isLoading ? (
-          <div className="text-tertiary py-16 text-center text-sm">
-            Loading…
-          </div>
+          <ImprovementRowsSkeleton />
         ) : hasError ? (
           <div className="text-danger py-16 text-center text-sm">
             Failed to load report data. Please try again.
@@ -287,6 +286,30 @@ function ImprovementPill({ value }: { value: null | number }) {
       {positive ? '+' : ''}
       {value.toFixed(2)}
     </span>
+  )
+}
+
+function ImprovementRowsSkeleton() {
+  return (
+    <div aria-busy>
+      {Array.from({ length: 6 }, (_, i) => (
+        <div
+          className="border-tertiary grid items-center border-b last:border-0"
+          key={i}
+          style={COL_GRID}
+        >
+          <div className="px-5 py-3.5">
+            <Sk line w="55%" />
+          </div>
+          <div className="flex justify-end px-5 py-3.5">
+            <Sk h={24} r={4} w={64} />
+          </div>
+          <div className="flex justify-end px-5 py-3.5">
+            <Sk h={24} r={4} w={64} />
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 

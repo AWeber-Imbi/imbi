@@ -212,8 +212,6 @@ export function ScoringPolicyManagement() {
             </SelectContent>
           </Select>
         }
-        isLoading={isLoading}
-        loadingLabel="Loading scoring policies..."
         onCreate={goToCreate}
         onSearchChange={setSearchQuery}
         search={searchQuery}
@@ -336,6 +334,7 @@ export function ScoringPolicyManagement() {
           getRowHref={(p) => editPath(p.slug)}
           getRowKey={(p) => p.slug}
           isDeleting={deleteMutation.isPending}
+          loading={isLoading}
           onDelete={(p) => deleteMutation.mutate(p.slug)}
           rows={filteredPolicies}
         />

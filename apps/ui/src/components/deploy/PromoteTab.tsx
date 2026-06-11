@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { LoadingState } from '@/components/ui/loading-state'
+import { Sk } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { cn } from '@/lib/utils'
@@ -279,7 +279,7 @@ export function PromoteTab({
           </button>
         </div>
         {compareEnabled && compareLoading ? (
-          <LoadingState label="Loading commits…" />
+          <PromoteCommitsSkeleton />
         ) : !compareEnabled ? (
           <p className="border-secondary text-tertiary rounded-md border p-3 text-sm">
             {!lastTag
@@ -445,5 +445,26 @@ export function PromoteTab({
         </Button>
       </div>
     </div>
+  )
+}
+
+/** Footprint skeleton for the promote commit list: sha · message · tip. */
+function PromoteCommitsSkeleton() {
+  return (
+    <ul
+      aria-busy
+      className="border-secondary max-h-50 overflow-hidden rounded-md border"
+    >
+      {Array.from({ length: 5 }, (_, i) => (
+        <li
+          className="border-tertiary flex items-center gap-3 border-b px-3 py-2 last:border-b-0"
+          key={i}
+        >
+          <Sk className="shrink-0" line w={48} />
+          <Sk className="min-w-0 flex-1" line />
+          <Sk h={18} r={4} w={32} />
+        </li>
+      ))}
+    </ul>
   )
 }

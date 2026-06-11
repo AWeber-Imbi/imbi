@@ -149,8 +149,6 @@ export function EnvironmentManagement() {
       createLabel="New Environment"
       error={error}
       errorTitle="Failed to load environments"
-      isLoading={isLoading}
-      loadingLabel="Loading environments..."
       onCreate={goToCreate}
       onSearchChange={setSearchQuery}
       search={searchQuery}
@@ -257,6 +255,7 @@ export function EnvironmentManagement() {
         getRowHref={(env) => editPath(env.slug)}
         getRowKey={(env) => env.slug}
         isDeleting={deleteMutation.isPending}
+        loading={isLoading}
         onDelete={handleDelete}
         rows={filteredEnvironments}
       />

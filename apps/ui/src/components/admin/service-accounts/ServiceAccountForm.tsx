@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Sk } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useDirtyState } from '@/hooks/useDirtyState'
@@ -68,6 +69,8 @@ interface IdentityCardEditProps {
 
 interface ServiceAccountFormProps {
   account: null | ServiceAccount
+  /** Slug being edited; set while the edit-mode account fetch is in flight. */
+  editingSlug?: null | string
   error?: null | { message?: string; response?: { data?: { detail?: string } } }
   isLoading?: boolean
   onCancel: () => void
@@ -79,6 +82,7 @@ interface ServiceAccountFormProps {
 
 export function ServiceAccountForm({
   account,
+  editingSlug,
   error,
   isLoading = false,
   onCancel,
@@ -232,6 +236,18 @@ export function ServiceAccountForm({
       </div>
     </div>
   )
+
+  if (!account && editingSlug) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <div className="grid grid-cols-2 items-start gap-6">
+          <ServiceAccountEditSkeleton />
+          <ServiceAccountEditSkeleton />
+        </div>
+      </div>
+    )
+  }
 
   if (isEditing && account) {
     return (
@@ -753,6 +769,28 @@ function IdentityCardEdit({
           onChange={onActiveChange}
           value={isActive}
         />
+      </CardContent>
+    </Card>
+  )
+}
+
+function ServiceAccountEditSkeleton() {
+  return (
+    <Card>
+      <CardContent className="space-y-4 pt-6">
+        <div className="grid grid-cols-2 gap-3">
+          {[0, 1].map((i) => (
+            <div className="flex flex-col gap-1.5" key={i}>
+              <Sk h={12} w={88} />
+              <Sk h={36} r={6} w="100%" />
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Sk h={12} w={88} />
+          <Sk h={72} r={6} w="100%" />
+        </div>
+        <Sk h={56} r={8} w="100%" />
       </CardContent>
     </Card>
   )

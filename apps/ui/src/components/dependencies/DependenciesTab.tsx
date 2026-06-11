@@ -5,7 +5,6 @@ import { useQuery } from '@tanstack/react-query'
 import { listProjectReleases, listReleaseDependencies } from '@/api/endpoints'
 import { AdminTable, type AdminTableColumn } from '@/components/ui/admin-table'
 import { Card, CardContent } from '@/components/ui/card'
-import { LoadingState } from '@/components/ui/loading-state'
 import {
   Select,
   SelectContent,
@@ -13,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Sk } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import type { Project, ReleaseDependencyComponent } from '@/types'
 
@@ -148,13 +148,7 @@ export function DependenciesTab({ orgSlug, project }: DependenciesTabProps) {
   })
 
   if (releasesQuery.isLoading) {
-    return (
-      <Card>
-        <CardContent className="p-6">
-          <LoadingState label="Loading releases…" />
-        </CardContent>
-      </Card>
-    )
+    return <DependenciesTabSkeleton />
   }
 
   if (releasesQuery.isError) {
@@ -211,11 +205,7 @@ export function DependenciesTab({ orgSlug, project }: DependenciesTabProps) {
       </div>
 
       {dependenciesQuery.isLoading ? (
-        <Card>
-          <CardContent className="p-6">
-            <LoadingState label="Loading dependencies…" />
-          </CardContent>
-        </Card>
+        <DependencyTableSkeleton />
       ) : dependenciesQuery.isError ? (
         <Card>
           <CardContent className="text-muted-foreground p-8 text-center">
@@ -231,5 +221,44 @@ export function DependenciesTab({ orgSlug, project }: DependenciesTabProps) {
         />
       )}
     </div>
+  )
+}
+
+/** Footprint skeleton while the releases list loads: select + table. */
+function DependenciesTabSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div aria-busy className="flex items-center gap-3">
+        <Sk w={48} />
+        <Sk h={32} r={6} w={256} />
+      </div>
+      <DependencyTableSkeleton />
+    </div>
+  )
+}
+
+/** Footprint skeleton for the dependency table rows (6 columns). */
+function DependencyTableSkeleton() {
+  return (
+    <Card>
+      <CardContent aria-busy className="flex flex-col gap-3 p-4">
+        {Array.from({ length: 8 }, (_, i) => (
+          <div
+            className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] items-center gap-4"
+            key={i}
+          >
+            <div className="flex flex-col gap-1">
+              <Sk line w="70%" />
+              <Sk line w="45%" />
+            </div>
+            <Sk line w="60%" />
+            <Sk line w="50%" />
+            <Sk line w="55%" />
+            <Sk h={20} r={4} w={56} />
+            <Sk line w="65%" />
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   )
 }

@@ -18,6 +18,7 @@ import {
   ScoreChangeReason,
   TeamScoreSeries,
 } from '@/api/endpoints'
+import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { Team } from '@/types'
 
@@ -111,9 +112,7 @@ export function ScoreHistoryReport() {
         </div>
 
         {isLoading ? (
-          <div className="text-tertiary flex h-56 items-center justify-center text-sm">
-            Loading…
-          </div>
+          <Sk h={224} r={6} w="100%" />
         ) : series.length === 0 ? (
           <div className="text-tertiary flex h-56 items-center justify-center text-sm">
             No score data for this period.
@@ -135,14 +134,39 @@ export function ScoreHistoryReport() {
         </div>
         <div>
           {feedLoading ? (
-            <div className="text-tertiary py-10 text-center text-sm">
-              Loading…
-            </div>
+            <ChangeEventsSkeleton />
           ) : (
             <GlobalEventFeed events={feedData ?? []} teamBySlug={teamBySlug} />
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function ChangeEventsSkeleton() {
+  return (
+    <div aria-busy>
+      {Array.from({ length: 6 }, (_, i) => (
+        <div
+          className="border-tertiary grid items-center gap-3 border-b px-3 py-3 last:border-0"
+          key={i}
+          style={{ gridTemplateColumns: '80px 1fr auto 72px' }}
+        >
+          <div className="space-y-1">
+            <Sk line w={48} />
+            <Sk line w={64} />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Sk h={20} r={4} w={72} />
+            <Sk line w={120} />
+          </div>
+          <Sk line w={56} />
+          <div className="flex justify-end">
+            <Sk h={24} r={4} w={40} />
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

@@ -36,7 +36,7 @@ import {
   type TeamScoreSeries,
 } from '@/api/endpoints'
 import { Card } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import type { DatastoreStatus, ServiceStatus } from '@/types'
 
@@ -417,7 +417,11 @@ function DeploysByEnv({
     return (
       <div className="flex flex-col gap-3">
         {[0, 1, 2].map((i) => (
-          <Skeleton className="h-2.5 w-full" key={i} />
+          <div className="flex items-center gap-3" key={i}>
+            <Sk className="w-24 shrink-0" h={13} />
+            <Sk className="flex-1" h={8} r={4} />
+            <Sk className="w-9 shrink-0" h={13} />
+          </div>
         ))}
       </div>
     )
@@ -501,11 +505,7 @@ function MetricTile({
       <div className="flex items-end justify-between gap-2">
         <div>
           {isLoading ? (
-            <Skeleton
-              aria-label={`Loading ${label}`}
-              className="h-8 w-20"
-              role="status"
-            />
+            <Sk h={32} r={6} w={80} />
           ) : isError ? (
             <p className="text-danger text-sm">Unavailable</p>
           ) : (
@@ -535,10 +535,21 @@ function ProjectHealth({
 }) {
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-3">
-        <Skeleton className="h-9 w-24" />
-        <Skeleton className="h-2.5 w-full" />
-        <Skeleton className="h-16 w-full" />
+      <div>
+        <div className="mb-3.5">
+          <Sk h={34} w={56} />
+          <Sk className="mt-1" h={10} w={80} />
+        </div>
+        <Sk className="mb-3 w-full" h={10} r={5} />
+        <div className="flex flex-col gap-2">
+          {[0, 1, 2].map((i) => (
+            <div className="flex items-center gap-2.5" key={i}>
+              <Sk h={8} r={2} w={8} />
+              <Sk className="flex-1" h={11} />
+              <Sk h={11} w={28} />
+            </div>
+          ))}
+        </div>
       </div>
     )
   }
@@ -762,7 +773,18 @@ function SystemHealthRail() {
       <div className="flex flex-col gap-2 p-3">
         {loadingFirst
           ? [0, 1, 2].map((i) => (
-              <Skeleton className="h-13.5 rounded-md" key={i} />
+              <div
+                aria-busy
+                className="bg-secondary flex items-center gap-3 rounded-md px-2.5 py-2.5"
+                key={i}
+              >
+                <Sk h={30} r={6} w={30} />
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <Sk h={11} w={96} />
+                  <Sk h={9} w={64} />
+                </div>
+                <Sk h={11} w={48} />
+              </div>
             ))
           : datastores.map((ds) => <DatastoreRow ds={ds} key={ds.name} />)}
       </div>
@@ -771,11 +793,20 @@ function SystemHealthRail() {
           Services
         </div>
         <div className="divide-tertiary border-tertiary divide-y overflow-hidden rounded-md border">
-          {loadingFirst ? (
-            <Skeleton className="h-30" />
-          ) : (
-            services.map((s) => <ServiceRow key={s.name} service={s} />)
-          )}
+          {loadingFirst
+            ? [0, 1, 2, 3].map((i) => (
+                <div
+                  aria-busy
+                  className="bg-primary flex items-center gap-2.5 px-3 py-2.5"
+                  key={i}
+                >
+                  <Sk h={15} r={4} w={15} />
+                  <Sk className="flex-1" h={11} w={80} />
+                  <Sk h={9} w={36} />
+                  <Sk circle h={8} w={8} />
+                </div>
+              ))
+            : services.map((s) => <ServiceRow key={s.name} service={s} />)}
         </div>
       </div>
     </Card>

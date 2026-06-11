@@ -331,8 +331,6 @@ export function BlueprintManagement() {
           </Select>
         </>
       }
-      isLoading={isLoading}
-      loadingLabel="Loading blueprints..."
       onCreate={handleCreate}
       onSearchChange={setSearchQuery}
       search={searchQuery}
@@ -473,6 +471,7 @@ export function BlueprintManagement() {
         }
         getRowKey={(bp) => `${blueprintPathType(bp)}/${bp.slug}`}
         isDeleting={deleteMutation.isPending}
+        loading={isLoading}
         onDelete={(bp) => {
           if (!bp.slug) return
           deleteMutation.mutate({

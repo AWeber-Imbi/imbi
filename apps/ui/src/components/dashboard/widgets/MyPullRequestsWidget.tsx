@@ -11,7 +11,7 @@ import {
 
 import { getOrgPullRequests, type ProjectListItem } from '@/api/endpoints'
 import { Card } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useGithubLogin } from '@/hooks/useGithubLogin'
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
@@ -143,15 +143,11 @@ export function MyPullRequestsWidget() {
         ))}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div aria-busy={isLoading} className="min-h-0 flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton
-                aria-hidden="true"
-                className="h-20 rounded-lg"
-                key={i}
-              />
+              <PrRowSkeleton key={i} />
             ))}
           </div>
         ) : isError ? (
@@ -178,9 +174,7 @@ export function MyPullRequestsWidget() {
               <PrRow key={pr.pr_id} pr={pr} projectsById={projectsById} />
             ))}
             <div ref={sentinelRef}>
-              {isFetchingNextPage && (
-                <Skeleton aria-hidden="true" className="h-16 rounded-lg" />
-              )}
+              {isFetchingNextPage && <PrRowSkeleton />}
             </div>
           </div>
         )}
@@ -248,6 +242,26 @@ function PrRow({
       </div>
       <ChevronRight className="text-tertiary mt-0.5 size-4 shrink-0" />
     </a>
+  )
+}
+
+function PrRowSkeleton() {
+  return (
+    <div className="border-input bg-background flex items-start gap-3 rounded-lg border p-3">
+      <Sk circle h={20} w={20} />
+      <div className="min-w-0 flex-1">
+        <div className="mb-2 flex items-baseline gap-1.5">
+          <Sk line w="60%" />
+          <Sk line w={24} />
+        </div>
+        <div className="mb-2 flex items-center gap-1.5">
+          <Sk h={18} r={6} w={72} />
+          <Sk h={18} r={9999} w={48} />
+        </div>
+        <Sk line w="30%" />
+      </div>
+      <Sk className="mt-0.5" h={16} w={16} />
+    </div>
   )
 }
 

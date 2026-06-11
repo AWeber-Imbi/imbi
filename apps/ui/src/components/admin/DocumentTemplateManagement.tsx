@@ -164,8 +164,6 @@ export function DocumentTemplateManagement() {
       createLabel="New Document Template"
       error={error}
       errorTitle="Failed to load document templates"
-      isLoading={isLoading}
-      loadingLabel="Loading document templates..."
       onCreate={goToCreate}
       onSearchChange={setSearchQuery}
       search={searchQuery}
@@ -272,6 +270,7 @@ export function DocumentTemplateManagement() {
         getRowHref={(nt) => editPath(nt.slug)}
         getRowKey={(nt) => nt.slug}
         isDeleting={deleteMutation.isPending}
+        loading={isLoading}
         onDelete={handleDelete}
         rows={filteredDocumentTemplates}
       />

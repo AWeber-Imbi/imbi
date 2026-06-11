@@ -1,15 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, ExternalLink, RefreshCw } from 'lucide-react'
 
 import { searchProjectIncidents } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
-import { LoadingState } from '@/components/ui/loading-state'
 import {
   SegmentedControl,
   SegmentedControlItem,
 } from '@/components/ui/segmented-control'
+import { Sk } from '@/components/ui/skeleton'
 import type { IncidentView } from '@/types'
 
 interface IncidentsTabProps {
@@ -143,7 +143,7 @@ export function IncidentsTab({ orgSlug, projectId }: IncidentsTabProps) {
       </div>
 
       {query.isLoading && accumulated.length === 0 ? (
-        <LoadingState label="Loading incidents…" />
+        <IncidentsTableSkeleton />
       ) : query.isError ? (
         <div className="border-destructive/40 bg-destructive/5 text-destructive flex items-center gap-2 rounded-md border p-4 text-sm">
           <AlertTriangle className="size-4" />
@@ -154,24 +154,11 @@ export function IncidentsTab({ orgSlug, projectId }: IncidentsTabProps) {
           No incidents in the selected window.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-md border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-muted-foreground border-b text-left text-xs uppercase">
-              <tr>
-                <th className="px-3 py-2 font-medium">Incident</th>
-                <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 font-medium">Urgency</th>
-                <th className="px-3 py-2 font-medium">Opened</th>
-                <th className="px-3 py-2 font-medium">Resolved</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {accumulated.map((incident) => (
-                <IncidentRow incident={incident} key={incident.id} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <IncidentsTableShell>
+          {accumulated.map((incident) => (
+            <IncidentRow incident={incident} key={incident.id} />
+          ))}
+        </IncidentsTableShell>
       )}
 
       {nextCursor && (
@@ -226,5 +213,55 @@ function IncidentRow({ incident }: { incident: IncidentView }) {
         {formatTimestamp(incident.resolved_at)}
       </td>
     </tr>
+  )
+}
+
+// Footprint-matched skeleton for the incidents table: same 5-column
+// header (Incident · Status · Urgency · Opened · Resolved) and row rhythm.
+// Purely presentational.
+// Shared table chrome (wrapper + header) for the incidents list and its
+// loading skeleton, so the two stay in lockstep.
+function IncidentsTableShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="overflow-x-auto rounded-md border">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/50 text-muted-foreground border-b text-left text-xs uppercase">
+          <tr>
+            <th className="px-3 py-2 font-medium">Incident</th>
+            <th className="px-3 py-2 font-medium">Status</th>
+            <th className="px-3 py-2 font-medium">Urgency</th>
+            <th className="px-3 py-2 font-medium">Opened</th>
+            <th className="px-3 py-2 font-medium">Resolved</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y">{children}</tbody>
+      </table>
+    </div>
+  )
+}
+
+function IncidentsTableSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <IncidentsTableShell>
+      {Array.from({ length: rows }, (_, i) => (
+        <tr aria-busy key={i}>
+          <td className="px-3 py-2.5">
+            <Sk line w="70%" />
+          </td>
+          <td className="px-3 py-2.5">
+            <Sk line w={64} />
+          </td>
+          <td className="px-3 py-2.5">
+            <Sk line w={40} />
+          </td>
+          <td className="px-3 py-2.5">
+            <Sk line w={120} />
+          </td>
+          <td className="px-3 py-2.5">
+            <Sk line w={120} />
+          </td>
+        </tr>
+      ))}
+    </IncidentsTableShell>
   )
 }

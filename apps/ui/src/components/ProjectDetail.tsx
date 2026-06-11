@@ -76,6 +76,7 @@ import { InlineSelect } from '@/components/ui/inline-edit/InlineSelect'
 import { InlineText } from '@/components/ui/inline-edit/InlineText'
 import { InlineTextarea } from '@/components/ui/inline-edit/InlineTextarea'
 import { ScoreBadge } from '@/components/ui/score-badge'
+import { Sk, SkText, Swap } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   IconTooltip,
@@ -291,7 +292,7 @@ export function ProjectDetail({
     sortedEnvironments,
   ])
 
-  const { data: linkDefs = [] } = useQuery({
+  const { data: linkDefs = [], isPending: linkDefsPending } = useQuery({
     enabled: !!orgSlug,
     queryFn: ({ signal }) => listLinkDefinitions(orgSlug, signal),
     queryKey: ['linkDefinitions', orgSlug],
@@ -300,7 +301,7 @@ export function ProjectDetail({
   // Overview-tab-only queries: skip when the user lands on a deeper tab
   // (e.g. /projects/:id/logs via deep link) — the overview cards that
   // consume these aren't mounted in that case.
-  const { data: scoreTrend } = useQuery({
+  const { data: scoreTrend, isPending: scoreTrendPending } = useQuery({
     enabled: !!orgSlug && !!project.id && activeTab === 'overview',
     queryFn: ({ signal }) => getScoreTrend(orgSlug, project.id, 30, signal),
     queryKey: ['scoreTrend', orgSlug, project.id],
@@ -415,7 +416,7 @@ export function ProjectDetail({
 
   // Overview-only: feeds ProjectAttributesSection inside <TabsContent
   // value="overview">. The other tabs render their own components.
-  const { data: projectSchema } = useQuery({
+  const { data: projectSchema, isPending: projectSchemaPending } = useQuery({
     enabled: !!orgSlug && !!project.id && activeTab === 'overview',
     queryFn: ({ signal }) => getProjectSchema(orgSlug, project.id, signal),
     queryKey: ['projectSchema', orgSlug, project.id],
@@ -645,6 +646,11 @@ export function ProjectDetail({
   // where icons are resolved so they refresh once available.
   const iconRegistryVersion = useIconRegistryVersion()
 
+  // Environments card resolves once its deployment-status (currentReleases)
+  // and schema-driven edge attributes (projectSchema) land; the env list
+  // itself is already on `project`.
+  const envCardReady = !releasesPending && !projectSchemaPending
+
   const linkDefMap = useMemo(
     () => Object.fromEntries(linkDefs.map((ld) => [ld.slug, ld])),
     [linkDefs],
@@ -844,28 +850,37 @@ export function ProjectDetail({
           />
         </div>
 
-        {/* External Links */}
+        {/* External Links — reveal once link definitions land so labels and
+            icons resolve, rather than flashing raw keys first. */}
         {externalLinks.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            {externalLinks.map(
-              ({ Icon, key, label: linkLabel, url }, index) => (
-                <span className="flex items-center gap-1.5" key={key}>
-                  {index > 0 && <span className="text-tertiary mr-1.5">|</span>}
-                  <a
-                    className={
-                      'text-warning flex items-center gap-1.5 text-sm hover:underline'
-                    }
-                    href={url}
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  >
-                    <Icon className="size-4" />
-                    <span>{linkLabel}</span>
-                  </a>
-                </span>
-              ),
-            )}
-          </div>
+          <Swap
+            className="mt-3"
+            ready={!linkDefsPending}
+            skeleton={<LinksSkeleton count={externalLinks.length} />}
+          >
+            <div className="flex flex-wrap items-center gap-3">
+              {externalLinks.map(
+                ({ Icon, key, label: linkLabel, url }, index) => (
+                  <span className="flex items-center gap-1.5" key={key}>
+                    {index > 0 && (
+                      <span className="text-tertiary mr-1.5">|</span>
+                    )}
+                    <a
+                      className={
+                        'text-warning flex items-center gap-1.5 text-sm hover:underline'
+                      }
+                      href={url}
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      <Icon className="size-4" />
+                      <span>{linkLabel}</span>
+                    </a>
+                  </span>
+                ),
+              )}
+            </div>
+          </Swap>
         )}
       </div>
 
@@ -1017,12 +1032,17 @@ export function ProjectDetail({
                       </div>
                     )}
 
-                    <ProjectAttributesSection
-                      patch={patch}
-                      pendingPath={pendingPath}
-                      project={project}
-                      projectSchema={projectSchema}
-                    />
+                    <Swap
+                      ready={!projectSchemaPending}
+                      skeleton={<AttributesSkeleton />}
+                    >
+                      <ProjectAttributesSection
+                        patch={patch}
+                        pendingPath={pendingPath}
+                        project={project}
+                        projectSchema={projectSchema}
+                      />
+                    </Swap>
                   </div>
                 </CardContent>
               </Card>
@@ -1030,13 +1050,20 @@ export function ProjectDetail({
               {/* Environments — nests here when the right column is taller
                   than Project details; otherwise drops below (see envSpanFull). */}
               {!envSpanFull && sortedEnvironments.length > 0 && (
-                <ProjectEnvironmentsCard
-                  deploymentStatus={deploymentStatus}
-                  environments={sortedEnvironments}
-                  orgSlug={orgSlug}
-                  projectId={project.id}
-                  projectSchema={projectSchema}
-                />
+                <Swap
+                  ready={envCardReady}
+                  skeleton={
+                    <EnvironmentsSkeleton count={sortedEnvironments.length} />
+                  }
+                >
+                  <ProjectEnvironmentsCard
+                    deploymentStatus={deploymentStatus}
+                    environments={sortedEnvironments}
+                    orgSlug={orgSlug}
+                    projectId={project.id}
+                    projectSchema={projectSchema}
+                  />
+                </Swap>
               )}
             </div>
 
@@ -1055,11 +1082,18 @@ export function ProjectDetail({
                     />
                     <div>
                       <p className={`text-xs ${muted}`}>Health score</p>
-                      <ScoreTrendPill
-                        liveScore={projectWithBreakdown?.score ?? project.score}
-                        scoreTrend={scoreTrend}
-                        sessionBaseScore={sessionBaseScore}
-                      />
+                      <Swap
+                        ready={!scoreTrendPending}
+                        skeleton={<Sk className="mt-1" h={12} w={90} />}
+                      >
+                        <ScoreTrendPill
+                          liveScore={
+                            projectWithBreakdown?.score ?? project.score
+                          }
+                          scoreTrend={scoreTrend}
+                          sessionBaseScore={sessionBaseScore}
+                        />
+                      </Swap>
                     </div>
                   </div>
                 </CardContent>
@@ -1117,13 +1151,20 @@ export function ProjectDetail({
           {/* Environments — full-width row below both columns when the right
               column is shorter than Project details. */}
           {envSpanFull && sortedEnvironments.length > 0 && (
-            <ProjectEnvironmentsCard
-              deploymentStatus={deploymentStatus}
-              environments={sortedEnvironments}
-              orgSlug={orgSlug}
-              projectId={project.id}
-              projectSchema={projectSchema}
-            />
+            <Swap
+              ready={envCardReady}
+              skeleton={
+                <EnvironmentsSkeleton count={sortedEnvironments.length} />
+              }
+            >
+              <ProjectEnvironmentsCard
+                deploymentStatus={deploymentStatus}
+                environments={sortedEnvironments}
+                orgSlug={orgSlug}
+                projectId={project.id}
+                projectSchema={projectSchema}
+              />
+            </Swap>
           )}
         </TabsContent>
 
@@ -1300,6 +1341,22 @@ export function ProjectDetail({
   )
 }
 
+function AttributesSkeleton() {
+  return (
+    <div className="space-y-0">
+      {[60, 80, 70].map((w, i) => (
+        <div
+          className="border-tertiary flex items-center justify-between border-b py-1.5"
+          key={i}
+        >
+          <Sk h={13} w={90} />
+          <Sk className="max-w-40" h={13} w={`${w}%`} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // fallow-ignore-next-line complexity
 function buildRecommendation(
   c: AttributeContribution,
@@ -1343,11 +1400,53 @@ function entriesAbove(
     .sort(([, a], [, b]) => b - a)
 }
 
+function EnvironmentsSkeleton({ count }: { count: number }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Environments</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-0">
+          {Array.from({ length: count }).map((_, i) => (
+            <div
+              className="border-tertiary border-b py-4 last:border-0"
+              key={i}
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <Sk h={16} r={4} w={120} />
+                <Sk h={13} w={72} />
+              </div>
+              <div className="flex gap-6">
+                <SkText className="w-28" widths={['50%', '80%']} />
+                <SkText className="w-28" widths={['50%', '70%']} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 function fmtAttributeValue(value: unknown): string {
   const n = Number(value)
   return isFinite(n) && String(value).trim() !== ''
     ? String(Math.round(n))
     : String(value)
+}
+
+function LinksSkeleton({ count }: { count: number }) {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      {Array.from({ length: count }).map((_, i) => (
+        <span className="flex items-center gap-1.5" key={i}>
+          <Sk h={16} r={4} w={16} />
+          <Sk h={13} w={72} />
+        </span>
+      ))}
+    </div>
+  )
 }
 
 // Run the lifecycle preview for a proposed project-type change and return the

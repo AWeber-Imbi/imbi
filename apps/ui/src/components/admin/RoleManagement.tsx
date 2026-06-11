@@ -182,8 +182,6 @@ export function RoleManagement() {
       createLabel="New Role"
       error={error}
       errorTitle="Failed to load roles"
-      isLoading={isLoading}
-      loadingLabel="Loading roles..."
       onCreate={goToCreate}
       onSearchChange={setSearchQuery}
       search={searchQuery}
@@ -260,6 +258,7 @@ export function RoleManagement() {
         }
         getRowKey={(role) => role.slug}
         isDeleting={deleteMutation.isPending}
+        loading={isLoading}
         onDelete={handleDelete}
         rows={filteredRoles}
       />

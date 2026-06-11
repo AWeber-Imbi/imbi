@@ -137,8 +137,6 @@ export function WebhookManagement() {
       createLabel="New Webhook"
       error={error}
       errorTitle="Failed to load webhooks"
-      isLoading={isLoading}
-      loadingLabel="Loading webhooks..."
       onCreate={goToCreate}
       onSearchChange={setSearchQuery}
       search={searchQuery}
@@ -252,6 +250,7 @@ export function WebhookManagement() {
         getRowHref={(wh) => editPath(wh.slug)}
         getRowKey={(wh) => wh.slug}
         isDeleting={deleteMutation.isPending}
+        loading={isLoading}
         onDelete={handleDelete}
         rows={filteredWebhooks}
       />

@@ -43,6 +43,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Sk, Swap } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -112,7 +113,7 @@ export function ProjectPluginsSection({
   const [drafts, setDrafts] = useState<OverrideDraft[]>([])
   const lastSeedRef = useRef<null | string>(null)
 
-  const { data: merged } = useQuery({
+  const { data: merged, isLoading: pluginsLoading } = useQuery({
     queryFn: ({ signal }) => listProjectPlugins(orgSlug, projectId, signal),
     queryKey: ['project-plugins', orgSlug, projectId],
     staleTime: 60 * 1000,
@@ -283,41 +284,46 @@ export function ProjectPluginsSection({
             </div>
           </div>
 
-          {drafts.length === 0 ? (
-            <p className="text-secondary text-sm">
-              No project-level overrides. Using project type defaults.
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Plugin</TableHead>
-                  <TableHead>Tab</TableHead>
-                  <TableHead>Default</TableHead>
-                  <TableHead className="w-16" />
-                  <TableHead className="w-12" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {drafts.map((draft, idx) => (
-                  <ProjectPluginOverrideRow
-                    draft={draft}
-                    idx={idx}
-                    inheritedOptions={
-                      inheritedOptionsByKey[
-                        inheritedKey(draft.plugin_id, draft.plugin_type)
-                      ] ?? {}
-                    }
-                    isExpanded={expanded.has(idx)}
-                    key={idx}
-                    onRemove={handleRemove}
-                    onToggle={toggleExpanded}
-                    onUpdateOption={updateOption}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <Swap
+            ready={!pluginsLoading}
+            skeleton={<ProjectPluginsRowsSkeleton />}
+          >
+            {drafts.length === 0 ? (
+              <p className="text-secondary text-sm">
+                No project-level overrides. Using project type defaults.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Plugin</TableHead>
+                    <TableHead>Tab</TableHead>
+                    <TableHead>Default</TableHead>
+                    <TableHead className="w-16" />
+                    <TableHead className="w-12" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {drafts.map((draft, idx) => (
+                    <ProjectPluginOverrideRow
+                      draft={draft}
+                      idx={idx}
+                      inheritedOptions={
+                        inheritedOptionsByKey[
+                          inheritedKey(draft.plugin_id, draft.plugin_type)
+                        ] ?? {}
+                      }
+                      isExpanded={expanded.has(idx)}
+                      key={idx}
+                      onRemove={handleRemove}
+                      onToggle={toggleExpanded}
+                      onUpdateOption={updateOption}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </Swap>
         </div>
       </CardContent>
 
@@ -656,5 +662,26 @@ function ProjectPluginOverrideRow({
         </TableRow>
       )}
     </React.Fragment>
+  )
+}
+
+// Small footprint skeleton for the overrides region while the merged
+// plugin assignments load — a few rows echoing the label · tab-badge ·
+// default columns. Purely presentational.
+function ProjectPluginsRowsSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div aria-busy className="space-y-2">
+      {Array.from({ length: rows }, (_, i) => (
+        <div
+          className="border-tertiary flex items-center gap-3 rounded border px-3 py-2"
+          key={i}
+        >
+          <Sk line w={140} />
+          <Sk h={18} r={4} w={84} />
+          <div className="flex-1" />
+          <Sk line w={28} />
+        </div>
+      ))}
+    </div>
   )
 }

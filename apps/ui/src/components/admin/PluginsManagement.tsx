@@ -17,7 +17,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { LoadingState } from '@/components/ui/loading-state'
+import { Sk } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -119,20 +119,15 @@ function DisabledList({ parentLoading, plugins }: DisabledListProps) {
   })
 
   if (parentLoading) {
-    return <LoadingState label="Loading..." />
+    return <PluginTableSkeleton cols={4} />
   }
 
   if (plugins.length === 0) {
     return (
-      <Card>
-        <CardContent className="py-12 text-center">
-          <Package className="text-secondary mx-auto mb-3 size-8" />
-          <CardTitle className="mb-1">All Plugins Enabled</CardTitle>
-          <CardDescription>
-            Every installed plugin is currently enabled.
-          </CardDescription>
-        </CardContent>
-      </Card>
+      <PluginEmptyState
+        description="Every installed plugin is currently enabled."
+        title="All Plugins Enabled"
+      />
     )
   }
 
@@ -217,7 +212,7 @@ function EnabledList({ error, isError, isLoading, plugins }: EnabledListProps) {
   })
 
   if (isLoading) {
-    return <LoadingState label="Loading..." />
+    return <PluginTableSkeleton cols={8} />
   }
 
   if (isError) {
@@ -232,16 +227,10 @@ function EnabledList({ error, isError, isLoading, plugins }: EnabledListProps) {
 
   if (plugins.length === 0) {
     return (
-      <Card>
-        <CardContent className="py-12 text-center">
-          <Package className="text-secondary mx-auto mb-3 size-8" />
-          <CardTitle className="mb-1">No Enabled Plugins</CardTitle>
-          <CardDescription>
-            Enable a plugin from the Disabled tab to make it available for
-            project type and service assignments.
-          </CardDescription>
-        </CardContent>
-      </Card>
+      <PluginEmptyState
+        description="Enable a plugin from the Disabled tab to make it available for project type and service assignments."
+        title="No Enabled Plugins"
+      />
     )
   }
 
@@ -349,5 +338,54 @@ function EnabledList({ error, isError, isLoading, plugins }: EnabledListProps) {
         title="Disable plugin"
       />
     </>
+  )
+}
+
+// Skeleton plugin table — mirrors the row footprint (label column wide, the
+// rest narrow) so the list reads as present while the query is in flight.
+// Shared empty-state card for both the enabled and disabled plugin lists.
+function PluginEmptyState({
+  description,
+  title,
+}: {
+  description: string
+  title: string
+}) {
+  return (
+    <Card>
+      <CardContent className="py-12 text-center">
+        <Package className="text-secondary mx-auto mb-3 size-8" />
+        <CardTitle className="mb-1">{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardContent>
+    </Card>
+  )
+}
+
+function PluginTableSkeleton({
+  cols,
+  rows = 5,
+}: {
+  cols: number
+  rows?: number
+}) {
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <Table>
+          <TableBody aria-busy>
+            {Array.from({ length: rows }).map((_, r) => (
+              <TableRow key={r}>
+                {Array.from({ length: cols }).map((_, c) => (
+                  <TableCell key={c}>
+                    <Sk line w={c === 0 ? '55%' : 72} />
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   )
 }

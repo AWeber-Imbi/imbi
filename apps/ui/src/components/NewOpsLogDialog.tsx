@@ -21,6 +21,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
+import { Sk, Swap } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import {
@@ -81,7 +82,7 @@ export function NewOpsLogDialog({
     setNotes(initialValues?.notes ?? '')
   }, [isOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { data: projects = [] } = useQuery({
+  const { data: projects = [], isLoading: projectsLoading } = useQuery({
     enabled: !!orgSlug && isOpen,
     queryFn: ({ signal }) => getProjects(orgSlug, signal),
     queryKey: ['projects', orgSlug],
@@ -170,18 +171,20 @@ export function NewOpsLogDialog({
               <Label className="text-sm font-medium" htmlFor="new-ops-project">
                 Project <RequiredAsterisk />
               </Label>
-              <Combobox
-                onChange={(val) => {
-                  setProjectId(val)
-                  setEnvironmentSlug('')
-                }}
-                options={projectOptions.map((p) => ({
-                  label: p.name ?? '',
-                  value: p.id,
-                }))}
-                placeholder="Select project..."
-                value={projectId}
-              />
+              <Swap ready={!projectsLoading} skeleton={<FieldSkeleton />}>
+                <Combobox
+                  onChange={(val) => {
+                    setProjectId(val)
+                    setEnvironmentSlug('')
+                  }}
+                  options={projectOptions.map((p) => ({
+                    label: p.name ?? '',
+                    value: p.id,
+                  }))}
+                  placeholder="Select project..."
+                  value={projectId}
+                />
+              </Swap>
             </div>
 
             {/* Environment */}
@@ -192,28 +195,27 @@ export function NewOpsLogDialog({
               >
                 Environment <RequiredAsterisk />
               </Label>
-              <Combobox
-                disabled={
-                  !projectId ||
-                  selectedProjectLoading ||
-                  projectEnvironments.length === 0
-                }
-                onChange={setEnvironmentSlug}
-                options={projectEnvironments.map((env) => ({
-                  label: env.name,
-                  value: env.slug,
-                }))}
-                placeholder={
-                  projectId
-                    ? selectedProjectLoading
-                      ? 'Loading environments...'
-                      : projectEnvironments.length === 0
+              <Swap
+                ready={!selectedProjectLoading}
+                skeleton={<FieldSkeleton />}
+              >
+                <Combobox
+                  disabled={!projectId || projectEnvironments.length === 0}
+                  onChange={setEnvironmentSlug}
+                  options={projectEnvironments.map((env) => ({
+                    label: env.name,
+                    value: env.slug,
+                  }))}
+                  placeholder={
+                    projectId
+                      ? projectEnvironments.length === 0
                         ? 'Project has no environments'
                         : 'Select environment...'
-                    : 'Pick a project first'
-                }
-                value={environmentSlug}
-              />
+                      : 'Pick a project first'
+                  }
+                  value={environmentSlug}
+                />
+              </Swap>
               <p className="text-muted-foreground text-sm">
                 The environment the operation was performed in
               </p>
@@ -337,4 +339,8 @@ export function NewOpsLogDialog({
       </DialogContent>
     </Dialog>
   )
+}
+
+function FieldSkeleton() {
+  return <Sk h={38} r={6} w="100%" />
 }

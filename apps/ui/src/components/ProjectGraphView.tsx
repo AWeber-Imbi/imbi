@@ -5,6 +5,7 @@ import { useQueries } from '@tanstack/react-query'
 import { getProjectRelationships } from '@/api/endpoints'
 import { LazyProjectsGraphCanvas } from '@/components/LazyProjectsGraphCanvas'
 import { Card } from '@/components/ui/card'
+import { Sk } from '@/components/ui/skeleton'
 import {
   buildRelationshipEdges,
   type GraphEdge,
@@ -60,15 +61,15 @@ export function ProjectGraphView({ projects }: ProjectGraphViewProps) {
 
   const sub = 'text-tertiary'
   const cardClass = 'flex items-center justify-center p-12'
+  const canvasHeight = 'calc(100vh - 280px - var(--assistant-height, 64px))'
 
   if (isAnyLoading) {
     return (
-      <Card className={cardClass}>
-        <div className="flex flex-col items-center gap-3">
-          <div className="size-6 animate-spin rounded-full border-2 border-current border-t-transparent opacity-50" />
-          <p className={`text-sm ${sub}`}>Loading relationships…</p>
-        </div>
-      </Card>
+      <div style={{ height: canvasHeight }}>
+        <Card className="h-full p-3">
+          <Sk h="100%" r={6} w="100%" />
+        </Card>
+      </div>
     )
   }
 
@@ -84,11 +85,7 @@ export function ProjectGraphView({ projects }: ProjectGraphViewProps) {
   }
 
   return (
-    <div
-      style={{
-        height: 'calc(100vh - 280px - var(--assistant-height, 64px))',
-      }}
-    >
+    <div style={{ height: canvasHeight }}>
       <LazyProjectsGraphCanvas edges={edges} projects={projects} />
     </div>
   )

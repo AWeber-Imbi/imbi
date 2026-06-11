@@ -217,8 +217,6 @@ export function ThirdPartyServiceManagement() {
       createLabel="New Service"
       error={error}
       errorTitle="Failed to load third-party services"
-      isLoading={isLoading}
-      loadingLabel="Loading third-party services..."
       onCreate={goToCreate}
       onSearchChange={setSearchQuery}
       search={searchQuery}
@@ -280,6 +278,7 @@ export function ThirdPartyServiceManagement() {
         getRowHref={(svc) => detailPath(svc.slug)}
         getRowKey={(svc) => svc.slug}
         isDeleting={deleteMutation.isPending}
+        loading={isLoading}
         onDelete={(svc) => deleteMutation.mutate(svc.slug)}
         rows={filteredServices}
       />

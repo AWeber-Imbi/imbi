@@ -4,7 +4,6 @@ import type { AdminEventsFilters, EventRecord } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
-import { LoadingState } from '@/components/ui/loading-state'
 import {
   Select,
   SelectContent,
@@ -12,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useInfiniteWebhookEvents } from '@/hooks/useInfiniteWebhookEvents'
 import { useProjectsSlimMap } from '@/hooks/useProjectsSlimMap'
@@ -192,7 +192,7 @@ export function WebhookHistory({ eventId }: WebhookHistoryProps) {
       ) : null}
 
       {isLoading ? (
-        <LoadingState label="Loading webhook history..." />
+        <WebhookHistorySkeleton />
       ) : error ? (
         <ErrorBanner error={error} title="Failed to load webhook events" />
       ) : (
@@ -240,4 +240,24 @@ function sinceFromRange(range: TimeRange): string | undefined {
         ? 7 * 24 * 60 * 60 * 1000
         : 30 * 24 * 60 * 60 * 1000
   return new Date(now - ms).toISOString()
+}
+
+function WebhookHistorySkeleton() {
+  return (
+    <div className="space-y-2">
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <div
+          className="flex items-center gap-3 rounded-md border border-slate-200 bg-white px-4 py-3"
+          key={i}
+        >
+          <Sk circle h={16} w={16} />
+          <Sk line w={150} />
+          <Sk h={18} r={4} w={70} />
+          <Sk line w={110} />
+          <Sk line w={90} />
+          <Sk className="ml-auto" h={18} r={4} w={100} />
+        </div>
+      ))}
+    </div>
+  )
 }

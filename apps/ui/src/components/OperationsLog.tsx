@@ -6,7 +6,6 @@ import { Activity, LoaderCircle, SearchX, X } from 'lucide-react'
 
 import { getProjects } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
-import { LoadingState } from '@/components/ui/loading-state'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useInfiniteOperationsLog } from '@/hooks/useInfiniteOperationsLog'
 import { useEnvironments } from '@/hooks/useOrgResources'
@@ -24,6 +23,7 @@ import {
   OperationsLogFeedItem,
   type VItem,
 } from './operations-log/OperationsLogFeedItem'
+import { OperationsLogFeedSkeleton } from './operations-log/OperationsLogFeedSkeleton'
 import { OperationsLogSummary } from './operations-log/OperationsLogSummary'
 import {
   OperationsLogToolbar,
@@ -631,7 +631,11 @@ export function OperationsLog({
               </div>
             )}
 
-            {isLoading && <LoadingState label="Loading operations log…" />}
+            {isLoading && (
+              <div aria-busy>
+                <OperationsLogFeedSkeleton />
+              </div>
+            )}
 
             {!isLoading &&
               !isError &&
@@ -669,12 +673,14 @@ export function OperationsLog({
                       )
                     })}
                   </div>
-                  <div className="text-tertiary py-3 text-center text-xs">
-                    {isFetchingNextPage
-                      ? 'Loading more…'
-                      : hasNextPage
-                        ? null
-                        : `End of log · ${visibleEntries.length} entries`}
+                  <div aria-busy={isFetchingNextPage} className="py-3">
+                    {isFetchingNextPage ? (
+                      <OperationsLogFeedSkeleton count={3} />
+                    ) : hasNextPage ? null : (
+                      <div className="text-tertiary text-center text-xs">
+                        End of log · {visibleEntries.length} entries
+                      </div>
+                    )}
                   </div>
                 </>
               ))}

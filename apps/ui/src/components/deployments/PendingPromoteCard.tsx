@@ -15,6 +15,7 @@ import { ReleaseCommitPicker } from '@/components/releases/ReleaseCommitPicker'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SkText } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import type { ChipColors } from '@/lib/chip-colors'
 import { SEMVER_RE } from '@/lib/semver'
@@ -105,8 +106,13 @@ export function PendingPromoteCard({
   }
 
   const tagValid = SEMVER_RE.test(tag)
+  const isDrafting = draftMutation.isPending
   const canSubmit =
-    tagValid && !!selectedSha && canTrigger && !actions.promotePending
+    tagValid &&
+    !!selectedSha &&
+    canTrigger &&
+    !actions.promotePending &&
+    !isDrafting
   const selIdx = commits.findIndex((c) => c.sha === selectedSha)
   const heldCount = selIdx > 0 ? selIdx : 0
   const reset = () => {
@@ -243,15 +249,19 @@ export function PendingPromoteCard({
               Regenerate with AI
             </Button>
           </div>
-          <Textarea
-            className="min-h-32 font-mono text-xs"
-            onChange={(e) => {
-              setNotes(e.target.value)
-              setNotesDirty(true)
-            }}
-            placeholder="## Highlights&#10;- …"
-            value={notes}
-          />
+          {isDrafting && !draft ? (
+            <DraftingNotes />
+          ) : (
+            <Textarea
+              className="min-h-32 font-mono text-xs"
+              onChange={(e) => {
+                setNotes(e.target.value)
+                setNotesDirty(true)
+              }}
+              placeholder="## Highlights&#10;- …"
+              value={notes}
+            />
+          )}
         </section>
 
         <div className="border-tertiary flex items-center justify-end gap-2 border-t pt-4">
@@ -300,6 +310,22 @@ export function UpToDateCard({ upstreamName }: { upstreamName: string }) {
           Nothing is waiting to move into this environment.
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Amber "Imbot is drafting" placeholder shown in the notes region while the
+ * release-notes draft is generating, before the textarea is seeded.
+ */
+function DraftingNotes() {
+  return (
+    <div className="border-amber-border min-h-32 rounded-md border border-dashed p-3">
+      <div className="text-amber-text mb-2 flex items-center gap-1.5 text-xs">
+        <Sparkles className="size-3" />
+        Imbot is drafting release notes…
+      </div>
+      <SkText ai widths={['96%', '88%', '92%', '70%']} />
     </div>
   )
 }

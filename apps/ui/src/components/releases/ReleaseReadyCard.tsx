@@ -7,6 +7,7 @@ import { draftReleaseNotes } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SkText } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { SEMVER_RE } from '@/lib/semver'
 import type {
@@ -103,7 +104,8 @@ export function ReleaseReadyCard({
   }
 
   const tagValid = SEMVER_RE.test(tag)
-  const canSubmit = tagValid && !!selectedSha && !isPending
+  const isDrafting = draftMutation.isPending
+  const canSubmit = tagValid && !!selectedSha && !isPending && !isDrafting
   const reset = () => {
     setSelectedSha(commits[0]?.sha ?? null)
     setTag(drift.suggested_tag)
@@ -219,15 +221,19 @@ export function ReleaseReadyCard({
               </Button>
             </div>
           ) : null}
-          <Textarea
-            className="min-h-40 font-mono text-xs"
-            onChange={(e) => {
-              setNotes(e.target.value)
-              setNotesDirty(true)
-            }}
-            placeholder="## Highlights&#10;- …"
-            value={notes}
-          />
+          {isDrafting && !notes ? (
+            <DraftingNotes />
+          ) : (
+            <Textarea
+              className="min-h-40 font-mono text-xs"
+              onChange={(e) => {
+                setNotes(e.target.value)
+                setNotesDirty(true)
+              }}
+              placeholder="## Highlights&#10;- …"
+              value={notes}
+            />
+          )}
         </section>
 
         <div className="border-tertiary flex items-center justify-end gap-2 border-t pt-4">
@@ -244,6 +250,22 @@ export function ReleaseReadyCard({
           </Button>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Amber "Imbot is drafting" placeholder shown in the notes region while the
+ * release-notes draft is generating, before the textarea is seeded.
+ */
+function DraftingNotes() {
+  return (
+    <div className="border-amber-border min-h-40 rounded-md border border-dashed p-3">
+      <div className="text-amber-text mb-2 flex items-center gap-1.5 text-xs">
+        <Sparkles className="size-3" />
+        Imbot is drafting release notes…
+      </div>
+      <SkText ai widths={['96%', '88%', '92%', '70%']} />
     </div>
   )
 }

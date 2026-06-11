@@ -39,7 +39,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { LoadingState } from '@/components/ui/loading-state'
 import {
   Select,
   SelectContent,
@@ -47,6 +46,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Sk } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -145,7 +145,7 @@ export function ServicePluginConfiguration({
   return (
     <div className="space-y-4">
       {manifestLoading ? (
-        <LoadingState label="Loading…" />
+        <ConfigurationSkeleton />
       ) : (
         <>
           <IdentityCard
@@ -195,6 +195,27 @@ export function ServicePluginConfiguration({
         </>
       )}
     </div>
+  )
+}
+
+function ConfigurationSkeleton() {
+  return (
+    <>
+      {[0, 1, 2].map((i) => (
+        <Card key={i}>
+          <CardHeader className="px-6 py-4">
+            <Sk h={16} w={140} />
+            <Sk className="mt-2" line w="70%" />
+          </CardHeader>
+          <CardContent className="px-6 pb-6">
+            <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+              <Sk line w={120} />
+              <Sk h={36} r={6} w="100%" />
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </>
   )
 }
 
@@ -420,7 +441,7 @@ function ApplicationCard({
             <span className="text-destructive ml-1">*</span>
           </Label>
           {isLoading ? (
-            <LoadingState label="Loading…" />
+            <Sk h={36} r={6} w="100%" />
           ) : (
             <Select
               onValueChange={(v) =>
@@ -548,7 +569,7 @@ function CredentialsCard({
       </CardHeader>
       <CardContent className="space-y-4 px-6 pb-6">
         {isLoading ? (
-          <LoadingState label="Loading…" />
+          <CredentialsFieldsSkeleton />
         ) : isError ? (
           <div className="text-destructive text-sm">
             {extractApiErrorDetail(error) ?? 'Failed to load credentials'}
@@ -607,6 +628,19 @@ function CredentialsCard({
         )}
       </CardContent>
     </Card>
+  )
+}
+
+function CredentialsFieldsSkeleton() {
+  return (
+    <>
+      {[0, 1].map((i) => (
+        <div className="space-y-1" key={i}>
+          <Sk line w={120} />
+          <Sk h={36} r={6} w="100%" />
+        </div>
+      ))}
+    </>
   )
 }
 

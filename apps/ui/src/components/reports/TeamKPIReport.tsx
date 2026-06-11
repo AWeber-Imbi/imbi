@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { RefreshCw } from 'lucide-react'
 
 import { getScoreRollup, listTeams, ScoreRollupRow } from '@/api/endpoints'
+import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { Team } from '@/types'
 
@@ -121,9 +122,7 @@ export function TeamKPIReport() {
         </div>
 
         {isLoading ? (
-          <div className="text-tertiary flex h-40 items-center justify-center text-sm">
-            Loading…
-          </div>
+          <Sk h={160} r={6} w="100%" />
         ) : hasError ? (
           <div className="text-danger flex h-40 items-center justify-center text-sm">
             Failed to load report data. Please try again.
@@ -146,9 +145,7 @@ export function TeamKPIReport() {
         </div>
 
         {isLoading ? (
-          <div className="text-tertiary py-10 text-center text-sm">
-            Loading…
-          </div>
+          <TeamRowsSkeleton />
         ) : hasError ? (
           <div className="text-danger py-10 text-center text-sm">
             Failed to load report data.{' '}
@@ -405,5 +402,36 @@ function TeamBarChart({ rows }: BarChartProps) {
         })}
       </svg>
     </div>
+  )
+}
+
+function TeamRowsSkeleton() {
+  return (
+    <table aria-busy className="w-full text-sm">
+      <tbody>
+        {Array.from({ length: 6 }, (_, i) => (
+          <tr className="border-tertiary border-b last:border-0" key={i}>
+            <td className="px-[18px] py-3">
+              <Sk line w={140} />
+            </td>
+            <td className="px-4 py-3">
+              <div className="flex justify-end">
+                <Sk h={24} r={4} w={48} />
+              </div>
+            </td>
+            <td className="px-4 py-3">
+              <div className="flex justify-end">
+                <Sk h={24} r={4} w={48} />
+              </div>
+            </td>
+            <td className="px-[18px] py-3">
+              <div className="flex justify-end">
+                <Sk line w={56} />
+              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }

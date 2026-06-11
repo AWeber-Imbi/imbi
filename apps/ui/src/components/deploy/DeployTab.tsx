@@ -11,7 +11,7 @@ import {
 } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Sk } from '@/components/ui/skeleton'
 import { cn, sortEnvironments } from '@/lib/utils'
 import type { DeploymentCommit, DeploymentRef, Environment } from '@/types'
 
@@ -171,8 +171,8 @@ export function DeployTab({
                 aria-label="Loading current release"
                 className="flex items-center gap-2"
               >
-                <Skeleton className="h-3 w-20" />
-                <Skeleton className="h-3 w-24" />
+                <Sk h={10} w={80} />
+                <Sk h={10} w={96} />
               </div>
             ) : currentReleasesError ? (
               <span className="text-danger">
@@ -418,8 +418,13 @@ function DiffSummary({
         aria-label="Loading diff summary"
         className="border-secondary bg-tertiary/20 flex flex-col gap-2 rounded-md border p-3"
       >
-        <Skeleton className="h-3 w-48" />
-        <Skeleton className="h-3 w-32" />
+        <Sk h={10} w={192} />
+        <div className="flex gap-4">
+          <Sk h={10} w={56} />
+          <Sk h={10} w={72} />
+          <Sk h={10} w={40} />
+          <Sk h={10} w={40} />
+        </div>
       </div>
     )
   if (!data) return null

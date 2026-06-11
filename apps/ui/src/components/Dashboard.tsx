@@ -30,7 +30,7 @@ import {
 } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useRecentDeployments } from '@/hooks/useRecentDeployments'
 import { queryKeys } from '@/lib/queryKeys'
@@ -382,13 +382,12 @@ export function Dashboard({
             Total Open PRs
           </CardTitle>
         </CardHeader>
-        <CardContent className="mt-auto">
+        <CardContent aria-busy={isOpenPrsLoading} className="mt-auto">
           {isOpenPrsLoading ? (
-            <Skeleton
-              aria-label="Loading Total Open PRs"
-              className="bg-tertiary/40 inline-block h-9 w-32"
-              role="status"
-            />
+            <div className="flex items-baseline gap-1.5">
+              <Sk h={30} r={6} w={48} />
+              <Sk line w={96} />
+            </div>
           ) : isOpenPrsError ? (
             <p className="text-danger text-sm">Unavailable</p>
           ) : (

@@ -41,6 +41,7 @@ import { Keystroke } from './ui/keystroke'
 import { Label } from './ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { ScoreBadge } from './ui/score-badge'
+import { Sk } from './ui/skeleton'
 
 interface DriftPair {
   drifted: boolean
@@ -86,6 +87,73 @@ interface SortHeaderProps {
 }
 
 type SortKey = 'name' | 'prs' | 'score' | 'team' | 'type'
+
+// Footprint skeleton for the projects results area — mirrors the grid cards
+// or the table rows depending on the active view, so the layout reads as
+// present while the list loads. The filter chrome above renders immediately.
+function ProjectsSkeleton({
+  count = 9,
+  viewMode,
+}: {
+  count?: number
+  viewMode: 'grid' | 'table'
+}) {
+  if (viewMode === 'grid') {
+    return (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: count }).map((_, i) => (
+          <Card
+            aria-busy
+            className="relative flex min-h-56 flex-col p-5"
+            key={i}
+          >
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Sk line w="60%" />
+                <Sk line w="40%" />
+              </div>
+              <Sk circle h={36} w={36} />
+            </div>
+            <div className="space-y-2">
+              <Sk line w="100%" />
+              <Sk line w="80%" />
+            </div>
+            <div className="border-tertiary mt-auto flex items-center gap-2 border-t pt-[18px]">
+              <Sk h={20} r={6} w={48} />
+              <Sk h={20} r={6} w={48} />
+              <Sk className="ml-auto" h={20} r={6} w={72} />
+            </div>
+          </Card>
+        ))}
+      </div>
+    )
+  }
+  return (
+    <Card aria-busy className="divide-tertiary divide-y overflow-hidden">
+      {Array.from({ length: count }).map((_, i) => (
+        <div className="flex items-center py-4" key={i}>
+          <div className="w-65 shrink-0 space-y-2 px-2.5">
+            <Sk line w="70%" />
+            <Sk line w="45%" />
+          </div>
+          <div className="flex w-40 shrink-0 justify-center">
+            <Sk h={20} r={6} w={40} />
+          </div>
+          <div className="flex w-40 shrink-0 justify-center">
+            <Sk h={20} r={6} w={56} />
+          </div>
+          <div className="flex min-w-0 flex-1 justify-center gap-2">
+            <Sk h={20} r={6} w={48} />
+            <Sk h={20} r={6} w={48} />
+          </div>
+          <div className="flex w-40 shrink-0 justify-center">
+            <Sk circle h={28} w={28} />
+          </div>
+        </div>
+      ))}
+    </Card>
+  )
+}
 
 const VIEW_MODE_STORAGE_KEY = 'imbi.projects.view-mode'
 
@@ -488,9 +556,7 @@ export function ProjectsView() {
         </Card>
       </div>
       {isLoading ? (
-        <div className="flex h-64 items-center justify-center">
-          <div className="text-tertiary text-lg">Loading projects...</div>
-        </div>
+        <ProjectsSkeleton viewMode={viewMode === 'grid' ? 'grid' : 'table'} />
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {/* fallow-ignore-next-line complexity */}

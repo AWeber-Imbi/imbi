@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
-import { History, LoaderCircle } from 'lucide-react'
+import { History } from 'lucide-react'
 
 import {
   listEnvironments,
@@ -15,6 +15,7 @@ import type { EventRecord } from '@/api/endpoints'
 import { renderEntryLabel } from '@/components/operations-log/renderEntryLabel'
 import { EnvironmentBadge } from '@/components/ui/environment-badge'
 import { Gravatar } from '@/components/ui/gravatar'
+import { Sk } from '@/components/ui/skeleton'
 import {
   Tooltip,
   TooltipContent,
@@ -138,10 +139,7 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
   return (
     <div>
       {isPending ? (
-        <div className="text-tertiary flex items-center justify-center py-10">
-          <LoaderCircle className="mr-2 size-4 animate-spin" />
-          <span className="text-sm">Loading activity…</span>
-        </div>
+        <ActivityLogSkeleton />
       ) : merged.length === 0 ? (
         <div className="text-tertiary flex flex-col items-center justify-center gap-2 py-10">
           <History className="size-5" />
@@ -181,6 +179,32 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function ActivityLogSkeleton() {
+  return (
+    <div className="px-6 pt-2">
+      <Sk className="mb-2" h={11} w={48} />
+      <div className="relative">
+        <div className="bg-muted absolute top-4 bottom-4 left-[7.5px] w-px" />
+        {[0, 1, 2, 3].map((i) => (
+          <div className="relative flex gap-3 py-3" key={i}>
+            <div className="relative flex w-4 shrink-0 flex-col items-center">
+              <Sk circle className="mt-1.5" h={8} w={8} />
+            </div>
+            <Sk circle h={32} w={32} />
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <Sk h={14} w="30%" />
+                <Sk h={11} w={56} />
+              </div>
+              <Sk h={12} w="70%" />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

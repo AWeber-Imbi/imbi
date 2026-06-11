@@ -27,7 +27,7 @@ import {
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { LoadingState } from '@/components/ui/loading-state'
+import { Sk } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -173,7 +173,7 @@ export function PluginEntityManagement({
   })
 
   if (entitiesQuery.isLoading || schemaQuery.isLoading) {
-    return <LoadingState label={`Loading ${label}…`} />
+    return <EntityTableSkeleton />
   }
   if (entitiesQuery.isError) {
     return (
@@ -393,6 +393,54 @@ export function PluginEntityManagement({
         open={pendingDelete !== null}
         title={`Delete ${label}?`}
       />
+    </div>
+  )
+}
+
+// Footprint skeleton for the entity table while the schema + rows load.
+// Columns aren't known yet, so it shows a representative four.
+function EntityTableSkeleton({
+  cols = 4,
+  rows = 4,
+}: {
+  cols?: number
+  rows?: number
+}) {
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {Array.from({ length: cols }).map((_, i) => (
+                  <TableHead key={i}>
+                    <Sk w={90} />
+                  </TableHead>
+                ))}
+                <TableHead className="w-32 text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody aria-busy>
+              {Array.from({ length: rows }).map((_, r) => (
+                <TableRow key={r}>
+                  {Array.from({ length: cols }).map((_, c) => (
+                    <TableCell key={c}>
+                      <Sk w={c === 0 ? '70%' : '50%'} />
+                    </TableCell>
+                  ))}
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      <Sk h={28} r={6} w={28} />
+                      <Sk h={28} r={6} w={28} />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   )
 }

@@ -35,6 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Sk } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -66,7 +67,7 @@ export function IntegrationsCard({
   const [form, setForm] = useState(EMPTY_FORM)
   const [deleteTarget, setDeleteTarget] = useState<null | string>(null)
 
-  const { data: services = [] } = useQuery({
+  const { data: services = [], isLoading: servicesLoading } = useQuery({
     enabled: !!orgSlug && !!projectId,
     queryFn: ({ signal }) => listProjectServices(orgSlug, projectId, signal),
     queryKey: ['projectServices', orgSlug, projectId],
@@ -156,7 +157,9 @@ export function IntegrationsCard({
         </Button>
       </CardHeader>
       <CardContent>
-        {services.length === 0 ? (
+        {servicesLoading ? (
+          <IntegrationsSkeleton />
+        ) : services.length === 0 ? (
           <p className="text-muted-foreground text-sm">
             This project is not connected to any third-party services.
           </p>
@@ -293,6 +296,22 @@ export function IntegrationsCard({
         title="Remove integration?"
       />
     </Card>
+  )
+}
+
+function IntegrationsSkeleton() {
+  return (
+    <div className="flex flex-col gap-3">
+      {[0, 1, 2].map((i) => (
+        <div className="flex items-center gap-4" key={i}>
+          <Sk className="flex-none" h={14} w="20%" />
+          <Sk className="flex-none" h={14} w="18%" />
+          <Sk className="flex-none" h={14} w="30%" />
+          <Sk className="flex-none" h={14} w="30%" />
+          <Sk h={16} w={16} />
+        </div>
+      ))}
+    </div>
   )
 }
 

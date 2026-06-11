@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Sk } from '@/components/ui/skeleton'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import {
   findOrCreatePluginEntityByKey,
@@ -156,7 +157,8 @@ export function AnchorEdgesCard({
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        {current ? (
+        {edgesQuery.isLoading && <CurrentEdgeSkeleton />}
+        {!edgesQuery.isLoading && current && (
           <div className="bg-secondary/30 rounded-md border px-4 py-3">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -180,7 +182,8 @@ export function AnchorEdgesCard({
               </Button>
             </div>
           </div>
-        ) : (
+        )}
+        {!edgesQuery.isLoading && !current && (
           <div className="text-secondary text-sm">
             Not mapped to any {targetDisplay} yet.
           </div>
@@ -205,5 +208,16 @@ export function AnchorEdgesCard({
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+function CurrentEdgeSkeleton() {
+  return (
+    <div className="bg-secondary/30 rounded-md border px-4 py-3">
+      <div className="flex flex-col gap-1.5">
+        <Sk h={14} w={160} />
+        <Sk h={12} w={110} />
+      </div>
+    </div>
   )
 }

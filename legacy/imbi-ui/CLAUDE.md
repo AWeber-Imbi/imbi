@@ -56,7 +56,14 @@ This is a complete rewrite of the Imbi UI using modern TypeScript and React.
 2. Use TypeScript for props and state
 3. Import UI components from `@/components/ui`
 4. Use React Query hooks for data fetching
-5. Handle loading and error states
+5. Loading states: wrap each region that fetches on mount/navigation in `Swap`
+   (`@/components/ui/skeleton`) with a footprint-matched skeleton built from
+   `Sk`/`SkText` — same rows, widths, radii as the loaded content. Never use a
+   region-level spinner or "Loading…" text; never gate a whole page on its
+   slowest query (give each region its own `Swap` and stagger reveals with
+   `delay={i * 50}`). Use the amber variant (`ai`) only for Imbot-generated
+   content. Button/toast spinners for in-flight actions (save, deploy) are fine.
+   See `docs/loading-patterns.html`.
 
 ## Component conventions
 

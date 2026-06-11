@@ -10,7 +10,7 @@ import { getProjects, listOperationsLog } from '@/api/endpoints'
 import type { OperationsLogPage } from '@/api/endpoints'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
 import { useEnvironments } from '@/hooks/useOrgResources'
@@ -117,15 +117,11 @@ export function RecentDeploymentsWidget() {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div aria-busy={isLoading} className="min-h-0 flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton
-                aria-hidden="true"
-                className="h-16 rounded-lg"
-                key={i}
-              />
+              <DeploymentRowSkeleton key={i} />
             ))}
           </div>
         ) : isError ? (
@@ -146,9 +142,7 @@ export function RecentDeploymentsWidget() {
               />
             ))}
             <div ref={sentinelRef}>
-              {isFetchingNextPage && (
-                <Skeleton aria-hidden="true" className="h-16 rounded-lg" />
-              )}
+              {isFetchingNextPage && <DeploymentRowSkeleton />}
             </div>
           </div>
         )}
@@ -215,6 +209,27 @@ function DeploymentRow({
         <ChevronRight className="text-tertiary size-4 shrink-0" />
       </div>
     </Link>
+  )
+}
+
+function DeploymentRowSkeleton() {
+  return (
+    <div className="border-input bg-background rounded-lg border p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <Sk circle h={20} w={20} />
+          <div className="min-w-0 flex-1">
+            <Sk className="mb-2" line w="55%" />
+            <div className="mb-2 flex items-center gap-2">
+              <Sk h={18} r={9999} w={56} />
+              <Sk h={18} r={9999} w={72} />
+            </div>
+            <Sk line w="40%" />
+          </div>
+        </div>
+        <Sk h={16} w={16} />
+      </div>
+    </div>
   )
 }
 

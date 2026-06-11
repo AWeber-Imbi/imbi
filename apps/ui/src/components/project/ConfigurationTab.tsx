@@ -38,7 +38,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
-import { LoadingState } from '@/components/ui/loading-state'
+import { Sk } from '@/components/ui/skeleton'
 import { useTheme } from '@/contexts/ThemeContext'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { deriveChipColors } from '@/lib/chip-colors'
@@ -617,7 +617,7 @@ export function ConfigurationTab({
             </div>
           </div>
           {isLoading ? (
-            <LoadingState label="Loading..." />
+            <ParamListSkeleton />
           ) : loadError ? (
             <ConfigLoadError error={loadError} />
           ) : filtered.length === 0 ? (
@@ -1277,6 +1277,24 @@ function ParamList({
           </button>
         )
       })}
+    </div>
+  )
+}
+
+// Footprint-matched skeleton for the key list while the first
+// environment's keys are still loading. Mirrors `ParamList` rows: a
+// flex row per key with a mono-width key bar. Purely presentational.
+function ParamListSkeleton({ rows = 10 }: { rows?: number }) {
+  return (
+    <div aria-busy className="flex-1 overflow-y-auto">
+      {Array.from({ length: rows }, (_, i) => (
+        <div
+          className="border-primary flex items-center gap-2.5 border-b px-3.5 py-2.5 last:border-b-0"
+          key={i}
+        >
+          <Sk line w={`${45 + ((i * 23) % 45)}%`} />
+        </div>
+      ))}
     </div>
   )
 }

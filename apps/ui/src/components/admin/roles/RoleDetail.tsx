@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Sk } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -176,8 +177,14 @@ export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-secondary text-sm">Loading role...</div>
+      <div className="space-y-6">
+        <div>
+          <Button onClick={onBack} variant="outline">
+            <ArrowLeft className="mr-2 size-4" />
+            Back
+          </Button>
+        </div>
+        <RoleDetailSkeleton />
       </div>
     )
   }
@@ -463,9 +470,7 @@ export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
 
           {/* User list */}
           {usersLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="text-secondary text-sm">Loading users...</div>
-            </div>
+            <RoleRowsSkeleton />
           ) : usersError ? (
             <div className="border-danger bg-danger text-danger flex items-center gap-3 rounded-lg border p-4">
               <AlertCircle className="size-5 shrink-0" />
@@ -556,11 +561,7 @@ export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
 
           {/* Service account list */}
           {saLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="text-secondary text-sm">
-                Loading service accounts...
-              </div>
-            </div>
+            <RoleRowsSkeleton />
           ) : saError ? (
             <div className="border-danger bg-danger text-danger flex items-center gap-3 rounded-lg border p-4">
               <AlertCircle className="size-5 shrink-0" />
@@ -662,9 +663,7 @@ export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
 
           {/* Group list */}
           {groupsLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="text-secondary text-sm">Loading groups...</div>
-            </div>
+            <RoleRowsSkeleton />
           ) : groupsError ? (
             <div className="border-danger bg-danger text-danger flex items-center gap-3 rounded-lg border p-4">
               <AlertCircle className="size-5 shrink-0" />
@@ -754,5 +753,55 @@ export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
         title="Remove permission"
       />
     </div>
+  )
+}
+
+function RoleDetailSkeleton() {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between space-y-0 border-b px-6 py-5">
+        <div className="flex items-center gap-3">
+          <Sk h={40} r={8} w={40} />
+          <div className="flex flex-col gap-2">
+            <Sk h={18} w={180} />
+            <Sk h={12} w={240} />
+          </div>
+        </div>
+        <Sk h={36} r={6} w={110} />
+      </CardHeader>
+      <div className="border-tertiary flex items-center gap-6 border-b px-6 py-4">
+        {[120, 60, 90].map((w) => (
+          <div className="flex flex-col gap-1.5" key={w}>
+            <Sk h={10} w={48} />
+            <Sk h={14} w={w} />
+          </div>
+        ))}
+      </div>
+      <div className="border-tertiary border-b">
+        <div className="flex gap-6 px-6 py-3">
+          {[88, 64, 132, 72].map((w) => (
+            <Sk h={14} key={w} w={w} />
+          ))}
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+function RoleRowsSkeleton() {
+  return (
+    <Card className="overflow-hidden">
+      <CardContent className="space-y-3 p-4">
+        {[0, 1, 2].map((i) => (
+          <div className="flex items-center gap-3" key={i}>
+            <Sk circle h={32} w={32} />
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Sk h={13} w="40%" />
+              <Sk h={11} w="60%" />
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   )
 }

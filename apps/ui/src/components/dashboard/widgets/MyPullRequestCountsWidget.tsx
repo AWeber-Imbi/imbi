@@ -5,7 +5,7 @@ import { GitMerge } from 'lucide-react'
 
 import { getOrgPullRequests } from '@/api/endpoints'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useGithubLogin } from '@/hooks/useGithubLogin'
 
@@ -55,13 +55,9 @@ export function MyPullRequestCountsWidget() {
           My Open PRs
         </CardTitle>
       </CardHeader>
-      <CardContent className="mt-auto">
+      <CardContent aria-busy={isLoading} className="mt-auto">
         {isLoading ? (
-          <Skeleton
-            aria-label="Loading My Open PRs"
-            className="bg-tertiary/40 inline-block h-8 w-20"
-            role="status"
-          />
+          <Sk h={30} r={6} w={80} />
         ) : isError ? (
           <p className="text-danger text-sm">Unavailable</p>
         ) : notConnected ? (

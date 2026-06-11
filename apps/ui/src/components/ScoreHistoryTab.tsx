@@ -21,6 +21,7 @@ import {
   ScoreChangeReason,
   ScoreHistoryPoint,
 } from '@/api/endpoints'
+import { Sk } from '@/components/ui/skeleton'
 import { formatFieldKey } from '@/lib/project-field-formatting'
 import { computeScoreYAxis } from '@/lib/score-chart'
 
@@ -255,6 +256,11 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
     return m
   }, [chartAnnotations, chartPoints, projectChangeEvents])
 
+  // Raw events feed the timeline. They come from chartData when granularity is
+  // already 'raw' (the rawData query is disabled in that case, so rawLoading
+  // stays false and would flash the empty state); otherwise from rawData.
+  const eventsLoading = chartLoading || (granularity !== 'raw' && rawLoading)
+
   const currentScore =
     trendData?.current ?? chartPoints[chartPoints.length - 1]?.score ?? null
 
@@ -297,9 +303,7 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
         </div>
 
         {chartLoading ? (
-          <div className="text-tertiary flex h-40 items-center justify-center text-sm">
-            Loading…
-          </div>
+          <ChartSkeleton />
         ) : (
           <ScoreChart
             annotations={chartAnnotations}
@@ -348,10 +352,8 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
           </div>
         </div>
         <div>
-          {rawLoading ? (
-            <div className="text-tertiary py-10 text-center text-sm">
-              Loading…
-            </div>
+          {eventsLoading ? (
+            <EventTimelineSkeleton />
           ) : (
             <EventTimeline
               eventCorrelations={eventCorrelations}
@@ -385,6 +387,20 @@ function buildCorrelations(
     if (payload) m.set(i, payload)
   })
   return m
+}
+
+function ChartSkeleton() {
+  return (
+    <div className="flex h-55 items-end gap-3 px-2 pt-3">
+      <div className="flex h-full flex-col justify-between py-1">
+        <Sk h={9} w={20} />
+        <Sk h={9} w={20} />
+        <Sk h={9} w={20} />
+        <Sk h={9} w={20} />
+      </div>
+      <Sk className="flex-1" h="100%" r={6} />
+    </div>
+  )
 }
 
 function EventTimeline({
@@ -484,6 +500,36 @@ function EventTimeline({
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function EventTimelineSkeleton() {
+  return (
+    <div>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <div
+          className="border-tertiary grid items-center gap-3 border-b px-3 py-3.5 last:border-0"
+          key={i}
+          style={{ gridTemplateColumns: '80px 1fr auto 72px' }}
+        >
+          <div className="flex flex-col gap-1.5">
+            <Sk h={11} w="70%" />
+            <Sk h={9} w="90%" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Sk h={14} r={4} w={64} />
+            <Sk h={11} w="60%" />
+          </div>
+          <div className="flex items-center justify-end gap-1.5">
+            <Sk h={11} w={20} />
+            <Sk h={11} w={20} />
+          </div>
+          <div className="flex justify-end">
+            <Sk h={20} r={4} w={40} />
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

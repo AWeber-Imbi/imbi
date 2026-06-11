@@ -161,8 +161,6 @@ export function AssistantManagement() {
               ))}
             </SegmentedControl>
           }
-          isLoading={isLoading}
-          loadingLabel="Loading MCP servers..."
           onCreate={goToCreate}
           onSearchChange={setSearchQuery}
           search={searchQuery}
@@ -272,6 +270,7 @@ export function AssistantManagement() {
             getRowHref={(srv) => editPath(srv.slug)}
             getRowKey={(srv) => srv.slug}
             isDeleting={deleteMutation.isPending}
+            loading={isLoading}
             onDelete={(srv) => deleteMutation.mutate(srv.id)}
             rows={filtered}
           />

@@ -38,7 +38,6 @@ import {
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { LoadingState } from '@/components/ui/loading-state'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import {
   Select,
@@ -47,6 +46,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Sk, Swap } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/hooks/useAuth'
 import { extractApiErrorDetail } from '@/lib/apiError'
@@ -119,7 +119,7 @@ export function AuthProvidersManagement() {
     null,
   )
 
-  const { data, error, isLoading } = useQuery({
+  const { data, error } = useQuery({
     queryFn: ({ signal }) => listAuthProviders(signal),
     queryKey: queryKeys.adminAuthProviders(),
   })
@@ -214,10 +214,6 @@ export function AuthProvidersManagement() {
     },
   })
 
-  if (isLoading) {
-    return <LoadingState label="Loading auth providers..." />
-  }
-
   if (error) {
     return <ErrorBanner error={error} title="Failed to load auth providers" />
   }
@@ -242,11 +238,16 @@ export function AuthProvidersManagement() {
               <Lock className="text-secondary size-5" />
               <CardTitle>Local Authentication</CardTitle>
             </div>
-            {localAuthQuery.data?.enabled ? (
-              <CheckCircle className="text-status-review-dot size-5 shrink-0" />
-            ) : (
-              <AlertCircle className="text-tertiary size-5 shrink-0" />
-            )}
+            <Swap
+              ready={!!localAuthQuery.data}
+              skeleton={<Sk circle h={20} w={20} />}
+            >
+              {localAuthQuery.data?.enabled ? (
+                <CheckCircle className="text-status-review-dot size-5 shrink-0" />
+              ) : (
+                <AlertCircle className="text-tertiary size-5 shrink-0" />
+              )}
+            </Swap>
           </CardHeader>
           <CardContent className="flex flex-1 flex-col space-y-3">
             <p className="text-tertiary text-xs">
@@ -261,18 +262,49 @@ export function AuthProvidersManagement() {
                   page.
                 </div>
               </div>
-              <Switch
-                checked={localAuthQuery.data?.enabled ?? false}
-                disabled={
-                  !canWrite ||
-                  localAuthQuery.isLoading ||
-                  localAuthMutation.isPending
-                }
-                onCheckedChange={(checked) => localAuthMutation.mutate(checked)}
-              />
+              <Swap
+                ready={!!localAuthQuery.data}
+                skeleton={<Sk h={20} r={9999} w={36} />}
+              >
+                <Switch
+                  checked={localAuthQuery.data?.enabled ?? false}
+                  disabled={!canWrite || localAuthMutation.isPending}
+                  onCheckedChange={(checked) =>
+                    localAuthMutation.mutate(checked)
+                  }
+                />
+              </Swap>
             </div>
           </CardContent>
         </Card>
+
+        {!data
+          ? [0, 1].map((i) => (
+              <Card aria-busy className="reveal" key={`sk-${i}`}>
+                <CardHeader
+                  className={
+                    'flex flex-row items-center justify-between space-y-0 pb-2'
+                  }
+                >
+                  <Sk w={110} />
+                  <Sk circle h={20} w={20} />
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Sk line w="92%" />
+                  <div>
+                    <Sk className="mb-1" w={120} />
+                    <Sk h={30} r={6} w="100%" />
+                  </div>
+                  {canWrite && (
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <Sk h={32} r={8} w={72} />
+                      <Sk h={32} r={8} w={84} />
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))
+          : null}
 
         {providers.map((provider) => {
           const appType = provider.oauth_app_type

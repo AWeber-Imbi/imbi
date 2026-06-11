@@ -28,7 +28,6 @@ import { NewDocumentMenu } from '@/components/documents/NewDocumentMenu'
 import type { DocumentsScope } from '@/components/documents/useDocumentsController'
 import { Navigation } from '@/components/Navigation'
 import { Input } from '@/components/ui/input'
-import { LoadingState } from '@/components/ui/loading-state'
 import {
   Select,
   SelectContent,
@@ -36,6 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Sk } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -70,7 +70,7 @@ export function DocumentsIndexPage() {
         style={{ paddingBottom: 'var(--assistant-height, 64px)' }}
       >
         <div className="mx-auto max-w-7xl">
-          {!orgSlug && <LoadingState label="Loading organization…" />}
+          {!orgSlug && <DocumentsIndexSkeleton />}
           {orgSlug && (
             <DocumentsIndexBody
               initialAction={subAction}
@@ -291,6 +291,32 @@ function DocumentsIndexList({
         />
       )}
     </>
+  )
+}
+
+function DocumentsIndexSkeleton() {
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-col gap-2">
+          <Sk h={24} w={180} />
+          <Sk line w={280} />
+        </div>
+        <Sk h={32} r={6} w={200} />
+      </div>
+      <div className="flex gap-3">
+        <Sk h={28} r={6} w={120} />
+        <Sk h={28} r={6} w={120} />
+      </div>
+      <div className="space-y-3">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div className="border-tertiary rounded border p-4" key={i}>
+            <Sk line w="40%" />
+            <Sk className="mt-2" line w="80%" />
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 

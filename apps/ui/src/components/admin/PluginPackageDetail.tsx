@@ -23,7 +23,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { LoadingState } from '@/components/ui/loading-state'
+import { Sk } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
@@ -49,6 +49,27 @@ const VERTEX_FIELDS: (keyof VertexFormState)[] = [
   'nav_label',
   'description',
 ]
+
+function PluginPackageDetailSkeleton() {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-2">
+            <Sk h={20} w={220} />
+            <Sk h={13} w={320} />
+            <div className="mt-1 flex flex-wrap gap-2">
+              {[90, 60, 70, 64].map((w) => (
+                <Sk h={20} key={w} r={6} w={w} />
+              ))}
+            </div>
+          </div>
+          <Sk h={32} r={6} w={88} />
+        </div>
+      </CardHeader>
+    </Card>
+  )
+}
 
 const initialVertexForm = (
   vertex_labels: PluginVertexLabel[] | undefined,
@@ -159,7 +180,17 @@ export function PluginPackageDetail({
   })
 
   if (pluginQuery.isLoading) {
-    return <LoadingState label="Loading plugin…" />
+    return (
+      <div className="space-y-6">
+        <div>
+          <Button onClick={onBack} variant="outline">
+            <ArrowLeft className="mr-2 size-4" />
+            Back
+          </Button>
+        </div>
+        <PluginPackageDetailSkeleton />
+      </div>
+    )
   }
   if (pluginQuery.isError || !pluginQuery.data) {
     return (

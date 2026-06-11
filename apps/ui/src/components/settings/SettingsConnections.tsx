@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { LoadingState } from '@/components/ui/loading-state'
+import { Sk } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -291,7 +291,7 @@ export function SettingsConnections() {
   }, [autoConnectSlug, pluginsQuery.isLoading, pluginsQuery.data])
 
   if (pluginsQuery.isLoading || connectionsQuery.isLoading) {
-    return <LoadingState label="Loading connections..." />
+    return <ConnectionsSkeleton />
   }
 
   if (pluginsQuery.isError) {
@@ -543,6 +543,62 @@ function ConnectionActions({
       >
         Forget
       </Button>
+    </div>
+  )
+}
+
+// Footprint skeleton mirroring the connections table (provider, status,
+// last-used, actions) while the plugins + connections queries are in flight.
+function ConnectionsSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-primary text-base font-medium">
+          Third-party connections
+        </h2>
+        <p className="text-secondary mt-1 text-sm">
+          Connect your account to identity providers so Imbi can run AWS,
+          GitHub, and OIDC operations as you instead of a shared service
+          principal.
+        </p>
+      </div>
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Provider</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Last used</TableHead>
+                <TableHead className="w-48 text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody aria-busy>
+              {Array.from({ length: 3 }, (_, i) => (
+                <TableRow key={i}>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <Sk h={24} r={6} w={24} />
+                      <Sk line w={120} />
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Sk h={20} r={4} w={84} />
+                  </TableCell>
+                  <TableCell>
+                    <Sk line w={120} />
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex justify-end">
+                      <Sk h={28} r={6} w={96} />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   )
 }

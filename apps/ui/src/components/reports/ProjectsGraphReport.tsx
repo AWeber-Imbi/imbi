@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { getProjects } from '@/api/endpoints'
 import { ProjectGraphView } from '@/components/ProjectGraphView'
+import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 
 // fallow-ignore-next-line complexity
@@ -32,8 +33,12 @@ export function ProjectsGraphReport() {
 
   if (isLoading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="text-tertiary text-sm">Loading projects…</div>
+      <div
+        style={{
+          height: 'calc(100vh - 280px - var(--assistant-height, 64px))',
+        }}
+      >
+        <Sk h="100%" r={8} w="100%" />
       </div>
     )
   }

@@ -16,6 +16,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
+import { Sk, Swap } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import {
@@ -49,13 +50,17 @@ export function NewProjectDialog({
   const [description, setDescription] = useState('')
   const [selectedEnvSlugs, setSelectedEnvSlugs] = useState<string[]>([])
 
-  const { data: teams = [] } = useTeams(orgSlug, { enabled: isOpen })
-  const { data: projectTypes = [] } = useProjectTypes(orgSlug, {
+  const { data: teams = [], isLoading: teamsLoading } = useTeams(orgSlug, {
     enabled: isOpen,
   })
-  const { data: environments = [] } = useEnvironments(orgSlug, {
-    enabled: isOpen,
-  })
+  const { data: projectTypes = [], isLoading: projectTypesLoading } =
+    useProjectTypes(orgSlug, {
+      enabled: isOpen,
+    })
+  const { data: environments = [], isLoading: environmentsLoading } =
+    useEnvironments(orgSlug, {
+      enabled: isOpen,
+    })
 
   const createMutation = useMutation({
     mutationFn: (data: ProjectCreate) => createProject(orgSlug, data),
@@ -128,15 +133,17 @@ export function NewProjectDialog({
               <Label className="text-sm font-medium" htmlFor="new-project-team">
                 Team <RequiredAsterisk />
               </Label>
-              <Combobox
-                onChange={setTeamSlug}
-                options={teams.map((t) => ({
-                  label: t.name,
-                  value: t.slug,
-                }))}
-                placeholder="Select team..."
-                value={teamSlug}
-              />
+              <Swap ready={!teamsLoading} skeleton={<FieldSkeleton />}>
+                <Combobox
+                  onChange={setTeamSlug}
+                  options={teams.map((t) => ({
+                    label: t.name,
+                    value: t.slug,
+                  }))}
+                  placeholder="Select team..."
+                  value={teamSlug}
+                />
+              </Swap>
               <p className="text-muted-foreground text-sm">
                 Team that owns this project
               </p>
@@ -147,15 +154,17 @@ export function NewProjectDialog({
               <Label className="text-sm font-medium" htmlFor="new-project-type">
                 Project Type <RequiredAsterisk />
               </Label>
-              <Combobox
-                onChange={setProjectTypeSlug}
-                options={projectTypes.map((pt) => ({
-                  label: pt.name,
-                  value: pt.slug,
-                }))}
-                placeholder="Select project type..."
-                value={projectTypeSlug}
-              />
+              <Swap ready={!projectTypesLoading} skeleton={<FieldSkeleton />}>
+                <Combobox
+                  onChange={setProjectTypeSlug}
+                  options={projectTypes.map((pt) => ({
+                    label: pt.name,
+                    value: pt.slug,
+                  }))}
+                  placeholder="Select project type..."
+                  value={projectTypeSlug}
+                />
+              </Swap>
               <p className="text-muted-foreground text-sm">
                 Type of the new project
               </p>
@@ -211,7 +220,13 @@ export function NewProjectDialog({
             </div>
 
             {/* Environments */}
-            {environments.length > 0 && (
+            {environmentsLoading && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Environments</Label>
+                <ChipsSkeleton />
+              </div>
+            )}
+            {!environmentsLoading && environments.length > 0 && (
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Environments</Label>
                 <div className="flex flex-wrap gap-2">
@@ -264,4 +279,18 @@ export function NewProjectDialog({
       </DialogContent>
     </Dialog>
   )
+}
+
+function ChipsSkeleton() {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {[70, 90, 60, 80].map((w, i) => (
+        <Sk h={34} key={i} r={6} w={w} />
+      ))}
+    </div>
+  )
+}
+
+function FieldSkeleton() {
+  return <Sk h={38} r={6} w="100%" />
 }

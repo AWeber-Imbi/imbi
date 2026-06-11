@@ -6,6 +6,7 @@ import { getProject } from '@/api/endpoints'
 import { CommandBar } from '@/components/CommandBar'
 import { Navigation } from '@/components/Navigation'
 import { ProjectDetail } from '@/components/ProjectDetail'
+import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
@@ -49,13 +50,7 @@ export function ProjectDetailPage() {
             </div>
           </div>
         )}
-        {isLoading && (
-          <div className="mx-auto max-w-7xl px-6 py-8">
-            <div className="flex h-64 items-center justify-center">
-              <div className="text-lg">Loading project...</div>
-            </div>
-          </div>
-        )}
+        {isLoading && <ProjectDetailHeaderSkeleton />}
         {error && (
           <div className="mx-auto max-w-7xl px-6 py-8">
             <div className="py-12 text-center text-red-600">
@@ -73,6 +68,30 @@ export function ProjectDetailPage() {
         )}
       </main>
       <CommandBar />
+    </div>
+  )
+}
+
+const TAB_SKELETON_WIDTHS = [72, 104, 96, 88, 120, 80]
+
+function ProjectDetailHeaderSkeleton() {
+  return (
+    <div className="max-w-project-detail mx-auto px-6 py-8">
+      <div className="mb-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1 space-y-3">
+            <Sk h={28} r={6} w="40%" />
+            <Sk h={13} w="70%" />
+            <Sk h={13} w="55%" />
+          </div>
+          <Sk h={56} r={6} w={56} />
+        </div>
+      </div>
+      <div className="border-tertiary mb-6 flex gap-4 border-b pb-2">
+        {TAB_SKELETON_WIDTHS.map((w, i) => (
+          <Sk h={15} key={i} w={w} />
+        ))}
+      </div>
     </div>
   )
 }

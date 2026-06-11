@@ -149,8 +149,6 @@ export function TeamManagement() {
       createLabel="New Team"
       error={error}
       errorTitle="Failed to load teams"
-      isLoading={isLoading}
-      loadingLabel="Loading teams..."
       onCreate={goToCreate}
       onSearchChange={setSearchQuery}
       search={searchQuery}
@@ -292,6 +290,7 @@ export function TeamManagement() {
         getRowHref={(team) => detailPath(team.slug)}
         getRowKey={(team) => team.slug}
         isDeleting={deleteMutation.isPending}
+        loading={isLoading}
         onDelete={handleDelete}
         rows={filteredTeams}
       />

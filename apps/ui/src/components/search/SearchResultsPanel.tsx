@@ -10,6 +10,7 @@ import {
   type SearchResult,
 } from '@/api/search'
 import { getResultPath } from '@/components/search/getResultPath'
+import { SearchResultsSkeleton } from '@/components/search/SearchResultsSkeleton'
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
@@ -252,10 +253,8 @@ export function SearchResultsPanel({
 
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-muted-foreground animate-pulse font-mono text-xs">
-          Searching…
-        </p>
+      <div aria-busy className="flex h-full flex-col overflow-hidden">
+        <SearchResultsSkeleton />
       </div>
     )
   }

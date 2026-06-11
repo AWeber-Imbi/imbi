@@ -137,8 +137,6 @@ export function ProjectTypeManagement() {
       createLabel="New Project Type"
       error={error}
       errorTitle="Failed to load project types"
-      isLoading={isLoading}
-      loadingLabel="Loading project types..."
       onCreate={goToCreate}
       onSearchChange={setSearchQuery}
       search={searchQuery}
@@ -226,6 +224,7 @@ export function ProjectTypeManagement() {
         getRowHref={(pt) => editPath(pt.slug)}
         getRowKey={(pt) => pt.slug}
         isDeleting={deleteMutation.isPending}
+        loading={isLoading}
         onDelete={handleDelete}
         rows={filteredProjectTypes}
       />

@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getAdminUser, listUserDocuments } from '@/api/endpoints'
 import { CommandBar } from '@/components/CommandBar'
 import { Navigation } from '@/components/Navigation'
+import { Sk, Swap } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -101,12 +102,19 @@ export function UserProfilePage() {
               Could not load profile: {(userQuery.error as Error).message}
             </p>
           )}
-          {userQuery.data && (
+          {!userQuery.error && (
             <>
-              <ProfileHeader
-                identities={identitiesQuery.data}
-                user={userQuery.data}
-              />
+              <Swap
+                ready={!!userQuery.data}
+                skeleton={<ProfileHeaderSkeleton />}
+              >
+                {userQuery.data && (
+                  <ProfileHeader
+                    identities={identitiesQuery.data}
+                    user={userQuery.data}
+                  />
+                )}
+              </Swap>
               <Tabs onValueChange={handleTabChange} value={activeTab}>
                 <TabsList className="mb-4">
                   <TabsTrigger value="activity">Activity</TabsTrigger>
@@ -122,10 +130,24 @@ export function UserProfilePage() {
                     data={contributionsQuery.data}
                     isLoading={contributionsQuery.isLoading}
                   />
-                  <StatisticsCard data={statsQuery.data} />
+                  <Swap
+                    delay={50}
+                    ready={!statsQuery.isLoading}
+                    skeleton={<StatisticsSkeleton />}
+                  >
+                    <StatisticsCard data={statsQuery.data} />
+                  </Swap>
                   <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                     <div className="lg:col-span-1">
-                      <OrganizationMemberships user={userQuery.data} />
+                      <Swap
+                        delay={100}
+                        ready={!!userQuery.data}
+                        skeleton={<MembershipsSkeleton />}
+                      >
+                        {userQuery.data && (
+                          <OrganizationMemberships user={userQuery.data} />
+                        )}
+                      </Swap>
                     </div>
                     <div className="lg:col-span-2">
                       <RecentActivity email={email} />
@@ -154,5 +176,58 @@ export function UserProfilePage() {
       </main>
       <CommandBar />
     </div>
+  )
+}
+
+function MembershipsSkeleton() {
+  return (
+    <section
+      aria-hidden
+      className="border-tertiary bg-primary rounded-md border p-4"
+    >
+      <Sk className="mb-3" h={14} w={110} />
+      <div className="space-y-2">
+        {[200, 170, 150].map((w, i) => (
+          <div className="flex items-center justify-between" key={i}>
+            <Sk h={13} w={w} />
+            <Sk h={18} r={2} w={48} />
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function ProfileHeaderSkeleton() {
+  return (
+    <header
+      aria-hidden
+      className="border-secondary flex flex-col gap-4 border-b pb-6 md:flex-row md:items-start md:gap-6"
+    >
+      <Sk h={96} r={6} w={96} />
+      <div className="flex-1 space-y-2">
+        <Sk h={28} w={220} />
+        <Sk h={14} w={140} />
+        <Sk h={14} w={200} />
+        <div className="flex gap-6 pt-2">
+          <Sk h={12} w={120} />
+          <Sk h={12} w={120} />
+        </div>
+      </div>
+    </header>
+  )
+}
+
+function StatisticsSkeleton() {
+  return (
+    <section aria-hidden className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {[0, 1, 2].map((i) => (
+        <div className="border-tertiary rounded-md border p-4" key={i}>
+          <Sk h={12} w={110} />
+          <Sk className="mt-2" h={28} w={70} />
+          <Sk className="mt-1" h={11} w={140} />
+        </div>
+      ))}
+    </section>
   )
 }

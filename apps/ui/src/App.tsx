@@ -6,6 +6,7 @@ import { Toaster } from 'sonner'
 
 import { BootstrapGate } from './components/BootstrapGate'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { Sk } from './components/ui/skeleton'
 import { OrganizationProvider } from './contexts/OrganizationContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { useAuth } from './hooks/useAuth'
@@ -184,10 +185,45 @@ function App() {
   )
 }
 
+// App-shell skeleton shown while a lazy route chunk loads, during the
+// bootstrap gate, and during auth resolution. Mirrors the fixed top nav
+// (<Navigation />) plus a generic content footprint so the chrome reads as
+// present before the page module arrives — never a centered "Loading…".
 function PageFallback() {
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="text-lg">Loading…</div>
+    <div aria-busy className="bg-tertiary text-primary min-h-screen">
+      <div className="border-tertiary bg-primary fixed top-0 right-0 left-0 z-50 border-b">
+        <div className="flex h-16 items-center justify-between px-6">
+          <div className="flex items-center gap-8">
+            <div className="flex items-center gap-2">
+              <Sk circle h={32} w={32} />
+              <Sk h={14} r={4} w={64} />
+            </div>
+            <div className="hidden items-center gap-6 md:flex">
+              {[56, 64, 72, 60].map((w, i) => (
+                <Sk h={14} key={i} r={4} w={w} />
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Sk h={32} r={8} w={140} />
+            <Sk circle h={32} w={32} />
+          </div>
+        </div>
+      </div>
+      <main className="mx-auto max-w-[1400px] px-6 pt-24">
+        <Sk h={28} r={6} w={220} />
+        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Sk h={96} key={i} r={12} />
+          ))}
+        </div>
+        <div className="mt-6 space-y-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Sk h={56} key={i} r={8} />
+          ))}
+        </div>
+      </main>
     </div>
   )
 }

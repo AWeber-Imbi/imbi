@@ -20,6 +20,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
 import { useCommitSync } from '@/hooks/useCommitSync'
@@ -172,8 +173,8 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
           <CardTitle>Analysis Results</CardTitle>
         </CardHeader>
         <CardContent>
-          {reportQuery.isPending && (
-            <p className="text-tertiary text-sm">Loading analysis report...</p>
+          {(reportQuery.isPending || analyzeMutation.isPending) && (
+            <DoctorReportSkeleton />
           )}
           {reportQuery.isError && (
             <p className="text-sm text-red-600 dark:text-red-400">
@@ -188,9 +189,6 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
                 No analysis has been run yet for this project.
               </p>
             )}
-          {analyzeMutation.isPending && (
-            <p className="text-tertiary text-sm">Running analysis...</p>
-          )}
           {report && results.length === 0 && !analyzeMutation.isPending && (
             <p className="text-tertiary text-sm">
               No analysis plugins reported findings for this project.
@@ -205,6 +203,29 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
           )}
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+function DoctorReportSkeleton() {
+  return (
+    <div className="space-y-4">
+      {[0, 1].map((s) => (
+        <div className="space-y-2" key={s}>
+          <Sk h={14} w={120} />
+          {[0, 1].map((r) => (
+            <div
+              className="border-input flex items-center gap-3 rounded-md border px-3 py-2.5"
+              key={r}
+            >
+              <Sk circle h={16} w={16} />
+              <Sk className="flex-1" h={14} w="40%" />
+              <Sk h={12} r={4} w={36} />
+              <Sk h={12} r={4} w={72} />
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   )
 }

@@ -151,8 +151,6 @@ export function LinkDefinitionManagement() {
       createLabel="New Link Definition"
       error={error}
       errorTitle="Failed to load link definitions"
-      isLoading={isLoading}
-      loadingLabel="Loading link definitions..."
       onCreate={goToCreate}
       onSearchChange={setSearchQuery}
       search={searchQuery}
@@ -258,6 +256,7 @@ export function LinkDefinitionManagement() {
         getRowHref={(ld) => editPath(ld.slug)}
         getRowKey={(ld) => ld.slug}
         isDeleting={deleteMutation.isPending}
+        loading={isLoading}
         onDelete={handleDelete}
         rows={filteredLinkDefinitions}
       />

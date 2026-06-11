@@ -23,7 +23,6 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { LoadingState } from '@/components/ui/loading-state'
 import {
   Select,
   SelectContent,
@@ -31,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Sk } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -184,7 +184,7 @@ export function ServicePluginList({
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
-            <LoadingState label="Loading..." />
+            <ServicePluginListSkeleton />
           ) : isPluginsError ? (
             <div className="text-destructive py-8 text-center text-sm">
               {extractApiErrorDetail(pluginsError) ?? 'Failed to load plugins'}
@@ -329,5 +329,46 @@ export function ServicePluginList({
         title="Remove Plugin"
       />
     </div>
+  )
+}
+
+function ServicePluginListSkeleton() {
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Label</TableHead>
+          <TableHead>Plugin</TableHead>
+          <TableHead>Version</TableHead>
+          <TableHead>Status</TableHead>
+          <TableHead className="w-12" />
+          <TableHead className="w-12" />
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {[0, 1, 2].map((i) => (
+          <TableRow key={i}>
+            <TableCell>
+              <Sk line w={120} />
+            </TableCell>
+            <TableCell>
+              <Sk h={16} r={4} w={90} />
+            </TableCell>
+            <TableCell>
+              <Sk line w={40} />
+            </TableCell>
+            <TableCell>
+              <Sk h={18} r={4} w={64} />
+            </TableCell>
+            <TableCell>
+              <Sk h={16} w={16} />
+            </TableCell>
+            <TableCell>
+              <Sk h={16} w={16} />
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   )
 }

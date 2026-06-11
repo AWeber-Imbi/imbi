@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
 
+import { Sk } from '@/components/ui/skeleton'
+
 import type { ContributionsResponse } from './api'
 
 interface HeatmapProps {
@@ -53,13 +55,25 @@ export function ContributionHeatmap({ data, isLoading }: HeatmapProps) {
   const width = WEEKS * (CELL_SIZE + CELL_GAP)
   const height = 7 * (CELL_SIZE + CELL_GAP)
 
+  if (isLoading) {
+    return (
+      <section className="border-tertiary bg-primary rounded-md border p-4">
+        <header className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <Sk h={14} w={240} />
+          <Legend />
+        </header>
+        <div className="overflow-x-auto">
+          <HeatmapGridSkeleton height={height} width={width} />
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section className="border-tertiary bg-primary rounded-md border p-4">
       <header className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-primary text-sm font-medium">
-          {isLoading
-            ? 'Loading contributions…'
-            : `${total.toLocaleString()} contributions in the last year`}
+          {total.toLocaleString()} contributions in the last year
         </h2>
         <Legend />
       </header>
@@ -106,6 +120,28 @@ function fmtDate(d: Date): string {
   const month = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+function HeatmapGridSkeleton({
+  height,
+  width,
+}: {
+  height: number
+  width: number
+}) {
+  const columns = Array.from({ length: WEEKS })
+  const rows = Array.from({ length: 7 })
+  return (
+    <div aria-hidden className="flex gap-0.5" style={{ height, width }}>
+      {columns.map((_, x) => (
+        <div className="flex flex-col gap-0.5" key={x}>
+          {rows.map((_, y) => (
+            <Sk h={CELL_SIZE} key={y} r={2} w={CELL_SIZE} />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function Legend() {

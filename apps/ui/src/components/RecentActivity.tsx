@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 
 import { Gravatar } from '@/components/ui/gravatar'
-import { LoadingState } from '@/components/ui/loading-state'
+import { Sk } from '@/components/ui/skeleton'
 import { usePluginOpsLogTemplates } from '@/hooks/usePluginOpsLogTemplates'
 import { formatRelativeDate } from '@/lib/formatDate'
 import type { ActivityFeedEntry, OperationsLogEntry } from '@/types'
@@ -60,10 +60,7 @@ export function RecentActivity({
         {!hideHeading && (
           <h2 className="text-primary mb-6 text-xl">Recent Activity</h2>
         )}
-        <LoadingState
-          className="text-muted-foreground py-8 text-center"
-          label="Loading..."
-        />
+        <ActivityFeedSkeleton rows={5} />
       </Card>
     )
   }
@@ -119,16 +116,16 @@ export function RecentActivity({
         </div>
       ))}
 
+      {isLoadingMore && <ActivityFeedSkeleton rows={3} />}
       {/* Load More Button */}
-      {onLoadMore && (
+      {onLoadMore && !isLoadingMore && (
         <div className="pt-4 text-center">
           <Button
-            className="text-info hover:text-info/80 h-auto p-0 text-sm transition-colors disabled:opacity-50"
-            disabled={isLoadingMore}
+            className="text-info hover:text-info/80 h-auto p-0 text-sm transition-colors"
             onClick={onLoadMore}
             variant="link"
           >
-            {isLoadingMore ? 'Loading more...' : 'Load more activity'}
+            Load more activity
           </Button>
         </div>
       )}
@@ -142,6 +139,25 @@ export function RecentActivity({
       )}
       {activityList}
     </Card>
+  )
+}
+
+function ActivityFeedSkeleton({ rows }: { rows: number }) {
+  return (
+    <div aria-hidden className="space-y-4">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          className="border-tertiary flex gap-3 border-b pb-4 last:border-0 last:pb-0"
+          key={i}
+        >
+          <Sk circle h={40} w={40} />
+          <div className="flex-1 space-y-2">
+            <Sk h={14} w="85%" />
+            <Sk h={11} w={90} />
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 

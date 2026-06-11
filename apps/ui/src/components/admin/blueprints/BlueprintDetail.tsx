@@ -25,7 +25,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CardTitle } from '@/components/ui/card'
 import { LabelChip } from '@/components/ui/label-chip'
-import { LoadingState } from '@/components/ui/loading-state'
+import { Sk } from '@/components/ui/skeleton'
 import { useClipboard } from '@/hooks/useClipboard'
 import { parseFilterFromBlueprint } from '@/lib/utils'
 import type { SchemaProperty } from '@/types'
@@ -37,6 +37,34 @@ interface BlueprintDetailProps {
   blueprintTypes: string[]
   onBack: () => void
   onEdit: () => void
+}
+
+function BlueprintDetailSkeleton() {
+  return (
+    <div className="border-border bg-card rounded-lg border">
+      <div className="border-tertiary flex items-start justify-between border-b px-6 py-5">
+        <div className="flex items-center gap-3">
+          <Sk h={40} r={8} w={40} />
+          <div className="flex flex-col gap-2">
+            <Sk h={18} w={200} />
+            <Sk h={12} w={280} />
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Sk h={36} r={6} w={84} />
+          <Sk h={36} r={6} w={130} />
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-6 px-6 py-4">
+        {[80, 56, 56, 56, 72, 56].map((w, i) => (
+          <div className="flex flex-col gap-1.5" key={i}>
+            <Sk h={10} w={48} />
+            <Sk h={14} w={w} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 const TYPE_ICONS: Record<string, typeof Type> = {
@@ -68,7 +96,17 @@ export function BlueprintDetail({
   })
 
   if (isLoading) {
-    return <LoadingState label="Loading blueprint..." />
+    return (
+      <div className="space-y-6">
+        <div>
+          <Button onClick={onBack} variant="outline">
+            <ArrowLeft className="mr-2 size-4" />
+            Back
+          </Button>
+        </div>
+        <BlueprintDetailSkeleton />
+      </div>
+    )
   }
 
   if (error || !blueprint) {

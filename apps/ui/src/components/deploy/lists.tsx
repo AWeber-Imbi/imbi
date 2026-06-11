@@ -2,7 +2,7 @@ import { Check, ExternalLink } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Sk } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import type { DeploymentCommit, DeploymentRef } from '@/types'
 
@@ -40,10 +40,11 @@ export function BranchList({
         {Array.from({ length: 6 }, (_, i) => (
           <li
             aria-hidden="true"
-            className="border-tertiary flex items-center gap-3 border-b px-3 py-2 last:border-b-0"
+            className="border-tertiary flex items-center gap-2 border-b px-3 py-2 last:border-b-0"
             key={i}
           >
-            <Skeleton className="h-3 flex-1" />
+            <Sk className="min-w-0 flex-1" line />
+            <Sk h={18} r={4} w={40} />
           </li>
         ))}
       </ul>
@@ -123,9 +124,9 @@ export function CommitList({
             className="border-tertiary flex items-center gap-3 border-b px-3 py-2 last:border-b-0"
             key={i}
           >
-            <Skeleton className="h-3 w-12 shrink-0" />
-            <Skeleton className="h-3 flex-1" />
-            <Skeleton className="h-3 w-16 shrink-0" />
+            <Sk className="shrink-0" line w={48} />
+            <Sk className="min-w-0 flex-1" line />
+            <Sk className="shrink-0" line w={64} />
           </li>
         ))}
       </ul>
@@ -220,8 +221,8 @@ export function TagList({
             className="border-tertiary flex items-center gap-3 border-b px-3 py-2 last:border-b-0"
             key={i}
           >
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-3 w-12" />
+            <Sk line w={96} />
+            <Sk line w={56} />
           </li>
         ))}
       </ul>

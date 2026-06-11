@@ -12,6 +12,7 @@ import {
 } from '@/components/LazyProjectsGraphCanvas'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { Sk } from '@/components/ui/skeleton'
 import { buildRelationshipEdges } from '@/lib/relationship-edges'
 import type { Project, ProjectRelationship } from '@/types'
 
@@ -51,13 +52,7 @@ export function ProjectRelationshipsTab({
   const sub = 'text-tertiary'
 
   if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="p-4">
-          <p className={sub}>Loading relationships…</p>
-        </CardContent>
-      </Card>
-    )
+    return <RelationshipsSkeleton />
   }
   if (isError && !data) {
     return (
@@ -257,6 +252,39 @@ function ProjectRelationshipsSidebar({
         )}
       </CardContent>
     </Card>
+  )
+}
+
+function RelationshipsSkeleton() {
+  return (
+    <div className="grid min-h-96 grid-cols-1 gap-6 lg:grid-cols-[400px_1fr]">
+      <Card className="size-full min-h-0 shrink-0">
+        <CardHeader className="p-4 pb-2">
+          <div className="flex items-center justify-between">
+            <div className="flex gap-1.5">
+              <Sk h={26} r={9999} w={48} />
+              <Sk h={26} r={9999} w={56} />
+              <Sk h={26} r={9999} w={64} />
+            </div>
+            <Sk h={26} r={6} w={44} />
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-5 p-4 pt-2">
+          <div className="flex flex-col gap-2">
+            <Sk h={9} w={48} />
+            <Sk h={14} w="80%" />
+            <Sk h={14} w="65%" />
+            <Sk h={14} w="72%" />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Sk h={9} w={64} />
+            <Sk h={14} w="70%" />
+            <Sk h={14} w="55%" />
+          </div>
+        </CardContent>
+      </Card>
+      <Sk className="min-h-96" h="100%" r={8} />
+    </div>
   )
 }
 

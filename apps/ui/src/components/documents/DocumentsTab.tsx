@@ -1,13 +1,13 @@
 import type { ReactNode } from 'react'
 
 import { ErrorBanner } from '@/components/ui/error-banner'
-import { LoadingState } from '@/components/ui/loading-state'
 import type { Document, DocumentTemplate } from '@/types'
 
 import { DocumentsPinboard } from './DocumentsPinboard'
 import { DocumentsPinboardEmpty } from './DocumentsPinboardEmpty'
 import { DocumentsPinboardNew } from './DocumentsPinboardNew'
 import { DocumentsPinboardReader } from './DocumentsPinboardReader'
+import { DocumentsTabSkeleton } from './DocumentsPinboardSkeleton'
 import {
   type DocumentsScope,
   useDocumentsController,
@@ -55,7 +55,7 @@ export function DocumentsTab({
     initialAction,
   )
 
-  if (ctl.isLoading) return <LoadingState label="Loading documents…" />
+  if (ctl.isLoading) return <DocumentsTabSkeleton feed={!!renderList} />
   if (ctl.error)
     return <ErrorBanner error={ctl.error} title="Failed to load documents" />
 

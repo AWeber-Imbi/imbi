@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { listCurrentReleases, listRecentCommits } from '@/api/endpoints'
 import { getReleaseHistory } from '@/api/releases'
 import type { DeploymentRunStarted } from '@/components/deploy/DeploymentModal'
-import { LoadingState } from '@/components/ui/loading-state'
+import { Sk, SkText } from '@/components/ui/skeleton'
 import { useTheme } from '@/contexts/ThemeContext'
 import { deriveChipColors } from '@/lib/chip-colors'
 import type { Environment } from '@/types'
@@ -103,7 +103,7 @@ export function DeploymentsTab({
   const { isSyncing, sync } = useDeploymentSync(orgSlug, projectId)
 
   if (currentLoading || historyLoading || commitsLoading) {
-    return <LoadingState label="Loading deployments…" />
+    return <DeploymentsTabSkeleton />
   }
   if (currentError || historyError || commitsError) {
     return (
@@ -149,6 +149,44 @@ export function DeploymentsTab({
           stage={selectedStage}
         />
       ) : null}
+    </div>
+  )
+}
+
+/**
+ * Footprint skeleton for the Deployments tab: the env pipeline rail
+ * (240px) beside the detail pane's hero + currently-running cards.
+ * Purely presentational.
+ */
+function DeploymentsTabSkeleton() {
+  return (
+    <div className="grid items-start gap-5 md:grid-cols-[240px_minmax(0,1fr)]">
+      <nav
+        aria-busy
+        className="border-tertiary sticky top-4 self-start rounded-lg border p-2.5"
+      >
+        <Sk className="mx-2 mt-1 mb-2" w={56} />
+        {Array.from({ length: 4 }, (_, i) => (
+          <div className="mb-0.5 flex items-center gap-3 px-2.5 py-2" key={i}>
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <Sk line w="60%" />
+              <Sk line w="40%" />
+            </div>
+            <Sk circle h={18} w={18} />
+          </div>
+        ))}
+      </nav>
+      <div aria-busy className="flex min-w-0 flex-col gap-4">
+        <div className="border-tertiary flex flex-col gap-3 rounded-lg border p-4">
+          <Sk h={16} w="35%" />
+          <SkText widths={['100%', '85%']} />
+          <Sk h={28} r={6} w={120} />
+        </div>
+        <div className="border-tertiary flex flex-col gap-3 rounded-lg border p-4">
+          <Sk h={14} w="25%" />
+          <SkText widths={['90%', '60%']} />
+        </div>
+      </div>
     </div>
   )
 }

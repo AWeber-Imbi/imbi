@@ -25,6 +25,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { DynamicDetailFields } from '@/components/ui/dynamic-fields'
 import { EntityIcon } from '@/components/ui/entity-icon'
 import { Input } from '@/components/ui/input'
+import { Sk } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -70,7 +71,7 @@ export function TeamDetail({ onBack, onEdit, team }: TeamDetailProps) {
     queryKey: ['teamMembers', team.organization.slug, team.slug],
   })
 
-  const { data: teamSchema } = useQuery({
+  const { data: teamSchema, isLoading: schemaLoading } = useQuery({
     queryFn: ({ signal }) => getTeamSchema(signal),
     queryKey: ['teamSchema'],
     staleTime: 5 * 60 * 1000,
@@ -163,6 +164,7 @@ export function TeamDetail({ onBack, onEdit, team }: TeamDetailProps) {
               <div className="text-secondary text-sm">Organization</div>
               <div className="text-primary mt-1">{team.organization.name}</div>
             </div>
+            {schemaLoading && <DynamicFieldsSkeleton />}
             {teamSchema && (
               <DynamicDetailFields
                 data={extractDynamicFields(team, TEAM_BASE_FIELDS_SET)}
@@ -233,9 +235,7 @@ export function TeamDetail({ onBack, onEdit, team }: TeamDetailProps) {
         {/* Members List */}
         <CardContent className="p-0">
           {membersLoading ? (
-            <div className="p-8 text-center">
-              <div className="text-secondary text-sm">Loading members...</div>
-            </div>
+            <TeamMembersSkeleton />
           ) : membersError ? (
             <div className="text-danger p-8 text-center text-sm">
               {extractApiErrorDetail(
@@ -327,6 +327,36 @@ export function TeamDetail({ onBack, onEdit, team }: TeamDetailProps) {
         open={confirm?.action === 'remove'}
         title="Remove team member"
       />
+    </div>
+  )
+}
+
+function DynamicFieldsSkeleton() {
+  return (
+    <>
+      {[0, 1].map((i) => (
+        <div className="flex flex-col gap-1.5" key={i}>
+          <Sk h={12} w={96} />
+          <Sk h={14} w="60%" />
+        </div>
+      ))}
+    </>
+  )
+}
+
+function TeamMembersSkeleton() {
+  return (
+    <div className="divide-tertiary divide-y">
+      {[0, 1, 2].map((i) => (
+        <div className="flex items-center gap-3 px-6 py-4" key={i}>
+          <Sk circle h={32} w={32} />
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Sk h={13} w="35%" />
+            <Sk h={11} w="50%" />
+          </div>
+          <Sk h={20} r={6} w={64} />
+        </div>
+      ))}
     </div>
   )
 }
