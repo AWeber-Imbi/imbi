@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { UserDisplay } from '@/components/ui/user-display'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { useLoginToEmail } from '@/hooks/useLoginToEmail'
 import { relTime } from '@/lib/formatDate'
 import type { PullRequest } from '@/types'
@@ -316,11 +316,12 @@ function PrRow({
         <PrStateBadge pr={pr} />
       </TableCell>
       <TableCell className="px-4 py-3 text-center">
-        <UserDisplay
+        <UserIdentity
+          actor={pr.author}
           displayNames={email ? displayNames : undefined}
-          email={email ?? pr.author}
+          email={email ?? undefined}
           linkToProfile={!!email}
-          textClassName="text-sm"
+          size="small"
         />
       </TableCell>
       <TableCell className="text-secondary px-4 py-3 text-right">

@@ -14,14 +14,15 @@ import type {
   ProjectSchemaResponse,
   ProjectSchemaSectionProperty,
 } from '@/api/endpoints'
-import { ActorBadge } from '@/components/ui/actor-badge'
 import { AttributeValue } from '@/components/ui/attribute-value'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EnvironmentBadge } from '@/components/ui/environment-badge'
 import { isFieldEditable } from '@/components/ui/inline-edit/field-policy'
 import { InlineField } from '@/components/ui/inline-edit/InlineField'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { useEnvironmentEdgePatch } from '@/hooks/useEnvironmentEdgePatch'
+import { useLoginToEmail } from '@/hooks/useLoginToEmail'
 import { formatFieldKey } from '@/lib/project-field-formatting'
 import { sanitizeHttpUrl } from '@/lib/utils'
 import type { DeploymentStatus, Project } from '@/types'
@@ -114,6 +115,7 @@ export function ProjectEnvironmentsCard({
     [projectSchema],
   )
   const { patch, pendingKey } = useEnvironmentEdgePatch(orgSlug, projectId)
+  const { displayNames, loginToEmail } = useLoginToEmail()
   return (
     <Card>
       <CardHeader>
@@ -208,7 +210,12 @@ export function ProjectEnvironmentsCard({
                     {deployment?.performedBy ? (
                       <div className="min-w-0">
                         <div className={OVERLINE_CLASS}>Deployed by</div>
-                        <ActorBadge actor={deployment.performedBy} />
+                        <UserIdentity
+                          actor={deployment.performedBy}
+                          displayNames={displayNames}
+                          email={loginToEmail.get(deployment.performedBy)}
+                          size="small"
+                        />
                       </div>
                     ) : null}
 

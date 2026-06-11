@@ -11,7 +11,7 @@ import {
 import { CiStatusDot } from '@/components/releases/CiStatusDot'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { isBotActor, UserIdentity } from '@/components/ui/user-identity'
+import { UserIdentity } from '@/components/ui/user-identity'
 import type { ChipColors } from '@/lib/chip-colors'
 import type { RecentCommit } from '@/types'
 
@@ -200,9 +200,9 @@ function CommitRow({
       {commit.author ? (
         <span className="hidden shrink-0 sm:inline">
           <UserIdentity
+            actor={commit.author}
+            displayName={commit.author}
             email={commit.author_email}
-            kind={isBotActor(commit.author) ? 'bot' : 'user'}
-            name={commit.author}
             size="small"
           />
         </span>

@@ -11,6 +11,7 @@ import type { OperationsLogPage } from '@/api/endpoints'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Sk } from '@/components/ui/skeleton'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
 import { useEnvironments } from '@/hooks/useOrgResources'
@@ -167,6 +168,7 @@ function DeploymentRow({
   const StatusIcon = inProgress ? Clock : CheckCircle
   const statusVariant: BadgeProps['variant'] = inProgress ? 'info' : 'success'
   const statusLabel = inProgress ? 'In Progress' : 'Success'
+  const performer = d.performed_by ?? d.recorded_by
   const to = project
     ? `/projects/${project.id}`
     : `/operations-log?entry=${encodeURIComponent(d.id)}`
@@ -200,9 +202,20 @@ function DeploymentRow({
                 {statusLabel}
               </Badge>
             </div>
-            <div className="text-tertiary text-xs">
-              {d.performed_by ?? d.recorded_by} •{' '}
-              {formatRelativeDate(d.occurred_at)}
+            <div className="text-tertiary flex items-center gap-1.5 text-xs">
+              {performer ? (
+                <>
+                  <UserIdentity
+                    actor={performer}
+                    email={performer.includes('@') ? performer : undefined}
+                    linkToProfile={false}
+                    size="small"
+                  />
+                  <span>• {formatRelativeDate(d.occurred_at)}</span>
+                </>
+              ) : (
+                <span>{formatRelativeDate(d.occurred_at)}</span>
+              )}
             </div>
           </div>
         </div>

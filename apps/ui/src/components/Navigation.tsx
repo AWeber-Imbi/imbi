@@ -37,7 +37,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu'
-import { Gravatar } from './ui/gravatar'
+import { UserIdentity } from './ui/user-identity'
 
 interface NavigationProps {
   currentView?: string
@@ -259,11 +259,12 @@ export function Navigation({ currentView }: NavigationProps) {
                   variant="ghost"
                 >
                   {user?.email ? (
-                    <Gravatar
-                      alt={user?.display_name || user?.username || 'User'}
-                      className="size-8 rounded-full"
+                    <UserIdentity
+                      displayName={user.display_name || user.username}
                       email={user.email}
-                      size={32}
+                      hideName
+                      linkToProfile={false}
+                      size="small"
                     />
                   ) : (
                     <User className="size-4" />

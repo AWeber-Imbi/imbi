@@ -54,8 +54,8 @@ import { formatDateTime } from '@/lib/formatDate'
 import { cn } from '@/lib/utils'
 import type { AdminUser, AdminUserCreate } from '@/types'
 
-import { Gravatar } from '../../ui/gravatar'
 import { Input } from '../../ui/input'
+import { UserIdentity } from '../../ui/user-identity'
 
 interface FormSectionProps {
   children: React.ReactNode
@@ -269,11 +269,12 @@ export function UserForm({
       {isEditing ? (
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
-            <Gravatar
-              alt={user.display_name}
-              className="size-12 rounded-full"
+            <UserIdentity
+              displayName={user.display_name}
               email={user.email}
-              size={48}
+              hideName
+              linkToProfile={false}
+              size="large"
             />
             <div className="min-w-0">
               <h1 className="text-primary truncate text-base font-medium">

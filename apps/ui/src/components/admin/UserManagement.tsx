@@ -29,7 +29,7 @@ import { buildDiffPatch, buildReplacePatch } from '@/lib/json-patch'
 import type { AdminUser, AdminUserCreate, PatchOperation } from '@/types'
 
 import { Badge } from '../ui/badge'
-import { UserDisplay } from '../ui/user-display'
+import { UserIdentity } from '../ui/user-identity'
 import { AdminSection } from './AdminSection'
 import { UserDetail } from './users/UserDetail'
 import { UserForm } from './users/UserForm'
@@ -263,13 +263,11 @@ export function UserManagement() {
             headerAlign: 'left',
             key: 'user',
             render: (user) => (
-              <UserDisplay
-                className="gap-3"
+              <UserIdentity
                 displayName={user.display_name}
                 email={user.email}
                 linkToProfile={false}
-                size={32}
-                textClassName="text-primary text-sm font-medium"
+                size="small"
               />
             ),
           },

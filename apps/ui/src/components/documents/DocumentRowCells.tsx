@@ -1,7 +1,7 @@
 import { ArrowUpRight, Pin } from 'lucide-react'
 
 import { IconTooltip } from '@/components/ui/tooltip'
-import { UserDisplay } from '@/components/ui/user-display'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { cn } from '@/lib/utils'
 import type { Document } from '@/types'
 
@@ -32,12 +32,11 @@ export function DocumentRowTail({
   return (
     <>
       {showAuthor && (
-        <UserDisplay
-          className="text-secondary text-xs"
+        <UserIdentity
           displayName={document.created_by_name ?? undefined}
           displayNames={displayNames}
           email={document.created_by}
-          size={18}
+          size="small"
         />
       )}
       <div className="text-tertiary text-right font-mono text-[11.5px] whitespace-nowrap">

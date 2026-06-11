@@ -3,7 +3,7 @@ import { forwardRef } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { CheckCircle2, MessageSquare, ThumbsUp } from 'lucide-react'
 
-import { UserDisplay } from '@/components/ui/user-display'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { cn } from '@/lib/utils'
 import type { CommentThread } from '@/types/comments'
 
@@ -134,12 +134,10 @@ function CollapsedCard({
   return (
     <div>
       <div className="flex items-center gap-2">
-        <UserDisplay
-          className="text-secondary"
+        <UserIdentity
           displayNames={displayNames}
           email={root.author}
-          size={22}
-          textClassName="text-[12.5px] font-medium text-primary"
+          size="small"
         />
         <span className="text-tertiary text-[11.5px]">
           {formatDistanceToNow(new Date(root.created_at), { addSuffix: true })}

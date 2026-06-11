@@ -19,6 +19,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { UserIdentity } from '@/components/ui/user-identity'
 import type { OperationsLogRecord } from '@/types'
 
 import { parseDescription } from './parseDescription'
@@ -139,7 +140,7 @@ export function OperationsLogEntryDetails({ entry }: Props) {
 
         {record.recorded_by !== performer && (
           <MetaChip label="Recorded by">
-            <span className="text-secondary">{record.recorded_by}</span>
+            <UserIdentity email={record.recorded_by} size="small" />
           </MetaChip>
         )}
 

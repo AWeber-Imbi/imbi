@@ -12,7 +12,7 @@ import {
 
 import { CiStatusDot } from '@/components/releases/CiStatusDot'
 import { Button } from '@/components/ui/button'
-import { isBotActor, UserIdentity } from '@/components/ui/user-identity'
+import { UserIdentity } from '@/components/ui/user-identity'
 import type { ChipColors } from '@/lib/chip-colors'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { cn, sanitizeHttpUrl } from '@/lib/utils'
@@ -80,9 +80,8 @@ export function CurrentlyRunningCard({
               <>
                 <span aria-hidden="true">·</span>
                 <UserIdentity
+                  actor={stage.current.performed_by}
                   email={stage.current.performed_by_email}
-                  kind={isBotActor(stage.current.performed_by) ? 'bot' : 'user'}
-                  name={stage.current.performed_by}
                   size="small"
                 />
               </>
@@ -232,9 +231,8 @@ function RollbackRow({
             <div className="text-tertiary mt-2 inline-flex items-center gap-1.5 text-xs">
               released by
               <UserIdentity
+                actor={rel.author}
                 email={rel.author_email}
-                kind={isBotActor(rel.author) ? 'bot' : 'user'}
-                name={rel.author}
                 size="small"
               />
             </div>

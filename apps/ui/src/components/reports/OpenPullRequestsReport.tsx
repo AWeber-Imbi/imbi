@@ -22,7 +22,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { UserDisplay } from '@/components/ui/user-display'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useLoginToEmail } from '@/hooks/useLoginToEmail'
 import { useProjectsSlimMap } from '@/hooks/useProjectsSlimMap'
@@ -30,6 +30,7 @@ import { relTime } from '@/lib/formatDate'
 import type { PullRequest } from '@/types'
 
 interface AuthorInfo {
+  actor: string | undefined
   displayNamesForUser: Map<string, string> | undefined
   emailOrAuthor: string
   linkToProfile: boolean
@@ -261,11 +262,13 @@ function PrAuthorCell({ info }: { info: AuthorInfo }) {
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="inline-flex">
-              <UserDisplay
+              <UserIdentity
+                actor={info.actor}
                 displayNames={info.displayNamesForUser}
-                email={info.emailOrAuthor}
+                email={info.actor ? undefined : info.emailOrAuthor}
                 hideName
                 linkToProfile={info.linkToProfile}
+                size="small"
                 title=""
               />
             </span>
@@ -549,6 +552,7 @@ function resolveAuthorInfo(
   const email = loginToEmail.get(author)
   if (!email) {
     return {
+      actor: author,
       displayNamesForUser: undefined,
       emailOrAuthor: author,
       linkToProfile: false,
@@ -556,6 +560,7 @@ function resolveAuthorInfo(
     }
   }
   return {
+    actor: undefined,
     displayNamesForUser: displayNames,
     emailOrAuthor: email,
     linkToProfile: true,

@@ -1,7 +1,7 @@
 import { Check, RotateCcw } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { UserDisplay } from '@/components/ui/user-display'
+import { UserIdentity } from '@/components/ui/user-identity'
 import type { CommentThread } from '@/types/comments'
 
 import { CommentItem } from './CommentItem'
@@ -143,12 +143,11 @@ function ResolveBar({
         {resolvedBy && (
           <>
             {' by '}
-            <UserDisplay
-              className="text-secondary"
+            <UserIdentity
               displayNames={displayNames}
               email={resolvedBy}
               hideName
-              size={16}
+              size="small"
             />
             <span className="text-secondary">
               {displayNames?.get(resolvedBy) ?? resolvedBy.split('@')[0]}

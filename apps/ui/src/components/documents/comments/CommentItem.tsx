@@ -6,7 +6,7 @@ import { Pencil, Reply, ThumbsUp, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { UserDisplay } from '@/components/ui/user-display'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { cn } from '@/lib/utils'
 import type { Comment } from '@/types/comments'
 
@@ -56,12 +56,10 @@ export function CommentItem({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
-        <UserDisplay
-          className="text-secondary"
+        <UserIdentity
           displayNames={displayNames}
           email={comment.author}
-          size={22}
-          textClassName="text-[12.5px] font-medium text-primary"
+          size="small"
         />
         <span className="text-tertiary text-[11.5px]">
           {formatDistanceToNow(new Date(comment.created_at), {

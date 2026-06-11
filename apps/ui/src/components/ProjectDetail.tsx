@@ -772,10 +772,10 @@ export function ProjectDetail({
           ? `Documents (${projectDocuments.length})`
           : 'Documents',
     },
-    ...(hasLogsPlugin ? [{ id: 'logs' as const, label: 'Logs' }] : []),
     ...(hasIncidentsPlugin
       ? [{ id: 'incidents' as const, label: 'Incidents' }]
       : []),
+    ...(hasLogsPlugin ? [{ id: 'logs' as const, label: 'Logs' }] : []),
     { id: 'operations-log', label: 'Operations Log' },
     ...(isReleaseOnly ? [{ id: 'releases' as const, label: 'Releases' }] : []),
     ...(hasLifecyclePlugin

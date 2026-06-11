@@ -1,8 +1,8 @@
 import type { KeyboardEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { Gravatar } from '@/components/ui/gravatar'
 import { Textarea } from '@/components/ui/textarea'
+import { UserIdentity } from '@/components/ui/user-identity'
 
 import { ComposerActions, isSubmitChord } from './ComposerActions'
 import type { MentionCandidate } from './mentions'
@@ -180,14 +180,12 @@ function MentionPopover({
           }}
           type="button"
         >
-          <Gravatar
-            className="shrink-0 rounded-full"
+          <UserIdentity
+            displayName={candidate.display_name}
             email={candidate.email}
-            size={18}
+            linkToProfile={false}
+            size="small"
           />
-          <span className="text-primary truncate">
-            {candidate.display_name}
-          </span>
         </button>
       ))}
     </div>

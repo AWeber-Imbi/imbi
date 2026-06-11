@@ -2,7 +2,6 @@ import { memo } from 'react'
 
 import { ChevronDown, Rocket } from 'lucide-react'
 
-import { Gravatar } from '@/components/ui/gravatar'
 import {
   ReleaseTrain,
   type ReleaseTrainStop,
@@ -21,6 +20,7 @@ import type { Environment, Project } from '@/types'
 
 import { OperationsLogEntryDetails } from './OperationsLogEntryDetails'
 import { absTime, cleanName, type ReleaseGroup, relTime } from './opsLogHelpers'
+import { OpsLogPerformer } from './OpsLogPerformer'
 import { OPS_ROW_GRID, OPS_ROW_PAD } from './opsRowLayout'
 import { renderEntryLabel } from './renderEntryLabel'
 
@@ -166,17 +166,7 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
         >
           <ReleaseTrain size="compact" stops={trainStops} />
         </span>
-        <span
-          className="self-center justify-self-end"
-          style={{ gridColumn: 7, gridRow: '1 / -1' }}
-          title={displayName}
-        >
-          <Gravatar
-            className="size-[22px] rounded-full"
-            email={performer}
-            size={22}
-          />
-        </span>
+        <OpsLogPerformer displayName={displayName} performer={performer} />
         <TooltipProvider delayDuration={250}>
           <Tooltip>
             <TooltipTrigger asChild>

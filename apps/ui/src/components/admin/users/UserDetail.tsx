@@ -25,7 +25,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { Gravatar } from '@/components/ui/gravatar'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -40,6 +39,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { formatDateTime } from '@/lib/formatDate'
@@ -141,11 +141,12 @@ export function UserDetail({ onBack, onEdit, user }: UserDetailProps) {
       <Card>
         <CardHeader className="flex flex-row items-start justify-between space-y-0 border-b px-6 py-5">
           <div className="flex items-center gap-3">
-            <Gravatar
-              alt={user.display_name}
-              className="size-12 rounded-full"
+            <UserIdentity
+              displayName={user.display_name}
               email={user.email}
-              size={48}
+              hideName
+              linkToProfile={false}
+              size="large"
             />
             <div>
               <CardTitle>{user.display_name}</CardTitle>

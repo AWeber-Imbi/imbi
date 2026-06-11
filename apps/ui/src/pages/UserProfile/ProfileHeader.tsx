@@ -1,4 +1,4 @@
-import { Gravatar } from '@/components/ui/gravatar'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { formatDate, formatRelativeDate } from '@/lib/formatDate'
 import type { AdminUser } from '@/types'
 
@@ -18,10 +18,12 @@ export function ProfileHeader({ identities, user }: ProfileHeaderProps) {
 
   return (
     <header className="border-secondary flex flex-col gap-4 border-b pb-6 md:flex-row md:items-start md:gap-6">
-      <Gravatar
-        className="border-tertiary rounded-md border"
+      <UserIdentity
+        displayName={user.display_name}
         email={user.email}
-        size={96}
+        hideName
+        linkToProfile={false}
+        size="large"
       />
       <div className="flex-1 space-y-1">
         <div className="flex flex-wrap items-baseline gap-2">

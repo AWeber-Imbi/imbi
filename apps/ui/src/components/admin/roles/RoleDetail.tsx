@@ -29,7 +29,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { Gravatar } from '@/components/ui/gravatar'
 import {
   Select,
   SelectContent,
@@ -52,6 +51,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { formatDate } from '@/lib/formatDate'
 import type { Permission, RoleUser, ServiceAccount } from '@/types'
@@ -505,25 +505,13 @@ export function RoleDetail({ onBack, onEdit, slug }: RoleDetailProps) {
                       className="grid grid-cols-[1fr_auto_auto] items-center gap-4 px-4 py-3"
                       key={user.email}
                     >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <Gravatar
-                          className="shrink-0 rounded-full"
-                          email={user.email}
-                          size={32}
-                        />
-                        <div className="min-w-0">
-                          <div
-                            className={
-                              'text-primary truncate text-sm font-medium'
-                            }
-                          >
-                            {user.display_name}
-                          </div>
-                          <div className="text-tertiary truncate text-xs">
-                            {user.email}
-                          </div>
-                        </div>
-                      </div>
+                      <UserIdentity
+                        className="min-w-0"
+                        displayName={user.display_name}
+                        email={user.email}
+                        linkToProfile={false}
+                        size="medium"
+                      />
                       <div className="flex items-center gap-2">
                         {user.is_active ? (
                           <Badge variant="success">Active</Badge>

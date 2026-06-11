@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
-import { Bot, Power } from 'lucide-react'
+import { Power } from 'lucide-react'
 
 import {
   createServiceAccount,
@@ -29,6 +29,7 @@ import type {
 } from '@/types'
 
 import { Badge } from '../ui/badge'
+import { UserIdentity } from '../ui/user-identity'
 import { AdminSection } from './AdminSection'
 import { ServiceAccountForm } from './service-accounts/ServiceAccountForm'
 
@@ -171,25 +172,13 @@ export function ServiceAccountManagement() {
             headerAlign: 'left',
             key: 'name',
             render: (account) => (
-              <div className="flex items-center gap-3">
-                <div
-                  className={
-                    'flex size-8 items-center justify-center rounded-full bg-purple-100 dark:bg-purple-900/30'
-                  }
-                >
-                  <Bot className="size-4 text-purple-600 dark:text-purple-400" />
-                </div>
-                <div>
-                  <div className="text-primary text-sm font-medium">
-                    {account.display_name}
-                  </div>
-                  {account.description && (
-                    <div className="text-tertiary text-xs">
-                      {account.description}
-                    </div>
-                  )}
-                </div>
-              </div>
+              <UserIdentity
+                displayName={account.display_name}
+                image={account.avatar_url}
+                kind="bot"
+                secondary={account.description}
+                size="medium"
+              />
             ),
           },
           {

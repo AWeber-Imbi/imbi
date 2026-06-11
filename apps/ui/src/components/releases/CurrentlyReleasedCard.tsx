@@ -1,5 +1,6 @@
-import { Clock, ExternalLink, User } from 'lucide-react'
+import { Clock, ExternalLink } from 'lucide-react'
 
+import { UserIdentity } from '@/components/ui/user-identity'
 import { formatRelativeDate } from '@/lib/formatDate'
 import type { ReleaseHistoryEntry } from '@/types'
 
@@ -51,7 +52,11 @@ export function CurrentlyReleasedCard({
               Published {formatRelativeDate(released.published_at)}
             </StatPill>
             {released.author ? (
-              <StatPill icon={User}>{released.author}</StatPill>
+              <UserIdentity
+                actor={released.author}
+                email={released.author_email}
+                size="small"
+              />
             ) : null}
             {artifact.pull ? (
               <StatPill icon={ArtifactIcon}>

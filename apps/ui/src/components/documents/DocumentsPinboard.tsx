@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { UserDisplay } from '@/components/ui/user-display'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { cn } from '@/lib/utils'
 import type { Document, DocumentTemplate } from '@/types'
 
@@ -171,12 +171,10 @@ function HeroCard({
         )}
       </CardContent>
       <CardFooter className="border-tertiary text-tertiary mt-auto gap-2 border-t pt-3 text-[11.5px]">
-        <UserDisplay
-          className="text-secondary"
+        <UserIdentity
           displayNames={displayNames}
           email={document.created_by}
-          size={16}
-          textClassName="font-medium"
+          size="small"
         />
         <span className="text-tertiary">·</span>
         <span>Updated {formatUpdated(document)}</span>

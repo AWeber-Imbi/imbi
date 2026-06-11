@@ -44,6 +44,19 @@ export function hexToRgb(
   return { b: n & 255, g: (n >> 8) & 255, r: (n >> 16) & 255 }
 }
 
+/**
+ * Deterministically pick a swatch hex for an arbitrary name by hashing it, so
+ * the same person/actor keeps the same identity tint everywhere they appear.
+ */
+export function swatchForName(name: string): string {
+  let h = 0
+  for (let i = 0; i < name.length; i++) {
+    h = (h << 5) - h + name.charCodeAt(i)
+    h |= 0
+  }
+  return LABEL_SWATCHES[Math.abs(h) % LABEL_SWATCHES.length].hex
+}
+
 /** Deterministically pick a swatch hex for a type name given a full type list. */
 export function swatchForType(type: string, allTypes: string[]): string {
   const idx = allTypes.indexOf(type)

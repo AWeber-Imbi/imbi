@@ -25,7 +25,7 @@ import {
   SegmentedControlItem,
 } from '@/components/ui/segmented-control'
 import { IconTooltip } from '@/components/ui/tooltip'
-import { UserDisplay } from '@/components/ui/user-display'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { cn } from '@/lib/utils'
 import type { Document } from '@/types'
 import type { CommentAnchor, CommentThread } from '@/types/comments'
@@ -367,12 +367,10 @@ export function DocumentsPinboardReader({
 
             <div className="mt-3.5 flex flex-wrap items-center gap-2.5">
               <div className="text-tertiary inline-flex items-center gap-2 text-[12.5px]">
-                <UserDisplay
-                  className="text-secondary"
+                <UserIdentity
                   displayNames={displayNames}
                   email={document.created_by}
-                  size={22}
-                  textClassName="text-[12.5px] text-secondary"
+                  size="small"
                 />
                 <span className="text-tertiary">·</span>
                 <span>Updated {formatUpdated(document)}</span>
@@ -478,10 +476,11 @@ export function DocumentsPinboardReader({
                         {documentTitle(r)}
                       </div>
                       <div className="text-tertiary mt-1 flex items-center gap-1.5 text-[11px]">
-                        <UserDisplay
+                        <UserIdentity
                           displayNames={displayNames}
                           email={r.created_by}
-                          size={14}
+                          linkToProfile={false}
+                          size="small"
                         />
                         <span>· {formatUpdated(r)}</span>
                       </div>

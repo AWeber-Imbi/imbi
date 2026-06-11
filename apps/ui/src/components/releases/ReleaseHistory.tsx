@@ -5,6 +5,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { Badge } from '@/components/ui/badge'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { cn } from '@/lib/utils'
 import type { ReleaseHistoryEntry } from '@/types'
@@ -109,8 +110,13 @@ function ReleaseRow({
           )}
           <div className="mt-2 flex flex-wrap items-center gap-4">
             {rel.author ? (
-              <span className="text-tertiary text-xs">
-                released by {rel.author}
+              <span className="text-tertiary inline-flex items-center gap-1.5 text-xs">
+                released by
+                <UserIdentity
+                  actor={rel.author}
+                  email={rel.author_email}
+                  size="small"
+                />
               </span>
             ) : null}
             {(rel.release_url ?? rel.tag_url) ? (

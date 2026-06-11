@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 
-import { Gravatar } from '@/components/ui/gravatar'
 import { Sk } from '@/components/ui/skeleton'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { usePluginOpsLogTemplates } from '@/hooks/usePluginOpsLogTemplates'
 import { formatRelativeDate } from '@/lib/formatDate'
 import type { ActivityFeedEntry, OperationsLogEntry } from '@/types'
@@ -86,11 +86,12 @@ export function RecentActivity({
           key={activityKey(activity)}
         >
           <div className="flex gap-3">
-            <Gravatar
-              alt={activity.display_name}
-              className="size-10 shrink-0 rounded-full"
+            <UserIdentity
+              displayName={activity.display_name}
               email={activity.email_address}
-              size={40}
+              hideName
+              linkToProfile={false}
+              size="floating"
             />
 
             <div className="min-w-0 flex-1">

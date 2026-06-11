@@ -14,7 +14,6 @@ import {
 import type { EventRecord } from '@/api/endpoints'
 import { renderEntryLabel } from '@/components/operations-log/renderEntryLabel'
 import { EnvironmentBadge } from '@/components/ui/environment-badge'
-import { Gravatar } from '@/components/ui/gravatar'
 import { Sk } from '@/components/ui/skeleton'
 import {
   Tooltip,
@@ -22,6 +21,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { usePluginOpsLogTemplates } from '@/hooks/usePluginOpsLogTemplates'
 import type { PluginOpsLogTemplateMap } from '@/hooks/usePluginOpsLogTemplates'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
@@ -260,20 +260,24 @@ function diffObjects(
 }
 
 function EntryRow({
+  actor,
   avatarColor,
   body,
-  email,
   href,
   name,
   ts,
 }: {
+  actor: string
   avatarColor: AvatarColor
   body: React.ReactNode
-  email: string
   href?: string
   name: string
   ts: Date
 }) {
+  // Only a real email drives Gravatar/profile resolution; a bare actor login
+  // is routed via the actor prop so bot detection works and we skip a doomed
+  // Gravatar lookup.
+  const email = actor.includes('@') ? actor : undefined
   return (
     <div
       className={`relative flex gap-3 py-3 ${href ? 'hover:bg-secondary/40 -mx-2 rounded-md px-2' : ''}`}
@@ -283,10 +287,13 @@ function EntryRow({
           className={`ring-primary relative z-10 mt-1.5 size-2 shrink-0 rounded-full ring-2 ${DOT_CLASS[avatarColor]}`}
         />
       </div>
-      <Gravatar
-        className="size-8 shrink-0 rounded-full"
+      <UserIdentity
+        actor={actor}
+        displayName={name}
         email={email}
-        size={32}
+        hideName
+        linkToProfile={false}
+        size="floating"
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
@@ -347,9 +354,9 @@ function EventEntry({
 
   return (
     <EntryRow
+      actor={entry.attributed_to}
       avatarColor="info"
       body={body}
-      email={entry.attributed_to}
       href={href}
       name={name}
       ts={item.ts}
@@ -459,9 +466,9 @@ function OpsEntry({
 
   return (
     <EntryRow
+      actor={actor}
       avatarColor={color}
       body={body}
-      email={actor}
       name={name}
       ts={item.ts}
     />

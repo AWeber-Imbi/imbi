@@ -2,7 +2,6 @@ import { memo } from 'react'
 
 import { ChevronDown } from 'lucide-react'
 
-import { Gravatar } from '@/components/ui/gravatar'
 import {
   Tooltip,
   TooltipContent,
@@ -18,6 +17,7 @@ import type { Environment, OperationsLogRecord, Project } from '@/types'
 
 import { OperationsLogEntryDetails } from './OperationsLogEntryDetails'
 import { absTime, cleanDescription, relTime } from './opsLogHelpers'
+import { OpsLogPerformer } from './OpsLogPerformer'
 import { OPS_ROW_GRID, OPS_ROW_PAD } from './opsRowLayout'
 import { parseDescription } from './parseDescription'
 import { renderOpsLogLabel } from './renderOpsLogTemplate'
@@ -169,17 +169,7 @@ export const OperationsLogStreamRow = memo(function OperationsLogStreamRow({
             {envDisplay}
           </span>
         </span>
-        <span
-          className="self-center justify-self-end"
-          style={{ gridColumn: 7, gridRow: '1 / -1' }}
-          title={displayName}
-        >
-          <Gravatar
-            className="size-[22px] rounded-full"
-            email={performer}
-            size={22}
-          />
-        </span>
+        <OpsLogPerformer displayName={displayName} performer={performer} />
         <TooltipProvider delayDuration={250}>
           <Tooltip>
             <TooltipTrigger asChild>

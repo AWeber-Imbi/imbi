@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 
 import { Bot } from 'lucide-react'
 
+import { swatchForName } from '@/lib/chip-colors'
 import { cn } from '@/lib/utils'
 
 import { useGravatarUrl } from './gravatar'
@@ -19,40 +20,39 @@ interface SizeSpec {
 }
 
 interface UserIdentityProps {
+  /** Login/handle for remote actors with no known email (e.g. `performed_by`). */
+  actor?: null | string
   className?: string
-  /** Shown as a subtitle at medium/large sizes (mono when it looks like an email). */
+  /** Explicit display name; wins over all resolution. */
+  displayName?: null | string
+  /** email → display_name lookup for row lists (from useUserDisplayNames). */
+  displayNames?: Map<string, string>
+  /** Imbi user email — drives Gravatar, profile link, and local-part fallback. */
   email?: null | string
+  /** Avatar-only mode: render the avatar without the name/secondary text. */
+  hideName?: boolean
   /**
-   * Explicit avatar photo. When omitted, a Gravatar is derived from `email`.
-   * Either way, a missing or broken image falls back to initials.
+   * Explicit avatar photo (e.g. a service account's avatar_url). When omitted,
+   * a Gravatar is derived from `email`. Either way a missing or broken image
+   * falls back to initials.
    */
   image?: null | string
+  /** Defaults to auto-detect via BOT_PATTERN on the actor/name. */
   kind?: 'bot' | 'user'
   /**
    * Link the chip to the user's profile (`/users/:email`) when an email is
    * known and the actor is a person. Defaults to true.
    */
   linkToProfile?: boolean
-  /** Display name; drives the initials and the hashed fallback color. */
-  name: null | string
+  /** Secondary line for medium/large; defaults to `email` when present. */
+  secondary?: null | string
   size?: Size
+  /** Tooltip override; defaults to the resolved name. */
+  title?: string
 }
 
 const BOT_PATTERN =
   /(\[bot\]|\bbot\b|-bot\b|github-actions|\bactions\b|automation|\bservice\b)/i
-
-// The eight Imbi label-palette hues; an actor's initials avatar gets a stable
-// one picked by hashing the name.
-const PALETTE = [
-  '#C86B5E',
-  '#D98847',
-  '#C9A227',
-  '#6B9A3F',
-  '#5A89C9',
-  '#8C82D4',
-  '#C96B97',
-  '#7A7873',
-]
 
 const SIZES: Record<Size, SizeSpec> = {
   floating: { av: 24, font: 14, gap: 8, sub: false, weight: 600 },
@@ -61,34 +61,38 @@ const SIZES: Record<Size, SizeSpec> = {
   small: { av: 20, font: 13.5, gap: 7, sub: false, weight: 500 },
 }
 
-/** Whether an actor login/name reads as a bot or automation account. */
-export function isBotActor(name: null | string): boolean {
-  return name != null && BOT_PATTERN.test(name)
-}
-
 /**
  * Canonical identity widget — a person or actor anywhere they appear in Imbi
  * (deploy attribution, ops-log rows, currently-running footers, activity
- * feeds). Avatar resolution: a photo when one loads, a bot glyph for
+ * feeds). Resolves the display name from `displayName`/`displayNames`/`email`/
+ * `actor`, then renders an avatar: a photo when one loads, a bot glyph for
  * automation actors, otherwise initials on a name-hashed tint.
  */
+// fallow-ignore-next-line complexity
 export function UserIdentity({
+  actor,
   className,
+  displayName,
+  displayNames,
   email,
+  hideName = false,
   image,
-  kind = 'user',
+  kind,
   linkToProfile = true,
-  name,
+  secondary,
   size = 'medium',
+  title,
 }: UserIdentityProps) {
   const s = SIZES[size]
-  const isBot = kind === 'bot'
+  const name = resolveName(displayName, displayNames, email, actor)
+  const isBot = kind != null ? kind === 'bot' : isBotActor(actor ?? name)
   const profileEmail = !isBot && linkToProfile && email ? email : null
   // Request at 2× for retina; `d=404` makes a missing Gravatar error out so
   // the <img> onError handler falls back to the initials chip.
   const gravatarUrl = useGravatarUrl(email ?? '', s.av * 2, '404')
   const explicitImage = image != null && image !== '' ? image : null
   const candidateImage = explicitImage ?? (!isBot && email ? gravatarUrl : null)
+  const tooltip = title ?? name ?? email ?? undefined
 
   const body = (
     <>
@@ -98,7 +102,15 @@ export function UserIdentity({
         isBot={isBot}
         name={name}
       />
-      <IdentityText email={email} name={name} size={size} spec={s} />
+      {hideName ? null : (
+        <IdentityText
+          email={email}
+          name={name}
+          secondary={secondary}
+          size={size}
+          spec={s}
+        />
+      )}
     </>
   )
 
@@ -110,8 +122,8 @@ export function UserIdentity({
           className,
         )}
         onClick={(event) => event.stopPropagation()}
-        style={{ gap: s.gap }}
-        title={name ?? profileEmail}
+        style={{ gap: hideName ? 0 : s.gap }}
+        title={tooltip}
         to={`/users/${encodeURIComponent(profileEmail)}`}
       >
         {body}
@@ -122,15 +134,12 @@ export function UserIdentity({
   return (
     <span
       className={cn('inline-flex min-w-0 items-center', className)}
-      style={{ gap: s.gap }}
+      style={{ gap: hideName ? 0 : s.gap }}
+      title={tooltip}
     >
       {body}
     </span>
   )
-}
-
-function colorFor(name: null | string): string {
-  return PALETTE[hashStr(name || '?') % PALETTE.length]
 }
 
 function darken(hex: string, f: number): string {
@@ -141,15 +150,7 @@ function darken(hex: string, f: number): string {
   return `rgb(${Math.round(r * f)}, ${Math.round(g * f)}, ${Math.round(b * f)})`
 }
 
-function hashStr(s: string): number {
-  let h = 0
-  for (let i = 0; i < s.length; i++) {
-    h = (h << 5) - h + s.charCodeAt(i)
-    h |= 0
-  }
-  return Math.abs(h)
-}
-
+// fallow-ignore-next-line complexity
 function IdentityAvatar({
   av,
   candidateImage,
@@ -165,7 +166,7 @@ function IdentityAvatar({
   useEffect(() => {
     setImgFailed(false)
   }, [candidateImage, isBot])
-  const tint = colorFor(name)
+  const tint = swatchForName(name || '?')
   const showImage = !isBot && candidateImage != null && !imgFailed
   const style: React.CSSProperties = { height: av, width: av }
   if (isBot) {
@@ -206,14 +207,17 @@ function IdentityAvatar({
 function IdentityText({
   email,
   name,
+  secondary,
   size,
   spec,
 }: {
   email?: null | string
   name: null | string
+  secondary?: null | string
   size: Size
   spec: SizeSpec
 }) {
+  const sub = secondary ?? email
   return (
     <span className="flex min-w-0 flex-col">
       <span
@@ -226,15 +230,15 @@ function IdentityText({
       >
         {name || 'Unknown'}
       </span>
-      {spec.sub && email ? (
+      {spec.sub && sub ? (
         <span
           className={cn(
             'mt-0.5 truncate text-tertiary',
-            email.includes('@') ? 'font-mono' : 'font-sans',
+            sub.includes('@') ? 'font-mono' : 'font-sans',
           )}
           style={{ fontSize: size === 'large' ? 13 : 12 }}
         >
-          {email}
+          {sub}
         </span>
       ) : null}
     </span>
@@ -251,4 +255,24 @@ function initialsOf(name: null | string): string {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
   }
   return (parts[0]?.[0] ?? '?').toUpperCase()
+}
+
+/** Whether an actor login/name reads as a bot or automation account. */
+function isBotActor(value: null | string | undefined): boolean {
+  return value != null && BOT_PATTERN.test(value)
+}
+
+/** Resolve the rendered display name from the available identity fields. */
+function resolveName(
+  displayName: null | string | undefined,
+  displayNames: Map<string, string> | undefined,
+  email: null | string | undefined,
+  actor: null | string | undefined,
+): null | string {
+  if (displayName) return displayName
+  const mapped = email ? displayNames?.get(email) : undefined
+  if (mapped) return mapped
+  const local = email ? email.split('@')[0] : null
+  if (local) return local
+  return actor ?? null
 }

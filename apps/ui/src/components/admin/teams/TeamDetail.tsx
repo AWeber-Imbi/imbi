@@ -40,7 +40,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { UserDisplay } from '@/components/ui/user-display'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { TEAM_BASE_FIELDS_SET } from '@/lib/constants'
 import { extractDynamicFields } from '@/lib/utils'
@@ -269,12 +269,10 @@ export function TeamDetail({ onBack, onEdit, team }: TeamDetailProps) {
                 {members.map((member) => (
                   <TableRow className="hover:bg-secondary" key={member.email}>
                     <TableCell className="px-6 py-4">
-                      <UserDisplay
-                        className="gap-3"
+                      <UserIdentity
                         displayName={member.display_name}
                         email={member.email}
-                        size={32}
-                        textClassName="text-primary"
+                        size="small"
                       />
                     </TableCell>
                     <TableCell className="text-secondary px-6 py-4 text-sm">

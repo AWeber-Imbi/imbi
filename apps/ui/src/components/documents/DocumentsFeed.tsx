@@ -1,7 +1,7 @@
 import { FileText, FolderKanban, MessageSquare, Pin } from 'lucide-react'
 
 import { Card } from '@/components/ui/card'
-import { UserDisplay } from '@/components/ui/user-display'
+import { UserIdentity } from '@/components/ui/user-identity'
 import type { Document } from '@/types'
 
 import {
@@ -61,13 +61,11 @@ function FeedCard({
     <Card className="hover:border-secondary px-5 py-4 transition-colors hover:shadow-sm">
       {/* Byline */}
       <div className="flex items-center gap-2.5">
-        <UserDisplay
-          className="text-primary text-[13.5px]"
+        <UserIdentity
           displayName={document.created_by_name ?? undefined}
           displayNames={displayNames}
           email={document.created_by}
-          size={28}
-          textClassName="font-semibold"
+          size="floating"
         />
         <span className="text-secondary text-[13.5px]">
           {document.updated_at ? 'updated' : 'created'}
@@ -100,13 +98,11 @@ function FeedCard({
       {/* Ownership */}
       <div className="text-tertiary mt-2 mb-2 flex flex-wrap items-center gap-1.5 text-[13px]">
         Owned by
-        <UserDisplay
-          className="text-secondary"
+        <UserIdentity
           displayName={document.created_by_name ?? undefined}
           displayNames={displayNames}
           email={document.created_by}
-          hideName={false}
-          size={14}
+          size="small"
         />
         {team && (
           <>
