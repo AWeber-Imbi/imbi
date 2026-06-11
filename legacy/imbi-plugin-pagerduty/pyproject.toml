@@ -1,6 +1,6 @@
 [project]
 name = "imbi-plugin-pagerduty"
-version = "2.10.0"
+version = "2.11.0"
 description = "PagerDuty lifecycle, webhook, and incidents plugins for Imbi"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27",
-  "imbi-common[databases]==2.10.0",
+  "imbi-common[databases]==2.11.0",
   "pydantic>=2",
 ]
 
@@ -29,7 +29,7 @@ pagerduty-incidents = "imbi_plugin_pagerduty.incidents:PagerDutyIncidentsPlugin"
 dev = [
   "basedpyright",
   "coverage[toml]",
-  "imbi-common[server,databases]==2.10.0",
+  "imbi-common[server,databases]==2.11.0",
   "pre-commit",
   "pytest",
   "pytest-asyncio",
@@ -117,12 +117,6 @@ max-complexity = 15
 default-groups = ["dev"]
 exclude-newer = "7 days"
 exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "imbi-plugin-aws" = false, "imbi-plugin-github" = false, "imbi-plugin-logzio" = false, "imbi-plugin-oidc" = false, "imbi-plugin-pagerduty" = false, "imbi-plugin-sentry" = false, "imbi-plugin-sonarqube" = false }
-
-# TEMPORARY: tracks unreleased imbi-common (incidents plugin contract,
-# ServiceWriteback.webhook_secret_enc) on main. Drop this source and bump
-# the pin to ==2.11.x once imbi-common 2.11 is released.
-[tool.uv.sources]
-imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"

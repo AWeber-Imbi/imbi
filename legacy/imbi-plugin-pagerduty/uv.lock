@@ -681,8 +681,8 @@ wheels = [
 
 [[package]]
 name = "imbi-common"
-version = "2.10.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main#fda46230d4e45020102b99ae0ed804b2c2b9104a" }
+version = "2.11.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
@@ -696,6 +696,10 @@ dependencies = [
     { name = "pyjwt" },
     { name = "python-slugify" },
     { name = "typer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/82/02/30fe936f86936763fd0460c0bf7a8602029ee32de76052063f1322eb54cb/imbi_common-2.11.0.tar.gz", hash = "sha256:fd9126d2ae80fed72902bdcd280a17f992eff6bb80caad7f8979cc07f17ce946", size = 350702, upload-time = "2026-06-11T17:39:16.348Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b4/5d/6adecad7cf2fa1fa0f35e7ca37352f05d504824ba785f6775750f3e442fc/imbi_common-2.11.0-py3-none-any.whl", hash = "sha256:8ca15781dc0285ce412b9158f0162739a9ae82229b193ccf473b01e62688c923", size = 113762, upload-time = "2026-06-11T17:39:14.999Z" },
 ]
 
 [package.optional-dependencies]
@@ -713,7 +717,7 @@ server = [
 
 [[package]]
 name = "imbi-plugin-pagerduty"
-version = "2.10.0"
+version = "2.11.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -741,7 +745,7 @@ dist = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
-    { name = "imbi-common", extras = ["databases"], git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main" },
+    { name = "imbi-common", extras = ["databases"], specifier = "==2.11.0" },
     { name = "pydantic", specifier = ">=2" },
 ]
 
@@ -749,7 +753,7 @@ requires-dist = [
 dev = [
     { name = "basedpyright" },
     { name = "coverage", extras = ["toml"] },
-    { name = "imbi-common", extras = ["server", "databases"], git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main" },
+    { name = "imbi-common", extras = ["server", "databases"], specifier = "==2.11.0" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
