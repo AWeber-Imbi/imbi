@@ -33,11 +33,14 @@ import {
   getDashboardStatus,
   getProjectsSlim,
   getScoreHistoryByTeam,
+  listEnvironments,
   type TeamScoreSeries,
 } from '@/api/endpoints'
 import { Card } from '@/components/ui/card'
 import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useTheme } from '@/contexts/ThemeContext'
+import { deriveChipColors } from '@/lib/chip-colors'
 import type { DatastoreStatus, ServiceStatus } from '@/types'
 
 // Icons keyed by the name the dashboard status endpoint returns.
@@ -63,7 +66,7 @@ interface ScoreBand {
   count: number
   label: string
   range: string
-  tone: 'danger' | 'success' | 'warning'
+  tone: 'critical' | 'danger' | 'success' | 'warning'
 }
 
 // Collapse the per-team daily score series (from /scores/history-by-team)
@@ -131,10 +134,16 @@ function deriveScores(projects: { score: null | number; slug: string }[]) {
       tone: 'warning',
     },
     {
-      count: valid.filter((p) => p.score < 75).length,
+      count: valid.filter((p) => p.score >= 50 && p.score < 75).length,
       label: 'At risk',
-      range: '< 75',
+      range: '50–74',
       tone: 'danger',
+    },
+    {
+      count: valid.filter((p) => p.score < 50).length,
+      label: 'Unhealthy',
+      range: '< 50',
+      tone: 'critical',
     },
   ]
   return { average, bands, total }
@@ -203,17 +212,31 @@ function useOverviewData(orgSlug: string) {
     staleTime: 120_000,
   })
 
+  const environmentsQuery = useQuery({
+    enabled: !!orgSlug,
+    queryFn: ({ signal }) => listEnvironments(orgSlug, signal),
+    queryKey: ['admin-overview', 'environments', orgSlug],
+    staleTime: 10 * 60_000,
+  })
+
   const metrics = metricsQuery.data
 
-  const deploysByEnv = useMemo(
-    () =>
-      (metrics?.releases_by_environment ?? []).map((e) => ({
-        count: e.count,
-        label: titleCase(e.slug),
-        slug: e.slug,
-      })),
-    [metrics],
-  )
+  // Merge the per-environment release counts onto the full environment list so
+  // every environment shows even with zero releases, ordered by the
+  // environment's ``sort_order`` descending.
+  const deploysByEnv = useMemo(() => {
+    const counts = new Map(
+      (metrics?.releases_by_environment ?? []).map((e) => [e.slug, e.count]),
+    )
+    return [...(environmentsQuery.data ?? [])]
+      .sort((a, b) => b.sort_order - a.sort_order)
+      .map((env) => ({
+        count: counts.get(env.slug) ?? 0,
+        label: env.name || titleCase(env.slug),
+        labelColor: env.label_color ?? null,
+        slug: env.slug,
+      }))
+  }, [metrics, environmentsQuery.data])
 
   const scores = useMemo(
     () => deriveScores(projectsQuery.data ?? []),
@@ -227,6 +250,8 @@ function useOverviewData(orgSlug: string) {
 
   return {
     deploysByEnv,
+    deploysError: metricsQuery.isError || environmentsQuery.isError,
+    deploysLoading: metricsQuery.isLoading || environmentsQuery.isLoading,
     metrics,
     metricsError: metricsQuery.isError,
     metricsLoading: metricsQuery.isLoading,
@@ -242,6 +267,7 @@ function useOverviewData(orgSlug: string) {
 // ---------------------------------------------------------------------------
 
 const TONE_BG: Record<string, string> = {
+  critical: 'bg-[var(--color-status-failed-dot)]',
   danger: 'bg-danger',
   success: 'bg-success',
   warning: 'bg-warning',
@@ -262,6 +288,8 @@ export function AdminOverview() {
   const orgSlug = selectedOrganization?.slug ?? ''
   const {
     deploysByEnv,
+    deploysError,
+    deploysLoading,
     metrics,
     metricsError,
     metricsLoading,
@@ -315,8 +343,8 @@ export function AdminOverview() {
             />
           </div>
 
-          <section className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            <div>
+          <section className="grid grid-cols-1 items-stretch gap-5 md:grid-cols-[2fr_1fr]">
+            <div className="flex flex-col">
               <SectionLabel
                 right={
                   <span className="text-tertiary text-xs">
@@ -326,16 +354,16 @@ export function AdminOverview() {
               >
                 Releases by Environment
               </SectionLabel>
-              <Card className="p-4">
+              <Card className="flex-1 p-4">
                 <DeploysByEnv
                   data={deploysByEnv}
-                  isError={metricsError}
-                  isLoading={metricsLoading}
+                  isError={deploysError}
+                  isLoading={deploysLoading}
                   total={metrics?.releases.total ?? 0}
                 />
               </Card>
             </div>
-            <div>
+            <div className="flex flex-col">
               <SectionLabel
                 right={
                   <span className="text-tertiary text-xs">
@@ -345,7 +373,7 @@ export function AdminOverview() {
               >
                 Project health
               </SectionLabel>
-              <Card className="p-4">
+              <Card className="flex-1 p-4">
                 <ProjectHealth
                   isError={scoresError}
                   isLoading={scoresLoading}
@@ -408,17 +436,23 @@ function DeploysByEnv({
   isLoading,
   total,
 }: {
-  data: { count: number; label: string; slug: string }[]
+  data: {
+    count: number
+    label: string
+    labelColor: null | string
+    slug: string
+  }[]
   isError?: boolean
   isLoading?: boolean
   total: number
 }) {
+  const { isDarkMode } = useTheme()
   if (isLoading) {
     return (
       <div className="flex flex-col gap-3">
         {[0, 1, 2].map((i) => (
           <div className="flex items-center gap-3" key={i}>
-            <Sk className="w-24 shrink-0" h={13} />
+            <Sk className="w-32 shrink-0" h={13} />
             <Sk className="flex-1" h={8} r={4} />
             <Sk className="w-9 shrink-0" h={13} />
           </div>
@@ -440,18 +474,22 @@ function DeploysByEnv({
   return (
     <div className="flex flex-col gap-3">
       {data.map((d, i) => {
-        const color = ENV_COLORS[i % ENV_COLORS.length]
+        const derived = d.labelColor
+          ? deriveChipColors(d.labelColor, isDarkMode)
+          : null
+        const color = derived?.fg ?? ENV_COLORS[i % ENV_COLORS.length]
         return (
           <div className="flex items-center gap-3" key={d.slug}>
             <span
-              className="flex w-24 shrink-0 items-center gap-2 text-[12.5px] font-medium"
+              className="flex w-32 shrink-0 items-center gap-2 text-[12.5px] font-medium"
               style={{ color }}
+              title={d.label}
             >
               <span
-                className="size-1.75 rounded-full"
+                className="size-1.75 shrink-0 rounded-full"
                 style={{ background: color }}
               />
-              {d.label}
+              <span className="truncate">{d.label}</span>
             </span>
             <div className="bg-secondary h-2 flex-1 overflow-hidden rounded">
               <div
@@ -558,7 +596,7 @@ function ProjectHealth({
   }
   const { average, bands, total } = scores
   return (
-    <div>
+    <div className="flex h-full flex-col">
       <div className="mb-3.5 flex items-end gap-3.5">
         <div>
           <div className="text-primary text-[34px] leading-none font-semibold tracking-tight tabular-nums">
@@ -583,7 +621,7 @@ function ProjectHealth({
           />
         ))}
       </div>
-      <div className="flex flex-col gap-2">
+      <div className="mt-auto flex flex-col gap-2">
         {bands.map((b) => (
           <div className="flex items-center gap-2.5 text-[13px]" key={b.tone}>
             <span
