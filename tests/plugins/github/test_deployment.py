@@ -857,6 +857,7 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
                         'created_at': '2026-05-13T14:00:00Z',
                         'description': 'Deploy main',
                         'url': 'https://api.github.com/repos/octo/demo/deployments/123',
+                        'creator': {'login': 'octocat', 'id': 583231},
                     }
                 ],
             )
@@ -891,6 +892,11 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
             event.deployment_url,
             'https://api.github.com/repos/octo/demo/deployments/123',
         )
+        # The creator login is kept for display and the numeric id is
+        # surfaced as the identity subject so the host can attribute the
+        # deploy to an Imbi user.
+        self.assertEqual(event.creator, 'octocat')
+        self.assertEqual(event.creator_subject, '583231')
         # ``created_at`` must come from the deployment row, not the
         # latest status row (which is one minute later above).
         self.assertEqual(

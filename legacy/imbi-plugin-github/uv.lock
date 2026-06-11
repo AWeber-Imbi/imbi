@@ -668,7 +668,7 @@ wheels = [
 [[package]]
 name = "imbi-common"
 version = "2.10.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main#988dba71efa96db33dde7b4ac9701c87d30be5d8" }
+source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main#15983dc224452f8f60a8801e02e2ad7152d2ca0b" }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },

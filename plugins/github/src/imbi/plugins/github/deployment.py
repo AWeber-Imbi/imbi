@@ -1035,12 +1035,18 @@ class _DeploymentBase(DeploymentPlugin):
         description = deployment.get('description')
         deployment_url = deployment.get('url') or deployment.get('html_url')
         creator_login: str | None = None
+        creator_subject: str | None = None
         creator_raw = deployment.get('creator')
         if isinstance(creator_raw, dict):
             creator_dict = typing.cast(dict[str, typing.Any], creator_raw)
             login = creator_dict.get('login')
             if isinstance(login, str) and login:
                 creator_login = login
+            # GitHub's numeric user id is the stable identity subject the
+            # host resolves to an Imbi user (logins can be renamed).
+            creator_id = creator_dict.get('id')
+            if isinstance(creator_id, int):
+                creator_subject = str(creator_id)
         return RemoteDeployment(
             environment=environment,
             sha=str(sha),
@@ -1052,6 +1058,7 @@ class _DeploymentBase(DeploymentPlugin):
             deployment_url=str(deployment_url) if deployment_url else None,
             description=str(description) if description else None,
             creator=creator_login,
+            creator_subject=creator_subject,
         )
 
     async def _latest_status(
