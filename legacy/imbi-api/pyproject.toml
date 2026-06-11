@@ -58,11 +58,12 @@ otel = [
   "opentelemetry-instrumentation-jinja2",
 ]
 plugins = [
-  "imbi-plugin-aws>=1.0.0",
-  "imbi-plugin-github>=1.0.0",
-  "imbi-plugin-logzio>=1.0.0",
-  "imbi-plugin-oidc>=1.0.0",
-  "imbi-plugin-sonarqube>=0.0.0",
+  "imbi-plugin-aws>=2.1.0",
+  "imbi-plugin-github>=2.1.0",
+  "imbi-plugin-logzio>=2.1.0",
+  "imbi-plugin-oidc>=2.1.0",
+  "imbi-plugin-pagerduty>=2.1.0",
+  "imbi-plugin-sonarqube>=2.1.0"
 ]
 sentry = ["sentry-sdk"]
 
@@ -237,6 +238,7 @@ exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "
 # then drop this source and bump the pin to ==2.11.x.
 [tool.uv.sources]
 imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }
+imbi-plugin-pagerduty = { git = "https://github.com/AWeber-Imbi/imbi-plugin-pagerduty.git", branch = "main" }
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
