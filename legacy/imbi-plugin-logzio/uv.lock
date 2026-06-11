@@ -667,7 +667,7 @@ wheels = [
 
 [[package]]
 name = "imbi-common"
-version = "2.10.0"
+version = "2.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
@@ -683,9 +683,9 @@ dependencies = [
     { name = "python-slugify" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/de/6a/b7787ed646f005df3fcda4c82d4920cb15691f2cd8ac51c6cb30e40f9332/imbi_common-2.10.0.tar.gz", hash = "sha256:0117b56a1d7a7008320df7a4728cf80f044e5493b9253f43ac9642aed379fbca", size = 343896, upload-time = "2026-06-05T23:33:14.061Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/02/30fe936f86936763fd0460c0bf7a8602029ee32de76052063f1322eb54cb/imbi_common-2.11.0.tar.gz", hash = "sha256:fd9126d2ae80fed72902bdcd280a17f992eff6bb80caad7f8979cc07f17ce946", size = 350702, upload-time = "2026-06-11T17:39:16.348Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/b6/03d44defd7b1d657db9334f4c940f286ec6a1b5145d331f8a948195472f0/imbi_common-2.10.0-py3-none-any.whl", hash = "sha256:87e914a36f626a2f280273caf4ace7ebc8a40d779b5d18b16431628fb628fe88", size = 111442, upload-time = "2026-06-05T23:33:12.598Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/5d/6adecad7cf2fa1fa0f35e7ca37352f05d504824ba785f6775750f3e442fc/imbi_common-2.11.0-py3-none-any.whl", hash = "sha256:8ca15781dc0285ce412b9158f0162739a9ae82229b193ccf473b01e62688c923", size = 113762, upload-time = "2026-06-11T17:39:14.999Z" },
 ]
 
 [package.optional-dependencies]
@@ -703,7 +703,7 @@ server = [
 
 [[package]]
 name = "imbi-plugin-logzio"
-version = "2.10.0"
+version = "2.11.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -731,7 +731,7 @@ dist = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
-    { name = "imbi-common", specifier = "==2.10.0" },
+    { name = "imbi-common", specifier = "==2.11.0" },
     { name = "pydantic", specifier = ">=2" },
 ]
 
@@ -739,7 +739,7 @@ requires-dist = [
 dev = [
     { name = "basedpyright" },
     { name = "coverage", extras = ["toml"] },
-    { name = "imbi-common", extras = ["server", "databases"], specifier = "==2.10.0" },
+    { name = "imbi-common", extras = ["server", "databases"], specifier = "==2.11.0" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
