@@ -1016,7 +1016,7 @@ wheels = [
 
 [[package]]
 name = "imbi-api"
-version = "2.10.0"
+version = "2.11.0"
 source = { editable = "." }
 dependencies = [
     { name = "aioboto3" },
@@ -1096,13 +1096,13 @@ requires-dist = [
     { name = "fastapi" },
     { name = "filetype" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
-    { name = "imbi-common", extras = ["databases", "llm", "sentry", "server"], git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main" },
-    { name = "imbi-plugin-aws", marker = "extra == 'plugins'", specifier = ">=2.0.0" },
-    { name = "imbi-plugin-github", marker = "extra == 'plugins'", specifier = ">=2.0.0" },
-    { name = "imbi-plugin-logzio", marker = "extra == 'plugins'", specifier = ">=2.0.0" },
-    { name = "imbi-plugin-oidc", marker = "extra == 'plugins'", specifier = ">=2.0.0" },
-    { name = "imbi-plugin-pagerduty", marker = "extra == 'plugins'", git = "https://github.com/AWeber-Imbi/imbi-plugin-pagerduty.git?branch=main" },
-    { name = "imbi-plugin-sonarqube", marker = "extra == 'plugins'", specifier = ">=0.0.0" },
+    { name = "imbi-common", extras = ["databases", "llm", "sentry", "server"], specifier = "==2.11.0" },
+    { name = "imbi-plugin-aws", marker = "extra == 'plugins'", specifier = ">=2.1.0" },
+    { name = "imbi-plugin-github", marker = "extra == 'plugins'", specifier = ">=2.1.0" },
+    { name = "imbi-plugin-logzio", marker = "extra == 'plugins'", specifier = ">=2.1.0" },
+    { name = "imbi-plugin-oidc", marker = "extra == 'plugins'", specifier = ">=2.1.0" },
+    { name = "imbi-plugin-pagerduty", marker = "extra == 'plugins'", specifier = ">=2.1.0" },
+    { name = "imbi-plugin-sonarqube", marker = "extra == 'plugins'", specifier = ">=2.1.0" },
     { name = "jinja2" },
     { name = "jsonpatch", specifier = ">=1.33" },
     { name = "mcp", specifier = ">=1.26.0" },
@@ -1150,8 +1150,8 @@ docs = [
 
 [[package]]
 name = "imbi-common"
-version = "2.10.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main#15983dc224452f8f60a8801e02e2ad7152d2ca0b" }
+version = "2.11.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
@@ -1165,6 +1165,10 @@ dependencies = [
     { name = "pyjwt" },
     { name = "python-slugify" },
     { name = "typer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/82/02/30fe936f86936763fd0460c0bf7a8602029ee32de76052063f1322eb54cb/imbi_common-2.11.0.tar.gz", hash = "sha256:fd9126d2ae80fed72902bdcd280a17f992eff6bb80caad7f8979cc07f17ce946", size = 350702, upload-time = "2026-06-11T17:39:16.348Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b4/5d/6adecad7cf2fa1fa0f35e7ca37352f05d504824ba785f6775750f3e442fc/imbi_common-2.11.0-py3-none-any.whl", hash = "sha256:8ca15781dc0285ce412b9158f0162739a9ae82229b193ccf473b01e62688c923", size = 113762, upload-time = "2026-06-11T17:39:14.999Z" },
 ]
 
 [package.optional-dependencies]
@@ -1188,21 +1192,21 @@ server = [
 
 [[package]]
 name = "imbi-plugin-aws"
-version = "2.10.0"
+version = "2.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "imbi-common" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5f/06/6ab3a849f7c012898a63644056b67dc08a6baa3206cf189e307f97760ee8/imbi_plugin_aws-2.10.0.tar.gz", hash = "sha256:cd887c807404a586b99cfde92e366a55a9ebe12d89de4a87cdbe7ef216ad9a3a", size = 153370, upload-time = "2026-06-05T23:37:02.419Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/88/7f/800fc1d3a3edff734e24756072ec9490b0fca617d3a6af347740ba6b9b96/imbi_plugin_aws-2.11.0.tar.gz", hash = "sha256:5f19e5b884da99a5d479df4865fcd5dc54d710f966998aceb16f57644cc6af1e", size = 153374, upload-time = "2026-06-11T17:46:16.955Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2f/71/a86c6a0679d94ebd7dbc6461aaceeb639998fc022bf181c2b6f68b5de9b4/imbi_plugin_aws-2.10.0-py3-none-any.whl", hash = "sha256:514cf39d1a9ce73d9e8d266ac6b4579e6651fa0f85455134342b6e6132a4f208", size = 36829, upload-time = "2026-06-05T23:37:01.335Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/c1/dd876ecaaa2bfae69ed8a1136aba1673e0e8bed7a236d97aa81394423119/imbi_plugin_aws-2.11.0-py3-none-any.whl", hash = "sha256:2f41c920b485ae2a1048052f333eaf49a859bc5eeca112826ec10e9596253a45", size = 36826, upload-time = "2026-06-11T17:46:15.891Z" },
 ]
 
 [[package]]
 name = "imbi-plugin-github"
-version = "2.10.0"
+version = "2.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -1210,61 +1214,65 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyjwt", extra = ["crypto"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fd/42/9c4f11e42efcdf8eced3c478dc23461cbd94d11762261f6d12b408f0f06c/imbi_plugin_github-2.10.0.tar.gz", hash = "sha256:276032f9b40adc0d30ef334df2e629c6088f97814ba4c89e7b9cef0d083591cc", size = 161220, upload-time = "2026-06-05T23:44:25.175Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8f/0c/6a13a11d1c39b3c5fa32b5fddc34c6a83589875b21542abcc38ac71439b1/imbi_plugin_github-2.11.0.tar.gz", hash = "sha256:c0bef14f910a2cb754829a43df95b138ec6e4f654e6df2784624384fda5f1a88", size = 166339, upload-time = "2026-06-11T17:48:13.602Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1a/9d/b7d113b5cd1234830707c93676ee936b016c9773e5a055ad1fc391c6f482/imbi_plugin_github-2.10.0-py3-none-any.whl", hash = "sha256:f7a65dce9138fea0bea5f28d53da2b3d39a192e26d5e4df9e96d6fd5f43bc122", size = 47319, upload-time = "2026-06-05T23:44:24.018Z" },
+    { url = "https://files.pythonhosted.org/packages/17/8b/85e41e8cb9934d69a21ed4c003dd1c906f24858e33572f096eb1e1abcbd8/imbi_plugin_github-2.11.0-py3-none-any.whl", hash = "sha256:3b168f3d547e318d5d286067d01eb35764835dc6723fa6f76d15835482d06a50", size = 49847, upload-time = "2026-06-11T17:48:12.369Z" },
 ]
 
 [[package]]
 name = "imbi-plugin-logzio"
-version = "2.10.0"
+version = "2.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "imbi-common" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d1/8a/9ed7f5013f3f459409d84ac4ac26364eddab70b642bf7d6fe5c06c84c07b/imbi_plugin_logzio-2.10.0.tar.gz", hash = "sha256:22a69006e0c710e29581e692ae68448f1b86fb2d7ceecd149641916269537e5f", size = 110377, upload-time = "2026-06-05T23:36:52.327Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/76/46/884cff24c3f03b84cbd54945d7881ef61729dcc834a64ae07a7d797b65cc/imbi_plugin_logzio-2.11.0.tar.gz", hash = "sha256:ac5701b0bb7086e48514329225d1f1b87765c31502a7cda320e42e75ee081d82", size = 110374, upload-time = "2026-06-11T17:46:25.797Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ef/23/e2177771dd38124186023fcc2cb1d6ceda255b6958e8e0f02250ee096ed0/imbi_plugin_logzio-2.10.0-py3-none-any.whl", hash = "sha256:d594a3a4ac692e70e2a1f748a56404ab2308655fcc551ea41f6e4eb4befd59aa", size = 11976, upload-time = "2026-06-05T23:36:51.077Z" },
+    { url = "https://files.pythonhosted.org/packages/94/f6/412eff33e3a460e8c5092bff401a1c7c5c2f8b99db54861ee8866c1eed47/imbi_plugin_logzio-2.11.0-py3-none-any.whl", hash = "sha256:58bf6213b47837c7d7645b9f760cce37a5e3a34697b7cfe7f4616a53f0b5b344", size = 11979, upload-time = "2026-06-11T17:46:24.797Z" },
 ]
 
 [[package]]
 name = "imbi-plugin-oidc"
-version = "2.10.0"
+version = "2.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "imbi-common" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b5/69/b0d075eb58416043f93549e185d6700fec4f8ecb956375e0a1ec7810066a/imbi_plugin_oidc-2.10.0.tar.gz", hash = "sha256:b5e4c6ccdcc75e741a715cb10e62b5829051309b8f0c624b482195fccfde62f4", size = 99563, upload-time = "2026-06-05T23:37:27.74Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/58/e9/cad28da839116677740c55c39d2a2b398e28797f5fe5ca87aaf7d363eb1f/imbi_plugin_oidc-2.11.0.tar.gz", hash = "sha256:694edb0f05739af8ca1e1b68e53b744e9d2dcafdc31d61139a14f33b326ac803", size = 99563, upload-time = "2026-06-11T17:46:36.045Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/47/af/0306f96d28028ec40149b0315e64c9424f07f09611b35cc7eb1e67ded1b3/imbi_plugin_oidc-2.10.0-py3-none-any.whl", hash = "sha256:9fcad31a5f0fae54868a30900f1165e55977034eb43f572a45ead7148a26d1a5", size = 5940, upload-time = "2026-06-05T23:37:26.504Z" },
+    { url = "https://files.pythonhosted.org/packages/df/73/d8f5f265fb3f53c12ed005c33b13fd0a0f9a94cd6af857d09e673846e9db/imbi_plugin_oidc-2.11.0-py3-none-any.whl", hash = "sha256:bde656d94197a2b11919d33e63a56d1ac513adab5341bbe8556b272894293b8f", size = 5941, upload-time = "2026-06-11T17:46:34.674Z" },
 ]
 
 [[package]]
 name = "imbi-plugin-pagerduty"
-version = "2.10.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-plugin-pagerduty.git?branch=main#92386b5c3463ed3b76cf3219b1fd55ff72f285cc" }
+version = "2.11.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "imbi-common", extra = ["databases"] },
     { name = "pydantic" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/92/92/48ac99fa3bba84f710b47bd0d9181799a73b2cf357bf1d7ab7feced827e7/imbi_plugin_pagerduty-2.11.0.tar.gz", hash = "sha256:dda80698a9795e59371ae786b97434d5c4316b4175c1040d2a6be9daaeb84cd4", size = 113107, upload-time = "2026-06-11T17:54:26.298Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ea/12/e85effe986129f7f934e40b68773a384b2962039aaef898d0eac5c1ee39d/imbi_plugin_pagerduty-2.11.0-py3-none-any.whl", hash = "sha256:2c7eb4ae491e66c64507892cec943139fb0589ca077eb7c60cf98dc08bfe9853", size = 13962, upload-time = "2026-06-11T17:54:25.075Z" },
+]
 
 [[package]]
 name = "imbi-plugin-sonarqube"
-version = "0.0.0"
+version = "2.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "imbi-common" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/97/b1/c95632d66ac6019e1e402ea32e0f5e1a69751a7390cf09247cde1115fcb1/imbi_plugin_sonarqube-0.0.0.tar.gz", hash = "sha256:4ab77a3692c56d06b52c8c042733be767b45907ea490bcb68c135acf471a459a", size = 93406, upload-time = "2026-05-20T18:28:24.865Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/c5/8e0277c35b35e2ec3ebe5df13f62f9f9ff11ce25843e1e88ebfc3af41b71/imbi_plugin_sonarqube-2.11.0.tar.gz", hash = "sha256:18f696fcd48e0ccd419146c7a0f42cc25bea6106d08df3d5da5c5e2c699a02ad", size = 93462, upload-time = "2026-06-11T17:46:44.545Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/03/c0/2f61fa2a791dbc3b0f6a3963f926fdfb1096a3e3dedcfd1c20dd4001788a/imbi_plugin_sonarqube-0.0.0-py3-none-any.whl", hash = "sha256:aad377473ebd06329137ea7c6833148054247a5a5c6acbdd44918ef3ca958e7c", size = 7945, upload-time = "2026-05-20T18:28:23.35Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/0e/6246bb301825be199ffe76f9f339ca33365ad26caec4f86d9aed32189dab/imbi_plugin_sonarqube-2.11.0-py3-none-any.whl", hash = "sha256:1e39d9ee25e94171652d6efd4c180e77778a4199eed0fe6e8abd3f036608bd09", size = 7949, upload-time = "2026-06-11T17:46:43.307Z" },
 ]
 
 [[package]]
