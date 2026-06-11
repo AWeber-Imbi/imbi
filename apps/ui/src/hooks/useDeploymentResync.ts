@@ -7,14 +7,20 @@ import {
   resyncServiceDeployments,
 } from '@/api/endpoints'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { DEEP_RESYNC_LIMIT } from '@/lib/resync'
 
 // Project-level resync. Invalidates the project + currentReleases +
 // operationsLog query keys so badges and deploy widgets refresh once
-// the backfill completes.
+// the backfill completes. Runs a deep backfill (``DEEP_RESYNC_LIMIT``
+// deployments per env) so a user-triggered resync also re-resolves
+// historical deploy attribution, not just the latest event.
 export function useProjectDeploymentResync(orgSlug: string, projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: () => resyncProjectDeployments(orgSlug, projectId),
+    mutationFn: () =>
+      resyncProjectDeployments(orgSlug, projectId, {
+        limit: DEEP_RESYNC_LIMIT,
+      }),
     onError: onResyncError,
     onSuccess: (summary: DeploymentResyncSummary) => {
       toastResult(summary)

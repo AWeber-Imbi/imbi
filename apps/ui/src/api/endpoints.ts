@@ -2145,9 +2145,13 @@ export interface DeploymentResyncSummary {
 export const resyncProjectDeployments = (
   orgSlug: string,
   projectId: string,
-  source?: string,
+  opts: { limit?: number; source?: string } = {},
 ): Promise<DeploymentResyncSummary> => {
-  const search = source ? `?source=${encodeURIComponent(source)}` : ''
+  const params = new URLSearchParams()
+  if (opts.source) params.set('source', opts.source)
+  if (opts.limit != null) params.set('limit', String(opts.limit))
+  const query = params.toString()
+  const search = query ? `?${query}` : ''
   return apiClient.post<DeploymentResyncSummary>(
     `${deploymentsBase(orgSlug, projectId)}/resync${search}`,
   )

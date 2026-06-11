@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { resyncProjectDeployments } from '@/api/endpoints'
 import { useCommitSync } from '@/hooks/useCommitSync'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { DEEP_RESYNC_LIMIT } from '@/lib/resync'
 
 const DATA_KEYS = ['recentCommits', 'releaseHistory', 'currentReleases']
 
@@ -23,7 +24,10 @@ export function useDeploymentSync(orgSlug: string, projectId: string) {
 
   const commitSync = useCommitSync(orgSlug, projectId, true, invalidate)
   const resyncMutation = useMutation({
-    mutationFn: () => resyncProjectDeployments(orgSlug, projectId),
+    mutationFn: () =>
+      resyncProjectDeployments(orgSlug, projectId, {
+        limit: DEEP_RESYNC_LIMIT,
+      }),
     onError: (err) =>
       toast.error(extractApiErrorDetail(err) ?? 'Failed to resync releases'),
     onSuccess: (summary) => {
