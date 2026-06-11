@@ -35,3 +35,7 @@ vite.config.js
 
 figma/
 .worktrees/
+
+# Large local design-spec export (exceeds the repo file-size gate);
+# the UserIdentity component is implemented against it but it is not tracked.
+docs/useridentity.html

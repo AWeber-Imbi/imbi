@@ -165,7 +165,7 @@ export function CommitList({
             </button>
             {c.url ? (
               <a
-                aria-label="View commit on GitHub"
+                aria-label="View commit"
                 className="text-tertiary hover:text-primary"
                 href={c.url}
                 rel="noopener"

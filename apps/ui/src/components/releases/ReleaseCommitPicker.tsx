@@ -1,21 +1,40 @@
 import { Check, ExternalLink } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import type { ChipColors } from '@/lib/chip-colors'
 import { cn } from '@/lib/utils'
-import type { RecentCommit } from '@/types'
+import type { DeploymentCommitCiStatus } from '@/types'
 
 import { CiStatusDot } from './CiStatusDot'
 
 interface CommitRowProps {
+  accent?: ChipColors | null
   active: boolean
-  commit: RecentCommit
+  commit: PickerCommit
   held: boolean
   idx: number
   onSelect: (sha: string) => void
 }
 
+/**
+ * Structural subset of a commit the picker needs — satisfied by both
+ * `RecentCommit` (releases tab) and `DeploymentCommit` (deployments tab).
+ */
+interface PickerCommit {
+  ci_status: DeploymentCommitCiStatus
+  message: string
+  sha: string
+  short_sha: string
+  url?: null | string
+}
+
 interface ReleaseCommitPickerProps {
-  commits: RecentCommit[]
+  /**
+   * Optional selection color (e.g. the target environment's derived
+   * palette). Defaults to the amber action color.
+   */
+  accent?: ChipColors | null
+  commits: PickerCommit[]
   onSelect: (sha: string) => void
   selectedSha: null | string
 }
@@ -26,6 +45,7 @@ interface ReleaseCommitPickerProps {
  * its full commit message.
  */
 export function ReleaseCommitPicker({
+  accent,
   commits,
   onSelect,
   selectedSha,
@@ -35,6 +55,7 @@ export function ReleaseCommitPicker({
     <div className="border-tertiary bg-primary max-h-120 overflow-y-auto rounded-md border">
       {commits.map((c, idx) => (
         <CommitRow
+          accent={accent}
           active={c.sha === selectedSha}
           commit={c}
           held={selIdx >= 0 && idx < selIdx}
@@ -48,10 +69,22 @@ export function ReleaseCommitPicker({
 }
 
 // fallow-ignore-next-line complexity
-function CommitRow({ active, commit, held, idx, onSelect }: CommitRowProps) {
+function CommitRow({
+  accent,
+  active,
+  commit,
+  held,
+  idx,
+  onSelect,
+}: CommitRowProps) {
   const lines = commit.message.split('\n')
   const subject = lines[0] ?? ''
   const body = lines.slice(1).join('\n').trim()
+  const activeBg = active
+    ? accent
+      ? { backgroundColor: accent.bg }
+      : undefined
+    : undefined
   return (
     <div
       className={cn(
@@ -62,16 +95,28 @@ function CommitRow({ active, commit, held, idx, onSelect }: CommitRowProps) {
       <button
         className={cn(
           'flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors',
-          active ? 'bg-action/5' : 'hover:bg-secondary',
+          active ? !accent && 'bg-action/5' : 'hover:bg-secondary',
         )}
         onClick={() => onSelect(commit.sha)}
+        style={activeBg}
         type="button"
       >
         <span
           className={cn(
             'flex size-4 shrink-0 items-center justify-center rounded-full border',
-            active ? 'border-action bg-action text-white' : 'border-secondary',
+            active
+              ? !accent && 'border-action bg-action text-white'
+              : 'border-secondary',
           )}
+          style={
+            active && accent
+              ? {
+                  backgroundColor: accent.fg,
+                  borderColor: accent.fg,
+                  color: '#fff',
+                }
+              : undefined
+          }
         >
           {active ? <Check size={10} strokeWidth={3} /> : null}
         </span>
@@ -79,16 +124,29 @@ function CommitRow({ active, commit, held, idx, onSelect }: CommitRowProps) {
           {commit.short_sha}
         </span>
         <span className="min-w-0 flex-1 truncate text-sm">{subject}</span>
-        <CiStatusDot status={commit.ci_status} />
+        {/* ``unknown`` is the API's null-equivalent (e.g. compare results
+            carry no check status) — skip the useless gray dot. */}
+        {commit.ci_status !== 'unknown' ? (
+          <CiStatusDot status={commit.ci_status} />
+        ) : null}
         <Badge variant="neutral">{idx === 0 ? 'tip' : `−${idx}`}</Badge>
       </button>
       {active && body ? (
-        <pre className="bg-action/5 text-secondary max-h-40 overflow-auto px-3 pt-1 pb-3 pl-13 font-mono text-xs whitespace-pre-wrap">
+        <pre
+          className={cn(
+            'max-h-40 overflow-auto px-3 pt-1 pb-3 pl-13 font-mono text-xs whitespace-pre-wrap text-secondary',
+            !accent && 'bg-action/5',
+          )}
+          style={activeBg}
+        >
           {body}
         </pre>
       ) : null}
       {active && commit.url ? (
-        <div className="bg-action/5 px-3 pb-2 pl-13">
+        <div
+          className={cn('px-3 pb-2 pl-13', !accent && 'bg-action/5')}
+          style={activeBg}
+        >
           <a
             className="text-tertiary hover:text-primary inline-flex items-center gap-1 text-xs"
             href={commit.url}

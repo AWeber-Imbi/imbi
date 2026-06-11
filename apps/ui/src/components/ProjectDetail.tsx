@@ -12,13 +12,11 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import {
-  ArrowRight,
   Check,
   ChevronDown,
   Copy,
   Stethoscope as DoctorIcon,
   Filter,
-  Info,
   RefreshCw,
   Settings2 as SettingsIcon,
   TrendingDown,
@@ -49,6 +47,7 @@ import {
   ReleaseModal,
 } from '@/components/deploy/DeploymentModal'
 import { DeploymentRunWatcher } from '@/components/deploy/DeploymentRunWatcher'
+import { DeploymentsTab } from '@/components/deployments/DeploymentsTab'
 import { ProjectDocumentsTab } from '@/components/documents/ProjectDocumentsTab'
 import { OperationsLog } from '@/components/OperationsLog'
 import { ConfigurationTab } from '@/components/project/ConfigurationTab'
@@ -76,7 +75,6 @@ import { InlineMultiSelect } from '@/components/ui/inline-edit/InlineMultiSelect
 import { InlineSelect } from '@/components/ui/inline-edit/InlineSelect'
 import { InlineText } from '@/components/ui/inline-edit/InlineText'
 import { InlineTextarea } from '@/components/ui/inline-edit/InlineTextarea'
-import { LabelChip } from '@/components/ui/label-chip'
 import { ScoreBadge } from '@/components/ui/score-badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -109,6 +107,7 @@ const VALID_TABS = [
   'overview',
   'configuration',
   'dependencies',
+  'deployments',
   'relationships',
   'releases',
   'logs',
@@ -183,11 +182,7 @@ export function ProjectDetail({
     queryFn: ({ signal }) => listCurrentReleases(orgSlug, project.id, signal),
     queryKey: ['currentReleases', orgSlug, project.id],
   })
-  // While the releases query is in-flight, chips render a fuzzy
-  // placeholder for the version slot so versions don't pop in.
-  const releasesLoading = releasesPending && !!orgSlug && !!project.id
 
-  // fallow-ignore-next-line complexity
   const deploymentStatus: Record<
     string,
     {
@@ -200,6 +195,7 @@ export function ProjectDetail({
       tag: null | string
       updated: string
     }
+    // fallow-ignore-next-line complexity
   > = useMemo(() => {
     const out: Record<
       string,
@@ -367,21 +363,6 @@ export function ProjectDetail({
     () => navigate(`/projects/${project.id}`, { replace: true }),
     [navigate, project.id],
   )
-  const openDeploy = useCallback(
-    (envSlug?: string) => {
-      // The bare "Deploy" button doesn't carry an env, so default to
-      // the entry-point env (idx 0) for first-time deployments.
-      const slug = envSlug ?? sortedEnvironments[0]?.slug
-      if (slug) navigate(`/projects/${project.id}/deploy/${slug}`)
-    },
-    [navigate, project.id, sortedEnvironments],
-  )
-  const openPromote = useCallback(
-    (_fromEnvironment: string, toEnvironment: string) =>
-      navigate(`/projects/${project.id}/promote/${toEnvironment}`),
-    [navigate, project.id],
-  )
-
   // Active deployment runs (one watcher per entry).  Pushed by the
   // DeployTab/PromoteTab onRunStarted callback; the watcher itself
   // calls back to remove its entry once the run reaches a terminal
@@ -595,6 +576,10 @@ export function ProjectDetail({
   )
   const canTriggerDeployments =
     isDeployable && !!deploymentPlugin && deploymentReadiness === 'connected'
+  // Deployable projects with a pipeline get the Deployments tab — the
+  // counterpart of the release-only "Releases" tab above.
+  const hasDeploymentsTab =
+    isDeployable && !!deploymentPlugin && sortedEnvironments.length > 0
 
   // fallow-ignore-next-line complexity
   const deploymentConnectLabel = (() => {
@@ -637,6 +622,7 @@ export function ProjectDetail({
       (activeTab === 'logs' && !hasLogsPlugin) ||
       (activeTab === 'incidents' && !hasIncidentsPlugin) ||
       (activeTab === 'releases' && !isReleaseOnly) ||
+      (activeTab === 'deployments' && !hasDeploymentsTab) ||
       (activeTab === 'pull-requests' && !hasLifecyclePlugin)
     ) {
       navigate(`/projects/${project.id}`, { replace: true })
@@ -644,6 +630,7 @@ export function ProjectDetail({
   }, [
     activeTab,
     hasConfigurationPlugin,
+    hasDeploymentsTab,
     hasIncidentsPlugin,
     hasLifecyclePlugin,
     hasLogsPlugin,
@@ -769,6 +756,9 @@ export function ProjectDetail({
       ? [{ id: 'configuration' as const, label: 'Configuration' }]
       : []),
     { id: 'dependencies', label: 'Dependencies' },
+    ...(hasDeploymentsTab
+      ? [{ id: 'deployments' as const, label: 'Deployments' }]
+      : []),
     {
       id: 'documents',
       label:
@@ -841,118 +831,6 @@ export function ProjectDetail({
                 </span>
               )}
             </div>
-          </div>
-
-          {/* Deployment Pipeline — chips are the only entry points
-               for Deploy/Promote, routed by position in the train. */}
-          <div className="flex flex-col items-end gap-2">
-            <div className="flex items-center gap-2">
-              {sortedEnvironments.length > 0 &&
-                // fallow-ignore-next-line complexity
-                sortedEnvironments.map((env, idx) => {
-                  const deployment = deploymentStatus[env.slug]
-                  const color = env.label_color
-                  // Release-train action selection is driven by per-env
-                  // flags (``can_deploy`` / ``can_promote``).  Defaults
-                  // match the backend model: deployable, opt-in promote.
-                  // When both flags are true, deploy wins (re-rolling an
-                  // env is the more common interactive op).  When both
-                  // are false, the chip renders without a click target.
-                  const canDeploy = env.can_deploy ?? true
-                  const canPromote = env.can_promote ?? false
-                  const isPromoteSlot = canPromote && !canDeploy
-                  // Promote needs an upstream env to source the build
-                  // from; fall back to the immediately preceding env in
-                  // the sorted train (mirrors the old idx-based UX).
-                  const previousSlug = isPromoteSlot
-                    ? sortedEnvironments[idx - 1]?.slug
-                    : undefined
-                  const isInteractive =
-                    canDeploy || (isPromoteSlot && previousSlug)
-                  const handleClick = !isInteractive
-                    ? undefined
-                    : isPromoteSlot
-                      ? () => openPromote(previousSlug as string, env.slug)
-                      : () => openDeploy(env.slug)
-                  const tooltipText = isPromoteSlot
-                    ? 'Promote'
-                    : canPromote
-                      ? 'Deploy / Promote'
-                      : 'Deploy'
-                  const versionSlot = deployment ? (
-                    <span className="font-mono">
-                      {deployment.tag ?? deployment.committish}
-                    </span>
-                  ) : releasesLoading ? (
-                    <span
-                      aria-hidden
-                      className="inline-block h-3 w-14 animate-pulse rounded bg-current/25 align-middle blur-[2px]"
-                    />
-                  ) : null
-                  const chipBody = color ? (
-                    <LabelChip
-                      className="rounded-md px-3 py-1.5 text-sm"
-                      hex={color}
-                    >
-                      <span className="inline-flex items-center gap-1.5">
-                        {env.name}
-                        {versionSlot}
-                      </span>
-                    </LabelChip>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium">
-                      {env.name}
-                      {versionSlot}
-                    </span>
-                  )
-                  return (
-                    <span className="contents" key={env.slug}>
-                      {idx > 0 && (
-                        <ArrowRight className="text-tertiary size-4" />
-                      )}
-                      {canTriggerDeployments && isInteractive ? (
-                        <TooltipProvider delayDuration={200}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                aria-label={
-                                  isPromoteSlot
-                                    ? `Promote ${previousSlug} to ${env.name}`
-                                    : `Deploy to ${env.name}`
-                                }
-                                className="hover:ring-ring focus-visible:ring-ring cursor-pointer rounded-md transition hover:shadow-md hover:ring-1 hover:ring-offset-1 focus:outline-none focus-visible:ring-2"
-                                onClick={handleClick}
-                                type="button"
-                              >
-                                {chipBody}
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{tooltipText}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      ) : (
-                        chipBody
-                      )}
-                    </span>
-                  )
-                })}
-            </div>
-            {isDeployable && deploymentPlugin && (
-              <div className="text-tertiary flex items-center gap-1.5 text-xs italic">
-                <Info className="size-3.5" />
-                <span>
-                  {deploymentReadiness === 'connected'
-                    ? 'Click on an environment to deploy to it'
-                    : deploymentReadiness === 'loading'
-                      ? 'Checking deployment access…'
-                      : deploymentReadiness === 'error'
-                        ? 'Could not check deployment access — retry shortly'
-                        : `Connect to ${deploymentConnectLabel} to enable deployments`}
-                </span>
-              </div>
-            )}
           </div>
         </div>
 
@@ -1314,6 +1192,21 @@ export function ProjectDetail({
         {isReleaseOnly && (
           <TabsContent value="releases">
             <ReleasesTab orgSlug={orgSlug} project={project} />
+          </TabsContent>
+        )}
+        {hasDeploymentsTab && (
+          <TabsContent value="deployments">
+            <DeploymentsTab
+              canTrigger={canTriggerDeployments}
+              connectLabel={deploymentConnectLabel}
+              environments={sortedEnvironments}
+              onRunStarted={handleRunStarted}
+              orgSlug={orgSlug}
+              projectId={project.id}
+              readiness={deploymentReadiness}
+              serviceIcon={deploymentPlugin?.service_icon ?? null}
+              serviceLabel={deploymentPlugin?.service_name ?? null}
+            />
           </TabsContent>
         )}
         {hasLifecyclePlugin && (

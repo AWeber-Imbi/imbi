@@ -496,9 +496,13 @@ export interface CurrentReleaseEnvironment {
   environment: { name: string; slug: string }
   external_run_url: null | string
   last_event_at: null | string
-  // Deployer of the latest event when observed from a remote (e.g. the
-  // GitHub actor); null for in-product deploys.
+  // Deployer of the latest event, for display: an Imbi user's display
+  // name when resolved, else the raw remote login; null for in-product
+  // deploys with no recorded actor.
   performed_by?: null | string
+  // Email of the deployer when they resolve to an Imbi user (profile
+  // link + Gravatar); null for unresolved remote logins.
+  performed_by_email?: null | string
   release: null | Release
 }
 
@@ -1170,6 +1174,10 @@ export interface PluginAssignmentResponse {
   plugin_id: string
   plugin_slug: string
   plugin_type: PluginType
+  // Parent third-party service so the UI can show which service
+  // powers the tab.
+  service_icon?: null | string
+  service_name?: null | string
   source: 'merged' | 'project' | 'project_type'
   supports_deployment_sync?: boolean
   supports_histogram?: boolean
@@ -1321,6 +1329,8 @@ export type ProjectRelationshipsResponse =
 // from ClickHouse; release notes come from the graph Release nodes.
 export interface RecentCommit {
   author?: null | string
+  /** Imbi user email the author resolves to via identity attribution. */
+  author_email?: null | string
   authored_at: string
   ci_status: DeploymentCommitCiStatus
   message: string
@@ -1378,6 +1388,8 @@ export interface ReleaseDrift {
 
 export interface ReleaseHistoryEntry {
   author?: null | string
+  /** Imbi user email of the release author (the resolved `created_by`). */
+  author_email?: null | string
   ci_status: DeploymentCommitCiStatus
   notes_markdown?: null | string
   package_url?: null | string
