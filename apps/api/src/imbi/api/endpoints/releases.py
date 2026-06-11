@@ -25,6 +25,7 @@ from imbi_common.plugins.base import CheckStatus
 from imbi_api import patch as json_patch
 from imbi_api import sbom
 from imbi_api.auth import permissions
+from imbi_api.domain.models import User
 from imbi_api.endpoints._helpers import fetch_or_404
 from imbi_api.endpoints.operations_log import complete_opslog_entry
 from imbi_api.endpoints.projects import lookup_ops_log_performed_by
@@ -166,10 +167,15 @@ class CurrentReleaseEnvironment(pydantic.BaseModel):
     last_event_at: datetime.datetime | None = None
     external_run_url: str | None = None
     ci_status: CheckStatus | None = None
-    #: Deployer of the latest event when observed from a remote (e.g. the
-    #: GitHub ``deployment.creator.login``). ``None`` for in-product deploys,
-    #: where the operator is captured in the operations log instead.
+    #: Deployer of the latest event, for display: an Imbi user's
+    #: ``display_name`` when the deployer resolves to one, otherwise the
+    #: raw remote login (e.g. the GitHub ``deployment.creator.login``).
+    #: ``None`` when no deployer is known.
     performed_by: str | None = None
+    #: Email of the deployer when they resolve to an Imbi user, so the UI
+    #: can link to their profile + render their Gravatar. ``None`` for
+    #: remote logins that don't map to an Imbi user.
+    performed_by_email: str | None = None
 
 
 # -- Helpers ------------------------------------------------------------
@@ -629,6 +635,22 @@ async def list_releases(
     ]
 
 
+async def _users_by_email(
+    db: graph.Graph, emails: set[str]
+) -> dict[str, User]:
+    """Fetch the Imbi users for a set of emails, keyed by email.
+
+    Emails with no matching user are simply absent from the result, so
+    callers fall back to displaying the raw email/login.
+    """
+    out: dict[str, User] = {}
+    for email in emails:
+        found = await db.match(User, {'email': email})
+        if found:
+            out[email] = found[0]
+    return out
+
+
 @releases_router.get(
     '/current',
     response_model=list[CurrentReleaseEnvironment],
@@ -734,13 +756,15 @@ async def list_current_releases(
             enrich_targets.append((project_id, env['slug'], version))
     performed_by_by_key = await lookup_ops_log_performed_by(enrich_targets)
 
-    sortable: list[tuple[int, str, CurrentReleaseEnvironment]] = []
+    # Resolve deployer emails to Imbi users so the UI can show a display
+    # name + profile link + Gravatar. ``performed_by`` may be an email
+    # (in-product principal, or a resync deploy resolved to an Imbi user)
+    # or a raw remote login; only emails that match an Imbi user become
+    # linkable.
+    computed: list[
+        tuple[dict[str, typing.Any], typing.Any, typing.Any, str | None]
+    ] = []
     for env, release_raw, event in by_env.values():
-        release_resp = (
-            _release_to_response(release_raw, project_id)
-            if release_raw is not None
-            else None
-        )
         performed_by = event.performed_by if event else None
         if (
             performed_by is None
@@ -753,6 +777,25 @@ async def list_current_releases(
             performed_by = performed_by_by_key.get(
                 (project_id, env['slug'], version)
             )
+        computed.append((env, release_raw, event, performed_by))
+
+    users_by_email = await _users_by_email(
+        db, {pb for _, _, _, pb in computed if pb and '@' in pb}
+    )
+
+    sortable: list[tuple[int, str, CurrentReleaseEnvironment]] = []
+    for env, release_raw, event, performed_by in computed:
+        release_resp = (
+            _release_to_response(release_raw, project_id)
+            if release_raw is not None
+            else None
+        )
+        performed_by_email: str | None = None
+        if performed_by and '@' in performed_by:
+            user = users_by_email.get(performed_by)
+            if user is not None:
+                performed_by_email = performed_by
+                performed_by = user.display_name
         item = CurrentReleaseEnvironment(
             environment=ReleaseEnvironmentRef(
                 slug=env['slug'], name=env['name']
@@ -763,6 +806,7 @@ async def list_current_releases(
             external_run_url=event.external_run_url if event else None,
             ci_status=ci_status_by_slug.get(env['slug']),
             performed_by=performed_by,
+            performed_by_email=performed_by_email,
         )
         sortable.append((env.get('sort_order') or 0, env['name'], item))
 

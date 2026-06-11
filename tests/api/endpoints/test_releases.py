@@ -1162,6 +1162,86 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
         self.assertIsNone(by_slug['testing']['release'])
         self.assertEqual(by_slug['production']['release']['tag'], '1.0.0')
 
+    def test_performed_by_email_resolves_to_display_name(self) -> None:
+        """An email ``performed_by`` that matches an Imbi user surfaces
+        the user's display name and a linkable email."""
+        deployments = json.dumps(
+            [
+                {
+                    'timestamp': '2026-04-22T10:00:00+00:00',
+                    'status': 'success',
+                    'note': None,
+                    'performed_by': 'kevin@example.com',
+                }
+            ]
+        )
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'env': self._env('production'),
+                    'release': _release_row(tag='1.0.0', id='r1'),
+                    'deployments': deployments,
+                }
+            ],
+        ]
+        kevin = models.User(
+            email='kevin@example.com',
+            display_name='Kevin Vance',
+            is_active=True,
+            is_admin=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        with (
+            mock.patch(
+                'imbi_api.endpoints.releases._users_by_email',
+                new=mock.AsyncMock(return_value={'kevin@example.com': kevin}),
+            ),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200, response.text)
+        row = response.json()[0]
+        self.assertEqual(row['performed_by'], 'Kevin Vance')
+        self.assertEqual(row['performed_by_email'], 'kevin@example.com')
+
+    def test_performed_by_login_without_imbi_user_is_not_linkable(
+        self,
+    ) -> None:
+        """A raw remote login stays as-is with no linkable email."""
+        deployments = json.dumps(
+            [
+                {
+                    'timestamp': '2026-04-22T10:00:00+00:00',
+                    'status': 'success',
+                    'note': None,
+                    'performed_by': 'octocat',
+                }
+            ]
+        )
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'env': self._env('production'),
+                    'release': _release_row(tag='1.0.0', id='r1'),
+                    'deployments': deployments,
+                }
+            ],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200, response.text)
+        row = response.json()[0]
+        self.assertEqual(row['performed_by'], 'octocat')
+        self.assertIsNone(row['performed_by_email'])
+
 
 class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
     """GET /releases/current — deployment-plugin hydration pass.

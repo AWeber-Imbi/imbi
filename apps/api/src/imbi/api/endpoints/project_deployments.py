@@ -10,6 +10,7 @@ See ``docs/deployments-plan.md`` for the full design.
 """
 
 import asyncio
+import collections.abc
 import datetime
 import functools
 import importlib.resources
@@ -49,6 +50,7 @@ from imbi_api.endpoints.releases import (
     ReleaseEnvironmentEdgeResponse,
     append_deployment_event,
 )
+from imbi_api.identity import attribution
 from imbi_api.identity.host_integration import (
     attach_identity,
     call_with_identity_retry,
@@ -209,6 +211,11 @@ class RecentCommit(pydantic.BaseModel):
     short_sha: str
     message: str
     author: str | None = None
+    #: Email of the Imbi user the commit author resolves to via identity
+    #: attribution (``commits.author_user``); ``None`` when the author
+    #: maps to no active identity connection. Lets the UI link the author
+    #: to their profile and render their Gravatar.
+    author_email: str | None = None
     authored_at: datetime.datetime
     ci_status: str = 'unknown'
     url: str | None = None
@@ -241,6 +248,10 @@ class ReleaseHistoryEntry(pydantic.BaseModel):
     short_sha: str
     published_at: datetime.datetime | None = None
     author: str | None = None
+    #: Email of the Imbi user who cut the release (the ``Release`` node's
+    #: ``created_by`` principal); ``None`` for tags with no Imbi-resolved
+    #: author. Lets the UI link the author to their profile + Gravatar.
+    author_email: str | None = None
     ci_status: str = 'unknown'
     title: str | None = None
     notes_markdown: str | None = None
@@ -734,6 +745,14 @@ async def resync_for_project(
         ) from exc
     await persist_link_writeback(db, ctx)
     summary.observed = len(observations)
+    # Resolve the remote deployer to an Imbi user (via the identity
+    # plugins on the same service) so ``performed_by`` matches in-product
+    # deploys and the user_activity queries that key on the email. Built
+    # once and reused across every observed deployment.
+    service_plugins = await attribution.load_service_plugins(
+        db, project_id=project_id, plugin_id=resolved.plugin_id
+    )
+    resolve_user = attribution.make_user_resolver(db, service_plugins)
     # Track identities we've already touched so ``releases_created`` /
     # ``releases_updated`` are counted once per distinct
     # ``(committish, tag)`` pair -- the same tag promoted across
@@ -750,6 +769,7 @@ async def resync_for_project(
                 observed=observed,
                 summary=summary,
                 seen_identities=seen_identities,
+                resolve_user=resolve_user,
             )
         except Exception as exc:
             LOGGER.exception(
@@ -783,6 +803,10 @@ async def _apply_remote_deployment(
     observed: RemoteDeployment,
     summary: ResyncSummary,
     seen_identities: set[tuple[str, str | None]],
+    resolve_user: collections.abc.Callable[
+        [str], collections.abc.Awaitable[str | None]
+    ]
+    | None = None,
 ) -> None:
     """Persist one observed remote deployment.
 
@@ -828,6 +852,13 @@ async def _apply_remote_deployment(
             summary.releases_updated += 1
         else:
             summary.releases_created += 1
+    # Attribute the deploy to an Imbi user when the remote subject
+    # resolves; otherwise keep the raw remote login for display.
+    performed_by = observed.creator
+    if observed.creator_subject and resolve_user is not None:
+        resolved_email = await resolve_user(observed.creator_subject)
+        if resolved_email:
+            performed_by = resolved_email
     result = await append_deployment_event(
         db,
         org_slug=org_slug,
@@ -839,7 +870,7 @@ async def _apply_remote_deployment(
         external_run_id=observed.external_run_id,
         external_run_url=observed.run_url,
         timestamp=observed.created_at,
-        performed_by=observed.creator,
+        performed_by=performed_by,
     )
     if result is None:
         # Either the Release upsert didn't take or the env slug isn't
@@ -2112,12 +2143,14 @@ def _recent_commit_from_row(row: dict[str, typing.Any]) -> RecentCommit:
     """Map a ClickHouse ``commits`` row onto a :class:`RecentCommit`."""
     sha = str(row['sha'])
     author = row.get('author')
+    author_email = row.get('author_email')
     url = row.get('url')
     return RecentCommit(
         sha=sha,
         short_sha=str(row.get('short_sha') or sha[:7]),
         message=str(row.get('message') or ''),
         author=str(author) if author else None,
+        author_email=str(author_email) if author_email else None,
         authored_at=row['authored_at'],
         ci_status=str(row.get('ci_status') or 'unknown'),
         url=str(url) if url else None,
@@ -2217,6 +2250,7 @@ async def list_recent_commits(
     capped = max(1, min(limit, 200))
     sql = (
         'SELECT sha, short_sha, message, author_name AS author, '
+        'author_user AS author_email, '
         'authored_at, ci_status, url FROM commits FINAL '
         'WHERE project_id = {project_id:String} '
         "AND ({ref:String} = '' OR ref = {ref:String}) "
@@ -2307,6 +2341,7 @@ async def get_release_drift(
     commit_rows = await clickhouse.query(
         # WHERE is a fixed string; all values are bound params.
         'SELECT sha, short_sha, message, author_name AS author, '  # noqa: S608
+        'author_user AS author_email, '
         'authored_at, ci_status, url FROM commits FINAL '
         f'WHERE {where} '
         'ORDER BY authored_at DESC LIMIT {cap:UInt32}',
@@ -2378,6 +2413,11 @@ async def get_release_history(
                 short_sha=sha[:7],
                 published_at=row.get('tagged_at') or row.get('recorded_at'),
                 author=str(tagger) if tagger else (created_by or None),
+                author_email=(
+                    str(created_by)
+                    if created_by and '@' in str(created_by)
+                    else None
+                ),
                 ci_status=ci_by_sha.get(sha, 'unknown'),
                 title=node.get('title'),
                 notes_markdown=node.get('description'),

@@ -25,8 +25,7 @@ from imbi_common.plugins.base import PluginContext, ServicePlugin
 from imbi_common.plugins.errors import PluginNotFoundError
 from imbi_common.plugins.registry import RegistryEntry, get_plugin
 
-from imbi_api import models
-from imbi_api.identity import repository as identity_repository
+from imbi_api.identity import attribution
 from imbi_api.plugins import parse_options
 from imbi_api.plugins.credentials import get_plugin_credentials
 
@@ -139,61 +138,6 @@ async def _resolve_plugin(
     )
 
 
-def _identity_plugin_slugs(service_plugins: list[ServicePlugin]) -> list[str]:
-    """Return connected plugin slugs registered as identity plugins."""
-    slugs: list[str] = []
-    for plugin in service_plugins:
-        try:
-            entry = get_plugin(plugin.slug)
-        except PluginNotFoundError:
-            continue
-        if entry.manifest.plugin_type == 'identity':
-            slugs.append(plugin.slug)
-    return slugs
-
-
-def _make_user_resolver(
-    db: graph.Graph, service_plugins: list[ServicePlugin]
-) -> abc.Callable[[str], abc.Awaitable[str | None]] | None:
-    """Build the ``PluginContext.resolve_user_by_identity`` resolver.
-
-    Maps an external identity *subject* (a GitHub numeric user id) to the
-    matching Imbi user's email by querying the graph directly -- no HTTP,
-    since this runs inside imbi-api on a background backfill.  Connected
-    plugins are filtered to identity plugins; ``None`` is returned when
-    none qualify so the action skips the lookups entirely.  A subject
-    resolving to two different users across plugins is treated as
-    unresolved (logged), never mis-attributed.
-    """
-    identity_slugs = _identity_plugin_slugs(service_plugins)
-    if not identity_slugs:
-        return None
-
-    async def _resolve(subject: str) -> str | None:
-        emails: set[str] = set()
-        for slug in identity_slugs:
-            user_id = await identity_repository.find_user_by_subject(
-                db, slug, subject
-            )
-            if user_id is None:
-                continue
-            users = await db.match(models.User, {'id': user_id})
-            if users:
-                emails.add(users[0].email)
-        if len(emails) > 1:
-            LOGGER.error(
-                'Identity subject %r resolved to multiple Imbi users via '
-                'plugins %r: %r — leaving unattributed',
-                subject,
-                identity_slugs,
-                sorted(emails),
-            )
-            return None
-        return next(iter(emails), None)
-
-    return _resolve
-
-
 async def _build_context(
     db: graph.Graph,
     org_slug: str,
@@ -231,7 +175,7 @@ async def _build_context(
         project_type_slugs=project_type_slugs,
         third_party_service_slug=resolved.tps_slug or None,
         service_connections=service_connections,
-        resolve_user_by_identity=_make_user_resolver(
+        resolve_user_by_identity=attribution.make_user_resolver(
             db, resolved.service_plugins
         ),
     )

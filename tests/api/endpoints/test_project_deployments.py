@@ -1183,6 +1183,7 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         status: str = 'success',
         external_run_id: str = '12345',
         creator: str | None = 'octocat',
+        creator_subject: str | None = None,
     ) -> RemoteDeployment:
         return RemoteDeployment(
             environment=environment,
@@ -1199,6 +1200,7 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
             ),
             description='Bump foo',
             creator=creator,
+            creator_subject=creator_subject,
         )
 
     def test_resync_persists_release_and_event_for_sha(self) -> None:
@@ -1321,6 +1323,63 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         append_call = self.mocks['append_deployment_event'].call_args
         self.assertEqual(append_call.kwargs['performed_by'], 'octocat')
+
+    def test_resync_resolves_creator_subject_to_imbi_user(self) -> None:
+        """A resolvable ``creator_subject`` attributes the deploy to the
+        matching Imbi user's email rather than the raw remote login."""
+        self._arm([self._observed(creator='kevinv', creator_subject='42')])
+
+        async def _resolver(subject: str) -> str | None:
+            return 'kevin@example.com' if subject == '42' else None
+
+        self._start(
+            mock.patch(
+                f'{_MODULE}.attribution.load_service_plugins',
+                new=mock.AsyncMock(return_value=[mock.Mock()]),
+            )
+        )
+        self._start(
+            mock.patch(
+                f'{_MODULE}.attribution.make_user_resolver',
+                return_value=_resolver,
+            )
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/resync'
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        append_call = self.mocks['append_deployment_event'].call_args
+        self.assertEqual(
+            append_call.kwargs['performed_by'], 'kevin@example.com'
+        )
+
+    def test_resync_unresolved_subject_keeps_login(self) -> None:
+        """An unresolved subject falls back to the raw remote login."""
+        self._arm([self._observed(creator='kevinv', creator_subject='99')])
+
+        async def _resolver(_subject: str) -> str | None:
+            return None
+
+        self._start(
+            mock.patch(
+                f'{_MODULE}.attribution.load_service_plugins',
+                new=mock.AsyncMock(return_value=[mock.Mock()]),
+            )
+        )
+        self._start(
+            mock.patch(
+                f'{_MODULE}.attribution.make_user_resolver',
+                return_value=_resolver,
+            )
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/resync'
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        append_call = self.mocks['append_deployment_event'].call_args
+        self.assertEqual(append_call.kwargs['performed_by'], 'kevinv')
 
     def test_resync_requires_write_permission(self) -> None:
         non_admin = models.User(
