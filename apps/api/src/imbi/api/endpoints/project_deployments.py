@@ -689,16 +689,28 @@ async def resync_for_project(
     project_id: str,
     auth: permissions.AuthContext,
     source: str | None = None,
+    limit: int = 1,
 ) -> ResyncSummary:
     """Resync remote deployments for a single project.
 
     Resolves the project's deployment plugin, asks it for the most
-    recent deployment per environment, upserts ``Release`` nodes for
-    any observed versions that are missing, appends ``DeploymentEvent``
-    rows on the ``DEPLOYED_TO`` edge (dedup'd by ``external_run_id``),
-    and writes a single audit row per environment.  Returns counts +
-    a per-environment error list so the host can surface partial
-    results rather than failing the whole call on one bad env.
+    recent ``limit`` deployments per environment, upserts ``Release``
+    nodes for any observed versions that are missing, appends
+    ``DeploymentEvent`` rows on the ``DEPLOYED_TO`` edge (dedup'd by
+    ``external_run_id``).  Returns counts + a per-environment error list
+    so the host can surface partial results rather than failing the
+    whole call on one bad env.
+
+    No ``operations_log`` audit row is written: resync backfills
+    historical remote activity, so attributing it to the resync operator
+    would poison ``performed_by`` attribution.
+
+    ``limit`` controls how many recent deployments per environment the
+    plugin returns.  The default (1) keeps webhook-lapse catch-up cheap;
+    a larger value drives a deeper backfill that both fills in missing
+    historical ``DeploymentEvent`` rows and re-resolves ``performed_by``
+    on already-stored events (dedup'd by ``external_run_id``), which is
+    how stale actor attribution gets corrected.
     """
     summary = ResyncSummary(projects=1)
     resolved, ctx, credentials = await _resolve_and_context(
@@ -723,7 +735,7 @@ async def resync_for_project(
                 c,
                 _resolve_credentials(c, credentials),
                 environments=environments,
-                limit=1,
+                limit=limit,
             )
         )
 
@@ -1080,14 +1092,21 @@ async def resync_project_deployments(
         ),
     ],
     source: str | None = None,
+    limit: int = fastapi.Query(default=1, ge=1, le=100),
 ) -> ResyncSummary:
     """Backfill Release nodes + DEPLOYED_TO edges from the remote.
 
-    Asks the project's deployment plugin for the most recent
-    deployment per environment, upserts any missing ``Release`` nodes,
+    Asks the project's deployment plugin for the most recent ``limit``
+    deployments per environment, upserts any missing ``Release`` nodes,
     and dedup-appends ``DeploymentEvent`` rows so the badges advance
-    even when the gateway webhook flow has lapsed.  Records one
-    audit row per environment with ``action='resync'``.
+    even when the gateway webhook flow has lapsed.  No ``operations_log``
+    audit row is written -- the ``DEPLOYED_TO`` edge already carries the
+    original creator via ``DeploymentEvent.performed_by``.
+
+    ``limit`` defaults to 1 (cheap webhook-lapse catch-up).  Raise it
+    (up to 100, the GitHub per-page ceiling) for a deeper backfill that
+    re-resolves ``performed_by`` on historical events -- e.g. to fix
+    stale deploy attribution after a user links their identity.
 
     Surfaces 400 when the project's deployment plugin does not
     advertise ``supports_deployment_sync`` -- callers should hide the
@@ -1099,6 +1118,7 @@ async def resync_project_deployments(
         project_id=project_id,
         auth=auth,
         source=source,
+        limit=limit,
     )
 
 

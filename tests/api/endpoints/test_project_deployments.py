@@ -110,6 +110,8 @@ class _FakeDeploymentPlugin(DeploymentPlugin):
         self, ctx, credentials, environments, limit=1
     ):
         # Override per-test by setting ``_recent`` on the instance.
+        # Record the limit so tests can assert it was threaded through.
+        self._last_limit = limit  # type: ignore[attr-defined]
         return getattr(self, '_recent', [])
 
 
@@ -1380,6 +1382,47 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         append_call = self.mocks['append_deployment_event'].call_args
         self.assertEqual(append_call.kwargs['performed_by'], 'kevinv')
+
+    def test_resync_defaults_limit_to_one(self) -> None:
+        """Absent ``limit`` keeps the cheap latest-per-env catch-up."""
+        self._arm([self._observed()])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/resync'
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(self.mocks['handler'].return_value._last_limit, 1)
+
+    def test_resync_threads_limit_to_plugin(self) -> None:
+        """``?limit=N`` reaches ``list_recent_deployments`` for a deeper
+        backfill that re-resolves historical attribution."""
+        self._arm([self._observed()])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/resync'
+                '?limit=50'
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(self.mocks['handler'].return_value._last_limit, 50)
+
+    def test_resync_rejects_out_of_range_limit(self) -> None:
+        """``limit`` is clamped to the 1..100 GitHub per-page window."""
+        self._arm([self._observed()])
+        with testclient.TestClient(self.test_app) as client:
+            self.assertEqual(
+                client.post(
+                    '/organizations/myorg/projects/proj1/deployments/'
+                    'resync?limit=0'
+                ).status_code,
+                422,
+            )
+            self.assertEqual(
+                client.post(
+                    '/organizations/myorg/projects/proj1/deployments/'
+                    'resync?limit=101'
+                ).status_code,
+                422,
+            )
 
     def test_resync_requires_write_permission(self) -> None:
         non_admin = models.User(
