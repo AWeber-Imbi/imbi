@@ -280,7 +280,7 @@ function EntryRow({
   const email = actor.includes('@') ? actor : undefined
   return (
     <div
-      className={`relative flex gap-3 py-3 ${href ? 'hover:bg-secondary/40 -mx-2 rounded-md px-2' : ''}`}
+      className={`relative flex items-start gap-3 py-3 ${href ? 'hover:bg-secondary/40 -mx-2 rounded-md px-2' : ''}`}
     >
       <div className="relative flex w-4 shrink-0 flex-col items-center">
         <div

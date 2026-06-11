@@ -191,6 +191,7 @@ export function ProjectDetail({
       committish: string
       notes: null | string
       performedBy: null | string
+      performedByEmail: null | string
       runUrl: null | string
       status: string
       tag: null | string
@@ -205,6 +206,7 @@ export function ProjectDetail({
         committish: string
         notes: null | string
         performedBy: null | string
+        performedByEmail: null | string
         runUrl: null | string
         status: string
         tag: null | string
@@ -222,6 +224,7 @@ export function ProjectDetail({
         committish: row.release.committish,
         notes: row.release.description ?? null,
         performedBy: row.performed_by ?? null,
+        performedByEmail: row.performed_by_email ?? null,
         runUrl: row.external_run_url,
         status: row.current_status ?? '',
         tag: row.release.tag ?? null,

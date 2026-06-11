@@ -31,6 +31,9 @@ interface DeploymentInfo {
   committish: string
   // Deployer of the latest deploy event (remote actor); null for in-product.
   performedBy: null | string
+  // Email of the deployer when resolved to an Imbi user — drives Gravatar +
+  // profile link; null for unresolved remote logins.
+  performedByEmail: null | string
   status: string
   tag: null | string
   updated: string
@@ -213,7 +216,10 @@ export function ProjectEnvironmentsCard({
                         <UserIdentity
                           actor={deployment.performedBy}
                           displayNames={displayNames}
-                          email={loginToEmail.get(deployment.performedBy)}
+                          email={
+                            deployment.performedByEmail ??
+                            loginToEmail.get(deployment.performedBy)
+                          }
                           size="small"
                         />
                       </div>
