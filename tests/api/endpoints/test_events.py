@@ -265,7 +265,7 @@ class GlobalListTests(_EventsTestBase):
         response = self.client.get('/events/')
         self.assertEqual(response.status_code, 200)
         sql = self.mock_query.await_args.args[0]
-        self.assertIn('FROM events', sql)
+        self.assertIn('FROM events WHERE', sql)
 
     def test_list_with_since_until(self) -> None:
         self.mock_query.return_value = []
@@ -368,7 +368,7 @@ class GetEventByIdTests(_EventsTestBase):
         response = self.client.get('/events/evt-1')
         self.assertEqual(response.status_code, 200)
         sql = self.mock_query.await_args.args[0]
-        self.assertIn('FROM events', sql)
+        self.assertIn('FROM events ', sql)
         params = self.mock_query.await_args.args[1]
         self.assertEqual(params['event_id'], 'evt-1')
 
