@@ -31,3 +31,6 @@
 [submodule "imbi-slackbot"]
 	path = repositories/imbi-slackbot
 	url = git@github.com:AWeber-Imbi/imbi-slackbot.git
+[submodule "repositories/imbi-plugin-pagerduty"]
+	path = repositories/imbi-plugin-pagerduty
+	url = git@github.com:AWeber-Imbi/imbi-plugin-pagerduty.git
