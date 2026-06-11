@@ -260,15 +260,12 @@ class GlobalListTests(_EventsTestBase):
         self.assertEqual(params['event_type'], 'pull_request')
         self.assertIn('metadata.event_type', sql)
 
-    def test_list_reads_through_events_latest_view(self) -> None:
-        """Coalesced read: queries go through the events_latest view so
-        the phase-1 / phase-2 disposition writes from imbi-gateway are
-        collapsed to one row per id."""
+    def test_list_reads_from_events_table(self) -> None:
         self.mock_query.return_value = []
         response = self.client.get('/events/')
         self.assertEqual(response.status_code, 200)
         sql = self.mock_query.await_args.args[0]
-        self.assertIn('FROM events_latest', sql)
+        self.assertIn('FROM events', sql)
 
     def test_list_with_since_until(self) -> None:
         self.mock_query.return_value = []
@@ -366,12 +363,12 @@ class GetEventByIdTests(_EventsTestBase):
         body = response.json()
         self.assertEqual(body['id'], 'evt-deep-link')
 
-    def test_reads_through_events_latest_view(self) -> None:
+    def test_reads_from_events_table(self) -> None:
         self.mock_query.return_value = [_row(entry_id='evt-1')]
         response = self.client.get('/events/evt-1')
         self.assertEqual(response.status_code, 200)
         sql = self.mock_query.await_args.args[0]
-        self.assertIn('FROM events_latest', sql)
+        self.assertIn('FROM events', sql)
         params = self.mock_query.await_args.args[1]
         self.assertEqual(params['event_id'], 'evt-1')
 

@@ -190,10 +190,7 @@ async def _list_impl(
     where = ' AND '.join(clauses) if clauses else '1=1'
     params['row_limit'] = limit + 1
     sql: str = (
-        # ``events_latest`` is a view over ``events`` that collapses the
-        # phase-1 / phase-2 disposition writes from imbi-gateway to one
-        # row per id (highest ``version`` wins).
-        f'SELECT {_SELECT_COLUMNS} FROM events_latest WHERE '  # noqa: S608
+        f'SELECT {_SELECT_COLUMNS} FROM events WHERE '  # noqa: S608
         + where
         + ' ORDER BY recorded_at DESC, id DESC LIMIT {row_limit:UInt32}'
     )
@@ -267,14 +264,14 @@ async def get_event(
         ),
     ],
 ) -> fastapi.Response:
-    """Fetch a single event by id, coalesced through ``events_latest``.
+    """Fetch a single event by id.
 
     Powers the webhook-history deep-link landing in the admin UI:
     visiting a shared event URL must work even when the event has
     aged past the default cursor page.
     """
     rows = await clickhouse.query(
-        f'SELECT {_SELECT_COLUMNS} FROM events_latest '  # noqa: S608
+        f'SELECT {_SELECT_COLUMNS} FROM events '  # noqa: S608
         'WHERE id = {event_id:String}',
         {'event_id': event_id},
     )
