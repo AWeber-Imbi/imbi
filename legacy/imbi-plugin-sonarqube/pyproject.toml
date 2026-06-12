@@ -1,6 +1,6 @@
 [project]
 name = "imbi-plugin-sonarqube"
-version = "2.11.4"
+version = "2.11.5"
 description = "SonarQube webhook-action plugin for Imbi"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27",
-  "imbi-common==2.11.4",
+  "imbi-common==2.11.5",
   "pydantic>=2",
 ]
 
@@ -26,7 +26,7 @@ sonarqube = "imbi_plugin_sonarqube.plugin:SonarqubePlugin"
 [dependency-groups]
 dev = [
   "coverage[toml]",
-  "imbi-common[server,databases]==2.11.4",
+  "imbi-common[server,databases]==2.11.5",
   "pre-commit",
   "pyrefly~=1.0",
   "pytest",
