@@ -86,48 +86,6 @@ ORDER BY (project_id, pr_id);
 """
 enabled = true
 
-# Rows written before the webhook-history feature carry the resolved
-# per-source label in `type` (e.g. 'pull_request'); newer gateway rows
-# use `type = 'webhook'` with the label in `metadata.event_type`. The
-# MV matches both encodings so PR capture survives mixed gateway
-# versions. The gateway's two-phase write fires the MV twice per
-# delivery with identical rows; ReplacingMergeTree(recorded_at) on
-# pull_requests collapses the pair and readers use FINAL.
-[pull_request_mv]
-query = """
-CREATE MATERIALIZED VIEW IF NOT EXISTS imbi.pull_requests_mv {on_cluster}
-TO imbi.pull_requests AS
-SELECT
-    project_id,
-    CAST(payload.pull_request.id, 'String')                         AS pr_id,
-    CAST(payload.pull_request.number, 'UInt32')                     AS pr_number,
-    CAST(payload.pull_request.title, 'String')                      AS title,
-    CAST(payload.pull_request.html_url, 'String')                   AS url,
-    CAST(payload.pull_request.state, 'String')                      AS state,
-    CAST(payload.pull_request.user.login, 'String')                 AS author,
-    CAST(payload.pull_request.draft, 'Bool')                        AS draft,
-    CAST(payload.pull_request.merged, 'Bool')                       AS merged,
-    parseDateTime64BestEffort(
-        CAST(payload.pull_request.created_at, 'String'))            AS created_at,
-    parseDateTime64BestEffort(
-        CAST(payload.pull_request.updated_at, 'String'))            AS updated_at,
-    if(isNotNull(payload.pull_request.merged_at),
-        parseDateTime64BestEffort(
-            CAST(payload.pull_request.merged_at, 'String')),
-        NULL)                                                        AS merged_at,
-    CAST(payload.pull_request.additions, 'UInt32')                  AS additions,
-    CAST(payload.pull_request.deletions, 'UInt32')                  AS deletions,
-    CAST(payload.pull_request.changed_files, 'UInt32')              AS changed_files,
-    recorded_at
-FROM imbi.events
-WHERE (type = 'pull_request'
-       OR (type = 'webhook'
-           AND CAST(metadata.event_type, 'String') = 'pull_request'))
-  AND third_party_service = 'github-enterprise-cloud'
-  AND CAST(payload.action, 'String') IN ('opened', 'closed', 'reopened');
-"""
-enabled = true
-
 [score_history]
 query = """
 CREATE TABLE IF NOT EXISTS imbi.score_history {on_cluster}(

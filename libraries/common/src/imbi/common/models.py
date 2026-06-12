@@ -38,6 +38,7 @@ __all__ = [
     'Project',
     'ProjectRelationships',
     'ProjectType',
+    'PullRequestRecord',
     'RelationshipEdge',
     'RelationshipLink',
     'Release',
@@ -1010,6 +1011,39 @@ class TagRecord(pydantic.BaseModel):
     tagger_email: str = ''
     tagged_at: datetime.datetime | None = None
     url: str = ''
+    recorded_at: datetime.datetime = pydantic.Field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+
+class PullRequestRecord(pydantic.BaseModel):
+    """A pull request recorded in the ClickHouse ``pull_requests`` table.
+
+    Written directly by the ``github-pr-sync`` webhook-action plugin --
+    both on inbound ``pull_request`` webhook events and during on-demand
+    backfill. The table uses ``ReplacingMergeTree(recorded_at)`` keyed by
+    ``(project_id, pr_id)``, so re-syncing the same PR is safe.
+
+    ``additions``, ``deletions``, and ``changed_files`` default to ``0``
+    for backfill rows because GitHub's list-PRs API omits them; they are
+    populated accurately from webhook payloads and individual-PR fetches.
+    """
+
+    project_id: str
+    pr_id: str
+    pr_number: int
+    title: str
+    url: str
+    state: str
+    author: str
+    draft: bool
+    merged: bool
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    merged_at: datetime.datetime | None = None
+    additions: int = 0
+    deletions: int = 0
+    changed_files: int = 0
     recorded_at: datetime.datetime = pydantic.Field(
         default_factory=lambda: datetime.datetime.now(datetime.UTC),
     )
