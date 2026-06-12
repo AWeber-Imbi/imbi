@@ -34,6 +34,7 @@ from .project_incidents import project_incidents_router
 from .project_lifecycle import project_lifecycle_router
 from .project_logs import project_logs_router
 from .project_plugins import project_plugins_router
+from .project_pr_sync import project_pr_sync_router
 from .project_type_plugins import project_type_plugins_router
 from .project_types import project_types_router
 from .projects import projects_router
@@ -175,6 +176,10 @@ organizations_router.include_router(
 organizations_router.include_router(
     project_commit_sync_router,
     prefix='/{org_slug}/projects/{project_id}/commits',
+)
+organizations_router.include_router(
+    project_pr_sync_router,
+    prefix='/{org_slug}/projects/{project_id}/pull-requests',
 )
 organizations_router.include_router(
     pull_requests_project_router,

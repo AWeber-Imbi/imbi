@@ -145,6 +145,12 @@ class ProjectAnalysisTestCase(unittest.TestCase):
                 return_value={},
             )
         )
+        self.mocks['check_blueprint_compliance'] = self._start(
+            mock.patch(
+                f'{_MODULE}.check_blueprint_compliance',
+                return_value=[],
+            )
+        )
 
     def _start(self, patcher: typing.Any) -> mock.MagicMock:
         m = patcher.start()
@@ -273,4 +279,51 @@ class ProjectAnalysisTestCase(unittest.TestCase):
                 resp = client.post(
                     '/organizations/acme/projects/proj-1/analysis/run'
                 )
+        self.assertEqual(403, resp.status_code, resp.text)
+
+    def test_apply_blueprint_defaults_returns_counts(self) -> None:
+        with (
+            mock.patch(
+                f'{_MODULE}.apply_blueprint_defaults',
+                return_value=3,
+            ),
+            mock.patch(
+                f'{_MODULE}.remove_stale_blueprint_properties',
+                return_value=1,
+            ),
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                resp = client.post(
+                    '/organizations/acme/projects/proj-1/analysis'
+                    '/apply-blueprint-defaults'
+                )
+        self.assertEqual(200, resp.status_code, resp.text)
+        body = resp.json()
+        self.assertEqual(3, body['properties_updated'])
+        self.assertEqual(1, body['properties_removed'])
+
+    def test_apply_blueprint_defaults_requires_project_write_permission(
+        self,
+    ) -> None:
+        self.auth_context = permissions.AuthContext(
+            user=self.test_user,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions={'project:read'},
+        )
+        self.auth_context.user = self.test_user.model_copy(
+            update={'is_admin': False}
+        )
+
+        async def mock_get_current_user() -> permissions.AuthContext:
+            return self.auth_context
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            mock_get_current_user
+        )
+        with testclient.TestClient(self.test_app) as client:
+            resp = client.post(
+                '/organizations/acme/projects/proj-1/analysis'
+                '/apply-blueprint-defaults'
+            )
         self.assertEqual(403, resp.status_code, resp.text)
