@@ -27,6 +27,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useCommitSync } from '@/hooks/useCommitSync'
 import { useProjectDeploymentResync } from '@/hooks/useDeploymentResync'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
+import { usePRSync } from '@/hooks/usePRSync'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { treatNotFoundAsNull } from '@/lib/queryHelpers'
 import type { Project } from '@/types'
@@ -114,6 +115,10 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
   // deployment plugin (eligibility) plus a connected commit-sync plugin.
   const commitSync = useCommitSync(orgSlug, project.id, canResyncDeployments)
 
+  // Same deployment:write gate: requires the GitHub deployment plugin
+  // plus a connected github-pr-sync plugin for the service credential.
+  const prSync = usePRSync(orgSlug, project.id, canResyncDeployments)
+
   const applyDefaultsMutation = useMutation({
     mutationFn: () => applyProjectBlueprintDefaults(orgSlug, project.id),
     onError: (err) =>
@@ -187,6 +192,16 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
                 variant="outline"
               >
                 {commitSync.isSyncing ? 'Syncing...' : 'Sync Commits & Tags'}
+              </Button>
+            )}
+            {canResyncDeployments && (
+              <Button
+                disabled={prSync.isSyncing}
+                onClick={() => prSync.sync()}
+                size="sm"
+                variant="outline"
+              >
+                {prSync.isSyncing ? 'Syncing...' : 'Sync PRs'}
               </Button>
             )}
             {canAnalyze && hasBlueprintIssues && (

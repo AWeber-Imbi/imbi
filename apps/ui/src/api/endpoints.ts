@@ -1029,6 +1029,41 @@ export const getProjectCommitSyncStatus = (
     signal,
   )
 
+export interface PRSyncEnqueueResponse {
+  enqueued: boolean
+}
+
+export type PRSyncState = CommitSyncState
+
+export interface PRSyncStatus {
+  error: null | string
+  last_synced_at: null | string
+  prs_synced: null | number
+  requested_by: null | string
+  status: PRSyncState
+}
+
+// Enqueue a full pull-request history backfill (background job). 202 +
+// {enqueued} — false when debounced or queueing is unavailable.
+export const syncProjectPullRequests = (
+  orgSlug: string,
+  projectId: string,
+): Promise<PRSyncEnqueueResponse> =>
+  apiClient.post<PRSyncEnqueueResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/pull-requests/sync`,
+  )
+
+export const getProjectPRSyncStatus = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<PRSyncStatus> =>
+  apiClient.get<PRSyncStatus>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/pull-requests/sync-status`,
+    undefined,
+    signal,
+  )
+
 export interface ScoreTrend {
   current: null | number
   delta: null | number
