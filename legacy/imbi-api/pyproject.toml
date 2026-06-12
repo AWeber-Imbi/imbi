@@ -1,6 +1,6 @@
 [project]
 name = "imbi-api"
-version = "2.11.3"
+version = "2.11.4"
 description = "Imbi is a DevOps Service Management Platform designed to provide an efficient way to manage a large environment that contains many services and applications."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -28,7 +28,7 @@ dependencies = [
   "fastapi",
   "filetype",
   "httpx>=0.28.1,<1",
-  "imbi-common[databases,llm,sentry,server]==2.11.3",
+  "imbi-common[databases,llm,sentry,server]==2.11.4",
   "jinja2",
   "jsonpatch>=1.33",
   "mcp>=1.26.0",
