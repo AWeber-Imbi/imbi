@@ -13,7 +13,7 @@ Audit date: 2026-06-10. Scope: every surface in `src/` that fetches on mount or 
 3. **Reveal in waves.** Each region resolves independently as its own request lands
    (`.reveal` fade+lift, staggered `delay={i * 50}` when several arrive together).
    Never gate a page on its slowest query.
-4. **Amber AI variant** (`sk-ai`) + "thinking" header for Imbot-generated content only;
+4. **Amber AI variant** (`sk-ai`) + "thinking" header for Imbi Assistant-generated content only;
    resolves into streaming text; dependent actions disabled until done.
 5. **Accessibility & honesty:** `aria-busy="true"` on loading regions (cleared on data),
    skeletons `aria-hidden`, sweep/reveal disabled under `prefers-reduced-motion`,
@@ -121,11 +121,11 @@ Classification legend:
 | `ProjectGraphView.tsx` / `LazyProjectsGraphCanvas.tsx` | spinner Suspense fallback + render spinner | |
 | `documents/comments/LazyRichComposer.tsx` | "Loading editor…" text Suspense fallback | |
 
-### AI (Imbot) surfaces — amber variant required
+### AI (Imbi Assistant) surfaces — amber variant required
 
 | Surface | Today | Gap vs pattern |
 |---|---|---|
-| `CommandBar.tsx` assistant (SSE via `api/assistant.ts` + Zustand store) | Streaming ✓, ToolUseIndicator spinner + friendly text ✓, input disabled while streaming ✓ | No amber skeleton, no "Imbot is reading…" thinking header; tool results pop in |
+| `CommandBar.tsx` assistant (SSE via `api/assistant.ts` + Zustand store) | Streaming ✓, ToolUseIndicator spinner + friendly text ✓, input disabled while streaming ✓ | No amber skeleton, no "Imbi Assistant is reading…" thinking header; tool results pop in |
 | `deployments/PendingPromoteCard.tsx` (draft release notes) | button spinner during mutation | AI-generated value: needs amber skeleton + thinking header where notes render; gate the promote action until done |
 | `releases/ReleaseReadyCard.tsx` (AI draft) | button spinner during mutation | Same: amber skeleton + gate "Cut release" |
 
@@ -245,9 +245,9 @@ for the least code.
       block, no spinner), `graph-query/ResultCard`, `LazyRichComposer` (composer-shaped
       block, no text).
 
-### Phase 5 — AI (Imbot) amber treatment
+### Phase 5 — AI (Imbi Assistant) amber treatment
 
-- [ ] `CommandBar` assistant: amber `SkText` + thinking header ("Imbot is …") while the
+- [ ] `CommandBar` assistant: amber `SkText` + thinking header ("Imbi Assistant is …") while the
       model works, before first token; keep streaming + caret; tool-result cards get a
       brief amber skeleton instead of popping in. Input already disabled while
       streaming — keep.
@@ -280,7 +280,7 @@ A surface is done when:
 3. Sibling regions don't wait for it (each region has its own `Swap`).
 4. The region container has `aria-busy` toggling; skeleton elements are `aria-hidden`.
 5. No "Loading…" text, no spinner, no empty-state message before the query settles.
-6. Amber is used iff the content is Imbot-generated.
+6. Amber is used iff the content is Imbi Assistant-generated.
 
 ## Audit tallies
 

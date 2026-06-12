@@ -315,7 +315,7 @@ export function UpToDateCard({ upstreamName }: { upstreamName: string }) {
 }
 
 /**
- * Amber "Imbot is drafting" placeholder shown in the notes region while the
+ * Amber "Imbi Assistant is drafting" placeholder shown in the notes region while the
  * release-notes draft is generating, before the textarea is seeded.
  */
 function DraftingNotes() {
@@ -323,7 +323,7 @@ function DraftingNotes() {
     <div className="border-amber-border min-h-32 rounded-md border border-dashed p-3">
       <div className="text-amber-text mb-2 flex items-center gap-1.5 text-xs">
         <Sparkles className="size-3" />
-        Imbot is drafting release notes…
+        Imbi Assistant is drafting release notes…
       </div>
       <SkText ai widths={['96%', '88%', '92%', '70%']} />
     </div>

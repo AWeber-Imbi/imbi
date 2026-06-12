@@ -699,7 +699,7 @@ function ThinkingNotes() {
     <div className="border-amber-border border-l-2 pl-4">
       <div className="text-amber-text mb-2 flex items-center gap-1.5 font-mono text-xs">
         <Sparkles className="size-3" />
-        Imbot is thinking…
+        Imbi Assistant is thinking…
       </div>
       <SkText ai widths={['90%', '96%', '72%']} />
     </div>

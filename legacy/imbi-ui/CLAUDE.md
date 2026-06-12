@@ -61,7 +61,7 @@ This is a complete rewrite of the Imbi UI using modern TypeScript and React.
    `Sk`/`SkText` — same rows, widths, radii as the loaded content. Never use a
    region-level spinner or "Loading…" text; never gate a whole page on its
    slowest query (give each region its own `Swap` and stagger reveals with
-   `delay={i * 50}`). Use the amber variant (`ai`) only for Imbot-generated
+   `delay={i * 50}`). Use the amber variant (`ai`) only for Imbi Assistant-generated
    content. Button/toast spinners for in-flight actions (save, deploy) are fine.
    See `docs/loading-patterns.html`.
 

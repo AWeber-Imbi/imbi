@@ -3,7 +3,7 @@ import type { CSSProperties, HTMLAttributes, ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 interface SkProps {
-  /** Amber variant, reserved for Imbot-generated content. */
+  /** Amber variant, reserved for Imbi Assistant-generated content. */
   ai?: boolean
   /** Fully rounded (avatars, dots). */
   circle?: boolean
