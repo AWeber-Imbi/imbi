@@ -1,4 +1,6 @@
-import { useNavigate, useParams } from 'react-router-dom'
+import { useEffect } from 'react'
+
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import {
   BarChart3,
@@ -70,9 +72,12 @@ export function ReportsPage() {
     reportId && VALID_IDS.has(reportId) ? reportId : DEFAULT_REPORT
   const active = REPORTS.find((r) => r.id === activeId) ?? REPORTS[0]
 
-  function selectReport(id: string) {
-    navigate(`/reports/${id}`, { replace: true })
-  }
+  // Canonicalize bare /reports (and unknown ids) to an explicit report URL
+  useEffect(() => {
+    if (reportId !== activeId) {
+      navigate(`/reports/${activeId}`, { replace: true })
+    }
+  }, [reportId, activeId, navigate])
 
   return (
     <div className="bg-tertiary text-primary min-h-screen">
@@ -95,14 +100,14 @@ export function ReportsPage() {
                 {REPORTS.map((r) => {
                   const isActive = r.id === activeId
                   return (
-                    <button
+                    <Link
                       className={`flex w-full items-start gap-3 rounded-lg px-4 py-3 text-left transition-colors ${
                         isActive
                           ? 'bg-warning text-warning'
                           : 'text-secondary hover:bg-secondary hover:text-primary'
                       }`}
                       key={r.id}
-                      onClick={() => selectReport(r.id)}
+                      to={`/reports/${r.id}`}
                     >
                       {r.id === 'team-kpi' ? (
                         <BarChart3 className="mt-0.5 size-3.5 shrink-0" />
@@ -121,7 +126,7 @@ export function ReportsPage() {
                           {r.description}
                         </div>
                       </div>
-                    </button>
+                    </Link>
                   )
                 })}
               </div>
