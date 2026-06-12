@@ -38,9 +38,12 @@ def serve(  # noqa: PLR0913 - CLI options map 1:1 to parameters
     public_url: t.Annotated[
         str | None,
         typer.Option(
-            help='Public URL where this MCP server is reachable '
-            '(e.g. https://host/mcp). Enables OAuth when set together '
-            'with --auth-server-url.',
+            help='Public base URL of the host fronting this server, '
+            'WITHOUT the /mcp path (e.g. https://host). FastMCP '
+            'appends its own /mcp mount path when advertising the '
+            'OAuth resource; including it here doubles the path '
+            '(/mcp/mcp) and breaks client discovery. Enables OAuth '
+            'when set together with --auth-server-url.',
             envvar='IMBI_MCP_PUBLIC_URL',
         ),
     ] = None,

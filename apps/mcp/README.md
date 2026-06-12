@@ -66,7 +66,7 @@ imbi-mcp serve [OPTIONS]
 | `--transport`   | `streamable-http`        |                | MCP transport type       |
 | `--host`        | `127.0.0.1`              |                | Host to bind to          |
 | `--port`        | `8001`                   |                | Port to bind to          |
-| `--public-url`  | _(none)_                 | `IMBI_MCP_PUBLIC_URL` | Public URL of this server (e.g. `https://host/mcp`); enables OAuth with `--auth-server-url` |
+| `--public-url`  | _(none)_                 | `IMBI_MCP_PUBLIC_URL` | Public base URL of the host fronting this server, WITHOUT the `/mcp` path (e.g. `https://host`); FastMCP appends its own `/mcp` mount path. Enables OAuth with `--auth-server-url` |
 | `--auth-server-url` | _(none)_             | `IMBI_MCP_AUTH_SERVER_URL` | Imbi OAuth issuer URL (e.g. `https://host`); enables OAuth with `--public-url` |
 
 Supported transports: `stdio`, `http`, `sse`, `streamable-http`

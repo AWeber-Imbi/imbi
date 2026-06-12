@@ -98,10 +98,12 @@ def _build_auth(
 ) -> RemoteAuthProvider | None:
     """Build the OAuth Resource Server provider when configured.
 
-    Both ``public_url`` (where this server is reachable, e.g.
-    ``https://host/mcp``) and ``auth_server_url`` (the Imbi issuer, e.g.
-    ``https://host``) are required to advertise discovery. When either is
-    missing the server keeps its transparent pass-through behavior.
+    Both ``public_url`` (the public base URL of the host fronting this
+    server, without the ``/mcp`` path -- FastMCP appends its own mount
+    path, e.g. ``https://host``) and ``auth_server_url`` (the Imbi
+    issuer, e.g. ``https://host``) are required to advertise discovery.
+    When either is missing the server keeps its transparent
+    pass-through behavior.
     """
     if not (public_url and auth_server_url):
         return None
@@ -125,9 +127,10 @@ def create_server(
     Args:
         api_url: Base URL of the running Imbi API
             (e.g. ``http://localhost:8000``).
-        public_url: Public URL where this MCP server is reachable
-            (e.g. ``https://host/mcp``). Enables OAuth when set with
-            ``auth_server_url``.
+        public_url: Public base URL of the host fronting this server,
+            without the ``/mcp`` path (e.g. ``https://host``) -- the
+            ``/mcp`` mount path is appended by FastMCP. Enables OAuth
+            when set with ``auth_server_url``.
         auth_server_url: Imbi OAuth issuer URL (e.g. ``https://host``).
     """
     spec_url = f'{api_url.rstrip("/")}/openapi.json'
