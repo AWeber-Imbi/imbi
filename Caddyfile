@@ -1,6 +1,14 @@
 {
 	auto_https off
 	admin 0.0.0.0:2019
+	servers {
+		# Honor X-Forwarded-* from the fronting load balancer so the
+		# backends see the original client scheme/host. Without this,
+		# Caddy overwrites X-Forwarded-Proto with the scheme it saw
+		# (http), which breaks imbi-api's per-request public URL
+		# derivation for the OAuth/MCP discovery documents.
+		trusted_proxies static private_ranges
+	}
 }
 
 :8080 {
