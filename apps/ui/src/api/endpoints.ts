@@ -980,6 +980,14 @@ export const runProjectAnalysis = (orgSlug: string, projectId: string) =>
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/analysis/run`,
   )
 
+export const applyProjectBlueprintDefaults = (
+  orgSlug: string,
+  projectId: string,
+) =>
+  apiClient.post<{ properties_removed: number; properties_updated: number }>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/analysis/apply-blueprint-defaults`,
+  )
+
 export interface CommitSyncEnqueueResponse {
   enqueued: boolean
 }
