@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27",
-  "imbi-common[databases]==2.11.2",
+  "imbi-common[databases]==2.11.3",
   "pydantic>=2",
   "pyjwt[crypto]>=2.8",
 ]
@@ -32,12 +32,13 @@ github-lifecycle = "imbi_plugin_github.lifecycle:GitHubLifecyclePlugin"
 github-lifecycle-ec = "imbi_plugin_github.lifecycle:GitHubEnterpriseCloudLifecyclePlugin"
 github-lifecycle-es = "imbi_plugin_github.lifecycle:GitHubEnterpriseServerLifecyclePlugin"
 github-commit-sync = "imbi_plugin_github.commits:GitHubCommitSyncPlugin"
+github-pr-sync = "imbi_plugin_github.pull_requests:GitHubPRSyncPlugin"
 
 [dependency-groups]
 dev = [
   "basedpyright",
   "coverage[toml]",
-  "imbi-common[server,databases]==2.11.2",
+  "imbi-common[server,databases]==2.11.3",
   "pre-commit",
   "pytest",
   "pytest-asyncio",
