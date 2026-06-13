@@ -26,6 +26,8 @@ import type {
 
 export interface PipelineStage {
   current: CurrentReleaseEnvironment | null
+  /** History entry for the currently running release, if available. */
+  currentHistoryEntry: null | ReleaseHistoryEntry
   env: Environment
   kind: StageKind
   /**
@@ -75,6 +77,7 @@ export function buildPipeline(
         : 'promote'
     return {
       current,
+      currentHistoryEntry: currentReleaseEntry(history, current),
       env,
       kind,
       pendingCommits:
@@ -148,6 +151,19 @@ export function defaultStageSlug(stages: PipelineStage[]): null | string {
 /** SHA-prefix match in either direction (events may record short SHAs). */
 export function shaMatch(a: string, b: string): boolean {
   return !!a && !!b && (a.startsWith(b) || b.startsWith(a))
+}
+
+/** History entry for the currently running release, if any. */
+function currentReleaseEntry(
+  history: ReleaseHistoryEntry[],
+  current: CurrentReleaseEnvironment | null,
+): null | ReleaseHistoryEntry {
+  const release = current?.release
+  if (!release?.tag) return null
+  const tag = release.tag ?? null
+  const idx = history.findIndex((entry) => tagEq(entry.tag, tag))
+  if (idx >= 0) return history[idx]
+  return entryFromRelease(release)
 }
 
 /** Minimal history entry for a release the tag sync hasn't recorded yet. */

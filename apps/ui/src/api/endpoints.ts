@@ -198,8 +198,21 @@ export interface ProjectListItem {
   project_types: {
     deployable: boolean
     name: string
+    releasable: boolean
     slug: string
   }[]
+  release_summary: null | {
+    commits_since_tag: number
+    head_author: null | string
+    head_author_login: null | string
+    head_authored_at: null | string
+    head_sha: null | string
+    head_short_sha: null | string
+    latest_tag: null | string
+    latest_tag_at: null | string
+    latest_tag_author: null | string
+    latest_tag_sha: null | string
+  }
   score: null | number
   slug: string
   team: { name: string; slug: string }

@@ -116,6 +116,22 @@ export function CurrentlyRunningCard({
           <p className="text-tertiary text-sm italic">Nothing deployed yet.</p>
         )}
 
+        {stage.currentHistoryEntry ? (
+          <section className="mb-4">
+            <p className="text-tertiary mb-2 text-xs tracking-wider uppercase">
+              Release notes ·{' '}
+              <span className="font-mono normal-case">
+                {stage.currentHistoryEntry.tag}
+              </span>
+            </p>
+            <div className="border-tertiary rounded-md border px-3.5 py-3">
+              <ReleaseNotesMarkdown
+                notes={stage.currentHistoryEntry.notes_markdown}
+              />
+            </div>
+          </section>
+        ) : null}
+
         {stage.rollbackTargets.length > 0 ? (
           <div>
             <p className="text-tertiary mb-2 text-xs tracking-wider uppercase">

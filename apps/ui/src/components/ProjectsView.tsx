@@ -7,9 +7,12 @@ import { useQuery } from '@tanstack/react-query'
 import {
   ArrowRight,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronsUpDown,
   ChevronUp,
   CircleCheck,
+  GitCommit,
   GitPullRequest,
   Grid3x3,
   List,
@@ -17,6 +20,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Tag,
   User,
 } from 'lucide-react'
 import { matchSorter } from 'match-sorter'
@@ -71,7 +75,7 @@ interface FilterPopoverProps {
   activeFilters: Set<string>
   label: string
   onToggle: (slug: string) => void
-  options: { label: string; slug: string }[]
+  options: { dotClass?: string; label: string; slug: string }[]
 }
 
 interface ProjectListRowProps {
@@ -148,7 +152,7 @@ function ProjectsSkeleton({
             <Sk h={20} r={6} w={48} />
             <Sk h={20} r={6} w={48} />
           </div>
-          <div className="flex w-40 shrink-0 justify-center">
+          <div className="flex w-28 shrink-0 justify-center">
             <Sk circle h={28} w={28} />
           </div>
         </div>
@@ -214,6 +218,7 @@ export function ProjectsView() {
   const teamsParam = searchParams.get('teams') ?? ''
   const typesParam = searchParams.get('types') ?? ''
   const driftsParam = searchParams.get('drifts') ?? ''
+  const scoresParam = searchParams.get('scores') ?? ''
   const hasDrift = searchParams.get('has_drift') === '1'
   const hasOpenPRs = searchParams.get('has_open_prs') === '1'
   const hasMyOpenPRs = searchParams.get('has_my_open_prs') === '1'
@@ -334,16 +339,48 @@ export function ProjectsView() {
 
   const driftedProjectIds = useMemo(() => {
     const ids = new Set<string>()
-    for (const p of projects ?? []) if (projectHasDrift(p)) ids.add(p.id)
+    for (const p of projects ?? []) {
+      if (projectHasDrift(p) || projectReleaseDrifted(p)) ids.add(p.id)
+    }
     return ids
   }, [projects])
   const totalDriftProjects = driftedProjectIds.size
+
+  // fallow-ignore-next-line complexity
+  const driftPairOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const p of projects ?? []) {
+      if (isProjectDeployable(p) && (p.environments ?? []).length >= 2) {
+        const pairs = computeDriftPairs(
+          p.environments ?? [],
+          p.current_releases ?? {},
+        )
+        for (const pair of pairs) {
+          if (pair.drifted) {
+            const slug = `${pair.from}->${pair.to}`
+            if (!seen.has(slug))
+              seen.set(
+                slug,
+                `${abbreviateEnvName(pair.from)} → ${abbreviateEnvName(pair.to)}`,
+              )
+          }
+        }
+      }
+      if (isProjectReleasable(p) && projectReleaseDrifted(p)) {
+        if (!seen.has('C->R')) seen.set('C->R', 'C → R (commit → release)')
+      }
+    }
+    return Array.from(seen.entries())
+      .map(([slug, label]) => ({ label, slug }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [projects])
 
   // fallow-ignore-next-line complexity
   const filteredProjects = useMemo(() => {
     const teamSet = new Set(teamsParam.split(',').filter(Boolean))
     const typeSet = new Set(typesParam.split(',').filter(Boolean))
     const driftSet = new Set(driftsParam.split(',').filter(Boolean))
+    const scoreSet = new Set(scoresParam.split(',').filter(Boolean))
     let all = projects ?? []
 
     if (teamSet.size > 0) {
@@ -355,9 +392,20 @@ export function ProjectsView() {
       )
     }
     if (driftSet.size > 0) {
-      all = all.filter((p) =>
-        driftSet.has('none') ? !driftedProjectIds.has(p.id) : true,
-      )
+      all = all.filter((p) => {
+        if (
+          driftSet.has('C->R') &&
+          isProjectReleasable(p) &&
+          projectReleaseDrifted(p)
+        )
+          return true
+        const pairs = isProjectDeployable(p)
+          ? computeDriftPairs(p.environments ?? [], p.current_releases ?? {})
+          : []
+        return pairs.some(
+          (pair) => pair.drifted && driftSet.has(`${pair.from}->${pair.to}`),
+        )
+      })
     }
     if (hasOpenPRs) {
       all = all.filter((p) => (p.open_pr_count ?? 0) > 0)
@@ -370,6 +418,16 @@ export function ProjectsView() {
     }
     if (hasDrift) {
       all = all.filter((p) => driftedProjectIds.has(p.id))
+    }
+    if (scoreSet.size > 0) {
+      all = all.filter((p) => {
+        const s = p.score
+        if (s == null) return scoreSet.has('unscored')
+        if (s >= 85) return scoreSet.has('healthy')
+        if (s >= 75) return scoreSet.has('fair')
+        if (s >= 50) return scoreSet.has('at-risk')
+        return scoreSet.has('unhealthy')
+      })
     }
     if (deferredQuery) {
       return matchSorter(all, deferredQuery, {
@@ -412,6 +470,7 @@ export function ProjectsView() {
     teamsParam,
     typesParam,
     driftsParam,
+    scoresParam,
     hasDrift,
     hasOpenPRs,
     hasMyOpenPRs,
@@ -439,7 +498,18 @@ export function ProjectsView() {
   const activeTeamSet = new Set(teamsParam.split(',').filter(Boolean))
   const activeTypeSet = new Set(typesParam.split(',').filter(Boolean))
   const activeDriftSet = new Set(driftsParam.split(',').filter(Boolean))
-  const driftOptions = [{ label: 'None', slug: 'none' }]
+  const activeScoreSet = new Set(scoresParam.split(',').filter(Boolean))
+  const driftOptions = driftPairOptions
+  const scoreOptions: { dotClass: string; label: string; slug: string }[] = [
+    { dotClass: 'bg-success', label: 'Healthy 85–100', slug: 'healthy' },
+    { dotClass: 'bg-warning', label: 'Fair 75–84', slug: 'fair' },
+    { dotClass: 'bg-danger', label: 'At risk 50–74', slug: 'at-risk' },
+    {
+      dotClass: 'bg-[var(--color-status-failed-dot)]',
+      label: 'Unhealthy < 50',
+      slug: 'unhealthy',
+    },
+  ]
 
   return (
     <div className="mx-auto max-w-screen-2xl px-6 py-8">
@@ -485,20 +555,20 @@ export function ProjectsView() {
               <StatBadge hidden label="Deploying" value={0} variant="warning" />
               <StatBadge hidden label="Failed" value={0} variant="danger" />
               <StatBadge
+                active={hasDrift}
+                disabled={isLoading}
+                label="Drifted"
+                onClick={toggleDrift}
+                value={totalDriftProjects}
+                variant="amber"
+              />
+              <StatBadge
                 active={hasOpenPRs}
                 disabled={isLoading}
                 label="Open PRs"
                 onClick={toggleOpenPRs}
                 value={totalOpenPRs}
                 variant="accent"
-              />
-              <StatBadge
-                active={hasDrift}
-                disabled={isLoading}
-                label="Need Release"
-                onClick={toggleDrift}
-                value={totalDriftProjects}
-                variant="amber"
               />
               <StatBadge
                 active={hasMyOpenPRs}
@@ -688,16 +758,33 @@ export function ProjectsView() {
               </div>
             </div>
             <div className="min-w-0 flex-1 px-6 py-3 text-center whitespace-nowrap">
-              Current Deployments
+              Current Deployments &amp; Releases
             </div>
-            <SortHeader
-              className="w-40 shrink-0 text-center whitespace-nowrap"
-              onSort={() => setSort('score')}
-              sortDir={sortDir}
-              sorted={sortKey === 'score'}
+            <div
+              className="hover:text-primary w-28 shrink-0 cursor-pointer px-6 py-3 text-center whitespace-nowrap select-none"
+              onClick={() => setSort('score')}
             >
-              Health Score
-            </SortHeader>
+              <span className="inline-flex items-center gap-1">
+                Score
+                {sortKey === 'score' ? (
+                  sortDir === 'asc' ? (
+                    <ChevronUp className="size-3.5 shrink-0" />
+                  ) : (
+                    <ChevronDown className="size-3.5 shrink-0" />
+                  )
+                ) : (
+                  <ChevronsUpDown className="text-tertiary/50 size-3.5 shrink-0" />
+                )}
+                <span onClick={(e) => e.stopPropagation()}>
+                  <FilterPopover
+                    activeFilters={activeScoreSet}
+                    label="health score"
+                    onToggle={(s) => toggleFilter('scores', s)}
+                    options={scoreOptions}
+                  />
+                </span>
+              </span>
+            </div>
           </div>
           <div
             className="divide-tertiary divide-y overflow-y-auto"
@@ -876,19 +963,13 @@ function DriftCell({
           sort_order?: null | number
         }[]
     project_types?: null | object[]
+    release_summary?: null | {
+      commits_since_tag: number
+      head_sha: null | string
+    }
   }
 }) {
   const { isDarkMode } = useTheme()
-  if (!isProjectDeployable(project)) return null
-  const envs = project.environments ?? []
-  if (envs.length < 2) {
-    return null
-  }
-  const pairs = computeDriftPairs(envs, project.current_releases ?? {})
-  const drifted = pairs.filter((p) => p.drifted)
-  if (drifted.length === 0) {
-    return null
-  }
   const containerCls = inline
     ? 'flex flex-row flex-wrap items-center gap-1'
     : 'flex flex-col items-center gap-1.5'
@@ -896,9 +977,22 @@ function DriftCell({
     ? 'inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-mono text-xs'
     : 'inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-xs'
   const fallbackCls = 'border-amber-border bg-amber-bg text-amber-text border'
+
+  const deployDrifted: DriftPair[] = isProjectDeployable(project)
+    ? computeDriftPairs(
+        project.environments ?? [],
+        project.current_releases ?? {},
+      ).filter((p) => p.drifted)
+    : []
+
+  const releaseDrifted =
+    isProjectReleasable(project) && projectReleaseDrifted(project)
+
+  if (deployDrifted.length === 0 && !releaseDrifted) return null
+
   return (
     <div className={containerCls}>
-      {drifted.map((p) => {
+      {deployDrifted.map((p) => {
         const derived = p.toLabelColor
           ? deriveChipColors(p.toLabelColor, isDarkMode)
           : null
@@ -927,6 +1021,14 @@ function DriftCell({
           </span>
         )
       })}
+      {releaseDrifted && (
+        <span className={`${badgeBaseCls} ${fallbackCls}`}>
+          <span className="font-medium">Δ</span>
+          <span>C</span>
+          <span>→</span>
+          <span>R</span>
+        </span>
+      )}
     </div>
   )
 }
@@ -1086,7 +1188,7 @@ function FilterPopover({
         <p className="text-secondary mb-2 px-1 text-xs font-medium tracking-wide uppercase">
           Filter by {label}
         </p>
-        <div className="space-y-0.5">
+        <div className="max-h-56 space-y-0.5 overflow-y-auto">
           {options.map((opt) => (
             <Label
               className="hover:bg-secondary flex cursor-pointer items-center gap-2 rounded px-1 py-1.5"
@@ -1096,6 +1198,11 @@ function FilterPopover({
                 checked={activeFilters.has(opt.slug)}
                 onCheckedChange={() => onToggle(opt.slug)}
               />
+              {opt.dotClass && (
+                <span
+                  className={`size-2 shrink-0 rounded-full ${opt.dotClass}`}
+                />
+              )}
               <span className="text-primary text-sm">{opt.label}</span>
             </Label>
           ))}
@@ -1110,6 +1217,14 @@ function isProjectDeployable(project: {
 }): boolean {
   return (project.project_types ?? []).some(
     (pt) => (pt as { deployable?: boolean }).deployable === true,
+  )
+}
+
+function isProjectReleasable(project: {
+  project_types?: null | object[]
+}): boolean {
+  return (project.project_types ?? []).some(
+    (pt) => (pt as { releasable?: boolean }).releasable === true,
   )
 }
 
@@ -1153,6 +1268,107 @@ function projectHasDrift(project: {
   if (envs.length < 2) return false
   const pairs = computeDriftPairs(envs, project.current_releases ?? {})
   return pairs.some((p) => p.drifted)
+}
+
+function projectReleaseDrifted(project: {
+  release_summary?: null | {
+    commits_since_tag: number
+    head_sha: null | string
+  }
+}): boolean {
+  const s = project.release_summary
+  if (!s?.head_sha) return false
+  return s.commits_since_tag > 0
+}
+
+// fallow-ignore-next-line complexity
+function ReleaseCards({
+  release_summary,
+}: {
+  release_summary: {
+    head_author: null | string
+    head_author_login: null | string
+    head_authored_at: null | string
+    head_sha: null | string
+    head_short_sha: null | string
+    latest_tag: null | string
+    latest_tag_at: null | string
+    latest_tag_author: null | string
+    latest_tag_sha: null | string
+  }
+}) {
+  const { displayNames, loginToEmail } = useLoginToEmail()
+  const headSha =
+    release_summary.head_short_sha ??
+    release_summary.head_sha?.slice(0, 7) ??
+    null
+  const headActor = release_summary.head_author ?? null
+  const headActorLogin = release_summary.head_author_login ?? headActor
+  const headActorEmail = resolveActorEmail(headActorLogin, loginToEmail)
+  const tagActor = release_summary.latest_tag_author ?? null
+  const tagActorEmail = resolveActorEmail(tagActor, loginToEmail)
+  return (
+    <div className="flex items-start gap-2" style={{ flexWrap: 'nowrap' }}>
+      <span className="border-border bg-card w-50 rounded-lg border px-3 py-2">
+        <p className="text-secondary mb-1.5 flex items-center gap-1.5 text-sm font-medium">
+          <GitCommit className="size-3 shrink-0" />
+          Latest Commit
+        </p>
+        <p className="flex items-center gap-2 font-mono text-base leading-tight">
+          <span className="text-primary">{headSha ?? '—'}</span>
+        </p>
+        <p className="text-tertiary mt-1 flex items-center justify-between text-xs">
+          <span className="min-w-0">
+            {headActor ? (
+              <UserIdentity
+                actor={headActor}
+                displayNames={displayNames}
+                email={headActorEmail}
+                linkToProfile={false}
+                size="small"
+              />
+            ) : null}
+          </span>
+          {release_summary.head_authored_at && (
+            <span>{formatRelativeDate(release_summary.head_authored_at)}</span>
+          )}
+        </p>
+      </span>
+      <ArrowRight className="text-tertiary mx-2 mt-3 size-3.5 shrink-0 self-start" />
+      <span className="border-amber-border bg-amber-bg w-50 rounded-lg border px-3 py-2">
+        <p className="text-amber-text mb-1.5 flex items-center gap-1.5 text-sm font-medium">
+          <Tag className="size-3 shrink-0" />
+          Current Release
+        </p>
+        <p className="flex items-center gap-2 font-mono text-base leading-tight">
+          <span className="text-primary">
+            {release_summary.latest_tag ?? '—'}
+          </span>
+          {release_summary.latest_tag_sha && (
+            <span className="text-tertiary text-xs font-normal">
+              {release_summary.latest_tag_sha.slice(0, 7)}
+            </span>
+          )}
+        </p>
+        <p className="text-tertiary mt-1 flex items-center justify-between text-xs">
+          <span className="min-w-0">
+            {tagActor ? (
+              <UserIdentity
+                actor={tagActor}
+                displayNames={displayNames}
+                email={tagActorEmail}
+                linkToProfile={false}
+                size="small"
+              />
+            ) : null}
+          </span>
+          {release_summary.latest_tag_at && (
+            <span>{formatRelativeDate(release_summary.latest_tag_at)}</span>
+          )}
+        </p>
+      </span>
+    </div>
+  )
 }
 
 // fallow-ignore-next-line complexity
@@ -1225,6 +1441,87 @@ function resolveViewMode(
   if (raw === 'grid' || raw === 'list') return raw
   if (stored === 'grid' || stored === 'list') return stored
   return 'list'
+}
+
+function ScrollableDeployments({
+  environments,
+  releases,
+}: {
+  environments: {
+    label_color?: null | string
+    name: string
+    slug: string
+    sort_order?: null | number
+  }[]
+  releases: Record<
+    string,
+    {
+      committish?: null | string
+      deployed_at: string
+      performed_by?: null | string
+      tag?: null | string
+    }
+  >
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(false)
+
+  const checkScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    setCanScrollLeft(el.scrollLeft > 0)
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
+  }
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    checkScroll()
+    el.addEventListener('scroll', checkScroll)
+    const ro = new ResizeObserver(checkScroll)
+    ro.observe(el)
+    return () => {
+      el.removeEventListener('scroll', checkScroll)
+      ro.disconnect()
+    }
+  }, [environments])
+
+  const scroll = (dir: 'left' | 'right') => {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollBy({ behavior: 'smooth', left: dir === 'left' ? -200 : 200 })
+  }
+
+  return (
+    <div className="relative flex min-w-0 items-center">
+      {canScrollLeft && (
+        <button
+          className="from-card/90 text-secondary hover:text-primary absolute left-0 z-10 flex h-full items-center bg-linear-to-r to-transparent pr-3 pl-0.5"
+          onClick={() => scroll('left')}
+          type="button"
+        >
+          <ChevronLeft className="size-4" />
+        </button>
+      )}
+      <div
+        className="overflow-x-auto"
+        ref={scrollRef}
+        style={{ scrollbarWidth: 'none' }}
+      >
+        <DeploymentCards environments={environments} releases={releases} />
+      </div>
+      {canScrollRight && (
+        <button
+          className="from-card/90 text-secondary hover:text-primary absolute right-0 z-10 flex h-full items-center bg-linear-to-l to-transparent pr-0.5 pl-3"
+          onClick={() => scroll('right')}
+          type="button"
+        >
+          <ChevronRight className="size-4" />
+        </button>
+      )}
+    </div>
+  )
 }
 
 function SortHeader({
@@ -1372,19 +1669,26 @@ const ProjectListRow = React.memo(function ProjectListRow({
         <DriftCell project={project} />
       </div>
       <div
-        className="flex min-w-0 flex-1 overflow-x-auto px-6 py-4"
+        className="flex min-w-0 flex-1 px-6 py-4"
         style={{ justifyContent: 'safe center' }}
       >
         {isProjectDeployable(project) &&
           project.environments &&
           project.environments.length > 0 && (
-            <DeploymentCards
+            <ScrollableDeployments
               environments={project.environments}
               releases={project.current_releases ?? {}}
             />
           )}
+        {!isProjectDeployable(project) &&
+          isProjectReleasable(project) &&
+          project.release_summary && (
+            <div className="min-w-0 overflow-x-auto">
+              <ReleaseCards release_summary={project.release_summary} />
+            </div>
+          )}
       </div>
-      <div className="flex w-40 shrink-0 justify-center px-6 py-4 whitespace-nowrap">
+      <div className="flex w-28 shrink-0 justify-center px-6 py-4 whitespace-nowrap">
         <ScoreBadge score={project.score} size="md" variant="circle" />
       </div>
     </div>
