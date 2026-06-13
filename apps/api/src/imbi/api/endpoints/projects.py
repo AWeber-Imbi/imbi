@@ -15,7 +15,7 @@ import fastapi
 import nanoid
 import psycopg
 import pydantic
-from imbi_common import blueprints, graph, models
+from imbi_common import blueprints, clickhouse, graph, models
 from imbi_common.clickhouse import client as ch_client
 from imbi_common.plugins.base import (
     LifecyclePlugin,
@@ -48,6 +48,52 @@ from imbi_api.scoring import queue as score_queue
 from imbi_api.settings import get_server_config
 
 LOGGER = logging.getLogger(__name__)
+
+_RELEASE_SEMVER_RE = re.compile(r'^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$')
+
+
+def _release_semver_key(
+    name: str,
+) -> tuple[int, int, int] | None:
+    """Return ``(major, minor, patch)`` for semver tags; ``None`` if not."""
+    m = _RELEASE_SEMVER_RE.match(name)
+    if not m:
+        return None
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+
+
+def _pick_latest_tag(
+    rows: list[dict[str, typing.Any]],
+) -> dict[str, typing.Any] | None:
+    """Pick the latest release tag (highest semver) from ``tags`` rows.
+
+    Mirrors ``_latest_release_tag`` in ``project_deployments`` but is
+    local to avoid a circular import (project_deployments → releases →
+    projects).
+
+    Only semver tags are considered; non-semver rows are ignored so an
+    ad-hoc tag (e.g. ``deploy-20240101``) never wins over a real release.
+    """
+    semver_rows = [
+        row
+        for row in rows
+        if _release_semver_key(str(row.get('name', ''))) is not None
+    ]
+    if not semver_rows:
+        return None
+
+    def _key(
+        r: dict[str, typing.Any],
+    ) -> tuple[tuple[int, int, int], str]:
+        sv = _release_semver_key(str(r.get('name', '')))
+        when = r.get('tagged_at') or r.get('recorded_at')
+        when_key = (
+            when.isoformat() if isinstance(when, datetime.datetime) else ''
+        )
+        return (sv or (0, 0, 0), when_key)
+
+    return max(semver_rows, key=_key)
+
 
 projects_router = fastapi.APIRouter(tags=['Projects'])
 
@@ -157,6 +203,26 @@ class ReleaseInfo(pydantic.BaseModel):
     committish: str | None = None
 
 
+class ReleaseSummary(pydantic.BaseModel):
+    """Minimal release-drift summary for the projects-list view.
+
+    head_sha is the latest commit on main; latest_tag is the most recent
+    semver release tag; commits_since_tag is the number of unreleased
+    commits.
+    """
+
+    head_sha: str | None = None
+    head_short_sha: str | None = None
+    head_author: str | None = None
+    head_author_login: str | None = None
+    head_authored_at: datetime.datetime | None = None
+    latest_tag: str | None = None
+    latest_tag_sha: str | None = None
+    latest_tag_at: datetime.datetime | None = None
+    latest_tag_author: str | None = None
+    commits_since_tag: int = 0
+
+
 class ProjectListTeamRef(pydantic.BaseModel):
     """Minimal team identity for the projects-list view."""
 
@@ -170,6 +236,7 @@ class ProjectListProjectTypeRef(pydantic.BaseModel):
     name: str
     slug: str
     deployable: bool = False
+    releasable: bool = False
 
 
 class ProjectListEnvironmentRef(pydantic.BaseModel):
@@ -210,6 +277,7 @@ class ProjectListItem(pydantic.BaseModel):
     current_releases: dict[str, ReleaseInfo] = pydantic.Field(
         default_factory=dict
     )
+    release_summary: ReleaseSummary | None = None
 
 
 class ProjectResponse(pydantic.BaseModel):
@@ -758,6 +826,163 @@ async def _fetch_current_releases(
     return result
 
 
+async def _fetch_release_summaries(
+    project_ids: list[str],
+) -> dict[str, ReleaseSummary]:
+    """Return {project_id: ReleaseSummary} for releasable projects.
+
+    Two ClickHouse queries: one for latest tags, one for latest commit
+    SHA.  Uses the same semver-max logic as the per-project
+    release-drift endpoint.  Errors are swallowed — release data is
+    best-effort.
+    """
+    if not project_ids:
+        return {}
+    try:
+        tag_rows, head_rows = await asyncio.gather(
+            clickhouse.query(
+                'SELECT project_id, name, sha, tagged_at, recorded_at,'
+                ' tagger_name'
+                ' FROM tags FINAL'
+                ' WHERE project_id IN {project_ids:Array(String)}',
+                {'project_ids': project_ids},
+            ),
+            clickhouse.query(
+                'SELECT project_id, sha, short_sha,'
+                ' author_name, author_user, authored_at'
+                ' FROM commits FINAL'
+                ' WHERE project_id IN {project_ids:Array(String)}'
+                ' ORDER BY pushed_at DESC, authored_at DESC'
+                ' LIMIT 1 BY project_id',
+                {'project_ids': project_ids},
+            ),
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Failed to fetch release summaries for projects',
+            exc_info=True,
+        )
+        return {}
+
+    tags_by_project: dict[str, list[dict[str, typing.Any]]] = {}
+    for row in tag_rows:
+        pid = str(row.get('project_id', ''))
+        if pid:
+            tags_by_project.setdefault(pid, []).append(row)
+
+    head_by_project: dict[str, dict[str, typing.Any]] = {
+        str(row['project_id']): row
+        for row in head_rows
+        if row.get('project_id') and row.get('sha')
+    }
+
+    # Resolve each project's latest semver tag and its timestamp so we
+    # can query commit counts after that point.
+    all_pids = set(tags_by_project.keys()) | set(head_by_project.keys())
+    latest_by_pid: dict[str, dict[str, typing.Any] | None] = {
+        pid: _pick_latest_tag(tags_by_project.get(pid, [])) for pid in all_pids
+    }
+
+    # Batch-fetch commit counts since each project's latest tag.
+    # Build a list of (project_id, tag_authored_at) tuples so a single
+    # ClickHouse query can count unreleased commits per project.
+    # Projects with no prior tag get a cutoff of epoch-start (count all).
+    tagged_pids = [
+        pid for pid, tag in latest_by_pid.items() if tag is not None
+    ]
+    counts_since_tag: dict[str, int] = {}
+    if tagged_pids:
+        try:
+            # For each project, count commits authored after the tag's
+            # recorded_at/tagged_at (the closest proxy we have to when
+            # the tag commit landed without a separate sha→authored_at
+            # look-up).  This mirrors what the per-project drift endpoint
+            # does via a base-commit authored_at lookup.
+            tag_times = [
+                (latest_by_pid[pid] or {}).get('tagged_at')
+                or (latest_by_pid[pid] or {}).get('recorded_at')
+                for pid in tagged_pids
+            ]
+            # Build per-project WHERE via countIf for a single scan.
+            # Rows without a valid tag timestamp are excluded from the
+            # list, so we can safely cast to datetime.
+            pid_cutoff: list[tuple[str, datetime.datetime]] = [
+                (pid, t)
+                for pid, t in zip(tagged_pids, tag_times, strict=True)
+                if isinstance(t, datetime.datetime)
+            ]
+            if pid_cutoff:
+                cutoff_map = dict(pid_cutoff)
+                count_rows = await clickhouse.query(
+                    'SELECT project_id,'
+                    ' countIf(authored_at'
+                    ' > {cutoffs:Map(String,DateTime64(3))}'
+                    '[project_id]) AS c'
+                    ' FROM commits FINAL'
+                    ' WHERE project_id'
+                    ' IN {project_ids:Array(String)}'
+                    ' GROUP BY project_id',
+                    {
+                        'project_ids': list(cutoff_map.keys()),
+                        'cutoffs': cutoff_map,
+                    },
+                )
+                counts_since_tag = {
+                    str(row['project_id']): int(row['c'])
+                    for row in count_rows
+                    if row.get('project_id') is not None
+                }
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'Failed to fetch commit counts since tag',
+                exc_info=True,
+            )
+
+    release_result: dict[str, ReleaseSummary] = {}
+    for pid in all_pids:
+        latest = latest_by_pid.get(pid)
+        head_row = head_by_project.get(pid)
+        head_sha = str(head_row['sha']) if head_row else None
+        short_sha = (
+            str(head_row.get('short_sha') or head_sha or '')[:7] or None
+            if head_row
+            else None
+        )
+        raw_author = (
+            head_row.get('author_name') or head_row.get('author_user')
+            if head_row
+            else None
+        )
+        head_author = str(raw_author) if raw_author else None
+        raw_login = head_row.get('author_user') if head_row else None
+        head_author_login = str(raw_login) if raw_login else None
+        head_authored_at: datetime.datetime | None = (
+            head_row.get('authored_at') if head_row else None
+        )
+        latest_tag = str(latest['name']) if latest else None
+        latest_tag_sha = str(latest['sha']) if latest else None
+        latest_tag_at: datetime.datetime | None = (
+            latest.get('tagged_at') or latest.get('recorded_at')
+            if latest
+            else None
+        )
+        tagger = latest.get('tagger_name') if latest else None
+        latest_tag_author = str(tagger) if tagger else None
+        release_result[pid] = ReleaseSummary(
+            head_sha=head_sha,
+            head_short_sha=short_sha,
+            head_author=head_author,
+            head_author_login=head_author_login,
+            head_authored_at=head_authored_at,
+            latest_tag=latest_tag,
+            latest_tag_sha=latest_tag_sha,
+            latest_tag_at=latest_tag_at,
+            latest_tag_author=latest_tag_author,
+            commits_since_tag=counts_since_tag.get(pid, 0),
+        )
+    return release_result
+
+
 _EVENT_SKIP_FIELDS: frozenset[str] = frozenset(
     {
         'id',
@@ -948,7 +1173,8 @@ _SLIM_RETURN_FRAGMENT: typing.LiteralString = """
     WITH p, t,
          collect(CASE WHEN pt IS NOT NULL
                       THEN pt{{.slug, .name,
-                               deployable: coalesce(pt.deployable, false)}}
+                               deployable: coalesce(pt.deployable, false),
+                               releasable: coalesce(pt.releasable, false)}}
                       END) AS pts
     OPTIONAL MATCH (p)-[:DEPLOYED_IN]->(env:Environment)
     WITH p, t, pts,
@@ -1455,10 +1681,23 @@ async def list_projects(
     project_ids = [
         str(p.get('id', '')) for p in project_data_list if p.get('id')
     ]
+    releasable_ids = [
+        str(p.get('id', ''))
+        for p in project_data_list
+        if p.get('id')
+        and any(
+            pt.get('releasable')
+            for pt in typing.cast(
+                list[dict[str, typing.Any]],
+                p.get('project_types') or [],
+            )
+        )
+    ]
     viewer = auth.identity_for('github-enterprise-cloud')
-    pr_counts, releases = await asyncio.gather(
+    pr_counts, releases, release_summaries = await asyncio.gather(
         _fetch_pr_counts(project_ids, viewer=viewer),
         _fetch_current_releases(db, project_ids),
+        _fetch_release_summaries(releasable_ids),
     )
 
     await _resolve_release_display_names(db, releases)
@@ -1473,6 +1712,9 @@ async def list_projects(
         project_data['viewer_open_pr_count'] = viewer_open
         project_data['viewer_closed_pr_count'] = viewer_closed
         project_data['current_releases'] = releases.get(pid, {})
+        summary = release_summaries.get(pid)
+        if summary is not None:
+            project_data['release_summary'] = summary.model_dump()
 
     if slim:
         return [ProjectListItem.model_validate(p) for p in project_data_list]

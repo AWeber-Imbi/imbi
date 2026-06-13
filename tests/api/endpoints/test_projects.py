@@ -471,7 +471,9 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertNotIn('created_at', item)
         # project_types / environments are trimmed too.
         pt = item['project_types'][0]
-        self.assertEqual(set(pt.keys()), {'name', 'slug', 'deployable'})
+        self.assertEqual(
+            set(pt.keys()), {'name', 'slug', 'deployable', 'releasable'}
+        )
         env = item['environments'][0]
         self.assertEqual(
             set(env.keys()),
