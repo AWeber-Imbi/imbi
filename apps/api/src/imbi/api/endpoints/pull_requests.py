@@ -15,6 +15,7 @@ Two routers are provided:
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 import typing
 
@@ -61,6 +62,34 @@ class PullRequestListResponse(pydantic.BaseModel):
     data: list[PullRequestResponse]
     project_count: int
     total: int
+
+
+# Default look-back window for the activity report when ``since`` is absent.
+DEFAULT_ACTIVITY_DAYS: int = 30
+
+
+class PRActivityRow(pydantic.BaseModel):
+    """Per-author PR activity counts with the resolved Imbi user.
+
+    ``login`` is always the raw GitHub login from the PR record.  The
+    user fields are populated only when the login resolves to an Imbi
+    user via that user's GitHub ``IdentityConnection``.
+    """
+
+    login: str
+    email: str | None = None
+    display_name: str | None = None
+    avatar_url: str | None = None
+    created: int
+    merged: int
+
+
+class PRActivityResponse(pydantic.BaseModel):
+    """PR activity for the org, one row per GitHub author."""
+
+    since: datetime.datetime
+    members: int
+    rows: list[PRActivityRow]
 
 
 def _row_to_response(row: dict[str, typing.Any]) -> dict[str, typing.Any]:
@@ -234,3 +263,163 @@ async def list_org_pull_requests(
         limit=limit,
         offset=offset,
     )
+
+
+def _parse_since(value: str | None) -> datetime.datetime:
+    """Parse the ``since`` query param (inclusive lower bound, UTC).
+
+    Accepts a ``YYYY-MM-DD`` date or a full ISO timestamp; defaults to
+    ``DEFAULT_ACTIVITY_DAYS`` ago at midnight UTC when absent.
+    """
+    if not value:
+        start = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
+            days=DEFAULT_ACTIVITY_DAYS
+        )
+        return start.replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        day = datetime.date.fromisoformat(value)
+    except ValueError:
+        pass
+    else:
+        return datetime.datetime.combine(
+            day, datetime.time.min, tzinfo=datetime.UTC
+        )
+    try:
+        parsed = datetime.datetime.fromisoformat(value)
+    except ValueError:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='since must be an ISO date (YYYY-MM-DD) or timestamp',
+        ) from None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.UTC)
+    return parsed
+
+
+def _login_from_metadata(raw: typing.Any) -> str | None:
+    """Extract the GitHub ``login`` from an IdentityConnection metadata.
+
+    ``metadata`` is stored as a JSON-encoded string literal by the graph
+    client, so decode the agtype, then JSON-decode a string payload.
+    """
+    parsed = graph.parse_agtype(raw)
+    if isinstance(parsed, str):
+        try:
+            parsed = json.loads(parsed)
+        except json.JSONDecodeError, TypeError:
+            return None
+    if isinstance(parsed, dict):
+        login = typing.cast('dict[str, typing.Any]', parsed).get('login')
+        return str(login) if login else None
+    return None
+
+
+async def _fetch_login_users(
+    db: graph.Pool,
+) -> dict[str, dict[str, str | None]]:
+    """Map lower-cased GitHub login -> Imbi user display fields.
+
+    Built from every active ``IdentityConnection`` whose metadata carries
+    a ``login``.  Logins without a connection simply won't appear.
+    """
+    query: typing.LiteralString = """
+    MATCH (u:User)-[:HAS_IDENTITY]->(c:IdentityConnection)
+    WHERE c.status = 'active'
+    RETURN u.email AS email,
+           u.display_name AS display_name,
+           u.avatar_url AS avatar_url,
+           c.metadata AS metadata
+    """
+    records = await db.execute(
+        query, {}, ['email', 'display_name', 'avatar_url', 'metadata']
+    )
+    out: dict[str, dict[str, str | None]] = {}
+    for row in records:
+        login = _login_from_metadata(row.get('metadata'))
+        if not login:
+            continue
+        avatar = graph.parse_agtype(row.get('avatar_url'))
+        out[login.lower()] = {
+            'email': graph.parse_agtype(row['email']),
+            'display_name': graph.parse_agtype(row['display_name']),
+            'avatar_url': str(avatar) if avatar else None,
+        }
+    return out
+
+
+async def _fetch_pr_activity(
+    project_ids: list[str],
+    since: datetime.datetime,
+) -> list[dict[str, typing.Any]]:
+    """Aggregate created/merged PR counts per author since *since*.
+
+    A PR counts toward ``created`` when created on/after ``since`` and
+    toward ``merged`` when merged on/after ``since`` -- the two use
+    different anchors, so a PR opened earlier but merged in-window still
+    contributes to ``merged``.
+    """
+    if not project_ids:
+        return []
+    # Alias the aggregates to non-column names: aliasing ``AS merged``
+    # would shadow the ``merged`` column, and ClickHouse then resolves
+    # ``merged`` in WHERE to the aggregate (ILLEGAL_AGGREGATION).
+    sql = (
+        'SELECT author,'
+        ' countIf(created_at >= {since:DateTime64(3)}) AS created_count,'
+        ' countIf(merged AND merged_at >= {since:DateTime64(3)})'
+        ' AS merged_count'
+        ' FROM pull_requests FINAL'
+        ' WHERE project_id IN {project_ids:Array(String)}'
+        ' AND (created_at >= {since:DateTime64(3)}'
+        ' OR (merged AND merged_at >= {since:DateTime64(3)}))'
+        ' GROUP BY author'
+    )
+    return await clickhouse.query(
+        sql, {'project_ids': project_ids, 'since': since}
+    )
+
+
+@pull_requests_router.get('/activity', response_model=PRActivityResponse)
+async def pull_request_activity(
+    org_slug: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:read'),
+        ),
+    ],
+    since: str | None = None,
+) -> PRActivityResponse:
+    """Per-team-member PR activity (created/merged) across the org.
+
+    ``since`` is an inclusive lower bound (``YYYY-MM-DD`` or ISO
+    timestamp); it defaults to 30 days ago.  Authors are resolved to
+    Imbi users via their GitHub identity connections where possible;
+    unresolved logins are returned as-is.  Rows are ordered by merged
+    then created, descending.
+    """
+    since_dt = _parse_since(since)
+    project_ids = await _fetch_org_project_ids(db, org_slug)
+    counts = await _fetch_pr_activity(project_ids, since_dt)
+    login_users = await _fetch_login_users(db)
+    rows: list[PRActivityRow] = []
+    for row in counts:
+        login = str(row.get('author') or '')
+        created = int(row.get('created_count') or 0)
+        merged = int(row.get('merged_count') or 0)
+        if not login or (created == 0 and merged == 0):
+            continue
+        user = login_users.get(login.lower())
+        rows.append(
+            PRActivityRow(
+                login=login,
+                email=user['email'] if user else None,
+                display_name=user['display_name'] if user else None,
+                avatar_url=user['avatar_url'] if user else None,
+                created=created,
+                merged=merged,
+            )
+        )
+    rows.sort(key=lambda r: (r.merged, r.created, r.login), reverse=True)
+    return PRActivityResponse(since=since_dt, members=len(rows), rows=rows)
