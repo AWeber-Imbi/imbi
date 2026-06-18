@@ -2,12 +2,14 @@
 
 import datetime
 import typing
+import unittest
 from unittest import mock
 
 import fastapi.testclient
 from imbi_common import graph
 
 from imbi_api import models
+from imbi_api.endpoints import pull_requests
 from tests import support
 
 ORG = 'engineering'
@@ -260,3 +262,20 @@ class PullRequestActivityTestCase(_PullRequestsTestBase):
         response = self.client.get(self._url('?since=not-a-date'))
         self.assertEqual(response.status_code, 400)
         self.assertIn('since must be', response.json()['detail'])
+
+
+class ParseSinceTestCase(unittest.TestCase):
+    def test_naive_timestamp_gets_utc(self) -> None:
+        parsed = pull_requests._parse_since('2026-04-01T10:00:00')
+        self.assertEqual(
+            parsed,
+            datetime.datetime(2026, 4, 1, 10, 0, tzinfo=datetime.UTC),
+        )
+
+    def test_aware_timestamp_normalized_to_utc(self) -> None:
+        parsed = pull_requests._parse_since('2026-04-01T10:00:00+02:00')
+        self.assertEqual(parsed.tzinfo, datetime.UTC)
+        self.assertEqual(
+            parsed,
+            datetime.datetime(2026, 4, 1, 8, 0, tzinfo=datetime.UTC),
+        )

@@ -292,8 +292,8 @@ def _parse_since(value: str | None) -> datetime.datetime:
             detail='since must be an ISO date (YYYY-MM-DD) or timestamp',
         ) from None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=datetime.UTC)
-    return parsed
+        return parsed.replace(tzinfo=datetime.UTC)
+    return parsed.astimezone(datetime.UTC)
 
 
 def _login_from_metadata(raw: typing.Any) -> str | None:
@@ -319,11 +319,15 @@ async def _fetch_login_users(
 ) -> dict[str, dict[str, str | None]]:
     """Map lower-cased GitHub login -> Imbi user display fields.
 
-    Built from every active ``IdentityConnection`` whose metadata carries
-    a ``login``.  Logins without a connection simply won't appear.
+    Built from every active ``IdentityConnection`` to the GitHub identity
+    plugin whose metadata carries a ``login``.  Restricting to the GitHub
+    plugin prevents a non-GitHub connection sharing the same metadata key
+    from mapping a PR author to the wrong Imbi user.  Logins without a
+    GitHub connection simply won't appear.
     """
     query: typing.LiteralString = """
     MATCH (u:User)-[:HAS_IDENTITY]->(c:IdentityConnection)
+          -[:USES_PLUGIN]->(:Plugin {{plugin_slug: 'github'}})
     WHERE c.status = 'active'
     RETURN u.email AS email,
            u.display_name AS display_name,
