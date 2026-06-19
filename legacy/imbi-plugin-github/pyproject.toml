@@ -22,15 +22,10 @@ dependencies = [
 ]
 
 [project.entry-points."imbi.plugins"]
-github = "imbi_plugin_github.identity:GitHubPlugin"
-github-enterprise-cloud = "imbi_plugin_github.identity:GitHubEnterpriseCloudPlugin"
-github-enterprise-server = "imbi_plugin_github.identity:GitHubEnterpriseServerPlugin"
+github-connection = "imbi_plugin_github.connection:GitHubConnectionPlugin"
+github-identity = "imbi_plugin_github.identity:GitHubIdentityPlugin"
 github-deployment = "imbi_plugin_github.deployment:GitHubDeploymentPlugin"
-github-deployment-ec = "imbi_plugin_github.deployment:GitHubEnterpriseCloudDeploymentPlugin"
-github-deployment-es = "imbi_plugin_github.deployment:GitHubEnterpriseServerDeploymentPlugin"
 github-lifecycle = "imbi_plugin_github.lifecycle:GitHubLifecyclePlugin"
-github-lifecycle-ec = "imbi_plugin_github.lifecycle:GitHubEnterpriseCloudLifecyclePlugin"
-github-lifecycle-es = "imbi_plugin_github.lifecycle:GitHubEnterpriseServerLifecyclePlugin"
 github-commit-sync = "imbi_plugin_github.commits:GitHubCommitSyncPlugin"
 github-pr-sync = "imbi_plugin_github.pull_requests:GitHubPRSyncPlugin"
 

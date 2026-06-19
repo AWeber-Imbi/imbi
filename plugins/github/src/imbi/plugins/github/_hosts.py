@@ -8,8 +8,17 @@ source of truth for that validation.
 
 from __future__ import annotations
 
+import collections.abc
 import typing
 import urllib.parse
+
+#: Slug of the GitHub connection plugin. A single connection plugin is
+#: attached to each GitHub ``ThirdPartyService`` and carries the
+#: ``flavor`` + ``host`` options (and the shared App/PAT credentials)
+#: that every sibling GitHub plugin reads. Behavioral plugins resolve
+#: their host from this sibling rather than from a per-flavor variant of
+#: their own class.
+GITHUB_CONNECTION_SLUG = 'github-connection'
 
 
 def normalize_host(raw: typing.Any, label: str) -> str:
@@ -56,12 +65,76 @@ def host_to_api_base(host: str) -> str:
     The single source of truth for GitHub's flavor routing:
     ``github.com`` -> ``api.github.com``, a ``*.ghe.com`` tenant ->
     ``api.<tenant>.ghe.com``, and a GHES appliance -> ``<host>/api/v3``.
-    Shared by the deployment plugins (which resolve the host per call
-    via ``_resolve_host``) and the commit-sync webhook action (which
-    resolves it from connected-plugin options at runtime).
+    Shared by every behavioral plugin once it has resolved its host from
+    the connection plugin via :func:`resolve_connection_host`.
     """
     if host == 'github.com':
         return 'https://api.github.com'
     if host.endswith('.ghe.com'):
         return f'https://api.{host}'
     return f'https://{host}/api/v3'
+
+
+class _ConnectionLike(typing.Protocol):
+    """Structural view of an :class:`imbi_common.plugins.ServicePlugin`."""
+
+    slug: str
+    options: dict[str, typing.Any]
+
+
+def flavor_host(options: dict[str, typing.Any], label: str) -> str:
+    """Validate the connection plugin's ``flavor`` + ``host`` to a host.
+
+    The operator picks an explicit ``flavor`` (``github.com`` / ``ghec``
+    / ``ghes``); the ``host`` is required for the two enterprise flavors
+    and ignored for ``github.com``. Returns the bare hostname the rest of
+    the plugin composes URLs against (``github.com``, the validated
+    ``*.ghe.com`` tenant, or the normalized GHES appliance host).
+    """
+    flavor = str(options.get('flavor') or '').strip()
+    if flavor == 'github.com':
+        return 'github.com'
+    if flavor == 'ghec':
+        return require_ghec_tenant_host(
+            normalize_host(options.get('host'), label), label
+        )
+    if flavor == 'ghes':
+        return normalize_host(options.get('host'), label)
+    raise ValueError(
+        f'{label} got invalid connection flavor {flavor!r}; expected one '
+        f'of "github.com", "ghec", or "ghes"'
+    )
+
+
+def find_connection(
+    service_plugins: collections.abc.Iterable[_ConnectionLike],
+) -> _ConnectionLike | None:
+    """Return the ``github-connection`` sibling, or ``None`` if absent.
+
+    Locates the connection plugin without validating its options, so
+    callers that want to fall back when no connection plugin is attached
+    (the webhook path) can distinguish "absent" from "misconfigured".
+    """
+    for plugin in service_plugins:
+        if plugin.slug == GITHUB_CONNECTION_SLUG:
+            return plugin
+    return None
+
+
+def resolve_connection_host(
+    service_plugins: collections.abc.Iterable[_ConnectionLike], label: str
+) -> str:
+    """Return the GitHub host from the connection plugin sibling.
+
+    Scans ``service_plugins`` for the single ``github-connection`` entry
+    and resolves its ``flavor`` + ``host`` to a bare hostname. Raises
+    ``ValueError`` (operator-facing) when no connection plugin is
+    attached to the service or its flavor/host is unusable.
+    """
+    plugin = find_connection(service_plugins)
+    if plugin is None:
+        raise ValueError(
+            f'{label}: no {GITHUB_CONNECTION_SLUG} plugin is attached to '
+            f'the service; cannot resolve the GitHub host'
+        )
+    return flavor_host(plugin.options, label)

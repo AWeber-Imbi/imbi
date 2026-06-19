@@ -1,13 +1,11 @@
-"""GitHub deployment plugins.
+"""GitHub deployment plugin.
 
-Three concrete subclasses share a common base and differ only by host:
+A single :class:`GitHubDeploymentPlugin` resolves its host from the
+``github-connection`` plugin attached to the same ``ThirdPartyService``
+(github.com, a ``*.ghe.com`` GHEC tenant, or an operator-managed GHES
+appliance) instead of shipping a per-flavor subclass.
 
-* :class:`GitHubDeploymentPlugin` — github.com.
-* :class:`GitHubEnterpriseCloudDeploymentPlugin` — GHEC tenant on
-  ``*.ghe.com``.
-* :class:`GitHubEnterpriseServerDeploymentPlugin` — operator-managed GHES.
-
-Plugins drive the GitHub Deployments API
+It drives the GitHub Deployments API
 (``POST /repos/{owner}/{repo}/deployments``) rather than
 ``workflow_dispatch`` — Imbi's ``Environment`` maps 1:1 to GitHub's
 ``environment`` field, deployment protection rules apply server-side,
@@ -58,8 +56,7 @@ from imbi_common.plugins.errors import PluginAuthenticationFailed
 
 from imbi_plugin_github._hosts import (
     host_to_api_base,
-    normalize_host,
-    require_ghec_tenant_host,
+    resolve_connection_host,
 )
 from imbi_plugin_github._repos import (
     derive_owner_repo_from_links,
@@ -291,24 +288,26 @@ def _check_runs_to_status(
 
 
 class _DeploymentBase(DeploymentPlugin):
-    """Shared base for GitHub deployment plugins.
+    """Shared base for the GitHub deployment plugin.
 
-    Subclasses set :attr:`manifest` and override :meth:`_resolve_host`.
-    Each plugin instance is single-shot: callers pass ``credentials``
-    (from the paired :class:`IdentityPlugin`) and ``ctx`` per call.
+    The host is resolved per call from the ``github-connection`` sibling
+    on the same service via :meth:`_resolve_host`.  Each plugin instance
+    is single-shot: callers pass ``credentials`` (from the paired
+    :class:`IdentityPlugin`) and ``ctx`` per call.
     """
 
-    @classmethod
-    def _resolve_host(cls, options: dict[str, typing.Any]) -> str:
-        raise NotImplementedError
+    def _resolve_host(self, ctx: PluginContext) -> str:
+        return resolve_connection_host(
+            ctx.service_plugins, 'github-deployment'
+        )
 
-    def _api_base(self, options: dict[str, typing.Any]) -> str:
-        return host_to_api_base(self._resolve_host(options))
+    def _api_base(self, ctx: PluginContext) -> str:
+        return host_to_api_base(self._resolve_host(ctx))
 
     def _owner_repo(self, ctx: PluginContext) -> tuple[str, str]:
         return resolve_owner_repo(
             ctx,
-            self._resolve_host(ctx.assignment_options),
+            self._resolve_host(ctx),
             'GitHub deployment plugin',
         )
 
@@ -322,7 +321,7 @@ class _DeploymentBase(DeploymentPlugin):
 
     def _repo_url(self, ctx: PluginContext) -> str:
         owner, repo = self._owner_repo(ctx)
-        return f'{self._api_base(ctx.assignment_options)}/repos/{owner}/{repo}'
+        return f'{self._api_base(ctx)}/repos/{owner}/{repo}'
 
     @staticmethod
     def _option_str(
@@ -561,7 +560,7 @@ class _DeploymentBase(DeploymentPlugin):
         limit: int = 25,
     ) -> list[Commit]:
         params = {'sha': ref, 'per_page': str(max(1, min(limit, 100)))}
-        host = self._resolve_host(ctx.assignment_options)
+        host = self._resolve_host(ctx)
         owner, repo = self._owner_repo(ctx)
         async with self._client(ctx, credentials) as client:
             resp = await client.get('/commits', params=params)
@@ -854,7 +853,7 @@ class _DeploymentBase(DeploymentPlugin):
         train should never fail to render because a side hydration
         call hiccuped.
         """
-        host = self._resolve_host(ctx.assignment_options)
+        host = self._resolve_host(ctx)
         owner, repo = self._owner_repo(ctx)
         if _checks_disabled(credentials, host, owner, repo):
             return 'unknown'
@@ -1170,11 +1169,12 @@ class GitHubDeploymentPlugin(_DeploymentBase):
         slug='github-deployment',
         name='GitHub Deployment',
         description=(
-            'Drive github.com Deployments and record GitHub Releases '
+            'Drive GitHub Deployments and record GitHub Releases '
             'on behalf of an Imbi project.  Each promote creates a '
             'Deployment object so GitHub environment protection rules '
             '(required reviewers, branch policies, wait timers) apply '
-            'server-side.'
+            'server-side.  The GitHub host is resolved from the '
+            '``github-connection`` plugin on the same service.'
         ),
         plugin_type='deployment',
         supports_deployment_sync=True,
@@ -1183,71 +1183,3 @@ class GitHubDeploymentPlugin(_DeploymentBase):
         edge_labels=_COMMON_EDGE_LABELS,
         ops_log_templates=_COMMON_OPS_LOG_TEMPLATES,
     )
-
-    @classmethod
-    def _resolve_host(cls, options: dict[str, typing.Any]) -> str:
-        return 'github.com'
-
-
-class GitHubEnterpriseCloudDeploymentPlugin(_DeploymentBase):
-    manifest = PluginManifest(
-        slug='github-deployment-ec',
-        name='GitHub Enterprise Cloud Deployment',
-        description=(
-            'Drive GitHub Deployments against a GHEC tenant '
-            '(``*.ghe.com``).  Repos must use ``on: deployment`` (or '
-            '``on: deployment_status``) in their deploy workflow.'
-        ),
-        plugin_type='deployment',
-        supports_deployment_sync=True,
-        options=[
-            PluginOption(
-                name='host',
-                label='GHEC tenant host',
-                description='e.g. tenant.ghe.com',
-                type='string',
-                required=True,
-            ),
-            *_COMMON_OPTIONS,
-        ],
-        credentials=_COMMON_CREDENTIALS,
-        edge_labels=_COMMON_EDGE_LABELS,
-        ops_log_templates=_COMMON_OPS_LOG_TEMPLATES,
-    )
-
-    @classmethod
-    def _resolve_host(cls, options: dict[str, typing.Any]) -> str:
-        return require_ghec_tenant_host(
-            normalize_host(options.get('host'), 'GHEC deployment plugin'),
-            'GHEC deployment plugin',
-        )
-
-
-class GitHubEnterpriseServerDeploymentPlugin(_DeploymentBase):
-    manifest = PluginManifest(
-        slug='github-deployment-es',
-        name='GitHub Enterprise Server Deployment',
-        description=(
-            'Drive GitHub Deployments against a GHES install.  Repos '
-            'must use ``on: deployment`` (or ``on: deployment_status``) '
-            'in their deploy workflow.'
-        ),
-        plugin_type='deployment',
-        supports_deployment_sync=True,
-        options=[
-            PluginOption(
-                name='host',
-                label='GHES host',
-                type='string',
-                required=True,
-            ),
-            *_COMMON_OPTIONS,
-        ],
-        credentials=_COMMON_CREDENTIALS,
-        edge_labels=_COMMON_EDGE_LABELS,
-        ops_log_templates=_COMMON_OPS_LOG_TEMPLATES,
-    )
-
-    @classmethod
-    def _resolve_host(cls, options: dict[str, typing.Any]) -> str:
-        return normalize_host(options.get('host'), 'GHES deployment plugin')
