@@ -10,6 +10,7 @@ from imbi_common.plugins.base import (
     IdentityPlugin,
     IdentityProfile,
     PluginContext,
+    ServicePlugin,
 )
 from imbi_common.plugins.errors import PluginNotFoundError
 from imbi_common.plugins.registry import RegistryEntry, get_plugin
@@ -25,13 +26,50 @@ LOGGER = logging.getLogger(__name__)
 PluginRefKind = typing.Literal['auto', 'id', 'slug']
 
 
+async def _connection_service_plugins(
+    db: graph.Graph, plugin_id: str
+) -> list[ServicePlugin]:
+    """Surface the connection sibling on the plugin's service.
+
+    An identity plugin reads its flavor/host from the ``connection``
+    plugin attached to the same ``ThirdPartyService``. The OAuth flow
+    has no other service context, so this is the one place that lookup
+    happens. Returns an empty list when the plugin is not a service-bound
+    node (e.g. a bare-slug catalog lookup) or no connection plugin is
+    attached.
+    """
+    query: typing.LiteralString = """
+    MATCH (p:Plugin {{id: {plugin_id}}})<-[:HAS_PLUGIN]-
+      (:ThirdPartyService)-[:HAS_PLUGIN]->(conn:Plugin)
+    WHERE conn.plugin_type = 'connection'
+    RETURN conn.plugin_slug AS slug, conn.options AS options
+    LIMIT 1
+    """
+    rows = await db.execute(
+        query, {'plugin_id': plugin_id}, ['slug', 'options']
+    )
+    if not rows or not rows[0].get('slug'):
+        return []
+    return [
+        ServicePlugin(
+            slug=str(graph.parse_agtype(rows[0]['slug'])),
+            options=parse_options(rows[0].get('options')),
+        )
+    ]
+
+
 async def _load_plugin_handler(
     db: graph.Graph,
     plugin_id: str,
     *,
     lookup: PluginRefKind = 'auto',
 ) -> tuple[
-    str, RegistryEntry, IdentityPlugin, dict[str, str], dict[str, typing.Any]
+    str,
+    RegistryEntry,
+    IdentityPlugin,
+    dict[str, str],
+    dict[str, typing.Any],
+    list[ServicePlugin],
 ]:
     """Resolve ``plugin_id`` and load handler, credentials, and options.
 
@@ -55,7 +93,9 @@ async def _load_plugin_handler(
     plugins with required manifest options will surface their own
     error from ``authorization_request``.
 
-    Returns ``(resolved_plugin_id, entry, handler, creds, options)``.
+    Returns ``(resolved_plugin_id, entry, handler, creds, options,
+    service_plugins)`` where ``service_plugins`` carries the connection
+    sibling so the identity plugin can resolve its flavor/host.
     Raises :class:`PluginNotFoundError` when nothing resolves.
     """
     by_id: typing.LiteralString = (
@@ -103,7 +143,8 @@ async def _load_plugin_handler(
     creds = await plugin_credentials.get_plugin_credentials(
         db, resolved_id, entry
     )
-    return resolved_id, entry, handler, creds, options
+    service_plugins = await _connection_service_plugins(db, resolved_id)
+    return resolved_id, entry, handler, creds, options, service_plugins
 
 
 async def start_flow(
@@ -123,9 +164,14 @@ async def start_flow(
     device-code plugins (AWS IAM IC) the UI uses it to render the user
     code and poll until the user completes the flow.
     """
-    resolved_id, entry, handler, creds, options = await _load_plugin_handler(
-        db, plugin_id
-    )
+    (
+        resolved_id,
+        entry,
+        handler,
+        creds,
+        options,
+        service_plugins,
+    ) = await _load_plugin_handler(db, plugin_id)
 
     ctx = PluginContext(
         project_id='',
@@ -133,6 +179,7 @@ async def start_flow(
         org_slug='',
         actor_user_id=actor_user_id,
         assignment_options=options,
+        service_plugins=service_plugins,
     )
     request = await handler.authorization_request(
         ctx,
@@ -231,9 +278,14 @@ async def complete_flow(
     if not await state.consume_identity_nonce(valkey_client, state_data.nonce):
         raise ValueError('state token has already been used')
 
-    resolved_id, _entry, handler, creds, options = await _load_plugin_handler(
-        db, plugin_id
-    )
+    (
+        resolved_id,
+        _entry,
+        handler,
+        creds,
+        options,
+        service_plugins,
+    ) = await _load_plugin_handler(db, plugin_id)
 
     ctx = PluginContext(
         project_id='',
@@ -241,6 +293,7 @@ async def complete_flow(
         org_slug='',
         actor_user_id=state_data.actor_user_id,
         assignment_options=options,
+        service_plugins=service_plugins,
     )
     profile, credentials = await handler.exchange_code(
         ctx,
@@ -283,9 +336,14 @@ async def poll_flow(
     if not state_data.device_code:
         raise ValueError('state token missing device_code (not a device flow)')
 
-    resolved_id, _entry, handler, creds, options = await _load_plugin_handler(
-        db, plugin_id
-    )
+    (
+        resolved_id,
+        _entry,
+        handler,
+        creds,
+        options,
+        service_plugins,
+    ) = await _load_plugin_handler(db, plugin_id)
 
     ctx = PluginContext(
         project_id='',
@@ -293,6 +351,7 @@ async def poll_flow(
         org_slug='',
         actor_user_id=state_data.actor_user_id,
         assignment_options=options,
+        service_plugins=service_plugins,
     )
     profile, credentials = await handler.exchange_code(
         ctx,
@@ -339,14 +398,20 @@ async def complete_login_flow(
     if not await state.consume_identity_nonce(valkey_client, state_data.nonce):
         raise ValueError('state token has already been used')
 
-    resolved_id, _entry, handler, creds, options = await _load_plugin_handler(
-        db, plugin_id
-    )
+    (
+        resolved_id,
+        _entry,
+        handler,
+        creds,
+        options,
+        service_plugins,
+    ) = await _load_plugin_handler(db, plugin_id)
     ctx = PluginContext(
         project_id='',
         project_slug='',
         org_slug='',
         assignment_options=options,
+        service_plugins=service_plugins,
     )
     profile, credentials = await handler.exchange_code(
         ctx,
@@ -365,9 +430,14 @@ async def refresh_connection(
     actor_user_id: str,
 ) -> IdentityCredentials:
     """Force-refresh the actor's connection for ``plugin_id``."""
-    resolved_id, _entry, handler, creds, options = await _load_plugin_handler(
-        db, plugin_id
-    )
+    (
+        resolved_id,
+        _entry,
+        handler,
+        creds,
+        options,
+        service_plugins,
+    ) = await _load_plugin_handler(db, plugin_id)
     connection = await repository.load_connection(
         db, resolved_id, actor_user_id
     )
@@ -386,6 +456,7 @@ async def refresh_connection(
         org_slug='',
         actor_user_id=actor_user_id,
         assignment_options=options,
+        service_plugins=service_plugins,
     )
     try:
         new_credentials = await handler.refresh(
@@ -444,6 +515,7 @@ async def revoke_connection(
             handler,
             creds,
             options,
+            service_plugins,
         ) = await _load_plugin_handler(db, plugin_id)
     except PluginNotFoundError:
         # Plugin uninstalled out from under us.  Nothing to revoke at
@@ -471,6 +543,7 @@ async def revoke_connection(
                 org_slug='',
                 actor_user_id=actor_user_id,
                 assignment_options=options,
+                service_plugins=service_plugins,
             )
             await handler.revoke(ctx, creds, connection.access_token)
         except Exception as exc:  # noqa: BLE001

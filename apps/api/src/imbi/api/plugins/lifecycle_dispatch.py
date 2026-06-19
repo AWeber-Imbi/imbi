@@ -39,7 +39,11 @@ from imbi_api.auth import permissions
 from imbi_api.identity.host_integration import call_with_identity_retry
 from imbi_api.plugins import call_with_timeout
 from imbi_api.plugins.credentials import get_plugin_credentials
-from imbi_api.plugins.resolution import ResolvedPlugin, resolve_all_plugins
+from imbi_api.plugins.resolution import (
+    ResolvedPlugin,
+    resolve_all_plugins,
+    resolve_service_plugins,
+)
 
 # ``_helpers`` lives in ``imbi_api.endpoints`` whose package ``__init__``
 # imports every endpoint module (including ``projects``).  Since
@@ -177,6 +181,8 @@ async def dispatch_lifecycle(
     if bundle is None:
         bundle = await build_lifecycle_context_bundle(db, project_id)
 
+    service_plugins = await resolve_service_plugins(db, project_id)
+
     results: list[LifecycleInvocation] = []
     for resolved in resolved_plugins:
         ctx = PluginContext(
@@ -195,6 +201,7 @@ async def dispatch_lifecycle(
             project_ui_url=project_ui_url,
             third_party_service_slug=resolved.third_party_service_slug,
             service_connections=bundle.service_connections,
+            service_plugins=service_plugins,
         )
         invocation = await _invoke_one(db, ctx, resolved, event, auth)
         results.append(invocation)
