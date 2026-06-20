@@ -30,7 +30,10 @@ from imbi_common.plugins.base import (
     PluginOption,
 )
 
-from imbi_plugin_github._hosts import resolve_connection_host
+from imbi_plugin_github._hosts import (
+    host_to_api_base,
+    resolve_connection_host,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -119,32 +122,17 @@ class GitHubIdentityPlugin(IdentityPlugin):
 
     def _endpoints(self, ctx: PluginContext) -> dict[str, str]:
         host = resolve_connection_host(ctx.service_plugins, 'github-identity')
-        # github.com routes login through github.com/login but API
-        # requests through api.github.com.  GHEC with Data Residency
-        # tenants (``*.ghe.com``) are isolated: OAuth authorize/token
-        # live on the tenant host and REST traffic on
-        # ``api.<tenant>.ghe.com``.  GHES appliances host OAuth at
-        # ``<host>/login/oauth/...`` and REST at ``<host>/api/v3/...``.
-        if host == 'github.com':
-            return {
-                'authorize': 'https://github.com/login/oauth/authorize',
-                'token': 'https://github.com/login/oauth/access_token',
-                'user': 'https://api.github.com/user',
-                'emails': 'https://api.github.com/user/emails',
-            }
-        if host.endswith('.ghe.com'):
-            api_host = f'api.{host}'
-            return {
-                'authorize': f'https://{host}/login/oauth/authorize',
-                'token': f'https://{host}/login/oauth/access_token',
-                'user': f'https://{api_host}/user',
-                'emails': f'https://{api_host}/user/emails',
-            }
+        # OAuth authorize/token are always hosted by the resolved web
+        # host (github.com, a ``*.ghe.com`` tenant, or a GHES appliance);
+        # only the REST API base differs per flavor, and that routing is
+        # the single responsibility of ``_hosts.host_to_api_base``.
+        oauth_base = f'https://{host}/login/oauth'
+        api_base = host_to_api_base(host)
         return {
-            'authorize': f'https://{host}/login/oauth/authorize',
-            'token': f'https://{host}/login/oauth/access_token',
-            'user': f'https://{host}/api/v3/user',
-            'emails': f'https://{host}/api/v3/user/emails',
+            'authorize': f'{oauth_base}/authorize',
+            'token': f'{oauth_base}/access_token',
+            'user': f'{api_base}/user',
+            'emails': f'{api_base}/user/emails',
         }
 
     @staticmethod
