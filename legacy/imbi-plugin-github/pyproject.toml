@@ -122,6 +122,13 @@ default-groups = ["dev"]
 exclude-newer = "7 days"
 exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "imbi-plugin-aws" = false, "imbi-plugin-github" = false, "imbi-plugin-logzio" = false, "imbi-plugin-oidc" = false, "imbi-plugin-pagerduty" = false, "imbi-plugin-sentry" = false, "imbi-plugin-sonarqube" = false }
 
+[tool.uv.sources]
+# Temporary: track imbi-common main so the consolidation lands before
+# imbi-common is released. The lockstep release flow restores the
+# pinned PyPI version (==X) here. imbi-common is a public repo, so CI
+# clones it anonymously (no token needed).
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }
+
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
