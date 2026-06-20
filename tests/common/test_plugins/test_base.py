@@ -1168,3 +1168,24 @@ class IncidentsPluginTestCase(unittest.TestCase):
         )
         self.assertEqual(len(result.incidents), 1)
         self.assertEqual(result.incidents[0].id, 'PINC1')
+
+
+class ConnectionPluginTestCase(unittest.TestCase):
+    def test_connection_plugin_type_accepted(self) -> None:
+        manifest = PluginManifest(
+            slug='github-connection',
+            name='GitHub Connection',
+            plugin_type='connection',
+        )
+        self.assertEqual(manifest.plugin_type, 'connection')
+
+    def test_concrete_subclass_needs_only_manifest(self) -> None:
+        class _Connection(plugin_base.ConnectionPlugin):
+            manifest = plugin_base.PluginManifest(
+                slug='github-connection',
+                name='GitHub Connection',
+                plugin_type='connection',
+            )
+
+        instance = _Connection()
+        self.assertEqual(instance.manifest.plugin_type, 'connection')

@@ -10,6 +10,7 @@ from imbi_common.plugins.base import (
     ActionDescriptor,
     AnalysisPlugin,
     ConfigurationPlugin,
+    ConnectionPlugin,
     DeploymentPlugin,
     IdentityPlugin,
     IncidentsPlugin,
@@ -34,6 +35,7 @@ PluginHandler = (
     | WebhookActionPlugin
     | AnalysisPlugin
     | IncidentsPlugin
+    | ConnectionPlugin
 )
 
 
@@ -48,6 +50,7 @@ class RegistryEntry:
         | type[WebhookActionPlugin]
         | type[AnalysisPlugin]
         | type[IncidentsPlugin]
+        | type[ConnectionPlugin]
     )
     manifest: PluginManifest
     package_name: str
@@ -73,7 +76,8 @@ _PLUGIN_TYPE_BASES: dict[
     | type[LifecyclePlugin]
     | type[WebhookActionPlugin]
     | type[AnalysisPlugin]
-    | type[IncidentsPlugin],
+    | type[IncidentsPlugin]
+    | type[ConnectionPlugin],
 ] = {
     'configuration': ConfigurationPlugin,
     'logs': LogsPlugin,
@@ -83,6 +87,7 @@ _PLUGIN_TYPE_BASES: dict[
     'webhook': WebhookActionPlugin,
     'analysis': AnalysisPlugin,
     'incidents': IncidentsPlugin,
+    'connection': ConnectionPlugin,
 }
 
 
@@ -153,19 +158,21 @@ def load_plugins() -> LoadResult:
                 WebhookActionPlugin,
                 AnalysisPlugin,
                 IncidentsPlugin,
+                ConnectionPlugin,
             ),
         ):
             LOGGER.error(
                 'Plugin %r does not implement ConfigurationPlugin, '
                 'LogsPlugin, IdentityPlugin, DeploymentPlugin, '
                 'LifecyclePlugin, WebhookActionPlugin, AnalysisPlugin, '
-                'or IncidentsPlugin; skipping',
+                'IncidentsPlugin, or ConnectionPlugin; skipping',
                 ep.name,
             )
             errors[ep.name] = (
                 'Plugin must subclass ConfigurationPlugin, LogsPlugin, '
                 'IdentityPlugin, DeploymentPlugin, LifecyclePlugin, '
-                'WebhookActionPlugin, AnalysisPlugin, or IncidentsPlugin'
+                'WebhookActionPlugin, AnalysisPlugin, IncidentsPlugin, '
+                'or ConnectionPlugin'
             )
             continue
 

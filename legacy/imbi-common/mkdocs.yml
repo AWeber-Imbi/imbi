@@ -67,6 +67,7 @@ nav:
       - Webhook Actions: plugins/webhook.md
       - Analysis: plugins/analysis.md
       - Incidents: plugins/incidents.md
+      - Connection: plugins/connection.md
   - Architecture:
       - ADR 0001: adr/0001-imbi-common-library-extraction.md
       - ADR 0002: adr/0002-lifespan-composition.md

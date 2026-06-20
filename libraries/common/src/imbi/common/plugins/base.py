@@ -126,6 +126,7 @@ PluginType = typing.Literal[
     'webhook',
     'analysis',
     'incidents',
+    'connection',
 ]
 
 
@@ -1394,3 +1395,22 @@ class IncidentsPlugin(abc.ABC):
         cursor: str | None = None,
         limit: int = 100,
     ) -> IncidentResult: ...
+
+
+class ConnectionPlugin(abc.ABC):
+    """Base class for connection plugins.
+
+    A connection plugin carries no behavior of its own; it exists to hold
+    the shared connection settings -- host/flavor ``options`` and the
+    ``credentials`` -- for a family of sibling plugins attached to the
+    same ``ThirdPartyService``. Behavioral plugins (identity, deployment,
+    lifecycle, webhook actions) read the connection plugin's ``options``
+    off :attr:`PluginContext.service_plugins` to resolve their host, and
+    the host resolves their credentials from the connection plugin's
+    ``plugin_configuration`` when they carry none of their own.
+
+    Like every other base it must declare a :class:`PluginManifest`; it
+    requires no methods because it is never dispatched to.
+    """
+
+    manifest: PluginManifest
