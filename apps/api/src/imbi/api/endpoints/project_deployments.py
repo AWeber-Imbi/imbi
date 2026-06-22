@@ -58,7 +58,11 @@ from imbi_api.identity.host_integration import (
 from imbi_api.llm.dependencies import InjectAnthropicClient
 from imbi_api.plugins import call_with_timeout
 from imbi_api.plugins.credentials import get_plugin_credentials
-from imbi_api.plugins.resolution import ResolvedPlugin, resolve_plugin
+from imbi_api.plugins.resolution import (
+    ResolvedPlugin,
+    resolve_plugin,
+    resolve_service_plugins,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -354,6 +358,7 @@ async def _resolve_and_context(
         environment_config=environment_config,
         project_links=project_links,
         project_type_slugs=project_type_slugs,
+        service_plugins=await resolve_service_plugins(db, project_id),
     )
     ctx = await attach_identity(db, ctx, resolved, auth)
 

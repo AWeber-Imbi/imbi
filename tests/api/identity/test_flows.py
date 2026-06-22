@@ -29,6 +29,7 @@ def _patch_load_handler(
     creds: dict[str, str] | None = None,
     resolved_id: str = 'plugin-1',
     options: dict[str, typing.Any] | None = None,
+    service_plugins: list[typing.Any] | None = None,
 ) -> contextlib.AbstractContextManager[typing.Any]:
     """Common patch helper for ``flows._load_plugin_handler``."""
     entry = mock.MagicMock()
@@ -43,6 +44,7 @@ def _patch_load_handler(
                 handler,
                 creds or {},
                 options or {},
+                service_plugins or [],
             )
         ),
     )
@@ -130,6 +132,27 @@ class LoadPluginHandlerTestCase(unittest.IsolatedAsyncioTestCase):
                 db, 'nonexistent-test-slug-xyz', lookup='slug'
             )
         self.assertEqual(db.execute.await_count, 1)
+
+
+class ConnectionServicePluginsTestCase(unittest.IsolatedAsyncioTestCase):
+    """``_connection_service_plugins`` surfaces the connection sibling."""
+
+    async def test_empty_when_no_connection(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.return_value = []
+        result = await flows._connection_service_plugins(db, 'plugin-1')
+        self.assertEqual(result, [])
+
+    async def test_returns_connection_sibling(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.return_value = [
+            {'slug': '"github-connection"', 'options': None}
+        ]
+        with mock.patch.object(
+            flows.graph, 'parse_agtype', side_effect=_parse_agtype_stub
+        ):
+            result = await flows._connection_service_plugins(db, 'plugin-1')
+        self.assertEqual([p.slug for p in result], ['github-connection'])
 
 
 class StartFlowTestCase(unittest.IsolatedAsyncioTestCase):

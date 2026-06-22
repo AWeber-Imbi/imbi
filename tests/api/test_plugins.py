@@ -1195,6 +1195,96 @@ class CredentialsTestCase(unittest.TestCase):
             asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
         self.assertIn('client_id or client_secret', str(ctx.exception))
 
+    def test_falls_back_to_connection_blob(self) -> None:
+        from imbi_api.plugins.credentials import get_plugin_credentials
+
+        mock_db = mock.AsyncMock()
+        # First call: the plugin's own blob is empty. Second call: the
+        # github-connection sibling carries the service-account token.
+        mock_db.execute.side_effect = [
+            [{'creds': None}],
+            [{'creds': '"ENCRYPTED"'}],
+        ]
+        encryptor = mock.MagicMock()
+        encryptor.decrypt.return_value = json.dumps({'access_token': 'pat'})
+        entry = _make_registry_entry('github-deployment', required_creds=False)
+        with mock.patch(
+            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
+            return_value=encryptor,
+        ):
+            creds = asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
+        self.assertEqual(creds, {'access_token': 'pat'})
+        self.assertEqual(mock_db.execute.await_count, 2)
+
+    def test_own_blob_wins_over_connection(self) -> None:
+        from imbi_api.plugins.credentials import get_plugin_credentials
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [{'creds': '"ENCRYPTED"'}]
+        encryptor = mock.MagicMock()
+        encryptor.decrypt.return_value = json.dumps({'access_token': 'own'})
+        entry = _make_registry_entry('github-deployment', required_creds=False)
+        with mock.patch(
+            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
+            return_value=encryptor,
+        ):
+            creds = asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
+        # The own blob satisfied the request, so the connection query is
+        # never issued.
+        self.assertEqual(creds, {'access_token': 'own'})
+        self.assertEqual(mock_db.execute.await_count, 1)
+
+
+class ResolveServicePluginsTestCase(unittest.TestCase):
+    """Coverage for ``resolve_service_plugins`` (sibling discovery)."""
+
+    def test_empty_when_no_records(self) -> None:
+        from imbi_api.plugins.resolution import resolve_service_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = []
+        result = asyncio.run(resolve_service_plugins(mock_db, 'p1'))
+        self.assertEqual(result, [])
+
+    def test_empty_when_plugins_column_null(self) -> None:
+        from imbi_api.plugins.resolution import resolve_service_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [{'plugins': None}]
+        result = asyncio.run(resolve_service_plugins(mock_db, 'p1'))
+        self.assertEqual(result, [])
+
+    def test_returns_connection_sibling(self) -> None:
+        from imbi_api.plugins.resolution import resolve_service_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {
+                'plugins': json.dumps(
+                    [
+                        {
+                            'slug': 'github-connection',
+                            'options': json.dumps(
+                                {'flavor': 'ghec', 'host': 'tenant.ghe.com'}
+                            ),
+                        },
+                        {'slug': 'github-deployment', 'options': '{}'},
+                    ]
+                )
+            }
+        ]
+        result = asyncio.run(resolve_service_plugins(mock_db, 'p1'))
+        self.assertEqual(
+            [p.slug for p in result],
+            [
+                'github-connection',
+                'github-deployment',
+            ],
+        )
+        conn = next(p for p in result if p.slug == 'github-connection')
+        self.assertEqual(conn.options['flavor'], 'ghec')
+        self.assertEqual(conn.options['host'], 'tenant.ghe.com')
+
 
 class PatchPluginConfigurationTestCase(unittest.IsolatedAsyncioTestCase):
     """Compare-and-swap behavior of ``patch_plugin_configuration`` (M19)."""

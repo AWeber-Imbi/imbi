@@ -53,45 +53,77 @@ async def get_plugin_credentials(
     return await _get_application_credentials(db, plugin_id, entry)
 
 
+_OWN_BLOB: typing.LiteralString = """
+MATCH (p:Plugin {{id: {plugin_id}}})
+RETURN p.plugin_configuration AS creds
+LIMIT 1
+"""
+
+# The shared connection plugin on the same ThirdPartyService holds the
+# service-account credentials when the invoked plugin carries none of
+# its own (the GitHub consolidation: deployment/lifecycle read the
+# App/PAT off the github-connection sibling).
+_CONNECTION_BLOB: typing.LiteralString = """
+MATCH (p:Plugin {{id: {plugin_id}}})<-[:HAS_PLUGIN]-(:ThirdPartyService)
+  -[:HAS_PLUGIN]->(conn:Plugin)
+WHERE conn.plugin_type = 'connection'
+RETURN conn.plugin_configuration AS creds
+LIMIT 1
+"""
+
+
+async def _read_blob(
+    db: graph.Graph, query: typing.LiteralString, plugin_id: str
+) -> dict[str, typing.Any]:
+    """Read + decrypt a ``plugin_configuration`` blob to a dict.
+
+    Treats a missing row, decrypt failure, or JSON parse error as "no
+    credentials" (empty dict) rather than raising, so the caller can fall
+    through to the next credential source.
+    """
+    records = await db.execute(query, {'plugin_id': plugin_id}, ['creds'])
+    if not records or records[0].get('creds') is None:
+        return {}
+    creds_raw: str | None = graph.parse_agtype(records[0]['creds'])
+    if not creds_raw:
+        return {}
+    try:
+        decrypted_str = TokenEncryption.get_instance().decrypt(creds_raw)
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Plugin credentials decrypt failed for plugin_id=%s', plugin_id
+        )
+        return {}
+    if not decrypted_str:
+        return {}
+    try:
+        parsed = json.loads(decrypted_str)
+    except json.JSONDecodeError:
+        LOGGER.warning(
+            'Plugin credentials JSON parse failed for plugin_id=%s', plugin_id
+        )
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return typing.cast('dict[str, typing.Any]', parsed)
+
+
 async def _get_plugin_configuration_credentials(
     db: graph.Graph,
     plugin_id: str,
     entry: RegistryEntry,
 ) -> dict[str, str]:
-    """Resolve credentials for ``api_token``/``aws-iam-ic`` plugins."""
-    query: typing.LiteralString = """
-    MATCH (p:Plugin {{id: {plugin_id}}})
-    RETURN p.plugin_configuration AS creds
-    LIMIT 1
-    """
-    records = await db.execute(query, {'plugin_id': plugin_id}, ['creds'])
-    if not records or records[0].get('creds') is None:
-        creds_raw: str | None = None
-    else:
-        creds_raw = graph.parse_agtype(records[0]['creds'])
+    """Resolve credentials for ``api_token``/``aws-iam-ic`` plugins.
 
-    credentials: dict[str, typing.Any] = {}
-    if creds_raw:
-        # Treat decrypt failures and JSON parse errors as "no credentials"
-        # rather than silently passing an empty dict that satisfies a
-        # ``key in dict`` check downstream.
-        try:
-            decrypted_str = TokenEncryption.get_instance().decrypt(creds_raw)
-        except Exception:  # noqa: BLE001
-            LOGGER.warning(
-                'Plugin credentials decrypt failed for plugin_id=%s',
-                plugin_id,
-            )
-            decrypted_str = None
-        if decrypted_str:
-            try:
-                credentials = json.loads(decrypted_str)
-            except json.JSONDecodeError:
-                LOGGER.warning(
-                    'Plugin credentials JSON parse failed for plugin_id=%s',
-                    plugin_id,
-                )
-                credentials = {}
+    Reads the plugin's own ``plugin_configuration`` blob; if it carries
+    nothing usable, falls back to the ``connection`` plugin attached to
+    the same ``ThirdPartyService`` (the shared service-account creds).
+    """
+    credentials: dict[str, typing.Any] = await _read_blob(
+        db, _OWN_BLOB, plugin_id
+    )
+    if not credentials:
+        credentials = await _read_blob(db, _CONNECTION_BLOB, plugin_id)
 
     required_fields = [f for f in entry.manifest.credentials if f.required]
     # ``null`` JSON values must be treated as missing — otherwise

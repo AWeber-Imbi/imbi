@@ -5,6 +5,7 @@ import typing
 
 import fastapi
 from imbi_common import graph
+from imbi_common.plugins.base import ServicePlugin
 from imbi_common.plugins.errors import (
     PluginNotFoundError,
     PluginUnavailableError,
@@ -17,6 +18,41 @@ from imbi_common.plugins.registry import (
 from imbi_api.plugins import parse_options
 
 LOGGER = logging.getLogger(__name__)
+
+
+async def resolve_service_plugins(
+    db: graph.Graph, project_id: str
+) -> list[ServicePlugin]:
+    """Return the sibling plugins on the project's connected services.
+
+    Walks ``(:Project)-[:EXISTS_IN]->(:ThirdPartyService)-[:HAS_PLUGIN]
+    ->(:Plugin)`` and surfaces each plugin as a ``ServicePlugin`` (slug +
+    non-secret ``options``), mirroring how ``imbi-gateway`` populates
+    ``PluginContext.service_plugins`` for the webhook path. Behavioral
+    plugins read these to resolve shared config -- e.g. the GitHub host
+    from the ``github-connection`` sibling. Credentials are deliberately
+    excluded; secrets are resolved separately by the host.
+    """
+    query: typing.LiteralString = """
+    MATCH (proj:Project {{id: {project_id}}})-[:EXISTS_IN]->
+      (:ThirdPartyService)-[:HAS_PLUGIN]->(p:Plugin)
+    RETURN collect(DISTINCT {{slug: p.plugin_slug, options: p.options}})
+      AS plugins
+    """
+    records = await db.execute(query, {'project_id': project_id}, ['plugins'])
+    if not records or records[0].get('plugins') is None:
+        return []
+    rows: list[dict[str, typing.Any]] = (
+        graph.parse_agtype(records[0]['plugins']) or []
+    )
+    return [
+        ServicePlugin(
+            slug=str(row['slug']),
+            options=parse_options(row.get('options')),
+        )
+        for row in rows
+        if row.get('slug')
+    ]
 
 
 class ResolvedPlugin(typing.NamedTuple):
