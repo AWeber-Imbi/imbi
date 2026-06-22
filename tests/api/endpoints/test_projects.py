@@ -1263,6 +1263,98 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         query = self.mock_db.execute.call_args.args[0]
         self.assertNotIn('coalesce(p.archived, false)', query)
 
+    # -- EXISTS_IN service filtering -----------------------------------
+
+    def test_list_by_service_returns_matching_projects(self) -> None:
+        """``third_party_service_slug`` + ``identifier`` restrict to the
+        EXISTS_IN edge carrying that external identifier."""
+        self.mock_db.execute.return_value = [
+            {
+                'project': self._project_data(),
+                'outbound_count': 0,
+                'inbound_count': 0,
+            },
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                '/organizations/engineering/projects/'
+                '?third_party_service_slug=github&identifier=octo/api',
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['slug'], 'my-api')
+
+        # The list query is the first execute call; later calls fetch
+        # release/PR data once a project row comes back.
+        query = self.mock_db.execute.call_args_list[0].args[0]
+        params = self.mock_db.execute.call_args_list[0].args[1]
+        self.assertIn('-[ei:EXISTS_IN]->', query)
+        self.assertIn('ThirdPartyService {{slug: {tps_slug}}}', query)
+        self.assertIn('-[:BELONGS_TO]->(o)', query)
+        self.assertIn('WHERE ei.identifier = {identifier}', query)
+        self.assertEqual(params['tps_slug'], 'github')
+        self.assertEqual(params['identifier'], 'octo/api')
+
+    def test_list_by_service_slug_only_omits_identifier(self) -> None:
+        """``third_party_service_slug`` alone matches every project in
+        the service without an identifier predicate."""
+        self.mock_db.execute.return_value = []
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                '/organizations/engineering/projects/'
+                '?third_party_service_slug=github',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        query = self.mock_db.execute.call_args.args[0]
+        params = self.mock_db.execute.call_args.args[1]
+        self.assertIn('-[ei:EXISTS_IN]->', query)
+        self.assertNotIn('WHERE ei.identifier', query)
+        self.assertEqual(params['tps_slug'], 'github')
+        self.assertIsNone(params['identifier'])
+
+    def test_list_identifier_without_service_rejected(self) -> None:
+        """``identifier`` is meaningless without a service slug."""
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                '/organizations/engineering/projects/?identifier=octo/api',
+            )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('third_party_service_slug', response.json()['detail'])
+        self.mock_db.execute.assert_not_called()
+
+    def test_list_unknown_service_returns_empty(self) -> None:
+        """An unknown service slug matches nothing (no 404, no extra
+        lookup query)."""
+        self.mock_db.execute.return_value = []
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                '/organizations/engineering/projects/'
+                '?third_party_service_slug=does-not-exist',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), [])
+        self.assertEqual(self.mock_db.execute.call_count, 1)
+
     # -- Attribute filtering -------------------------------------------
 
     def _framework_blueprint(self) -> models.Blueprint:

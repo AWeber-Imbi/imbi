@@ -1572,6 +1572,28 @@ async def list_projects(
     project_type: str | None = None,
     include_archived: bool = False,
     slim: bool = False,
+    third_party_service_slug: typing.Annotated[
+        str | None,
+        fastapi.Query(
+            description=(
+                'Restrict results to projects that have an EXISTS_IN '
+                'relationship to the third-party service with this slug '
+                'in the organization. Combine with ``identifier`` to '
+                'match a specific external identifier on that service.'
+            ),
+        ),
+    ] = None,
+    identifier: typing.Annotated[
+        str | None,
+        fastapi.Query(
+            description=(
+                'Restrict results to projects whose EXISTS_IN edge to '
+                '``third_party_service_slug`` carries this external '
+                'identifier (exact match). Requires '
+                '``third_party_service_slug``.'
+            ),
+        ),
+    ] = None,
     filters: typing.Annotated[
         list[str] | None,
         fastapi.Query(
@@ -1598,6 +1620,13 @@ async def list_projects(
     stored on the project (e.g. ``framework``, ``programming_language``)
     using the field/operator grammar described on the parameter.
 
+    ``third_party_service_slug`` restricts the listing to projects that
+    have an ``EXISTS_IN`` relationship to that service within the
+    organization; adding ``identifier`` further restricts to the
+    project(s) whose edge carries that external identifier. ``identifier``
+    is only meaningful alongside ``third_party_service_slug`` and is
+    rejected on its own. An unknown service slug simply matches nothing.
+
     ``slim=true`` returns a stripped payload tailored to the
     projects-list UI: only the fields the list view reads (id, name,
     score, team slug+name, project_type slug+name+deployable,
@@ -1608,6 +1637,33 @@ async def list_projects(
     ``relationships`` block. Cuts the response from megabytes to
     kilobytes for large orgs.
     """
+    if identifier is not None and third_party_service_slug is None:
+        raise fastapi.HTTPException(
+            status_code=422,
+            detail=(
+                'identifier requires third_party_service_slug; an '
+                'external identifier is only meaningful for a specific '
+                'third-party service'
+            ),
+        )
+    # Restrict to projects linked to a third-party service (and,
+    # optionally, a specific external identifier on that edge). Closed
+    # with ``WITH DISTINCT p, o`` so the optional ``identifier`` WHERE
+    # never lands adjacent to the attribute filter's WHERE below.
+    service_filter: typing.LiteralString = ''
+    if third_party_service_slug is not None:
+        identifier_clause: typing.LiteralString = (
+            'WHERE ei.identifier = {identifier}\n'
+            if identifier is not None
+            else ''
+        )
+        service_filter = (
+            'MATCH (p)-[ei:EXISTS_IN]->'
+            '(tps:ThirdPartyService {{slug: {tps_slug}}})'
+            '-[:BELONGS_TO]->(o)\n'
+            + identifier_clause
+            + 'WITH DISTINCT p, o\n'
+        )
     type_filter: typing.LiteralString = (
         'MATCH (p)-[:TYPE]->(filter_pt:ProjectType {{slug: {project_type}}})'
         if project_type
@@ -1637,6 +1693,7 @@ async def list_projects(
         + """
     WITH DISTINCT p, o
     """
+        + service_filter
         + type_filter
         + attr_filter
         + return_fragment
@@ -1652,6 +1709,8 @@ async def list_projects(
         {
             'org_slug': org_slug,
             'project_type': project_type,
+            'tps_slug': third_party_service_slug,
+            'identifier': identifier,
             **attr_params,
         },
         columns,
