@@ -15,14 +15,20 @@ import respx
 from imbi_common.plugins.base import (
     LifecyclePlugin,
     PluginContext,
+    ServicePlugin,
 )
 from imbi_common.plugins.errors import PluginAuthenticationFailed
 
-from imbi_plugin_github.lifecycle import (
-    GitHubEnterpriseCloudLifecyclePlugin,
-    GitHubEnterpriseServerLifecyclePlugin,
-    GitHubLifecyclePlugin,
-)
+from imbi_plugin_github.lifecycle import GitHubLifecyclePlugin
+
+
+def _connection(
+    flavor: str = 'github.com', host: str | None = None
+) -> ServicePlugin:
+    options: dict[str, object] = {'flavor': flavor}
+    if host is not None:
+        options['host'] = host
+    return ServicePlugin(slug='github-connection', options=options)
 
 
 def _ctx(
@@ -36,6 +42,7 @@ def _ctx(
     project_description: str | None = None,
     project_ui_url: str | None = None,
     third_party_service_slug: str | None = None,
+    service_plugins: list[ServicePlugin] | None = None,
 ) -> PluginContext:
     return PluginContext(
         project_id='p',
@@ -54,6 +61,9 @@ def _ctx(
         project_description=project_description,
         project_ui_url=project_ui_url,
         third_party_service_slug=third_party_service_slug,
+        service_plugins=(
+            service_plugins if service_plugins is not None else [_connection()]
+        ),
     )
 
 
@@ -61,57 +71,41 @@ _CREDS = {'access_token': 'gho_test'}
 
 
 class ManifestTestCase(unittest.TestCase):
-    def test_manifest_slugs(self) -> None:
+    def test_manifest_slug(self) -> None:
         self.assertEqual(
             GitHubLifecyclePlugin.manifest.slug, 'github-lifecycle'
         )
-        self.assertEqual(
-            GitHubEnterpriseCloudLifecyclePlugin.manifest.slug,
-            'github-lifecycle-ec',
-        )
-        self.assertEqual(
-            GitHubEnterpriseServerLifecyclePlugin.manifest.slug,
-            'github-lifecycle-es',
-        )
 
-    def test_all_subclass_lifecycle_plugin(self) -> None:
-        for cls in (
-            GitHubLifecyclePlugin,
-            GitHubEnterpriseCloudLifecyclePlugin,
-            GitHubEnterpriseServerLifecyclePlugin,
-        ):
-            self.assertIsInstance(cls(), LifecyclePlugin)
-            self.assertEqual(cls.manifest.plugin_type, 'lifecycle')
+    def test_is_lifecycle_plugin(self) -> None:
+        self.assertIsInstance(GitHubLifecyclePlugin(), LifecyclePlugin)
+        self.assertEqual(
+            GitHubLifecyclePlugin.manifest.plugin_type, 'lifecycle'
+        )
 
     def test_archive_target_org_option(self) -> None:
         # The transfer-on-archive option is the load-bearing setting for
-        # this plugin family — assert it is exposed by every flavor.
-        for cls in (
-            GitHubLifecyclePlugin,
-            GitHubEnterpriseCloudLifecyclePlugin,
-            GitHubEnterpriseServerLifecyclePlugin,
-        ):
-            names = {opt.name for opt in cls.manifest.options}
-            self.assertIn('archive_target_org', names)
+        # this plugin.
+        names = {opt.name for opt in GitHubLifecyclePlugin.manifest.options}
+        self.assertIn('archive_target_org', names)
 
     def test_create_org_and_org_mapping_options(self) -> None:
-        # Every flavor advertises the new ``create_org`` + ``org_mapping``
-        # options so the admin UI can render them without per-host casing.
-        for cls in (
-            GitHubLifecyclePlugin,
-            GitHubEnterpriseCloudLifecyclePlugin,
-            GitHubEnterpriseServerLifecyclePlugin,
-        ):
-            opts = {opt.name: opt for opt in cls.manifest.options}
-            self.assertIn('create_org', opts)
-            self.assertEqual(opts['create_org'].type, 'string')
-            self.assertIn('org_mapping', opts)
-            self.assertEqual(opts['org_mapping'].type, 'mapping')
+        opts = {
+            opt.name: opt for opt in GitHubLifecyclePlugin.manifest.options
+        }
+        self.assertIn('create_org', opts)
+        self.assertEqual(opts['create_org'].type, 'string')
+        self.assertIn('org_mapping', opts)
+        self.assertEqual(opts['org_mapping'].type, 'mapping')
+
+    def test_no_host_option(self) -> None:
+        # Host now comes from the github-connection sibling, not a manifest
+        # option on the lifecycle plugin itself.
+        names = {opt.name for opt in GitHubLifecyclePlugin.manifest.options}
+        self.assertNotIn('host', names)
 
     def test_lifecycle_events_includes_all_supported(self) -> None:
         # ``lifecycle_events`` drives UI affordance gating (e.g. the
-        # "Also delete the repository" checkbox); every flavor must
-        # advertise the full set the plugin implements.
+        # "Also delete the repository" checkbox).
         expected = {
             'created',
             'updated',
@@ -120,12 +114,9 @@ class ManifestTestCase(unittest.TestCase):
             'deleted',
             'relocated',
         }
-        for cls in (
-            GitHubLifecyclePlugin,
-            GitHubEnterpriseCloudLifecyclePlugin,
-            GitHubEnterpriseServerLifecyclePlugin,
-        ):
-            self.assertEqual(set(cls.manifest.lifecycle_events), expected)
+        self.assertEqual(
+            set(GitHubLifecyclePlugin.manifest.lifecycle_events), expected
+        )
 
 
 class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
@@ -543,27 +534,45 @@ class UnarchiveTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class HostResolutionTestCase(unittest.TestCase):
-    def test_github_com_ignores_host_option(self) -> None:
+    def test_github_com_resolves_from_connection(self) -> None:
+        plugin = GitHubLifecyclePlugin()
         self.assertEqual(
-            GitHubLifecyclePlugin._resolve_host({'host': 'ignored'}),
+            plugin._resolve_host(
+                _ctx(service_plugins=[_connection('github.com')])
+            ),
             'github.com',
         )
 
     def test_ghec_requires_tenant_host(self) -> None:
-        plugin = GitHubEnterpriseCloudLifecyclePlugin()
+        plugin = GitHubLifecyclePlugin()
         self.assertEqual(
-            plugin._resolve_host({'host': 'tenant.ghe.com'}),
+            plugin._resolve_host(
+                _ctx(service_plugins=[_connection('ghec', 'tenant.ghe.com')])
+            ),
             'tenant.ghe.com',
         )
         with self.assertRaises(ValueError):
-            plugin._resolve_host({'host': 'github.example.com'})
+            plugin._resolve_host(
+                _ctx(
+                    service_plugins=[_connection('ghec', 'github.example.com')]
+                )
+            )
 
     def test_ghes_accepts_any_host(self) -> None:
-        plugin = GitHubEnterpriseServerLifecyclePlugin()
+        plugin = GitHubLifecyclePlugin()
         self.assertEqual(
-            plugin._resolve_host({'host': 'ghe.example.com'}),
+            plugin._resolve_host(
+                _ctx(service_plugins=[_connection('ghes', 'ghe.example.com')])
+            ),
             'ghe.example.com',
         )
+
+    def test_missing_connection_raises(self) -> None:
+        # A context with no github-connection sibling cannot resolve a
+        # host and must raise an operator-facing ValueError.
+        plugin = GitHubLifecyclePlugin()
+        with self.assertRaises(ValueError):
+            plugin._resolve_host(_ctx(service_plugins=[]))
 
 
 class GhecApiBaseTestCase(unittest.IsolatedAsyncioTestCase):
@@ -587,10 +596,10 @@ class GhecApiBaseTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=httpx.Response(200, json={})
         )
 
-        plugin = GitHubEnterpriseCloudLifecyclePlugin()
+        plugin = GitHubLifecyclePlugin()
         result = await plugin.on_project_archived(
             _ctx(
-                options={'host': 'tenant.ghe.com'},
+                service_plugins=[_connection('ghec', 'tenant.ghe.com')],
                 project_links={
                     'github-repository': ('https://tenant.ghe.com/octo/demo'),
                 },

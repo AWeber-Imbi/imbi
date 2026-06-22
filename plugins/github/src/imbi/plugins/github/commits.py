@@ -54,16 +54,15 @@ from imbi_common.plugins.base import (
     CredentialField,
     PluginContext,
     PluginManifest,
-    ServicePlugin,
     WebhookActionPlugin,
 )
 from imbi_common.plugins.errors import PluginRateLimited
 
 from imbi_plugin_github import _app_auth
 from imbi_plugin_github._hosts import (
+    find_connection,
+    flavor_host,
     host_to_api_base,
-    normalize_host,
-    require_ghec_tenant_host,
 )
 from imbi_plugin_github._repos import resolve_owner_repo
 from imbi_plugin_github.deployment import (
@@ -82,10 +81,6 @@ LOGGER = logging.getLogger(__name__)
 
 _HTTP_TIMEOUT_SECONDS = 10.0
 _ZERO_SHA = '0' * 40
-# This plugin's own slug; skipped when reading the GitHub host/flavor
-# from connected ``service_plugins`` so the commit-sync entry can't
-# masquerade as a github.com host on a GHEC/GHES service.
-_SELF_SLUG = 'github-commit-sync'
 # GitHub's compare endpoint caps ``commits[]`` at 250 per page and
 # paginates the rest; bound the walk so a pathological single push
 # (force-push of thousands of commits) can't pin us on one endpoint.
@@ -309,32 +304,26 @@ def _branch_short_name(ref: str) -> str:
     return ref.removeprefix(prefix)
 
 
-def _github_plugin_host(plugin: ServicePlugin) -> str | None:
-    """Resolve the GitHub host from a connected plugin's slug + options.
+def _connection_host(ctx: PluginContext, label: str) -> str | None:
+    """Resolve the GitHub host from the ``github-connection`` sibling.
 
-    Returns ``None`` for non-GitHub plugins and for GitHub plugins whose
-    required ``host`` option is missing or invalid (logged) so the caller
-    can fall through to the next resolution source.
+    Returns ``None`` when no connection plugin is attached so callers can
+    fall through to the next resolution source. A connection plugin that
+    *is* present but carries an unusable flavor/host is logged and also
+    treated as a fall-through rather than failing the delivery.
     """
-    slug = plugin.slug
-    if not slug.startswith('github'):
+    plugin = find_connection(ctx.service_plugins)
+    if plugin is None:
         return None
-    label = f'github-commit-sync (via {slug})'
     try:
-        if slug.endswith('-ec') or slug == 'github-enterprise-cloud':
-            return require_ghec_tenant_host(
-                normalize_host(plugin.options.get('host'), label), label
-            )
-        if slug.endswith('-es') or slug == 'github-enterprise-server':
-            return normalize_host(plugin.options.get('host'), label)
+        return flavor_host(plugin.options, label)
     except ValueError as exc:
         LOGGER.warning(
-            'Connected GitHub plugin %r has an unusable host option: %s',
-            slug,
+            '%s: github-connection plugin has an unusable flavor/host: %s',
+            label,
             exc,
         )
         return None
-    return 'github.com'
 
 
 def _api_base_from_repo_url(repo_url: object) -> str | None:
@@ -363,15 +352,9 @@ def _resolve_api_base(
     """Pick the GitHub API base for this call (see module docstring)."""
     if explicit:
         return explicit.rstrip('/')
-    for plugin in ctx.service_plugins:
-        # Skip our own entry: its slug starts with "github" but carries
-        # no host option, so _github_plugin_host would mis-resolve it to
-        # github.com on a GHEC/GHES service.
-        if plugin.slug == _SELF_SLUG:
-            continue
-        host = _github_plugin_host(plugin)
-        if host:
-            return host_to_api_base(host)
+    host = _connection_host(ctx, 'github-commit-sync')
+    if host:
+        return host_to_api_base(host)
     endpoint = ctx.assignment_options.get('service_endpoint')
     if isinstance(endpoint, str) and endpoint:
         return endpoint.rstrip('/')
@@ -732,20 +715,12 @@ async def _hydrate_ci(
 def _resolve_host_for_context(ctx: PluginContext) -> str | None:
     """Resolve the GitHub web host for an on-demand sync (no payload).
 
-    Walks the connected GitHub plugins on ``ctx.service_plugins`` and
-    returns the first usable host (github.com, a GHEC tenant, or a GHES
-    appliance), skipping this plugin's own entry so a commit-sync row on a
-    GHEC/GHES service can't be read as github.com.  Unlike the webhook
-    path there is no push payload to fall back to, so the absence of a
-    connected GitHub plugin yields ``None``.
+    Reads the ``github-connection`` sibling on ``ctx.service_plugins``
+    and returns its resolved host (github.com, a GHEC tenant, or a GHES
+    appliance). Unlike the webhook path there is no push payload to fall
+    back to, so the absence of a connection plugin yields ``None``.
     """
-    for plugin in ctx.service_plugins:
-        if plugin.slug == _SELF_SLUG:
-            continue
-        host = _github_plugin_host(plugin)
-        if host:
-            return host
-    return None
+    return _connection_host(ctx, 'github-commit-sync')
 
 
 async def _fetch_default_branch(

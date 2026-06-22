@@ -1,14 +1,13 @@
-"""GitHub identity plugins.
+"""GitHub identity plugin.
 
-Three concrete subclasses share one base and differ only by host:
+A single, host-agnostic :class:`GitHubIdentityPlugin` implements the
+OAuth App flow for every GitHub flavor. The target host (github.com, a
+GHEC ``*.ghe.com`` tenant, or a GHES appliance) is resolved at call time
+from the ``github-connection`` plugin attached to the same
+``ThirdPartyService``, so there is no longer a per-flavor subclass.
 
-* :class:`GitHubPlugin` — github.com.
-* :class:`GitHubEnterpriseCloudPlugin` — GHEC tenant on ``*.ghe.com``.
-* :class:`GitHubEnterpriseServerPlugin` — operator-managed GHES; the
-  hostname comes from a manifest option.
-
-The plugins implement the OAuth App flow: the access token from the
-OAuth grant is passed straight to GitHub APIs as a ``Bearer`` token.
+The access token from the OAuth grant is passed straight to GitHub APIs
+as a ``Bearer`` token.
 """
 
 from __future__ import annotations
@@ -31,7 +30,10 @@ from imbi_common.plugins.base import (
     PluginOption,
 )
 
-from imbi_plugin_github._hosts import normalize_host, require_ghec_tenant_host
+from imbi_plugin_github._hosts import (
+    host_to_api_base,
+    resolve_connection_host,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -78,45 +80,59 @@ def _build_userinfo(claims: dict[str, typing.Any]) -> IdentityProfile:
     )
 
 
-class _GitHubBase(IdentityPlugin):
-    """Shared base for GitHub identity plugins.
+class GitHubIdentityPlugin(IdentityPlugin):
+    """Host-agnostic GitHub OAuth App identity plugin.
 
-    Subclasses set :attr:`manifest` and :meth:`_resolve_host`.
+    The target host is resolved per call from the ``github-connection``
+    plugin attached to the same service.
     """
 
-    @classmethod
-    def _resolve_host(cls, options: dict[str, typing.Any]) -> str:
-        """Return the hostname this plugin instance targets."""
-        raise NotImplementedError
+    manifest = PluginManifest(
+        slug='github-identity',
+        name='GitHub',
+        description='GitHub OAuth App identity provider.',
+        widget_text=(
+            'Connect to enable functionality such as pull-request visibility, '
+            'project creation, and deployments.'
+        ),
+        plugin_type='identity',
+        auth_type='oauth2',
+        login_capable=True,
+        default_scopes=DEFAULT_SCOPES,
+        options=[
+            PluginOption(
+                name='default_scopes',
+                label='Default scopes (space-separated)',
+                type='string',
+            ),
+        ],
+        credentials=[
+            CredentialField(
+                name='client_id',
+                label='Client ID',
+                required=True,
+            ),
+            CredentialField(
+                name='client_secret',
+                label='Client secret',
+                required=True,
+            ),
+        ],
+    )
 
-    def _endpoints(self, options: dict[str, typing.Any]) -> dict[str, str]:
-        host = self._resolve_host(options)
-        # github.com routes login through github.com/login but API
-        # requests through api.github.com.  GHEC with Data Residency
-        # tenants (``*.ghe.com``) are isolated: OAuth authorize/token
-        # live on the tenant host and REST traffic on
-        # ``api.<tenant>.ghe.com``.  GHES appliances host OAuth at
-        # ``<host>/login/oauth/...`` and REST at ``<host>/api/v3/...``.
-        if host == 'github.com':
-            return {
-                'authorize': 'https://github.com/login/oauth/authorize',
-                'token': 'https://github.com/login/oauth/access_token',
-                'user': 'https://api.github.com/user',
-                'emails': 'https://api.github.com/user/emails',
-            }
-        if host.endswith('.ghe.com'):
-            api_host = f'api.{host}'
-            return {
-                'authorize': f'https://{host}/login/oauth/authorize',
-                'token': f'https://{host}/login/oauth/access_token',
-                'user': f'https://{api_host}/user',
-                'emails': f'https://{api_host}/user/emails',
-            }
+    def _endpoints(self, ctx: PluginContext) -> dict[str, str]:
+        host = resolve_connection_host(ctx.service_plugins, 'github-identity')
+        # OAuth authorize/token are always hosted by the resolved web
+        # host (github.com, a ``*.ghe.com`` tenant, or a GHES appliance);
+        # only the REST API base differs per flavor, and that routing is
+        # the single responsibility of ``_hosts.host_to_api_base``.
+        oauth_base = f'https://{host}/login/oauth'
+        api_base = host_to_api_base(host)
         return {
-            'authorize': f'https://{host}/login/oauth/authorize',
-            'token': f'https://{host}/login/oauth/access_token',
-            'user': f'https://{host}/api/v3/user',
-            'emails': f'https://{host}/api/v3/user/emails',
+            'authorize': f'{oauth_base}/authorize',
+            'token': f'{oauth_base}/access_token',
+            'user': f'{api_base}/user',
+            'emails': f'{api_base}/user/emails',
         }
 
     @staticmethod
@@ -141,7 +157,7 @@ class _GitHubBase(IdentityPlugin):
         redirect_uri: str,
         scopes: list[str] | None = None,
     ) -> AuthorizationRequest:
-        endpoints = self._endpoints(ctx.assignment_options)
+        endpoints = self._endpoints(ctx)
         scope_list = self._scopes(ctx.assignment_options, scopes)
         params: dict[str, str] = {
             'client_id': credentials['client_id'],
@@ -163,7 +179,7 @@ class _GitHubBase(IdentityPlugin):
         redirect_uri: str,
         code_verifier: str | None = None,
     ) -> tuple[IdentityProfile, IdentityCredentials]:
-        endpoints = self._endpoints(ctx.assignment_options)
+        endpoints = self._endpoints(ctx)
         data: dict[str, str] = {
             'client_id': credentials['client_id'],
             'client_secret': credentials['client_secret'],
@@ -214,7 +230,7 @@ class _GitHubBase(IdentityPlugin):
         credentials: dict[str, str],
         refresh_token: str,
     ) -> IdentityCredentials:
-        endpoints = self._endpoints(ctx.assignment_options)
+        endpoints = self._endpoints(ctx)
         data: dict[str, str] = {
             'client_id': credentials['client_id'],
             'client_secret': credentials['client_secret'],
@@ -296,140 +312,3 @@ class _GitHubBase(IdentityPlugin):
                     if primary:
                         claims['email'] = primary['email']
         return _build_userinfo(claims)
-
-
-class GitHubPlugin(_GitHubBase):
-    manifest = PluginManifest(
-        slug='github',
-        name='GitHub',
-        description='GitHub.com OAuth App identity provider.',
-        widget_text=(
-            'Connect to enable functionality such as pull-request visibility, '
-            'project creation, and deployments.'
-        ),
-        plugin_type='identity',
-        auth_type='oauth2',
-        login_capable=True,
-        default_scopes=DEFAULT_SCOPES,
-        options=[
-            PluginOption(
-                name='default_scopes',
-                label='Default scopes (space-separated)',
-                type='string',
-            ),
-        ],
-        credentials=[
-            CredentialField(
-                name='client_id',
-                label='Client ID',
-                required=True,
-            ),
-            CredentialField(
-                name='client_secret',
-                label='Client secret',
-                required=True,
-            ),
-        ],
-    )
-
-    @classmethod
-    def _resolve_host(cls, options: dict[str, typing.Any]) -> str:
-        return 'github.com'
-
-
-class GitHubEnterpriseCloudPlugin(_GitHubBase):
-    manifest = PluginManifest(
-        slug='github-enterprise-cloud',
-        name='GitHub Enterprise Cloud',
-        description=(
-            'GitHub Enterprise Cloud OAuth App identity provider '
-            '(tenant.ghe.com).'
-        ),
-        widget_text=(
-            'Connect to enable functionality such as pull-request visibility, '
-            'project creation, and deployments.'
-        ),
-        plugin_type='identity',
-        auth_type='oauth2',
-        login_capable=True,
-        default_scopes=DEFAULT_SCOPES,
-        options=[
-            PluginOption(
-                name='host',
-                label='GHEC tenant host',
-                description='e.g. tenant.ghe.com',
-                type='string',
-                required=True,
-            ),
-            PluginOption(
-                name='default_scopes',
-                label='Default scopes (space-separated)',
-                type='string',
-            ),
-        ],
-        credentials=[
-            CredentialField(
-                name='client_id',
-                label='Client ID',
-                required=True,
-            ),
-            CredentialField(
-                name='client_secret',
-                label='Client secret',
-                required=True,
-            ),
-        ],
-    )
-
-    @classmethod
-    def _resolve_host(cls, options: dict[str, typing.Any]) -> str:
-        return require_ghec_tenant_host(
-            normalize_host(options.get('host'), 'GHEC plugin'),
-            'GHEC plugin',
-        )
-
-
-class GitHubEnterpriseServerPlugin(_GitHubBase):
-    manifest = PluginManifest(
-        slug='github-enterprise-server',
-        name='GitHub Enterprise Server',
-        description=('GitHub Enterprise Server OAuth App identity provider.'),
-        widget_text=(
-            'Connect to enable functionality such as pull-request visibility, '
-            'project creation, and deployments.'
-        ),
-        plugin_type='identity',
-        auth_type='oauth2',
-        login_capable=True,
-        default_scopes=DEFAULT_SCOPES,
-        options=[
-            PluginOption(
-                name='host',
-                label='GHES host',
-                description='Hostname of the GHES install.',
-                type='string',
-                required=True,
-            ),
-            PluginOption(
-                name='default_scopes',
-                label='Default scopes (space-separated)',
-                type='string',
-            ),
-        ],
-        credentials=[
-            CredentialField(
-                name='client_id',
-                label='Client ID',
-                required=True,
-            ),
-            CredentialField(
-                name='client_secret',
-                label='Client secret',
-                required=True,
-            ),
-        ],
-    )
-
-    @classmethod
-    def _resolve_host(cls, options: dict[str, typing.Any]) -> str:
-        return normalize_host(options.get('host'), 'GHES plugin')

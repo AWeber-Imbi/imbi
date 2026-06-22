@@ -22,15 +22,10 @@ dependencies = [
 ]
 
 [project.entry-points."imbi.plugins"]
-github = "imbi_plugin_github.identity:GitHubPlugin"
-github-enterprise-cloud = "imbi_plugin_github.identity:GitHubEnterpriseCloudPlugin"
-github-enterprise-server = "imbi_plugin_github.identity:GitHubEnterpriseServerPlugin"
+github-connection = "imbi_plugin_github.connection:GitHubConnectionPlugin"
+github-identity = "imbi_plugin_github.identity:GitHubIdentityPlugin"
 github-deployment = "imbi_plugin_github.deployment:GitHubDeploymentPlugin"
-github-deployment-ec = "imbi_plugin_github.deployment:GitHubEnterpriseCloudDeploymentPlugin"
-github-deployment-es = "imbi_plugin_github.deployment:GitHubEnterpriseServerDeploymentPlugin"
 github-lifecycle = "imbi_plugin_github.lifecycle:GitHubLifecyclePlugin"
-github-lifecycle-ec = "imbi_plugin_github.lifecycle:GitHubEnterpriseCloudLifecyclePlugin"
-github-lifecycle-es = "imbi_plugin_github.lifecycle:GitHubEnterpriseServerLifecyclePlugin"
 github-commit-sync = "imbi_plugin_github.commits:GitHubCommitSyncPlugin"
 github-pr-sync = "imbi_plugin_github.pull_requests:GitHubPRSyncPlugin"
 
@@ -126,6 +121,13 @@ max-complexity = 15
 default-groups = ["dev"]
 exclude-newer = "7 days"
 exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "imbi-plugin-aws" = false, "imbi-plugin-github" = false, "imbi-plugin-logzio" = false, "imbi-plugin-oidc" = false, "imbi-plugin-pagerduty" = false, "imbi-plugin-sentry" = false, "imbi-plugin-sonarqube" = false }
+
+[tool.uv.sources]
+# Temporary: track imbi-common main so the consolidation lands before
+# imbi-common is released. The lockstep release flow restores the
+# pinned PyPI version (==X) here. imbi-common is a public repo, so CI
+# clones it anonymously (no token needed).
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"

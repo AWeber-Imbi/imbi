@@ -5,10 +5,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What This Is
 
 A set of GitHub plugins for the Imbi platform, distributed as a single
-Python package (`imbi_plugin_github`). It ships **three plugin types**
-(identity, deployment, lifecycle), each in **three host flavors**
-(github.com, GitHub Enterprise Cloud, GitHub Enterprise Server) — nine
-plugins total. The Imbi host discovers them through the
+Python package (`imbi_plugin_github`). It ships **one connection plugin**
+plus **one host-agnostic plugin per behavior** — `github-connection`,
+`github-identity`, `github-deployment`, `github-lifecycle`,
+`github-commit-sync`, `github-pr-sync` (six total). There are no longer
+per-flavor (github.com / GHEC / GHES) variants: the operator picks the
+flavor + host once on the connection plugin, and every behavioral plugin
+reads it from there. The Imbi host discovers them through the
 `imbi.plugins` entry points declared in `pyproject.toml`; that table is
 the registration surface — adding a plugin class means adding an entry
 point there.
@@ -38,21 +41,25 @@ over `src`. Python is pinned to **3.14**; ruff uses single quotes and a
 
 ## Architecture
 
-### The base/subclass/host-flavor pattern
+### The connection-plugin / host-agnostic pattern
 
-Every plugin type follows the same shape: one `_*Base` class holds all
-behavior, and three thin concrete subclasses differ *only* in their
-`_resolve_host(options)` classmethod:
+A single `github-connection` plugin (a `ConnectionPlugin` from
+`imbi_common`, with no behavior) carries the `flavor` option
+(`github.com` / `ghec` / `ghes`), the `host` option, and the shared
+App/PAT credentials for the service. Every behavioral plugin is
+host-agnostic and resolves its host from that connection plugin via the
+`github-connection` entry on `ctx.service_plugins`:
 
-- github.com flavor → returns `'github.com'`.
-- GHEC flavor → reads the required `host` option, validates it's a
-  `*.ghe.com` tenant via `require_ghec_tenant_host`.
-- GHES flavor → reads the required `host` option, normalized only.
+- identity / deployment / lifecycle call `_resolve_host(ctx)` →
+  `resolve_connection_host(ctx.service_plugins, label)`.
+- commit-sync / pr-sync resolve it through `_connection_host` /
+  `_resolve_api_base` (the webhook path also falls back to the explicit
+  `api_base_url`, the service endpoint, and the push payload's
+  `repository.url`, in that order).
 
-`_resolve_host` feeds URL construction, and the three backends route
-differently — this mapping is the single most important thing to keep
-consistent and is **duplicated** across the three modules
-(`identity._endpoints`, `deployment._api_base`, `lifecycle._api_base`):
+`resolve_connection_host` returns a bare host; `host_to_api_base` maps it
+to the REST API base. Routing (the single source of truth in
+`host_to_api_base`, with OAuth URLs built in `identity._endpoints`):
 
 | Host                | REST API base                  | OAuth base (identity only)        |
 | ------------------- | ------------------------------ | --------------------------------- |
@@ -60,14 +67,17 @@ consistent and is **duplicated** across the three modules
 | `<tenant>.ghe.com`  | `https://api.<tenant>.ghe.com` | `https://<tenant>.ghe.com/login/oauth` |
 | GHES `<host>`       | `https://<host>/api/v3`        | `https://<host>/login/oauth`      |
 
-When you change routing for one plugin type, check whether the other two
-need the same change.
+The connection plugin must be populated onto `ctx.service_plugins` by the
+host: imbi-gateway already surfaces every service plugin for the webhook
+path; imbi-api populates it for identity/deployment/lifecycle calls.
 
 ### Shared helpers (single sources of truth)
 
-- `_hosts.py` — `normalize_host` (strip/validate a bare hostname, reject
-  paths/ports/queries) and `require_ghec_tenant_host`. All host-option
-  validation lives here.
+- `_hosts.py` — `normalize_host` / `require_ghec_tenant_host` (host-option
+  validation), `flavor_host` (validate a connection plugin's
+  `flavor`+`host` to a bare host), `find_connection` /
+  `resolve_connection_host` (locate the `github-connection` sibling on
+  `service_plugins`), and `host_to_api_base` (bare host → REST API base).
 - `_repos.py` — `resolve_owner_repo(ctx, host, label)` derives the target
   `(owner, repo)` for deployment and lifecycle calls: it scans
   `ctx.project_links` (preferring the `github-repository` key, skipping

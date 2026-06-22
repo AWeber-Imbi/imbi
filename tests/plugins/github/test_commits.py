@@ -45,6 +45,16 @@ def _await_args(m: mock.AsyncMock) -> tuple[typing.Any, ...]:
     return m.await_args.args
 
 
+def _connection(
+    flavor: str = 'github.com', host: str | None = None
+) -> ServicePlugin:
+    """Build a github-connection sibling carrying the flavor/host."""
+    options: dict[str, typing.Any] = {'flavor': flavor}
+    if host is not None:
+        options['host'] = host
+    return ServicePlugin(slug='github-connection', options=options)
+
+
 def _ctx(
     *,
     service_plugins: list[ServicePlugin] | None = None,
@@ -175,58 +185,38 @@ class ApiBaseResolutionTestCase(unittest.TestCase):
         )
 
     def test_explicit_override_wins(self) -> None:
-        ctx = _ctx(service_plugins=[ServicePlugin(slug='github', options={})])
+        ctx = _ctx(service_plugins=[_connection()])
         self.assertEqual(
             'https://ghe.corp/api/v3',
             self._base(ctx=ctx, explicit='https://ghe.corp/api/v3/'),
         )
 
-    def test_connected_plugin_github_com(self) -> None:
-        ctx = _ctx(service_plugins=[ServicePlugin(slug='github', options={})])
+    def test_connection_github_com(self) -> None:
+        ctx = _ctx(service_plugins=[_connection('github.com')])
         self.assertEqual('https://api.github.com', self._base(ctx=ctx))
 
-    def test_connected_plugin_ghec(self) -> None:
-        ctx = _ctx(
-            service_plugins=[
-                ServicePlugin(
-                    slug='github-deployment-ec',
-                    options={'host': 'tenant.ghe.com'},
-                )
-            ]
-        )
+    def test_connection_ghec(self) -> None:
+        ctx = _ctx(service_plugins=[_connection('ghec', 'tenant.ghe.com')])
         self.assertEqual('https://api.tenant.ghe.com', self._base(ctx=ctx))
 
-    def test_connected_plugin_ghes(self) -> None:
-        ctx = _ctx(
-            service_plugins=[
-                ServicePlugin(
-                    slug='github-enterprise-server',
-                    options={'host': 'ghe.example.com'},
-                )
-            ]
-        )
+    def test_connection_ghes(self) -> None:
+        ctx = _ctx(service_plugins=[_connection('ghes', 'ghe.example.com')])
         self.assertEqual('https://ghe.example.com/api/v3', self._base(ctx=ctx))
 
-    def test_own_commit_sync_slug_skipped_on_ghec(self) -> None:
-        # A commit-sync entry's slug starts with "github" but has no host
-        # option; it must not resolve to github.com on a GHEC service —
-        # the real GHEC plugin behind it wins.
+    def test_connection_wins_over_action_siblings(self) -> None:
+        # Action-plugin siblings carry no host; the connection plugin is
+        # the only host source and wins regardless of sibling ordering.
         ctx = _ctx(
             service_plugins=[
-                ServicePlugin(slug='github-commit-sync', options={}),
-                ServicePlugin(
-                    slug='github-deployment-ec',
-                    options={'host': 'tenant.ghe.com'},
-                ),
+                ServicePlugin(slug='github-pr-sync', options={}),
+                _connection('ghec', 'tenant.ghe.com'),
             ]
         )
         self.assertEqual('https://api.tenant.ghe.com', self._base(ctx=ctx))
 
-    def test_invalid_connected_plugin_host_falls_through(self) -> None:
+    def test_invalid_connection_flavor_falls_through(self) -> None:
         ctx = _ctx(
-            service_plugins=[
-                ServicePlugin(slug='github-deployment-es', options={}),
-            ],
+            service_plugins=[_connection('ghes')],  # missing host
             service_endpoint='https://ghe.fallback/api/v3',
         )
         with self.assertLogs(commits.LOGGER, level='WARNING'):
@@ -1121,27 +1111,17 @@ class AppAuthSyncTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class HostForContextTestCase(unittest.TestCase):
-    def test_resolves_from_connected_github_plugin(self) -> None:
-        ctx = _ctx(service_plugins=[ServicePlugin(slug='github', options={})])
+    def test_resolves_from_connection_plugin(self) -> None:
+        ctx = _ctx(service_plugins=[_connection('github.com')])
         self.assertEqual('github.com', commits._resolve_host_for_context(ctx))
 
-    def test_skips_own_slug_for_ghec(self) -> None:
-        # A commit-sync entry must not be read as github.com on a GHEC
-        # service; the real GHEC plugin behind it wins.
-        ctx = _ctx(
-            service_plugins=[
-                ServicePlugin(slug='github-commit-sync', options={}),
-                ServicePlugin(
-                    slug='github-deployment-ec',
-                    options={'host': 'tenant.ghe.com'},
-                ),
-            ]
-        )
+    def test_resolves_ghec_from_connection(self) -> None:
+        ctx = _ctx(service_plugins=[_connection('ghec', 'tenant.ghe.com')])
         self.assertEqual(
             'tenant.ghe.com', commits._resolve_host_for_context(ctx)
         )
 
-    def test_no_github_plugin_returns_none(self) -> None:
+    def test_no_connection_plugin_returns_none(self) -> None:
         ctx = _ctx(service_plugins=[ServicePlugin(slug='sonarqube')])
         self.assertIsNone(commits._resolve_host_for_context(ctx))
 
@@ -1150,7 +1130,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
     _REPO = 'https://api.github.com/repos/octo/demo'
 
     def _ctx(self) -> PluginContext:
-        return _ctx(service_plugins=[ServicePlugin(slug='github', options={})])
+        return _ctx(service_plugins=[_connection('github.com')])
 
     def _mock_default_branch(self, branch: str = 'main') -> respx.Route:
         return respx.get(self._REPO).mock(
@@ -1843,7 +1823,7 @@ class AuthorAttributionTestCase(unittest.IsolatedAsyncioTestCase):
             side_effect=lambda s: 'dev@example.com' if s == '42' else None
         )
         ctx = _ctx(
-            service_plugins=[ServicePlugin(slug='github', options={})],
+            service_plugins=[_connection('github.com')],
             resolve_user=resolver,
         )
         with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:

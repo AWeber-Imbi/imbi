@@ -1,4 +1,4 @@
-"""Smoke tests for the GitHub deployment plugins."""
+"""Smoke tests for the GitHub deployment plugin."""
 
 import datetime
 import json
@@ -10,21 +10,30 @@ import respx
 from imbi_common.plugins.base import (
     DeploymentPlugin,
     PluginContext,
+    ServicePlugin,
 )
 from imbi_common.plugins.errors import PluginAuthenticationFailed
 
 from imbi_plugin_github.deployment import (
     GitHubDeploymentPlugin,
-    GitHubEnterpriseCloudDeploymentPlugin,
-    GitHubEnterpriseServerDeploymentPlugin,
     _repo_root_from_redirect,
 )
+
+
+def _connection(
+    flavor: str = 'github.com', host: str | None = None
+) -> ServicePlugin:
+    options: dict[str, object] = {'flavor': flavor}
+    if host is not None:
+        options['host'] = host
+    return ServicePlugin(slug='github-connection', options=options)
 
 
 def _ctx(
     options: dict[str, object] | None = None,
     environment: str | None = None,
     environment_config: dict[str, object] | None = None,
+    service_plugins: list[ServicePlugin] | None = None,
 ) -> PluginContext:
     return PluginContext(
         project_id='p',
@@ -35,6 +44,9 @@ def _ctx(
         environment_config=environment_config or {},
         actor_user_id='u-1',
         project_links={'github-repository': 'https://github.com/octo/demo'},
+        service_plugins=service_plugins
+        if service_plugins is not None
+        else [_connection()],
     )
 
 
@@ -42,52 +54,45 @@ _CREDS = {'access_token': 'gho_test'}
 
 
 class ManifestTestCase(unittest.TestCase):
-    def test_manifest_slugs(self) -> None:
+    def test_manifest_slug(self) -> None:
         self.assertEqual(
             GitHubDeploymentPlugin.manifest.slug, 'github-deployment'
         )
+
+    def test_subclasses_deployment_plugin(self) -> None:
+        self.assertIsInstance(GitHubDeploymentPlugin(), DeploymentPlugin)
         self.assertEqual(
-            GitHubEnterpriseCloudDeploymentPlugin.manifest.slug,
-            'github-deployment-ec',
-        )
-        self.assertEqual(
-            GitHubEnterpriseServerDeploymentPlugin.manifest.slug,
-            'github-deployment-es',
+            GitHubDeploymentPlugin.manifest.plugin_type, 'deployment'
         )
 
-    def test_all_subclass_deployment_plugin(self) -> None:
-        for cls in (
-            GitHubDeploymentPlugin,
-            GitHubEnterpriseCloudDeploymentPlugin,
-            GitHubEnterpriseServerDeploymentPlugin,
-        ):
-            self.assertIsInstance(cls(), DeploymentPlugin)
-            self.assertEqual(cls.manifest.plugin_type, 'deployment')
+    def test_advertises_supports_deployment_sync(self) -> None:
+        self.assertTrue(
+            GitHubDeploymentPlugin.manifest.supports_deployment_sync,
+            'GitHubDeploymentPlugin must opt in to deployment sync',
+        )
 
-    def test_all_advertise_supports_deployment_sync(self) -> None:
-        for cls in (
-            GitHubDeploymentPlugin,
-            GitHubEnterpriseCloudDeploymentPlugin,
-            GitHubEnterpriseServerDeploymentPlugin,
-        ):
-            self.assertTrue(
-                cls.manifest.supports_deployment_sync,
-                f'{cls.__name__} must opt in to deployment sync',
-            )
+    def test_no_host_option_declared(self) -> None:
+        # The host now comes from the github-connection sibling, never
+        # from a per-assignment ``host`` option.
+        self.assertFalse(
+            any(
+                o.name == 'host'
+                for o in GitHubDeploymentPlugin.manifest.options
+            ),
+            'GitHubDeploymentPlugin must not declare a host option',
+        )
 
     def test_no_legacy_deploys_via_edge_declared(self) -> None:
         # Promote behaviour is inferred from the ref shape and per-env
         # payloads ride on the USES_PLUGIN edge (``env_payloads``).  No
         # plugin should declare a leftover ``DEPLOYS_VIA`` edge.
-        for cls in (
-            GitHubDeploymentPlugin,
-            GitHubEnterpriseCloudDeploymentPlugin,
-            GitHubEnterpriseServerDeploymentPlugin,
-        ):
-            self.assertFalse(
-                any(e.name == 'DEPLOYS_VIA' for e in cls.manifest.edge_labels),
-                f'{cls.__name__} still declares DEPLOYS_VIA',
-            )
+        self.assertFalse(
+            any(
+                e.name == 'DEPLOYS_VIA'
+                for e in GitHubDeploymentPlugin.manifest.edge_labels
+            ),
+            'GitHubDeploymentPlugin still declares DEPLOYS_VIA',
+        )
 
     def test_owner_repo_required(self) -> None:
         plugin = GitHubDeploymentPlugin()
@@ -96,6 +101,7 @@ class ManifestTestCase(unittest.TestCase):
             project_slug='proj',
             org_slug='octo',
             assignment_options={},
+            service_plugins=[_connection()],
         )
         with self.assertRaises(ValueError):
             plugin._owner_repo(ctx)
@@ -110,6 +116,7 @@ class ManifestTestCase(unittest.TestCase):
             project_links={
                 'github-repository': 'https://github.com/octo/demo'
             },
+            service_plugins=[_connection()],
         )
         self.assertEqual(plugin._owner_repo(ctx), ('octo', 'demo'))
 
@@ -123,19 +130,21 @@ class ManifestTestCase(unittest.TestCase):
             project_links={
                 'github-repository': 'https://github.com/octo/demo.git'
             },
+            service_plugins=[_connection()],
         )
         self.assertEqual(plugin._owner_repo(ctx), ('octo', 'demo'))
 
     def test_owner_repo_derived_for_ghec_tenant(self) -> None:
-        plugin = GitHubEnterpriseCloudDeploymentPlugin()
+        plugin = GitHubDeploymentPlugin()
         ctx = PluginContext(
             project_id='p',
             project_slug='proj',
             org_slug='octo',
-            assignment_options={'host': 'aweber.ghe.com'},
+            assignment_options={},
             project_links={
                 'github-repository': 'https://aweber.ghe.com/apis/account'
             },
+            service_plugins=[_connection('ghec', 'aweber.ghe.com')],
         )
         self.assertEqual(plugin._owner_repo(ctx), ('apis', 'account'))
 
@@ -149,6 +158,7 @@ class ManifestTestCase(unittest.TestCase):
             project_links={
                 'gitlab-repository': 'https://gitlab.com/octo/demo'
             },
+            service_plugins=[_connection()],
         )
         with self.assertRaises(ValueError):
             plugin._owner_repo(ctx)
@@ -161,6 +171,7 @@ class ManifestTestCase(unittest.TestCase):
             org_slug='octo',
             assignment_options={},
             project_type_slugs=['apis'],
+            service_plugins=[_connection()],
         )
         self.assertEqual(plugin._owner_repo(ctx), ('apis', 'account'))
 
@@ -175,6 +186,7 @@ class ManifestTestCase(unittest.TestCase):
                 'github-repository': 'https://github.com/from-link/repo'
             },
             project_type_slugs=['apis'],
+            service_plugins=[_connection()],
         )
         self.assertEqual(plugin._owner_repo(ctx), ('from-link', 'repo'))
 
@@ -191,6 +203,7 @@ class ManifestTestCase(unittest.TestCase):
                 'docs': 'https://github.com/other-org/other-repo',
                 'github-repository': 'https://github.com/correct/repo',
             },
+            service_plugins=[_connection()],
         )
         self.assertEqual(plugin._owner_repo(ctx), ('correct', 'repo'))
 
@@ -206,6 +219,7 @@ class ManifestTestCase(unittest.TestCase):
             assignment_options={},
             project_links={'github-org': 'https://github.com/orgs/octo'},
             project_type_slugs=['apis'],
+            service_plugins=[_connection()],
         )
         self.assertEqual(plugin._owner_repo(ctx), ('apis', 'account'))
 
@@ -219,6 +233,7 @@ class ManifestTestCase(unittest.TestCase):
             project_links={
                 'marketplace': 'https://github.com/marketplace/actions/checkout'
             },
+            service_plugins=[_connection()],
         )
         with self.assertRaises(ValueError):
             plugin._owner_repo(ctx)
@@ -266,26 +281,46 @@ class ManifestTestCase(unittest.TestCase):
 
     def test_api_base_dot_com(self) -> None:
         plugin = GitHubDeploymentPlugin()
-        self.assertEqual(plugin._api_base({}), 'https://api.github.com')
+        self.assertEqual(
+            plugin._api_base(
+                _ctx(service_plugins=[_connection('github.com')])
+            ),
+            'https://api.github.com',
+        )
 
     def test_api_base_ghec(self) -> None:
-        plugin = GitHubEnterpriseCloudDeploymentPlugin()
+        plugin = GitHubDeploymentPlugin()
         self.assertEqual(
-            plugin._api_base({'host': 'tenant.ghe.com'}),
+            plugin._api_base(
+                _ctx(service_plugins=[_connection('ghec', 'tenant.ghe.com')])
+            ),
             'https://api.tenant.ghe.com',
         )
 
     def test_api_base_ghes(self) -> None:
-        plugin = GitHubEnterpriseServerDeploymentPlugin()
+        plugin = GitHubDeploymentPlugin()
         self.assertEqual(
-            plugin._api_base({'host': 'github.example.com'}),
+            plugin._api_base(
+                _ctx(
+                    service_plugins=[_connection('ghes', 'github.example.com')]
+                )
+            ),
             'https://github.example.com/api/v3',
         )
 
     def test_ghec_rejects_non_tenant_host(self) -> None:
-        plugin = GitHubEnterpriseCloudDeploymentPlugin()
+        plugin = GitHubDeploymentPlugin()
         with self.assertRaises(ValueError):
-            plugin._api_base({'host': 'github.example.com'})
+            plugin._api_base(
+                _ctx(
+                    service_plugins=[_connection('ghec', 'github.example.com')]
+                )
+            )
+
+    def test_api_base_requires_connection_plugin(self) -> None:
+        plugin = GitHubDeploymentPlugin()
+        with self.assertRaises(ValueError):
+            plugin._api_base(_ctx(service_plugins=[]))
 
 
 class ListRefsTestCase(unittest.IsolatedAsyncioTestCase):

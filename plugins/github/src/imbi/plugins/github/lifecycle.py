@@ -1,11 +1,9 @@
-"""GitHub lifecycle plugins.
+"""GitHub lifecycle plugin.
 
-Three concrete subclasses share a common base and differ only by host:
-
-* :class:`GitHubLifecyclePlugin` — github.com.
-* :class:`GitHubEnterpriseCloudLifecyclePlugin` — GHEC tenant on
-  ``*.ghe.com``.
-* :class:`GitHubEnterpriseServerLifecyclePlugin` — operator-managed GHES.
+A single :class:`GitHubLifecyclePlugin` resolves its GitHub host from the
+``github-connection`` plugin attached to the same ThirdPartyService (via
+:func:`resolve_connection_host`), so one plugin serves github.com, a GHEC
+tenant, or a GHES appliance interchangeably.
 
 On project archive the plugin:
 
@@ -64,7 +62,10 @@ from imbi_common.plugins.base import (
 from imbi_common.plugins.errors import PluginAuthenticationFailed
 from imbi_common.plugins.templates import expand_template
 
-from imbi_plugin_github._hosts import normalize_host, require_ghec_tenant_host
+from imbi_plugin_github._hosts import (
+    host_to_api_base,
+    resolve_connection_host,
+)
 from imbi_plugin_github._repos import (
     derive_owner_repo_from_links,
     resolve_owner_repo,
@@ -104,24 +105,103 @@ def _auth_headers(token: str) -> dict[str, str]:
     }
 
 
-class _LifecycleBase(LifecyclePlugin):
-    """Shared base for GitHub lifecycle plugins.
+_COMMON_OPTIONS: list[PluginOption] = [
+    PluginOption(
+        name='archive_target_org',
+        label='Transfer to org on archive',
+        description=(
+            'When set, repos are transferred to this organization before '
+            'being archived.  Useful for moving sunset projects into a '
+            'dedicated "archive" org so they no longer count against your '
+            "primary org's repo quota or surface in default searches.  "
+            'Leave blank to archive in place.  Requires admin permission '
+            'on both the source repo and the destination organization.'
+        ),
+        type='string',
+        required=False,
+    ),
+    PluginOption(
+        name='create_org',
+        label='Default org for repo creation',
+        description=(
+            'Org used by ``on_project_created`` (and the relocate-target '
+            'preview) when no per-project-type override matches in '
+            '``org_mapping``.  Supports the template variables '
+            '``${project_slug}``, ``${org_slug}``, ``${team_slug}``, '
+            '``${project_type_slug}``, ``${project_id}``.  Leave blank '
+            'to skip create / relocate when no mapping matches.'
+        ),
+        type='string',
+        required=False,
+    ),
+    PluginOption(
+        name='org_mapping',
+        label='Project-type to org overrides',
+        description=(
+            'Per-project-type-slug overrides for the target GitHub org.  '
+            'The first ``project_type_slug`` that has a mapping wins '
+            'over ``create_org``.  Use this when different project types '
+            'live in different orgs (e.g. ``api`` → ``aweber-services``, '
+            '``library`` → ``aweber-libs``).'
+        ),
+        type='mapping',
+        required=False,
+    ),
+]
 
-    Subclasses set :attr:`manifest` and override :meth:`_resolve_host`.
-    Plugin instances are single-shot per request.
+_LIFECYCLE_EVENTS: list[
+    typing.Literal[
+        'created',
+        'updated',
+        'archived',
+        'unarchived',
+        'deleted',
+        'relocated',
+    ]
+] = ['created', 'updated', 'archived', 'unarchived', 'deleted', 'relocated']
+
+_CREDENTIALS: list[CredentialField] = [
+    CredentialField(
+        name='access_token',
+        label='Service-account PAT (optional fallback)',
+        description=(
+            'Personal access token used when no per-user identity is '
+            'bound.  Requires repo admin scope; transfers additionally '
+            'require admin permission on the target organization.'
+        ),
+        required=False,
+    ),
+]
+
+
+class GitHubLifecyclePlugin(LifecyclePlugin):
+    """React to the project lifecycle on the configured GitHub host.
+
+    The host is resolved from the ``github-connection`` plugin attached
+    to the same ThirdPartyService.  Plugin instances are single-shot per
+    request.
     """
 
-    @classmethod
-    def _resolve_host(cls, options: dict[str, typing.Any]) -> str:
-        raise NotImplementedError
+    manifest = PluginManifest(
+        slug='github-lifecycle',
+        name='GitHub Lifecycle',
+        description=(
+            'React to the project lifecycle on GitHub by creating, '
+            'renaming, archiving, transferring, or deleting the matching '
+            'repository.  Org selection on create / relocate is driven '
+            'by per-project-type overrides plus a template fallback.'
+        ),
+        plugin_type='lifecycle',
+        options=_COMMON_OPTIONS,
+        credentials=_CREDENTIALS,
+        lifecycle_events=_LIFECYCLE_EVENTS,
+    )
 
-    def _api_base(self, options: dict[str, typing.Any]) -> str:
-        host = self._resolve_host(options)
-        if host == 'github.com':
-            return 'https://api.github.com'
-        if host.endswith('.ghe.com'):
-            return f'https://api.{host}'
-        return f'https://{host}/api/v3'
+    def _resolve_host(self, ctx: PluginContext) -> str:
+        return resolve_connection_host(ctx.service_plugins, 'github-lifecycle')
+
+    def _api_base(self, ctx: PluginContext) -> str:
+        return host_to_api_base(self._resolve_host(ctx))
 
     @staticmethod
     def _token(credentials: dict[str, str]) -> str:
@@ -144,7 +224,7 @@ class _LifecycleBase(LifecyclePlugin):
         return httpx.AsyncClient(
             timeout=_HTTP_TIMEOUT_SECONDS,
             headers=_auth_headers(self._token(credentials)),
-            base_url=self._api_base(ctx.assignment_options),
+            base_url=self._api_base(ctx),
             follow_redirects=True,
             event_hooks={'response': [_raise_on_401]},
         )
@@ -206,7 +286,7 @@ class _LifecycleBase(LifecyclePlugin):
                     "the plugin's ``create_org`` or ``org_mapping`` option"
                 ),
             )
-        host = self._resolve_host(ctx.assignment_options)
+        host = self._resolve_host(ctx)
         async with self._client(ctx, credentials) as client:
             existing = await self._get_repo_or_none(
                 client, target_org, ctx.project_slug
@@ -241,7 +321,7 @@ class _LifecycleBase(LifecyclePlugin):
         ctx: PluginContext,
         credentials: dict[str, str],
     ) -> LifecycleResult:
-        host = self._resolve_host(ctx.assignment_options)
+        host = self._resolve_host(ctx)
         # ``prefer_previous_slug`` so a slug rename still locates the
         # pre-rename repo on GitHub when the project has no stored link.
         owner, repo = resolve_owner_repo(
@@ -297,7 +377,7 @@ class _LifecycleBase(LifecyclePlugin):
         ctx: PluginContext,
         credentials: dict[str, str],
     ) -> LifecycleResult:
-        host = self._resolve_host(ctx.assignment_options)
+        host = self._resolve_host(ctx)
         try:
             owner, repo = resolve_owner_repo(
                 ctx, host, 'GitHub lifecycle plugin'
@@ -322,7 +402,7 @@ class _LifecycleBase(LifecyclePlugin):
         ctx: PluginContext,
         credentials: dict[str, str],
     ) -> LifecycleResult:
-        host = self._resolve_host(ctx.assignment_options)
+        host = self._resolve_host(ctx)
         target = await self.resolve_relocation_target(ctx, credentials)
         if target is None:
             return LifecycleResult(
@@ -380,7 +460,7 @@ class _LifecycleBase(LifecyclePlugin):
         target_org = self._resolve_create_org(ctx)
         if not target_org:
             return None
-        host = self._resolve_host(ctx.assignment_options)
+        host = self._resolve_host(ctx)
         # Prefer the canonical repo name from a stored link; fall back to
         # project_slug so a preview before any link exists still resolves.
         derived = derive_owner_repo_from_links(ctx.project_links, host)
@@ -397,7 +477,7 @@ class _LifecycleBase(LifecyclePlugin):
         ctx: PluginContext,
         credentials: dict[str, str],
     ) -> LifecycleResult:
-        host = self._resolve_host(ctx.assignment_options)
+        host = self._resolve_host(ctx)
         owner, repo = resolve_owner_repo(ctx, host, 'GitHub lifecycle plugin')
         target_org = self._target_org(ctx.assignment_options)
 
@@ -470,7 +550,7 @@ class _LifecycleBase(LifecyclePlugin):
         ctx: PluginContext,
         credentials: dict[str, str],
     ) -> LifecycleResult:
-        host = self._resolve_host(ctx.assignment_options)
+        host = self._resolve_host(ctx)
         owner, repo = resolve_owner_repo(ctx, host, 'GitHub lifecycle plugin')
         async with self._client(ctx, credentials) as client:
             current = await self._get_repo(client, owner, repo)
@@ -586,7 +666,7 @@ class _LifecycleBase(LifecyclePlugin):
         slug = ctx.third_party_service_slug
         repo_id = data.get('id')
         if slug and isinstance(repo_id, int):
-            api_base = self._api_base(ctx.assignment_options)
+            api_base = self._api_base(ctx)
             ctx.service_writeback = ServiceWriteback(
                 identifier=str(repo_id),
                 canonical_url=f'{api_base}/repositories/{repo_id}',
@@ -722,157 +802,3 @@ class _LifecycleBase(LifecyclePlugin):
         )
         resp.raise_for_status()
         return typing.cast(dict[str, typing.Any], resp.json())
-
-
-_COMMON_OPTIONS: list[PluginOption] = [
-    PluginOption(
-        name='archive_target_org',
-        label='Transfer to org on archive',
-        description=(
-            'When set, repos are transferred to this organization before '
-            'being archived.  Useful for moving sunset projects into a '
-            'dedicated "archive" org so they no longer count against your '
-            "primary org's repo quota or surface in default searches.  "
-            'Leave blank to archive in place.  Requires admin permission '
-            'on both the source repo and the destination organization.'
-        ),
-        type='string',
-        required=False,
-    ),
-    PluginOption(
-        name='create_org',
-        label='Default org for repo creation',
-        description=(
-            'Org used by ``on_project_created`` (and the relocate-target '
-            'preview) when no per-project-type override matches in '
-            '``org_mapping``.  Supports the template variables '
-            '``${project_slug}``, ``${org_slug}``, ``${team_slug}``, '
-            '``${project_type_slug}``, ``${project_id}``.  Leave blank '
-            'to skip create / relocate when no mapping matches.'
-        ),
-        type='string',
-        required=False,
-    ),
-    PluginOption(
-        name='org_mapping',
-        label='Project-type to org overrides',
-        description=(
-            'Per-project-type-slug overrides for the target GitHub org.  '
-            'The first ``project_type_slug`` that has a mapping wins '
-            'over ``create_org``.  Use this when different project types '
-            'live in different orgs (e.g. ``api`` → ``aweber-services``, '
-            '``library`` → ``aweber-libs``).'
-        ),
-        type='mapping',
-        required=False,
-    ),
-]
-
-# Lifecycle events every GitHub lifecycle variant supports.  Shared
-# across the three host flavors -- they inherit the same ``_LifecycleBase``
-# implementation, so their capability lists are identical.
-_COMMON_LIFECYCLE_EVENTS: list[
-    typing.Literal[
-        'created',
-        'updated',
-        'archived',
-        'unarchived',
-        'deleted',
-        'relocated',
-    ]
-] = ['created', 'updated', 'archived', 'unarchived', 'deleted', 'relocated']
-
-_COMMON_CREDENTIALS: list[CredentialField] = [
-    CredentialField(
-        name='access_token',
-        label='Service-account PAT (optional fallback)',
-        description=(
-            'Personal access token used when no per-user identity is '
-            'bound.  Requires repo admin scope; transfers additionally '
-            'require admin permission on the target organization.'
-        ),
-        required=False,
-    ),
-]
-
-
-class GitHubLifecyclePlugin(_LifecycleBase):
-    manifest = PluginManifest(
-        slug='github-lifecycle',
-        name='GitHub Lifecycle',
-        description=(
-            'React to the project lifecycle on github.com by creating, '
-            'renaming, archiving, transferring, or deleting the matching '
-            'repository.  Org selection on create / relocate is driven '
-            'by per-project-type overrides plus a template fallback.'
-        ),
-        plugin_type='lifecycle',
-        options=_COMMON_OPTIONS,
-        credentials=_COMMON_CREDENTIALS,
-        lifecycle_events=_COMMON_LIFECYCLE_EVENTS,
-    )
-
-    @classmethod
-    def _resolve_host(cls, options: dict[str, typing.Any]) -> str:
-        del options
-        return 'github.com'
-
-
-class GitHubEnterpriseCloudLifecyclePlugin(_LifecycleBase):
-    manifest = PluginManifest(
-        slug='github-lifecycle-ec',
-        name='GitHub Enterprise Cloud Lifecycle',
-        description=(
-            'React to the project lifecycle on a GHEC tenant '
-            '(``*.ghe.com``) by creating, renaming, archiving, '
-            'transferring, or deleting the matching repository.'
-        ),
-        plugin_type='lifecycle',
-        options=[
-            PluginOption(
-                name='host',
-                label='GHEC tenant host',
-                description='e.g. tenant.ghe.com',
-                type='string',
-                required=True,
-            ),
-            *_COMMON_OPTIONS,
-        ],
-        credentials=_COMMON_CREDENTIALS,
-        lifecycle_events=_COMMON_LIFECYCLE_EVENTS,
-    )
-
-    @classmethod
-    def _resolve_host(cls, options: dict[str, typing.Any]) -> str:
-        return require_ghec_tenant_host(
-            normalize_host(options.get('host'), 'GHEC lifecycle plugin'),
-            'GHEC lifecycle plugin',
-        )
-
-
-class GitHubEnterpriseServerLifecyclePlugin(_LifecycleBase):
-    manifest = PluginManifest(
-        slug='github-lifecycle-es',
-        name='GitHub Enterprise Server Lifecycle',
-        description=(
-            'React to the project lifecycle on a GHES install by '
-            'creating, renaming, archiving, transferring, or deleting '
-            'the matching repository.'
-        ),
-        plugin_type='lifecycle',
-        options=[
-            PluginOption(
-                name='host',
-                label='GHES host',
-                type='string',
-                required=True,
-            ),
-            *_COMMON_OPTIONS,
-        ],
-        credentials=_COMMON_CREDENTIALS,
-        lifecycle_events=_COMMON_LIFECYCLE_EVENTS,
-    )
-
-    @classmethod
-    def _resolve_host(cls, options: dict[str, typing.Any]) -> str:
-        return normalize_host(options.get('host'), 'GHES lifecycle plugin')
