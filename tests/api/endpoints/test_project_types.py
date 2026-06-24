@@ -101,6 +101,62 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
             0,
         )
 
+    def test_create_project_type_with_tag_formats(self) -> None:
+        """tag_formats round-trips into the CREATE props/params."""
+        formats = [{'label': 'CalVer', 'pattern': r'\d{4}\.\d{2}\.\d+'}]
+        self.mock_db.execute.return_value = [
+            {
+                'pt': {
+                    'name': 'API Service',
+                    'slug': 'api-service',
+                    'tag_formats': formats,
+                },
+                'o': {'name': 'Engineering', 'slug': 'engineering'},
+            }
+        ]
+
+        with (
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+            ) as mock_get_model,
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            mock_get_model.return_value = models.ProjectType
+
+            response = self.client.post(
+                '/organizations/engineering/project-types/',
+                json={
+                    'name': 'API Service',
+                    'slug': 'api-service',
+                    'tag_formats': formats,
+                },
+            )
+
+        self.assertEqual(response.status_code, 201)
+        params = self.mock_db.execute.call_args.args[1]
+        self.assertEqual(params['tag_formats'], formats)
+
+    def test_create_project_type_rejects_invalid_tag_format(self) -> None:
+        """An uncompilable tag-format pattern is rejected with 400."""
+        with mock.patch(
+            'imbi_common.blueprints.get_model',
+        ) as mock_get_model:
+            mock_get_model.return_value = models.ProjectType
+
+            response = self.client.post(
+                '/organizations/engineering/project-types/',
+                json={
+                    'name': 'API Service',
+                    'slug': 'api-service',
+                    'tag_formats': [{'label': 'Bad', 'pattern': '('}],
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+
     def test_create_project_type_org_not_found_in_url(self) -> None:
         """Test creating project type with nonexistent org in URL."""
         self.mock_db.execute.return_value = []

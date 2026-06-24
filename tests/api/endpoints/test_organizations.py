@@ -48,8 +48,8 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         )
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -424,3 +424,50 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         set_call = self.mock_db.execute.call_args_list[0]
         params = set_call.args[1]
         self.assertNotIn('previous_slugs', params)
+
+    def test_patch_organization_tag_formats(self) -> None:
+        """Patching tag_formats persists the list in the SET params."""
+        self.mock_db.match.return_value = [self.test_org]
+        updated_org = {
+            'id': self.test_org.id,
+            'name': self.test_org.name,
+            'slug': self.test_org.slug,
+            'description': self.test_org.description,
+            'icon': self.test_org.icon,
+            'created_at': self.test_org.created_at.isoformat(),
+            'updated_at': self.test_org.updated_at,
+        }
+        self.mock_db.execute.side_effect = [
+            [{'n': updated_org}],
+            [{'team_count': 0, 'member_count': 0, 'project_count': 0}],
+        ]
+        formats = [{'label': 'Semver', 'pattern': r'^v?\d+\.\d+\.\d+$'}]
+
+        response = self.client.patch(
+            '/organizations/engineering',
+            json=[{'op': 'add', 'path': '/tag_formats', 'value': formats}],
+        )
+
+        self.assertEqual(response.status_code, 200)
+        set_call = self.mock_db.execute.call_args_list[0]
+        params = set_call.args[1]
+        self.assertEqual(params['tag_formats'], formats)
+        # The SET clause must include the tag_formats assignment.
+        self.assertIn('n.tag_formats = {tag_formats}', set_call.args[0])
+
+    def test_patch_organization_rejects_invalid_tag_format(self) -> None:
+        """An uncompilable regex pattern is rejected with 400."""
+        self.mock_db.match.return_value = [self.test_org]
+
+        response = self.client.patch(
+            '/organizations/engineering',
+            json=[
+                {
+                    'op': 'add',
+                    'path': '/tag_formats',
+                    'value': [{'label': 'Bad', 'pattern': '('}],
+                }
+            ],
+        )
+
+        self.assertEqual(response.status_code, 400)

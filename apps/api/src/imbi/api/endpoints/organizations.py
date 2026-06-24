@@ -418,6 +418,7 @@ async def _persist_organization(
             ' n.slug = {slug},'
             ' n.description = {description},'
             ' n.icon = {icon},'
+            ' n.tag_formats = {tag_formats},'
             ' n.updated_at = {updated_at},'
             ' n.previous_slugs = {previous_slugs}'
             ' RETURN n'
@@ -429,6 +430,7 @@ async def _persist_organization(
             ' n.slug = {slug},'
             ' n.description = {description},'
             ' n.icon = {icon},'
+            ' n.tag_formats = {tag_formats},'
             ' n.updated_at = {updated_at}'
             ' RETURN n'
         )
@@ -439,6 +441,7 @@ async def _persist_organization(
         'slug': props['slug'],
         'description': props.get('description'),
         'icon': props.get('icon'),
+        'tag_formats': props.get('tag_formats', []),
         'updated_at': props['updated_at'],
     }
     if previous_slugs is not None:
