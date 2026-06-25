@@ -16,6 +16,10 @@ schema extension.
 - **Environment**: Deployment environments (production, staging, etc.)
 - **ProjectType**: Project categorization and templates
 - **Project**: Services and applications
+- **TagFormat**: A named (`label`) regular-expression (`pattern`) policy
+  for release/deploy tags. Both `Organization` and `ProjectType` carry a
+  `tag_formats: list[TagFormat]` field (see
+  [Release/Deploy Tag Formats](#releasedeploy-tag-formats)).
 
 ### Software-Composition Models
 - **Component**: Third-party package identity (purl with version
@@ -82,6 +86,35 @@ team = models.Team(
 await db.create(team)
 ```
 
+## Release/Deploy Tag Formats
+
+The tags accepted when cutting a release or promoting a deployment are
+governed by a list of `TagFormat` policies. A tag is accepted when it
+matches **any** configured format (full-string regex match).
+
+Resolution is hierarchical, project-type overriding organization:
+
+1. If the project's type(s) configure `tag_formats`, those apply.
+2. Otherwise the organization's `tag_formats` apply.
+3. If neither configures any, **no restriction** is imposed (any tag is
+   accepted). Seed `models.SEMVER_TAG_FORMAT` to require semver.
+
+```python
+from imbi_common import models, versioning
+
+org = models.Organization(
+    name="My Company",
+    slug="my-company",
+    tag_formats=[models.SEMVER_TAG_FORMAT],
+)
+
+patterns = [fmt.pattern for fmt in org.tag_formats]
+versioning.matches_tag_formats("v1.2.3", patterns)  # True
+versioning.matches_tag_formats("nightly", patterns)  # False
+```
+
+::: imbi_common.versioning.matches_tag_formats
+
 ## API Reference
 
 ### Base Classes
@@ -101,6 +134,8 @@ await db.create(team)
 ::: imbi_common.models.ProjectType
 
 ::: imbi_common.models.Project
+
+::: imbi_common.models.TagFormat
 
 ::: imbi_common.models.MCPServer
 

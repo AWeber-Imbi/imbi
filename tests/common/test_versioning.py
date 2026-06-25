@@ -170,5 +170,42 @@ class IsCommitishTestCase(unittest.TestCase):
         self.assertFalse(versioning.is_commitish('main'))
 
 
+class MatchesTagFormatsTestCase(unittest.TestCase):
+    """Tests for ``matches_tag_formats``."""
+
+    def test_empty_patterns_matches_anything(self) -> None:
+        self.assertTrue(versioning.matches_tag_formats('anything', []))
+        self.assertTrue(versioning.matches_tag_formats('main', ()))
+
+    def test_matches_single_pattern(self) -> None:
+        self.assertTrue(
+            versioning.matches_tag_formats(
+                'v1.2.3',
+                [versioning.SEMVER_TAG_PATTERN],
+            )
+        )
+
+    def test_matches_any_of_several(self) -> None:
+        patterns = [r'rc-\d+', versioning.SEMVER_TAG_PATTERN]
+        self.assertTrue(versioning.matches_tag_formats('rc-42', patterns))
+        self.assertTrue(versioning.matches_tag_formats('1.0.0', patterns))
+
+    def test_no_match(self) -> None:
+        self.assertFalse(
+            versioning.matches_tag_formats(
+                'main',
+                [versioning.SEMVER_TAG_PATTERN],
+            )
+        )
+
+    def test_fullmatch_semantics(self) -> None:
+        # An unanchored pattern still must span the whole tag.
+        self.assertFalse(versioning.matches_tag_formats('v1.2.3-x', [r'\d+']))
+        self.assertTrue(versioning.matches_tag_formats('123', [r'\d+']))
+
+    def test_invalid_pattern_treated_as_non_match(self) -> None:
+        self.assertFalse(versioning.matches_tag_formats('1.2.3', ['(']))
+
+
 if __name__ == '__main__':
     unittest.main()

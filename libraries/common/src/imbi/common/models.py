@@ -1,12 +1,15 @@
 import dataclasses
 import datetime
 import json
+import re
 import typing
 
 import nanoid
 import pydantic
 import slugify
 from jsonschema_models import models as schema_models
+
+from imbi_common import versioning
 
 __all__ = [
     'Blueprint',
@@ -48,6 +51,7 @@ __all__ = [
     'Schema',
     'ServiceApplication',
     'Tag',
+    'TagFormat',
     'TagRecord',
     'Team',
     'ThirdPartyService',
@@ -274,8 +278,44 @@ class RelationshipLink(pydantic.BaseModel):
     count: int
 
 
+class TagFormat(pydantic.BaseModel):
+    """A named release/deploy tag-format policy.
+
+    ``label`` is the human-facing name shown in the UI (e.g. ``Semver``
+    or ``CalVer``); ``pattern`` is a regular expression a tag must match.
+    A tag is accepted when it matches *any* configured ``TagFormat`` --
+    see ``imbi_common.versioning.matches_tag_formats``.
+
+    Patterns are matched with :func:`re.fullmatch` and validated as
+    compilable at assignment time so an invalid expression is rejected at
+    the API boundary rather than at deploy/release time.
+    """
+
+    model_config = pydantic.ConfigDict(frozen=True)
+
+    label: str = pydantic.Field(min_length=1, max_length=64)
+    pattern: str = pydantic.Field(min_length=1, max_length=512)
+
+    @pydantic.field_validator('pattern')
+    @classmethod
+    def _validate_pattern(cls, value: str) -> str:
+        try:
+            re.compile(value)
+        except re.error as exc:
+            raise ValueError(f'Invalid regular expression: {exc}') from exc
+        return value
+
+
+# Convenience constant for seeding the common-case semver policy (e.g.
+# ``1.2.3`` / ``v1.2.3``); unconfigured orgs/types impose no restriction.
+SEMVER_TAG_FORMAT: typing.Final[TagFormat] = TagFormat(
+    label='Semver',
+    pattern=versioning.SEMVER_TAG_PATTERN,
+)
+
+
 class Organization(Node):
-    pass
+    tag_formats: list[TagFormat] = []
 
 
 BelongsToOrganization = typing.Annotated[
@@ -320,6 +360,11 @@ class ProjectType(Node):
     deployable: bool = False
     releasable: bool = False
     organization: BelongsToOrganization
+
+    # Overrides the organization's ``tag_formats`` when non-empty (see
+    # ``imbi_common.versioning.matches_tag_formats``); empty falls back to
+    # the organization policy.
+    tag_formats: list[TagFormat] = []
 
     @pydantic.model_validator(mode='after')
     def validate_deployable_releasable_exclusive(self) -> typing.Self:

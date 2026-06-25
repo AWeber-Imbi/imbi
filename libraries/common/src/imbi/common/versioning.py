@@ -14,11 +14,13 @@ import typing
 __all__ = [
     'COMMITISH_RE',
     'SEMVER_RE',
+    'SEMVER_TAG_PATTERN',
     'SEMVER_TAG_RE',
     'VersionFormat',
     'get_version_validator',
     'is_commitish',
     'is_semver_tag',
+    'matches_tag_formats',
     'validate_version',
 ]
 
@@ -46,9 +48,8 @@ SEMVER_RE: typing.Final[re.Pattern[str]] = re.compile(
 # typical Git tag shape (``v1.2.3``) used by GitHub Releases as well as
 # bare semver (``1.2.3``).  Use this to distinguish "already a tag" from
 # "raw commitish" when deciding whether to cut a new tag on promote.
-SEMVER_TAG_RE: typing.Final[re.Pattern[str]] = re.compile(
-    r'^v?' + SEMVER_RE.pattern.lstrip('^')
-)
+SEMVER_TAG_PATTERN: typing.Final[str] = r'^v?' + SEMVER_RE.pattern.lstrip('^')
+SEMVER_TAG_RE: typing.Final[re.Pattern[str]] = re.compile(SEMVER_TAG_PATTERN)
 
 # 7 to 40 lowercase hex chars — matches a git short or full SHA.
 COMMITISH_RE: typing.Final[re.Pattern[str]] = re.compile(r'^[0-9a-f]{7,40}$')
@@ -119,3 +120,33 @@ def get_version_validator(
         return validate_version(version, fmt)
 
     return _validate
+
+
+def matches_tag_formats(
+    tag: str,
+    patterns: typing.Sequence[str],
+) -> bool:
+    """Return ``True`` when *tag* satisfies the configured tag formats.
+
+    *patterns* is the resolved list of regular-expression patterns for
+    the project (see ``imbi_common.models.TagFormat``).  Each pattern is
+    matched against the whole *tag* with :func:`re.fullmatch`, so a
+    pattern need not anchor itself with ``^``/``$``.
+
+    An **empty** *patterns* sequence means "no configured policy" and
+    matches any tag -- callers that need a stricter default should seed a
+    format (e.g. :data:`SEMVER_TAG_PATTERN`) rather than relying on this.
+
+    Invalid patterns are rejected at write time
+    (``TagFormat`` validates them), so a bad pattern here is treated as a
+    non-match rather than raising.
+    """
+    if not patterns:
+        return True
+    for pattern in patterns:
+        try:
+            if re.fullmatch(pattern, tag):
+                return True
+        except re.error:
+            continue
+    return False

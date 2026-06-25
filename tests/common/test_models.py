@@ -1,5 +1,6 @@
 import datetime
 import json
+import re
 import typing
 import unittest
 
@@ -338,6 +339,70 @@ class NodeModelTestCase(unittest.TestCase):
         org = models.Organization(name='Org', slug='org')
         with self.assertRaises(pydantic.ValidationError):
             models.Environment(name='Test', organization=org)  # Missing slug
+
+
+class TagFormatModelTestCase(unittest.TestCase):
+    """Tests for ``TagFormat`` and the ``tag_formats`` fields."""
+
+    def test_valid_tag_format(self) -> None:
+        fmt = models.TagFormat(label='Semver', pattern=r'^v?\d+\.\d+\.\d+$')
+        self.assertEqual(fmt.label, 'Semver')
+        self.assertEqual(fmt.pattern, r'^v?\d+\.\d+\.\d+$')
+
+    def test_invalid_pattern_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.TagFormat(label='Bad', pattern='(')
+
+    def test_frozen(self) -> None:
+        fmt = models.TagFormat(label='Semver', pattern=r'\d+')
+        with self.assertRaises(pydantic.ValidationError):
+            fmt.pattern = r'\w+'
+
+    def test_empty_label_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.TagFormat(label='', pattern=r'\d+')
+
+    def test_empty_pattern_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.TagFormat(label='X', pattern='')
+
+    def test_semver_tag_format_constant(self) -> None:
+        self.assertEqual(models.SEMVER_TAG_FORMAT.label, 'Semver')
+        self.assertTrue(
+            re.fullmatch(models.SEMVER_TAG_FORMAT.pattern, 'v1.2.3')
+        )
+
+    def test_organization_tag_formats_default_empty(self) -> None:
+        org = models.Organization(name='Org', slug='org')
+        self.assertEqual(org.tag_formats, [])
+
+    def test_organization_tag_formats_roundtrip(self) -> None:
+        org = models.Organization(
+            name='Org',
+            slug='org',
+            tag_formats=[models.TagFormat(label='Semver', pattern=r'\d+')],
+        )
+        self.assertEqual(len(org.tag_formats), 1)
+        self.assertEqual(org.tag_formats[0].label, 'Semver')
+
+    def test_project_type_tag_formats_default_empty(self) -> None:
+        org = models.Organization(name='Org', slug='org')
+        project_type = models.ProjectType(
+            name='Web Service',
+            slug='web-service',
+            organization=org,
+        )
+        self.assertEqual(project_type.tag_formats, [])
+
+    def test_project_type_tag_formats_roundtrip(self) -> None:
+        org = models.Organization(name='Org', slug='org')
+        project_type = models.ProjectType(
+            name='Web Service',
+            slug='web-service',
+            organization=org,
+            tag_formats=[models.TagFormat(label='CalVer', pattern=r'\d{4}')],
+        )
+        self.assertEqual(project_type.tag_formats[0].label, 'CalVer')
 
 
 class GraphModelTestCase(unittest.TestCase):
