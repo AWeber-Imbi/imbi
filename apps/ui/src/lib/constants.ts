@@ -28,5 +28,11 @@ export const ENVIRONMENT_BASE_FIELDS = [
 ]
 export const ENVIRONMENT_BASE_FIELDS_SET = new Set(ENVIRONMENT_BASE_FIELDS)
 
-export const PROJECT_TYPE_BASE_FIELDS = [...NODE_BASE_FIELDS, 'id']
+export const PROJECT_TYPE_BASE_FIELDS = [
+  ...NODE_BASE_FIELDS,
+  'deployable',
+  'releasable',
+  'tag_formats',
+  'id',
+]
 export const PROJECT_TYPE_BASE_FIELDS_SET = new Set(PROJECT_TYPE_BASE_FIELDS)

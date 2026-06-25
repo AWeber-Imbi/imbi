@@ -28,7 +28,9 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { PROJECT_TYPE_BASE_FIELDS_SET } from '@/lib/constants'
 import { extractDynamicFields, slugify } from '@/lib/utils'
-import type { ProjectType, ProjectTypeCreate } from '@/types'
+import type { ProjectType, ProjectTypeCreate, TagFormat } from '@/types'
+
+import { VersionFormatsEditor } from './VersionFormatsEditor'
 
 interface ProjectTypeFormProps {
   error?: null | { message?: string; response?: { data?: { detail?: string } } }
@@ -71,9 +73,18 @@ export function ProjectTypeForm({
     if (checked) setDeployable(false)
   }
   const handleIconChange = useIconWithCleanup(icon, setIcon)
+  const [tagFormats, setTagFormats] = useState<TagFormat[]>(
+    (projectType as null | { tag_formats?: TagFormat[] })?.tag_formats ?? [],
+  )
   const [orgSlug, setOrgSlug] = useState(
     projectType?.organization.slug || selectedOrganization?.slug || '',
   )
+  const inheritedFormats =
+    (
+      organizations.find((o) => o.slug === orgSlug) as
+        | undefined
+        | { tag_formats?: TagFormat[] }
+    )?.tag_formats ?? []
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [dynamicFormData, setDynamicFormData] = useState<
     Record<string, unknown>
@@ -120,6 +131,7 @@ export function ProjectTypeForm({
       name: name.trim(),
       releasable,
       slug: slug.trim(),
+      tag_formats: tagFormats,
       ...dynamicFormData,
     })
   }
@@ -369,6 +381,14 @@ export function ProjectTypeForm({
                 </div>
               </div>
             </div>
+
+            <VersionFormatsEditor
+              disabled={isLoading}
+              inherited={inheritedFormats}
+              onChange={setTagFormats}
+              projectTypeName={name}
+              value={tagFormats}
+            />
 
             {/* Dynamic Blueprint Fields */}
             {ptSchema && (

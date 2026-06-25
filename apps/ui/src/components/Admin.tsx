@@ -19,6 +19,7 @@ import {
   Network,
   Puzzle,
   Shield,
+  SlidersHorizontal,
   Sparkles,
   StickyNote,
   Target,
@@ -34,6 +35,7 @@ import { AdminOverview } from './admin/AdminOverview'
 import { AssistantManagement } from './admin/AssistantManagement'
 import { AuthProvidersManagement } from './admin/AuthProvidersManagement'
 import { BlueprintManagement } from './admin/BlueprintManagement'
+import { DefaultSettingsManagement } from './admin/DefaultSettingsManagement'
 import { DocumentTemplateManagement } from './admin/DocumentTemplateManagement'
 import { EnvironmentManagement } from './admin/EnvironmentManagement'
 import { GraphQueryManagement } from './admin/GraphQueryManagement'
@@ -54,6 +56,7 @@ import { WebhookManagement } from './admin/WebhookManagement'
 type AdminSection =
   | 'assistant'
   | 'blueprints'
+  | 'default-settings'
   | 'document-templates'
   | 'environments'
   | 'graph-query'
@@ -78,6 +81,7 @@ const DEFAULT_ADMIN_SECTION: AdminSection = 'overview'
 const VALID_SECTIONS: AdminSection[] = [
   'assistant',
   'blueprints',
+  'default-settings',
   'environments',
   'graph-query',
   'link-definitions',
@@ -105,6 +109,7 @@ interface SectionDef {
   scope: 'org' | 'system'
 }
 
+// fallow-ignore-next-line complexity
 export function Admin() {
   const navigate = useNavigate()
   const { section, slug } = useParams<{ section?: string; slug?: string }>()
@@ -136,6 +141,13 @@ export function Admin() {
       icon: FileJson,
       id: 'blueprints',
       label: 'Blueprints',
+      scope: 'org',
+    },
+    {
+      description: 'Organization-wide defaults, including version formats',
+      icon: SlidersHorizontal,
+      id: 'default-settings',
+      label: 'Default Settings',
       scope: 'org',
     },
     {
@@ -267,6 +279,7 @@ export function Admin() {
   const allSections = [...orgAdminSections, ...systemAdminSections]
   const currentSectionData = allSections.find((s) => s.id === currentSection)
 
+  // fallow-ignore-next-line complexity
   const renderSectionButton = (sectionDef: SectionDef) => {
     const Icon = sectionDef.icon
     const isActive = currentSection === sectionDef.id
@@ -391,6 +404,9 @@ export function Admin() {
           {/* Section Content */}
           <div className="p-8">
             {currentSection === 'overview' && <AdminOverview />}
+            {currentSection === 'default-settings' && (
+              <DefaultSettingsManagement key={selectedOrganization?.slug} />
+            )}
             {currentSection === 'teams' && <TeamManagement />}
             {currentSection === 'environments' && <EnvironmentManagement />}
             {currentSection === 'project-types' && <ProjectTypeManagement />}

@@ -296,6 +296,7 @@ export interface ProjectTypeCreate {
   name: string
   releasable?: boolean
   slug: string
+  tag_formats?: TagFormat[]
 }
 
 export interface PullRequest {
@@ -1528,6 +1529,13 @@ export interface Tag {
   organization: { name: string; slug: string }
   slug: string
   updated_at?: null | string
+}
+
+// A named release/deploy tag-format policy. Mirrors `imbi_common.models.
+// TagFormat`; carried as a list on both organizations and project types.
+export interface TagFormat {
+  label: string
+  pattern: string
 }
 
 // Documents & tags. Inlined here (not from api-generated.ts) because the
