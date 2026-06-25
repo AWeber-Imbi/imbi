@@ -2303,3 +2303,15 @@ class ResolveTagFormatsTestCase(unittest.IsolatedAsyncioTestCase):
             db, 'org', 'pid'
         )
         self.assertEqual([f.label for f in result], ['Good'])
+
+    async def test_falls_back_to_org_when_project_type_all_malformed(
+        self,
+    ) -> None:
+        db = self._db(
+            org_formats=[{'label': 'Org', 'pattern': 'a'}],
+            pt_formats=[[{'oops': 1}]],
+        )
+        result = await project_deployments._resolve_tag_formats(
+            db, 'org', 'pid'
+        )
+        self.assertEqual([f.label for f in result], ['Org'])

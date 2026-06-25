@@ -422,26 +422,40 @@ async def _resolve_tag_formats(
         return []
 
     pt_raw = graph.parse_agtype(records[0].get('pt_formats'))
-    chosen: list[dict[str, typing.Any]] = []
+    pt_entries: list[dict[str, typing.Any]] = []
     if isinstance(pt_raw, list):
         for entry in typing.cast(list[object], pt_raw):
             if isinstance(entry, list):
-                chosen.extend(
+                pt_entries.extend(
                     typing.cast(dict[str, typing.Any], e)
                     for e in typing.cast(list[object], entry)
                     if isinstance(e, dict)
                 )
-    if not chosen:
-        org_raw = graph.parse_agtype(records[0].get('org_formats'))
-        if isinstance(org_raw, list):
-            chosen = [
-                typing.cast(dict[str, typing.Any], e)
-                for e in typing.cast(list[object], org_raw)
-                if isinstance(e, dict)
-            ]
 
+    # Fall back to the org policy unless the project type produced at
+    # least one *valid* format; a project type whose stored formats are
+    # all malformed must inherit the org gate, not disable enforcement.
+    formats = _validate_tag_formats(pt_entries)
+    if formats:
+        return formats
+
+    org_raw = graph.parse_agtype(records[0].get('org_formats'))
+    org_entries: list[dict[str, typing.Any]] = []
+    if isinstance(org_raw, list):
+        org_entries = [
+            typing.cast(dict[str, typing.Any], e)
+            for e in typing.cast(list[object], org_raw)
+            if isinstance(e, dict)
+        ]
+    return _validate_tag_formats(org_entries)
+
+
+def _validate_tag_formats(
+    entries: list[dict[str, typing.Any]],
+) -> list[common_models.TagFormat]:
+    """Validate stored format dicts, dropping (and logging) malformed ones."""
     formats: list[common_models.TagFormat] = []
-    for entry in chosen:
+    for entry in entries:
         try:
             formats.append(common_models.TagFormat.model_validate(entry))
         except pydantic.ValidationError:
