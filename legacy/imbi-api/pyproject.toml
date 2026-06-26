@@ -233,6 +233,12 @@ max-complexity = 15
 exclude-newer = "7 days"
 exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "imbi-plugin-aws" = false, "imbi-plugin-github" = false, "imbi-plugin-logzio" = false, "imbi-plugin-oidc" = false, "imbi-plugin-pagerduty" = false, "imbi-plugin-sentry" = false, "imbi-plugin-sonarqube" = false }
 
+[tool.uv.sources]
+# Temporary: point at imbi-common main for the unreleased configurable
+# tag-format symbols (PR #175, merged). Revert to the published ==<version>
+# pin once imbi-common is released to PyPI.
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }
+
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true

@@ -9,6 +9,7 @@ from unittest import mock
 from fastapi import testclient
 from imbi_common import graph
 from imbi_common.llm import AnthropicClient, CompletionResult
+from imbi_common.models import SEMVER_TAG_FORMAT, TagFormat
 from imbi_common.plugins.base import (
     Commit,
     CompareResult,
@@ -25,7 +26,7 @@ from imbi_common.plugins.registry import RegistryEntry
 
 from imbi_api import models
 from imbi_api.auth import password, permissions
-from imbi_api.endpoints import _helpers
+from imbi_api.endpoints import _helpers, project_deployments
 from imbi_api.endpoints.project_deployments import (
     DraftReleaseNotes,
     _EnvFlags,
@@ -257,6 +258,14 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                         can_deploy=True,
                         can_promote=True,
                     ),
+                )
+            ),
+            # Default tag-format policy: none configured (any tag allowed).
+            # Tests exercising the policy guardrails override the return.
+            '_resolve_tag_formats': self._start(
+                mock.patch(
+                    f'{_MODULE}._resolve_tag_formats',
+                    return_value=[],
                 )
             ),
             'clickhouse': self._start(
@@ -669,9 +678,11 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertEqual(call.kwargs['external_run_id'], '42')
         self.assertEqual(call.kwargs['external_run_url'], 'https://gh/runs/42')
 
-    def test_promote_400_on_non_semver_non_sha_ref(self) -> None:
-        # A branch-shaped ref like ``main`` is neither a tag nor a SHA;
-        # the handler must refuse rather than silently cut a tag.
+    def test_promote_400_on_ref_violating_configured_format(self) -> None:
+        # With a semver policy configured, a branch-shaped ref like
+        # ``main`` matches no format and is not a SHA; the handler must
+        # refuse rather than silently cut a tag.
+        self.mocks['_resolve_tag_formats'].return_value = [SEMVER_TAG_FORMAT]
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
                 '/organizations/myorg/projects/proj1/deployments',
@@ -684,7 +695,30 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                 },
             )
         self.assertEqual(response.status_code, 400)
-        self.assertIn('neither a semver tag', response.json()['detail'])
+        detail = response.json()['detail']
+        self.assertIn('does not match any configured tag format', detail)
+        self.assertIn('Semver', detail)
+
+    def test_promote_allows_ref_matching_custom_format(self) -> None:
+        # A non-semver ref is accepted when it matches a configured
+        # custom format (here a CalVer-style tag).
+        self.mocks['append_deployment_event'].return_value = mock.Mock()
+        self.mocks['_resolve_tag_formats'].return_value = [
+            TagFormat(label='CalVer', pattern=r'\d{4}\.\d{2}\.\d+')
+        ]
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments',
+                json={
+                    'action': 'promote',
+                    'from_environment': 'staging',
+                    'to_environment': 'production',
+                    'from_committish': '1a9c610',
+                    'tag': '2026.06.1',
+                },
+            )
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()['tag'], '2026.06.1')
 
     def test_promote_400_when_can_promote_false(self) -> None:
         self.mocks['_load_env_flags'].return_value = _EnvFlags(
@@ -2110,14 +2144,45 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         # No deployment is dispatched for a library release.
         self.assertFalse(triggered['called'])
 
-    def test_cut_release_rejects_non_semver_tag(self) -> None:
+    def test_cut_release_rejects_tag_violating_configured_format(
+        self,
+    ) -> None:
+        self.mocks['_resolve_tag_formats'].return_value = [SEMVER_TAG_FORMAT]
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
                 f'{self._BASE}/releases/cut',
                 json={'committish': '1a9c610', 'tag': 'main'},
             )
         self.assertEqual(response.status_code, 400)
-        self.assertIn('semver', response.json()['detail'])
+        detail = response.json()['detail']
+        self.assertIn('does not match any configured tag format', detail)
+        self.assertIn('Semver', detail)
+
+    def test_cut_release_accepts_tag_matching_custom_format(self) -> None:
+        self.mocks['_resolve_tag_formats'].return_value = [
+            TagFormat(label='CalVer', pattern=r'\d{4}\.\d{2}\.\d+')
+        ]
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                f'{self._BASE}/releases/cut',
+                json={'committish': '1a9c610', 'tag': '2026.06.1'},
+            )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()['tag'], '2026.06.1')
+
+    def test_cut_release_allows_any_tag_when_no_format_configured(
+        self,
+    ) -> None:
+        # Default policy is empty -> any tag is accepted.
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                f'{self._BASE}/releases/cut',
+                json={'committish': '1a9c610', 'tag': 'nightly-build'},
+            )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()['tag'], 'nightly-build')
 
     def test_cut_release_rejects_non_sha_committish(self) -> None:
         with testclient.TestClient(self.test_app) as client:
@@ -2164,3 +2229,89 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         data = response.json()
         self.assertIsNotNone(data['warning'])
         self.assertIn('create_release', data['warning'])
+
+
+class ResolveTagFormatsTestCase(unittest.IsolatedAsyncioTestCase):
+    """Unit tests for the ``_resolve_tag_formats`` cascade helper."""
+
+    @staticmethod
+    def _db(org_formats: typing.Any, pt_formats: typing.Any) -> mock.AsyncMock:
+        db = mock.AsyncMock(spec=graph.Graph)
+        db.execute = mock.AsyncMock(
+            return_value=[
+                {'org_formats': org_formats, 'pt_formats': pt_formats}
+            ]
+        )
+        return db
+
+    async def test_project_type_overrides_org(self) -> None:
+        db = self._db(
+            org_formats=[{'label': 'Org', 'pattern': 'a'}],
+            pt_formats=[[{'label': 'PT', 'pattern': 'b'}]],
+        )
+        result = await project_deployments._resolve_tag_formats(
+            db, 'org', 'pid'
+        )
+        self.assertEqual([f.label for f in result], ['PT'])
+
+    async def test_falls_back_to_org_when_no_project_type_formats(
+        self,
+    ) -> None:
+        db = self._db(
+            org_formats=[{'label': 'Org', 'pattern': 'a'}],
+            pt_formats=[[]],
+        )
+        result = await project_deployments._resolve_tag_formats(
+            db, 'org', 'pid'
+        )
+        self.assertEqual([f.label for f in result], ['Org'])
+
+    async def test_empty_when_neither_configured(self) -> None:
+        db = self._db(org_formats=None, pt_formats=[])
+        result = await project_deployments._resolve_tag_formats(
+            db, 'org', 'pid'
+        )
+        self.assertEqual(result, [])
+
+    async def test_unions_multiple_project_types(self) -> None:
+        db = self._db(
+            org_formats=[{'label': 'Org', 'pattern': 'a'}],
+            pt_formats=[
+                [{'label': 'A', 'pattern': 'a'}],
+                [{'label': 'B', 'pattern': 'b'}],
+            ],
+        )
+        result = await project_deployments._resolve_tag_formats(
+            db, 'org', 'pid'
+        )
+        self.assertEqual({f.label for f in result}, {'A', 'B'})
+
+    async def test_lookup_failure_returns_empty(self) -> None:
+        db = mock.AsyncMock(spec=graph.Graph)
+        db.execute = mock.AsyncMock(side_effect=RuntimeError('boom'))
+        result = await project_deployments._resolve_tag_formats(
+            db, 'org', 'pid'
+        )
+        self.assertEqual(result, [])
+
+    async def test_skips_malformed_stored_format(self) -> None:
+        db = self._db(
+            org_formats=None,
+            pt_formats=[[{'label': 'Good', 'pattern': 'a'}, {'oops': 1}]],
+        )
+        result = await project_deployments._resolve_tag_formats(
+            db, 'org', 'pid'
+        )
+        self.assertEqual([f.label for f in result], ['Good'])
+
+    async def test_falls_back_to_org_when_project_type_all_malformed(
+        self,
+    ) -> None:
+        db = self._db(
+            org_formats=[{'label': 'Org', 'pattern': 'a'}],
+            pt_formats=[[{'oops': 1}]],
+        )
+        result = await project_deployments._resolve_tag_formats(
+            db, 'org', 'pid'
+        )
+        self.assertEqual([f.label for f in result], ['Org'])

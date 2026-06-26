@@ -389,6 +389,80 @@ async def _resolve_and_context(
     return resolved, ctx, credentials
 
 
+async def _resolve_tag_formats(
+    db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+) -> list[common_models.TagFormat]:
+    """Resolve the effective release/deploy tag-format policy.
+
+    The project's type(s) override the organization: when any of the
+    project's ``ProjectType`` nodes configure ``tag_formats`` those apply
+    (unioned across types); otherwise the organization's ``tag_formats``
+    apply. When neither configures any, the result is empty -- meaning
+    "no restriction" (see ``versioning.matches_tag_formats``).
+    """
+    query: typing.LiteralString = (
+        'MATCH (o:Organization {{slug: {org_slug}}})'
+        ' OPTIONAL MATCH (p:Project {{id: {project_id}}})'
+        '-[:TYPE]->(pt:ProjectType)-[:BELONGS_TO]->(o)'
+        ' RETURN o.tag_formats AS org_formats,'
+        ' collect(pt.tag_formats) AS pt_formats'
+    )
+    try:
+        records = await db.execute(
+            query,
+            {'org_slug': org_slug, 'project_id': project_id},
+            columns=['org_formats', 'pt_formats'],
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.debug('Tag-format lookup failed', exc_info=True)
+        return []
+    if not records:
+        return []
+
+    pt_raw = graph.parse_agtype(records[0].get('pt_formats'))
+    pt_entries: list[dict[str, typing.Any]] = []
+    if isinstance(pt_raw, list):
+        for entry in typing.cast(list[object], pt_raw):
+            if isinstance(entry, list):
+                pt_entries.extend(
+                    typing.cast(dict[str, typing.Any], e)
+                    for e in typing.cast(list[object], entry)
+                    if isinstance(e, dict)
+                )
+
+    # Fall back to the org policy unless the project type produced at
+    # least one *valid* format; a project type whose stored formats are
+    # all malformed must inherit the org gate, not disable enforcement.
+    formats = _validate_tag_formats(pt_entries)
+    if formats:
+        return formats
+
+    org_raw = graph.parse_agtype(records[0].get('org_formats'))
+    org_entries: list[dict[str, typing.Any]] = []
+    if isinstance(org_raw, list):
+        org_entries = [
+            typing.cast(dict[str, typing.Any], e)
+            for e in typing.cast(list[object], org_raw)
+            if isinstance(e, dict)
+        ]
+    return _validate_tag_formats(org_entries)
+
+
+def _validate_tag_formats(
+    entries: list[dict[str, typing.Any]],
+) -> list[common_models.TagFormat]:
+    """Validate stored format dicts, dropping (and logging) malformed ones."""
+    formats: list[common_models.TagFormat] = []
+    for entry in entries:
+        try:
+            formats.append(common_models.TagFormat.model_validate(entry))
+        except pydantic.ValidationError:
+            LOGGER.warning('Skipping invalid stored tag format: %r', entry)
+    return formats
+
+
 class _EnvFlags(typing.NamedTuple):
     """Release-train flags resolved from an ``Environment`` node.
 
@@ -1496,26 +1570,30 @@ async def _handle_promote(
 
     # Infer promote behaviour from the ref shape of ``body.tag``:
     #
-    # * Semver-shaped (``1.2.3`` / ``v1.2.3``)  -> already a tag.  Skip
-    #   ``create_tag`` + ``create_release``; call ``trigger_deployment``
-    #   so the repo's ``on: deployment`` workflow fires.  This is the
-    #   "promote to prod from a stage release tag" path.
+    # * Matches a configured tag format (or, with none configured, any
+    #   non-SHA ref) -> already a tag.  Skip ``create_tag`` +
+    #   ``create_release``; call ``trigger_deployment`` so the repo's
+    #   ``on: deployment`` workflow fires.  This is the "promote to prod
+    #   from a stage release tag" path.
     # * Git short/full SHA                       -> cut a tag at the SHA,
     #   create a GitHub Release; the repo's ``on: release`` workflow
     #   handles the deploy server-side.  This is the "first promote off
     #   a build commit" path.
-    # * Anything else (e.g. ``main``)            -> 400.  We refuse to
-    #   silently cut a tag named after a branch; a typo at the API
-    #   boundary should fail loudly rather than mint ``refs/tags/main``.
-    if not versioning.is_semver_tag(body.tag) and not versioning.is_commitish(
-        body.tag
-    ):
+    # * A ref that fails a configured tag format  -> 400.  We refuse to
+    #   silently cut a tag that violates the org/project-type policy; a
+    #   typo at the API boundary should fail loudly.
+    tag_formats = await _resolve_tag_formats(db, org_slug, project_id)
+    patterns = [fmt.pattern for fmt in tag_formats]
+    if not versioning.matches_tag_formats(
+        body.tag, patterns
+    ) and not versioning.is_commitish(body.tag):
+        allowed = ', '.join(fmt.label for fmt in tag_formats)
         raise fastapi.HTTPException(
             status_code=400,
             detail=(
-                f'Promote target {body.tag!r} is neither a semver tag '
-                '(e.g. "v1.2.3") nor a git SHA (7-40 hex chars); refusing '
-                'to cut a tag at an ambiguous ref.'
+                f'Promote target {body.tag!r} does not match any configured '
+                f'tag format ({allowed}) and is not a git SHA (7-40 hex '
+                'chars); refusing to cut a tag at an ambiguous ref.'
             ),
         )
 
@@ -2479,16 +2557,20 @@ async def cut_release(
     """Cut a git tag + GitHub release at ``committish`` -- no deployment.
 
     The build-and-release-only (library / image) flow: validate the
-    semver tag and committish, cut the tag + release via the deployment
-    plugin (reusing the promote machinery minus the deploy step), upsert
-    the matching ``Release`` node, and record an audit row.
+    tag against the configured formats and the committish, cut the tag +
+    release via the deployment plugin (reusing the promote machinery
+    minus the deploy step), upsert the matching ``Release`` node, and
+    record an audit row.
     """
-    if not versioning.is_semver_tag(body.tag):
+    tag_formats = await _resolve_tag_formats(db, org_slug, project_id)
+    patterns = [fmt.pattern for fmt in tag_formats]
+    if not versioning.matches_tag_formats(body.tag, patterns):
+        allowed = ', '.join(fmt.label for fmt in tag_formats)
         raise fastapi.HTTPException(
             status_code=400,
             detail=(
-                f'Release tag {body.tag!r} is not a semver tag '
-                '(e.g. "v1.2.3").'
+                f'Release tag {body.tag!r} does not match any configured '
+                f'tag format ({allowed}).'
             ),
         )
     if not versioning.is_commitish(body.committish):
