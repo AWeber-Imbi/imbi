@@ -10,6 +10,8 @@ from imbi_common.scoring import (
     AnalysisResultPolicy,
     AttributeContribution,
     AttributePolicy,
+    Condition,
+    ConditionPolicy,
     LinkPresencePolicy,
     PolicyContribution,
     PresencePolicy,
@@ -22,6 +24,8 @@ __all__ = [
     'AnalysisResultPolicy',
     'AttributeContribution',
     'AttributePolicy',
+    'Condition',
+    'ConditionPolicy',
     'GlobalScoreEvent',
     'LinkPresencePolicy',
     'MonthlyImprovementRow',
@@ -64,6 +68,7 @@ class PolicyCreate(pydantic.BaseModel):
         'age',
         'analysis_result',
         'deployment_status',
+        'condition',
     ] = 'attribute'
     weight: int = pydantic.Field(ge=0, le=100)
     enabled: bool = True
@@ -79,6 +84,9 @@ class PolicyCreate(pydantic.BaseModel):
     range_score_map: dict[str, int] | None = None
     age_score_map: dict[str, int] | None = None
     status_score_map: dict[str, int] | None = None
+    condition: Condition | None = None
+    true_score: int | None = pydantic.Field(default=None, ge=0, le=100)
+    false_score: int | None = pydantic.Field(default=None, ge=0, le=100)
 
 
 class PolicyUpdate(pydantic.BaseModel):
@@ -99,6 +107,9 @@ class PolicyUpdate(pydantic.BaseModel):
     range_score_map: dict[str, int] | None = None
     age_score_map: dict[str, int] | None = None
     status_score_map: dict[str, int] | None = None
+    condition: Condition | None = None
+    true_score: int | None = pydantic.Field(default=None, ge=0, le=100)
+    false_score: int | None = pydantic.Field(default=None, ge=0, le=100)
     present_score: int | None = pydantic.Field(default=None, ge=0, le=100)
     missing_score: int | None = pydantic.Field(default=None, ge=0, le=100)
     targets: list[str] | None = None

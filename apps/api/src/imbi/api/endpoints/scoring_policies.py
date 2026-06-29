@@ -32,6 +32,7 @@ PolicyType = (
     | scoring_common.AgePolicy
     | scoring_common.AnalysisResultPolicy
     | scoring_common.DeploymentStatusPolicy
+    | scoring_common.ConditionPolicy
 )
 
 
@@ -41,6 +42,7 @@ _JSON_PROPS_KEYS = (
     'range_score_map',
     'age_score_map',
     'status_score_map',
+    'condition',
 )
 
 
@@ -66,6 +68,9 @@ _NODE_PROPERTY_KEYS: frozenset[str] = frozenset(
         'range_score_map',
         'age_score_map',
         'status_score_map',
+        'condition',
+        'true_score',
+        'false_score',
     }
 )
 
@@ -82,7 +87,7 @@ def _parse_node(raw: dict[str, typing.Any]) -> dict[str, typing.Any]:
         if isinstance(val, str):
             try:
                 out[key] = json.loads(val)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 out[key] = None
     return out
 

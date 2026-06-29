@@ -513,6 +513,88 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
             result = await score_queue.affected_projects(db, policy)
         self.assertEqual(['p1'], result)
 
+    async def test_condition_skips_attribute_check(self) -> None:
+        from imbi_common.scoring import models as sm
+
+        policy = sm.ConditionPolicy.model_validate(
+            {
+                'name': 'no-deprecated-deps',
+                'slug': 'no-deprecated-deps',
+                'weight': 10,
+                'condition': {
+                    'relationship': {
+                        'quantifier': 'none',
+                        'where': {
+                            'attribute': 'deprecated',
+                            'op': 'eq',
+                            'value': True,
+                        },
+                    }
+                },
+            }
+        )
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[{'id': 'p1'}])
+        with mock.patch(
+            'imbi_api.scoring.queue.blueprints.get_model',
+            mock.AsyncMock(side_effect=AssertionError('should not be called')),
+        ):
+            result = await score_queue.affected_projects(db, policy)
+        self.assertEqual(['p1'], result)
+
+
+class DependentCascadeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_condition_policies_exist_true(self) -> None:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[{'id': 'sp1'}])
+        self.assertTrue(await score_queue.condition_policies_exist(db))
+
+    async def test_condition_policies_exist_false(self) -> None:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[])
+        self.assertFalse(await score_queue.condition_policies_exist(db))
+
+    async def test_dependent_project_ids(self) -> None:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[{'id': 'b1'}, {'id': 'c2'}])
+        result = await score_queue.dependent_project_ids(db, 'a0')
+        self.assertEqual(['b1', 'c2'], result)
+
+    async def test_enqueue_dependents_none_client(self) -> None:
+        db = mock.AsyncMock()
+        result = await score_queue.enqueue_dependents(None, db, 'a0')
+        self.assertEqual(0, result)
+        db.execute.assert_not_called()
+
+    async def test_enqueue_dependents_skips_when_no_condition_policy(
+        self,
+    ) -> None:
+        client = mock.AsyncMock()
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[])  # no condition policies
+        result = await score_queue.enqueue_dependents(client, db, 'a0')
+        self.assertEqual(0, result)
+        # Only the existence check ran; no dependents query.
+        self.assertEqual(1, db.execute.call_count)
+
+    async def test_enqueue_dependents_enqueues_dependents(self) -> None:
+        client = mock.AsyncMock()
+        db = mock.AsyncMock()
+        # 1st execute: condition policy exists; 2nd: dependents.
+        db.execute = mock.AsyncMock(
+            side_effect=[[{'id': 'sp1'}], [{'id': 'b1'}, {'id': 'c2'}]]
+        )
+        with mock.patch.object(
+            score_queue,
+            'enqueue_recompute_bulk',
+            mock.AsyncMock(return_value=2),
+        ) as bulk:
+            result = await score_queue.enqueue_dependents(client, db, 'a0')
+        self.assertEqual(2, result)
+        bulk.assert_awaited_once_with(
+            client, ['b1', 'c2'], 'dependency_change'
+        )
+
 
 class DailyTickTests(unittest.IsolatedAsyncioTestCase):
     async def test_acquires_lock_and_enqueues_all(self) -> None:

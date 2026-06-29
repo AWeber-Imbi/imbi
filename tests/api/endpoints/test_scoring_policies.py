@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import typing
 from unittest import mock
 
@@ -147,6 +148,96 @@ class ScoringPolicyEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(data['category'], 'deployment_status')
         self.assertEqual(data['environment_slug'], 'production')
         self.assertEqual(data['status_score_map']['failed'], 0)
+
+    def test_create_condition_policy(self) -> None:
+        condition = {
+            'relationship': {
+                'edge': 'DEPENDS_ON',
+                'direction': 'outgoing',
+                'quantifier': 'none',
+                'where': {
+                    'attribute': 'deprecated',
+                    'op': 'eq',
+                    'value': True,
+                },
+            }
+        }
+        # AGE stores the tree as a JSON string; the reload path parses it.
+        props = {
+            'id': 'c1id',
+            'name': 'No Deprecated Dependencies',
+            'slug': 'no-deprecated-dependencies',
+            'category': 'condition',
+            'weight': 15,
+            'enabled': True,
+            'priority': 0,
+            'description': None,
+            'true_score': 100,
+            'false_score': 0,
+            'condition': json.dumps(condition),
+        }
+        self.mock_db.execute = mock.AsyncMock(
+            side_effect=[
+                [{'sp': props}],
+                [{'sp': props, 'targets': []}],
+                [],
+            ]
+        )
+        with mock.patch(
+            'imbi_api.endpoints.scoring_policies.score_queue.'
+            'affected_projects',
+            mock.AsyncMock(return_value=['p1']),
+        ):
+            response = self.client.post(
+                '/scoring/policies/',
+                json={
+                    'name': 'No Deprecated Dependencies',
+                    'slug': 'no-deprecated-dependencies',
+                    'category': 'condition',
+                    'weight': 15,
+                    'false_score': 0,
+                    'condition': condition,
+                },
+            )
+        self.assertEqual(response.status_code, 201, response.text)
+        data = response.json()
+        self.assertEqual(data['category'], 'condition')
+        self.assertEqual(
+            data['condition']['relationship']['quantifier'], 'none'
+        )
+        self.assertEqual(
+            data['condition']['relationship']['where']['attribute'],
+            'deprecated',
+        )
+
+    def test_create_condition_policy_rejects_nested_relationship(self) -> None:
+        # The one-hop rule is enforced by the ConditionPolicy validator;
+        # the endpoint surfaces it as a 400.
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        response = self.client.post(
+            '/scoring/policies/',
+            json={
+                'name': 'Bad',
+                'slug': 'bad',
+                'category': 'condition',
+                'weight': 10,
+                'condition': {
+                    'relationship': {
+                        'quantifier': 'any',
+                        'where': {
+                            'relationship': {
+                                'quantifier': 'any',
+                                'where': {
+                                    'attribute': 'deprecated',
+                                    'op': 'present',
+                                },
+                            }
+                        },
+                    }
+                },
+            },
+        )
+        self.assertEqual(response.status_code, 400, response.text)
 
     def test_get_policy_not_found(self) -> None:
         self.mock_db.execute = mock.AsyncMock(return_value=[])

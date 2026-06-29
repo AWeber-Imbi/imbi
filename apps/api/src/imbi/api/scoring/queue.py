@@ -18,6 +18,7 @@ from imbi_common.scoring import (
     AgePolicy,
     AnalysisResultPolicy,
     AttributePolicy,
+    ConditionPolicy,
     DeploymentStatusPolicy,
     LinkPresencePolicy,
     PresencePolicy,
@@ -34,6 +35,7 @@ Policy = (
     | AgePolicy
     | AnalysisResultPolicy
     | DeploymentStatusPolicy
+    | ConditionPolicy
 )
 
 STREAM = 'imbi:score-recompute'
@@ -57,6 +59,7 @@ ChangeReason = typing.Literal[
     'bulk_rescore',
     'scheduled_recompute',
     'deployment_status_change',
+    'dependency_change',
 ]
 
 
@@ -166,14 +169,20 @@ async def affected_projects(
 
     For attribute/presence/age policies, ``policy.attribute_name`` must
     exist on the blueprint-extended Project model. For link_presence,
-    analysis_result, and deployment_status policies, no attribute check
-    is required — they key off project links / analysis-report results
-    / deployment edges instead. In all cases, the result is intersected
-    with the policy's TARGETS edges when set.
+    analysis_result, deployment_status, and condition policies, no
+    attribute check is required — they key off project links /
+    analysis-report results / deployment edges / dependency relationships
+    instead. In all cases, the result is intersected with the policy's
+    TARGETS edges when set.
     """
     if not isinstance(
         policy,
-        (LinkPresencePolicy, AnalysisResultPolicy, DeploymentStatusPolicy),
+        (
+            LinkPresencePolicy,
+            AnalysisResultPolicy,
+            DeploymentStatusPolicy,
+            ConditionPolicy,
+        ),
     ):
         extended = await blueprints.get_model(db, models.Project)
         if policy.attribute_name not in extended.model_fields:
@@ -213,6 +222,61 @@ async def all_project_ids(
         return await projects_of_type(db, project_type_slug)
     rows = await db.execute('MATCH (p:Project) RETURN p.id AS id', {}, ['id'])
     return [v for r in rows if (v := graph.parse_agtype(r['id']))]
+
+
+_CONDITION_POLICY_EXISTS_QUERY: typing.LiteralString = (
+    "MATCH (p:ScoringPolicy {{enabled: true, category: 'condition'}})"
+    ' RETURN p.id AS id LIMIT 1'
+)
+
+_DEPENDENTS_QUERY: typing.LiteralString = (
+    'MATCH (b:Project)-[:DEPENDS_ON]->(:Project {{id: {project_id}}})'
+    ' RETURN b.id AS id'
+)
+
+
+async def condition_policies_exist(db: graph.Graph) -> bool:
+    """Whether any enabled ``condition`` scoring policy is defined.
+
+    Guards the dependent-cascade fan-out: relationship-aware scoring only
+    matters when a condition policy exists, so the dependents query is
+    skipped entirely otherwise.
+    """
+    rows = await db.execute(_CONDITION_POLICY_EXISTS_QUERY, {}, ['id'])
+    return bool(rows)
+
+
+async def dependent_project_ids(db: graph.Graph, project_id: str) -> list[str]:
+    """Ids of projects with an outgoing ``DEPENDS_ON`` edge to *project_id*.
+
+    These are the projects whose condition-policy scores can change when
+    *project_id*'s attributes change (one hop — a relationship leaf reads
+    the neighbour's attribute, not its score, so there is no transitive
+    cascade).
+    """
+    rows = await db.execute(
+        _DEPENDENTS_QUERY, {'project_id': project_id}, ['id']
+    )
+    return [v for r in rows if (v := graph.parse_agtype(r['id']))]
+
+
+async def enqueue_dependents(
+    client: valkey.Valkey | None,
+    db: graph.Graph,
+    project_id: str,
+    reason: ChangeReason = 'dependency_change',
+) -> int:
+    """Enqueue re-score for projects that depend on *project_id*.
+
+    No-op (returns 0) when no enabled condition policy exists, so the
+    fan-out query is only paid for when relationship scoring is in use.
+    """
+    if client is None:
+        return 0
+    if not await condition_policies_exist(db):
+        return 0
+    dependents = await dependent_project_ids(db, project_id)
+    return await enqueue_recompute_bulk(client, dependents, reason)
 
 
 async def _process_message(

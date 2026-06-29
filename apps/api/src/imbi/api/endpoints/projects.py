@@ -2258,6 +2258,7 @@ async def create_project_relationship(
     project_id: str,
     target_id: str,
     db: graph.Pool,
+    valkey_client: OptionalValkeyClient,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -2305,6 +2306,13 @@ async def create_project_relationship(
                 f'Project {project_id!r} or target {target_id!r} not found'
             ),
         )
+    # The source project gained a dependency, which can change a
+    # condition-policy score that reads its neighbours. No-op unless a
+    # condition policy exists.
+    if await score_queue.condition_policies_exist(db):
+        await score_queue.enqueue_recompute(
+            valkey_client, project_id, 'dependency_change'
+        )
 
 
 @projects_router.delete(
@@ -2316,6 +2324,7 @@ async def delete_project_relationship(
     project_id: str,
     target_id: str,
     db: graph.Pool,
+    valkey_client: OptionalValkeyClient,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -2355,6 +2364,13 @@ async def delete_project_relationship(
             detail=(
                 f'Relationship from {project_id!r} to {target_id!r} not found'
             ),
+        )
+    # The source project lost a dependency; re-score it so a condition
+    # policy reading its neighbours reflects the change. No-op unless a
+    # condition policy exists.
+    if await score_queue.condition_policies_exist(db):
+        await score_queue.enqueue_recompute(
+            valkey_client, project_id, 'dependency_change'
         )
 
 
@@ -2834,6 +2850,10 @@ async def patch_project(
     await score_queue.enqueue_recompute(
         valkey_client, project_id, 'attribute_change'
     )
+    # A changed attribute (e.g. ``deprecated``) can flip a condition
+    # policy on any project that depends on this one, so re-score the
+    # one-hop dependents too. No-op unless a condition policy exists.
+    await score_queue.enqueue_dependents(valkey_client, db, project_id)
     # H13: ClickHouse insert is non-critical for the response, so move
     # it off the hot path. The graph write already succeeded; the
     # events row exists to feed the activity log and can lag by
