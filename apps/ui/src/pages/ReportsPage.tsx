@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import {
+  Activity,
   BarChart3,
   GitCommitHorizontal,
   GitPullRequest,
@@ -14,6 +15,7 @@ import { CommandBar } from '@/components/CommandBar'
 import { Navigation } from '@/components/Navigation'
 import { MonthlyImprovementReport } from '@/components/reports/MonthlyImprovementReport'
 import { OpenPullRequestsReport } from '@/components/reports/OpenPullRequestsReport'
+import { PRActivityReport } from '@/components/reports/PRActivityReport'
 import { ProjectsGraphReport } from '@/components/reports/ProjectsGraphReport'
 import { ScoreHistoryReport } from '@/components/reports/ScoreHistoryReport'
 import { TeamKPIReport } from '@/components/reports/TeamKPIReport'
@@ -38,6 +40,12 @@ const REPORTS: Report[] = [
     id: 'open-pull-requests',
     label: 'Open Pull Requests',
     subtitle: 'Open pull requests, filterable by team and project type',
+  },
+  {
+    description: 'PRs created and merged per member',
+    id: 'pr-activity',
+    label: 'PR Activity',
+    subtitle: 'PRs created and merged per team member, since a chosen date',
   },
   {
     description: 'Service dependency graph',
@@ -117,6 +125,8 @@ export function ReportsPage() {
                         <Network className="mt-0.5 size-3.5 shrink-0" />
                       ) : r.id === 'open-pull-requests' ? (
                         <GitPullRequest className="mt-0.5 size-3.5 shrink-0" />
+                      ) : r.id === 'pr-activity' ? (
+                        <Activity className="mt-0.5 size-3.5 shrink-0" />
                       ) : (
                         <TrendingUp className="mt-0.5 size-3.5 shrink-0" />
                       )}
@@ -144,6 +154,7 @@ export function ReportsPage() {
             {activeId === 'team-kpi' && <TeamKPIReport />}
             {activeId === 'monthly-improvement' && <MonthlyImprovementReport />}
             {activeId === 'open-pull-requests' && <OpenPullRequestsReport />}
+            {activeId === 'pr-activity' && <PRActivityReport />}
             {activeId === 'score-history' && <ScoreHistoryReport />}
             {activeId === 'projects-graph' && <ProjectsGraphReport />}
           </div>

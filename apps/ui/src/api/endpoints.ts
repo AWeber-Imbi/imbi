@@ -2863,3 +2863,29 @@ export const getOrgPullRequests = (
     params,
     signal,
   )
+
+export interface PRActivityResponse {
+  members: number
+  rows: PRActivityRow[]
+  since: string
+}
+
+export interface PRActivityRow {
+  avatar_url: null | string
+  created: number
+  display_name: null | string
+  email: null | string
+  login: string
+  merged: number
+}
+
+export const getPRActivity = (
+  orgSlug: string,
+  since: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<PRActivityResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/pull-requests/activity`,
+    { since },
+    signal,
+  )
