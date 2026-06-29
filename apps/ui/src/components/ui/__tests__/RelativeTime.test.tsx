@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { absTime } from '@/lib/formatDate'
 import { render, screen } from '@/test/utils'
 
 import { RelativeTime } from '../RelativeTime'
@@ -63,8 +64,10 @@ describe('RelativeTime', () => {
       const el = document.querySelector('time')!
       const title = el.getAttribute('title')
       expect(title).not.toBeNull()
-      expect(title).toMatch(/2026/)
-      expect(title).toMatch(/Jan/)
+      // Compare against absTime's own output rather than hardcoded month/year
+      // substrings: absTime renders in local time, so a UTC-midnight ISO lands
+      // on the prior day in any timezone behind UTC.
+      expect(title).toBe(absTime(ISO))
     })
 
     it('does not render a TooltipProvider', () => {
