@@ -11,6 +11,7 @@ from imbi_common import graph, models
 from imbi_common.scoring import attribute, policies
 from imbi_common.scoring.models import (
     AnalysisResultPolicy,
+    ConditionPolicy,
     DeploymentStatusPolicy,
     ScoreBreakdown,
 )
@@ -59,8 +60,15 @@ async def _compute(
         deployment_statuses = await _load_deployment_statuses(
             database, project.id
         )
+    neighbours: list[dict[str, typing.Any]] = []
+    if any(isinstance(p, ConditionPolicy) for p in applicable):
+        neighbours = await _load_dependency_neighbours(database, project.id)
     base_score, contributions = attribute.compute_base_score(
-        extended_project, applicable, analysis_results, deployment_statuses
+        extended_project,
+        applicable,
+        analysis_results,
+        deployment_statuses,
+        neighbours,
     )
     floored = max(0.0, base_score)
     breakdown = ScoreBreakdown(
@@ -139,6 +147,37 @@ async def _load_deployment_statuses(
             if current is None or event.timestamp > current.timestamp:
                 latest[slug] = event
     return {slug: event.status for slug, event in latest.items()}
+
+
+_DEPENDENCY_NEIGHBOURS_QUERY: typing.LiteralString = (
+    'MATCH (p:Project {{id: {project_id}}})'
+    '-[:DEPENDS_ON]->(n:Project)'
+    ' RETURN n'
+)
+
+
+async def _load_dependency_neighbours(
+    database: graph.Graph,
+    project_id: str,
+) -> list[dict[str, typing.Any]]:
+    """Fetch the property maps of the project's outgoing dependencies.
+
+    Returns one dict per project reached by an outgoing ``DEPENDS_ON``
+    edge, including blueprint attributes (e.g. ``deprecated``) stored as
+    node properties. ``ConditionPolicy`` relationship leaves evaluate
+    their ``where`` predicate against these maps.
+    """
+    rows = await database.execute(
+        _DEPENDENCY_NEIGHBOURS_QUERY,
+        {'project_id': project_id},
+        columns=['n'],
+    )
+    neighbours: list[dict[str, typing.Any]] = []
+    for row in rows:
+        props = graph.parse_agtype(row['n'])
+        if isinstance(props, dict):
+            neighbours.append(props)
+    return neighbours
 
 
 def _parse_deployment_events(

@@ -357,3 +357,72 @@ class DeploymentStatusScoreTests(unittest.TestCase):
             deployment_statuses={'staging': 'failed'},
         )
         self.assertEqual(100.0, score)
+
+
+class ConditionScoreTests(unittest.TestCase):
+    def _policy(self, **overrides: object) -> models.ConditionPolicy:
+        defaults: dict[str, object] = {
+            'name': 'No deprecated dependencies',
+            'slug': 'no-deprecated-dependencies',
+            'weight': 50,
+            'condition': {
+                'relationship': {
+                    'quantifier': 'none',
+                    'where': {
+                        'attribute': 'deprecated',
+                        'op': 'eq',
+                        'value': True,
+                    },
+                }
+            },
+        }
+        defaults.update(overrides)
+        return models.ConditionPolicy(**defaults)  # type: ignore[arg-type]
+
+    def test_clean_dependencies_full_score(self) -> None:
+        score, contribs = attribute.compute_base_score(
+            types.SimpleNamespace(),
+            [self._policy()],
+            neighbours=[{'deprecated': False}, {}],
+        )
+        self.assertEqual(100.0, score)
+        self.assertEqual('condition', contribs[0].category)
+        self.assertTrue(contribs[0].condition_result)
+        self.assertTrue(contribs[0].value)
+
+    def test_deprecated_dependency_penalized(self) -> None:
+        score, contribs = attribute.compute_base_score(
+            types.SimpleNamespace(),
+            [self._policy()],
+            neighbours=[{'deprecated': True}],
+        )
+        self.assertEqual(0.0, score)
+        self.assertFalse(contribs[0].condition_result)
+
+    def test_no_neighbours_argument_defaults_empty(self) -> None:
+        # A condition policy must still contribute when no neighbour list
+        # is supplied; quantifier semantics give the empty set an answer.
+        score, _ = attribute.compute_base_score(
+            types.SimpleNamespace(),
+            [self._policy()],
+        )
+        self.assertEqual(100.0, score)
+
+    def test_mixed_with_other_categories(self) -> None:
+        policies: list[attribute.Policy] = [
+            models.AttributePolicy(
+                name='lang',
+                slug='lang',
+                attribute_name='lang',
+                weight=50,
+                value_score_map={'py': 100},
+            ),
+            self._policy(weight=50),
+        ]
+        proj = types.SimpleNamespace(lang='py')
+        score, contribs = attribute.compute_base_score(
+            proj, policies, neighbours=[{'deprecated': True}]
+        )
+        # (100*50 + 0*50) / 100 = 50
+        self.assertEqual(50.0, score)
+        self.assertEqual(2, len(contribs))

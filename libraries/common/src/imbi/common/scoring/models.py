@@ -316,13 +316,232 @@ class AgePolicy(_PolicyBase):
         return None
 
 
+#: Maximum nesting depth of a condition tree. Bounds evaluation work and
+#: rejects pathological policies. Counts combinator/relationship levels.
+_MAX_CONDITION_DEPTH = 6
+
+ConditionOp = typing.Literal[
+    'eq', 'ne', 'gt', 'ge', 'lt', 'le', 'present', 'absent'
+]
+_NUMERIC_OPS = {'gt', 'ge', 'lt', 'le'}
+_NO_VALUE_OPS = {'present', 'absent'}
+
+
+class RelationshipSpec(pydantic.BaseModel):
+    """Traverse an edge and test ``where`` against the reached projects.
+
+    v1 supports only outgoing ``DEPENDS_ON`` edges (the projects a project
+    depends on). ``quantifier`` reduces the per-neighbour results to one
+    boolean: ``any`` (∃ match), ``all`` (∀ match, vacuously true when there
+    are no neighbours), ``none`` (no match, vacuously true when empty).
+    """
+
+    model_config = pydantic.ConfigDict(extra='ignore')
+
+    edge: typing.Literal['DEPENDS_ON'] = 'DEPENDS_ON'
+    direction: typing.Literal['outgoing'] = 'outgoing'
+    quantifier: typing.Literal['any', 'all', 'none']
+    where: Condition
+
+
+class Condition(pydantic.BaseModel):
+    """A node in a boolean condition tree.
+
+    Exactly one node shape is populated:
+
+    * combinator — ``all`` / ``any`` (lists of child nodes) or ``not``
+      (a single child),
+    * attribute leaf — ``attribute`` + ``op`` (+ ``value`` unless the op is
+      ``present`` / ``absent``), a predicate on the project being scored,
+    * relationship leaf — ``relationship``, a predicate on the project's
+      outgoing ``DEPENDS_ON`` neighbours.
+
+    ``all``/``any``/``not`` are stored under aliases because they collide
+    with Python builtins/keywords.
+    """
+
+    model_config = pydantic.ConfigDict(extra='ignore', populate_by_name=True)
+
+    all_: list[Condition] | None = pydantic.Field(default=None, alias='all')
+    any_: list[Condition] | None = pydantic.Field(default=None, alias='any')
+    not_: Condition | None = pydantic.Field(default=None, alias='not')
+    attribute: str | None = None
+    op: ConditionOp | None = None
+    value: typing.Any = None
+    relationship: RelationshipSpec | None = None
+
+    @pydantic.model_validator(mode='after')
+    def _exactly_one_shape(self) -> typing.Self:
+        anchors = {
+            'all': self.all_ is not None,
+            'any': self.any_ is not None,
+            'not': self.not_ is not None,
+            'attribute': self.attribute is not None,
+            'relationship': self.relationship is not None,
+        }
+        set_anchors = [name for name, present in anchors.items() if present]
+        if len(set_anchors) != 1:
+            raise ValueError(
+                'a condition must set exactly one of all/any/not/attribute/'
+                f'relationship (got {set_anchors or "none"})'
+            )
+        if self.all_ is not None and not self.all_:
+            raise ValueError('all requires at least one child condition')
+        if self.any_ is not None and not self.any_:
+            raise ValueError('any requires at least one child condition')
+        if self.attribute is not None:
+            if not self.attribute:
+                raise ValueError(
+                    'attribute condition requires a non-empty attribute name'
+                )
+            if self.op is None:
+                raise ValueError('attribute condition requires an op')
+            if self.op in _NO_VALUE_OPS and self.value is not None:
+                raise ValueError(f'op {self.op!r} takes no value')
+            if self.op not in _NO_VALUE_OPS and self.value is None:
+                raise ValueError(f'op {self.op!r} requires a value')
+        elif self.op is not None or self.value is not None:
+            raise ValueError('op/value are only valid on attribute conditions')
+        return self
+
+
+# Resolve the mutual forward references between Condition and
+# RelationshipSpec now that both classes exist.
+RelationshipSpec.model_rebuild()
+Condition.model_rebuild()
+
+
+class ConditionPolicy(_PolicyBase):
+    """Score a project by whether a boolean condition tree holds.
+
+    The tree combines attribute predicates on the project with predicates
+    on its outgoing ``DEPENDS_ON`` neighbours (see :class:`Condition`). The
+    result maps to ``true_score`` / ``false_score`` and participates as an
+    ordinary weighted policy. Unlike the value-mapped categories, it never
+    returns ``None`` — quantifiers give an empty neighbour set a definite
+    answer, so a condition policy always contributes.
+    """
+
+    category: typing.Literal['condition'] = 'condition'
+    condition: Condition
+    true_score: int = pydantic.Field(default=100, ge=0, le=100)
+    false_score: int = pydantic.Field(default=0, ge=0, le=100)
+
+    @pydantic.field_validator('condition', mode='before')
+    @classmethod
+    def _parse_json_condition(cls, v: object) -> object:
+        if isinstance(v, str):
+            return json.loads(v)
+        return v
+
+    @pydantic.model_validator(mode='after')
+    def _validate_tree(self) -> typing.Self:
+        _validate_condition(self.condition)
+        return self
+
+    def matches(
+        self, project: typing.Any, neighbours: list[typing.Any]
+    ) -> bool:
+        """Evaluate the condition tree to a boolean."""
+        return _eval_condition(self.condition, project, neighbours)
+
+    def evaluate(
+        self, project: typing.Any, neighbours: list[typing.Any]
+    ) -> float:
+        """Map the condition result to ``true_score`` / ``false_score``."""
+        result = self.matches(project, neighbours)
+        return float(self.true_score if result else self.false_score)
+
+
+def _validate_condition(
+    cond: Condition,
+    *,
+    depth: int = 1,
+    in_relationship: bool = False,
+) -> None:
+    """Enforce the depth cap and the one-hop (no nested relationship) rule."""
+    if depth > _MAX_CONDITION_DEPTH:
+        raise ValueError(
+            f'condition nesting exceeds max depth {_MAX_CONDITION_DEPTH}'
+        )
+    if cond.relationship is not None:
+        if in_relationship:
+            raise ValueError(
+                'a relationship condition may not be nested inside another '
+                'relationship (transitive scoring is not supported)'
+            )
+        _validate_condition(
+            cond.relationship.where, depth=depth + 1, in_relationship=True
+        )
+        return
+    for child in (cond.all_ or []) + (cond.any_ or []):
+        _validate_condition(
+            child, depth=depth + 1, in_relationship=in_relationship
+        )
+    if cond.not_ is not None:
+        _validate_condition(
+            cond.not_, depth=depth + 1, in_relationship=in_relationship
+        )
+
+
+def _eval_condition(
+    cond: Condition, project: typing.Any, neighbours: list[typing.Any]
+) -> bool:
+    if cond.all_ is not None:
+        return all(_eval_condition(c, project, neighbours) for c in cond.all_)
+    if cond.any_ is not None:
+        return any(_eval_condition(c, project, neighbours) for c in cond.any_)
+    if cond.not_ is not None:
+        return not _eval_condition(cond.not_, project, neighbours)
+    if cond.relationship is not None:
+        spec = cond.relationship
+        # No transitivity: a neighbour's own neighbours are never traversed.
+        per = [_eval_condition(spec.where, n, []) for n in neighbours]
+        if spec.quantifier == 'any':
+            return any(per)
+        if spec.quantifier == 'all':
+            return all(per)
+        return not any(per)  # 'none'
+    return _eval_attribute(cond, project)
+
+
+def _eval_attribute(cond: Condition, source: typing.Any) -> bool:
+    raw = _get_attr(source, cond.attribute or '')
+    if cond.op == 'present':
+        return not is_missing(raw)
+    if cond.op == 'absent':
+        return is_missing(raw)
+    if cond.op in _NUMERIC_OPS:
+        try:
+            left = float(raw)
+            right = float(cond.value)
+        except (TypeError, ValueError):
+            return False
+        if cond.op == 'gt':
+            return left > right
+        if cond.op == 'ge':
+            return left >= right
+        if cond.op == 'lt':
+            return left < right
+        return left <= right
+    equal = _value_key(raw) == _value_key(cond.value)
+    return equal if cond.op == 'eq' else not equal
+
+
+def _get_attr(source: typing.Any, name: str) -> typing.Any:
+    if isinstance(source, dict):
+        return source.get(name)
+    return getattr(source, name, None)
+
+
 ScoringPolicy = typing.Annotated[
     AttributePolicy
     | PresencePolicy
     | LinkPresencePolicy
     | AgePolicy
     | AnalysisResultPolicy
-    | DeploymentStatusPolicy,
+    | DeploymentStatusPolicy
+    | ConditionPolicy,
     pydantic.Field(discriminator='category'),
 ]
 
@@ -437,11 +656,13 @@ class PolicyContribution(pydantic.BaseModel):
         'age',
         'analysis_result',
         'deployment_status',
+        'condition',
     ] = 'attribute'
     attribute_name: str | None = None
     link_slug: str | None = None
     result_slug: str | None = None
     environment_slug: str | None = None
+    condition_result: bool | None = None
     value: typing.Any | None = None
     mapped_score: float
     weight: int

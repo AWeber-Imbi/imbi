@@ -9,6 +9,7 @@ from imbi_common.scoring.models import (
     AgePolicy,
     AnalysisResultPolicy,
     AttributePolicy,
+    ConditionPolicy,
     DeploymentStatusPolicy,
     LinkPresencePolicy,
     PolicyContribution,
@@ -22,6 +23,7 @@ Policy = (
     | AgePolicy
     | AnalysisResultPolicy
     | DeploymentStatusPolicy
+    | ConditionPolicy
 )
 
 
@@ -30,6 +32,7 @@ def compute_base_score(
     policies: list[Policy],
     analysis_results: dict[str, str] | None = None,
     deployment_statuses: dict[str, str] | None = None,
+    neighbours: list[typing.Any] | None = None,
 ) -> tuple[float, list[PolicyContribution]]:
     """Compute base score and per-policy contributions.
 
@@ -44,17 +47,22 @@ def compute_base_score(
     of the project's latest deployment status per environment. Required
     for ``DeploymentStatusPolicy`` evaluation; an environment absent from
     the mapping is scored through the policy's ``'missing'`` key.
+
+    ``neighbours`` is the list of outgoing ``DEPENDS_ON`` neighbour
+    property maps. Required for ``ConditionPolicy`` evaluation; an empty
+    list is resolved through the relationship quantifier semantics.
     """
     if not policies:
         return 100.0, []
 
     results = analysis_results or {}
     deployments = deployment_statuses or {}
+    deps = neighbours or []
     total_weight = sum(p.weight for p in policies)
     contributions: list[PolicyContribution] = []
     weighted_sum = 0.0
     for policy in policies:
-        value, mapped = _evaluate(project, policy, results, deployments)
+        value, mapped = _evaluate(project, policy, results, deployments, deps)
         score = 0.0 if mapped is None else mapped
         weighted_sum += score * policy.weight
         if total_weight > 0:
@@ -69,6 +77,9 @@ def compute_base_score(
                 link_slug=getattr(policy, 'link_slug', None),
                 result_slug=getattr(policy, 'result_slug', None),
                 environment_slug=getattr(policy, 'environment_slug', None),
+                condition_result=value
+                if isinstance(policy, ConditionPolicy)
+                else None,
                 value=value,
                 mapped_score=score,
                 weight=policy.weight,
@@ -85,7 +96,13 @@ def _evaluate(
     policy: Policy,
     analysis_results: dict[str, str],
     deployment_statuses: dict[str, str],
+    neighbours: list[typing.Any],
 ) -> tuple[typing.Any, float | None]:
+    if isinstance(policy, ConditionPolicy):
+        result = policy.matches(project, neighbours)
+        return result, float(
+            policy.true_score if result else policy.false_score
+        )
     if isinstance(policy, LinkPresencePolicy):
         raw = _get_value(project, 'links')
         # AGE stores dict properties as JSON strings. model_validate normally

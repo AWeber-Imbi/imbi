@@ -124,6 +124,37 @@ class ComputeScoreTests(unittest.IsolatedAsyncioTestCase):
         load_mock.assert_awaited_once()
         self.assertEqual(0.0, score)
 
+    async def test_condition_policy_triggers_neighbour_load(self) -> None:
+        project = _project()
+        graph = mock.AsyncMock()
+        graph.match.side_effect = [[project], [project]]
+        policy = scoring_models.ConditionPolicy(
+            name='no deprecated deps',
+            slug='no-deprecated-deps',
+            weight=50,
+            condition={
+                'relationship': {
+                    'quantifier': 'none',
+                    'where': {
+                        'attribute': 'deprecated',
+                        'op': 'eq',
+                        'value': True,
+                    },
+                }
+            },
+        )
+        with mock.patch(
+            'imbi_common.scoring.engine.policies.applicable_policies',
+            new=mock.AsyncMock(return_value=([policy], models.Project)),
+        ):
+            with mock.patch(
+                'imbi_common.scoring.engine._load_dependency_neighbours',
+                new=mock.AsyncMock(return_value=[{'deprecated': True}]),
+            ) as load_mock:
+                score, _ = await engine.compute_score(graph, 'proj-id')
+        load_mock.assert_awaited_once()
+        self.assertEqual(0.0, score)
+
     async def test_extended_model_used_for_attribute_lookup(self) -> None:
         """Reload project with extended model so blueprint attrs are set."""
 
@@ -143,9 +174,11 @@ class ComputeScoreTests(unittest.IsolatedAsyncioTestCase):
             captured: list[object] = []
             orig = engine.attribute.compute_base_score
 
-            def _capture(proj, pols, results=None, deployments=None):
+            def _capture(
+                proj, pols, results=None, deployments=None, neighbours=None
+            ):
                 captured.append(proj)
-                return orig(proj, pols, results, deployments)
+                return orig(proj, pols, results, deployments, neighbours)
 
             with mock.patch(
                 'imbi_common.scoring.engine.attribute.compute_base_score',
@@ -222,3 +255,26 @@ class LoadDeploymentStatusesTests(unittest.IsolatedAsyncioTestCase):
         ]
         result = await engine._load_deployment_statuses(graph, 'proj-id')
         self.assertEqual({}, result)
+
+
+class LoadDependencyNeighboursTests(unittest.IsolatedAsyncioTestCase):
+    async def test_returns_property_maps(self) -> None:
+        graph = mock.AsyncMock()
+        graph.execute.return_value = [
+            {'n': '{"id": "a", "deprecated": true}::vertex'},
+            {'n': '{"id": "b", "deprecated": false}::vertex'},
+        ]
+        result = await engine._load_dependency_neighbours(graph, 'proj-id')
+        self.assertEqual(
+            [
+                {'id': 'a', 'deprecated': True},
+                {'id': 'b', 'deprecated': False},
+            ],
+            result,
+        )
+
+    async def test_skips_non_dict_rows(self) -> None:
+        graph = mock.AsyncMock()
+        graph.execute.return_value = [{'n': None}]
+        result = await engine._load_dependency_neighbours(graph, 'proj-id')
+        self.assertEqual([], result)

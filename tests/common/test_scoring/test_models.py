@@ -1,4 +1,6 @@
 import datetime
+import json
+import types
 import unittest
 
 import pydantic
@@ -391,6 +393,253 @@ class DiscriminatedUnionTests(unittest.TestCase):
             }
         )
         self.assertIsInstance(policy, models.DeploymentStatusPolicy)
+
+    def test_condition_validates(self) -> None:
+        adapter = pydantic.TypeAdapter(models.ScoringPolicy)
+        policy = adapter.validate_python(
+            {
+                'name': 'No deprecated dependencies',
+                'slug': 'no-deprecated-dependencies',
+                'category': 'condition',
+                'weight': 15,
+                'condition': {
+                    'relationship': {
+                        'quantifier': 'none',
+                        'where': {
+                            'attribute': 'deprecated',
+                            'op': 'eq',
+                            'value': True,
+                        },
+                    }
+                },
+            }
+        )
+        self.assertIsInstance(policy, models.ConditionPolicy)
+
+
+def _condition_policy(
+    condition: object, **overrides: object
+) -> models.ConditionPolicy:
+    defaults: dict[str, object] = {
+        'name': 'Condition',
+        'slug': 'condition',
+        'weight': 15,
+        'condition': condition,
+    }
+    defaults.update(overrides)
+    return models.ConditionPolicy(**defaults)  # type: ignore[arg-type]
+
+
+class ConditionPolicyValidatorTests(unittest.TestCase):
+    def test_requires_exactly_one_shape(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            _condition_policy({'attribute': 'a', 'op': 'present', 'any': []})
+
+    def test_no_shape_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            _condition_policy({})
+
+    def test_attribute_requires_op(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            _condition_policy({'attribute': 'a'})
+
+    def test_eq_requires_value(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            _condition_policy({'attribute': 'a', 'op': 'eq'})
+
+    def test_present_rejects_value(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            _condition_policy({'attribute': 'a', 'op': 'present', 'value': 1})
+
+    def test_empty_all_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            _condition_policy({'all': []})
+
+    def test_empty_any_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            _condition_policy({'any': []})
+
+    def test_empty_attribute_name_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            _condition_policy({'attribute': '', 'op': 'present'})
+
+    def test_op_without_attribute_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            _condition_policy(
+                {
+                    'relationship': {
+                        'quantifier': 'any',
+                        'where': {'attribute': 'a', 'op': 'present'},
+                    },
+                    'op': 'eq',
+                }
+            )
+
+    def test_nested_relationship_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            _condition_policy(
+                {
+                    'relationship': {
+                        'quantifier': 'any',
+                        'where': {
+                            'relationship': {
+                                'quantifier': 'any',
+                                'where': {'attribute': 'a', 'op': 'present'},
+                            }
+                        },
+                    }
+                }
+            )
+
+    def test_non_depends_on_edge_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            _condition_policy(
+                {
+                    'relationship': {
+                        'edge': 'USES',
+                        'quantifier': 'any',
+                        'where': {'attribute': 'a', 'op': 'present'},
+                    }
+                }
+            )
+
+    def test_depth_cap_rejected(self) -> None:
+        node: dict[str, object] = {'attribute': 'a', 'op': 'present'}
+        for _ in range(models._MAX_CONDITION_DEPTH + 1):
+            node = {'not': node}
+        with self.assertRaises(pydantic.ValidationError):
+            _condition_policy(node)
+
+    def test_condition_accepts_json_string(self) -> None:
+        policy = _condition_policy(
+            json.dumps({'attribute': 'deprecated', 'op': 'eq', 'value': True})
+        )
+        self.assertTrue(policy.matches({'deprecated': True}, []))
+
+
+class ConditionPolicyEvaluateTests(unittest.TestCase):
+    def test_attribute_eq_bool_normalization(self) -> None:
+        policy = _condition_policy(
+            {'attribute': 'deprecated', 'op': 'eq', 'value': True}
+        )
+        self.assertTrue(policy.matches({'deprecated': True}, []))
+        self.assertTrue(policy.matches({'deprecated': 'true'}, []))
+        self.assertFalse(policy.matches({'deprecated': False}, []))
+        self.assertFalse(policy.matches({}, []))
+
+    def test_numeric_ops(self) -> None:
+        for op, value, hit, miss in (
+            ('gt', 80, 90, 80),
+            ('ge', 80, 80, 79),
+            ('lt', 80, 70, 80),
+            ('le', 80, 80, 81),
+        ):
+            policy = _condition_policy(
+                {'attribute': 'coverage', 'op': op, 'value': value}
+            )
+            self.assertTrue(
+                policy.matches({'coverage': hit}, []), msg=f'{op} hit'
+            )
+            self.assertFalse(
+                policy.matches({'coverage': miss}, []), msg=f'{op} miss'
+            )
+
+    def test_numeric_non_coercible_is_false(self) -> None:
+        policy = _condition_policy(
+            {'attribute': 'coverage', 'op': 'ge', 'value': 80}
+        )
+        self.assertFalse(policy.matches({'coverage': 'nan-ish'}, []))
+
+    def test_ne_op(self) -> None:
+        policy = _condition_policy(
+            {'attribute': 'tier', 'op': 'ne', 'value': 'gold'}
+        )
+        self.assertTrue(policy.matches({'tier': 'silver'}, []))
+        self.assertFalse(policy.matches({'tier': 'gold'}, []))
+
+    def test_evaluates_against_object_attributes(self) -> None:
+        # Non-dict sources (e.g. the extended Project model) resolve via
+        # getattr rather than dict.get.
+        policy = _condition_policy(
+            {'attribute': 'deprecated', 'op': 'eq', 'value': True}
+        )
+        self.assertTrue(
+            policy.matches(types.SimpleNamespace(deprecated=True), [])
+        )
+
+    def test_present_absent(self) -> None:
+        present = _condition_policy(
+            {'attribute': 'description', 'op': 'present'}
+        )
+        absent = _condition_policy(
+            {'attribute': 'description', 'op': 'absent'}
+        )
+        self.assertTrue(present.matches({'description': 'x'}, []))
+        self.assertFalse(present.matches({'description': ''}, []))
+        self.assertTrue(absent.matches({'description': ''}, []))
+
+    def test_relationship_quantifier_none(self) -> None:
+        policy = _condition_policy(
+            {
+                'relationship': {
+                    'quantifier': 'none',
+                    'where': {
+                        'attribute': 'deprecated',
+                        'op': 'eq',
+                        'value': True,
+                    },
+                }
+            }
+        )
+        # Clean: no neighbour is deprecated -> condition holds.
+        self.assertTrue(policy.matches({}, [{'deprecated': False}, {}]))
+        # One deprecated dependency -> condition fails.
+        self.assertFalse(policy.matches({}, [{'deprecated': True}]))
+        # No dependencies -> vacuously true.
+        self.assertTrue(policy.matches({}, []))
+
+    def test_relationship_quantifier_any_and_all(self) -> None:
+        where = {'attribute': 'deprecated', 'op': 'eq', 'value': True}
+        any_p = _condition_policy(
+            {'relationship': {'quantifier': 'any', 'where': where}}
+        )
+        all_p = _condition_policy(
+            {'relationship': {'quantifier': 'all', 'where': where}}
+        )
+        self.assertFalse(any_p.matches({}, []))  # vacuously false
+        self.assertTrue(all_p.matches({}, []))  # vacuously true
+        self.assertTrue(any_p.matches({}, [{'deprecated': True}, {}]))
+        self.assertFalse(all_p.matches({}, [{'deprecated': True}, {}]))
+
+    def test_compound_all_any_not(self) -> None:
+        policy = _condition_policy(
+            {
+                'all': [
+                    {'attribute': 'deprecated', 'op': 'eq', 'value': False},
+                    {
+                        'any': [
+                            {'attribute': 'tier', 'op': 'eq', 'value': 'gold'},
+                            {'not': {'attribute': 'links', 'op': 'present'}},
+                        ]
+                    },
+                ]
+            }
+        )
+        self.assertTrue(
+            policy.matches({'deprecated': False, 'tier': 'gold'}, [])
+        )
+        self.assertFalse(
+            policy.matches({'deprecated': True, 'tier': 'gold'}, [])
+        )
+
+    def test_evaluate_maps_to_scores(self) -> None:
+        policy = _condition_policy(
+            {'attribute': 'deprecated', 'op': 'eq', 'value': True},
+            true_score=0,
+            false_score=100,
+        )
+        self.assertEqual(0.0, policy.evaluate({'deprecated': True}, []))
+        self.assertEqual(100.0, policy.evaluate({'deprecated': False}, []))
 
 
 class AnalysisResultPolicyTests(unittest.TestCase):

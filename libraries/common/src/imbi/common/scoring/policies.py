@@ -11,6 +11,7 @@ from imbi_common.scoring.models import (
     AgePolicy,
     AnalysisResultPolicy,
     AttributePolicy,
+    ConditionPolicy,
     DeploymentStatusPolicy,
     LinkPresencePolicy,
     PresencePolicy,
@@ -26,6 +27,7 @@ Policy = (
     | AgePolicy
     | AnalysisResultPolicy
     | DeploymentStatusPolicy
+    | ConditionPolicy
 )
 
 _TYPE_QUERY = (
