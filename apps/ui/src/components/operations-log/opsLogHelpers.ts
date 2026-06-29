@@ -1,4 +1,7 @@
+import { absTime } from '@/lib/formatDate'
 import type { OperationsLogRecord } from '@/types'
+
+export { absTime }
 
 export interface DayBucket {
   date: Date
@@ -31,16 +34,6 @@ interface DayBucketKey {
   date: Date
   key: string
   label: string
-}
-
-export function absTime(iso: string): string {
-  return parseUtcIso(iso).toLocaleString(undefined, {
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  })
 }
 
 export function bucketByDay(

@@ -10,12 +10,12 @@ import { getProjects, listOperationsLog } from '@/api/endpoints'
 import type { OperationsLogPage } from '@/api/endpoints'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import { Sk } from '@/components/ui/skeleton'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
 import { useEnvironments } from '@/hooks/useOrgResources'
-import { formatRelativeDate } from '@/lib/formatDate'
 import type { OperationsLogRecord, Project } from '@/types'
 
 const PAGE_SIZE = 20
@@ -211,10 +211,13 @@ function DeploymentRow({
                     linkToProfile={false}
                     size="small"
                   />
-                  <span>• {formatRelativeDate(d.occurred_at)}</span>
+                  <span>
+                    {'• '}
+                    <RelativeTime tooltip={false} value={d.occurred_at} />
+                  </span>
                 </>
               ) : (
-                <span>{formatRelativeDate(d.occurred_at)}</span>
+                <RelativeTime tooltip={false} value={d.occurred_at} />
               )}
             </div>
           </div>

@@ -12,6 +12,7 @@ import {
 
 import { CiStatusDot } from '@/components/releases/CiStatusDot'
 import { Button } from '@/components/ui/button'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import type { ChipColors } from '@/lib/chip-colors'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { cn } from '@/lib/utils'
@@ -259,9 +260,11 @@ function ReleaseStack({
                 {rel.title ?? ''}
               </span>
               {rel.published_at ? (
-                <span className="text-tertiary shrink-0 text-xs whitespace-nowrap">
-                  {formatRelativeDate(rel.published_at)}
-                </span>
+                <RelativeTime
+                  className="text-tertiary shrink-0 text-xs whitespace-nowrap"
+                  tooltip={false}
+                  value={rel.published_at}
+                />
               ) : null}
               {isOpen ? (
                 <ChevronUp className="text-tertiary size-3.5 shrink-0" />

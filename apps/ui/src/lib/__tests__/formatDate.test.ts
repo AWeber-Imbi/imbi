@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatDate, formatRelativeDate, relTime } from '@/lib/formatDate'
+import {
+  absTime,
+  formatDate,
+  formatRelativeDate,
+  relTime,
+} from '@/lib/formatDate'
 
 // Fixed reference instant so relative-time math stays deterministic
 // across CI clocks. Picked as a Wednesday afternoon so day-of-week
@@ -148,5 +153,24 @@ describe('formatRelativeDate', () => {
 
   it('returns em-dash for empty string', () => {
     expect(formatRelativeDate('')).toBe('—')
+  })
+})
+
+describe('absTime', () => {
+  it('formats an ISO string as a localized date and time', () => {
+    const out = absTime('2026-03-17T15:30:00Z')
+    expect(out).toMatch(/2026/)
+    expect(out).toMatch(/Mar/)
+    expect(out).not.toBe('—')
+  })
+
+  it('accepts a millisecond timestamp', () => {
+    const out = absTime(Date.parse('2026-03-17T15:30:00Z'))
+    expect(out).toMatch(/2026/)
+    expect(out).toMatch(/Mar/)
+  })
+
+  it('returns em-dash for an unparseable input', () => {
+    expect(absTime('not-a-date')).toBe('—')
   })
 })

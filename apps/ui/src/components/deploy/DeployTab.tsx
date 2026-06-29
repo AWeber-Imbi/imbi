@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
-import { formatDistanceToNow } from 'date-fns'
 import { Loader2, Rocket } from 'lucide-react'
 
 import {
@@ -11,6 +10,7 @@ import {
 } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import { Sk } from '@/components/ui/skeleton'
 import { cn, sortEnvironments } from '@/lib/utils'
 import type { DeploymentCommit, DeploymentRef, Environment } from '@/types'
@@ -186,9 +186,10 @@ export function DeployTab({
                 {current.last_event_at ? (
                   <>
                     {' · '}
-                    {formatDistanceToNow(new Date(current.last_event_at), {
-                      addSuffix: true,
-                    })}
+                    <RelativeTime
+                      value={current.last_event_at}
+                      variant="long"
+                    />
                   </>
                 ) : null}
               </>

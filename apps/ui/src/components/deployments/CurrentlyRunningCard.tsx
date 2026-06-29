@@ -1,6 +1,5 @@
 import { useState } from 'react'
 
-import { formatDistanceToNow } from 'date-fns'
 import {
   ChevronDown,
   ChevronRight,
@@ -12,9 +11,9 @@ import {
 
 import { CiStatusDot } from '@/components/releases/CiStatusDot'
 import { Button } from '@/components/ui/button'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import { UserIdentity } from '@/components/ui/user-identity'
 import type { ChipColors } from '@/lib/chip-colors'
-import { formatRelativeDate } from '@/lib/formatDate'
 import { cn, sanitizeHttpUrl } from '@/lib/utils'
 import type { ReleaseHistoryEntry } from '@/types'
 
@@ -71,9 +70,10 @@ export function CurrentlyRunningCard({
               <span className="inline-flex items-center gap-1.5">
                 <Clock size={13} />
                 Deployed{' '}
-                {formatDistanceToNow(new Date(stage.current.last_event_at), {
-                  addSuffix: true,
-                })}
+                <RelativeTime
+                  value={stage.current.last_event_at}
+                  variant="long"
+                />
               </span>
             ) : null}
             {stage.current?.performed_by ? (
@@ -224,9 +224,11 @@ function RollbackRow({
           <span className="text-tertiary font-mono text-xs">
             {rel.short_sha}
           </span>
-          <span className="text-tertiary text-xs">
-            {formatRelativeDate(rel.published_at)}
-          </span>
+          <RelativeTime
+            className="text-tertiary text-xs"
+            tooltip={false}
+            value={rel.published_at}
+          />
         </button>
         <Button
           className="h-7 px-2.5 text-xs"

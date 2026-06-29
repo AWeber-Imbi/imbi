@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 
-import { formatDistanceToNow } from 'date-fns'
 import { Pencil, Reply, ThumbsUp, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { cn } from '@/lib/utils'
 import type { Comment } from '@/types/comments'
@@ -62,9 +62,7 @@ export function CommentItem({
           size="small"
         />
         <span className="text-tertiary text-[11.5px]">
-          {formatDistanceToNow(new Date(comment.created_at), {
-            addSuffix: true,
-          })}
+          <RelativeTime value={comment.created_at} variant="long" />
           {comment.edited && ' · edited'}
         </span>
         {unread && (

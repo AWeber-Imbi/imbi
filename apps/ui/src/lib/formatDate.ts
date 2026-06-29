@@ -6,6 +6,26 @@ interface DateFormatOptions {
 }
 
 /**
+ * Full absolute timestamp for tooltip reveals: "Jan 15, 2025, 3:45 PM".
+ * Accepts an ISO string or millisecond timestamp.
+ */
+export function absTime(iso: number | string): string {
+  try {
+    const d = new Date(iso)
+    if (!Number.isFinite(d.getTime())) return '—'
+    return d.toLocaleString(undefined, {
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    })
+  } catch {
+    return '—'
+  }
+}
+
+/**
  * Format an ISO date string as a localized short date.
  * Returns the configured fallback (default '—') for null/undefined/invalid.
  */

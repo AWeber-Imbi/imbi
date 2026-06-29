@@ -26,6 +26,7 @@ import {
 import { matchSorter } from 'match-sorter'
 
 import { getProjectsSlim, type ProjectListItem } from '@/api/endpoints'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -34,7 +35,6 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useLoginToEmail } from '@/hooks/useLoginToEmail'
 import { useSearchShortcut } from '@/hooks/useSearchShortcut'
 import { deriveChipColors } from '@/lib/chip-colors'
-import { formatRelativeDate } from '@/lib/formatDate'
 
 import { NewProjectDialog } from './NewProjectDialog'
 import { Button } from './ui/button'
@@ -1330,7 +1330,7 @@ function ReleaseCards({
             ) : null}
           </span>
           {release_summary.head_authored_at && (
-            <span>{formatRelativeDate(release_summary.head_authored_at)}</span>
+            <RelativeTime value={release_summary.head_authored_at} />
           )}
         </p>
       </span>
@@ -1363,7 +1363,7 @@ function ReleaseCards({
             ) : null}
           </span>
           {release_summary.latest_tag_at && (
-            <span>{formatRelativeDate(release_summary.latest_tag_at)}</span>
+            <RelativeTime value={release_summary.latest_tag_at} />
           )}
         </p>
       </span>
@@ -1424,7 +1424,7 @@ function ReleaseStamp({
               />
             ) : null}
           </span>
-          <span>{formatRelativeDate(release.deployed_at)}</span>
+          <RelativeTime value={release.deployed_at} />
         </>
       ) : (
         <span className="invisible">—</span>

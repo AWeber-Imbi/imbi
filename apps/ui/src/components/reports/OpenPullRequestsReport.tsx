@@ -8,6 +8,7 @@ import { ExternalLink, GitPullRequest, RefreshCw } from 'lucide-react'
 import { getOrgPullRequests, type ProjectListItem } from '@/api/endpoints'
 import { DiffBar } from '@/components/pull-requests/DiffBar'
 import { Badge } from '@/components/ui/badge'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import {
   Select,
   SelectContent,
@@ -26,7 +27,6 @@ import { UserIdentity } from '@/components/ui/user-identity'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useLoginToEmail } from '@/hooks/useLoginToEmail'
 import { useProjectsSlimMap } from '@/hooks/useProjectsSlimMap'
-import { relTime } from '@/lib/formatDate'
 import type { PullRequest } from '@/types'
 
 interface AuthorInfo {
@@ -357,7 +357,7 @@ function PrRow({
         <DiffBar additions={pr.additions} deletions={pr.deletions} />
       </td>
       <td className="text-tertiary px-4 py-3 text-right text-xs tabular-nums">
-        {relTime(pr.updated_at)}
+        <RelativeTime value={pr.updated_at} variant="narrow" />
       </td>
     </tr>
   )

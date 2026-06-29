@@ -14,6 +14,7 @@ import { DiffBar } from '@/components/pull-requests/DiffBar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import { Sk } from '@/components/ui/skeleton'
 import {
   Table,
@@ -25,7 +26,6 @@ import {
 } from '@/components/ui/table'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { useLoginToEmail } from '@/hooks/useLoginToEmail'
-import { relTime } from '@/lib/formatDate'
 import type { PullRequest } from '@/types'
 
 interface Props {
@@ -331,7 +331,7 @@ function PrRow({
         <DiffBar additions={pr.additions} deletions={pr.deletions} />
       </TableCell>
       <TableCell className="text-tertiary px-4 py-3 text-right text-xs tabular-nums">
-        {relTime(pr.updated_at)}
+        <RelativeTime value={pr.updated_at} variant="narrow" />
       </TableCell>
     </TableRow>
   )

@@ -11,12 +11,12 @@ import {
 
 import { getOrgPullRequests, type ProjectListItem } from '@/api/endpoints'
 import { Card } from '@/components/ui/card'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useGithubLogin } from '@/hooks/useGithubLogin'
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
 import { useProjectsSlimMap } from '@/hooks/useProjectsSlimMap'
-import { relTime } from '@/lib/formatDate'
 import type { PullRequest, PullRequestListResponse } from '@/types'
 
 const PAGE_SIZE = 20
@@ -234,10 +234,7 @@ function PrRow({
           )}
         </div>
         <div className="text-tertiary text-xs">
-          {(() => {
-            const r = relTime(pr.updated_at)
-            return r === 'now' ? 'just now' : `${r} ago`
-          })()}
+          <RelativeTime tooltip={false} value={pr.updated_at} />
         </div>
       </div>
       <ChevronRight className="text-tertiary mt-0.5 size-4 shrink-0" />

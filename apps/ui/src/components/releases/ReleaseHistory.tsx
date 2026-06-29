@@ -5,8 +5,8 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { Badge } from '@/components/ui/badge'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import { UserIdentity } from '@/components/ui/user-identity'
-import { formatRelativeDate } from '@/lib/formatDate'
 import { cn } from '@/lib/utils'
 import type { ReleaseHistoryEntry } from '@/types'
 
@@ -85,9 +85,11 @@ function ReleaseRow({
           <CiStatusDot size={13} status={rel.ci_status} />
         </span>
         <span className="text-tertiary font-mono text-xs">{rel.short_sha}</span>
-        <span className="text-tertiary text-xs">
-          {formatRelativeDate(rel.published_at)}
-        </span>
+        <RelativeTime
+          className="text-tertiary text-xs"
+          tooltip={false}
+          value={rel.published_at}
+        />
         {isCurrent ? <Badge variant="accent">Latest</Badge> : <span />}
       </button>
       {isOpen ? (

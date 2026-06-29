@@ -1,5 +1,6 @@
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import { UserIdentity } from '@/components/ui/user-identity'
-import { formatDate, formatRelativeDate } from '@/lib/formatDate'
+import { formatDate } from '@/lib/formatDate'
 import type { AdminUser } from '@/types'
 
 import type { IdentitiesResponse } from './api'
@@ -59,7 +60,9 @@ export function ProfileHeader({ identities, user }: ProfileHeaderProps) {
           {user.last_login && (
             <div>
               <dt className="text-tertiary inline">Last active </dt>
-              <dd className="inline">{formatRelativeDate(user.last_login)}</dd>
+              <dd className="inline">
+                <RelativeTime value={user.last_login} />
+              </dd>
             </div>
           )}
         </dl>

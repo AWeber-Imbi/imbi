@@ -1,8 +1,8 @@
 import { forwardRef } from 'react'
 
-import { formatDistanceToNow } from 'date-fns'
 import { CheckCircle2, MessageSquare, ThumbsUp } from 'lucide-react'
 
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { cn } from '@/lib/utils'
 import type { CommentThread } from '@/types/comments'
@@ -139,9 +139,11 @@ function CollapsedCard({
           email={root.author}
           size="small"
         />
-        <span className="text-tertiary text-[11.5px]">
-          {formatDistanceToNow(new Date(root.created_at), { addSuffix: true })}
-        </span>
+        <RelativeTime
+          className="text-tertiary text-[11.5px]"
+          value={root.created_at}
+          variant="long"
+        />
         {thread.resolved && (
           <CheckCircle2 className="text-action ml-auto size-3.5" />
         )}

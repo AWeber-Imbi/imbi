@@ -11,7 +11,7 @@ import {
   Zap,
 } from 'lucide-react'
 
-import { formatRelativeDate } from '@/lib/formatDate'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 
 import type { ActivityRecord } from './api'
 
@@ -26,7 +26,7 @@ export function ActivityRow({ record }: ActivityRowProps) {
       <div className="min-w-0 flex-1">
         <p className="text-primary truncate text-sm">{record.summary}</p>
         <p className="text-tertiary mt-0.5 flex flex-wrap items-center gap-2 text-xs">
-          <span>{formatRelativeDate(record.occurred_at)}</span>
+          <RelativeTime tooltip={false} value={record.occurred_at} />
           <span className="border-tertiary rounded-sm border px-1.5 py-0.5">
             {record.type}
           </span>
