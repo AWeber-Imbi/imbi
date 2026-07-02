@@ -12,9 +12,28 @@ from imbi_common.plugins.errors import (
 )
 from imbi_common.plugins.registry import (
     RegistryEntry,
+    list_plugins,
 )
 
 LOGGER = logging.getLogger(__name__)
+
+
+def connection_plugin_slugs() -> list[str]:
+    """Return the slugs of every registered ``connection``-type plugin.
+
+    The connection sibling on a ``ThirdPartyService`` is identified by
+    its manifest ``plugin_type``, but the graph ``Plugin`` node persists
+    only ``plugin_slug`` (never ``plugin_type`` — that property lives on
+    ``USES_PLUGIN`` assignment edges, not on the node or the
+    ``HAS_PLUGIN`` edge). Callers that locate the connection sibling
+    therefore match on ``plugin_slug`` against this registry-derived set.
+    """
+    return [
+        e.manifest.slug
+        for e in list_plugins()
+        if e.manifest.plugin_type == 'connection'
+    ]
+
 
 # Bounded retries for the patch_plugin_configuration compare-and-swap
 # (M19). Each retry re-reads the committed blob and re-applies the
@@ -59,21 +78,34 @@ RETURN p.plugin_configuration AS creds
 LIMIT 1
 """
 
-# The shared connection plugin on the same ThirdPartyService holds the
-# service-account credentials when the invoked plugin carries none of
-# its own (the GitHub consolidation: deployment/lifecycle read the
-# App/PAT off the github-connection sibling).
-_CONNECTION_BLOB: typing.LiteralString = """
+# Single source for the connection-sibling traversal: locate the
+# ``connection`` plugin on the invoked plugin's ThirdPartyService by
+# ``plugin_slug`` (see ``connection_plugin_slugs``) because the node does
+# not persist ``plugin_type``. Reused by both the credential fallback
+# here (``_CONNECTION_BLOB``) and identity host resolution in
+# ``identity/flows.py``, so the filter can't drift between the two — the
+# ``plugin_type = 'connection'`` bug this replaced lived in both copies
+# and had to be patched twice. Callers append only their ``RETURN``.
+CONNECTION_SIBLING_MATCH: typing.LiteralString = """
 MATCH (p:Plugin {{id: {plugin_id}}})<-[:HAS_PLUGIN]-(:ThirdPartyService)
   -[:HAS_PLUGIN]->(conn:Plugin)
-WHERE conn.plugin_type = 'connection'
-RETURN conn.plugin_configuration AS creds
-LIMIT 1
+WHERE conn.plugin_slug IN {connection_slugs}
 """
+
+# The shared connection plugin holds the service-account credentials when
+# the invoked plugin carries none of its own (deployment/lifecycle read
+# the App/PAT off the github-connection sibling).
+_CONNECTION_BLOB: typing.LiteralString = (
+    CONNECTION_SIBLING_MATCH
+    + 'RETURN conn.plugin_configuration AS creds\nLIMIT 1\n'
+)
 
 
 async def _read_blob(
-    db: graph.Graph, query: typing.LiteralString, plugin_id: str
+    db: graph.Graph,
+    query: typing.LiteralString,
+    plugin_id: str,
+    extra_params: dict[str, typing.Any] | None = None,
 ) -> dict[str, typing.Any]:
     """Read + decrypt a ``plugin_configuration`` blob to a dict.
 
@@ -81,7 +113,10 @@ async def _read_blob(
     credentials" (empty dict) rather than raising, so the caller can fall
     through to the next credential source.
     """
-    records = await db.execute(query, {'plugin_id': plugin_id}, ['creds'])
+    params: dict[str, typing.Any] = {'plugin_id': plugin_id}
+    if extra_params:
+        params.update(extra_params)
+    records = await db.execute(query, params, ['creds'])
     if not records or records[0].get('creds') is None:
         return {}
     creds_raw: str | None = graph.parse_agtype(records[0]['creds'])
@@ -123,7 +158,12 @@ async def _get_plugin_configuration_credentials(
         db, _OWN_BLOB, plugin_id
     )
     if not credentials:
-        credentials = await _read_blob(db, _CONNECTION_BLOB, plugin_id)
+        credentials = await _read_blob(
+            db,
+            _CONNECTION_BLOB,
+            plugin_id,
+            {'connection_slugs': connection_plugin_slugs()},
+        )
 
     required_fields = [f for f in entry.manifest.credentials if f.required]
     # ``null`` JSON values must be treated as missing — otherwise

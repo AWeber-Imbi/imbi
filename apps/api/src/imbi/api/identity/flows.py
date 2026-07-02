@@ -36,17 +36,23 @@ async def _connection_service_plugins(
     has no other service context, so this is the one place that lookup
     happens. Returns an empty list when the plugin is not a service-bound
     node (e.g. a bare-slug catalog lookup) or no connection plugin is
-    attached.
+    attached. The sibling is matched by ``plugin_slug`` (the node does
+    not persist ``plugin_type``); see ``connection_plugin_slugs``.
     """
-    query: typing.LiteralString = """
-    MATCH (p:Plugin {{id: {plugin_id}}})<-[:HAS_PLUGIN]-
-      (:ThirdPartyService)-[:HAS_PLUGIN]->(conn:Plugin)
-    WHERE conn.plugin_type = 'connection'
-    RETURN conn.plugin_slug AS slug, conn.options AS options
-    LIMIT 1
-    """
+    # Shares the connection-sibling MATCH/WHERE with credentials.py so the
+    # slug filter can't drift between the two lookups (see
+    # ``CONNECTION_SIBLING_MATCH``); only the RETURN differs.
+    query: typing.LiteralString = (
+        plugin_credentials.CONNECTION_SIBLING_MATCH
+        + 'RETURN conn.plugin_slug AS slug, conn.options AS options\nLIMIT 1\n'
+    )
     rows = await db.execute(
-        query, {'plugin_id': plugin_id}, ['slug', 'options']
+        query,
+        {
+            'plugin_id': plugin_id,
+            'connection_slugs': plugin_credentials.connection_plugin_slugs(),
+        },
+        ['slug', 'options'],
     )
     if not rows or not rows[0].get('slug'):
         return []

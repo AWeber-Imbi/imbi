@@ -1090,6 +1090,70 @@ class CredentialsTestCase(unittest.TestCase):
             asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
         self.assertIn('token', str(ctx.exception))
 
+    def test_connection_plugin_slugs_filters_by_type(self) -> None:
+        from imbi_api.plugins import credentials
+
+        def _entry(slug: str, plugin_type: str) -> mock.MagicMock:
+            entry = mock.MagicMock()
+            entry.manifest.slug = slug
+            entry.manifest.plugin_type = plugin_type
+            return entry
+
+        entries = [
+            _entry('github-connection', 'connection'),
+            _entry('github-identity', 'identity'),
+            _entry('ssm', 'configuration'),
+        ]
+        with mock.patch.object(
+            credentials, 'list_plugins', return_value=entries
+        ):
+            self.assertEqual(
+                credentials.connection_plugin_slugs(), ['github-connection']
+            )
+
+    def test_connection_fallback_matches_by_slug(self) -> None:
+        """Regression: when the plugin's own blob is empty, the connection
+        sibling is located by ``plugin_slug`` against the registry
+        connection slugs — not the absent node ``plugin_type``.
+
+        The old ``WHERE conn.plugin_type = 'connection'`` filter matched
+        nothing, so the doctor fell through to an anonymous GitHub
+        request and got a 401 despite a PAT on the github-connection.
+        """
+        from imbi_api.plugins import credentials
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.side_effect = [
+            [],  # the plugin's own blob is empty
+            [{'creds': '"ENCRYPTED"'}],  # connection sibling blob
+        ]
+        encryptor = mock.MagicMock()
+        encryptor.decrypt.return_value = json.dumps({'access_token': 'pat'})
+        entry = _make_registry_entry('github-doctor', required_creds=False)
+        with (
+            mock.patch.object(
+                credentials,
+                'connection_plugin_slugs',
+                return_value=['github-connection'],
+            ),
+            mock.patch(
+                'imbi_api.plugins.credentials.TokenEncryption.get_instance',
+                return_value=encryptor,
+            ),
+        ):
+            creds = asyncio.run(
+                credentials.get_plugin_credentials(mock_db, 'p1', entry)
+            )
+        self.assertEqual(creds, {'access_token': 'pat'})
+        conn_query, conn_params, _cols = mock_db.execute.await_args_list[
+            1
+        ].args
+        self.assertIn('plugin_slug IN', conn_query)
+        self.assertNotIn('plugin_type', conn_query)
+        self.assertEqual(
+            conn_params['connection_slugs'], ['github-connection']
+        )
+
     def test_decrypt_returns_dict(self) -> None:
         from imbi_api.plugins.credentials import get_plugin_credentials
 

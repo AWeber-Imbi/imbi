@@ -154,6 +154,28 @@ class ConnectionServicePluginsTestCase(unittest.IsolatedAsyncioTestCase):
             result = await flows._connection_service_plugins(db, 'plugin-1')
         self.assertEqual([p.slug for p in result], ['github-connection'])
 
+    async def test_matches_connection_by_slug_not_plugin_type(self) -> None:
+        """Regression: locate the sibling by ``plugin_slug`` against the
+        registry-derived connection slugs.
+
+        The graph ``Plugin`` node never persists ``plugin_type`` (that
+        property lives on ``USES_PLUGIN`` assignment edges), so the old
+        ``WHERE conn.plugin_type = 'connection'`` filter matched nothing
+        and the OAuth flow 500'd resolving the GitHub host.
+        """
+        db = mock.AsyncMock()
+        db.execute.return_value = []
+        with mock.patch.object(
+            flows.plugin_credentials,
+            'connection_plugin_slugs',
+            return_value=['github-connection'],
+        ):
+            await flows._connection_service_plugins(db, 'plugin-1')
+        query, params, _cols = db.execute.await_args.args
+        self.assertIn('plugin_slug IN', query)
+        self.assertNotIn('plugin_type', query)
+        self.assertEqual(params['connection_slugs'], ['github-connection'])
+
 
 class StartFlowTestCase(unittest.IsolatedAsyncioTestCase):
     """Verify start_flow returns auth URL + state token."""
