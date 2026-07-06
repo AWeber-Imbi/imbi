@@ -57,3 +57,18 @@ just test     # run the test suite with coverage
 just lint     # ruff + mypy + basedpyright
 just serve    # run the bot against .env
 ```
+
+## Releasing
+
+`[project].version` in `pyproject.toml` is the single source of truth (the git
+tag does not set it). To cut a release:
+
+1. Bump the version and re-lock in one step: `uv version <new-version>`
+   (updates `pyproject.toml` and `uv.lock`). If a shared-library pin changed
+   (e.g. `imbi-common==<version>`), update it first so the re-lock picks it up.
+2. Commit, open a PR, and merge to `main` once CI is green.
+3. Create a GitHub release whose tag is `v<version>` matching the bumped
+   version. Publishing the release runs `.github/workflows/publish.yml`, which
+   verifies the tag matches the package version before building and uploading to
+   PyPI — so an un-bumped release fails fast instead of trying to re-publish an
+   existing filename (which PyPI rejects with a 400).
