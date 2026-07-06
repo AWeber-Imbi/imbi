@@ -64,6 +64,25 @@ GitHub Actions runs on Python 3.12, 3.13, and 3.14:
 - **Static Analysis**: pre-commit hooks + basedpyright
 - **Automated Tests**: pytest with coverage reporting
 
+`publish.yml` runs on a published GitHub release: it verifies the release tag
+matches the `pyproject.toml` version, then builds (`uv build`) and publishes the
+wheel/sdist to PyPI. The tag/version guard fails the publish if the version was
+not bumped, so a mismatched release never reaches PyPI.
+
+## Releasing
+
+`[project].version` in `pyproject.toml` is the single source of truth (the git
+tag does not set it). To cut a release:
+
+1. Bump the version and re-lock in one step: `uv version <new-version>`
+   (updates `pyproject.toml` and `uv.lock`). If a shared-library pin changed
+   (e.g. `imbi-common==<version>`), update it first so the re-lock picks it up.
+2. Commit, open a PR, and merge to `main` once CI is green.
+3. Create a GitHub release whose tag is `v<version>` matching the bumped
+   version. Publishing runs `publish.yml`, which guards that the tag matches the
+   package version before uploading to PyPI (PyPI forbids filename reuse, so an
+   un-bumped release would 400).
+
 ## Dependencies
 
 - **fastmcp** -- MCP server framework with OpenAPI auto-generation
