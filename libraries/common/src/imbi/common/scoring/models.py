@@ -505,6 +505,50 @@ def _eval_condition(
     return _eval_attribute(cond, project)
 
 
+def collect_matched_neighbours(
+    cond: Condition, neighbours: list[typing.Any]
+) -> list[MatchedNeighbour]:
+    """Return the neighbours that satisfy a relationship leaf's ``where``.
+
+    Walks the condition tree and, for every relationship leaf, collects the
+    outgoing dependencies for which the ``where`` predicate is true (e.g. the
+    deprecated dependencies). Results are de-duplicated by project id in
+    encounter order. These are the dependencies worth naming in the score
+    breakdown regardless of the quantifier.
+    """
+    matched: dict[str, MatchedNeighbour] = {}
+
+    def walk(node: Condition) -> None:
+        if node.all_ is not None:
+            for child in node.all_:
+                walk(child)
+        elif node.any_ is not None:
+            for child in node.any_:
+                walk(child)
+        elif node.not_ is not None:
+            walk(node.not_)
+        elif node.relationship is not None:
+            for neighbour in neighbours:
+                if _eval_condition(node.relationship.where, neighbour, []):
+                    ref = _neighbour_ref(neighbour)
+                    if ref is not None:
+                        matched.setdefault(ref.id, ref)
+
+    walk(cond)
+    return list(matched.values())
+
+
+def _neighbour_ref(neighbour: typing.Any) -> MatchedNeighbour | None:
+    raw_id = _get_attr(neighbour, 'id')
+    if is_missing(raw_id) or raw_id == '':
+        return None
+    return MatchedNeighbour(
+        id=str(raw_id),
+        name=_get_attr(neighbour, 'name'),
+        slug=_get_attr(neighbour, 'slug'),
+    )
+
+
 def _eval_attribute(cond: Condition, source: typing.Any) -> bool:
     raw = _get_attr(source, cond.attribute or '')
     if cond.op == 'present':
@@ -645,6 +689,19 @@ def _compare(op: str, value: float, threshold: float) -> bool:
     return False
 
 
+class MatchedNeighbour(pydantic.BaseModel):
+    """A dependency that satisfied a condition's relationship predicate.
+
+    Surfaced on :class:`PolicyContribution` so the UI can name *which*
+    outgoing dependency triggered a condition (e.g. the deprecated
+    service a project depends on) rather than only reporting true/false.
+    """
+
+    id: str
+    name: str | None = None
+    slug: str | None = None
+
+
 class PolicyContribution(pydantic.BaseModel):
     """Per-policy contribution to a project's base score."""
 
@@ -663,6 +720,7 @@ class PolicyContribution(pydantic.BaseModel):
     result_slug: str | None = None
     environment_slug: str | None = None
     condition_result: bool | None = None
+    matched_neighbours: list[MatchedNeighbour] = []
     value: typing.Any | None = None
     mapped_score: float
     weight: int

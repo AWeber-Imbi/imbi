@@ -642,6 +642,34 @@ class ConditionPolicyEvaluateTests(unittest.TestCase):
         self.assertEqual(100.0, policy.evaluate({'deprecated': False}, []))
 
 
+class CollectMatchedNeighboursTests(unittest.TestCase):
+    def _condition(self) -> models.Condition:
+        where = {'attribute': 'deprecated', 'op': 'eq', 'value': True}
+        return models.Condition.model_validate(
+            {'relationship': {'quantifier': 'none', 'where': where}}
+        )
+
+    def test_names_matching_neighbours_and_dedupes_by_id(self) -> None:
+        matched = models.collect_matched_neighbours(
+            self._condition(),
+            [
+                {'id': '1', 'name': 'Mapping', 'deprecated': True},
+                {'id': '1', 'name': 'Mapping', 'deprecated': True},
+                {'id': '2', 'name': 'Lists', 'deprecated': False},
+            ],
+        )
+        self.assertEqual(['1'], [m.id for m in matched])
+
+    def test_skips_neighbours_without_an_id(self) -> None:
+        # A matching neighbour that has no id must not surface as
+        # MatchedNeighbour(id=''); it is dropped rather than collapsed.
+        matched = models.collect_matched_neighbours(
+            self._condition(),
+            [{'deprecated': True}, {'id': '', 'deprecated': True}],
+        )
+        self.assertEqual([], matched)
+
+
 class AnalysisResultPolicyTests(unittest.TestCase):
     def _policy(self, **overrides: object) -> models.AnalysisResultPolicy:
         defaults: dict[str, object] = {

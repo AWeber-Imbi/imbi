@@ -27,6 +27,25 @@ just test tests/path/to/test_file.py
 just test tests/path/to/test_file.py::TestClass::test_method
 ```
 
+## Before pushing
+
+Always run this cycle **before every push** — including merge commits and
+amends — and never bypass it:
+
+1. `just format` — reformat (ruff + tombi).
+2. `just lint` — run all linters (the same `pre-commit run --all-files`
+   the CI "Static Analysis" job runs). Fix anything it reports and re-run
+   until clean.
+3. Commit the result **without `--no-verify`**, so the pre-commit hooks
+   run as a final gate on exactly what you're about to push.
+
+`just lint` mirrors CI's Static Analysis job, so a clean run here means CI
+won't fail on formatting/lint. **Never pass `--no-verify`** — it skips the
+hooks and lets lint errors (e.g. a mutable class attr flagged by ruff
+`RUF012`) slip through to CI. Running lint manually earlier in a session is
+not a substitute: code added afterwards is unchecked unless the hooks run
+on the actual commit.
+
 ## Architecture
 
 `imbi-common` is a shared library consumed by `imbi-api`, `imbi-gateway`, and `imbi-mcp`. Source lives in `src/imbi_common/`, tests in `tests/`.

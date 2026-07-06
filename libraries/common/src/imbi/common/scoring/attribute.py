@@ -14,6 +14,7 @@ from imbi_common.scoring.models import (
     LinkPresencePolicy,
     PolicyContribution,
     PresencePolicy,
+    collect_matched_neighbours,
 )
 
 Policy = (
@@ -80,6 +81,11 @@ def compute_base_score(
                 condition_result=value
                 if isinstance(policy, ConditionPolicy)
                 else None,
+                matched_neighbours=collect_matched_neighbours(
+                    policy.condition, deps
+                )
+                if isinstance(policy, ConditionPolicy)
+                else [],
                 value=value,
                 mapped_score=score,
                 weight=policy.weight,

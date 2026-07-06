@@ -399,6 +399,33 @@ class ConditionScoreTests(unittest.TestCase):
         self.assertEqual(0.0, score)
         self.assertFalse(contribs[0].condition_result)
 
+    def test_matched_neighbours_names_offending_dependency(self) -> None:
+        score, contribs = attribute.compute_base_score(
+            types.SimpleNamespace(),
+            [self._policy()],
+            neighbours=[
+                {
+                    'id': '1',
+                    'name': 'Mapping',
+                    'slug': 'm',
+                    'deprecated': True,
+                },
+                {'id': '2', 'name': 'Lists', 'slug': 'l', 'deprecated': False},
+            ],
+        )
+        self.assertEqual(0.0, score)
+        matched = contribs[0].matched_neighbours
+        self.assertEqual(['1'], [m.id for m in matched])
+        self.assertEqual('Mapping', matched[0].name)
+
+    def test_clean_dependencies_have_no_matched_neighbours(self) -> None:
+        _, contribs = attribute.compute_base_score(
+            types.SimpleNamespace(),
+            [self._policy()],
+            neighbours=[{'id': '2', 'name': 'Lists', 'deprecated': False}],
+        )
+        self.assertEqual([], contribs[0].matched_neighbours)
+
     def test_no_neighbours_argument_defaults_empty(self) -> None:
         # A condition policy must still contribute when no neighbour list
         # is supplied; quantifier semantics give the empty set an answer.
