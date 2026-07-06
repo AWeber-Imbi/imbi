@@ -79,6 +79,32 @@ just test tests/path/to/test_file.py::TestClass::test_method
 - Test coverage minimum: 90%
 - `ruff` rules include bandit (`S`), but `S` rules are disabled in test files
 
+## Releases
+
+This library is published to PyPI and consumers pin it by **published**
+version, so releasing is a deliberate, separate step. Every past release
+follows this convention — match it exactly:
+
+- **Never bump the version inside a feature PR.** Feature branches change
+  code, tests, and docs only; they must not touch `version` in
+  `pyproject.toml` or the `imbi-common` self-reference in `uv.lock`. CI
+  and review operate on the feature, not on the release.
+- **The version bump is its own commit.** A release is a dedicated
+  `Bump version to X.Y.Z` commit that changes only the version (plus the
+  matching `uv.lock` self-reference). Inspect `git log` / `git tag` — every
+  release tag points at exactly such a bump-only commit.
+- **Cut releases directly on `main`, then tag.** The bump commit lands on
+  `main` after the relevant feature PRs have merged (it is not itself
+  PR'd) and is tagged `vX.Y.Z`; the tag is what publishes to PyPI.
+- **Prefer the release skill.** `imbi-development-skills:release` performs
+  the bump-commit + tag + GitHub-release steps in the correct order — use
+  it rather than doing them by hand.
+
+When a feature needs *unreleased* library code in a downstream consumer,
+the consumer does not pull it in through a committed pin — see the
+cross-service dependency-pin and overlay rules in
+`imbi-orchestration/CLAUDE.md`.
+
 ## Documentation
 
 This is a published library — any change that consumers can observe (new public API, new middleware option, new scope/state key, changed log format, settings prefix, etc.) is user-visible and must be reflected in `docs/` in the same change. Specifically:

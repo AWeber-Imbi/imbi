@@ -36,6 +36,7 @@ from imbi_common.plugins.base import (
     ServiceWriteback,
     WorkflowFile,
 )
+from imbi_common.plugins.errors import PluginRemediationNotSupported
 
 
 class PluginManifestTestCase(unittest.TestCase):
@@ -1042,6 +1043,100 @@ class AnalysisPluginTestCase(unittest.TestCase):
             slug='fake', name='Fake', plugin_type='analysis'
         )
         self.assertEqual(manifest.plugin_type, 'analysis')
+
+
+class RemediationModelTests(unittest.TestCase):
+    def test_offer_defaults(self) -> None:
+        offer = plugin_base.RemediationOffer(id='fix-1', label='Fix it')
+        self.assertEqual(offer.id, 'fix-1')
+        self.assertIsNone(offer.confirm)
+        self.assertFalse(offer.destructive)
+
+    def test_result_status_constrained(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            plugin_base.RemediationResult(
+                status='done',  # type: ignore[arg-type]
+                message='x',
+            )
+
+    def test_result_valid(self) -> None:
+        result = plugin_base.RemediationResult(
+            status='fixed', message='Repaired the edge.'
+        )
+        self.assertEqual(result.status, 'fixed')
+
+    def test_result_item_remediation_defaults_none(self) -> None:
+        item = plugin_base.AnalysisResultItem(
+            slug='x', title='x', description='x', status='warn'
+        )
+        self.assertIsNone(item.remediation)
+
+    def test_result_item_carries_offer(self) -> None:
+        item = plugin_base.AnalysisResultItem(
+            slug='x',
+            title='x',
+            description='x',
+            status='fail',
+            remediation=plugin_base.RemediationOffer(
+                id='fix-1', label='Fix it', destructive=True
+            ),
+        )
+        assert item.remediation is not None
+        self.assertEqual(item.remediation.id, 'fix-1')
+        self.assertTrue(item.remediation.destructive)
+
+
+class AnalysisRemediateTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_default_remediate_raises(self) -> None:
+        class _FakeAnalysis(plugin_base.AnalysisPlugin):
+            manifest = plugin_base.PluginManifest(
+                slug='fake', name='Fake', plugin_type='analysis'
+            )
+
+            async def analyze(
+                self,
+                ctx: plugin_base.PluginContext,
+                credentials: dict[str, str],
+            ) -> list[plugin_base.AnalysisResultItem]:
+                return []
+
+        ctx = plugin_base.PluginContext(
+            project_id='p', project_slug='p', org_slug='o'
+        )
+        with self.assertRaises(PluginRemediationNotSupported) as cm:
+            await _FakeAnalysis().remediate(ctx, {}, 'fix-1')
+        self.assertEqual(cm.exception.plugin_slug, 'fake')
+        self.assertEqual(cm.exception.remediation_id, 'fix-1')
+
+    async def test_override_remediate_returns_result(self) -> None:
+        class _FakeAnalysis(plugin_base.AnalysisPlugin):
+            manifest = plugin_base.PluginManifest(
+                slug='fake', name='Fake', plugin_type='analysis'
+            )
+
+            async def analyze(
+                self,
+                ctx: plugin_base.PluginContext,
+                credentials: dict[str, str],
+            ) -> list[plugin_base.AnalysisResultItem]:
+                return []
+
+            async def remediate(
+                self,
+                ctx: plugin_base.PluginContext,
+                credentials: dict[str, str],
+                remediation_id: str,
+            ) -> plugin_base.RemediationResult:
+                return plugin_base.RemediationResult(
+                    status='fixed', message=f'did {remediation_id}'
+                )
+
+        ctx = plugin_base.PluginContext(
+            project_id='p', project_slug='p', org_slug='o'
+        )
+        result = await _FakeAnalysis().remediate(ctx, {}, 'fix-1')
+        self.assertEqual(result.status, 'fixed')
+        self.assertEqual(result.message, 'did fix-1')
 
 
 class ManifestLifecycleSyncFlagTestCase(unittest.TestCase):

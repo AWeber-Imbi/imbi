@@ -7,6 +7,8 @@ import typing
 
 import pydantic
 
+from imbi_common.plugins.errors import PluginRemediationNotSupported
+
 
 class PluginOption(pydantic.BaseModel):
     name: str
@@ -1337,18 +1339,55 @@ class WebhookActionPlugin(abc.ABC):
 AnalysisResultStatus = typing.Literal['pass', 'warn', 'fail']
 
 
+class RemediationOffer(pydantic.BaseModel):
+    """An offer to fix the finding it is attached to.
+
+    A finding is *fixable* iff it carries a ``RemediationOffer``.  The
+    Doctor panel renders a button labelled ``label``; clicking it asks
+    the host to call the emitting plugin's
+    :meth:`AnalysisPlugin.remediate` with this offer's ``id``.  The
+    ``id`` is opaque and plugin-defined (it only has to be unique within
+    the plugin's own findings) — it round-trips back unchanged so the
+    plugin knows which fix to perform.
+    """
+
+    id: str
+    label: str
+    #: Optional confirmation prompt shown before the fix runs.
+    confirm: str | None = None
+    #: When ``True`` the UI requires explicit confirmation — set it for
+    #: fixes that create/remove an edge or delete a value rather than
+    #: simply reconciling Imbi state to an external source of truth.
+    destructive: bool = False
+
+
+class RemediationResult(pydantic.BaseModel):
+    """Outcome of an :meth:`AnalysisPlugin.remediate` call.
+
+    ``status`` is ``fixed`` when the plugin changed state, ``noop`` when
+    the finding was already resolved (so a double-click or a bulk
+    "fix all" pass is safe), and ``failed`` when the fix could not be
+    applied.  ``message`` is human-facing and rendered as Markdown.
+    """
+
+    status: typing.Literal['fixed', 'noop', 'failed']
+    message: str
+
+
 class AnalysisResultItem(pydantic.BaseModel):
     """A single finding emitted by an :class:`AnalysisPlugin`.
 
     Stable per-plugin ``slug`` lets scoring policies and the UI refer to
     a result across runs. ``description`` is rendered as Markdown by
-    the Project Doctor panel.
+    the Project Doctor panel.  When ``remediation`` is set the finding
+    is fixable — see :class:`RemediationOffer`.
     """
 
     slug: str
     title: str
     description: str
     status: AnalysisResultStatus
+    remediation: RemediationOffer | None = None
 
 
 class AnalysisPlugin(abc.ABC):
@@ -1359,6 +1398,13 @@ class AnalysisPlugin(abc.ABC):
     per-plugin credentials) and return a list of pass/warn/fail
     findings that surface in the Project Doctor panel and feed the
     ``analysis_result`` scoring-policy category.
+
+    A plugin that attaches a :class:`RemediationOffer` to any finding
+    must also override :meth:`remediate` to apply that fix.  Like every
+    other plugin method, ``remediate`` has no database handle: it
+    effects graph changes by setting ``ctx.service_writeback`` /
+    ``ctx.link_writeback`` (the same write-back channel lifecycle
+    plugins use), which the host captures and persists.
     """
 
     manifest: PluginManifest
@@ -1369,6 +1415,34 @@ class AnalysisPlugin(abc.ABC):
         ctx: PluginContext,
         credentials: dict[str, str],
     ) -> list[AnalysisResultItem]: ...
+
+    async def remediate(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        remediation_id: str,
+    ) -> RemediationResult:
+        """Apply the fix identified by ``remediation_id``.
+
+        ``remediation_id`` is the ``id`` of a :class:`RemediationOffer`
+        this plugin previously emitted on a finding.  Implementations
+        should re-verify the discrepancy against fresh state and return
+        a ``noop`` :class:`RemediationResult` when it is already
+        resolved, so the call is idempotent.
+
+        Report the outcome by **returning** a :class:`RemediationResult`:
+        ``fixed`` when state changed, ``noop`` when it was already
+        resolved, and ``failed`` (with a user-facing ``message``) when
+        the fix could not be applied — e.g. the upstream API rejected
+        the change.  A ``failed`` result is the single, authoritative way
+        to signal a failed fix; implementations should catch their own
+        errors and translate them rather than letting exceptions escape.
+        The host renders ``message`` as Markdown next to the finding.
+
+        The default raises :class:`PluginRemediationNotSupported`; only
+        plugins that emit remediation offers need override it.
+        """
+        raise PluginRemediationNotSupported(self.manifest.slug, remediation_id)
 
 
 class IncidentsPlugin(abc.ABC):

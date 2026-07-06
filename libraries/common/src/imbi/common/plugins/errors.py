@@ -51,6 +51,23 @@ class PluginRateLimited(Exception):
         super().__init__(message or f'Rate limited until epoch {retry_at:.0f}')
 
 
+class PluginRemediationNotSupported(Exception):
+    """Raised when a plugin is asked to remediate but does not implement
+    :meth:`~imbi_common.plugins.base.AnalysisPlugin.remediate`.
+
+    The host should treat this as a client error (the finding offered no
+    fix, or the plugin advertised one without implementing it).
+    """
+
+    def __init__(self, plugin_slug: str, remediation_id: str) -> None:
+        self.plugin_slug: str = plugin_slug
+        self.remediation_id: str = remediation_id
+        super().__init__(
+            f'Plugin {plugin_slug!r} does not support remediation '
+            f'(id={remediation_id!r})'
+        )
+
+
 class PluginSchemaCollisionError(Exception):
     """Raised when a plugin declares a vlabel that collides with another
     plugin or with core's static schemata.
