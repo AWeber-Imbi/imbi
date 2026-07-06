@@ -21,6 +21,18 @@ jobs:
       - name: Set up Python
         run: uv python install 3.14
 
+      - name: Verify release tag matches package version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(uv version --short)"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Release tag '${GITHUB_REF_NAME}' does not match" \
+                 "pyproject.toml version '${version}'. Bump the version in" \
+                 "pyproject.toml (and re-lock) before tagging the release."
+            exit 1
+          fi
+          echo "Release tag '${GITHUB_REF_NAME}' matches package version '${version}'."
+
       - name: Build
         run: uv build
 
