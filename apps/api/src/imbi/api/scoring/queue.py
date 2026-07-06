@@ -242,7 +242,11 @@ async def condition_policies_exist(db: graph.Graph) -> bool:
     matters when a condition policy exists, so the dependents query is
     skipped entirely otherwise.
     """
-    rows = await db.execute(_CONDITION_POLICY_EXISTS_QUERY, {}, ['id'])
+    try:
+        rows = await db.execute(_CONDITION_POLICY_EXISTS_QUERY, {}, ['id'])
+    except Exception:
+        LOGGER.exception('condition_policies_exist check failed')
+        return False
     return bool(rows)
 
 
@@ -254,9 +258,15 @@ async def dependent_project_ids(db: graph.Graph, project_id: str) -> list[str]:
     the neighbour's attribute, not its score, so there is no transitive
     cascade).
     """
-    rows = await db.execute(
-        _DEPENDENTS_QUERY, {'project_id': project_id}, ['id']
-    )
+    try:
+        rows = await db.execute(
+            _DEPENDENTS_QUERY, {'project_id': project_id}, ['id']
+        )
+    except Exception:
+        LOGGER.exception(
+            'dependent_project_ids lookup failed for %s', project_id
+        )
+        return []
     return [v for r in rows if (v := graph.parse_agtype(r['id']))]
 
 

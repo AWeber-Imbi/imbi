@@ -2131,6 +2131,15 @@ class ProjectRelationshipSummary(pydantic.BaseModel):
     namespace: str | None = None
     project_type: str | None = None
     project_type_icon: str | None = None
+    deprecated: bool = False
+
+    @pydantic.field_validator('deprecated', mode='before')
+    @classmethod
+    def _coerce_deprecated(cls, value: object) -> bool:
+        """Normalise AGE's mixed bool/string storage to a real bool."""
+        if isinstance(value, str):
+            return value.strip().lower() == 'true'
+        return bool(value)
 
 
 class ProjectRelationship(pydantic.BaseModel):
@@ -2167,7 +2176,7 @@ _RELATIONSHIPS_QUERY: typing.LiteralString = """
          END AS direction
     RETURN direction,
            CASE WHEN other IS NULL THEN null
-                ELSE other{{.id, .name, .slug,
+                ELSE other{{.id, .name, .slug, .deprecated,
                            namespace: otherOrg.slug,
                            project_type: pt_slug,
                            project_type_icon: pt_icon}}
