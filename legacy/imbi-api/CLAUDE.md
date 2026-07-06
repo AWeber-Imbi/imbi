@@ -164,10 +164,29 @@ Coverage target: 90% (`pyproject.toml` `tool.coverage.report.fail_under`). Curre
 **GitHub Actions** (`.github/workflows/`):
 - `testing.yaml`: Lint (`just lint`) + tests (`just test`) on Python 3.14 on every push/PR to `main`. Coverage uploaded to Codecov.
 - `docs.yaml`: MkDocs build/deploy to GitHub Pages on doc changes.
-- `deploy.yaml`: On release — `uv build`, multi-platform Docker image to `ghcr.io`, provenance attestation.
+- `deploy.yaml`: On a published GitHub release — verifies the release tag matches the `pyproject.toml` version, then `uv build` and publish the sdist/wheel to PyPI (Trusted Publishing, `pypi` environment). The tag/version guard fails the publish if you forget to bump the version, so a mismatched release never reaches PyPI.
 
 ## Git Workflow
 
 - Main branch: `main`
 - Feature branches: `feature/<feature-name>`
 - All PRs target `main`
+
+## Releasing
+
+The package version is **static** — `[project].version` in `pyproject.toml` is
+the single source of truth (`uv build` reads it; the git tag does not set it).
+To cut a release:
+
+1. Bump `[project].version` in `pyproject.toml` to the new version.
+2. Re-lock so the project's own entry updates: `uv lock` (updates `uv.lock`).
+   Note: `just` recipes export `UV_FROZEN=1`, so run `uv lock` directly.
+3. Commit, open a PR, and merge to `main` once CI is green.
+4. Create a GitHub release whose tag is `v<version>` (e.g. `v2.11.6`) matching
+   the bumped `pyproject.toml` version. Publishing the release runs
+   `deploy.yaml`, which **guards** that the tag matches the package version
+   before building and publishing to PyPI.
+
+If the tag and `pyproject.toml` version disagree, the publish job fails fast
+(before uploading) — PyPI forbids reusing a filename, so an un-bumped release
+would otherwise try to re-publish the previous version and 400.
