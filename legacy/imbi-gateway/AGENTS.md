@@ -205,10 +205,25 @@ GitHub Actions workflows:
 - **`.github/workflows/test.yml`**: Runs on push/PR
     - Static analysis (pre-commit, basedpyright, mypy)
     - Tests on Python 3.14
-- **`.github/workflows/docker.yml`**: Runs on release
-    - Builds Python wheel
-    - Publishes multi-arch Docker image to ghcr.io
-    - Creates build attestations
+- **`.github/workflows/publish.yml`**: Runs on a published GitHub release
+    - Verifies the release tag matches the `pyproject.toml` version
+    - Builds the wheel/sdist (`uv build`) and publishes to PyPI
+    - The tag/version guard fails the publish if the version was not
+      bumped, so a mismatched release never reaches PyPI
+
+## Releasing
+
+`[project].version` in `pyproject.toml` is the single source of truth (the git
+tag does not set it). To cut a release:
+
+1. Bump the version and re-lock in one step: `uv version <new-version>`
+   (updates `pyproject.toml` and `uv.lock`). If a shared-library pin changed
+   (e.g. `imbi-common==<version>`), update it first so the re-lock picks it up.
+2. Commit, open a PR, and merge to `main` once CI is green.
+3. Create a GitHub release whose tag is `v<version>` matching the bumped
+   version. Publishing runs `publish.yml`, which guards that the tag matches the
+   package version before uploading to PyPI (PyPI forbids filename reuse, so an
+   un-bumped release would 400).
 
 ## Project Dependencies
 
