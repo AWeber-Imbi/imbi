@@ -55,6 +55,35 @@ async def resolve_service_plugins(
     ]
 
 
+def _registry_plugin_type(slug: str) -> str | None:
+    try:
+        return get_plugin(slug).manifest.plugin_type
+    except PluginNotFoundError:
+        return None
+
+
+def _tps_identity_plugin_ids(
+    tps_raw: list[dict[str, typing.Any]],
+) -> dict[str, str]:
+    """Map each third-party service slug to its identity plugin id.
+
+    Plugin nodes don't carry ``plugin_type``, so the type is resolved
+    from the registry. When a service has more than one identity plugin
+    the one flagged ``used_as_login`` wins.
+    """
+    out: dict[str, str] = {}
+    for p in tps_raw:
+        slug = p.get('tps_slug')
+        pid = p.get('id')
+        if not slug or not pid or not p.get('slug'):
+            continue
+        if _registry_plugin_type(p['slug']) != 'identity':
+            continue
+        if slug not in out or p.get('used_as_login'):
+            out[slug] = pid
+    return out
+
+
 class ResolvedPlugin(typing.NamedTuple):
     plugin_id: str
     plugin_slug: str
@@ -522,23 +551,27 @@ async def resolve_analysis_plugins(
     WHERE coalesce(pte.plugin_type, pte.tab) = 'analysis'
     OPTIONAL MATCH (proj)-[:EXISTS_IN]->(tps:ThirdPartyService)
       -[:HAS_PLUGIN]->(p3:Plugin)
-    WHERE p3.plugin_type = 'analysis'
     WITH
       collect(DISTINCT {{id: p.id, slug: p.plugin_slug,
                          edge_options: pe.options,
                          plugin_options: p.options,
                          default: pe.default,
+                         identity_plugin_id: pe.identity_plugin_id,
+                         plugin_identity_plugin_id: p.identity_plugin_id,
                          src: 'project'}})
        AS proj_plugins,
       collect(DISTINCT {{id: p2.id, slug: p2.plugin_slug,
                          edge_options: pte.options,
                          plugin_options: p2.options,
                          default: pte.default,
+                         identity_plugin_id: pte.identity_plugin_id,
+                         plugin_identity_plugin_id: p2.identity_plugin_id,
                          src: 'project_type'}})
        AS pt_plugins,
       collect(DISTINCT {{id: p3.id, slug: p3.plugin_slug,
                          plugin_options: p3.options,
                          tps_slug: tps.slug,
+                         used_as_login: p3.used_as_login,
                          src: 'third_party_service'}})
        AS tps_plugins
     RETURN proj_plugins, pt_plugins, tps_plugins
@@ -569,9 +602,20 @@ async def resolve_analysis_plugins(
     pt_plugins: list[dict[str, typing.Any]] = (
         graph.parse_agtype(records[0]['pt_plugins']) or []
     )
-    tps_plugins: list[dict[str, typing.Any]] = (
+    tps_raw: list[dict[str, typing.Any]] = (
         graph.parse_agtype(records[0]['tps_plugins']) or []
     )
+    tps_plugins: list[dict[str, typing.Any]] = [
+        p
+        for p in tps_raw
+        if p.get('id')
+        and p.get('slug')
+        and _registry_plugin_type(p['slug']) == 'analysis'
+    ]
+    # Map each third-party service to the identity plugin attached to it,
+    # so a doctor (analysis) plugin discovered via that service can run as
+    # the acting user instead of a static token.
+    tps_identity_plugin_id = _tps_identity_plugin_ids(tps_raw)
 
     pt_by_id: dict[str, dict[str, typing.Any]] = {
         p['id']: p for p in pt_plugins if p.get('id')
@@ -592,6 +636,11 @@ async def resolve_analysis_plugins(
             merged[pid] = {
                 **p,
                 'pt_edge_options': pt_by_id[pid].get('edge_options'),
+                'pt_identity_plugin_id': pt_by_id[pid].get(
+                    'identity_plugin_id'
+                ),
+                'plugin_identity_plugin_id': p.get('plugin_identity_plugin_id')
+                or pt_by_id[pid].get('plugin_identity_plugin_id'),
             }
         else:
             merged[pid] = p
@@ -634,17 +683,24 @@ async def resolve_analysis_plugins(
             )
             continue
         tps_slug = chosen.get('tps_slug')
+        tps_slug_str = (
+            tps_slug if isinstance(tps_slug, str) and tps_slug else None
+        )
         resolved.append(
             ResolvedPlugin(
                 plugin_id=plugin_id,
                 plugin_slug=plugin_slug,
                 entry=entry,
                 options=options,
-                third_party_service_slug=(
-                    tps_slug
-                    if isinstance(tps_slug, str) and tps_slug
-                    else None
+                identity_plugin_id=(
+                    _select_identity_plugin_id(chosen)
+                    or (
+                        tps_identity_plugin_id.get(tps_slug_str)
+                        if tps_slug_str
+                        else None
+                    )
                 ),
+                third_party_service_slug=tps_slug_str,
             )
         )
     return resolved

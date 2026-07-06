@@ -18,7 +18,11 @@ import re
 import typing
 
 from imbi_common import graph, models
-from imbi_common.plugins.base import AnalysisResultItem
+from imbi_common.plugins.base import (
+    AnalysisResultItem,
+    RemediationOffer,
+    RemediationResult,
+)
 
 from imbi_api.blueprint_attributes import project_blueprints
 
@@ -26,6 +30,12 @@ LOGGER = logging.getLogger(__name__)
 
 BLUEPRINT_PLUGIN_SLUG = 'blueprint-compliance'
 BLUEPRINT_PLUGIN_ID = 'built-in'
+
+# Remediation id prefixes round-tripped through ``RemediationOffer.id``;
+# the suffix is the property name. ``remediate_blueprint`` dispatches on
+# the prefix.
+_SET_DEFAULT = 'set-default'
+_REMOVE_STALE = 'remove-stale'
 
 _SENTINEL = object()  # distinguishes "not present" from explicit None
 
@@ -67,16 +77,31 @@ def _check_property(
     """Return a finding for a non-conformant property, or ``None``."""
     display = getattr(prop_schema, 'title', None) or prop_name
     missing = _is_missing(current_value)
+    default = getattr(prop_schema, 'default', None)
+    set_default_offer = (
+        RemediationOffer(
+            id=f'{_SET_DEFAULT}:{prop_name}',
+            label=f'Set {display} to its blueprint default',
+        )
+        if default is not None and _SAFE_PROP_RE.match(prop_name)
+        else None
+    )
 
     if required and missing:
+        hint = (
+            'Use the Fix action to set it to the blueprint default.'
+            if set_default_offer is not None
+            else 'Edit the project to set it.'
+        )
         return AnalysisResultItem(
             slug=f'{BLUEPRINT_PLUGIN_SLUG}:{section_slug}:{prop_name}:missing',
             title=f'Required property not set: {display}',
             description=(
                 f'`{prop_name}` is required by the **{section_slug}** '
-                f'blueprint but has no value. Edit the project to set it.'
+                f'blueprint but has no value. {hint}'
             ),
             status='fail',
+            remediation=set_default_offer,
         )
 
     if not missing:
@@ -119,19 +144,18 @@ def _check_property(
                 )
 
     # Missing but not required — warn when a default is available
-    if missing:
-        default = getattr(prop_schema, 'default', None)
-        if default is not None:
-            return AnalysisResultItem(
-                slug=f'{BLUEPRINT_PLUGIN_SLUG}:{section_slug}:{prop_name}:use-default',
-                title=f'Property not set — default available: {display}',
-                description=(
-                    f'`{prop_name}` has no value. '
-                    f'The blueprint default is `{default!r}`. '
-                    f'Use **Apply Blueprint Fixes** to set it.'
-                ),
-                status='warn',
-            )
+    if missing and set_default_offer is not None:
+        return AnalysisResultItem(
+            slug=f'{BLUEPRINT_PLUGIN_SLUG}:{section_slug}:{prop_name}:use-default',
+            title=f'Property not set — default available: {display}',
+            description=(
+                f'`{prop_name}` has no value. '
+                f'The blueprint default is `{default!r}`. '
+                f'Use the Fix action to set it.'
+            ),
+            status='warn',
+            remediation=set_default_offer,
+        )
 
     return None
 
@@ -247,9 +271,18 @@ async def check_blueprint_compliance(
                 description=(
                     f'`{prop_name}` is set on this project but is not defined '
                     f'in any currently applicable blueprint. '
-                    f'Use **Apply Blueprint Fixes** to remove it.'
+                    f'Use the Fix action to remove it.'
                 ),
                 status='warn',
+                remediation=(
+                    RemediationOffer(
+                        id=f'{_REMOVE_STALE}:{prop_name}',
+                        label=f'Remove {prop_name}',
+                        destructive=True,
+                    )
+                    if _SAFE_PROP_RE.match(prop_name)
+                    else None
+                ),
             )
         )
 
@@ -279,115 +312,97 @@ async def check_blueprint_compliance(
     return findings
 
 
-async def apply_blueprint_defaults(
-    db: graph.Graph,
-    project_id: str,
-    type_slugs: list[str],
-) -> int:
-    """Set blueprint default values on project properties that are unset.
-
-    Only touches properties that are currently ``None`` / absent AND
-    have a ``default`` in the blueprint schema. Does not overwrite
-    existing values.
-
-    Returns the number of properties updated.
-    """
-    all_blueprints = await project_blueprints(db)
-    if not all_blueprints:
-        return 0
-
-    type_slug_set = set(type_slugs)
-    applicable = _applicable_blueprints(all_blueprints, type_slug_set)
-    if not applicable:
-        return 0
-
-    props = await _fetch_project_props(db, project_id)
-
-    # Collect prop_name → default for every unset property with a default.
-    # Use an ordered dict so later (higher-priority) blueprints win.
-    defaults: dict[str, typing.Any] = {}
+def _blueprint_default(
+    applicable: list[models.Blueprint], prop_name: str
+) -> typing.Any:
+    """Return the blueprint default for ``prop_name`` (later wins), or None."""
+    default: typing.Any = None
     for bp in applicable:
-        for prop_name, prop_schema in (
-            bp.json_schema.properties or {}
-        ).items():
-            if not _SAFE_PROP_RE.match(prop_name):
-                LOGGER.warning(
-                    'Skipping unsafe blueprint property name %r', prop_name
-                )
-                continue
-            if not _is_missing(props.get(prop_name)):
-                continue
-            default = getattr(prop_schema, 'default', None)
-            if default is not None:
-                defaults[prop_name] = default
-
-    if not defaults:
-        return 0
-
-    # Build a single SET clause; parameter names are indexed to avoid
-    # collisions with the property names themselves.
-    set_parts = [f'p.{k} = {{v{i}}}' for i, k in enumerate(defaults)]
-    cypher = (
-        'MATCH (p:Project {{id: {project_id}}}) SET '
-        + ', '.join(set_parts)
-        + ' RETURN p.id AS id'
-    )
-    params: dict[str, typing.Any] = {'project_id': project_id}
-    for i, (_, v) in enumerate(defaults.items()):
-        params[f'v{i}'] = v
-
-    await db.execute(cypher, params, ['id'])
-    LOGGER.info(
-        'Applied %d blueprint default(s) to project %s: %s',
-        len(defaults),
-        project_id,
-        list(defaults.keys()),
-    )
-    return len(defaults)
+        prop_schema = (bp.json_schema.properties or {}).get(prop_name)
+        if prop_schema is None:
+            continue
+        value = getattr(prop_schema, 'default', None)
+        if value is not None:
+            default = value
+    return default
 
 
-async def remove_stale_blueprint_properties(
+async def remediate_blueprint(
     db: graph.Graph,
     project_id: str,
     type_slugs: list[str],
-) -> int:
-    """Remove blueprint-managed properties no longer in any applicable
-    blueprint.
+    remediation_id: str,
+) -> RemediationResult:
+    """Apply a single blueprint-compliance fix.
 
-    Only removes properties defined in *some* blueprint, so core model
-    fields (``id``, ``name``, etc.) are never touched. Stale properties are
-    removed by setting them to ``null`` in a single Cypher ``SET`` clause.
-
-    Returns the number of properties removed.
+    ``remediation_id`` is ``set-default:<prop>`` (set an unset property
+    to its blueprint default) or ``remove-stale:<prop>`` (drop a property
+    no longer defined by any applicable blueprint). Idempotent: returns a
+    ``noop`` when the property is already in the desired state.
     """
-    all_blueprints = await project_blueprints(db)
-    if not all_blueprints:
-        return 0
+    action, _, prop_name = remediation_id.partition(':')
+    if not prop_name or not _SAFE_PROP_RE.match(prop_name):
+        return RemediationResult(
+            status='failed',
+            message=f'Invalid blueprint remediation id {remediation_id!r}.',
+        )
 
-    type_slug_set = set(type_slugs)
-    applicable = _applicable_blueprints(all_blueprints, type_slug_set)
     props = await _fetch_project_props(db, project_id)
 
-    stale = [
-        p
-        for p in _stale_blueprint_properties(all_blueprints, applicable, props)
-        if _SAFE_PROP_RE.match(p)
-    ]
-    if not stale:
-        return 0
+    if action == _REMOVE_STALE:
+        if _is_missing(props.get(prop_name, _SENTINEL)):
+            return RemediationResult(
+                status='noop', message=f'`{prop_name}` is already unset.'
+            )
+        all_blueprints = await project_blueprints(db)
+        applicable = _applicable_blueprints(all_blueprints, set(type_slugs))
+        stale = _stale_blueprint_properties(all_blueprints, applicable, props)
+        if prop_name not in stale:
+            return RemediationResult(
+                status='failed',
+                message=(
+                    f'`{prop_name}` is no longer stale; refusing to remove it.'
+                ),
+            )
+        await db.execute(
+            'MATCH (p:Project {{id: {project_id}}}) '
+            f'SET p.{prop_name} = null RETURN p.id AS id',
+            {'project_id': project_id},
+            ['id'],
+        )
+        LOGGER.info('Removed stale property %r from %s', prop_name, project_id)
+        return RemediationResult(
+            status='fixed', message=f'Removed `{prop_name}`.'
+        )
 
-    # Setting a property to null removes it from the AGE node.
-    set_parts = [f'p.{k} = null' for k in stale]
-    cypher = (
-        'MATCH (p:Project {{id: {project_id}}}) SET '
-        + ', '.join(set_parts)
-        + ' RETURN p.id AS id'
+    if action == _SET_DEFAULT:
+        if not _is_missing(props.get(prop_name, _SENTINEL)):
+            return RemediationResult(
+                status='noop', message=f'`{prop_name}` is already set.'
+            )
+        all_blueprints = await project_blueprints(db)
+        applicable = _applicable_blueprints(all_blueprints, set(type_slugs))
+        default = _blueprint_default(applicable, prop_name)
+        if default is None:
+            return RemediationResult(
+                status='failed',
+                message=f'No blueprint default available for `{prop_name}`.',
+            )
+        await db.execute(
+            'MATCH (p:Project {{id: {project_id}}}) '
+            f'SET p.{prop_name} = {{value}} RETURN p.id AS id',
+            {'project_id': project_id, 'value': default},
+            ['id'],
+        )
+        LOGGER.info(
+            'Set property %r to its default on %s', prop_name, project_id
+        )
+        return RemediationResult(
+            status='fixed',
+            message=f'Set `{prop_name}` to its blueprint default.',
+        )
+
+    return RemediationResult(
+        status='failed',
+        message=f'Unknown blueprint remediation {remediation_id!r}.',
     )
-    await db.execute(cypher, {'project_id': project_id}, ['id'])
-    LOGGER.info(
-        'Removed %d stale blueprint property/ies from project %s: %s',
-        len(stale),
-        project_id,
-        stale,
-    )
-    return len(stale)

@@ -1903,3 +1903,80 @@ class ResolveAnalysisPluginsTestCase(unittest.TestCase):
         ):
             resolved = asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
         self.assertEqual({r.plugin_slug for r in resolved}, {'enabled'})
+
+    def test_edge_identity_plugin_id_honored(self) -> None:
+        # A project USES_PLUGIN edge that names an identity plugin must be
+        # honored for the analysis fan-out, not dropped in favor of static
+        # credentials.
+        from imbi_api.plugins.resolution import resolve_analysis_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {
+                'proj_plugins': json.dumps(
+                    [
+                        {
+                            'id': 'p1',
+                            'slug': 'sonarqube',
+                            'edge_options': '{}',
+                            'plugin_options': '{}',
+                            'identity_plugin_id': 'idp-1',
+                            'src': 'project',
+                        }
+                    ]
+                ),
+                'pt_plugins': '[]',
+                'tps_plugins': '[]',
+            }
+        ]
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin',
+                side_effect=lambda s: self._make_analysis_registry_entry(s),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.get_enabled_map',
+                new=self._enabled('sonarqube'),
+            ),
+        ):
+            resolved = asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
+        self.assertEqual(len(resolved), 1)
+        self.assertEqual(resolved[0].identity_plugin_id, 'idp-1')
+
+    def test_plugin_default_identity_honored(self) -> None:
+        # The Plugin node's own identity default applies when no edge names
+        # one (three-tier precedence, matching resolve_all_plugins).
+        from imbi_api.plugins.resolution import resolve_analysis_plugins
+
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
+            {
+                'proj_plugins': '[]',
+                'pt_plugins': json.dumps(
+                    [
+                        {
+                            'id': 'p1',
+                            'slug': 'sonarqube',
+                            'edge_options': '{}',
+                            'plugin_options': '{}',
+                            'plugin_identity_plugin_id': 'idp-default',
+                            'src': 'project_type',
+                        }
+                    ]
+                ),
+                'tps_plugins': '[]',
+            }
+        ]
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin',
+                side_effect=lambda s: self._make_analysis_registry_entry(s),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.get_enabled_map',
+                new=self._enabled('sonarqube'),
+            ),
+        ):
+            resolved = asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
+        self.assertEqual(len(resolved), 1)
+        self.assertEqual(resolved[0].identity_plugin_id, 'idp-default')
