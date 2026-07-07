@@ -1,28 +1,30 @@
-# Incidents Plugins
+# Incidents Capability
 
-`IncidentsPlugin` is the abstract base for incident-management
-integrations (e.g. PagerDuty). Declare `plugin_type='incidents'` in the
-manifest. The single required method is `list_incidents`. Like the logs
-tab, the source system stays authoritative — incidents are live-queried
-on demand and the host keeps no local incident store, so the resulting
-project-detail Incidents tab is read-only.
+`IncidentsCapability` is the contract base for incident-management
+integrations (e.g. PagerDuty). Bind it with a
+`Capability(kind='incidents', handler=...)` in the plugin's manifest. The
+single required method is `list_incidents`. Like the logs tab, the source
+system stays authoritative — incidents are live-queried on demand and the
+host keeps no local incident store, so the project-detail Incidents tab
+is read-only.
 
-See [Authoring Plugins](index.md) for the manifest, context, credential
-resolution, and error conventions shared by every plugin.
+Surfaces: **ui, api**.
+
+See [Authoring Plugins](index.md) for the manifest, capabilities,
+context, credential decryption, and error conventions shared by every
+plugin.
 
 ```python
 import datetime
 
 from imbi_common.plugins import (
     IncidentResult,
-    IncidentsPlugin,
+    IncidentsCapability,
     PluginContext,
 )
 
 
-class PagerDutyIncidentsPlugin(IncidentsPlugin):
-    manifest = manifest  # plugin_type='incidents'
-
+class PagerDutyIncidents(IncidentsCapability):
     async def list_incidents(
         self,
         ctx: PluginContext,
@@ -39,8 +41,10 @@ class PagerDutyIncidentsPlugin(IncidentsPlugin):
 
 ## Method contracts
 
-- **`list_incidents`** — resolve the project's remote service (typically
-  from a project link populated by a companion lifecycle plugin) and
+- **`list_incidents`** — resolve the project's remote service from the
+  Integration's entry in
+  [`ctx.service_connections`][imbi_common.plugins.ServiceConnection]
+  (the `EXISTS_IN` edge, matched on `ctx.integration_slug`) and
   return an `IncidentResult` whose `incidents` are ordered most-recent
   first. Honor the `start_time`/`end_time` window, the optional
   `statuses` filter, and `limit`. When more results are available,
@@ -56,14 +60,16 @@ class PagerDutyIncidentsPlugin(IncidentsPlugin):
 
 `IncidentView` is the per-incident row rendered in the tab. `urgency`,
 `resolved_at`, and `service` are optional because not every source
-populates them (e.g. an unresolved incident has no `resolved_at`, and
-some payloads omit `urgency`); `id`, `title`, `status`, `created_at`,
-and `url` are always required so the tab can render and deep-link every
-row.
+populates them; `id`, `title`, `status`, `created_at`, and `url` are
+always required so the tab can render and deep-link every row.
+
+## Hints
+
+- **`cacheable`** — the host may cache reads from this capability.
 
 ## API reference
 
-::: imbi_common.plugins.IncidentsPlugin
+::: imbi_common.plugins.IncidentsCapability
 
 ::: imbi_common.plugins.IncidentView
 

@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS imbi.events {on_cluster}(
   project_id           LowCardinality(String),
   recorded_at          DateTime64(3, 'UTC'),
   type                 LowCardinality(String) DEFAULT '',
-  third_party_service  LowCardinality(String) DEFAULT '',
+  integration          LowCardinality(String) DEFAULT '',
   attributed_to        LowCardinality(String) DEFAULT '',
   metadata             JSON,
   payload              JSON,

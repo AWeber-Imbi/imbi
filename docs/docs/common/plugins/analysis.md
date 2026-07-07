@@ -1,36 +1,32 @@
-# Analysis Plugins
+# Analysis Capability
 
-`AnalysisPlugin` is the abstract base for plugins that inspect a project
-and emit Project Doctor findings — `pass` / `warn` / `fail` items with a
-markdown body. Declare `plugin_type='analysis'` in the manifest. The
-host (`imbi-api`) resolves applicable analysis plugins for a project
-through both the project-type `USES_PLUGIN` edge (`tab='analysis'`) and
-via any `ThirdPartyService` the project `EXISTS_IN` that has a
-`HAS_PLUGIN` edge to an analysis plugin.
+`AnalysisCapability` is the contract base for a capability that inspects
+a project and emits Project Doctor findings — `pass` / `warn` / `fail`
+items with a markdown body. Bind it with a
+`Capability(kind='analysis', handler=...)` in the plugin's manifest. The
+host (`imbi-api`) resolves applicable analysis capabilities for a project
+through the project-type `USES` assignment and via any Integration the
+project `EXISTS_IN` whose plugin declares an analysis capability.
 
-See [Authoring Plugins](index.md) for the manifest, context, credential
-resolution, and error conventions shared by every plugin.
+Surfaces: **ui, api**.
+
+See [Authoring Plugins](index.md) for the manifest, capabilities,
+context, credential decryption, and error conventions shared by every
+plugin.
 
 ## Contract
 
-`AnalysisPlugin` has a single abstract method:
+`AnalysisCapability` has a single abstract method, `analyze`:
 
 ```python
 from imbi_common.plugins import (
-    AnalysisPlugin,
+    AnalysisCapability,
     AnalysisResultItem,
     PluginContext,
-    PluginManifest,
 )
 
 
-class GitHubAnalysisPlugin(AnalysisPlugin):
-    manifest = PluginManifest(
-        slug='github-analysis',
-        name='GitHub Analysis',
-        plugin_type='analysis',
-    )
-
+class GitHubAnalysis(AnalysisCapability):
     async def analyze(
         self,
         ctx: PluginContext,
@@ -50,29 +46,28 @@ class GitHubAnalysisPlugin(AnalysisPlugin):
         ]
 ```
 
-Each `AnalysisResultItem` carries a stable per-plugin `slug` so the UI
-and any matching `analysis_result` scoring policy can refer to the
+Each `AnalysisResultItem` carries a stable per-capability `slug` so the
+UI and any matching `analysis_result` scoring policy can refer to the
 finding across runs. The `description` is rendered as Markdown in the
 Doctor panel.
 
 ## Remediating a finding
 
 A finding is *fixable* when `analyze` attaches a `RemediationOffer` to
-it. The Doctor panel renders a button labelled `offer.label`; clicking
-it asks the host to call the emitting plugin's `remediate` with the
+it. The Doctor panel renders a button labelled `offer.label`; clicking it
+asks the host to call the emitting capability's `remediate` with the
 offer's `id`. Implement `remediate` whenever you emit an offer:
 
 ```python
 from imbi_common.plugins import (
+    AnalysisResultItem,
     RemediationOffer,
     RemediationResult,
     ServiceWriteback,
 )
 
 
-class GitHubAnalysisPlugin(AnalysisPlugin):
-    ...
-
+class GitHubAnalysis(AnalysisCapability):
     async def analyze(self, ctx, credentials):
         return [
             AnalysisResultItem(
@@ -94,13 +89,13 @@ class GitHubAnalysisPlugin(AnalysisPlugin):
         # Re-verify before writing so the call is idempotent.
         conn = next(
             (c for c in ctx.service_connections
-             if c.service_slug == ctx.third_party_service_slug),
+             if c.integration_slug == ctx.integration_slug),
             None,
         )
         if conn and conn.identifier == str(repo['id']):
             return RemediationResult(status='noop', message='Already correct.')
-        # Plugins have no DB handle: effect the change via the write-back
-        # channel, exactly as lifecycle plugins do. The host persists it.
+        # Capabilities have no DB handle: effect the change via the
+        # write-back channel, exactly as lifecycle capabilities do.
         ctx.service_writeback = ServiceWriteback(
             identifier=str(repo['id']),
             canonical_url=f"{api_base}/repositories/{repo['id']}",
@@ -111,19 +106,19 @@ class GitHubAnalysisPlugin(AnalysisPlugin):
 `remediate` must re-verify the discrepancy and return a `noop`
 `RemediationResult` when the finding is already resolved, so a
 double-click — or the bulk "fix all" pass — is safe. The default
-implementation raises `PluginRemediationNotSupported`; only plugins
+implementation raises `PluginRemediationNotSupported`; only capabilities
 that emit offers need override it. Set `RemediationOffer.destructive`
 for fixes that create/remove an edge or delete a value (the UI then
 requires explicit confirmation).
 
 ## How findings reach the panel
 
-The host fans the call out across every applicable analysis plugin (via
-`asyncio.gather`), captures plugin exceptions as a synthetic
-`fail` result, and persists the merged report on
+The host fans the call out across every applicable analysis capability
+(via `asyncio.gather`), captures exceptions as a synthetic `fail`
+result, and persists the merged report on
 `(:Project)-[:HAS_ANALYSIS_REPORT]->(:AnalysisReport)
--[:HAS_RESULT]->(:AnalysisResult)`. Only the latest report is retained
-— re-running analysis replaces the previous one.
+-[:HAS_RESULT]->(:AnalysisResult)`. Only the latest report is retained —
+re-running analysis replaces the previous one.
 
 The `AnalysisReport.overall_status` is the worst observed result; the
 project page colour-codes the Doctor icon from it.
@@ -131,16 +126,19 @@ project page colour-codes the Doctor icon from it.
 ## Feeding the score
 
 A scoring policy of category `analysis_result` references an
-`AnalysisResult.slug` (the same slug your plugin emits) and maps its
+`AnalysisResult.slug` (the same slug your capability emits) and maps its
 `status` to a 0-100 score via `status_score_map`
 (defaults: `{'pass': 100, 'warn': 50, 'fail': 0}`). When the project's
 latest report contains a matching result the policy contributes to the
-Health & Compliance score; missing results contribute `None`, matching
-the convention every other category uses for missing data.
+Health & Compliance score; missing results contribute `None`.
 
-## Reference
+## Hints
 
-::: imbi_common.plugins.AnalysisPlugin
+- **`cacheable`** — the host may cache reads from this capability.
+
+## API reference
+
+::: imbi_common.plugins.AnalysisCapability
 
 ::: imbi_common.plugins.AnalysisResultItem
 

@@ -1,30 +1,31 @@
-# Deployment Plugins
+# Deployment Capability
 
-`DeploymentPlugin` is the abstract base for integrations that act on a
-deployable repository: enumerate refs and commits, compare them, cut
-tags and releases, and trigger CI workflow runs. Declare
-`plugin_type='deployment'` in the manifest. Deployment plugins are
-typically paired with an [identity plugin](identity.md) (set
-`requires_identity=True`) so deploy actions run as the human user rather
-than a shared service principal.
+`DeploymentCapability` is the contract base for a capability that acts on
+a deployable repository: enumerate refs and commits, compare them, cut
+tags and releases, and trigger CI workflow runs. Bind it with a
+`Capability(kind='deployment', handler=...)` in the plugin's manifest.
+Deployment is typically paired with an [identity](identity.md) capability
+(set `requires_identity=True`) so deploy actions run as the human user
+rather than a shared service principal.
 
-See [Authoring Plugins](index.md) for the manifest, context, credential
-resolution, and error conventions shared by every plugin.
+Surfaces: **ui, api**.
+
+See [Authoring Plugins](index.md) for the manifest, capabilities,
+context, credential decryption, and error conventions shared by every
+plugin.
 
 ```python
 from imbi_common.plugins import (
     CompareResult,
     Commit,
-    DeploymentPlugin,
+    DeploymentCapability,
     DeploymentRun,
     PluginContext,
     Ref,
 )
 
 
-class GitHubDeploymentPlugin(DeploymentPlugin):
-    manifest = manifest  # plugin_type='deployment'
-
+class GitHubDeployment(DeploymentCapability):
     async def list_refs(
         self,
         ctx: PluginContext,
@@ -107,8 +108,8 @@ implement only what the remote supports.
   dispatch edge.
 - **`list_recent_deployments`** — return the most recent deployments per
   environment for the resync flow that backfills `Release` nodes and
-  `DEPLOYED_TO` edges when webhook delivery has lapsed. Plugins that set
-  `manifest.supports_deployment_sync=True` **must** implement this; each
+  `DEPLOYED_TO` edges when webhook delivery has lapsed. Capabilities that
+  set the `supports_deployment_sync` hint **must** implement this; each
   returned `RemoteDeployment` must carry a stable `external_run_id` so
   the host can dedupe. Status values use the host's canonical
   `DeploymentEventStatus` vocabulary (`pending`, `in_progress`,
@@ -116,7 +117,13 @@ implement only what the remote supports.
   Imbi user, populate `creator` (the remote login, for display) and
   `creator_subject` (the remote's stable identity subject — e.g. the
   numeric GitHub user id); the host resolves the latter through the
-  service's identity plugins.
+  Integration's identity capability.
+
+## Hints
+
+- **`supports_deployment_sync`** — the capability implements
+  `list_recent_deployments` for the resync flow.
+- **`cacheable`** — the host may cache reads from this capability.
 
 ## Link write-back
 
@@ -128,7 +135,7 @@ self-heals the stored project link. See
 
 ## API reference
 
-::: imbi_common.plugins.DeploymentPlugin
+::: imbi_common.plugins.DeploymentCapability
 
 ::: imbi_common.plugins.Ref
 

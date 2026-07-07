@@ -1,28 +1,29 @@
-# Configuration Plugins
+# Configuration Capability
 
-`ConfigurationPlugin` is the abstract base for integrations that present
-a typed key/value store scoped to a project (feature flags, secrets,
-service settings). Declare `plugin_type='configuration'` in the
-manifest. All four methods receive a `PluginContext` (project identity +
-assignment options) and a `credentials` dict resolved from the linked
-service application.
+`ConfigurationCapability` is the contract base for a capability that
+presents a typed key/value store scoped to a project (feature flags,
+secrets, service settings). Bind it with a `Capability(kind='configuration',
+handler=...)` in the plugin's manifest. All four methods receive a
+`PluginContext` (project identity + resolved options) and the
+Integration's decrypted `credentials` dict.
 
-See [Authoring Plugins](index.md) for the manifest, context, credential
-resolution, and error conventions shared by every plugin.
+Surfaces: **ui, api**.
+
+See [Authoring Plugins](index.md) for the manifest, capabilities,
+context, credential decryption, and error conventions shared by every
+plugin.
 
 ```python
 from imbi_common.plugins import (
     ConfigKey,
     ConfigKeyWithValue,
-    ConfigurationPlugin,
+    ConfigurationCapability,
     ConfigValue,
     PluginContext,
 )
 
 
-class VaultPlugin(ConfigurationPlugin):
-    manifest = manifest  # plugin_type='configuration'
-
+class VaultConfiguration(ConfigurationCapability):
     async def list_keys(
         self,
         ctx: PluginContext,
@@ -78,9 +79,13 @@ should be redacted in UI and audit logs). Mark a
 type is one of the manifest's secret types; the host uses this to gate
 read access and to redact values.
 
+## Hints
+
+- **`cacheable`** — the host may cache reads from this capability.
+
 ## API reference
 
-::: imbi_common.plugins.ConfigurationPlugin
+::: imbi_common.plugins.ConfigurationCapability
 
 ::: imbi_common.plugins.ConfigKey
 

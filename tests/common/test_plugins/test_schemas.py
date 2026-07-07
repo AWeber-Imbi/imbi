@@ -3,6 +3,8 @@ import tempfile
 import unittest
 
 from imbi_common.plugins.base import (
+    Capability,
+    ConfigurationCapability,
     PluginEdgeLabel,
     PluginIndex,
     PluginManifest,
@@ -10,6 +12,18 @@ from imbi_common.plugins.base import (
 )
 from imbi_common.plugins.errors import PluginSchemaCollisionError
 from imbi_common.plugins.schemas import validate_no_collisions
+
+
+class _StubConfiguration(ConfigurationCapability):
+    async def list_keys(self, ctx, credentials):
+        return []
+
+    async def get_values(self, ctx, credentials, keys=None):
+        return []
+
+    async def set_value(self, ctx, credentials, key, value): ...
+
+    async def delete_key(self, ctx, credentials, key): ...
 
 
 def _make_manifest(
@@ -20,9 +34,15 @@ def _make_manifest(
     return PluginManifest(
         slug=slug,
         name=slug,
-        plugin_type='identity',
         vertex_labels=vlabels,
         edge_labels=elabels or [],
+        capabilities=[
+            Capability(
+                kind='configuration',
+                label='Configuration',
+                handler=_StubConfiguration,
+            )
+        ],
     )
 
 

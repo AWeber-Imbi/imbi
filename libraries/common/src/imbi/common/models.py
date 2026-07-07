@@ -32,12 +32,12 @@ __all__ = [
     'Event',
     'GraphModel',
     'IdentityConnection',
+    'Integration',
     'LinkDefinition',
     'MCPServer',
     'Node',
     'OperationLog',
     'Organization',
-    'Plugin',
     'Project',
     'ProjectRelationships',
     'ProjectType',
@@ -49,12 +49,10 @@ __all__ = [
     'ReleaseDeploymentEdge',
     'ReleaseLink',
     'Schema',
-    'ServiceApplication',
     'Tag',
     'TagFormat',
     'TagRecord',
     'Team',
-    'ThirdPartyService',
 ]
 
 Schema = schema_models.Schema
@@ -157,7 +155,7 @@ class Blueprint(Node):
             'ProjectType',
             'Project',
             'Organization',
-            'ThirdPartyService',
+            'Integration',
         ]
         | None
     ) = None
@@ -376,47 +374,49 @@ class ProjectType(Node):
         return self
 
 
-class ServiceApplication(GraphModel):
-    """A registered application for a ThirdPartyService.
+class Integration(Node):
+    """A configuration instance of a plugin.
 
-    ``encrypted_credentials`` stores per-credential Fernet-encrypted token
-    strings (see ``imbi_common.auth.encryption``). Plaintext credentials must
-    never be assigned to this field; callers are responsible for encrypting
-    values before persistence and decrypting on read.
+    An Integration is not a generic external-service record — it is one
+    configured instance of an installed plugin (identified by
+    :attr:`plugin`). One plugin (``github``) backs many Integrations
+    (``GitHub.com``, ``GHEC``), each with its own credentials, options,
+    and per-capability toggles.
 
+    ``encrypted_credentials`` is the ONLY credential store: a mapping of
+    credential field name to its Fernet-encrypted value (see
+    :mod:`imbi_common.auth.encryption`). Plaintext must never be assigned;
+    callers encrypt before persistence and decrypt on read via
+    :func:`imbi_common.plugins.credentials.decrypt_integration_credentials`.
     """
 
-    slug: str
-    name: str
-    encrypted_credentials: dict[str, str] = {}
-
-
-class ThirdPartyService(Node):
     organization: BelongsToOrganization
-
-
-class Plugin(GraphModel):
-    """A plugin instance linked to a ThirdPartyService."""
-
-    plugin_slug: str
-    label: str
-    options: dict[str, typing.Any] = {}
-    api_version: int = 1
-    login_capable: bool = False
-    used_as_login: bool = False
-    connects_users_to: str | None = None
-    service: typing.Annotated[
-        ThirdPartyService,
-        Edge(rel_type='HAS_PLUGIN', direction='INCOMING'),
-    ]
-    service_application: typing.Annotated[
-        ServiceApplication | None,
-        Edge(rel_type='USES_APPLICATION', direction='OUTGOING'),
+    team: typing.Annotated[
+        Team | None,
+        Edge(rel_type='MANAGED_BY', direction='OUTGOING'),
     ] = None
+    #: Slug of the installed plugin that backs this Integration.
+    plugin: str
+    #: Integration-level option values (host, flavor, region, …).
+    options: dict[str, typing.Any] = {}
+    #: Fernet-encrypted credential blob, keyed by credential field name.
+    encrypted_credentials: dict[str, str] = {}
+    #: Per-capability state keyed by ``CapabilityKind``:
+    #: ``{kind: {'enabled': bool, 'options': {…}}}``.
+    capabilities: dict[str, dict[str, typing.Any]] = {}
+    # Domain fields carried over from the v2 ThirdPartyService model.
+    vendor: str | None = None
+    service_url: str | None = None
+    category: str | None = None
+    status: typing.Literal[
+        'active', 'deprecated', 'evaluating', 'inactive'
+    ] = 'active'
+    links: dict[str, str] = {}
+    identifiers: dict[str, int | str] = {}
 
 
 class IdentityConnection(GraphModel):
-    """Per-user, per-Plugin identity connection.
+    """Per-user, per-Integration identity connection.
 
     Encrypted-token fields store the *ciphertext* (Fernet via
     :class:`imbi_common.auth.encryption.TokenEncryption`); decryption
@@ -424,7 +424,7 @@ class IdentityConnection(GraphModel):
     is one of ``'active' | 'revoked' | 'expired'``.
     """
 
-    plugin_id: str
+    integration_id: str
     user_id: str
     subject: str
     access_token_encrypted: str
@@ -976,7 +976,7 @@ class OperationLog(pydantic.BaseModel):
 
 
 class Event(pydantic.BaseModel):
-    """A third-party service event recorded in ClickHouse."""
+    """An Integration event recorded in ClickHouse."""
 
     id: str = pydantic.Field(default_factory=nanoid.generate)
     project_id: str
@@ -984,7 +984,7 @@ class Event(pydantic.BaseModel):
         default_factory=lambda: datetime.datetime.now(datetime.UTC),
     )
     type: str = ''
-    third_party_service: str
+    integration: str
     attributed_to: str = ''
     metadata: dict[str, typing.Any] = {}
     payload: dict[str, typing.Any] = {}

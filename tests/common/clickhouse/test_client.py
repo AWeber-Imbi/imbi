@@ -830,7 +830,7 @@ class EventsSchemaTestCase(unittest.TestCase):
             'project_id',
             'recorded_at',
             'type',
-            'third_party_service',
+            'integration',
             'attributed_to',
             'metadata',
             'payload',

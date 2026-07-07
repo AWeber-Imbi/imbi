@@ -194,6 +194,28 @@ class Embeddings(pydantic_settings.BaseSettings):
     )
 
 
+class Plugins(pydantic_settings.BaseSettings):
+    """Plugin discovery settings.
+
+    ``imbi_plugins`` (env ``IMBI_PLUGINS``) is an explicit list of dotted
+    import paths (``package.module:Attr``) for plugin packages that cannot
+    follow the ``imbi_plugin_*`` naming convention. The env var accepts a
+    comma-separated string; config files supply a list. The registry
+    unions it with the convention scan.
+    """
+
+    model_config = base_settings_config(env_prefix='')
+
+    imbi_plugins: typing.Annotated[list[str], pydantic_settings.NoDecode] = []
+
+    @pydantic.field_validator('imbi_plugins', mode='before')
+    @classmethod
+    def _split_paths(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [part.strip() for part in value.split(',') if part.strip()]
+        return value
+
+
 class Postgres(pydantic_settings.BaseSettings):
     """PostgreSQL connection settings."""
 
@@ -320,6 +342,7 @@ class Configuration(pydantic.BaseModel):
             'auth': Auth,
             'clickhouse': Clickhouse,
             'embeddings': Embeddings,
+            'plugins': Plugins,
             'postgres': Postgres,
             'releases': Releases,
             'ssl': SSL,
@@ -339,6 +362,9 @@ class Configuration(pydantic.BaseModel):
     )
     embeddings: Embeddings = pydantic.Field(
         default_factory=Embeddings,
+    )
+    plugins: Plugins = pydantic.Field(
+        default_factory=Plugins,
     )
     postgres: Postgres = pydantic.Field(
         default_factory=Postgres,

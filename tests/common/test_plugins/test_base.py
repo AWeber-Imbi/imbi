@@ -1,3 +1,5 @@
+"""Tests for imbi_common.plugins.base (Plugin Architecture v3)."""
+
 import datetime
 import unittest
 
@@ -5,28 +7,44 @@ import pydantic
 
 import imbi_common.plugins.base as plugin_base
 from imbi_common.plugins.base import (
+    CAPABILITY_CONTRACTS,
+    CAPABILITY_SURFACES,
+    HINT_ALLOWLIST,
+    ActionDescriptor,
+    AnalysisCapability,
+    AnalysisResultItem,
     AuthorizationRequest,
+    Capability,
     Commit,
+    CommitSyncCapability,
     CompareResult,
     ConfigKey,
     ConfigKeyWithValue,
-    DeploymentPlugin,
+    ConfigurationCapability,
+    ConfigValue,
+    CredentialField,
+    DeploymentCapability,
     DeploymentRun,
+    IdentityCapability,
     IdentityCredentials,
     IdentityProfile,
-    LifecyclePlugin,
+    IncidentResult,
+    IncidentsCapability,
+    LifecycleCapability,
     LifecycleResult,
     LinkWriteback,
     LogFilter,
     LogQuery,
+    LogsCapability,
     OpsLogTemplate,
+    Plugin,
     PluginContext,
     PluginEdgeLabel,
-    PluginIndex,
     PluginManifest,
     PluginOption,
     PluginVertexLabel,
     PollingDescriptor,
+    PullRequestSyncCapability,
     Ref,
     RefInfo,
     ReleaseInfo,
@@ -34,1253 +52,734 @@ from imbi_common.plugins.base import (
     RemoteDeployment,
     ServiceConnection,
     ServiceWriteback,
+    ToolDescriptor,
+    ToolsCapability,
+    WebhookActionsCapability,
     WorkflowFile,
 )
 from imbi_common.plugins.errors import PluginRemediationNotSupported
 
-
-class PluginManifestTestCase(unittest.TestCase):
-    def test_plugin_manifest_valid(self) -> None:
-        manifest = PluginManifest(
-            slug='test',
-            name='Test',
-            plugin_type='configuration',
-        )
-        self.assertEqual(manifest.slug, 'test')
-        self.assertEqual(manifest.name, 'Test')
-        self.assertEqual(manifest.plugin_type, 'configuration')
-        self.assertEqual(manifest.api_version, 1)
-        self.assertTrue(manifest.cacheable)
-        self.assertEqual(manifest.options, [])
-        self.assertEqual(manifest.credentials, [])
-        self.assertEqual(manifest.data_types, [])
-
-    def test_plugin_manifest_with_options(self) -> None:
-        option = PluginOption(name='key', label='Key', required=True)
-        manifest = PluginManifest(
-            slug='test',
-            name='Test',
-            plugin_type='configuration',
-            options=[option],
-        )
-        self.assertEqual(len(manifest.options), 1)
-        self.assertEqual(manifest.options[0].name, 'key')
-        self.assertEqual(manifest.options[0].label, 'Key')
-        self.assertTrue(manifest.options[0].required)
+# ---------------------------------------------------------------------------
+# Minimal concrete handlers for building manifests
+# ---------------------------------------------------------------------------
 
 
-class ConfigKeyTestCase(unittest.TestCase):
-    def test_config_key_no_value(self) -> None:
-        key = ConfigKey(key='MY_KEY', data_type='string')
-        self.assertEqual(key.key, 'MY_KEY')
-        self.assertEqual(key.data_type, 'string')
-        self.assertFalse(hasattr(key, 'value') and 'value' in key.model_fields)
-
-    def test_config_key_with_value(self) -> None:
-        key = ConfigKeyWithValue(
-            key='MY_KEY', data_type='string', value='hello'
-        )
-        self.assertEqual(key.key, 'MY_KEY')
-        self.assertEqual(key.value, 'hello')
-
-
-class LogQueryTestCase(unittest.TestCase):
-    def test_log_query_filters(self) -> None:
-        now = datetime.datetime.now(datetime.UTC)
-        later = now + datetime.timedelta(hours=1)
-        filt = LogFilter(field='level', op='eq', value='ERROR')
-        query = LogQuery(start_time=now, end_time=later, filters=[filt])
-        self.assertEqual(len(query.filters), 1)
-        self.assertEqual(query.filters[0].field, 'level')
-        self.assertEqual(query.filters[0].op, 'eq')
-        self.assertEqual(query.filters[0].value, 'ERROR')
-
-    def test_log_filter_ops(self) -> None:
-        now = datetime.datetime.now(datetime.UTC)
-        later = now + datetime.timedelta(hours=1)
-        for op in ('eq', 'ne', 'contains', 'starts_with', 'regex'):
-            filt = LogFilter(field='msg', op=op, value='test')  # type: ignore[arg-type]
-            query = LogQuery(start_time=now, end_time=later, filters=[filt])
-            self.assertEqual(query.filters[0].op, op)
-
-
-class IdentityModelsTestCase(unittest.TestCase):
-    def test_identity_profile_round_trip(self) -> None:
-        profile = IdentityProfile(
-            subject='user-123',
-            email='alice@example.com',
-            email_verified=True,
-            name='Alice',
-            groups=['admins'],
-            raw_claims={'sub': 'user-123'},
-        )
-        restored = IdentityProfile.model_validate(profile.model_dump())
-        self.assertEqual(restored.subject, 'user-123')
-        self.assertEqual(restored.email, 'alice@example.com')
-        self.assertTrue(restored.email_verified)
-        self.assertEqual(restored.groups, ['admins'])
-
-    def test_identity_credentials_redacted_repr(self) -> None:
-        credentials = IdentityCredentials(
-            access_token='very-secret',
-            refresh_token='refresh-secret',
-            extra={'aws_secret_access_key': 'keep-me-out'},
-        )
-        self.assertEqual(repr(credentials), '<IdentityCredentials redacted>')
-        self.assertEqual(str(credentials), '<IdentityCredentials redacted>')
-        self.assertNotIn('very-secret', repr(credentials))
-        self.assertNotIn('refresh-secret', str(credentials))
-
-    def test_authorization_request_polling(self) -> None:
-        polling = PollingDescriptor(
-            user_code='ABCD-1234',
-            verification_uri='https://device.sso.example.com',
-            interval=5,
-            expires_in=600,
-        )
-        request = AuthorizationRequest(
-            authorization_url='https://device.sso.example.com',
-            state='state-token',
-            polling=polling,
-        )
-        self.assertEqual(request.polling, polling)
-
-    def test_plugin_context_identity_optional(self) -> None:
-        ctx = PluginContext(
-            project_id='p-1',
-            project_slug='proj',
-            org_slug='org',
-        )
-        self.assertIsNone(ctx.identity)
-        self.assertIsNone(ctx.actor_user_id)
-
-
-class IdentityPluginManifestTestCase(unittest.TestCase):
-    def test_identity_plugin_manifest(self) -> None:
-        manifest = PluginManifest(
-            slug='oidc',
-            name='OIDC',
-            plugin_type='identity',
-            auth_type='oidc',
-            login_capable=True,
-            requires_identity=False,
-            default_scopes=['openid', 'profile'],
-        )
-        self.assertEqual(manifest.plugin_type, 'identity')
-        self.assertEqual(manifest.auth_type, 'oidc')
-        self.assertTrue(manifest.login_capable)
-        self.assertEqual(manifest.default_scopes, ['openid', 'profile'])
-
-    def test_plugin_vertex_label_round_trip(self) -> None:
-        vlabel = PluginVertexLabel(
-            name='AwsAccount',
-            indexes=[
-                PluginIndex(fields=['account_id'], unique=True),
-                PluginIndex(fields=['name']),
-            ],
-            model_ref='imbi_plugin_aws.models:AwsAccount',
-        )
-        restored = PluginVertexLabel.model_validate(vlabel.model_dump())
-        self.assertEqual(restored.name, 'AwsAccount')
-        self.assertEqual(len(restored.indexes), 2)
-        self.assertTrue(restored.indexes[0].unique)
-        self.assertFalse(restored.indexes[1].unique)
-        self.assertEqual(
-            restored.model_ref, 'imbi_plugin_aws.models:AwsAccount'
-        )
-
-    def test_plugin_edge_label_round_trip(self) -> None:
-        edge = PluginEdgeLabel(
-            name='MAPS_TO',
-            from_labels=['Environment', 'Project'],
-            to_labels=['AwsAccount'],
-        )
-        self.assertEqual(edge.name, 'MAPS_TO')
-        self.assertEqual(edge.to_labels, ['AwsAccount'])
-
-
-class DeploymentModelsTestCase(unittest.TestCase):
-    def test_ref_round_trip(self) -> None:
-        ref = Ref(
-            name='main',
-            kind='default',
-            sha='1a2b3c4',
-            is_default=True,
-            ahead=0,
-            behind=0,
-        )
-        restored = Ref.model_validate(ref.model_dump())
-        self.assertEqual(restored.name, 'main')
-        self.assertEqual(restored.kind, 'default')
-        self.assertTrue(restored.is_default)
-
-    def test_commit_defaults(self) -> None:
-        commit = Commit(
-            sha='abcdef0123456789',
-            short_sha='abcdef0',
-            message='Fix bug',
-        )
-        self.assertEqual(commit.ci_status, 'unknown')
-        self.assertFalse(commit.is_head)
-        self.assertIsNone(commit.author)
-
-    def test_compare_result_aggregates(self) -> None:
-        commit = Commit(sha='abc', short_sha='abc', message='one')
-        result = CompareResult(
-            base_sha='base',
-            head_sha='head',
-            ahead=1,
-            behind=0,
-            commits=[commit],
-            files_changed=2,
-            additions=10,
-            deletions=3,
-        )
-        restored = CompareResult.model_validate(result.model_dump())
-        self.assertEqual(len(restored.commits), 1)
-        self.assertEqual(restored.commits[0].sha, 'abc')
-        self.assertEqual(restored.additions, 10)
-
-    def test_release_info_round_trip(self) -> None:
-        release = ReleaseInfo(
-            id='123',
-            tag='v6.4.0',
-            name='v6.4.0',
-            url='https://api.github.com/repos/o/r/releases/123',
-            html_url='https://github.com/o/r/releases/tag/v6.4.0',
-            prerelease=False,
-        )
-        restored = ReleaseInfo.model_validate(release.model_dump())
-        self.assertEqual(restored.tag, 'v6.4.0')
-        self.assertFalse(restored.prerelease)
-
-    def test_ref_info_round_trip(self) -> None:
-        info = RefInfo(name='refs/tags/v6.4.0', sha='abc')
-        self.assertEqual(info.name, 'refs/tags/v6.4.0')
-        self.assertEqual(info.sha, 'abc')
-
-    def test_deployment_run_default_status(self) -> None:
-        run = DeploymentRun(run_id='42')
-        self.assertEqual(run.status, 'queued')
-        self.assertIsNone(run.completed_at)
-
-    def test_workflow_file_round_trip(self) -> None:
-        wf = WorkflowFile(
-            id='12345',
-            path='.github/workflows/python-api-deploy.yml',
-            name='python-api deploy',
-        )
-        restored = WorkflowFile.model_validate(wf.model_dump())
-        self.assertEqual(
-            restored.path, '.github/workflows/python-api-deploy.yml'
-        )
-        self.assertEqual(restored.state, 'active')
-
-
-class DeploymentManifestTestCase(unittest.TestCase):
-    def test_deployment_plugin_type_accepted(self) -> None:
-        manifest = PluginManifest(
-            slug='gh-deploy',
-            name='GitHub Deployment',
-            plugin_type='deployment',
-            options=[
-                PluginOption(name='workflow', label='Workflow file'),
-            ],
-        )
-        self.assertEqual(manifest.plugin_type, 'deployment')
-        self.assertEqual(manifest.options[0].name, 'workflow')
-
-
-class _StubDeploymentPlugin(DeploymentPlugin):
-    """Minimal subclass used to exercise default optional methods."""
-
-    manifest = PluginManifest(
-        slug='stub-deploy',
-        name='Stub Deployment',
-        plugin_type='deployment',
-    )
-
-    async def list_refs(  # type: ignore[override]
-        self, ctx, credentials, kind='all', query=None
-    ):
+class StubConfiguration(ConfigurationCapability):
+    async def list_keys(self, ctx, credentials):
         return []
 
-    async def list_commits(  # type: ignore[override]
-        self, ctx, credentials, ref, limit=25
-    ):
+    async def get_values(self, ctx, credentials, keys=None):
         return []
 
-    async def resolve_committish(  # type: ignore[override]
-        self, ctx, credentials, committish
-    ):
+    async def set_value(self, ctx, credentials, key, value):
+        return ConfigKey(key=key, data_type='string')
+
+    async def delete_key(self, ctx, credentials, key):
+        return None
+
+
+class StubLogs(LogsCapability):
+    async def search(self, ctx, credentials, query):
+        return plugin_base.LogResult(entries=[])
+
+    async def schema(self, ctx, credentials):
+        return []
+
+
+class StubDeployment(DeploymentCapability):
+    async def list_refs(self, ctx, credentials, kind='all', query=None):
+        return []
+
+    async def list_commits(self, ctx, credentials, ref, limit=25):
+        return []
+
+    async def resolve_committish(self, ctx, credentials, committish):
         return Commit(sha='x', short_sha='x', message='')
 
-    async def compare(  # type: ignore[override]
-        self, ctx, credentials, base, head
-    ):
+    async def compare(self, ctx, credentials, base, head):
         return CompareResult(base_sha=base, head_sha=head, ahead=0, behind=0)
 
-    async def trigger_deployment(  # type: ignore[override]
+    async def trigger_deployment(
         self, ctx, credentials, ref_or_sha, inputs=None
     ):
         return DeploymentRun(run_id='1')
 
-    async def get_deployment_status(  # type: ignore[override]
-        self, ctx, credentials, run_id
-    ):
-        return DeploymentRun(run_id=run_id, status='in_progress')
+    async def get_deployment_status(self, ctx, credentials, run_id):
+        return DeploymentRun(run_id=run_id)
 
 
-class DeploymentPluginDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
-    async def test_create_tag_default_raises(self) -> None:
-        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
-        plugin = _StubDeploymentPlugin()
-        with self.assertRaises(NotImplementedError):
-            await plugin.create_tag(ctx, {}, 'sha', 'v1.0.0', 'msg')
-
-    async def test_create_release_default_raises(self) -> None:
-        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
-        plugin = _StubDeploymentPlugin()
-        with self.assertRaises(NotImplementedError):
-            await plugin.create_release(ctx, {}, 'v1.0.0', 'v1.0.0', '')
-
-    async def test_get_check_status_default_returns_unknown(self) -> None:
-        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
-        plugin = _StubDeploymentPlugin()
-        status = await plugin.get_check_status(ctx, {}, 'v1.0.0')
-        self.assertEqual(status, 'unknown')
-
-    async def test_list_workflows_default_raises(self) -> None:
-        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
-        plugin = _StubDeploymentPlugin()
-        with self.assertRaises(NotImplementedError):
-            await plugin.list_workflows(ctx, {})
-
-    async def test_list_recent_deployments_default_raises(self) -> None:
-        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
-        plugin = _StubDeploymentPlugin()
-        with self.assertRaises(NotImplementedError):
-            await plugin.list_recent_deployments(ctx, {}, ['production'])
-
-
-class ManifestDeploymentSyncFlagTestCase(unittest.TestCase):
-    def test_supports_deployment_sync_defaults_false(self) -> None:
-        manifest = PluginManifest(
-            slug='gh-deploy',
-            name='GitHub Deployment',
-            plugin_type='deployment',
-        )
-        self.assertFalse(manifest.supports_deployment_sync)
-
-    def test_supports_deployment_sync_round_trip(self) -> None:
-        manifest = PluginManifest(
-            slug='gh-deploy',
-            name='GitHub Deployment',
-            plugin_type='deployment',
-            supports_deployment_sync=True,
-        )
-        restored = PluginManifest.model_validate(manifest.model_dump())
-        self.assertTrue(restored.supports_deployment_sync)
-
-
-class ManifestOpsLogTemplatesTestCase(unittest.TestCase):
-    def test_ops_log_templates_defaults_empty(self) -> None:
-        manifest = PluginManifest(
-            slug='gh-deploy',
-            name='GitHub Deployment',
-            plugin_type='deployment',
-        )
-        self.assertEqual(manifest.ops_log_templates, {})
-
-    def test_ops_log_templates_round_trip(self) -> None:
-        manifest = PluginManifest(
-            slug='gh-deploy',
-            name='GitHub Deployment',
-            plugin_type='deployment',
-            ops_log_templates={
-                'deploy': OpsLogTemplate(
-                    label='{{performer}} deployed {{version}}',
-                    summary='Deploy event',
-                )
-            },
-        )
-        restored = PluginManifest.model_validate(manifest.model_dump())
-        self.assertEqual(
-            restored.ops_log_templates['deploy'].label,
-            '{{performer}} deployed {{version}}',
-        )
-        self.assertEqual(
-            restored.ops_log_templates['deploy'].summary,
-            'Deploy event',
-        )
-
-
-class RemoteDeploymentTestCase(unittest.TestCase):
-    def test_round_trip(self) -> None:
-        observed = RemoteDeployment(
-            environment='production',
-            sha='abc1234deadbeef',
-            ref='v1.0.0',
-            status='success',
-            created_at=datetime.datetime(
-                2026, 5, 13, 14, 0, tzinfo=datetime.UTC
-            ),
-            external_run_id='123456789',
-            run_url='https://github.com/o/r/actions/runs/42',
-            deployment_url='https://github.com/o/r/deployments/123456789',
-            description='Bump foo to 1.2.3',
-        )
-        restored = RemoteDeployment.model_validate(observed.model_dump())
-        self.assertEqual(restored.external_run_id, '123456789')
-        self.assertEqual(restored.status, 'success')
-        self.assertEqual(restored.environment, 'production')
-
-    def test_minimal_fields(self) -> None:
-        observed = RemoteDeployment(
-            environment='staging',
-            sha='abc1234',
-            status='in_progress',
-            created_at=datetime.datetime(
-                2026, 5, 13, 14, 0, tzinfo=datetime.UTC
-            ),
-            external_run_id='99',
-        )
-        self.assertIsNone(observed.ref)
-        self.assertIsNone(observed.run_url)
-
-
-class LifecycleManifestTestCase(unittest.TestCase):
-    def test_lifecycle_plugin_type_accepted(self) -> None:
-        manifest = PluginManifest(
-            slug='gh-lifecycle',
-            name='GitHub Lifecycle',
-            plugin_type='lifecycle',
-            options=[
-                PluginOption(name='archive_target_org', label='Target org'),
-            ],
-        )
-        self.assertEqual(manifest.plugin_type, 'lifecycle')
-        self.assertEqual(manifest.options[0].name, 'archive_target_org')
-
-
-class LifecycleResultTestCase(unittest.TestCase):
-    def test_lifecycle_result_round_trip(self) -> None:
-        result = LifecycleResult(
-            status='ok',
-            message='archived',
-            artifacts={'repo_url': 'https://github.com/o/r'},
-        )
-        restored = LifecycleResult.model_validate(result.model_dump())
-        self.assertEqual(restored.status, 'ok')
-        self.assertEqual(restored.message, 'archived')
-        self.assertEqual(
-            restored.artifacts['repo_url'], 'https://github.com/o/r'
-        )
-
-    def test_lifecycle_result_defaults(self) -> None:
-        result = LifecycleResult(status='skipped')
-        self.assertIsNone(result.message)
-        self.assertEqual(result.artifacts, {})
-
-
-class _StubLifecyclePlugin(LifecyclePlugin):
-    manifest = PluginManifest(
-        slug='stub-lifecycle',
-        name='Stub Lifecycle',
-        plugin_type='lifecycle',
-    )
-
-    async def on_project_archived(  # type: ignore[override]
-        self, ctx, credentials
-    ):
+class StubLifecycle(LifecycleCapability):
+    async def on_project_archived(self, ctx, credentials):
         return LifecycleResult(status='ok')
 
 
-class LifecyclePluginDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
-    async def test_on_project_unarchived_default_raises(self) -> None:
-        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
-        plugin = _StubLifecyclePlugin()
-        with self.assertRaises(NotImplementedError):
-            await plugin.on_project_unarchived(ctx, {})
+class StubIdentity(IdentityCapability):
+    async def authorization_request(
+        self, ctx, credentials, redirect_uri, scopes=None
+    ):
+        return AuthorizationRequest(authorization_url='https://x', state='s')
 
-    async def test_on_project_archived_returns_result(self) -> None:
-        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
-        plugin = _StubLifecyclePlugin()
-        result = await plugin.on_project_archived(ctx, {})
-        self.assertEqual(result.status, 'ok')
-
-
-class PluginContextEnvironmentConfigTestCase(unittest.TestCase):
-    def test_environment_config_defaults_empty(self) -> None:
-        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
-        self.assertEqual(ctx.environment_config, {})
-
-    def test_environment_config_round_trip(self) -> None:
-        ctx = PluginContext(
-            project_id='p',
-            project_slug='p',
-            org_slug='o',
-            environment='production',
-            environment_config={
-                'action': 'dispatch',
-                'workflow': 'python-api-deploy.yml',
-                'inputs': {'foo': 'bar'},
-            },
+    async def exchange_code(
+        self, ctx, credentials, code, redirect_uri, code_verifier=None
+    ):
+        return (
+            IdentityProfile(subject='s'),
+            IdentityCredentials(access_token='t'),
         )
-        restored = PluginContext.model_validate(ctx.model_dump())
-        self.assertEqual(restored.environment_config['action'], 'dispatch')
-        self.assertEqual(restored.environment_config['inputs'], {'foo': 'bar'})
+
+    async def refresh(self, ctx, credentials, refresh_token):
+        return IdentityCredentials(access_token='t')
 
 
-class LinkWritebackTestCase(unittest.TestCase):
-    def test_writeback_defaults_none_on_context(self) -> None:
-        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
-        self.assertIsNone(ctx.link_writeback)
+class StubAnalysis(AnalysisCapability):
+    async def analyze(self, ctx, credentials):
+        return []
 
-    def test_writeback_round_trip(self) -> None:
-        ctx = PluginContext(
-            project_id='p',
-            project_slug='p',
-            org_slug='o',
-            link_writeback=LinkWriteback(
-                link_key='github-repository',
-                new_url='https://github.com/octo/new-name',
-                old_owner_repo='octo/old-name',
-                new_owner_repo='octo/new-name',
-            ),
+
+class StubIncidents(IncidentsCapability):
+    async def list_incidents(
+        self,
+        ctx,
+        credentials,
+        *,
+        start_time,
+        end_time,
+        statuses=None,
+        cursor=None,
+        limit=100,
+    ):
+        return IncidentResult()
+
+
+async def _sample_action(
+    *, ctx, credentials, external_identifier, action_config, event
+):
+    del ctx, credentials, external_identifier, action_config, event
+
+
+class _SampleConfig(pydantic.BaseModel):
+    pass
+
+
+class StubWebhookActions(WebhookActionsCapability):
+    @classmethod
+    def actions(cls):
+        return [
+            ActionDescriptor(
+                name='do_thing',
+                label='Do Thing',
+                callable=_sample_action,  # type: ignore[arg-type]
+                config_model=_SampleConfig,  # type: ignore[arg-type]
+            )
+        ]
+
+
+class StubCommitSync(CommitSyncCapability):
+    async def sync_all_history(self, *, ctx, credentials):
+        return (0, 0)
+
+
+class StubPRSync(PullRequestSyncCapability):
+    async def sync_all_history(self, *, ctx, credentials):
+        return 0
+
+
+class StubTools(ToolsCapability):
+    @classmethod
+    def tools(cls):
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Capability
+# ---------------------------------------------------------------------------
+
+
+class CapabilityTestCase(unittest.TestCase):
+    def test_valid_capability(self) -> None:
+        cap = Capability(
+            kind='configuration',
+            label='Config',
+            handler=StubConfiguration,
         )
-        restored = PluginContext.model_validate(ctx.model_dump())
-        wb = restored.link_writeback
-        assert wb is not None
-        self.assertEqual(wb.link_key, 'github-repository')
-        self.assertEqual(wb.new_url, 'https://github.com/octo/new-name')
-        self.assertEqual(wb.old_owner_repo, 'octo/old-name')
-        self.assertEqual(wb.new_owner_repo, 'octo/new-name')
+        self.assertEqual(cap.kind, 'configuration')
+        self.assertTrue(cap.default_enabled)
+        self.assertTrue(cap.project_scoped)
+        self.assertFalse(cap.requires_identity)
+        self.assertIsNone(cap.ui_module)
 
-    def test_writeback_optional_fields_default_none(self) -> None:
-        wb = LinkWriteback(
-            link_key='github-repository',
-            new_url='https://github.com/octo/new-name',
+    def test_surfaces_property(self) -> None:
+        cap = Capability(kind='deployment', label='D', handler=StubDeployment)
+        self.assertEqual(cap.surfaces, frozenset({'ui', 'api'}))
+
+    def test_handler_excluded_from_serialization(self) -> None:
+        cap = Capability(
+            kind='configuration', label='C', handler=StubConfiguration
         )
-        self.assertIsNone(wb.old_owner_repo)
-        self.assertIsNone(wb.new_owner_repo)
+        dumped = cap.model_dump()
+        self.assertNotIn('handler', dumped)
+        self.assertNotIn('handler', cap.model_dump_json())
+
+    def test_handler_kind_mismatch_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            Capability(kind='logs', label='L', handler=StubConfiguration)
+
+    def test_handler_not_a_class_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            Capability(
+                kind='configuration',
+                label='C',
+                handler=object(),  # type: ignore[arg-type]
+            )
+
+    def test_unknown_hint_key_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            Capability(
+                kind='configuration',
+                label='C',
+                handler=StubConfiguration,
+                hints={'bogus': 1},
+            )
+
+    def test_kind_specific_hint_allowed(self) -> None:
+        cap = Capability(
+            kind='logs',
+            label='L',
+            handler=StubLogs,
+            hints={'supports_histogram': True, 'cacheable': False},
+        )
+        self.assertTrue(cap.hints['supports_histogram'])
+
+    def test_kind_specific_hint_rejected_for_wrong_kind(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            Capability(
+                kind='configuration',
+                label='C',
+                handler=StubConfiguration,
+                hints={'supports_histogram': True},
+            )
+
+    def test_cacheable_allowed_everywhere(self) -> None:
+        cap = Capability(
+            kind='incidents',
+            label='I',
+            handler=StubIncidents,
+            hints={'cacheable': False},
+        )
+        self.assertFalse(cap.hints['cacheable'])
+
+
+class CapabilityEnumTestCase(unittest.TestCase):
+    def test_surfaces_map_covers_every_contract(self) -> None:
+        self.assertEqual(set(CAPABILITY_SURFACES), set(CAPABILITY_CONTRACTS))
+
+    def test_hint_allowlist_covers_every_kind(self) -> None:
+        self.assertEqual(set(HINT_ALLOWLIST), set(CAPABILITY_CONTRACTS))
+
+    def test_every_contract_subclasses_handler(self) -> None:
+        for contract in CAPABILITY_CONTRACTS.values():
+            self.assertTrue(
+                issubclass(contract, plugin_base.CapabilityHandler)
+            )
+
+
+# ---------------------------------------------------------------------------
+# PluginManifest + Plugin
+# ---------------------------------------------------------------------------
+
+
+class PluginManifestTestCase(unittest.TestCase):
+    def _cap(self, kind='configuration', handler=StubConfiguration):
+        return Capability(kind=kind, label=kind, handler=handler)
+
+    def test_valid_manifest(self) -> None:
+        manifest = PluginManifest(
+            slug='github',
+            name='GitHub',
+            capabilities=[self._cap()],
+        )
+        self.assertEqual(manifest.api_version, 2)
+        self.assertEqual(manifest.auth_type, 'api_token')
+
+    def test_empty_capabilities_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            PluginManifest(slug='x', name='X', capabilities=[])
+
+    def test_duplicate_capability_kinds_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            PluginManifest(
+                slug='x',
+                name='X',
+                capabilities=[self._cap(), self._cap()],
+            )
+
+    def test_get_capability(self) -> None:
+        manifest = PluginManifest(
+            slug='x',
+            name='X',
+            capabilities=[
+                self._cap(),
+                self._cap('logs', StubLogs),
+            ],
+        )
+        self.assertEqual(manifest.get_capability('logs').kind, 'logs')
+        self.assertIsNone(manifest.get_capability('deployment'))
+
+    def test_handler_excluded_from_manifest_dump(self) -> None:
+        manifest = PluginManifest(
+            slug='x', name='X', capabilities=[self._cap()]
+        )
+        dumped = manifest.model_dump()
+        self.assertNotIn('handler', dumped['capabilities'][0])
+
+    def test_manifest_carries_credentials_once(self) -> None:
+        manifest = PluginManifest(
+            slug='x',
+            name='X',
+            credentials=[CredentialField(name='token', label='Token')],
+            capabilities=[self._cap()],
+        )
+        self.assertEqual(manifest.credentials[0].name, 'token')
+
+
+class PluginTestCase(unittest.TestCase):
+    def test_plugin_manifest_classvar(self) -> None:
+        manifest = PluginManifest(
+            slug='x',
+            name='X',
+            capabilities=[
+                Capability(
+                    kind='configuration',
+                    label='C',
+                    handler=StubConfiguration,
+                )
+            ],
+        )
+
+        class MyPlugin(Plugin):
+            pass
+
+        MyPlugin.manifest = manifest
+        self.assertIs(MyPlugin.manifest, manifest)
+
+
+# ---------------------------------------------------------------------------
+# PluginContext + writeback / connection models
+# ---------------------------------------------------------------------------
+
+
+class PluginContextTestCase(unittest.TestCase):
+    def _ctx(self, **kw) -> PluginContext:
+        base = {'project_id': 'p', 'project_slug': 's', 'org_slug': 'o'}
+        base.update(kw)
+        return PluginContext(**base)
+
+    def test_defaults(self) -> None:
+        ctx = self._ctx()
+        self.assertEqual(ctx.integration_options, {})
+        self.assertEqual(ctx.capability_options, {})
+        self.assertEqual(ctx.assignment_options, {})
+        self.assertIsNone(ctx.integration_slug)
+        self.assertEqual(ctx.service_connections, [])
+        self.assertIsNone(ctx.service_writeback)
+
+    def test_integration_fields_round_trip(self) -> None:
+        ctx = self._ctx(
+            integration_slug='github-dot-com',
+            integration_options={'host': 'github.com'},
+            capability_options={'branch': 'main'},
+        )
+        restored = PluginContext.model_validate_json(ctx.model_dump_json())
+        self.assertEqual(restored.integration_slug, 'github-dot-com')
+        self.assertEqual(restored.integration_options['host'], 'github.com')
+        self.assertEqual(restored.capability_options['branch'], 'main')
+
+    def test_no_service_plugins_field(self) -> None:
+        self.assertNotIn('service_plugins', PluginContext.model_fields)
+        self.assertNotIn(
+            'third_party_service_slug', PluginContext.model_fields
+        )
+
+    def test_resolver_excluded_from_dump(self) -> None:
+        async def _resolver(subject):
+            return None
+
+        ctx = self._ctx(resolve_user_by_identity=_resolver)
+        self.assertNotIn('resolve_user_by_identity', ctx.model_dump())
+
+
+class ServiceConnectionTestCase(unittest.TestCase):
+    def test_integration_slug_field(self) -> None:
+        conn = ServiceConnection(integration_slug='gh', identifier='42')
+        self.assertEqual(conn.integration_slug, 'gh')
+        self.assertIsNone(conn.canonical_url)
+
+    def test_no_service_slug_field(self) -> None:
+        self.assertNotIn('service_slug', ServiceConnection.model_fields)
 
 
 class ServiceWritebackTestCase(unittest.TestCase):
-    def test_service_fields_default_unset(self) -> None:
-        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
-        self.assertIsNone(ctx.service_writeback)
-        self.assertIsNone(ctx.third_party_service_slug)
-        self.assertEqual(ctx.service_connections, [])
+    def test_round_trip(self) -> None:
+        wb = ServiceWriteback(
+            identifier='42',
+            canonical_url='https://api/repositories/42',
+            dashboard_links={'github': 'https://x'},
+            webhook_secret_enc='enc',
+        )
+        restored = ServiceWriteback.model_validate_json(wb.model_dump_json())
+        self.assertEqual(restored.identifier, '42')
+        self.assertFalse(restored.remove)
 
-    def test_service_writeback_round_trip(self) -> None:
-        ctx = PluginContext(
-            project_id='p',
-            project_slug='p',
-            org_slug='o',
-            third_party_service_slug='github-enterprise-cloud',
-            service_writeback=ServiceWriteback(
-                identifier='134741',
-                canonical_url='https://api.aweber.ghe.com/repositories/134741',
-                dashboard_links={
-                    'github-enterprise-cloud': 'https://aweber.ghe.com/o/r'
-                },
-            ),
-            service_connections=[
-                ServiceConnection(
-                    service_slug='sonarqube',
-                    identifier='conv:account',
-                    canonical_url='https://sonarqube.aweber.io/api/x',
-                ),
-            ],
-        )
-        restored = PluginContext.model_validate(ctx.model_dump())
-        self.assertEqual(
-            restored.third_party_service_slug, 'github-enterprise-cloud'
-        )
-        wb = restored.service_writeback
-        assert wb is not None
-        self.assertEqual(wb.identifier, '134741')
-        self.assertEqual(
-            wb.canonical_url,
-            'https://api.aweber.ghe.com/repositories/134741',
-        )
-        self.assertEqual(
-            wb.dashboard_links,
-            {'github-enterprise-cloud': 'https://aweber.ghe.com/o/r'},
-        )
-        self.assertFalse(wb.remove)
-        self.assertEqual(len(restored.service_connections), 1)
-        self.assertEqual(
-            restored.service_connections[0].service_slug, 'sonarqube'
-        )
-        self.assertEqual(
-            restored.service_connections[0].identifier, 'conv:account'
-        )
-
-    def test_service_writeback_defaults(self) -> None:
-        wb = ServiceWriteback(identifier='1', canonical_url='https://x/1')
+    def test_defaults(self) -> None:
+        wb = ServiceWriteback(identifier='1', canonical_url='https://x')
         self.assertEqual(wb.dashboard_links, {})
         self.assertIsNone(wb.webhook_secret_enc)
-        self.assertFalse(wb.remove)
-
-    def test_service_writeback_webhook_secret_round_trip(self) -> None:
-        wb = ServiceWriteback(
-            identifier='1',
-            canonical_url='https://x/1',
-            webhook_secret_enc='gAAAAAB-ciphertext',
-        )
-        restored = ServiceWriteback.model_validate(wb.model_dump())
-        self.assertEqual(restored.webhook_secret_enc, 'gAAAAAB-ciphertext')
-
-    def test_service_connection_canonical_url_optional(self) -> None:
-        conn = ServiceConnection(service_slug='github', identifier='1')
-        self.assertIsNone(conn.canonical_url)
 
 
-class PluginContextLifecycleFieldsTestCase(unittest.TestCase):
-    def test_lifecycle_fields_default_unset(self) -> None:
-        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
-        self.assertIsNone(ctx.previous_project_slug)
-        self.assertEqual(ctx.previous_project_type_slugs, [])
-        self.assertIsNone(ctx.previous_team_slug)
-        self.assertIsNone(ctx.project_name)
-        self.assertIsNone(ctx.project_description)
-        self.assertIsNone(ctx.project_ui_url)
-
-    def test_lifecycle_fields_round_trip(self) -> None:
-        ctx = PluginContext(
-            project_id='p',
-            project_slug='new-slug',
-            org_slug='o',
-            team_slug='platform',
-            previous_project_slug='old-slug',
-            previous_project_type_slugs=['api'],
-            previous_team_slug='legacy',
-            project_type_slugs=['library'],
-            project_name='Billing Service',
-            project_description='Handles invoices.',
-            project_ui_url='https://imbi.example/orgs/o/projects/p',
-        )
-        restored = PluginContext.model_validate(ctx.model_dump())
-        self.assertEqual(restored.previous_project_slug, 'old-slug')
-        self.assertEqual(restored.previous_project_type_slugs, ['api'])
-        self.assertEqual(restored.previous_team_slug, 'legacy')
-        self.assertEqual(restored.team_slug, 'platform')
-        self.assertEqual(restored.project_type_slugs, ['library'])
-        self.assertEqual(restored.project_name, 'Billing Service')
-        self.assertEqual(restored.project_description, 'Handles invoices.')
-        self.assertEqual(
-            restored.project_ui_url,
-            'https://imbi.example/orgs/o/projects/p',
-        )
+class LinkWritebackTestCase(unittest.TestCase):
+    def test_round_trip(self) -> None:
+        wb = LinkWriteback(link_key='github-repository', new_url='https://x')
+        self.assertEqual(wb.link_key, 'github-repository')
+        self.assertIsNone(wb.old_owner_repo)
 
 
-class PluginManifestLifecycleEventsTestCase(unittest.TestCase):
-    def test_default_preserves_pre_2_8_behavior(self) -> None:
-        manifest = PluginManifest(
-            slug='lc',
-            name='Lifecycle',
-            plugin_type='lifecycle',
-        )
-        self.assertEqual(manifest.lifecycle_events, ['archived', 'unarchived'])
-
-    def test_explicit_events_round_trip(self) -> None:
-        manifest = PluginManifest(
-            slug='lc',
-            name='Lifecycle',
-            plugin_type='lifecycle',
-            lifecycle_events=[
-                'created',
-                'updated',
-                'archived',
-                'unarchived',
-                'deleted',
-                'relocated',
-            ],
-        )
-        restored = PluginManifest.model_validate(manifest.model_dump())
-        self.assertEqual(
-            restored.lifecycle_events,
-            [
-                'created',
-                'updated',
-                'archived',
-                'unarchived',
-                'deleted',
-                'relocated',
-            ],
-        )
-
-    def test_unknown_event_rejected(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            PluginManifest(
-                slug='lc',
-                name='Lifecycle',
-                plugin_type='lifecycle',
-                lifecycle_events=['transmuted'],  # type: ignore[list-item]
-            )
+# ---------------------------------------------------------------------------
+# Data models
+# ---------------------------------------------------------------------------
 
 
 class PluginOptionMappingTestCase(unittest.TestCase):
     def test_mapping_default_dict(self) -> None:
-        option = PluginOption(
-            name='org_mapping',
-            label='Org mapping',
-            type='mapping',
-            default={'api': 'org-a', 'library': 'org-b'},
+        opt = PluginOption(
+            name='m', label='M', type='mapping', default={'a': 'b'}
         )
-        self.assertEqual(option.default, {'api': 'org-a', 'library': 'org-b'})
-
-    def test_mapping_default_none(self) -> None:
-        option = PluginOption(
-            name='org_mapping',
-            label='Org mapping',
-            type='mapping',
-        )
-        self.assertIsNone(option.default)
+        self.assertEqual(opt.default, {'a': 'b'})
 
     def test_mapping_rejects_choices(self) -> None:
         with self.assertRaises(pydantic.ValidationError):
-            PluginOption(
-                name='org_mapping',
-                label='Org mapping',
-                type='mapping',
-                choices=['api', 'library'],
-            )
+            PluginOption(name='m', label='M', type='mapping', choices=['a'])
 
     def test_mapping_rejects_scalar_default(self) -> None:
         with self.assertRaises(pydantic.ValidationError):
-            PluginOption(
-                name='org_mapping',
-                label='Org mapping',
-                type='mapping',
-                default='org-a',
-            )
+            PluginOption(name='m', label='M', type='mapping', default='x')
 
-    def test_scalar_option_rejects_dict_default(self) -> None:
+    def test_scalar_rejects_dict_default(self) -> None:
         with self.assertRaises(pydantic.ValidationError):
-            PluginOption(
-                name='create_org',
-                label='Create org',
-                default={'api': 'org-a'},
-            )
+            PluginOption(name='s', label='S', default={'a': 'b'})
 
 
-class LifecyclePluginOptionalHooksTestCase(unittest.IsolatedAsyncioTestCase):
-    """All non-archive hooks default to NotImplementedError."""
+class ConfigModelsTestCase(unittest.TestCase):
+    def test_config_key_no_value(self) -> None:
+        key = ConfigKey(key='k', data_type='string')
+        self.assertFalse(key.secret)
 
-    class _StubLifecycle(LifecyclePlugin):
-        manifest = PluginManifest(
-            slug='stub',
-            name='Stub',
-            plugin_type='lifecycle',
+    def test_config_key_with_value(self) -> None:
+        key = ConfigKeyWithValue(key='k', data_type='string', value='v')
+        self.assertEqual(key.value, 'v')
+
+    def test_config_value(self) -> None:
+        val = ConfigValue(data_type='string', value='v')
+        self.assertFalse(val.secret)
+
+
+class LogModelsTestCase(unittest.TestCase):
+    def test_log_query_filters(self) -> None:
+        q = LogQuery(
+            start_time=datetime.datetime.now(datetime.UTC),
+            end_time=datetime.datetime.now(datetime.UTC),
+            filters=[LogFilter(field='f', op='eq', value='v')],
         )
-
-        async def on_project_archived(
-            self,
-            ctx: PluginContext,
-            credentials: dict[str, str],
-        ) -> LifecycleResult:
-            del ctx, credentials
-            return LifecycleResult(status='ok')
-
-    async def test_unarchived_default_raises(self) -> None:
-        plugin = self._StubLifecycle()
-        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
-        with self.assertRaises(NotImplementedError):
-            await plugin.on_project_unarchived(ctx, {})
-
-    async def test_created_default_raises(self) -> None:
-        plugin = self._StubLifecycle()
-        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
-        with self.assertRaises(NotImplementedError):
-            await plugin.on_project_created(ctx, {})
-
-    async def test_updated_default_raises(self) -> None:
-        plugin = self._StubLifecycle()
-        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
-        with self.assertRaises(NotImplementedError):
-            await plugin.on_project_updated(ctx, {})
-
-    async def test_deleted_default_raises(self) -> None:
-        plugin = self._StubLifecycle()
-        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
-        with self.assertRaises(NotImplementedError):
-            await plugin.on_project_deleted(ctx, {})
-
-    async def test_relocated_default_raises(self) -> None:
-        plugin = self._StubLifecycle()
-        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
-        with self.assertRaises(NotImplementedError):
-            await plugin.on_project_relocated(ctx, {})
-
-    async def test_resolve_relocation_target_defaults_none(self) -> None:
-        plugin = self._StubLifecycle()
-        ctx = PluginContext(project_id='p', project_slug='p', org_slug='o')
-        self.assertIsNone(await plugin.resolve_relocation_target(ctx, {}))
+        self.assertEqual(q.limit, 100)
+        self.assertEqual(q.filters[0].op, 'eq')
 
 
-class RelocationTargetTestCase(unittest.TestCase):
-    def test_minimal(self) -> None:
-        target = RelocationTarget(
-            link_key='github-repository',
-            identifier='aweber-imbi/billing',
+class IdentityModelsTestCase(unittest.TestCase):
+    def test_identity_profile(self) -> None:
+        p = IdentityProfile(subject='s', email='e@x')
+        self.assertEqual(p.subject, 's')
+
+    def test_identity_credentials_redacted(self) -> None:
+        c = IdentityCredentials(access_token='secret')
+        self.assertNotIn('secret', repr(c))
+        self.assertNotIn('secret', str(c))
+
+    def test_authorization_request_polling(self) -> None:
+        req = AuthorizationRequest(
+            authorization_url='https://x',
+            state='s',
+            polling=PollingDescriptor(
+                user_code='ABCD',
+                verification_uri='https://v',
+                expires_in=600,
+            ),
         )
-        self.assertEqual(target.link_key, 'github-repository')
-        self.assertEqual(target.identifier, 'aweber-imbi/billing')
-        self.assertIsNone(target.display)
+        self.assertEqual(req.polling.interval, 5)
 
-    def test_with_display(self) -> None:
-        target = RelocationTarget(
-            link_key='github-repository',
-            identifier='aweber-imbi/billing',
-            display='AWeber-Imbi/billing',
+
+class DeploymentModelsTestCase(unittest.TestCase):
+    def test_ref(self) -> None:
+        r = Ref(name='main', kind='branch', sha='abc')
+        self.assertFalse(r.is_default)
+
+    def test_commit_defaults(self) -> None:
+        c = Commit(sha='a', short_sha='a', message='m')
+        self.assertEqual(c.ci_status, 'unknown')
+
+    def test_release_info(self) -> None:
+        info = ReleaseInfo(id='1', tag='v1')
+        self.assertFalse(info.prerelease)
+
+    def test_ref_info(self) -> None:
+        info = RefInfo(name='v1', sha='abc')
+        self.assertIsNone(info.url)
+
+    def test_workflow_file(self) -> None:
+        wf = WorkflowFile(id='1', path='.github/x.yml', name='CI')
+        self.assertEqual(wf.state, 'active')
+
+    def test_deployment_run_default_status(self) -> None:
+        self.assertEqual(DeploymentRun(run_id='1').status, 'queued')
+
+    def test_remote_deployment(self) -> None:
+        rd = RemoteDeployment(
+            environment='prod',
+            sha='abc',
+            status='success',
+            created_at=datetime.datetime.now(datetime.UTC),
+            external_run_id='42',
         )
-        self.assertEqual(target.display, 'AWeber-Imbi/billing')
-
-    def test_round_trip(self) -> None:
-        target = RelocationTarget(
-            link_key='github-repository',
-            identifier='aweber-imbi/billing',
-            display='AWeber-Imbi/billing',
-        )
-        restored = RelocationTarget.model_validate(target.model_dump())
-        self.assertEqual(restored, target)
+        self.assertIsNone(rd.creator)
 
 
-class PluginManifestWebhookTypeTestCase(unittest.TestCase):
-    def test_webhook_plugin_type_accepted(self) -> None:
-        manifest = plugin_base.PluginManifest(
-            slug='wh',
-            name='Webhook plugin',
-            plugin_type='webhook',
-        )
-        self.assertEqual(manifest.plugin_type, 'webhook')
+class LifecycleModelsTestCase(unittest.TestCase):
+    def test_result(self) -> None:
+        self.assertEqual(LifecycleResult(status='ok').artifacts, {})
 
-    def test_webhook_plugin_type_with_credentials(self) -> None:
-        manifest = plugin_base.PluginManifest(
-            slug='wh',
-            name='Webhook plugin',
-            plugin_type='webhook',
-            credentials=[
-                plugin_base.CredentialField(
-                    name='api_token', label='API Token'
-                ),
-            ],
-        )
-        self.assertEqual(len(manifest.credentials), 1)
-        self.assertEqual(manifest.credentials[0].name, 'api_token')
+    def test_relocation_target(self) -> None:
+        t = RelocationTarget(link_key='k', identifier='a/b')
+        self.assertIsNone(t.display)
 
 
-async def _sample_action(
-    *,
-    ctx,
-    credentials,
-    external_identifier,
-    action_config,
-    event,
-):
-    _ = (ctx, credentials, external_identifier, action_config, event)
-
-
-class _SampleActionConfig(pydantic.BaseModel):
-    pass
-
-
-class ActionDescriptorTestCase(unittest.TestCase):
-    callable_path = 'tests.test_plugins.test_base:_sample_action'
-    config_path = 'tests.test_plugins.test_base:_SampleActionConfig'
-
-    def test_descriptor_resolves_import_strings(self) -> None:
-        descriptor = plugin_base.ActionDescriptor(
-            name='do_thing',
-            label='Do Thing',
-            description='Sample action',
-            callable=self.callable_path,  # type: ignore[arg-type]
-            config_model=self.config_path,  # type: ignore[arg-type]
-        )
-        self.assertEqual(descriptor.name, 'do_thing')
-        self.assertEqual(descriptor.label, 'Do Thing')
-        self.assertIs(descriptor.callable, _sample_action)
-        self.assertIs(descriptor.config_model, _SampleActionConfig)
-
-    def test_descriptor_defaults_description_to_none(self) -> None:
-        descriptor = plugin_base.ActionDescriptor(
-            name='do_thing',
-            label='Do Thing',
-            callable=self.callable_path,  # type: ignore[arg-type]
-            config_model=self.config_path,  # type: ignore[arg-type]
-        )
-        self.assertIsNone(descriptor.description)
-
-    def test_descriptor_rejects_bad_name(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            plugin_base.ActionDescriptor(
-                name='Bad-Name',
-                label='Do Thing',
-                callable=self.callable_path,  # type: ignore[arg-type]
-                config_model=self.config_path,  # type: ignore[arg-type]
-            )
-
-    def test_descriptor_rejects_unresolvable_callable(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            plugin_base.ActionDescriptor(
-                name='do_thing',
-                label='Do Thing',
-                callable='does.not.exist:nope',  # type: ignore[arg-type]
-                config_model=self.config_path,  # type: ignore[arg-type]
-            )
-
-    def test_descriptor_rejects_unresolvable_config_model(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            plugin_base.ActionDescriptor(
-                name='do_thing',
-                label='Do Thing',
-                callable=self.callable_path,  # type: ignore[arg-type]
-                config_model='does.not.exist:Nope',  # type: ignore[arg-type]
-            )
-
-
-class WebhookActionPluginTestCase(unittest.TestCase):
-    def test_subclass_must_implement_actions(self) -> None:
-        class _IncompleteWebhook(plugin_base.WebhookActionPlugin):
-            pass
-
-        with self.assertRaises(TypeError):
-            _IncompleteWebhook()  # type: ignore[abstract]
-
-    def test_concrete_subclass_returns_catalog(self) -> None:
-        callable_path = 'tests.test_plugins.test_base:_sample_action'
-        config_path = 'tests.test_plugins.test_base:_SampleActionConfig'
-
-        class _FakeWebhook(plugin_base.WebhookActionPlugin):
-            manifest = plugin_base.PluginManifest(
-                slug='wh', name='Webhook plugin', plugin_type='webhook'
-            )
-
-            @classmethod
-            def actions(cls) -> list[plugin_base.ActionDescriptor]:
-                return [
-                    plugin_base.ActionDescriptor(
-                        name='do_thing',
-                        label='Do Thing',
-                        callable=callable_path,  # type: ignore[arg-type]
-                        config_model=config_path,  # type: ignore[arg-type]
-                    )
-                ]
-
-        descriptors = _FakeWebhook.actions()
-        self.assertEqual(len(descriptors), 1)
-        self.assertEqual(descriptors[0].name, 'do_thing')
-        self.assertIs(descriptors[0].callable, _sample_action)
-        self.assertIs(descriptors[0].config_model, _SampleActionConfig)
-        # Plugin is still instantiable for parity with other plugin types.
-        self.assertIsInstance(_FakeWebhook(), plugin_base.WebhookActionPlugin)
-
-
-class AnalysisResultItemTests(unittest.TestCase):
-    def test_valid_result(self) -> None:
-        item = plugin_base.AnalysisResultItem(
-            slug='dep-vulns',
-            title='Dependency vulnerabilities',
-            description='Found 3 high-severity CVEs.',
-            status='fail',
-        )
-        self.assertEqual(item.slug, 'dep-vulns')
-        self.assertEqual(item.status, 'fail')
-
-    def test_invalid_status_rejected(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            plugin_base.AnalysisResultItem(
-                slug='x',
-                title='x',
-                description='x',
-                status='blocker',  # type: ignore[arg-type]
-            )
-
-
-class AnalysisPluginTestCase(unittest.TestCase):
-    def test_subclass_must_implement_analyze(self) -> None:
-        class _Incomplete(plugin_base.AnalysisPlugin):
-            pass
-
-        with self.assertRaises(TypeError):
-            _Incomplete()  # type: ignore[abstract]
-
-    def test_concrete_subclass_returns_items(self) -> None:
-        class _FakeAnalysis(plugin_base.AnalysisPlugin):
-            manifest = plugin_base.PluginManifest(
-                slug='fake', name='Fake', plugin_type='analysis'
-            )
-
-            async def analyze(
-                self,
-                ctx: plugin_base.PluginContext,
-                credentials: dict[str, str],
-            ) -> list[plugin_base.AnalysisResultItem]:
-                return [
-                    plugin_base.AnalysisResultItem(
-                        slug='ok',
-                        title='Looks good',
-                        description='no findings',
-                        status='pass',
-                    )
-                ]
-
-        import asyncio
-
-        instance = _FakeAnalysis()
-        ctx = plugin_base.PluginContext(
-            project_id='p', project_slug='p', org_slug='o'
-        )
-        items = asyncio.run(instance.analyze(ctx, {}))
-        self.assertEqual(len(items), 1)
-        self.assertEqual(items[0].status, 'pass')
-
-    def test_manifest_analysis_type_accepted(self) -> None:
-        manifest = plugin_base.PluginManifest(
-            slug='fake', name='Fake', plugin_type='analysis'
-        )
-        self.assertEqual(manifest.plugin_type, 'analysis')
-
-
-class RemediationModelTests(unittest.TestCase):
-    def test_offer_defaults(self) -> None:
-        offer = plugin_base.RemediationOffer(id='fix-1', label='Fix it')
-        self.assertEqual(offer.id, 'fix-1')
-        self.assertIsNone(offer.confirm)
-        self.assertFalse(offer.destructive)
-
-    def test_result_status_constrained(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            plugin_base.RemediationResult(
-                status='done',  # type: ignore[arg-type]
-                message='x',
-            )
-
-    def test_result_valid(self) -> None:
-        result = plugin_base.RemediationResult(
-            status='fixed', message='Repaired the edge.'
-        )
-        self.assertEqual(result.status, 'fixed')
-
-    def test_result_item_remediation_defaults_none(self) -> None:
-        item = plugin_base.AnalysisResultItem(
-            slug='x', title='x', description='x', status='warn'
+class AnalysisModelsTestCase(unittest.TestCase):
+    def test_result_item(self) -> None:
+        item = AnalysisResultItem(
+            slug='s', title='t', description='d', status='pass'
         )
         self.assertIsNone(item.remediation)
 
-    def test_result_item_carries_offer(self) -> None:
-        item = plugin_base.AnalysisResultItem(
-            slug='x',
-            title='x',
-            description='x',
-            status='fail',
-            remediation=plugin_base.RemediationOffer(
-                id='fix-1', label='Fix it', destructive=True
-            ),
+    def test_invalid_status_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            AnalysisResultItem(
+                slug='s', title='t', description='d', status='nope'
+            )
+
+
+class ActionDescriptorTestCase(unittest.TestCase):
+    def test_resolves_import_strings(self) -> None:
+        d = ActionDescriptor(
+            name='do_thing',
+            label='Do Thing',
+            callable=_sample_action,  # type: ignore[arg-type]
+            config_model=_SampleConfig,  # type: ignore[arg-type]
         )
-        assert item.remediation is not None
-        self.assertEqual(item.remediation.id, 'fix-1')
-        self.assertTrue(item.remediation.destructive)
+        self.assertIs(d.callable, _sample_action)
+        self.assertIs(d.config_model, _SampleConfig)
+
+    def test_rejects_bad_name(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            ActionDescriptor(
+                name='Bad Name',
+                label='x',
+                callable=_sample_action,  # type: ignore[arg-type]
+                config_model=_SampleConfig,  # type: ignore[arg-type]
+            )
+
+
+class ToolDescriptorTestCase(unittest.TestCase):
+    def test_valid(self) -> None:
+        d = ToolDescriptor(
+            name='do_thing',
+            description='does a thing',
+            callable=_sample_action,  # type: ignore[arg-type]
+        )
+        self.assertEqual(d.input_schema, {})
+
+    def test_rejects_bad_name(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            ToolDescriptor(
+                name='Bad',
+                description='x',
+                callable=_sample_action,  # type: ignore[arg-type]
+            )
+
+
+class OpsLogTemplateTestCase(unittest.TestCase):
+    def test_round_trip(self) -> None:
+        t = OpsLogTemplate(label='Deployed {{version}}')
+        self.assertIsNone(t.summary)
+
+
+class PluginVertexLabelTestCase(unittest.TestCase):
+    def test_round_trip(self) -> None:
+        v = PluginVertexLabel(name='AwsAccount', model_ref='aws:AwsAccount')
+        self.assertEqual(v.indexes, [])
+
+    def test_edge_label_round_trip(self) -> None:
+        e = PluginEdgeLabel(
+            name='MAPS_TO', from_labels=['Project'], to_labels=['AwsAccount']
+        )
+        self.assertEqual(e.properties, {})
+
+
+# ---------------------------------------------------------------------------
+# Contract default methods
+# ---------------------------------------------------------------------------
+
+
+class DeploymentDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.plugin = StubDeployment()
+        self.ctx = PluginContext(
+            project_id='p', project_slug='s', org_slug='o'
+        )
+
+    async def test_get_check_status_default(self) -> None:
+        result = await self.plugin.get_check_status(self.ctx, {}, 'main')
+        self.assertEqual(result, 'unknown')
+
+    async def test_create_tag_default_raises(self) -> None:
+        with self.assertRaises(NotImplementedError):
+            await self.plugin.create_tag(self.ctx, {}, 'sha', 't', 'm')
+
+    async def test_create_release_default_raises(self) -> None:
+        with self.assertRaises(NotImplementedError):
+            await self.plugin.create_release(self.ctx, {}, 't', 'n', 'b')
+
+    async def test_list_workflows_default_raises(self) -> None:
+        with self.assertRaises(NotImplementedError):
+            await self.plugin.list_workflows(self.ctx, {})
+
+    async def test_list_recent_deployments_default_raises(self) -> None:
+        with self.assertRaises(NotImplementedError):
+            await self.plugin.list_recent_deployments(self.ctx, {}, ['prod'])
+
+
+class LifecycleDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.plugin = StubLifecycle()
+        self.ctx = PluginContext(
+            project_id='p', project_slug='s', org_slug='o'
+        )
+
+    async def test_archived_returns_result(self) -> None:
+        result = await self.plugin.on_project_archived(self.ctx, {})
+        self.assertEqual(result.status, 'ok')
+
+    async def test_optional_hooks_raise(self) -> None:
+        for hook in (
+            self.plugin.on_project_unarchived,
+            self.plugin.on_project_created,
+            self.plugin.on_project_updated,
+            self.plugin.on_project_deleted,
+            self.plugin.on_project_relocated,
+        ):
+            with self.assertRaises(NotImplementedError):
+                await hook(self.ctx, {})
+
+    async def test_resolve_relocation_target_default_none(self) -> None:
+        result = await self.plugin.resolve_relocation_target(self.ctx, {})
+        self.assertIsNone(result)
+
+
+class LogsDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_histogram_default_empty(self) -> None:
+        q = LogQuery(
+            start_time=datetime.datetime.now(datetime.UTC),
+            end_time=datetime.datetime.now(datetime.UTC),
+        )
+        result = await StubLogs().histogram(
+            PluginContext(project_id='p', project_slug='s', org_slug='o'),
+            {},
+            q,
+        )
+        self.assertEqual(result, [])
+
+
+class IdentityDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.plugin = StubIdentity()
+        self.ctx = PluginContext(
+            project_id='p', project_slug='s', org_slug='o'
+        )
+
+    async def test_revoke_default_none(self) -> None:
+        self.assertIsNone(await self.plugin.revoke(self.ctx, {}, 'tok'))
+
+    async def test_materialize_default_passthrough(self) -> None:
+        creds = IdentityCredentials(access_token='t')
+        result = await self.plugin.materialize(self.ctx, {}, creds)
+        self.assertIs(result, creds)
 
 
 class AnalysisRemediateTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_default_remediate_raises(self) -> None:
-        class _FakeAnalysis(plugin_base.AnalysisPlugin):
-            manifest = plugin_base.PluginManifest(
-                slug='fake', name='Fake', plugin_type='analysis'
+        ctx = PluginContext(project_id='p', project_slug='s', org_slug='o')
+        with self.assertRaises(PluginRemediationNotSupported):
+            await StubAnalysis().remediate(ctx, {}, 'rid')
+
+
+class SyncDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.ctx = PluginContext(
+            project_id='p', project_slug='s', org_slug='o'
+        )
+
+    async def test_commit_sync_check_available_default(self) -> None:
+        self.assertTrue(
+            await StubCommitSync().check_available(
+                ctx=self.ctx, credentials={}
             )
-
-            async def analyze(
-                self,
-                ctx: plugin_base.PluginContext,
-                credentials: dict[str, str],
-            ) -> list[plugin_base.AnalysisResultItem]:
-                return []
-
-        ctx = plugin_base.PluginContext(
-            project_id='p', project_slug='p', org_slug='o'
         )
-        with self.assertRaises(PluginRemediationNotSupported) as cm:
-            await _FakeAnalysis().remediate(ctx, {}, 'fix-1')
-        self.assertEqual(cm.exception.plugin_slug, 'fake')
-        self.assertEqual(cm.exception.remediation_id, 'fix-1')
 
-    async def test_override_remediate_returns_result(self) -> None:
-        class _FakeAnalysis(plugin_base.AnalysisPlugin):
-            manifest = plugin_base.PluginManifest(
-                slug='fake', name='Fake', plugin_type='analysis'
-            )
-
-            async def analyze(
-                self,
-                ctx: plugin_base.PluginContext,
-                credentials: dict[str, str],
-            ) -> list[plugin_base.AnalysisResultItem]:
-                return []
-
-            async def remediate(
-                self,
-                ctx: plugin_base.PluginContext,
-                credentials: dict[str, str],
-                remediation_id: str,
-            ) -> plugin_base.RemediationResult:
-                return plugin_base.RemediationResult(
-                    status='fixed', message=f'did {remediation_id}'
-                )
-
-        ctx = plugin_base.PluginContext(
-            project_id='p', project_slug='p', org_slug='o'
+    async def test_commit_sync_all_history(self) -> None:
+        self.assertEqual(
+            await StubCommitSync().sync_all_history(
+                ctx=self.ctx, credentials={}
+            ),
+            (0, 0),
         )
-        result = await _FakeAnalysis().remediate(ctx, {}, 'fix-1')
-        self.assertEqual(result.status, 'fixed')
-        self.assertEqual(result.message, 'did fix-1')
 
-
-class ManifestLifecycleSyncFlagTestCase(unittest.TestCase):
-    def test_supports_lifecycle_sync_defaults_false(self) -> None:
-        manifest = PluginManifest(
-            slug='lc',
-            name='Lifecycle',
-            plugin_type='lifecycle',
+    async def test_pr_sync_check_available_default(self) -> None:
+        self.assertTrue(
+            await StubPRSync().check_available(ctx=self.ctx, credentials={})
         )
-        self.assertFalse(manifest.supports_lifecycle_sync)
 
-    def test_supports_lifecycle_sync_round_trip(self) -> None:
-        manifest = PluginManifest(
-            slug='lc',
-            name='Lifecycle',
-            plugin_type='lifecycle',
-            supports_lifecycle_sync=True,
+    async def test_pr_sync_all_history(self) -> None:
+        self.assertEqual(
+            await StubPRSync().sync_all_history(ctx=self.ctx, credentials={}),
+            0,
         )
-        restored = PluginManifest.model_validate(manifest.model_dump())
-        self.assertTrue(restored.supports_lifecycle_sync)
 
 
-class IncidentModelsTestCase(unittest.TestCase):
-    def test_incident_view_defaults(self) -> None:
-        view = plugin_base.IncidentView(
-            id='PINC1',
-            title='High CPU',
-            status='triggered',
-            created_at=datetime.datetime.now(datetime.UTC),
-            url='https://example.pagerduty.com/incidents/PINC1',
-        )
-        self.assertIsNone(view.urgency)
-        self.assertIsNone(view.resolved_at)
-        self.assertIsNone(view.service)
-
-    def test_incident_view_round_trip(self) -> None:
-        opened = datetime.datetime(2026, 6, 8, 14, 0, tzinfo=datetime.UTC)
-        resolved = opened + datetime.timedelta(minutes=30)
-        view = plugin_base.IncidentView(
-            id='PINC1',
-            title='High CPU',
-            status='resolved',
-            urgency='high',
-            created_at=opened,
-            resolved_at=resolved,
-            url='https://example.pagerduty.com/incidents/PINC1',
-            service='Production Web App',
-        )
-        restored = plugin_base.IncidentView.model_validate(view.model_dump())
-        self.assertEqual(restored.urgency, 'high')
-        self.assertEqual(restored.resolved_at, resolved)
-        self.assertEqual(restored.service, 'Production Web App')
-
-    def test_incident_result_defaults(self) -> None:
-        result = plugin_base.IncidentResult()
-        self.assertEqual(result.incidents, [])
-        self.assertIsNone(result.next_cursor)
-        self.assertIsNone(result.total)
-
-
-class IncidentsPluginTestCase(unittest.TestCase):
-    def test_incidents_plugin_type_accepted(self) -> None:
-        manifest = PluginManifest(
-            slug='pd-incidents',
-            name='PagerDuty Incidents',
-            plugin_type='incidents',
-        )
-        self.assertEqual(manifest.plugin_type, 'incidents')
-
-    def test_subclass_must_implement_list_incidents(self) -> None:
-        class _Incomplete(plugin_base.IncidentsPlugin):
-            pass
-
+class AbstractContractsTestCase(unittest.TestCase):
+    def test_webhook_actions_abstract(self) -> None:
         with self.assertRaises(TypeError):
-            _Incomplete()  # type: ignore[abstract]
+            WebhookActionsCapability()  # type: ignore[abstract]
 
-    def test_concrete_subclass_returns_result(self) -> None:
-        class _FakeIncidents(plugin_base.IncidentsPlugin):
-            manifest = plugin_base.PluginManifest(
-                slug='pd-incidents',
-                name='PagerDuty Incidents',
-                plugin_type='incidents',
-            )
+    def test_tools_abstract(self) -> None:
+        with self.assertRaises(TypeError):
+            ToolsCapability()  # type: ignore[abstract]
 
-            async def list_incidents(
-                self,
-                ctx: plugin_base.PluginContext,
-                credentials: dict[str, str],
-                *,
-                start_time: datetime.datetime,
-                end_time: datetime.datetime,
-                statuses: list[str] | None = None,
-                cursor: str | None = None,
-                limit: int = 100,
-            ) -> plugin_base.IncidentResult:
-                del ctx, credentials, statuses, cursor, limit
-                del start_time, end_time
-                return plugin_base.IncidentResult(
-                    incidents=[
-                        plugin_base.IncidentView(
-                            id='PINC1',
-                            title='High CPU',
-                            status='triggered',
-                            created_at=datetime.datetime.now(datetime.UTC),
-                            url='https://example.pagerduty.com/i/PINC1',
-                        )
-                    ]
-                )
+    def test_incidents_abstract(self) -> None:
+        with self.assertRaises(TypeError):
+            IncidentsCapability()  # type: ignore[abstract]
 
-        import asyncio
+    def test_configuration_abstract(self) -> None:
+        with self.assertRaises(TypeError):
+            ConfigurationCapability()  # type: ignore[abstract]
 
-        instance = _FakeIncidents()
-        ctx = plugin_base.PluginContext(
-            project_id='p', project_slug='p', org_slug='o'
-        )
-        now = datetime.datetime.now(datetime.UTC)
-        result = asyncio.run(
-            instance.list_incidents(
-                ctx,
-                {},
-                start_time=now - datetime.timedelta(days=1),
-                end_time=now,
-            )
-        )
-        self.assertEqual(len(result.incidents), 1)
-        self.assertEqual(result.incidents[0].id, 'PINC1')
+    def test_stub_webhook_actions_catalog(self) -> None:
+        self.assertEqual(StubWebhookActions.actions()[0].name, 'do_thing')
 
-
-class ConnectionPluginTestCase(unittest.TestCase):
-    def test_connection_plugin_type_accepted(self) -> None:
-        manifest = PluginManifest(
-            slug='github-connection',
-            name='GitHub Connection',
-            plugin_type='connection',
-        )
-        self.assertEqual(manifest.plugin_type, 'connection')
-
-    def test_concrete_subclass_needs_only_manifest(self) -> None:
-        class _Connection(plugin_base.ConnectionPlugin):
-            manifest = plugin_base.PluginManifest(
-                slug='github-connection',
-                name='GitHub Connection',
-                plugin_type='connection',
-            )
-
-        instance = _Connection()
-        self.assertEqual(instance.manifest.plugin_type, 'connection')
+    def test_stub_tools_catalog(self) -> None:
+        self.assertEqual(StubTools.tools(), [])

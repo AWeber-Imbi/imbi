@@ -1,57 +1,52 @@
-"""Plugin registry — discovery, loading, and reload."""
+"""Plugin registry — convention + contract discovery, no entry points.
+
+Plugins are discovered two ways, unioned and deduped:
+
+1. **Convention scan** — every installed top-level module named
+   ``imbi_plugin_*`` is imported and its module-level ``PLUGIN`` attribute
+   (a :class:`~imbi_common.plugins.base.Plugin` subclass) is read.
+2. **Explicit registration** — the ``IMBI_PLUGINS`` setting (a list of
+   dotted import paths, e.g. ``mycorp.imbi.jira:JiraPlugin``) covers
+   packages that can't follow the naming convention.
+
+Every discovered plugin is validated against the base-class contracts at
+load time (fail-loud): the class must subclass ``Plugin``; its manifest
+must be a :class:`PluginManifest` with a supported ``api_version``; every
+capability's ``handler`` must subclass the contract for its kind;
+``webhook-actions`` / ``tools`` catalogs must enumerate cleanly with
+unique names; declared vertex/edge labels must not collide; and plugin
+slugs must be unique across packages.
+"""
 
 import dataclasses
+import importlib
 import importlib.metadata
 import logging
+import pkgutil
 import threading
 import typing
 
 from imbi_common.plugins.base import (
+    CAPABILITY_CONTRACTS,
     ActionDescriptor,
-    AnalysisPlugin,
-    ConfigurationPlugin,
-    ConnectionPlugin,
-    DeploymentPlugin,
-    IdentityPlugin,
-    IncidentsPlugin,
-    LifecyclePlugin,
-    LogsPlugin,
+    CapabilityHandler,
+    Plugin,
     PluginManifest,
-    WebhookActionPlugin,
+    ToolDescriptor,
+    WebhookActionsCapability,
 )
 from imbi_common.plugins.errors import PluginNotFoundError
 
 LOGGER = logging.getLogger(__name__)
 
-_ENTRY_POINT_GROUP = 'imbi.plugins'
-_SUPPORTED_API_VERSIONS: frozenset[int] = frozenset({1})
-
-PluginHandler = (
-    ConfigurationPlugin
-    | LogsPlugin
-    | IdentityPlugin
-    | DeploymentPlugin
-    | LifecyclePlugin
-    | WebhookActionPlugin
-    | AnalysisPlugin
-    | IncidentsPlugin
-    | ConnectionPlugin
-)
+_MODULE_PREFIX = 'imbi_plugin_'
+_PLUGIN_ATTR = 'PLUGIN'
+_SUPPORTED_API_VERSIONS: frozenset[int] = frozenset({2})
 
 
 @dataclasses.dataclass(frozen=True)
 class RegistryEntry:
-    handler_cls: (
-        type[ConfigurationPlugin]
-        | type[LogsPlugin]
-        | type[IdentityPlugin]
-        | type[DeploymentPlugin]
-        | type[LifecyclePlugin]
-        | type[WebhookActionPlugin]
-        | type[AnalysisPlugin]
-        | type[IncidentsPlugin]
-        | type[ConnectionPlugin]
-    )
+    plugin_cls: type[Plugin]
     manifest: PluginManifest
     package_name: str
     package_version: str
@@ -67,196 +62,229 @@ _lock = threading.RLock()
 _registry: dict[str, RegistryEntry] = {}
 
 
-_PLUGIN_TYPE_BASES: dict[
-    str,
-    type[ConfigurationPlugin]
-    | type[LogsPlugin]
-    | type[IdentityPlugin]
-    | type[DeploymentPlugin]
-    | type[LifecyclePlugin]
-    | type[WebhookActionPlugin]
-    | type[AnalysisPlugin]
-    | type[IncidentsPlugin]
-    | type[ConnectionPlugin],
-] = {
-    'configuration': ConfigurationPlugin,
-    'logs': LogsPlugin,
-    'identity': IdentityPlugin,
-    'deployment': DeploymentPlugin,
-    'lifecycle': LifecyclePlugin,
-    'webhook': WebhookActionPlugin,
-    'analysis': AnalysisPlugin,
-    'incidents': IncidentsPlugin,
-    'connection': ConnectionPlugin,
-}
+def _package_metadata(module_name: str) -> tuple[str, str]:
+    """Map a top-level import name to its distribution name + version."""
+    top_level = module_name.split('.', 1)[0]
+    try:
+        mapping = importlib.metadata.packages_distributions()
+    except Exception:  # noqa: BLE001 - defensive; metadata can be flaky
+        mapping = {}
+    dists = mapping.get(top_level)
+    if dists:
+        name = dists[0]
+        try:
+            return name, importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            return name, 'unknown'
+    return top_level, 'unknown'
 
 
-def _validate_action_catalog(
-    ep_name: str, descriptors: list[ActionDescriptor]
+def _discover_convention() -> dict[str, str]:
+    """Return ``{module_name: source_label}`` for ``imbi_plugin_*`` modules."""
+    discovered: dict[str, str] = {}
+    for module in pkgutil.iter_modules():
+        if module.name.startswith(_MODULE_PREFIX):
+            discovered[module.name] = module.name
+    return discovered
+
+
+def _load_convention_plugin(module_name: str) -> type[Plugin]:
+    """Import ``module_name`` and return its ``PLUGIN`` attribute."""
+    module = importlib.import_module(module_name)
+    if not hasattr(module, _PLUGIN_ATTR):
+        raise ValueError(
+            f'Module {module_name!r} has no module-level '
+            f'{_PLUGIN_ATTR!r} attribute'
+        )
+    return typing.cast(type[Plugin], getattr(module, _PLUGIN_ATTR))
+
+
+def _load_explicit_plugin(dotted_path: str) -> tuple[str, type[Plugin]]:
+    """Resolve ``pkg.module:Attr`` to ``(module_name, plugin_cls)``."""
+    if ':' not in dotted_path:
+        raise ValueError(
+            f'IMBI_PLUGINS entry {dotted_path!r} must be of the form '
+            "'package.module:Attr'"
+        )
+    module_name, _, attr = dotted_path.partition(':')
+    module = importlib.import_module(module_name)
+    if not hasattr(module, attr):
+        raise ValueError(f'Module {module_name!r} has no attribute {attr!r}')
+    return module_name, typing.cast(type[Plugin], getattr(module, attr))
+
+
+def _validate_catalog(
+    slug: str,
+    label: str,
+    names: list[str],
 ) -> str | None:
-    """Return an error message describing a bad action catalog, or ``None``.
+    """Return an error message for a bad action/tool catalog, or ``None``.
 
-    Logs a warning for plugins that advertise no actions (the plugin is
-    inert but still loadable). Rejects plugins with duplicate action
-    names within a single catalog.
+    Warns (but allows) an empty catalog; rejects duplicate names.
     """
-    if not descriptors:
+    if not names:
         LOGGER.warning(
-            'Webhook plugin %r exposes no actions; the plugin is inert',
-            ep_name,
+            'Plugin %r %s catalog is empty; that surface is inert',
+            slug,
+            label,
         )
         return None
-    seen: set[str] = set()
-    duplicates: list[str] = []
-    for descriptor in descriptors:
-        if descriptor.name in seen:
-            duplicates.append(descriptor.name)
-        else:
-            seen.add(descriptor.name)
+    duplicates = sorted({n for n in names if names.count(n) > 1})
     if duplicates:
-        return (
-            f'Duplicate action names within plugin: {sorted(set(duplicates))}'
-        )
+        return f'Duplicate {label} names: {duplicates}'
     return None
 
 
+def _validate_plugin(
+    source: str,
+    cls: object,
+    package_version: str,
+) -> tuple[RegistryEntry | None, str | None, bool]:
+    """Validate one discovered plugin.
+
+    Returns ``(entry, error, skipped)``. Exactly one of ``entry`` /
+    ``error`` is set unless ``skipped`` is True (unsupported api_version).
+    """
+    if not isinstance(cls, type) or not issubclass(cls, Plugin):
+        return None, f'{source}: PLUGIN is not a Plugin subclass', False
+
+    manifest = getattr(cls, 'manifest', None)
+    if not isinstance(manifest, PluginManifest):
+        return None, f'{source}: missing or invalid manifest', False
+
+    if manifest.api_version not in _SUPPORTED_API_VERSIONS:
+        LOGGER.warning(
+            'Plugin %r declares api_version=%d not in supported versions '
+            '%s; skipping',
+            manifest.slug,
+            manifest.api_version,
+            sorted(_SUPPORTED_API_VERSIONS),
+        )
+        return None, None, True
+
+    # Re-check every capability handler against its contract so a
+    # hand-built manifest that bypassed the Capability validator can't
+    # slip through, and enumerate webhook-actions / tools catalogs.
+    for capability in manifest.capabilities:
+        contract = CAPABILITY_CONTRACTS.get(capability.kind)
+        if contract is None:
+            return (
+                None,
+                f'{source}: unknown capability kind {capability.kind!r}',
+                False,
+            )
+        if not (
+            isinstance(capability.handler, type)
+            and issubclass(capability.handler, contract)
+        ):
+            return (
+                None,
+                (
+                    f'{source}: capability {capability.kind!r} handler '
+                    f'{capability.handler!r} does not subclass '
+                    f'{contract.__name__}'
+                ),
+                False,
+            )
+        if capability.kind == 'webhook-actions':
+            error = _validate_action_names(source, capability.handler)
+            if error is not None:
+                return None, error, False
+        if capability.kind == 'tools':
+            error = _validate_tool_names(source, capability.handler)
+            if error is not None:
+                return None, error, False
+
+    entry = RegistryEntry(
+        plugin_cls=cls,
+        manifest=manifest,
+        package_name=source,
+        package_version=package_version,
+    )
+    return entry, None, False
+
+
+def _validate_action_names(source: str, handler: type) -> str | None:
+    handler = typing.cast(type[WebhookActionsCapability], handler)
+    try:
+        descriptors = handler.actions()
+    except Exception as exc:  # noqa: BLE001 - report as a load error
+        return f'{source}: actions() raised: {exc}'
+    if not isinstance(descriptors, list) or any(
+        not isinstance(d, ActionDescriptor) for d in descriptors
+    ):
+        return f'{source}: actions() must return list[ActionDescriptor]'
+    return _validate_catalog(source, 'action', [d.name for d in descriptors])
+
+
+def _validate_tool_names(source: str, handler: type) -> str | None:
+    try:
+        descriptors = handler.tools()  # type: ignore[attr-defined]
+    except Exception as exc:  # noqa: BLE001 - report as a load error
+        return f'{source}: tools() raised: {exc}'
+    if not isinstance(descriptors, list) or any(
+        not isinstance(d, ToolDescriptor) for d in descriptors
+    ):
+        return f'{source}: tools() must return list[ToolDescriptor]'
+    return _validate_catalog(source, 'tool', [d.name for d in descriptors])
+
+
 def load_plugins() -> LoadResult:
-    """Discover and load all installed imbi plugins."""
+    """Discover, validate, and load all installed imbi plugins."""
+    from imbi_common import settings
+
     loaded: list[str] = []
     errors: dict[str, str] = {}
     skipped: list[str] = []
     new_registry: dict[str, RegistryEntry] = {}
+    seen_ids: set[int] = set()
 
-    for ep in importlib.metadata.entry_points(group=_ENTRY_POINT_GROUP):
-        try:
-            cls = ep.load()
-        except Exception as exc:
-            LOGGER.exception('Failed to load plugin %r: %s', ep.name, exc)
-            errors[ep.name] = str(exc)
-            continue
-
-        if not hasattr(cls, 'manifest') or not isinstance(
-            cls.manifest, PluginManifest
-        ):
-            LOGGER.error(
-                'Plugin %r has no valid manifest attribute; skipping',
-                ep.name,
-            )
-            errors[ep.name] = 'Missing or invalid manifest attribute'
-            continue
-
-        manifest: PluginManifest = cls.manifest
-
-        if not isinstance(cls, type) or not issubclass(
-            cls,
-            (
-                ConfigurationPlugin,
-                LogsPlugin,
-                IdentityPlugin,
-                DeploymentPlugin,
-                LifecyclePlugin,
-                WebhookActionPlugin,
-                AnalysisPlugin,
-                IncidentsPlugin,
-                ConnectionPlugin,
-            ),
-        ):
-            LOGGER.error(
-                'Plugin %r does not implement ConfigurationPlugin, '
-                'LogsPlugin, IdentityPlugin, DeploymentPlugin, '
-                'LifecyclePlugin, WebhookActionPlugin, AnalysisPlugin, '
-                'IncidentsPlugin, or ConnectionPlugin; skipping',
-                ep.name,
-            )
-            errors[ep.name] = (
-                'Plugin must subclass ConfigurationPlugin, LogsPlugin, '
-                'IdentityPlugin, DeploymentPlugin, LifecyclePlugin, '
-                'WebhookActionPlugin, AnalysisPlugin, IncidentsPlugin, '
-                'or ConnectionPlugin'
-            )
-            continue
-
-        expected_base = _PLUGIN_TYPE_BASES[manifest.plugin_type]
-        if not issubclass(cls, expected_base):  # pyright: ignore[reportUnnecessaryIsInstance]
-            LOGGER.error(
-                'Plugin %r manifest plugin_type=%r does not match class '
-                'hierarchy; skipping',
-                ep.name,
-                manifest.plugin_type,
-            )
-            errors[ep.name] = (
-                f'Class does not implement {expected_base.__name__} '
-                f'for plugin_type={manifest.plugin_type!r}'
-            )
-            continue
-
-        if manifest.api_version not in _SUPPORTED_API_VERSIONS:
-            LOGGER.warning(
-                'Plugin %r declares api_version=%d not in supported '
-                'versions %s; skipping',
-                ep.name,
-                manifest.api_version,
-                sorted(_SUPPORTED_API_VERSIONS),
-            )
-            skipped.append(ep.name)
-            continue
-
-        if issubclass(cls, WebhookActionPlugin):
-            try:
-                descriptors = cls.actions()
-            except Exception as exc:
-                LOGGER.exception(
-                    'Plugin %r failed to enumerate actions: %s',
-                    ep.name,
-                    exc,
-                )
-                errors[ep.name] = f'actions() raised: {exc}'
-                continue
-            if not isinstance(descriptors, list) or any(
-                not isinstance(descriptor, ActionDescriptor)
-                for descriptor in descriptors
-            ):
-                LOGGER.error(
-                    'Plugin %r actions() did not return '
-                    'list[ActionDescriptor]; skipping',
-                    ep.name,
-                )
-                errors[ep.name] = (
-                    'actions() must return list[ActionDescriptor]'
-                )
-                continue
-            action_error = _validate_action_catalog(ep.name, descriptors)
-            if action_error is not None:
-                errors[ep.name] = action_error
-                continue
-
-        dist = ep.dist
-        pkg_name = dist.name if dist else 'unknown'
-        pkg_version = dist.version if dist else 'unknown'
-
-        entry = RegistryEntry(
-            handler_cls=cls,
-            manifest=manifest,
-            package_name=pkg_name,
-            package_version=pkg_version,
-        )
-        if manifest.slug in new_registry:
-            LOGGER.error(
-                'Duplicate plugin slug %r from entry point %r; skipping',
-                manifest.slug,
-                ep.name,
-            )
-            errors[ep.name] = f'Duplicate plugin slug: {manifest.slug}'
-            continue
-        new_registry[manifest.slug] = entry
+    def _register(source: str, cls: object, version: str) -> None:
+        if id(cls) in seen_ids:
+            return
+        entry, error, was_skipped = _validate_plugin(source, cls, version)
+        if was_skipped:
+            skipped.append(source)
+            return
+        if error is not None:
+            LOGGER.error('Plugin load failed: %s', error)
+            errors[source] = error
+            return
+        if entry is None:  # unreachable: entry set when no error / skip
+            return
+        seen_ids.add(id(cls))
+        if entry.manifest.slug in new_registry:
+            msg = f'{source}: duplicate plugin slug {entry.manifest.slug!r}'
+            LOGGER.error(msg)
+            errors[source] = msg
+            return
+        new_registry[entry.manifest.slug] = entry
+        loaded.append(entry.manifest.slug)
         LOGGER.info(
-            'Loaded plugin %r v%s (slug=%r, api_version=%d)',
-            pkg_name,
-            pkg_version,
-            manifest.slug,
-            manifest.api_version,
+            'Loaded plugin %r v%s (slug=%r, capabilities=%s)',
+            entry.package_name,
+            entry.package_version,
+            entry.manifest.slug,
+            [c.kind for c in entry.manifest.capabilities],
         )
-        loaded.append(manifest.slug)
+
+    for module_name, source in _discover_convention().items():
+        try:
+            cls = _load_convention_plugin(module_name)
+        except Exception as exc:
+            LOGGER.exception('Failed to import plugin %r', module_name)
+            errors[source] = str(exc)
+            continue
+        _register(source, cls, _package_metadata(module_name)[1])
+
+    for dotted_path in settings.Plugins().imbi_plugins:
+        try:
+            module_name, cls = _load_explicit_plugin(dotted_path)
+        except Exception as exc:
+            LOGGER.exception('Failed to import IMBI_PLUGINS %r', dotted_path)
+            errors[dotted_path] = str(exc)
+            continue
+        _register(dotted_path, cls, _package_metadata(module_name)[1])
 
     # Refuse vlabel/edge collisions across loaded plugins or with core
     # schemata.  Imported lazily to avoid a circular import.
@@ -272,7 +300,7 @@ def load_plugins() -> LoadResult:
 
 
 def reload_plugins() -> LoadResult:
-    """Reload the plugin registry from installed entry points."""
+    """Reload the plugin registry from installed packages."""
     LOGGER.info('Reloading plugin registry')
     return load_plugins()
 
@@ -288,6 +316,20 @@ def get_plugin(slug: str) -> RegistryEntry:
     if entry is None:
         raise PluginNotFoundError(slug)
     return entry
+
+
+def get_capability(slug: str, kind: str) -> type[CapabilityHandler]:
+    """Return the handler class for ``kind`` on plugin ``slug``.
+
+    Raises:
+        PluginNotFoundError: If the slug is not registered or the plugin
+            declares no capability of ``kind``.
+    """
+    entry = get_plugin(slug)
+    capability = entry.manifest.get_capability(kind)
+    if capability is None:
+        raise PluginNotFoundError(f'{slug}:{kind}')
+    return typing.cast(type[CapabilityHandler], capability.handler)
 
 
 def list_plugins() -> list[RegistryEntry]:

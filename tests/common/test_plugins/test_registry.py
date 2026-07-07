@@ -1,815 +1,387 @@
+"""Tests for imbi_common.plugins.registry (v3 convention + contract)."""
+
+import contextlib
 import unittest
 import unittest.mock
 
-import pydantic
-
 from imbi_common.plugins import base, registry
-from imbi_common.plugins.errors import PluginNotFoundError
+from imbi_common.plugins.errors import (
+    PluginNotFoundError,
+    PluginSchemaCollisionError,
+)
+from tests.test_plugins.fixtures.good_plugin import (
+    FixtureConfiguration,
+    GoodPlugin,
+)
+
+_FIX = 'tests.test_plugins.fixtures'
 
 
-def _make_manifest(
-    slug: str = 'test-plugin',
-    api_version: int = 1,
-) -> base.PluginManifest:
-    return base.PluginManifest(
-        slug=slug,
-        name='Test Plugin',
-        plugin_type='configuration',
-        api_version=api_version,
-    )
-
-
-def _make_plugin_cls(
-    slug: str = 'test-plugin',
-    api_version: int = 1,
-) -> type:
-    manifest = _make_manifest(slug=slug, api_version=api_version)
-
-    class _FakePlugin(base.ConfigurationPlugin):
-        pass
-
-    _FakePlugin.manifest = manifest  # type: ignore[attr-defined]
-    return _FakePlugin
+@contextlib.contextmanager
+def _discovery(
+    convention: dict[str, str] | None = None,
+    imbi_plugins: list[str] | None = None,
+):
+    """Patch convention discovery + the IMBI_PLUGINS setting."""
+    plugins_settings = unittest.mock.MagicMock()
+    plugins_settings.return_value.imbi_plugins = imbi_plugins or []
+    with (
+        unittest.mock.patch.object(
+            registry,
+            '_discover_convention',
+            return_value=convention or {},
+        ),
+        unittest.mock.patch('imbi_common.settings.Plugins', plugins_settings),
+    ):
+        yield
 
 
 def _reset_registry() -> None:
-    with unittest.mock.patch(
-        'importlib.metadata.entry_points', return_value=[]
-    ):
+    with _discovery():
         registry.load_plugins()
 
 
-class LoadPluginsEmptyTestCase(unittest.TestCase):
+class RegistryTestBase(unittest.TestCase):
     def setUp(self) -> None:
         _reset_registry()
 
+    def tearDown(self) -> None:
+        _reset_registry()
+
+
+class EmptyLoadTestCase(RegistryTestBase):
     def test_load_plugins_empty(self) -> None:
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[]
-        ):
+        with _discovery():
             result = registry.load_plugins()
         self.assertEqual(result.loaded, [])
         self.assertEqual(result.errors, {})
         self.assertEqual(result.skipped, [])
-
-    def tearDown(self) -> None:
-        _reset_registry()
+        self.assertEqual(registry.list_plugins(), [])
 
 
-class LoadPluginsUnsupportedVersionTestCase(unittest.TestCase):
-    def setUp(self) -> None:
-        _reset_registry()
-
-    def test_load_plugins_unsupported_api_version(self) -> None:
-        cls = _make_plugin_cls(api_version=999)
-        ep = unittest.mock.MagicMock()
-        ep.name = 'test-plugin'
-        ep.load.return_value = cls
-        ep.dist.name = 'test-pkg'
-        ep.dist.version = '1.0.0'
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
+class ConventionDiscoveryTestCase(RegistryTestBase):
+    def test_convention_scan_loads_plugin(self) -> None:
+        with _discovery(
+            convention={f'{_FIX}.good_plugin': 'imbi_plugin_good'}
         ):
             result = registry.load_plugins()
+        self.assertEqual(result.loaded, ['good'])
+        self.assertEqual(result.errors, {})
+        entry = registry.get_plugin('good')
+        self.assertIs(entry.plugin_cls, GoodPlugin)
+        self.assertEqual(entry.manifest.slug, 'good')
 
-        self.assertIn('test-plugin', result.skipped)
-        self.assertEqual(result.loaded, [])
-
-    def tearDown(self) -> None:
-        _reset_registry()
-
-
-class LoadPluginsMissingManifestTestCase(unittest.TestCase):
-    def setUp(self) -> None:
-        _reset_registry()
-
-    def test_load_plugins_missing_manifest(self) -> None:
-        class _NoManifest:
-            pass
-
-        ep = unittest.mock.MagicMock()
-        ep.name = 'bad-plugin'
-        ep.load.return_value = _NoManifest
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
+    def test_get_capability_returns_handler(self) -> None:
+        with _discovery(
+            convention={f'{_FIX}.good_plugin': 'imbi_plugin_good'}
         ):
-            result = registry.load_plugins()
+            registry.load_plugins()
+        handler = registry.get_capability('good', 'configuration')
+        self.assertIs(handler, FixtureConfiguration)
 
-        self.assertIn('bad-plugin', result.errors)
-        self.assertEqual(result.loaded, [])
-
-    def tearDown(self) -> None:
-        _reset_registry()
-
-
-class GetPluginNotFoundTestCase(unittest.TestCase):
-    def setUp(self) -> None:
-        _reset_registry()
-
-    def test_get_plugin_not_found(self) -> None:
+    def test_get_capability_unknown_kind_raises(self) -> None:
+        with _discovery(
+            convention={f'{_FIX}.good_plugin': 'imbi_plugin_good'}
+        ):
+            registry.load_plugins()
         with self.assertRaises(PluginNotFoundError):
-            registry.get_plugin('nonexistent-slug')
+            registry.get_capability('good', 'logs')
 
-    def tearDown(self) -> None:
-        _reset_registry()
+    def test_missing_plugin_attr_is_error(self) -> None:
+        with _discovery(
+            convention={f'{_FIX}.no_plugin_attr': 'imbi_plugin_bad'}
+        ):
+            result = registry.load_plugins()
+        self.assertEqual(result.loaded, [])
+        self.assertIn('imbi_plugin_bad', result.errors)
+        self.assertIn('PLUGIN', result.errors['imbi_plugin_bad'])
+
+    def test_not_a_plugin_subclass_is_error(self) -> None:
+        with _discovery(
+            convention={f'{_FIX}.not_a_plugin': 'imbi_plugin_notplugin'}
+        ):
+            result = registry.load_plugins()
+        self.assertEqual(result.loaded, [])
+        self.assertIn(
+            'not a Plugin subclass',
+            result.errors['imbi_plugin_notplugin'],
+        )
+
+    def test_bad_api_version_skipped(self) -> None:
+        with _discovery(
+            convention={f'{_FIX}.bad_version': 'imbi_plugin_badver'}
+        ):
+            result = registry.load_plugins()
+        self.assertEqual(result.loaded, [])
+        self.assertIn('imbi_plugin_badver', result.skipped)
+
+    def test_import_failure_reported(self) -> None:
+        with _discovery(
+            convention={f'{_FIX}.does_not_exist': 'imbi_plugin_missing'}
+        ):
+            result = registry.load_plugins()
+        self.assertEqual(result.loaded, [])
+        self.assertIn('imbi_plugin_missing', result.errors)
 
 
-class ListPluginsEmptyTestCase(unittest.TestCase):
-    def setUp(self) -> None:
-        _reset_registry()
+class ExplicitDiscoveryTestCase(RegistryTestBase):
+    def test_imbi_plugins_setting_loads_plugin(self) -> None:
+        with _discovery(imbi_plugins=[f'{_FIX}.good_plugin:ExplicitPlugin']):
+            result = registry.load_plugins()
+        self.assertEqual(result.loaded, ['good'])
+        self.assertIs(registry.get_plugin('good').plugin_cls, GoodPlugin)
 
-    def test_list_plugins_empty(self) -> None:
-        result = registry.list_plugins()
-        self.assertEqual(result, [])
+    def test_bad_dotted_path_reported(self) -> None:
+        with _discovery(imbi_plugins=['no-colon-here']):
+            result = registry.load_plugins()
+        self.assertEqual(result.loaded, [])
+        self.assertIn('no-colon-here', result.errors)
 
-    def tearDown(self) -> None:
-        _reset_registry()
+    def test_missing_attr_reported(self) -> None:
+        with _discovery(imbi_plugins=[f'{_FIX}.good_plugin:Nope']):
+            result = registry.load_plugins()
+        self.assertEqual(result.loaded, [])
+        self.assertIn(f'{_FIX}.good_plugin:Nope', result.errors)
+
+    def test_union_dedupes_same_class(self) -> None:
+        with _discovery(
+            convention={f'{_FIX}.good_plugin': 'imbi_plugin_good'},
+            imbi_plugins=[f'{_FIX}.good_plugin:ExplicitPlugin'],
+        ):
+            result = registry.load_plugins()
+        self.assertEqual(result.loaded, ['good'])
 
 
-class LoadPluginsBadInterfaceTestCase(unittest.TestCase):
-    def setUp(self) -> None:
-        _reset_registry()
+class DuplicateSlugTestCase(RegistryTestBase):
+    def test_duplicate_slug_rejected(self) -> None:
+        with _discovery(
+            convention={
+                f'{_FIX}.good_plugin': 'imbi_plugin_good',
+                f'{_FIX}.dup_plugin': 'imbi_plugin_dup',
+            }
+        ):
+            result = registry.load_plugins()
+        self.assertEqual(result.loaded, ['good'])
+        self.assertIn('imbi_plugin_dup', result.errors)
+        self.assertIn(
+            'duplicate plugin slug', result.errors['imbi_plugin_dup']
+        )
 
-    def test_load_plugins_class_missing_interface(self) -> None:
-        manifest = _make_manifest()
 
-        class _NotAPlugin:
+class ContractRecheckTestCase(RegistryTestBase):
+    """A hand-built manifest that bypassed the Capability validator (via
+    ``model_construct``) is still rejected by the registry re-check."""
+
+    def test_registry_rechecks_handler_contract(self) -> None:
+        bad_capability = base.Capability.model_construct(
+            kind='logs',
+            label='Bad',
+            handler=FixtureConfiguration,  # wrong contract for 'logs'
+            hints={},
+            options=[],
+        )
+        manifest = base.PluginManifest.model_construct(
+            slug='bypass',
+            name='Bypass',
+            api_version=2,
+            capabilities=[bad_capability],
+            options=[],
+            credentials=[],
+            data_types=[],
+            vertex_labels=[],
+            edge_labels=[],
+            ops_log_templates={},
+        )
+
+        class BypassPlugin(base.Plugin):
             pass
 
-        _NotAPlugin.manifest = manifest  # type: ignore[attr-defined]
+        BypassPlugin.manifest = manifest
 
-        ep = unittest.mock.MagicMock()
-        ep.name = 'wrong-base'
-        ep.load.return_value = _NotAPlugin
-        ep.dist.name = 'pkg'
-        ep.dist.version = '1.0'
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
-        ):
-            result = registry.load_plugins()
-
-        self.assertIn('wrong-base', result.errors)
+        with _discovery():
+            with unittest.mock.patch.object(
+                registry,
+                '_discover_convention',
+                return_value={'m': 'imbi_plugin_bypass'},
+            ):
+                with unittest.mock.patch.object(
+                    registry,
+                    '_load_convention_plugin',
+                    return_value=BypassPlugin,
+                ):
+                    result = registry.load_plugins()
         self.assertEqual(result.loaded, [])
-
-    def test_load_plugins_plugin_type_mismatch(self) -> None:
-        manifest = base.PluginManifest(
-            slug='mismatch',
-            name='Mismatch',
-            plugin_type='logs',
-            api_version=1,
-        )
-
-        class _ConfigOnly(base.ConfigurationPlugin):
-            pass
-
-        _ConfigOnly.manifest = manifest  # type: ignore[attr-defined]
-
-        ep = unittest.mock.MagicMock()
-        ep.name = 'mismatch'
-        ep.load.return_value = _ConfigOnly
-        ep.dist.name = 'pkg'
-        ep.dist.version = '1.0'
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
-        ):
-            result = registry.load_plugins()
-
-        self.assertIn('mismatch', result.errors)
-        self.assertEqual(result.loaded, [])
-
-    def tearDown(self) -> None:
-        _reset_registry()
+        self.assertIn('imbi_plugin_bypass', result.errors)
+        self.assertIn('does not subclass', result.errors['imbi_plugin_bypass'])
 
 
-class LoadPluginsIdentityTestCase(unittest.TestCase):
-    def setUp(self) -> None:
-        _reset_registry()
+class WebhookCatalogTestCase(RegistryTestBase):
+    def _load_webhook(self, handler: type) -> registry.LoadResult:
+        class HookConfig(base.Plugin):
+            manifest = base.PluginManifest(
+                slug='hook',
+                name='Hook',
+                capabilities=[
+                    base.Capability(
+                        kind='webhook-actions',
+                        label='Webhook Actions',
+                        handler=handler,
+                    )
+                ],
+            )
 
-    def test_load_identity_plugin_round_trip(self) -> None:
-        manifest = base.PluginManifest(
-            slug='ident',
-            name='Identity Plugin',
-            plugin_type='identity',
-            auth_type='oidc',
-            login_capable=True,
-        )
-
-        class _FakeIdentity(base.IdentityPlugin):
-            async def authorization_request(  # type: ignore[override]
-                self, ctx, credentials, redirect_uri, scopes=None
+        with _discovery():
+            with unittest.mock.patch.object(
+                registry,
+                '_discover_convention',
+                return_value={'m': 'imbi_plugin_hook'},
             ):
-                raise NotImplementedError
+                with unittest.mock.patch.object(
+                    registry,
+                    '_load_convention_plugin',
+                    return_value=HookConfig,
+                ):
+                    return registry.load_plugins()
 
-            async def exchange_code(  # type: ignore[override]
-                self,
-                ctx,
-                credentials,
-                code,
-                redirect_uri,
-                code_verifier=None,
-            ):
-                raise NotImplementedError
-
-            async def refresh(  # type: ignore[override]
-                self, ctx, credentials, refresh_token
-            ):
-                raise NotImplementedError
-
-        _FakeIdentity.manifest = manifest  # type: ignore[attr-defined]
-
-        ep = unittest.mock.MagicMock()
-        ep.name = 'ident'
-        ep.load.return_value = _FakeIdentity
-        ep.dist.name = 'imbi-plugin-ident'
-        ep.dist.version = '1.0'
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
-        ):
-            result = registry.load_plugins()
-
-        self.assertIn('ident', result.loaded)
-        entry = registry.get_plugin('ident')
-        self.assertIs(entry.handler_cls, _FakeIdentity)
-        self.assertEqual(entry.manifest.plugin_type, 'identity')
-        self.assertEqual(entry.manifest.auth_type, 'oidc')
-        self.assertTrue(entry.manifest.login_capable)
-
-    def test_load_identity_plugin_type_mismatch(self) -> None:
-        manifest = base.PluginManifest(
-            slug='mis',
-            name='Mismatch',
-            plugin_type='identity',
+    def test_duplicate_action_names_rejected(self) -> None:
+        from tests.test_plugins.fixtures.good_plugin import (
+            SampleActionConfig,
+            sample_action,
         )
 
-        class _ConfigImpl(base.ConfigurationPlugin):
-            pass
-
-        _ConfigImpl.manifest = manifest  # type: ignore[attr-defined]
-
-        ep = unittest.mock.MagicMock()
-        ep.name = 'mis'
-        ep.load.return_value = _ConfigImpl
-        ep.dist.name = 'pkg'
-        ep.dist.version = '1.0'
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
-        ):
-            result = registry.load_plugins()
-
-        self.assertIn('mis', result.errors)
-        self.assertEqual(result.loaded, [])
-
-    def tearDown(self) -> None:
-        _reset_registry()
-
-
-class LoadPluginsDeploymentTestCase(unittest.TestCase):
-    def setUp(self) -> None:
-        _reset_registry()
-
-    def test_load_deployment_plugin_round_trip(self) -> None:
-        manifest = base.PluginManifest(
-            slug='deploy',
-            name='Deployment Plugin',
-            plugin_type='deployment',
-        )
-
-        class _FakeDeploy(base.DeploymentPlugin):
-            async def list_refs(  # type: ignore[override]
-                self, ctx, credentials, kind='all', query=None
-            ):
-                return []
-
-            async def list_commits(  # type: ignore[override]
-                self, ctx, credentials, ref, limit=25
-            ):
-                return []
-
-            async def resolve_committish(  # type: ignore[override]
-                self, ctx, credentials, committish
-            ):
-                return base.Commit(sha='x', short_sha='x', message='')
-
-            async def compare(  # type: ignore[override]
-                self, ctx, credentials, base_, head
-            ):
-                return base.CompareResult(
-                    base_sha=base_, head_sha=head, ahead=0, behind=0
-                )
-
-            async def trigger_deployment(  # type: ignore[override]
-                self, ctx, credentials, ref_or_sha, inputs=None
-            ):
-                return base.DeploymentRun(run_id='1')
-
-            async def get_deployment_status(  # type: ignore[override]
-                self, ctx, credentials, run_id
-            ):
-                return base.DeploymentRun(run_id=run_id)
-
-        _FakeDeploy.manifest = manifest  # type: ignore[attr-defined]
-
-        ep = unittest.mock.MagicMock()
-        ep.name = 'deploy'
-        ep.load.return_value = _FakeDeploy
-        ep.dist.name = 'imbi-plugin-deploy'
-        ep.dist.version = '1.0'
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
-        ):
-            result = registry.load_plugins()
-
-        self.assertIn('deploy', result.loaded)
-        entry = registry.get_plugin('deploy')
-        self.assertIs(entry.handler_cls, _FakeDeploy)
-        self.assertEqual(entry.manifest.plugin_type, 'deployment')
-
-    def test_load_deployment_plugin_type_mismatch(self) -> None:
-        manifest = base.PluginManifest(
-            slug='mis-deploy',
-            name='Mismatch',
-            plugin_type='deployment',
-        )
-
-        class _ConfigImpl(base.ConfigurationPlugin):
-            pass
-
-        _ConfigImpl.manifest = manifest  # type: ignore[attr-defined]
-
-        ep = unittest.mock.MagicMock()
-        ep.name = 'mis-deploy'
-        ep.load.return_value = _ConfigImpl
-        ep.dist.name = 'pkg'
-        ep.dist.version = '1.0'
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
-        ):
-            result = registry.load_plugins()
-
-        self.assertIn('mis-deploy', result.errors)
-        self.assertEqual(result.loaded, [])
-
-    def tearDown(self) -> None:
-        _reset_registry()
-
-
-class LoadPluginsLifecycleTestCase(unittest.TestCase):
-    def setUp(self) -> None:
-        _reset_registry()
-
-    def test_load_lifecycle_plugin_round_trip(self) -> None:
-        manifest = base.PluginManifest(
-            slug='lifecycle',
-            name='Lifecycle Plugin',
-            plugin_type='lifecycle',
-        )
-
-        class _FakeLifecycle(base.LifecyclePlugin):
-            async def on_project_archived(  # type: ignore[override]
-                self, ctx, credentials
-            ):
-                return base.LifecycleResult(status='ok')
-
-        _FakeLifecycle.manifest = manifest  # type: ignore[attr-defined]
-
-        ep = unittest.mock.MagicMock()
-        ep.name = 'lifecycle'
-        ep.load.return_value = _FakeLifecycle
-        ep.dist.name = 'imbi-plugin-lifecycle'
-        ep.dist.version = '1.0'
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
-        ):
-            result = registry.load_plugins()
-
-        self.assertIn('lifecycle', result.loaded)
-        entry = registry.get_plugin('lifecycle')
-        self.assertIs(entry.handler_cls, _FakeLifecycle)
-        self.assertEqual(entry.manifest.plugin_type, 'lifecycle')
-
-    def test_load_lifecycle_plugin_type_mismatch(self) -> None:
-        manifest = base.PluginManifest(
-            slug='mis-lifecycle',
-            name='Mismatch',
-            plugin_type='lifecycle',
-        )
-
-        class _ConfigImpl(base.ConfigurationPlugin):
-            pass
-
-        _ConfigImpl.manifest = manifest  # type: ignore[attr-defined]
-
-        ep = unittest.mock.MagicMock()
-        ep.name = 'mis-lifecycle'
-        ep.load.return_value = _ConfigImpl
-        ep.dist.name = 'pkg'
-        ep.dist.version = '1.0'
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
-        ):
-            result = registry.load_plugins()
-
-        self.assertIn('mis-lifecycle', result.errors)
-        self.assertEqual(result.loaded, [])
-
-    def tearDown(self) -> None:
-        _reset_registry()
-
-
-async def _sample_webhook_action(
-    *, ctx, credentials, external_identifier, action_config, event
-):
-    _ = (ctx, credentials, external_identifier, action_config, event)
-
-
-class _SampleWebhookConfig(pydantic.BaseModel):
-    pass
-
-
-_WEBHOOK_CALLABLE_PATH = (
-    'tests.test_plugins.test_registry:_sample_webhook_action'
-)
-_WEBHOOK_CONFIG_PATH = 'tests.test_plugins.test_registry:_SampleWebhookConfig'
-
-
-def _make_webhook_descriptor(name: str = 'do_thing') -> base.ActionDescriptor:
-    return base.ActionDescriptor(
-        name=name,
-        label=name.replace('_', ' ').title(),
-        callable=_WEBHOOK_CALLABLE_PATH,  # type: ignore[arg-type]
-        config_model=_WEBHOOK_CONFIG_PATH,  # type: ignore[arg-type]
-    )
-
-
-def _make_webhook_plugin_cls(
-    slug: str,
-    descriptors: list[base.ActionDescriptor],
-) -> type[base.WebhookActionPlugin]:
-    manifest = base.PluginManifest(
-        slug=slug,
-        name='Hook Plugin',
-        plugin_type='webhook',
-        credentials=[
-            base.CredentialField(name='api_token', label='API Token')
-        ],
-    )
-
-    class _FakeWebhook(base.WebhookActionPlugin):
-        @classmethod
-        def actions(cls) -> list[base.ActionDescriptor]:
-            return list(descriptors)
-
-    _FakeWebhook.manifest = manifest  # type: ignore[attr-defined]
-    return _FakeWebhook
-
-
-class LoadPluginsWebhookTestCase(unittest.TestCase):
-    def setUp(self) -> None:
-        _reset_registry()
-
-    def test_load_webhook_plugin_round_trip(self) -> None:
-        cls = _make_webhook_plugin_cls(
-            'hook', [_make_webhook_descriptor('do_thing')]
-        )
-
-        ep = unittest.mock.MagicMock()
-        ep.name = 'hook'
-        ep.load.return_value = cls
-        ep.dist.name = 'imbi-plugin-hook'
-        ep.dist.version = '1.0'
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
-        ):
-            result = registry.load_plugins()
-
-        self.assertIn('hook', result.loaded)
-        entry = registry.get_plugin('hook')
-        self.assertIs(entry.handler_cls, cls)
-        self.assertEqual(entry.manifest.plugin_type, 'webhook')
-
-    def test_load_webhook_plugin_type_mismatch(self) -> None:
-        manifest = base.PluginManifest(
-            slug='mis-hook',
-            name='Mismatch',
-            plugin_type='webhook',
-        )
-
-        class _ConfigImpl(base.ConfigurationPlugin):
-            pass
-
-        _ConfigImpl.manifest = manifest  # type: ignore[attr-defined]
-
-        ep = unittest.mock.MagicMock()
-        ep.name = 'mis-hook'
-        ep.load.return_value = _ConfigImpl
-        ep.dist.name = 'pkg'
-        ep.dist.version = '1.0'
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
-        ):
-            result = registry.load_plugins()
-
-        self.assertIn('mis-hook', result.errors)
-        self.assertEqual(result.loaded, [])
-
-    def test_load_webhook_plugin_with_empty_catalog_warns_but_loads(
-        self,
-    ) -> None:
-        cls = _make_webhook_plugin_cls('inert', [])
-
-        ep = unittest.mock.MagicMock()
-        ep.name = 'inert'
-        ep.load.return_value = cls
-        ep.dist.name = 'pkg'
-        ep.dist.version = '1.0'
-
-        with (
-            unittest.mock.patch(
-                'importlib.metadata.entry_points', return_value=[ep]
-            ),
-            self.assertLogs('imbi_common.plugins.registry', 'WARNING') as logs,
-        ):
-            result = registry.load_plugins()
-
-        self.assertIn('inert', result.loaded)
-        self.assertTrue(
-            any('inert' in record.getMessage() for record in logs.records)
-        )
-
-    def test_load_webhook_plugin_duplicate_action_names_rejected(
-        self,
-    ) -> None:
-        cls = _make_webhook_plugin_cls(
-            'dup-action',
-            [
-                _make_webhook_descriptor('do_thing'),
-                _make_webhook_descriptor('do_thing'),
-            ],
-        )
-
-        ep = unittest.mock.MagicMock()
-        ep.name = 'dup-action'
-        ep.load.return_value = cls
-        ep.dist.name = 'pkg'
-        ep.dist.version = '1.0'
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
-        ):
-            result = registry.load_plugins()
-
-        self.assertEqual(result.loaded, [])
-        self.assertIn('dup-action', result.errors)
-        self.assertIn('Duplicate action', result.errors['dup-action'])
-
-    def test_load_webhook_plugin_actions_raises_is_reported(self) -> None:
-        manifest = base.PluginManifest(
-            slug='broken',
-            name='Broken',
-            plugin_type='webhook',
-        )
-
-        class _BrokenWebhook(base.WebhookActionPlugin):
+        def _descriptor(name: str) -> base.ActionDescriptor:
+            return base.ActionDescriptor(
+                name=name,
+                label=name,
+                callable=sample_action,  # type: ignore[arg-type]
+                config_model=SampleActionConfig,  # type: ignore[arg-type]
+            )
+
+        class DupActions(base.WebhookActionsCapability):
             @classmethod
-            def actions(cls) -> list[base.ActionDescriptor]:
+            def actions(cls):
+                return [_descriptor('do_thing'), _descriptor('do_thing')]
+
+        result = self._load_webhook(DupActions)
+        self.assertEqual(result.loaded, [])
+        self.assertIn('imbi_plugin_hook', result.errors)
+        self.assertIn('Duplicate action', result.errors['imbi_plugin_hook'])
+
+    def test_empty_catalog_warns_but_loads(self) -> None:
+        class EmptyActions(base.WebhookActionsCapability):
+            @classmethod
+            def actions(cls):
+                return []
+
+        with self.assertLogs('imbi_common.plugins.registry', 'WARNING'):
+            result = self._load_webhook(EmptyActions)
+        self.assertEqual(result.loaded, ['hook'])
+
+    def test_actions_raises_reported(self) -> None:
+        class BoomActions(base.WebhookActionsCapability):
+            @classmethod
+            def actions(cls):
                 raise RuntimeError('boom')
 
-        _BrokenWebhook.manifest = manifest  # type: ignore[attr-defined]
-
-        ep = unittest.mock.MagicMock()
-        ep.name = 'broken'
-        ep.load.return_value = _BrokenWebhook
-        ep.dist.name = 'pkg'
-        ep.dist.version = '1.0'
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
-        ):
-            result = registry.load_plugins()
-
+        result = self._load_webhook(BoomActions)
         self.assertEqual(result.loaded, [])
-        self.assertIn('broken', result.errors)
-        self.assertIn('actions() raised', result.errors['broken'])
+        self.assertIn('actions() raised', result.errors['imbi_plugin_hook'])
 
-    def test_load_webhook_plugin_actions_returns_non_list_rejected(
-        self,
-    ) -> None:
-        manifest = base.PluginManifest(
-            slug='not-list',
-            name='Not List',
-            plugin_type='webhook',
-        )
 
-        class _NotListWebhook(base.WebhookActionPlugin):
+class ToolsCatalogTestCase(RegistryTestBase):
+    def test_duplicate_tool_names_rejected(self) -> None:
+        from tests.test_plugins.fixtures.good_plugin import sample_action
+
+        def _tool(name: str) -> base.ToolDescriptor:
+            return base.ToolDescriptor(
+                name=name,
+                description=name,
+                callable=sample_action,  # type: ignore[arg-type]
+            )
+
+        class DupTools(base.ToolsCapability):
             @classmethod
-            def actions(cls) -> list[base.ActionDescriptor]:
-                return None  # type: ignore[return-value]
+            def tools(cls):
+                return [_tool('do_thing'), _tool('do_thing')]
 
-        _NotListWebhook.manifest = manifest  # type: ignore[attr-defined]
+        class ToolsPlugin(base.Plugin):
+            manifest = base.PluginManifest(
+                slug='tools',
+                name='Tools',
+                capabilities=[
+                    base.Capability(
+                        kind='tools', label='Tools', handler=DupTools
+                    )
+                ],
+            )
 
-        ep = unittest.mock.MagicMock()
-        ep.name = 'not-list'
-        ep.load.return_value = _NotListWebhook
-        ep.dist.name = 'pkg'
-        ep.dist.version = '1.0'
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
-        ):
-            result = registry.load_plugins()
-
+        with _discovery():
+            with unittest.mock.patch.object(
+                registry,
+                '_discover_convention',
+                return_value={'m': 'imbi_plugin_tools'},
+            ):
+                with unittest.mock.patch.object(
+                    registry,
+                    '_load_convention_plugin',
+                    return_value=ToolsPlugin,
+                ):
+                    result = registry.load_plugins()
         self.assertEqual(result.loaded, [])
-        self.assertIn('not-list', result.errors)
-        self.assertIn('list[ActionDescriptor]', result.errors['not-list'])
+        self.assertIn('Duplicate tool', result.errors['imbi_plugin_tools'])
 
-    def test_load_webhook_plugin_actions_returns_wrong_items_rejected(
-        self,
-    ) -> None:
-        manifest = base.PluginManifest(
-            slug='bad-items',
-            name='Bad Items',
-            plugin_type='webhook',
-        )
 
-        class _BadItemsWebhook(base.WebhookActionPlugin):
-            @classmethod
-            def actions(cls) -> list[base.ActionDescriptor]:
-                return ['not a descriptor']  # type: ignore[list-item]
+class CollisionTestCase(RegistryTestBase):
+    def test_vlabel_collision_across_plugins_raises(self) -> None:
+        def _make(slug: str) -> type[base.Plugin]:
+            class _P(base.Plugin):
+                manifest = base.PluginManifest(
+                    slug=slug,
+                    name=slug,
+                    vertex_labels=[
+                        base.PluginVertexLabel(
+                            name='Collide', model_ref=f'{slug}:Collide'
+                        )
+                    ],
+                    capabilities=[
+                        base.Capability(
+                            kind='configuration',
+                            label='Config',
+                            handler=FixtureConfiguration,
+                        )
+                    ],
+                )
 
-        _BadItemsWebhook.manifest = manifest  # type: ignore[attr-defined]
+            return _P
 
-        ep = unittest.mock.MagicMock()
-        ep.name = 'bad-items'
-        ep.load.return_value = _BadItemsWebhook
-        ep.dist.name = 'pkg'
-        ep.dist.version = '1.0'
+        plugins = {'a': _make('a'), 'b': _make('b')}
 
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
+        def _loader(module_name: str) -> type[base.Plugin]:
+            return plugins[module_name]
+
+        with _discovery():
+            with unittest.mock.patch.object(
+                registry,
+                '_discover_convention',
+                return_value={'a': 'imbi_plugin_a', 'b': 'imbi_plugin_b'},
+            ):
+                with unittest.mock.patch.object(
+                    registry, '_load_convention_plugin', side_effect=_loader
+                ):
+                    with self.assertRaises(PluginSchemaCollisionError):
+                        registry.load_plugins()
+
+
+class ReloadTestCase(RegistryTestBase):
+    def test_reload_delegates_to_load(self) -> None:
+        with _discovery(
+            convention={f'{_FIX}.good_plugin': 'imbi_plugin_good'}
         ):
-            result = registry.load_plugins()
-
-        self.assertEqual(result.loaded, [])
-        self.assertIn('bad-items', result.errors)
-        self.assertIn('list[ActionDescriptor]', result.errors['bad-items'])
-
-    def tearDown(self) -> None:
-        _reset_registry()
+            result = registry.reload_plugins()
+        self.assertEqual(result.loaded, ['good'])
 
 
-class LoadPluginsAnalysisTestCase(unittest.TestCase):
-    def setUp(self) -> None:
-        _reset_registry()
-
-    def test_load_analysis_plugin_round_trip(self) -> None:
-        # Regression test: ensure the load_plugins() issubclass gate
-        # accepts AnalysisPlugin subclasses. Caught in PR #141 review.
-        manifest = base.PluginManifest(
-            slug='fake-analysis',
-            name='Fake Analysis',
-            plugin_type='analysis',
-        )
-
-        class _FakeAnalysis(base.AnalysisPlugin):
-            async def analyze(  # type: ignore[override]
-                self, ctx, credentials
-            ) -> list[base.AnalysisResultItem]:
-                return []
-
-        _FakeAnalysis.manifest = manifest  # type: ignore[attr-defined]
-
-        ep = unittest.mock.MagicMock()
-        ep.name = 'fake-analysis'
-        ep.load.return_value = _FakeAnalysis
-        ep.dist.name = 'imbi-plugin-fake-analysis'
-        ep.dist.version = '1.0'
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
-        ):
-            result = registry.load_plugins()
-
-        self.assertIn('fake-analysis', result.loaded)
-        self.assertEqual(result.errors, {})
-        entry = registry.get_plugin('fake-analysis')
-        self.assertIs(entry.handler_cls, _FakeAnalysis)
-        self.assertEqual(entry.manifest.plugin_type, 'analysis')
-
-    def test_load_analysis_plugin_type_mismatch(self) -> None:
-        # plugin_type='analysis' on a non-AnalysisPlugin class is
-        # rejected by the post-base-check type-routing gate.
-        manifest = base.PluginManifest(
-            slug='mis-analysis',
-            name='Mis Analysis',
-            plugin_type='analysis',
-        )
-
-        class _ConfigImpl(base.ConfigurationPlugin):
-            pass
-
-        _ConfigImpl.manifest = manifest  # type: ignore[attr-defined]
-
-        ep = unittest.mock.MagicMock()
-        ep.name = 'mis-analysis'
-        ep.load.return_value = _ConfigImpl
-        ep.dist.name = 'pkg'
-        ep.dist.version = '1.0'
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
-        ):
-            result = registry.load_plugins()
-
-        self.assertIn('mis-analysis', result.errors)
-        self.assertEqual(result.loaded, [])
-
-    def test_load_incidents_plugin_round_trip(self) -> None:
-        # Ensure the load_plugins() issubclass gate and type-routing
-        # map accept IncidentsPlugin subclasses.
-        manifest = base.PluginManifest(
-            slug='fake-incidents',
-            name='Fake Incidents',
-            plugin_type='incidents',
-        )
-
-        class _FakeIncidents(base.IncidentsPlugin):
-            async def list_incidents(  # type: ignore[override]
-                self,
-                ctx,
-                credentials,
-                *,
-                start_time,
-                end_time,
-                statuses=None,
-                cursor=None,
-                limit=100,
-            ) -> base.IncidentResult:
-                return base.IncidentResult()
-
-        _FakeIncidents.manifest = manifest  # type: ignore[attr-defined]
-
-        ep = unittest.mock.MagicMock()
-        ep.name = 'fake-incidents'
-        ep.load.return_value = _FakeIncidents
-        ep.dist.name = 'imbi-plugin-fake-incidents'
-        ep.dist.version = '1.0'
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points', return_value=[ep]
-        ):
-            result = registry.load_plugins()
-
-        self.assertIn('fake-incidents', result.loaded)
-        self.assertEqual(result.errors, {})
-        entry = registry.get_plugin('fake-incidents')
-        self.assertIs(entry.handler_cls, _FakeIncidents)
-        self.assertEqual(entry.manifest.plugin_type, 'incidents')
-
-    def tearDown(self) -> None:
-        _reset_registry()
-
-
-class LoadPluginsDuplicateSlugTestCase(unittest.TestCase):
-    def setUp(self) -> None:
-        _reset_registry()
-
-    def test_load_plugins_duplicate_slug_skipped(self) -> None:
-        cls_a = _make_plugin_cls(slug='dup')
-        cls_b = _make_plugin_cls(slug='dup')
-
-        ep_a = unittest.mock.MagicMock()
-        ep_a.name = 'dup-a'
-        ep_a.load.return_value = cls_a
-        ep_a.dist.name = 'pkg-a'
-        ep_a.dist.version = '1.0'
-
-        ep_b = unittest.mock.MagicMock()
-        ep_b.name = 'dup-b'
-        ep_b.load.return_value = cls_b
-        ep_b.dist.name = 'pkg-b'
-        ep_b.dist.version = '1.0'
-
-        with unittest.mock.patch(
-            'importlib.metadata.entry_points',
-            return_value=[ep_a, ep_b],
-        ):
-            result = registry.load_plugins()
-
-        self.assertEqual(result.loaded, ['dup'])
-        self.assertIn('dup-b', result.errors)
-        self.assertIn('Duplicate plugin slug', result.errors['dup-b'])
-
-    def tearDown(self) -> None:
-        _reset_registry()
+class GetPluginNotFoundTestCase(RegistryTestBase):
+    def test_get_plugin_not_found(self) -> None:
+        with self.assertRaises(PluginNotFoundError):
+            registry.get_plugin('nonexistent')

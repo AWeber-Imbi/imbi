@@ -23,6 +23,7 @@ name = [
   "DocumentTemplate",
   "Environment",
   "IdentityConnection",
+  "Integration",
   "LinkDefinition",
   "MCPServer",
   "Message",
@@ -30,7 +31,6 @@ name = [
   "OAuthIdentity",
   "Organization",
   "Permission",
-  "Plugin",
   "PluginRegistration",
   "Project",
   "ProjectType",
@@ -38,11 +38,9 @@ name = [
   "Role",
   "ScoringPolicy",
   "ServiceAccount",
-  "ServiceApplication",
   "Session",
   "TOTPSecret",
   "Team",
-  "ThirdPartyService",
   "TokenMetadata",
   "Upload",
   "User",
@@ -255,12 +253,17 @@ vlabel = "ScoringPolicy"
 attributes = ["attribute_name"]
 
 [[vlabel_indexes]]
-vlabel = "Plugin"
-attributes = ["plugin_slug"]
+vlabel = "Integration"
+attributes = ["slug"]
+unique = true
 
 [[vlabel_indexes]]
-vlabel = "Plugin"
-attributes = ["api_version"]
+vlabel = "Integration"
+attributes = ["status"]
+
+[[vlabel_indexes]]
+vlabel = "Integration"
+attributes = ["plugin"]
 
 [[vlabel_indexes]]
 vlabel = "PluginRegistration"
@@ -271,14 +274,6 @@ unique = true
 vlabel = "ServiceAccount"
 attributes = ["slug"]
 unique = true
-
-[[vlabel_indexes]]
-vlabel = "ServiceApplication"
-attributes = ["slug"]
-
-[[vlabel_indexes]]
-vlabel = "ServiceApplication"
-attributes = ["status"]
 
 [[vlabel_indexes]]
 vlabel = "Session"
@@ -295,11 +290,6 @@ attributes = ["slug"]
 unique = true
 
 [[vlabel_indexes]]
-vlabel = "ThirdPartyService"
-attributes = ["slug"]
-unique = true
-
-[[vlabel_indexes]]
 vlabel = "Webhook"
 attributes = ["slug"]
 unique = true
@@ -308,10 +298,6 @@ unique = true
 vlabel = "Webhook"
 attributes = ["id"]
 unique = true
-
-[[vlabel_indexes]]
-vlabel = "ThirdPartyService"
-attributes = ["status"]
 
 [[vlabel_indexes]]
 vlabel = "TokenMetadata"

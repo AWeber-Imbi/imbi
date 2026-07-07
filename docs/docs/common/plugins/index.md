@@ -1,154 +1,197 @@
 # Authoring Plugins
 
-Imbi plugins extend the platform with integrations against third-party
-services. A plugin is an installable Python distribution that exposes a
-handler class through the `imbi.plugins` entry point group. The host
-service (`imbi-api`, or `imbi-gateway` for webhook actions) discovers,
-validates, and instantiates plugins at runtime; plugins themselves carry
-no global state and receive everything they need — context, credentials,
-and options — on every call.
+Imbi plugins extend the platform with integrations against external
+systems. Under **Plugin Architecture v3** (`api_version = 2`) a Python
+package ships exactly **one** `Plugin` subclass whose `manifest`
+declares — once per package — the integration-level options and
+credentials plus a set of **capabilities**. Each capability binds one
+enumerated behavior (deployment, logs, identity, …) to an implementation
+class. The host services (`imbi-api`, and `imbi-gateway` for webhook
+actions) discover, validate, and instantiate plugins at runtime; plugins
+carry no global state and receive everything they need — context,
+credentials, and options — on every call.
 
-This page covers the parts every plugin shares: the manifest, the
-request context, credential resolution, the registry, errors, and
-templates. Each plugin variation then has its own page documenting the
-base class it must implement and the data models it exchanges with the
-host.
+An **Integration** graph node is a *configuration instance* of a plugin:
+it stores the resolved integration-level option values and the single
+encrypted credential blob. One plugin backs many Integrations. (The
+Integration node *is* the connection — there is no separate `connection`
+plugin type.)
 
-## Plugin Variations
+This page covers the parts every plugin shares: discovery, the manifest,
+the `Capability` model, the request context, credential decryption, the
+registry, errors, templates, and plugin-declared graph schema. Each
+capability kind then has its own page documenting the contract base class
+it implements and the data models it exchanges with the host.
 
-`PluginManifest.plugin_type` selects the variation. The contract for a
-plugin is defined by the abstract base class it inherits from:
-
-| `plugin_type`   | Base class            | Page                              | Purpose                                                                                          |
-| --------------- | --------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `configuration` | `ConfigurationPlugin` | [Configuration](configuration.md) | List, read, write, and delete typed configuration keys for a project (feature flags, secrets)    |
-| `logs`          | `LogsPlugin`          | [Logs](logs.md)                   | Search log entries and describe the available query schema for a project                         |
-| `identity`      | `IdentityPlugin`      | [Identity](identity.md)           | Authenticate a user to a third party via OAuth 2.0 / OIDC / device-code, and mint per-user tokens |
-| `deployment`    | `DeploymentPlugin`    | [Deployment](deployment.md)       | Enumerate refs/commits, compare them, cut tags/releases, and trigger CI workflow runs            |
-| `lifecycle`     | `LifecyclePlugin`     | [Lifecycle](lifecycle.md)         | React to project state transitions (create / update / archive / unarchive / delete / relocate)   |
-| `webhook`       | `WebhookActionPlugin` | [Webhook Actions](webhook.md)     | Run named actions in response to inbound webhook payloads routed by a host such as `imbi-gateway` |
-| `analysis`      | `AnalysisPlugin`      | [Analysis](analysis.md)           | Emit Project Doctor findings (pass/warn/fail items with markdown bodies) and feed the `analysis_result` scoring policy |
-
-The class hierarchy and `plugin_type` must agree — a class that
-subclasses `ConfigurationPlugin` but declares `plugin_type='logs'` is
-rejected at load time, and vice versa.
-
-## Anatomy of a Plugin Package
+## One Plugin per Package
 
 A minimum plugin distribution contains:
 
-1. A handler class subclassing one of the seven base classes above.
-2. A class-level `manifest: PluginManifest` describing slug, name,
-   options, credential fields, and any variation-specific declarations
-   (data types, vertex/edge labels, lifecycle events, …).
-3. An `imbi.plugins` entry point in the package metadata pointing at the
-   handler class.
+1. One `Plugin` subclass whose class-level `manifest: PluginManifest`
+   declares the package's slug, name, integration-level options and
+   credentials, and its capabilities (each binding a handler class).
+2. A module-level **`PLUGIN`** attribute in the package's root
+   `__init__`, pointing at that `Plugin` subclass, so the convention scan
+   can discover it.
 
-A trimmed `pyproject.toml`:
+```python
+# imbi_plugin_github/__init__.py
+from imbi_plugin_github.plugin import GitHubPlugin
 
-```toml
-[project]
-name = "imbi-plugin-vault"
-version = "0.1.0"
-dependencies = ["imbi-common>=2.7", "httpx"]
-
-[project.entry-points."imbi.plugins"]
-vault = "imbi_plugin_vault.plugin:VaultPlugin"
+PLUGIN = GitHubPlugin
 ```
 
-The entry-point name is informational — the canonical identifier is
-`manifest.slug`. Two plugins with the same slug cannot coexist; the
-second is dropped with an error during load.
+## Discovery
+
+`load_plugins()` finds plugins two ways, unions them, and dedupes by
+slug:
+
+1. **Convention scan** — every installed top-level module named
+   `imbi_plugin_*` is imported and its module-level `PLUGIN` attribute
+   (a `Plugin` subclass) is read.
+2. **Explicit registration** — the `IMBI_PLUGINS` setting (env var
+   `IMBI_PLUGINS`, a comma-separated list — or JSON list — of dotted
+   import paths such as `mycorp.imbi.jira:JiraPlugin`) covers packages
+   that cannot follow the naming convention. It is read via
+   `imbi_common.settings.Plugins().imbi_plugins`.
+
+There is no `imbi.plugins` entry-point group any more: the only source of
+truth is the class hierarchy, and discovery is a mechanical scan.
+Editable installs and monorepo dev work without re-running metadata
+hooks.
 
 ## The Manifest
 
-Every plugin declares a class-level `manifest`. The host treats it as
-immutable once registered; do not mutate it at runtime.
+Every plugin declares a class-level `manifest`. Integration-level options
+and credentials are declared **once**; capabilities are
+enabled/configured per Integration. The host treats the manifest as
+immutable once registered.
 
 ```python
 from imbi_common.plugins import (
+    Capability,
     CredentialField,
-    DataType,
+    Plugin,
     PluginManifest,
     PluginOption,
 )
 
-manifest = PluginManifest(
-    slug='vault',
-    name='HashiCorp Vault',
-    description='Read and write project secrets stored in Vault.',
-    plugin_type='configuration',
-    api_version=1,
-    cacheable=False,
-    options=[
-        PluginOption(
-            name='mount_path',
-            label='Mount Path',
-            type='string',
-            required=True,
-            default='secret',
-        ),
-        PluginOption(
-            name='kv_version',
-            label='KV Engine Version',
-            type='string',
-            choices=['1', '2'],
-            default='2',
-        ),
-    ],
-    credentials=[
-        CredentialField(
-            name='token',
-            label='Vault Token',
-            description='Vault token with read/write on the mount.',
-        ),
-    ],
-    data_types=[
-        DataType(name='string', label='String'),
-        DataType(name='secret', label='Secret', secret=True),
-    ],
+from imbi_plugin_github.capabilities import (
+    GitHubDeployment,
+    GitHubIdentity,
+    GitHubLifecycle,
+    GitHubWebhookActions,
+    GitHubCommitSync,
+    GitHubPullRequestSync,
 )
+
+
+class GitHubPlugin(Plugin):
+    manifest = PluginManifest(
+        slug='github',
+        name='GitHub',
+        description='Repositories, deployments, and identity on GitHub.',
+        api_version=2,
+        auth_type='oauth2',
+        # Integration-level options — asked ONCE per Integration.
+        options=[
+            PluginOption(
+                name='flavor',
+                label='Flavor',
+                choices=['github', 'ghec', 'ghes'],
+                required=True,
+            ),
+            PluginOption(name='host', label='Host'),
+        ],
+        # Integration-level credentials — the ONLY credential declaration.
+        credentials=[
+            CredentialField(name='app_id', label='App ID'),
+            CredentialField(name='private_key', label='Private key'),
+            CredentialField(name='installation_id', label='Installation ID'),
+            CredentialField(
+                name='client_id', label='OAuth client ID', required=False
+            ),
+            CredentialField(
+                name='client_secret',
+                label='OAuth client secret',
+                required=False,
+            ),
+        ],
+        capabilities=[
+            Capability(
+                kind='identity',
+                label='Sign in with GitHub',
+                default_enabled=False,
+                project_scoped=False,
+                hints={'login_capable': True},
+                handler=GitHubIdentity,
+            ),
+            Capability(
+                kind='deployment',
+                label='Deployments',
+                hints={'supports_deployment_sync': True},
+                handler=GitHubDeployment,
+            ),
+            Capability(
+                kind='lifecycle',
+                label='Repository lifecycle',
+                hints={
+                    'supports_lifecycle_sync': True,
+                    'lifecycle_events': ['created', 'archived', 'deleted'],
+                },
+                handler=GitHubLifecycle,
+            ),
+            Capability(
+                kind='webhook-actions',
+                label='Webhook actions',
+                handler=GitHubWebhookActions,
+            ),
+            Capability(
+                kind='commit-sync',
+                label='Commit history sync',
+                handler=GitHubCommitSync,
+            ),
+            Capability(
+                kind='pr-sync',
+                label='Pull request sync',
+                handler=GitHubPullRequestSync,
+            ),
+        ],
+    )
 ```
 
 ### Field notes
 
-- **`auth_type`** declares the credential flow expected by the plugin:
-  `'api_token'` (default), `'oauth2'`, `'oidc'`, or `'aws-iam-ic'`. The
-  host uses it both to drive the credentials form and to decide how to
-  resolve credentials at call time (see
-  [Credential Resolution](#credential-resolution)).
-- **`api_version`** must be an integer the host advertises as supported.
-  Today only `1` is accepted; plugins declaring other versions are
-  skipped and reported as such, *not* errored.
-- **`cacheable`** is a hint to the host — set `False` for plugins whose
-  reads must always be live (token-based providers, audit-sensitive
-  systems).
-- **`options`** are configured at assignment time and validated against
-  the `PluginOption` schema. Five field types are supported: the four
-  scalars (`string`, `integer`, `boolean`, `secret`) plus `mapping`
-  (a key/value editor stored as `dict[str, str]`). Plugin code receives
-  the resolved values via `PluginContext.assignment_options`.
-- **`credentials`** describe what the host must collect for the plugin.
-  Values are encrypted at rest and decrypted into the `credentials`
-  dict the host passes to every call.
-- **`data_types`** apply to configuration plugins — see
-  [Configuration Plugins](configuration.md).
-- **`supports_histogram`** applies to logs plugins — see
-  [Logs Plugins](logs.md).
-- **`supports_deployment_sync`**, **`login_capable`**,
-  **`requires_identity`**, and **`default_scopes`** govern the
-  deployment and identity flows — see the
-  [Deployment](deployment.md) and [Identity](identity.md) pages.
+- **`slug`** is the canonical identifier. Two plugins with the same slug
+  cannot coexist; the second is rejected at load.
+- **`api_version`** must be `2`. Plugins declaring other versions are
+  skipped and reported as such, not errored.
+- **`auth_type`** declares the credential flow: `'api_token'` (default),
+  `'oauth2'`, `'oidc'`, `'aws-iam-ic'`, or `'none'`. OAuth
+  `client_id` / `client_secret` are ordinary named fields in
+  `credentials`.
+- **`options`** are the integration-level option values collected once
+  per Integration (e.g. GitHub `flavor` / `host`, AWS `region`). Five
+  field types are supported: the four scalars (`string`, `integer`,
+  `boolean`, `secret`) plus `mapping` (a key/value editor stored as
+  `dict[str, str]`). Resolved values reach a capability via
+  `PluginContext.integration_options`.
+- **`credentials`** are the **only** credential declaration in the
+  package — capabilities cannot declare their own. Values are encrypted
+  at rest as the Integration's single blob and decrypted into the
+  `credentials` dict passed to every call.
+- **`capabilities`** must declare at least one `Capability`, and each
+  `kind` must be unique within the manifest.
+- **`data_types`** apply to configuration capabilities — see
+  [Configuration](configuration.md).
 - **`vertex_labels`** / **`edge_labels`** let a plugin extend the AGE
   graph with its own reference data (see
   [Plugin-declared Graph Schema](#plugin-declared-graph-schema)).
-- **`lifecycle_events`** advertises which project transitions a
-  lifecycle plugin handles — see [Lifecycle Plugins](lifecycle.md).
 - **`ops_log_templates`** supply Mustache-style templates the UI uses to
   render operations-log entries tagged with the plugin's slug, keyed by
   the `action` value the host wrote into the entry.
-- **`widget_text`** is body copy for the dashboard "unconnected
-  integration" widget shown for identity plugins.
+
+::: imbi_common.plugins.Plugin
 
 ::: imbi_common.plugins.PluginManifest
 
@@ -166,46 +209,114 @@ manifest = PluginManifest(
 
 ::: imbi_common.plugins.PluginIndex
 
+## Capabilities
+
+A `Capability` both **declares** operator-facing metadata (label,
+options, defaults) and **binds** the implementation via its `handler` —
+a class subclassing the contract base for the capability's `kind`. It is
+validated at construction: the handler must subclass the correct contract
+(`CAPABILITY_CONTRACTS[kind]`) and every `hints` key must be in the
+per-kind allowlist (`HINT_ALLOWLIST`).
+
+Key fields:
+
+- **`kind`** — one of the enumerated `CapabilityKind` values below.
+- **`label`** / **`description`** — operator-facing text.
+- **`options`** — capability-scoped `PluginOption`s, rendered under the
+  capability's toggle in the Integration form; values reach a call via
+  `PluginContext.capability_options`.
+- **`default_enabled`** — initial toggle state when an Integration is
+  created.
+- **`project_scoped`** — whether the capability participates in
+  per-project-type / per-project `USES` assignment. `identity`, for
+  example, is Integration-wide, not project-scoped.
+- **`requires_identity`** — the capability wants `ctx.identity`
+  populated when available.
+- **`hints`** — kind-specific hints, validated against `HINT_ALLOWLIST`
+  (see table). These are the v1 manifest booleans, moved onto the
+  capability.
+- **`ui_module`** — RESERVED: package-relative path to a built ESM module
+  the UI can load for the capability; `None` uses built-in UI.
+- **`handler`** — the implementation class. Excluded from serialization;
+  the manifest that reaches the API/UI is pure data.
+
+### Kinds, surfaces, and contracts
+
+Each `kind` maps to exactly one contract ABC (`CAPABILITY_CONTRACTS`) and
+a fixed set of surfaces (`CAPABILITY_SURFACES`). Adding a kind is a
+deliberate base-model change.
+
+| `kind` | Contract base | Surfaces | Page |
+| --- | --- | --- | --- |
+| `configuration` | `ConfigurationCapability` | ui, api | [Configuration](configuration.md) |
+| `logs` | `LogsCapability` | ui, api | [Logs](logs.md) |
+| `identity` | `IdentityCapability` | api | [Identity](identity.md) |
+| `deployment` | `DeploymentCapability` | ui, api | [Deployment](deployment.md) |
+| `lifecycle` | `LifecycleCapability` | api | [Lifecycle](lifecycle.md) |
+| `webhook-actions` | `WebhookActionsCapability` | webhook | [Webhook Actions](webhook-actions.md) |
+| `analysis` | `AnalysisCapability` | ui, api | [Analysis](analysis.md) |
+| `incidents` | `IncidentsCapability` | ui, api | [Incidents](incidents.md) |
+| `commit-sync` | `CommitSyncCapability` | api, webhook | [Commit Sync](commit-sync.md) |
+| `pr-sync` | `PullRequestSyncCapability` | api, webhook | [Pull Request Sync](pr-sync.md) |
+| `tools` | `ToolsCapability` | tools | [Tools](tools.md) |
+
+### Hint allowlist
+
+`cacheable` is accepted for every kind (a hint the host may consult to
+cache a capability's reads). The remaining keys are per-kind:
+
+| `kind` | Additional allowed hints |
+| --- | --- |
+| `logs` | `supports_histogram` |
+| `deployment` | `supports_deployment_sync` |
+| `lifecycle` | `supports_lifecycle_sync`, `lifecycle_events` |
+| `identity` | `login_capable`, `default_scopes`, `widget_text` |
+
+An unknown hint key fails at manifest construction, so typos surface at
+load.
+
+::: imbi_common.plugins.Capability
+
+::: imbi_common.plugins.CapabilityHandler
+
 ## Plugin Context
 
-Every plugin call receives a `PluginContext` carrying the resolved
-project's identity plus host-populated fields the plugin can derive
-state from (external links, project-type slugs, per-environment config,
-the acting user's materialized `identity`, …). A handful of fields are
-*write-only* side channels the plugin sets and the host reads back after
-the call — most notably `link_writeback` and `service_writeback`.
+Every capability call receives a `PluginContext` carrying the resolved
+project's identity plus host-populated fields the capability can derive
+state from. A handful of fields are *write-only* side channels the
+capability sets and the host reads back after the call — most notably
+`link_writeback` and `service_writeback`.
 
-The host also injects the running plugin's bound third-party service
-(`third_party_service_slug`) and the project's `EXISTS_IN`
-connections (`service_connections`) so plugins can read the canonical
-project↔service relationship without re-querying the graph. A lifecycle
-plugin maintains that relationship by setting `service_writeback`; the
-host persists it as the `EXISTS_IN` edge against the bound service.
+Resolved configuration reaches a call on three layers:
 
-`service_plugins` lets an action introspect the other plugins connected
-to the same `ThirdPartyService`. Each entry is a `ServicePlugin`
-carrying the sibling plugin's `slug` and its non-secret `options` map —
-**never** credentials. A webhook action that needs provider-specific
-configuration it was not given directly (for example the GitHub
-host/flavor for a commit-history sync) reads it from the matching
-sibling here rather than re-declaring it on every rule. The list is
-empty when the host resolved no service or it has no connected plugins.
+- **`integration_options`** — the Integration's resolved
+  integration-level option values (e.g. GitHub host/flavor, AWS region),
+  so a capability can read connection-level config without re-declaring
+  it.
+- **`capability_options`** — the invoked capability's own option values
+  (from `Integration.capabilities[kind].options`, layered with any
+  `USES`-edge overrides). Empty when the capability declares none.
+- **`assignment_options`** — the per-assignment (`USES`-edge) options.
+
+The host also injects the running capability's bound Integration
+(`integration_slug`) and the project's `EXISTS_IN` connections
+(`service_connections`, each a `ServiceConnection`) so a capability can
+read the canonical project↔Integration relationship without re-querying
+the graph. A lifecycle capability maintains that relationship by setting
+`service_writeback`; the host persists it as the `EXISTS_IN` edge against
+the bound Integration.
 
 `resolve_user_by_identity` is an optional host-injected coroutine that
 maps an external identity *subject* (e.g. a provider's numeric user id)
-to the matching Imbi user's email, or `None` when no active
-`IdentityConnection` matches. An action uses it to attribute external
-actors — such as the authors of synced commits — to Imbi users without
-knowing how the host reaches the identity store: the gateway wires an
-HTTP `/users/by-identity` lookup, the imbi-api worker a direct graph
-query. It is a live callable rather than data, so it is excluded from
-serialization and is `None` on any deserialized context (and whenever
-the host wires no resolver). Callers should cache results, as a
-full-history sync can otherwise repeat the lookup for every commit.
+to the matching Imbi user's email, or `None` when no active identity
+matches. A capability uses it to attribute external actors — such as the
+authors of synced commits — to Imbi users without knowing how the host
+reaches the identity store: the gateway wires an HTTP `/users/by-identity`
+lookup, the imbi-api worker a direct graph query. It is a live callable
+rather than data, so it is excluded from serialization and is `None` on
+any deserialized context. Callers should cache results.
 
 ::: imbi_common.plugins.PluginContext
-
-::: imbi_common.plugins.ServicePlugin
 
 ::: imbi_common.plugins.LinkWriteback
 
@@ -213,9 +324,28 @@ full-history sync can otherwise repeat the lookup for every commit.
 
 ::: imbi_common.plugins.ServiceConnection
 
+## Credentials
+
+There is exactly one credential store per Integration —
+`Integration.encrypted_credentials`, a mapping of field name to a
+Fernet-encrypted value. Decrypt it with
+`decrypt_integration_credentials`, which accepts either the Integration
+node (anything with an `encrypted_credentials` mapping) or the mapping
+itself and returns the decrypted dict. There is no sibling lookup and no
+fallback ordering: every capability of an Integration receives the same
+decrypted blob (the `credentials` argument on every contract method).
+
+```python
+from imbi_common.plugins import decrypt_integration_credentials
+
+credentials = decrypt_integration_credentials(integration)
+```
+
+::: imbi_common.plugins.decrypt_integration_credentials
+
 ## Search Templates
 
-For plugins that build provider-specific query strings from project
+For capabilities that build provider-specific query strings from project
 context, use `expand_template`. It substitutes only the whitelisted
 variables — `project_slug`, `org_slug`, `team_slug`, `environment`,
 `project_id`, `project_type_slug` — written as `${name}`, and rejects
@@ -246,12 +376,22 @@ configuration errors surface early instead of during a search.
 
 ## Registry and Loading
 
-Plugin discovery is driven by `importlib.metadata` entry points under
-the `imbi.plugins` group. The host calls `load_plugins()` at startup
-(and `reload_plugins()` on demand) to populate the registry. Each entry
-is validated — manifest present and well-formed, class hierarchy
-matching `plugin_type`, supported `api_version`, unique slug, and (for
-webhook plugins) a valid action catalog — before it is admitted.
+The host calls `load_plugins()` at startup (and `reload_plugins()` on
+demand) to populate the registry from the convention scan unioned with
+`IMBI_PLUGINS`. Every discovered plugin is validated fail-loud at load:
+the class must subclass `Plugin`; its `manifest` must be a
+`PluginManifest` with a supported `api_version`; every capability's
+`handler` must subclass the contract for its kind; `webhook-actions` and
+`tools` catalogs must enumerate cleanly with unique names; declared
+vertex/edge labels must not collide; and plugin slugs must be unique.
+
+Lookups are by plugin slug — `get_plugin(slug)` returns a
+`RegistryEntry` (`plugin_cls`, `manifest`, `package_name`,
+`package_version`) — and by `(slug, kind)` —
+`get_capability(slug, kind)` returns the handler class for that
+capability. `list_plugins()` returns every registered entry.
+`load_plugins()` / `reload_plugins()` return a `LoadResult`
+(`loaded`, `errors`, `skipped`).
 
 ::: imbi_common.plugins.load_plugins
 
@@ -259,37 +399,22 @@ webhook plugins) a valid action catalog — before it is admitted.
 
 ::: imbi_common.plugins.get_plugin
 
+::: imbi_common.plugins.get_capability
+
 ::: imbi_common.plugins.list_plugins
 
 ::: imbi_common.plugins.RegistryEntry
 
 ::: imbi_common.plugins.LoadResult
 
-## Credential Resolution
-
-Hosts fetch decrypted plugin credentials out of the graph with
-`get_plugin_credentials`. Routing depends on `manifest.auth_type`:
-`api_token` and `aws-iam-ic` read the Fernet-encrypted
-`Plugin.plugin_configuration` blob directly, while `oauth2` and `oidc`
-walk `Plugin -[:USES_APPLICATION]-> ServiceApplication` for the
-`client_id` / `client_secret`. `patch_plugin_configuration` and
-`get_plugin_configuration_keys` manage the configuration blob without
-ever surfacing plaintext values.
-
-::: imbi_common.plugins.get_plugin_credentials
-
-::: imbi_common.plugins.get_plugin_configuration_keys
-
-::: imbi_common.plugins.patch_plugin_configuration
-
 ## Plugin-declared Graph Schema
 
-Plugins (today, identity plugins) may extend the AGE graph with their
-own vertex labels and edges via `PluginManifest.vertex_labels` /
-`edge_labels`. The host refuses any declaration that collides with core
-schemata or with another plugin's differently-shaped label
-(`validate_no_collisions`) and creates the declared vlabels and indexes
-idempotently on startup (`apply_plugin_schemas`).
+A plugin may extend the AGE graph with its own vertex labels and edges
+via `PluginManifest.vertex_labels` / `edge_labels`. The host refuses any
+declaration that collides with core schemata or with another plugin's
+differently-shaped label (`validate_no_collisions`) and creates the
+declared vlabels and indexes idempotently on startup
+(`apply_plugin_schemas`).
 
 ::: imbi_common.plugins.validate_no_collisions
 
@@ -297,24 +422,25 @@ idempotently on startup (`apply_plugin_schemas`).
 
 ## Errors
 
-Plugins should raise exceptions from `imbi_common.plugins.errors` when
-the failure mode maps onto one of them; otherwise let the host wrap the
-exception. The author-relevant ones:
+Capabilities should raise exceptions from `imbi_common.plugins.errors`
+when the failure mode maps onto one of them; otherwise let the host wrap
+the exception. The author-relevant ones:
 
-| Exception                        | When to raise                                                                                  |
-| -------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `PluginCredentialsMissing`       | A required credential is absent or empty in the `credentials` dict.                            |
-| `PluginAuthenticationFailed`     | The upstream rejected the call for an auth reason (HTTP 401, expired token); host may refresh and retry once. |
-| `PluginRateLimited`              | The upstream's rate limit is exhausted; carries `retry_at` (epoch) so the host can pause and keep the job queued rather than fail it. |
-| `PluginTimeoutError`             | An upstream call exceeded the plugin's internal timeout budget.                                |
-| `PluginUnavailableError`         | The upstream service is reachable but cannot serve the request (degraded, locked).             |
-| `CursorExpiredError`             | A logs `query.cursor` is no longer valid and the caller must restart paging.                   |
-| `IdentityAuthorizationPending`   | An identity device-code flow has not completed yet; the host's poll loop retries.              |
-| `IdentityAuthorizationExpired`   | An identity device code expired before the user completed it; the UI must restart the flow.    |
-| `PluginSchemaCollisionError`     | Raised by the host when a plugin's declared vlabel collides with core or another plugin.       |
+| Exception | When to raise |
+| --- | --- |
+| `PluginCredentialsMissing` | A required credential is absent or empty in the `credentials` dict. |
+| `PluginAuthenticationFailed` | The upstream rejected the call for an auth reason (HTTP 401, expired token); host may refresh and retry once. |
+| `PluginRateLimited` | The upstream's rate limit is exhausted; carries `retry_at` so the host can pause and keep the job queued. |
+| `PluginTimeoutError` | An upstream call exceeded the capability's internal timeout budget. |
+| `PluginUnavailableError` | The upstream service is reachable but cannot serve the request (degraded, locked). |
+| `CursorExpiredError` | A logs / incidents `cursor` is no longer valid and the caller must restart paging. |
+| `IdentityAuthorizationPending` | An identity device-code flow has not completed yet; the host's poll loop retries. |
+| `IdentityAuthorizationExpired` | An identity device code expired before the user completed it; the UI must restart the flow. |
+| `PluginRemediationNotSupported` | Raised by the default `AnalysisCapability.remediate` when a capability emits no remediations. |
+| `PluginSchemaCollisionError` | Raised by the host when a plugin's declared vlabel collides with core or another plugin. |
 
-`PluginNotFoundError` and `PluginUnavailableError` (registry lookups)
-are host-side — plugin code should not raise `PluginNotFoundError`.
+`PluginNotFoundError` is host-side (registry lookups) — capability code
+should not raise it.
 
 ::: imbi_common.plugins.PluginCredentialsMissing
 
@@ -331,6 +457,8 @@ are host-side — plugin code should not raise `PluginNotFoundError`.
 ::: imbi_common.plugins.IdentityAuthorizationPending
 
 ::: imbi_common.plugins.IdentityAuthorizationExpired
+
+::: imbi_common.plugins.PluginRemediationNotSupported
 
 ::: imbi_common.plugins.PluginSchemaCollisionError
 
@@ -351,10 +479,8 @@ async def list_keys(self, ctx, credentials):
 
 ## Testing
 
-Plugins can be unit-tested in isolation. The host machinery is
-straightforward to fake — instantiate the plugin class directly and call
-its methods with synthesized `PluginContext` objects and a credentials
-dict. For registry-level integration tests, see
-`tests/test_plugins/test_registry.py` in this repository for examples of
-mocking `importlib.metadata.entry_points` to inject a plugin without
-having to install a real distribution.
+Capabilities can be unit-tested in isolation: instantiate the handler
+class directly and call its methods with synthesized `PluginContext`
+objects and a credentials dict. For registry-level integration tests,
+see `tests/test_plugins/test_registry.py` in this repository for examples
+of injecting a plugin without installing a real distribution.
