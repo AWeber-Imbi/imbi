@@ -8,12 +8,12 @@ from imbi_api.identity import errors, sweeper
 
 
 class LockKeyTestCase(unittest.TestCase):
-    """Verify the Valkey lock key encodes plugin + user."""
+    """Verify the Valkey lock key encodes integration + user."""
 
     def test_lock_key_format(self) -> None:
         self.assertEqual(
-            sweeper._lock_key('plugin-1', 'user-9'),
-            'imbi:identity:refresh:plugin-1:user-9',
+            sweeper._lock_key('integration-1', 'user-9'),
+            'imbi:identity:refresh:integration-1:user-9',
         )
 
 
@@ -46,17 +46,17 @@ class RefreshOneTestCase(unittest.IsolatedAsyncioTestCase):
         self.db = mock.AsyncMock()
         self.client = mock.AsyncMock()
 
-    async def test_skips_when_plugin_id_missing(self) -> None:
+    async def test_skips_when_integration_id_missing(self) -> None:
         with mock.patch.object(sweeper, '_try_lock') as try_lock:
             await sweeper._refresh_one(
-                self.db, self.client, {'plugin_id': '', 'user_id': 'u'}
+                self.db, self.client, {'integration_id': '', 'user_id': 'u'}
             )
         try_lock.assert_not_called()
 
     async def test_skips_when_user_id_missing(self) -> None:
         with mock.patch.object(sweeper, '_try_lock') as try_lock:
             await sweeper._refresh_one(
-                self.db, self.client, {'plugin_id': 'p', 'user_id': ''}
+                self.db, self.client, {'integration_id': 'p', 'user_id': ''}
             )
         try_lock.assert_not_called()
 
@@ -70,7 +70,7 @@ class RefreshOneTestCase(unittest.IsolatedAsyncioTestCase):
             mock.patch.object(sweeper.flows, 'refresh_connection') as refresh,
         ):
             await sweeper._refresh_one(
-                self.db, self.client, {'plugin_id': 'p', 'user_id': 'u'}
+                self.db, self.client, {'integration_id': 'p', 'user_id': 'u'}
             )
         refresh.assert_not_called()
 
@@ -88,7 +88,7 @@ class RefreshOneTestCase(unittest.IsolatedAsyncioTestCase):
             ) as refresh,
         ):
             await sweeper._refresh_one(
-                self.db, self.client, {'plugin_id': 'p', 'user_id': 'u'}
+                self.db, self.client, {'integration_id': 'p', 'user_id': 'u'}
             )
         refresh.assert_awaited_once()
 
@@ -121,7 +121,7 @@ class RefreshOneTestCase(unittest.IsolatedAsyncioTestCase):
             ) as mark,
         ):
             await sweeper._refresh_one(
-                self.db, self.client, {'plugin_id': 'p', 'user_id': 'u'}
+                self.db, self.client, {'integration_id': 'p', 'user_id': 'u'}
             )
         mark.assert_awaited_once_with(self.db, 'conn-1', 'expired')
 
@@ -153,7 +153,7 @@ class RefreshOneTestCase(unittest.IsolatedAsyncioTestCase):
             ) as mark,
         ):
             await sweeper._refresh_one(
-                self.db, self.client, {'plugin_id': 'p', 'user_id': 'u'}
+                self.db, self.client, {'integration_id': 'p', 'user_id': 'u'}
             )
         mark.assert_not_called()
 
@@ -183,7 +183,7 @@ class RefreshOneTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             # Should NOT raise.
             await sweeper._refresh_one(
-                self.db, self.client, {'plugin_id': 'p', 'user_id': 'u'}
+                self.db, self.client, {'integration_id': 'p', 'user_id': 'u'}
             )
         mark.assert_not_called()
 
@@ -202,7 +202,7 @@ class RefreshOneTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             # Should NOT raise.
             await sweeper._refresh_one(
-                self.db, self.client, {'plugin_id': 'p', 'user_id': 'u'}
+                self.db, self.client, {'integration_id': 'p', 'user_id': 'u'}
             )
 
 
@@ -248,7 +248,7 @@ class RunSweeperTestCase(unittest.IsolatedAsyncioTestCase):
         client = mock.AsyncMock()
         stop = asyncio.Event()
 
-        rows = [{'plugin_id': 'p', 'user_id': 'u'}]
+        rows = [{'integration_id': 'p', 'user_id': 'u'}]
 
         async def stale(_db: object, _horizon: object) -> list:
             return rows

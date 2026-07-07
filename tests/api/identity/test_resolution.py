@@ -34,9 +34,22 @@ class StartUrlForTestCase(unittest.TestCase):
 
     def test_builds_canonical_url(self) -> None:
         self.assertEqual(
-            resolution._start_url_for('plugin-7'),
-            '/me/identities/plugin-7/start',
+            resolution._start_url_for('integration-7'),
+            '/me/identities/integration-7/start',
         )
+
+
+def _integration(
+    *,
+    plugin: str = 'oidc',
+    encrypted_credentials: dict[str, str] | None = None,
+) -> dict[str, object]:
+    return {
+        'id': 'integration-1',
+        'plugin': plugin,
+        'encrypted_credentials': encrypted_credentials or {},
+        'capabilities': {},
+    }
 
 
 class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
@@ -53,10 +66,12 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_missing_actor_raises_identity_required(self) -> None:
         self.ctx.actor_user_id = None
         with self.assertRaises(identity_errors.IdentityRequiredError) as cm:
-            await resolution.hydrate_identity(self.db, self.ctx, 'plugin-1')
-        self.assertEqual(cm.exception.plugin_id, 'plugin-1')
+            await resolution.hydrate_identity(
+                self.db, self.ctx, 'integration-1'
+            )
+        self.assertEqual(cm.exception.integration_id, 'integration-1')
         self.assertEqual(
-            cm.exception.start_url, '/me/identities/plugin-1/start'
+            cm.exception.start_url, '/me/identities/integration-1/start'
         )
 
     async def test_no_connection_raises_identity_required(self) -> None:
@@ -67,7 +82,7 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             with self.assertRaises(identity_errors.IdentityRequiredError):
                 await resolution.hydrate_identity(
-                    self.db, self.ctx, 'plugin-1'
+                    self.db, self.ctx, 'integration-1'
                 )
 
     async def test_inactive_connection_raises_identity_required(self) -> None:
@@ -82,10 +97,10 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             with self.assertRaises(identity_errors.IdentityRequiredError):
                 await resolution.hydrate_identity(
-                    self.db, self.ctx, 'plugin-1'
+                    self.db, self.ctx, 'integration-1'
                 )
 
-    async def test_missing_plugin_slug_raises_identity_required(self) -> None:
+    async def test_missing_integration_raises_identity_required(self) -> None:
         connection = mock.MagicMock()
         connection.status = 'active'
         connection.expires_at = None
@@ -98,16 +113,18 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
             ),
             mock.patch.object(
                 resolution,
-                '_plugin_slug',
+                'load_integration',
                 new=mock.AsyncMock(return_value=None),
             ),
         ):
             with self.assertRaises(identity_errors.IdentityRequiredError):
                 await resolution.hydrate_identity(
-                    self.db, self.ctx, 'plugin-1'
+                    self.db, self.ctx, 'integration-1'
                 )
 
-    async def test_plugin_not_found_raises_identity_required(self) -> None:
+    async def test_capability_not_found_raises_identity_required(
+        self,
+    ) -> None:
         connection = mock.MagicMock()
         connection.status = 'active'
         connection.expires_at = None
@@ -120,50 +137,18 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
             ),
             mock.patch.object(
                 resolution,
-                '_plugin_slug',
-                new=mock.AsyncMock(return_value='oidc'),
+                'load_integration',
+                new=mock.AsyncMock(return_value=_integration()),
             ),
             mock.patch.object(
                 resolution,
-                'get_plugin',
+                'get_capability',
                 side_effect=PluginNotFoundError('oidc'),
             ),
         ):
             with self.assertRaises(identity_errors.IdentityRequiredError):
                 await resolution.hydrate_identity(
-                    self.db, self.ctx, 'plugin-1'
-                )
-
-    async def test_handler_not_identity_plugin_raises(self) -> None:
-        connection = mock.MagicMock()
-        connection.status = 'active'
-        connection.expires_at = None
-        connection.refresh_token = None
-
-        # Handler that is *not* an IdentityPlugin instance.
-        non_identity_handler = mock.MagicMock()
-        entry = mock.MagicMock()
-        entry.handler_cls = mock.MagicMock(return_value=non_identity_handler)
-        with (
-            mock.patch.object(
-                resolution.repository,
-                'load_connection',
-                new=mock.AsyncMock(return_value=connection),
-            ),
-            mock.patch.object(
-                resolution,
-                '_plugin_slug',
-                new=mock.AsyncMock(return_value='oidc'),
-            ),
-            mock.patch.object(
-                resolution,
-                'get_plugin',
-                return_value=entry,
-            ),
-        ):
-            with self.assertRaises(identity_errors.IdentityRequiredError):
-                await resolution.hydrate_identity(
-                    self.db, self.ctx, 'plugin-1'
+                    self.db, self.ctx, 'integration-1'
                 )
 
     async def test_proactive_refresh_when_near_expiry(self) -> None:
@@ -188,10 +173,9 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
 
         load = mock.AsyncMock(side_effect=[connection, refreshed])
         materialized = mock.MagicMock(name='materialized')
-        handler = mock.MagicMock(spec=resolution.IdentityPlugin)
+        handler = mock.MagicMock()
         handler.materialize = mock.AsyncMock(return_value=materialized)
-        entry = mock.MagicMock()
-        entry.handler_cls = mock.MagicMock(return_value=handler)
+        handler_cls = mock.MagicMock(return_value=handler)
 
         # Patch the lazy import target inside imbi_api.identity.flows.
         from imbi_api.identity import flows
@@ -200,22 +184,21 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
             mock.patch.object(resolution.repository, 'load_connection', load),
             mock.patch.object(
                 resolution,
-                '_plugin_slug',
-                new=mock.AsyncMock(return_value='oidc'),
+                'load_integration',
+                new=mock.AsyncMock(return_value=_integration()),
             ),
             mock.patch.object(
-                resolution,
-                'load_plugin_options',
-                new=mock.AsyncMock(return_value={}),
+                resolution, 'get_capability', return_value=handler_cls
             ),
-            mock.patch.object(resolution, 'get_plugin', return_value=entry),
             mock.patch.object(
                 flows,
                 'refresh_connection',
                 new=mock.AsyncMock(return_value=mock.MagicMock()),
             ) as refresh_mock,
         ):
-            await resolution.hydrate_identity(self.db, self.ctx, 'plugin-1')
+            await resolution.hydrate_identity(
+                self.db, self.ctx, 'integration-1'
+            )
 
         refresh_mock.assert_awaited_once()
         # The materialized credentials should derive from the refreshed
@@ -234,10 +217,9 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
         connection.scopes = []
 
         materialized = mock.MagicMock(name='materialized')
-        handler = mock.MagicMock(spec=resolution.IdentityPlugin)
+        handler = mock.MagicMock()
         handler.materialize = mock.AsyncMock(return_value=materialized)
-        entry = mock.MagicMock()
-        entry.handler_cls = mock.MagicMock(return_value=handler)
+        handler_cls = mock.MagicMock(return_value=handler)
 
         from imbi_api.identity import flows
 
@@ -249,22 +231,21 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
             ),
             mock.patch.object(
                 resolution,
-                '_plugin_slug',
-                new=mock.AsyncMock(return_value='oidc'),
+                'load_integration',
+                new=mock.AsyncMock(return_value=_integration()),
             ),
             mock.patch.object(
-                resolution,
-                'load_plugin_options',
-                new=mock.AsyncMock(return_value={}),
+                resolution, 'get_capability', return_value=handler_cls
             ),
-            mock.patch.object(resolution, 'get_plugin', return_value=entry),
             mock.patch.object(
                 flows,
                 'refresh_connection',
                 new=mock.AsyncMock(),
             ) as refresh_mock,
         ):
-            await resolution.hydrate_identity(self.db, self.ctx, 'plugin-1')
+            await resolution.hydrate_identity(
+                self.db, self.ctx, 'integration-1'
+            )
 
         refresh_mock.assert_not_awaited()
 
@@ -296,7 +277,7 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             with self.assertRaises(identity_errors.IdentityRequiredError):
                 await resolution.hydrate_identity(
-                    self.db, self.ctx, 'plugin-1'
+                    self.db, self.ctx, 'integration-1'
                 )
 
     async def test_happy_path_calls_materialize(self) -> None:
@@ -308,10 +289,9 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
         connection.scopes = ['email']
 
         materialized = mock.MagicMock(name='materialized')
-        handler = mock.MagicMock(spec=resolution.IdentityPlugin)
+        handler = mock.MagicMock()
         handler.materialize = mock.AsyncMock(return_value=materialized)
-        entry = mock.MagicMock()
-        entry.handler_cls = mock.MagicMock(return_value=handler)
+        handler_cls = mock.MagicMock(return_value=handler)
 
         with (
             mock.patch.object(
@@ -321,22 +301,20 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
             ),
             mock.patch.object(
                 resolution,
-                '_plugin_slug',
-                new=mock.AsyncMock(return_value='oidc'),
+                'load_integration',
+                new=mock.AsyncMock(return_value=_integration()),
+            ),
+            mock.patch.object(
+                resolution, 'get_capability', return_value=handler_cls
             ),
             mock.patch.object(
                 resolution,
-                'load_plugin_options',
-                new=mock.AsyncMock(return_value={'k': 'v'}),
-            ),
-            mock.patch.object(
-                resolution,
-                'get_plugin',
-                return_value=entry,
+                'capability_state',
+                return_value={'options': {'k': 'v'}},
             ),
         ):
             result = await resolution.hydrate_identity(
-                self.db, self.ctx, 'plugin-1'
+                self.db, self.ctx, 'integration-1'
             )
 
         # ctx.model_copy is patched to capture the update kwargs.
@@ -347,34 +325,132 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs.get('identity_options'), {'k': 'v'})
         self.assertIs(kwargs.get('db'), self.db)
 
+    async def test_explicit_identity_options_skip_capability_state(
+        self,
+    ) -> None:
+        connection = mock.MagicMock()
+        connection.status = 'active'
+        connection.access_token = 'access'
+        connection.refresh_token = 'refresh'
+        connection.expires_at = None
+        connection.scopes = ['email']
 
-class PluginSlugHelperTestCase(unittest.IsolatedAsyncioTestCase):
-    """Verify the private _plugin_slug helper."""
+        materialized = mock.MagicMock(name='materialized')
+        handler = mock.MagicMock()
+        handler.materialize = mock.AsyncMock(return_value=materialized)
+        handler_cls = mock.MagicMock(return_value=handler)
+
+        with (
+            mock.patch.object(
+                resolution.repository,
+                'load_connection',
+                new=mock.AsyncMock(return_value=connection),
+            ),
+            mock.patch.object(
+                resolution,
+                'load_integration',
+                new=mock.AsyncMock(return_value=_integration()),
+            ),
+            mock.patch.object(
+                resolution, 'get_capability', return_value=handler_cls
+            ),
+        ):
+            await resolution.hydrate_identity(
+                self.db,
+                self.ctx,
+                'integration-1',
+                identity_options={'explicit': True},
+            )
+
+        _args, kwargs = handler.materialize.call_args
+        self.assertEqual(kwargs.get('identity_options'), {'explicit': True})
+
+
+class LoadIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
+    """Verify load_integration parses and hydrates the Integration row."""
 
     async def test_returns_none_when_no_rows(self) -> None:
         db = mock.AsyncMock()
         db.execute.return_value = []
-        slug = await resolution._plugin_slug(db, 'plugin-1')
-        self.assertIsNone(slug)
+        result = await resolution.load_integration(db, 'integration-1')
+        self.assertIsNone(result)
 
-    async def test_parses_agtype_value(self) -> None:
+    async def test_returns_hydrated_integration(self) -> None:
         db = mock.AsyncMock()
-        db.execute.return_value = [{'slug': '"oidc"'}]
-        with mock.patch.object(
-            resolution.graph,
-            'parse_agtype',
-            return_value='oidc',
+        db.execute.return_value = [{'i': '{"id": "integration-1"}'}]
+        with (
+            mock.patch.object(
+                resolution.graph,
+                'parse_agtype',
+                return_value={'id': 'integration-1'},
+            ),
+            mock.patch.object(
+                resolution,
+                'hydrate_integration',
+                side_effect=lambda props: {**props, 'hydrated': True},
+            ),
         ):
-            slug = await resolution._plugin_slug(db, 'plugin-1')
-        self.assertEqual(slug, 'oidc')
+            result = await resolution.load_integration(db, 'integration-1')
+        self.assertEqual(result, {'id': 'integration-1', 'hydrated': True})
 
-    async def test_returns_none_when_parsed_value_is_none(self) -> None:
+    async def test_returns_none_when_parsed_value_not_dict(self) -> None:
         db = mock.AsyncMock()
-        db.execute.return_value = [{'slug': 'null'}]
+        db.execute.return_value = [{'i': 'null'}]
         with mock.patch.object(
-            resolution.graph,
-            'parse_agtype',
-            return_value=None,
+            resolution.graph, 'parse_agtype', return_value=None
         ):
-            slug = await resolution._plugin_slug(db, 'plugin-1')
-        self.assertIsNone(slug)
+            result = await resolution.load_integration(db, 'integration-1')
+        self.assertIsNone(result)
+
+
+class LoadIntegrationOrgSlugTestCase(unittest.IsolatedAsyncioTestCase):
+    """Verify load_integration_org_slug resolves the owning org's slug."""
+
+    async def test_returns_none_when_no_rows(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.return_value = []
+        result = await resolution.load_integration_org_slug(
+            db, 'integration-1'
+        )
+        self.assertIsNone(result)
+
+    async def test_returns_slug(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.return_value = [{'slug': '"acme"'}]
+        with mock.patch.object(
+            resolution.graph, 'parse_agtype', return_value='acme'
+        ):
+            result = await resolution.load_integration_org_slug(
+                db, 'integration-1'
+            )
+        self.assertEqual(result, 'acme')
+
+
+class LoadPluginOptionsTestCase(unittest.IsolatedAsyncioTestCase):
+    """Verify load_plugin_options reads capabilities.identity.options."""
+
+    async def test_returns_empty_when_integration_missing(self) -> None:
+        with mock.patch.object(
+            resolution,
+            'load_integration',
+            new=mock.AsyncMock(return_value=None),
+        ):
+            result = await resolution.load_plugin_options(
+                mock.AsyncMock(), 'integration-1'
+            )
+        self.assertEqual(result, {})
+
+    async def test_returns_identity_capability_options(self) -> None:
+        integration = _integration()
+        integration['capabilities'] = {
+            'identity': {'enabled': True, 'options': {'a': 1}}
+        }
+        with mock.patch.object(
+            resolution,
+            'load_integration',
+            new=mock.AsyncMock(return_value=integration),
+        ):
+            result = await resolution.load_plugin_options(
+                mock.AsyncMock(), 'integration-1'
+            )
+        self.assertEqual(result, {'a': 1})

@@ -18,7 +18,7 @@ import pydantic
 from imbi_common import blueprints, clickhouse, graph, models
 from imbi_common.clickhouse import client as ch_client
 from imbi_common.plugins.base import (
-    LifecyclePlugin,
+    LifecycleCapability,
     PluginContext,
     RelocationTarget,
 )
@@ -41,7 +41,7 @@ from imbi_api.plugins.lifecycle_dispatch import (
     build_lifecycle_context_bundle,
     dispatch_lifecycle,
 )
-from imbi_api.plugins.resolution import resolve_all_plugins
+from imbi_api.plugins.resolution import resolve_all_capabilities
 from imbi_api.relationships import RelationshipSpec, build_relationships
 from imbi_api.scoring import OptionalValkeyClient
 from imbi_api.scoring import queue as score_queue
@@ -300,7 +300,7 @@ class ProjectResponse(pydantic.BaseModel):
     links: dict[str, pydantic.AnyUrl] = {}
     identifiers: dict[str, int | str] = {}
     # The project's EXISTS_IN connections, one entry per
-    # ``(:Project)-[:EXISTS_IN]->(:ThirdPartyService)`` edge.  Read-only
+    # ``(:Project)-[:EXISTS_IN]->(:Integration)`` edge.  Read-only
     # structured surface (identifier + canonical API URL + the dashboard
     # URL from ``links``); maintained through the project-services
     # endpoints, not by editing ``identifiers``.
@@ -338,7 +338,7 @@ class ProjectResponse(pydantic.BaseModel):
 
         The read fragment returns a ``service_edges`` list of
         ``{slug, name, identifier, canonical_url}`` from each
-        ``(:Project)-[:EXISTS_IN]->(:ThirdPartyService)`` edge.  Pair each
+        ``(:Project)-[:EXISTS_IN]->(:Integration)`` edge.  Pair each
         with the matching ``Project.links[slug]`` dashboard URL and expose
         the result as the read-only ``services`` field.  ``identifiers``
         is intentionally left as the node property -- edge identifiers are
@@ -365,8 +365,8 @@ class ProjectResponse(pydantic.BaseModel):
             dashboard = links.get(slug)
             services.append(
                 {
-                    'third_party_service_slug': slug,
-                    'third_party_service_name': edge.get('name') or slug,
+                    'integration_slug': slug,
+                    'integration_name': edge.get('name') or slug,
                     'identifier': ''
                     if identifier is None
                     else str(identifier),
@@ -421,7 +421,7 @@ class LifecyclePreviewEntry(pydantic.BaseModel):
     project being type-tagged for the first time).
     """
 
-    plugin_id: str
+    integration_id: str
     plugin_slug: str
     current_target: RelocationTarget | None = None
     next_target: RelocationTarget | None = None
@@ -433,7 +433,7 @@ class LifecyclePreviewResponse(pydantic.BaseModel):
 
     Empty ``previews`` when the project has no lifecycle plugins
     assigned, or when none of the assigned plugins implement
-    :meth:`LifecyclePlugin.resolve_relocation_target` (the default
+    :meth:`LifecycleCapability.resolve_relocation_target` (the default
     base implementation returns ``None``).
     """
 
@@ -1038,7 +1038,7 @@ async def _emit_change_events(
                 'project_id',
                 'recorded_at',
                 'type',
-                'third_party_service',
+                'integration',
                 'attributed_to',
                 'metadata',
                 'payload',
@@ -1142,11 +1142,11 @@ _RETURN_FRAGMENT: typing.LiteralString = """
     OPTIONAL MATCH (p)<-[:DEPENDS_ON]-(in_:Project)
     WITH p, o, t, pts, envs, outbound_count,
          count(in_) AS inbound_count
-    OPTIONAL MATCH (p)-[ei:EXISTS_IN]->(tps:ThirdPartyService)
+    OPTIONAL MATCH (p)-[ei:EXISTS_IN]->(integration:Integration)
     WITH p, o, t, pts, envs, outbound_count, inbound_count,
-         collect(CASE WHEN tps IS NOT NULL
-                 THEN {{slug: tps.slug,
-                        name: tps.name,
+         collect(CASE WHEN integration IS NOT NULL
+                 THEN {{slug: integration.slug,
+                        name: integration.name,
                         identifier: ei.identifier,
                         canonical_url: ei.canonical_url}}
                  END) AS service_edges
@@ -1572,14 +1572,14 @@ async def list_projects(
     project_type: str | None = None,
     include_archived: bool = False,
     slim: bool = False,
-    third_party_service_slug: typing.Annotated[
+    integration_slug: typing.Annotated[
         str | None,
         fastapi.Query(
             description=(
                 'Restrict results to projects that have an EXISTS_IN '
-                'relationship to the third-party service with this slug '
+                'relationship to the integration with this slug '
                 'in the organization. Combine with ``identifier`` to '
-                'match a specific external identifier on that service.'
+                'match a specific external identifier on that integration.'
             ),
         ),
     ] = None,
@@ -1588,9 +1588,9 @@ async def list_projects(
         fastapi.Query(
             description=(
                 'Restrict results to projects whose EXISTS_IN edge to '
-                '``third_party_service_slug`` carries this external '
+                '``integration_slug`` carries this external '
                 'identifier (exact match). Requires '
-                '``third_party_service_slug``.'
+                '``integration_slug``.'
             ),
         ),
     ] = None,
@@ -1620,12 +1620,12 @@ async def list_projects(
     stored on the project (e.g. ``framework``, ``programming_language``)
     using the field/operator grammar described on the parameter.
 
-    ``third_party_service_slug`` restricts the listing to projects that
-    have an ``EXISTS_IN`` relationship to that service within the
+    ``integration_slug`` restricts the listing to projects that
+    have an ``EXISTS_IN`` relationship to that integration within the
     organization; adding ``identifier`` further restricts to the
     project(s) whose edge carries that external identifier. ``identifier``
-    is only meaningful alongside ``third_party_service_slug`` and is
-    rejected on its own. An unknown service slug simply matches nothing.
+    is only meaningful alongside ``integration_slug`` and is
+    rejected on its own. An unknown integration slug simply matches nothing.
 
     ``slim=true`` returns a stripped payload tailored to the
     projects-list UI: only the fields the list view reads (id, name,
@@ -1637,21 +1637,21 @@ async def list_projects(
     ``relationships`` block. Cuts the response from megabytes to
     kilobytes for large orgs.
     """
-    if identifier is not None and third_party_service_slug is None:
+    if identifier is not None and integration_slug is None:
         raise fastapi.HTTPException(
             status_code=422,
             detail=(
-                'identifier requires third_party_service_slug; an '
+                'identifier requires integration_slug; an '
                 'external identifier is only meaningful for a specific '
-                'third-party service'
+                'integration'
             ),
         )
-    # Restrict to projects linked to a third-party service (and,
+    # Restrict to projects linked to an integration (and,
     # optionally, a specific external identifier on that edge). Closed
     # with ``WITH DISTINCT p, o`` so the optional ``identifier`` WHERE
     # never lands adjacent to the attribute filter's WHERE below.
     service_filter: typing.LiteralString = ''
-    if third_party_service_slug is not None:
+    if integration_slug is not None:
         identifier_clause: typing.LiteralString = (
             'WHERE ei.identifier = {identifier}\n'
             if identifier is not None
@@ -1659,7 +1659,7 @@ async def list_projects(
         )
         service_filter = (
             'MATCH (p)-[ei:EXISTS_IN]->'
-            '(tps:ThirdPartyService {{slug: {tps_slug}}})'
+            '(integration:Integration {{slug: {integration_slug}}})'
             '-[:BELONGS_TO]->(o)\n'
             + identifier_clause
             + 'WITH DISTINCT p, o\n'
@@ -1709,7 +1709,7 @@ async def list_projects(
         {
             'org_slug': org_slug,
             'project_type': project_type,
-            'tps_slug': third_party_service_slug,
+            'integration_slug': integration_slug,
             'identifier': identifier,
             **attr_params,
         },
@@ -2976,7 +2976,7 @@ async def preview_lifecycle(
 
     Resolves every lifecycle plugin assigned to the project (project- +
     project-type-level), then asks each plugin's
-    :meth:`LifecyclePlugin.resolve_relocation_target` what target it
+    :meth:`LifecycleCapability.resolve_relocation_target` what target it
     would route to *today* vs *given the hypothetical type set*.  The UI
     uses ``would_relocate=True`` rows to surface the "Also move
     repository to ``<display>``?" opt-in checkbox on the project-type
@@ -3005,7 +3005,7 @@ async def preview_lifecycle(
             detail=f'Project {project_id!r} not found',
         )
     bundle = await build_lifecycle_context_bundle(db, project_id)
-    resolved = await resolve_all_plugins(db, project_id, 'lifecycle')
+    resolved = await resolve_all_capabilities(db, project_id, 'lifecycle')
     if not resolved:
         return LifecyclePreviewResponse(previews=[])
 
@@ -3021,13 +3021,16 @@ async def preview_lifecycle(
 
     previews: list[LifecyclePreviewEntry] = []
     for plugin in resolved:
-        handler = typing.cast(LifecyclePlugin, plugin.entry.handler_cls())
+        handler = typing.cast(LifecycleCapability, plugin.capability_cls())
         current_ctx = PluginContext(
             project_id=project_id,
             project_slug=bundle.project_slug,
             org_slug=org_slug,
             team_slug=bundle.team_slug,
-            assignment_options=plugin.options,
+            assignment_options=plugin.capability_options,
+            integration_slug=plugin.integration_slug,
+            integration_options=plugin.integration_options,
+            capability_options=plugin.capability_options,
             project_links=bundle.project_links,
             project_type_slugs=bundle.project_type_slugs,
         )
@@ -3042,7 +3045,7 @@ async def preview_lifecycle(
         )
         previews.append(
             LifecyclePreviewEntry(
-                plugin_id=plugin.plugin_id,
+                integration_id=plugin.integration_id,
                 plugin_slug=plugin.plugin_slug,
                 current_target=current_target,
                 next_target=next_target,
@@ -3053,7 +3056,7 @@ async def preview_lifecycle(
 
 
 async def _safe_resolve_target(
-    handler: LifecyclePlugin,
+    handler: LifecycleCapability,
     ctx: PluginContext,
 ) -> RelocationTarget | None:
     """Call ``resolve_relocation_target``, swallowing plugin errors.
@@ -3067,8 +3070,9 @@ async def _safe_resolve_target(
         return await handler.resolve_relocation_target(ctx, {})
     except Exception:
         LOGGER.exception(
-            'resolve_relocation_target raised for plugin %s on project %s',
-            handler.manifest.slug,
+            'resolve_relocation_target raised for integration %s '
+            'on project %s',
+            ctx.integration_slug,
             ctx.project_id,
         )
         return None

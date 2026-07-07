@@ -23,29 +23,22 @@ from imbi_common import clickhouse as imbi_clickhouse
 from imbi_common import graph
 from imbi_common import settings as imbi_settings
 from imbi_common.plugins.base import (
+    Capability,
     ConfigKey,
     ConfigKeyWithValue,
-    ConfigurationPlugin,
+    ConfigurationCapability,
+    Plugin,
     PluginManifest,
-)
-from imbi_common.plugins.errors import (
-    PluginCredentialsMissing,
 )
 from imbi_common.plugins.registry import RegistryEntry
 from valkey import asyncio as valkey_asyncio
 
 from imbi_api import app, models
 from imbi_api.auth import password, permissions
-from imbi_api.plugins.resolution import ResolvedPlugin
+from imbi_api.plugins.resolution import ResolvedCapability
 
 
-class _FakeConfigurationPlugin(ConfigurationPlugin):
-    manifest = PluginManifest(
-        slug='ssm',
-        name='SSM',
-        plugin_type='configuration',
-    )
-
+class _FakeConfigurationHandler(ConfigurationCapability):
     async def list_keys(self, ctx, credentials):  # type: ignore[override]
         return [
             ConfigKey(
@@ -81,21 +74,42 @@ class _FakeConfigurationPlugin(ConfigurationPlugin):
         return None
 
 
+class _FakePlugin(Plugin):
+    pass
+
+
 def _entry() -> RegistryEntry:
     return RegistryEntry(
-        handler_cls=_FakeConfigurationPlugin,
-        manifest=_FakeConfigurationPlugin.manifest,
+        plugin_cls=_FakePlugin,
+        manifest=PluginManifest(
+            slug='ssm',
+            name='SSM',
+            capabilities=[
+                Capability(
+                    kind='configuration',
+                    label='Configuration',
+                    handler=_FakeConfigurationHandler,
+                )
+            ],
+        ),
         package_name='imbi-plugin-ssm',
         package_version='1.0.0',
     )
 
 
-def _resolved(plugin_id: str) -> ResolvedPlugin:
-    return ResolvedPlugin(
-        plugin_id=plugin_id,
+def _resolved(plugin_id: str) -> ResolvedCapability:
+    entry = _entry()
+    return ResolvedCapability(
+        integration_id=plugin_id,
+        integration_slug='ssm-prod',
         plugin_slug='ssm',
-        entry=_entry(),
-        options={},
+        kind='configuration',
+        entry=entry,
+        capability_cls=entry.manifest.get_capability('configuration').handler,
+        integration={'id': plugin_id, 'slug': 'ssm-prod', 'plugin': 'ssm'},
+        integration_options={},
+        capability_options={},
+        encrypted_credentials={},
     )
 
 
@@ -249,13 +263,13 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         with testclient.TestClient(self.test_app) as client:
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_plugin',
+                    'imbi_api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
                     'imbi_api.endpoints.project_configuration'
-                    '.get_plugin_credentials',
-                    side_effect=PluginCredentialsMissing('no token'),
+                    '.decrypt_integration_credentials',
+                    return_value={},
                 ),
             ):
                 response = client.get(
@@ -269,13 +283,13 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         with testclient.TestClient(self.test_app) as client:
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_plugin',
+                    'imbi_api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
                     'imbi_api.endpoints.project_configuration'
-                    '.get_plugin_credentials',
-                    return_value={},
+                    '.decrypt_integration_credentials',
+                    return_value={'token': 'x'},
                 ),
             ):
                 response = client.get(
@@ -311,13 +325,13 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
             )
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_plugin',
+                    'imbi_api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
                     'imbi_api.endpoints.project_configuration'
-                    '.get_plugin_credentials',
-                    return_value={},
+                    '.decrypt_integration_credentials',
+                    return_value={'token': 'x'},
                 ),
             ):
                 response = client.get(
@@ -351,13 +365,13 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
             )
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_plugin',
+                    'imbi_api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
                     'imbi_api.endpoints.project_configuration'
-                    '.get_plugin_credentials',
-                    return_value={},
+                    '.decrypt_integration_credentials',
+                    return_value={'token': 'x'},
                 ),
             ):
                 response = client.get(
@@ -377,13 +391,13 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         with testclient.TestClient(self.test_app) as client:
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_plugin',
+                    'imbi_api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
                     'imbi_api.endpoints.project_configuration'
-                    '.get_plugin_credentials',
-                    return_value={},
+                    '.decrypt_integration_credentials',
+                    return_value={'token': 'x'},
                 ),
             ):
                 response = client.post(
@@ -399,13 +413,13 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         with testclient.TestClient(self.test_app) as client:
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_plugin',
+                    'imbi_api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
                     'imbi_api.endpoints.project_configuration'
-                    '.get_plugin_credentials',
-                    side_effect=PluginCredentialsMissing('missing'),
+                    '.decrypt_integration_credentials',
+                    return_value={},
                 ),
             ):
                 response = client.post(
@@ -438,13 +452,13 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
             )
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_plugin',
+                    'imbi_api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
                     'imbi_api.endpoints.project_configuration'
-                    '.get_plugin_credentials',
-                    return_value={},
+                    '.decrypt_integration_credentials',
+                    return_value={'token': 'x'},
                 ),
                 mock.patch(
                     'imbi_api.endpoints.project_configuration.graph'
@@ -489,13 +503,13 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         with testclient.TestClient(self.test_app) as client:
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_plugin',
+                    'imbi_api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
                     'imbi_api.endpoints.project_configuration'
-                    '.get_plugin_credentials',
-                    side_effect=PluginCredentialsMissing('missing'),
+                    '.decrypt_integration_credentials',
+                    return_value={},
                 ),
             ):
                 response = client.put(
@@ -519,13 +533,13 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         ) as client:
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_plugin',
+                    'imbi_api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
                     'imbi_api.endpoints.project_configuration'
-                    '.get_plugin_credentials',
-                    return_value={},
+                    '.decrypt_integration_credentials',
+                    return_value={'token': 'x'},
                 ),
                 mock.patch(
                     'imbi_api.endpoints.project_configuration.clickhouse'
@@ -554,13 +568,13 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
             asyncio.run(self._seed_cache(cache_key, [{'sentinel': True}]))
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_plugin',
+                    'imbi_api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
                     'imbi_api.endpoints.project_configuration'
-                    '.get_plugin_credentials',
-                    return_value={},
+                    '.decrypt_integration_credentials',
+                    return_value={'token': 'x'},
                 ),
                 mock.patch(
                     'imbi_api.endpoints.project_configuration.graph'
@@ -587,13 +601,13 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         with testclient.TestClient(self.test_app) as client:
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_plugin',
+                    'imbi_api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
                     'imbi_api.endpoints.project_configuration'
-                    '.get_plugin_credentials',
-                    side_effect=PluginCredentialsMissing('missing'),
+                    '.decrypt_integration_credentials',
+                    return_value={},
                 ),
             ):
                 response = client.delete(
@@ -626,13 +640,13 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         with testclient.TestClient(self.test_app) as client:
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_plugin',
+                    'imbi_api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
                     'imbi_api.endpoints.project_configuration'
-                    '.get_plugin_credentials',
-                    return_value={},
+                    '.decrypt_integration_credentials',
+                    return_value={'token': 'x'},
                 ),
                 mock.patch(
                     'imbi_api.endpoints.project_configuration'

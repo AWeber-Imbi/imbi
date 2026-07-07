@@ -14,27 +14,26 @@ class IdentityConnectionResponse(pydantic.BaseModel):
     """
 
     id: str
-    plugin_id: str
-    plugin_slug: str
-    plugin_label: str | None = None
+    integration_id: str
+    integration_slug: str
+    integration_name: str | None = None
     subject: str
     status: typing.Literal['active', 'revoked', 'expired']
     expires_at: datetime.datetime | None = None
     scopes: list[str] = []
     last_used_at: datetime.datetime | None = None
-    connects_users_to: str | None = None
     metadata: dict[str, typing.Any] = {}
 
 
 class IdentityConnectionStartRequest(pydantic.BaseModel):
-    """Body for ``POST /me/identities/{plugin_id}/start``."""
+    """Body for ``POST /me/identities/{integration_id}/start``."""
 
     return_to: str | None = None
     scopes: list[str] | None = None
 
 
 class IdentityConnectionStartResponse(pydantic.BaseModel):
-    """Reply to ``POST /me/identities/{plugin_id}/start``."""
+    """Reply to ``POST /me/identities/{integration_id}/start``."""
 
     authorization_url: str
     state: str
@@ -42,13 +41,13 @@ class IdentityConnectionStartResponse(pydantic.BaseModel):
 
 
 class IdentityConnectionPollRequest(pydantic.BaseModel):
-    """Body for ``POST /me/identities/{plugin_id}/poll``."""
+    """Body for ``POST /me/identities/{integration_id}/poll``."""
 
     state: str
 
 
 class IdentityConnectionPollResponse(pydantic.BaseModel):
-    """Reply to ``POST /me/identities/{plugin_id}/poll``.
+    """Reply to ``POST /me/identities/{integration_id}/poll``.
 
     ``status`` is ``'pending'`` while the user has not yet authorized
     out-of-band, ``'complete'`` once the IdP has issued tokens and the
@@ -68,7 +67,7 @@ class IdentityCredentialsInternal(pydantic.BaseModel):
     """
 
     connection_id: str
-    plugin_id: str
+    integration_id: str
     user_id: str
     subject: str
     access_token: str

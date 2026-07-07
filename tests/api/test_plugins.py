@@ -8,74 +8,8 @@ import typing
 import unittest
 from unittest import mock
 
-import fastapi
-
 if typing.TYPE_CHECKING:
     from imbi_common.plugins.registry import RegistryEntry
-
-
-class AssignmentsTestCase(unittest.TestCase):
-    def test_validate_one_default_per_plugin_type_ok(self) -> None:
-        from imbi_api.plugins.assignments import (
-            PluginAssignmentRow,
-            validate_one_default_per_plugin_type,
-        )
-
-        rows: list[PluginAssignmentRow] = [
-            PluginAssignmentRow(
-                plugin_id='p1',
-                plugin_type='configuration',
-                default=True,
-                options={},
-            ),
-            PluginAssignmentRow(
-                plugin_id='p2',
-                plugin_type='logs',
-                default=True,
-                options={},
-            ),
-        ]
-        validate_one_default_per_plugin_type(rows)
-
-    def test_validate_two_defaults_same_plugin_type_raises(self) -> None:
-        from imbi_api.plugins.assignments import (
-            PluginAssignmentRow,
-            validate_one_default_per_plugin_type,
-        )
-
-        rows: list[PluginAssignmentRow] = [
-            PluginAssignmentRow(
-                plugin_id='p1',
-                plugin_type='configuration',
-                default=True,
-                options={},
-            ),
-            PluginAssignmentRow(
-                plugin_id='p2',
-                plugin_type='configuration',
-                default=True,
-                options={},
-            ),
-        ]
-        with self.assertRaises(ValueError):
-            validate_one_default_per_plugin_type(rows)
-
-    def test_validate_no_default_raises(self) -> None:
-        from imbi_api.plugins.assignments import (
-            PluginAssignmentRow,
-            validate_one_default_per_plugin_type,
-        )
-
-        rows: list[PluginAssignmentRow] = [
-            PluginAssignmentRow(
-                plugin_id='p1',
-                plugin_type='configuration',
-                default=False,
-                options={},
-            ),
-        ]
-        with self.assertRaises(ValueError):
-            validate_one_default_per_plugin_type(rows)
 
 
 class ParseOptionsTestCase(unittest.TestCase):
@@ -386,103 +320,115 @@ class InstallerTestCase(unittest.TestCase):
 
 def _make_registry_entry(
     slug: str = 'ssm',
-    required_creds: bool = False,
-    auth_type: typing.Literal[
-        'api_token', 'oauth2', 'oidc', 'aws-iam-ic'
-    ] = 'api_token',
+    kind: str = 'configuration',
 ) -> RegistryEntry:
-    """Build a RegistryEntry with a fake handler for resolution tests."""
+    """Build a v3 RegistryEntry with a fake capability handler."""
     from imbi_common.plugins.base import (
-        ConfigurationPlugin,
-        CredentialField,
+        CAPABILITY_CONTRACTS,
+        Capability,
+        Plugin,
         PluginManifest,
     )
     from imbi_common.plugins.registry import RegistryEntry
 
-    class _Fake(ConfigurationPlugin):
-        manifest = PluginManifest(
-            slug=slug,
-            name=slug.upper(),
-            plugin_type='configuration',
-            auth_type=auth_type,
-            credentials=(
-                [CredentialField(name='token', label='Token', required=True)]
-                if required_creds
-                else []
-            ),
-        )
+    handler = type(f'_Fake{kind}', (CAPABILITY_CONTRACTS[kind],), {})
+    manifest = PluginManifest(
+        slug=slug,
+        name=slug.upper(),
+        auth_type='api_token',
+        capabilities=[
+            Capability(kind=kind, label=kind, handler=handler)  # type: ignore[arg-type]
+        ],
+    )
 
-        async def list_keys(self, ctx, credentials):  # type: ignore[override]
-            return []
+    class _FakePlugin(Plugin):
+        pass
 
-        async def get_values(self, ctx, credentials, keys=None):  # type: ignore[override]
-            return []
-
-        async def set_value(self, ctx, credentials, key, value):  # type: ignore[override]
-            raise NotImplementedError
-
-        async def delete_key(self, ctx, credentials, key):  # type: ignore[override]
-            return None
+    _FakePlugin.manifest = manifest  # type: ignore[misc]
 
     return RegistryEntry(
-        handler_cls=_Fake,
-        manifest=_Fake.manifest,
+        plugin_cls=_FakePlugin,
+        manifest=manifest,
         package_name=f'imbi-plugin-{slug}',
         package_version='1.0.0',
     )
 
 
+def _binding(
+    *,
+    integration_id: str = 'i1',
+    slug: str = 'ssm-prod',
+    plugin: str = 'ssm',
+    source: str = 'project',
+    default: bool = True,
+    options: dict[str, typing.Any] | None = None,
+) -> typing.Any:
+    """Build a ``CapabilityBinding`` for the resolution helpers."""
+    from imbi_api.plugins.assignments import CapabilityBinding
+
+    return CapabilityBinding(
+        integration={
+            'id': integration_id,
+            'slug': slug,
+            'plugin': plugin,
+        },
+        source=source,  # type: ignore[arg-type]
+        default=default,
+        capability_options=options or {},
+        env_payloads={},
+        identity_integration_id=None,
+    )
+
+
 class ResolutionTestCase(unittest.TestCase):
-    """Branch coverage for ``resolve_plugin``."""
+    """Branch coverage for ``resolve_capability``."""
 
     def test_project_not_found_returns_404(self) -> None:
         from fastapi import HTTPException
 
-        from imbi_api.plugins.resolution import resolve_plugin
+        from imbi_api.plugins.resolution import resolve_capability
 
         mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = []
-        with self.assertRaises(HTTPException) as ctx:
-            asyncio.run(resolve_plugin(mock_db, 'p1', 'configuration', None))
+        with mock.patch(
+            'imbi_api.plugins.resolution.effective_bindings',
+            new=mock.AsyncMock(side_effect=LookupError('p1')),
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                asyncio.run(
+                    resolve_capability(mock_db, 'p1', 'configuration', None)
+                )
         self.assertEqual(ctx.exception.status_code, 404)
         self.assertIn('Project not found', ctx.exception.detail)
 
-    def test_no_plugins_assigned_returns_404(self) -> None:
+    def test_no_integrations_bound_returns_404(self) -> None:
         from fastapi import HTTPException
 
-        from imbi_api.plugins.resolution import resolve_plugin
+        from imbi_api.plugins.resolution import resolve_capability
 
         mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {'proj_plugins': '[]', 'pt_plugins': '[]'}
-        ]
-        with self.assertRaises(HTTPException) as ctx:
-            asyncio.run(resolve_plugin(mock_db, 'p1', 'configuration', None))
+        with mock.patch(
+            'imbi_api.plugins.resolution.effective_bindings',
+            new=mock.AsyncMock(return_value=[]),
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                asyncio.run(
+                    resolve_capability(mock_db, 'p1', 'configuration', None)
+                )
         self.assertEqual(ctx.exception.status_code, 404)
-        self.assertIn('No plugin assigned', ctx.exception.detail)
+        self.assertIn('No integration', ctx.exception.detail)
 
-    def test_single_plugin_resolves(self) -> None:
-        from imbi_api.plugins.resolution import resolve_plugin
+    def test_single_integration_resolves(self) -> None:
+        from imbi_api.plugins.resolution import resolve_capability
 
         mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'proj_plugins': '[]',
-                'pt_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'ssm',
-                            'options': '{}',
-                            'default': True,
-                            'src': 'project_type',
-                        }
-                    ]
-                ),
-            }
-        ]
         entry = _make_registry_entry('ssm')
         with (
+            mock.patch(
+                'imbi_api.plugins.resolution.effective_bindings',
+                new=mock.AsyncMock(
+                    return_value=[_binding(options={'region': 'us-east-1'})]
+                ),
+            ),
             mock.patch(
                 'imbi_api.plugins.resolution.get_plugin', return_value=entry
             ),
@@ -492,264 +438,28 @@ class ResolutionTestCase(unittest.TestCase):
             ),
         ):
             resolved = asyncio.run(
-                resolve_plugin(mock_db, 'proj1', 'configuration', None)
+                resolve_capability(mock_db, 'proj1', 'configuration', None)
             )
-        self.assertEqual(resolved.plugin_id, 'p1')
+        self.assertEqual(resolved.integration_id, 'i1')
         self.assertEqual(resolved.plugin_slug, 'ssm')
-        self.assertEqual(resolved.options, {})
-
-    def test_project_overrides_project_type_default(self) -> None:
-        from imbi_api.plugins.resolution import resolve_plugin
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'pt_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'ssm',
-                            'edge_options': '{}',
-                            'plugin_options': '{}',
-                            'default': True,
-                            'src': 'project_type',
-                        }
-                    ]
-                ),
-                'proj_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'ssm',
-                            'edge_options': '{"region": "us-east-1"}',
-                            'plugin_options': '{}',
-                            'default': True,
-                            'src': 'project',
-                        }
-                    ]
-                ),
-            }
-        ]
-        with (
-            mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
-                return_value=_make_registry_entry('ssm'),
-            ),
-            mock.patch(
-                'imbi_api.plugins.lifecycle.is_plugin_enabled',
-                new=mock.AsyncMock(return_value=True),
-            ),
-        ):
-            resolved = asyncio.run(
-                resolve_plugin(mock_db, 'proj1', 'configuration', None)
-            )
-        self.assertEqual(resolved.options, {'region': 'us-east-1'})
-
-    def test_multi_plugin_no_default_returns_400(self) -> None:
-        from fastapi import HTTPException
-
-        from imbi_api.plugins.resolution import resolve_plugin
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'pt_plugins': '[]',
-                'proj_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'ssm',
-                            'options': '{}',
-                            'default': False,
-                            'src': 'project',
-                        },
-                        {
-                            'id': 'p2',
-                            'slug': 'ssm',
-                            'options': '{}',
-                            'default': False,
-                            'src': 'project',
-                        },
-                    ]
-                ),
-            }
-        ]
-        with self.assertRaises(HTTPException) as ctx:
-            asyncio.run(
-                resolve_plugin(mock_db, 'proj1', 'configuration', None)
-            )
-        self.assertEqual(ctx.exception.status_code, 400)
-        self.assertIn('source', ctx.exception.detail)
-
-    def test_multi_plugin_picks_default(self) -> None:
-        from imbi_api.plugins.resolution import resolve_plugin
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'pt_plugins': '[]',
-                'proj_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'ssm',
-                            'options': '{}',
-                            'default': False,
-                            'src': 'project',
-                        },
-                        {
-                            'id': 'p2',
-                            'slug': 'ssm',
-                            'options': '{}',
-                            'default': True,
-                            'src': 'project',
-                        },
-                    ]
-                ),
-            }
-        ]
-        with (
-            mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
-                return_value=_make_registry_entry('ssm'),
-            ),
-            mock.patch(
-                'imbi_api.plugins.lifecycle.is_plugin_enabled',
-                new=mock.AsyncMock(return_value=True),
-            ),
-        ):
-            resolved = asyncio.run(
-                resolve_plugin(mock_db, 'proj1', 'configuration', None)
-            )
-        self.assertEqual(resolved.plugin_id, 'p2')
-
-    def test_source_param_picks_specific_plugin(self) -> None:
-        from imbi_api.plugins.resolution import resolve_plugin
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'pt_plugins': '[]',
-                'proj_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'ssm',
-                            'options': '{}',
-                            'default': True,
-                            'src': 'project',
-                        },
-                        {
-                            'id': 'p2',
-                            'slug': 'ssm',
-                            'options': '{}',
-                            'default': False,
-                            'src': 'project',
-                        },
-                    ]
-                ),
-            }
-        ]
-        with (
-            mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
-                return_value=_make_registry_entry('ssm'),
-            ),
-            mock.patch(
-                'imbi_api.plugins.lifecycle.is_plugin_enabled',
-                new=mock.AsyncMock(return_value=True),
-            ),
-        ):
-            resolved = asyncio.run(
-                resolve_plugin(mock_db, 'proj1', 'configuration', 'p2')
-            )
-        self.assertEqual(resolved.plugin_id, 'p2')
-
-    def test_unknown_source_returns_404(self) -> None:
-        from fastapi import HTTPException
-
-        from imbi_api.plugins.resolution import resolve_plugin
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'pt_plugins': '[]',
-                'proj_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'ssm',
-                            'options': '{}',
-                            'default': True,
-                            'src': 'project',
-                        }
-                    ]
-                ),
-            }
-        ]
-        with self.assertRaises(HTTPException) as ctx:
-            asyncio.run(
-                resolve_plugin(mock_db, 'proj1', 'configuration', 'unknown')
-            )
-        self.assertEqual(ctx.exception.status_code, 404)
-
-    def test_plugin_slug_not_in_registry_raises_unavailable(self) -> None:
-        from imbi_common.plugins.errors import (
-            PluginNotFoundError,
-            PluginUnavailableError,
+        self.assertEqual(resolved.kind, 'configuration')
+        self.assertEqual(resolved.capability_options, {'region': 'us-east-1'})
+        self.assertIs(
+            resolved.capability_cls,
+            entry.manifest.get_capability('configuration').handler,
         )
 
-        from imbi_api.plugins.resolution import resolve_plugin
+    def test_disabled_integration_filtered_returns_404(self) -> None:
+        from fastapi import HTTPException
+
+        from imbi_api.plugins.resolution import resolve_capability
 
         mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'pt_plugins': '[]',
-                'proj_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'gone',
-                            'options': '{}',
-                            'default': True,
-                            'src': 'project',
-                        }
-                    ]
-                ),
-            }
-        ]
-        with mock.patch(
-            'imbi_api.plugins.resolution.get_plugin',
-            side_effect=PluginNotFoundError('gone'),
-        ):
-            with self.assertRaises(PluginUnavailableError):
-                asyncio.run(
-                    resolve_plugin(mock_db, 'proj1', 'configuration', None)
-                )
-
-    def test_disabled_plugin_raises_unavailable(self) -> None:
-        from imbi_common.plugins.errors import PluginUnavailableError
-
-        from imbi_api.plugins.resolution import resolve_plugin
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'proj_plugins': '[]',
-                'pt_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'ssm',
-                            'options': '{}',
-                            'default': True,
-                            'src': 'project_type',
-                        }
-                    ]
-                ),
-            }
-        ]
         with (
+            mock.patch(
+                'imbi_api.plugins.resolution.effective_bindings',
+                new=mock.AsyncMock(return_value=[_binding()]),
+            ),
             mock.patch(
                 'imbi_api.plugins.resolution.get_plugin',
                 return_value=_make_registry_entry('ssm'),
@@ -759,709 +469,237 @@ class ResolutionTestCase(unittest.TestCase):
                 new=mock.AsyncMock(return_value=False),
             ),
         ):
-            with self.assertRaises(PluginUnavailableError):
+            with self.assertRaises(HTTPException) as ctx:
                 asyncio.run(
-                    resolve_plugin(mock_db, 'proj1', 'configuration', None)
+                    resolve_capability(mock_db, 'proj1', 'configuration', None)
                 )
+        self.assertEqual(ctx.exception.status_code, 404)
 
-    def test_resolve_all_skips_disabled_plugins(self) -> None:
-        from imbi_api.plugins.resolution import resolve_all_plugins
+    def test_multi_no_default_returns_400(self) -> None:
+        from fastapi import HTTPException
+
+        from imbi_api.plugins.resolution import resolve_capability
 
         mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'proj_plugins': '[]',
-                'pt_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'on',
-                            'options': '{}',
-                            'default': True,
-                            'src': 'project_type',
-                        },
-                        {
-                            'id': 'p2',
-                            'slug': 'off',
-                            'options': '{}',
-                            'default': True,
-                            'src': 'project_type',
-                        },
-                    ]
-                ),
-            }
+        bindings = [
+            _binding(integration_id='i1', slug='a', default=False),
+            _binding(integration_id='i2', slug='b', default=False),
         ]
         with (
             mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
-                side_effect=lambda slug: _make_registry_entry(slug),
+                'imbi_api.plugins.resolution.effective_bindings',
+                new=mock.AsyncMock(return_value=bindings),
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle.get_enabled_map',
-                new=mock.AsyncMock(return_value={'on': True, 'off': False}),
+                'imbi_api.plugins.resolution.get_plugin',
+                return_value=_make_registry_entry('ssm'),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                new=mock.AsyncMock(return_value=True),
+            ),
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                asyncio.run(
+                    resolve_capability(mock_db, 'proj1', 'configuration', None)
+                )
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn('source', ctx.exception.detail)
+
+    def test_multi_picks_project_default(self) -> None:
+        from imbi_api.plugins.resolution import resolve_capability
+
+        mock_db = mock.AsyncMock()
+        bindings = [
+            _binding(integration_id='i1', slug='a', default=False),
+            _binding(integration_id='i2', slug='b', default=True),
+        ]
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.effective_bindings',
+                new=mock.AsyncMock(return_value=bindings),
+            ),
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin',
+                return_value=_make_registry_entry('ssm'),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                new=mock.AsyncMock(return_value=True),
             ),
         ):
             resolved = asyncio.run(
-                resolve_all_plugins(mock_db, 'proj1', 'configuration')
+                resolve_capability(mock_db, 'proj1', 'configuration', None)
             )
-        self.assertEqual({r.plugin_slug for r in resolved}, {'on'})
+        self.assertEqual(resolved.integration_id, 'i2')
 
-
-class ResolveAllPluginsTestCase(unittest.TestCase):
-    """Branch coverage for ``resolve_all_plugins`` (lifecycle fan-out)."""
-
-    def test_empty_when_no_records(self) -> None:
-        from imbi_api.plugins.resolution import resolve_all_plugins
+    def test_source_picks_specific_integration(self) -> None:
+        from imbi_api.plugins.resolution import resolve_capability
 
         mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = []
-        result = asyncio.run(resolve_all_plugins(mock_db, 'p1', 'lifecycle'))
-        self.assertEqual(result, [])
-
-    def test_empty_when_no_plugins_assigned(self) -> None:
-        from imbi_api.plugins.resolution import resolve_all_plugins
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {'proj_plugins': '[]', 'pt_plugins': '[]'}
+        bindings = [
+            _binding(integration_id='i1', slug='a', default=True),
+            _binding(integration_id='i2', slug='b', default=False),
         ]
-        result = asyncio.run(resolve_all_plugins(mock_db, 'p1', 'lifecycle'))
-        self.assertEqual(result, [])
-
-    def test_returns_all_assigned_plugins(self) -> None:
-        from imbi_api.plugins.resolution import resolve_all_plugins
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'pt_plugins': '[]',
-                'proj_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'github-lifecycle',
-                            'edge_options': '{}',
-                            'plugin_options': '{}',
-                            'default': True,
-                            'src': 'project',
-                        },
-                        {
-                            'id': 'p2',
-                            'slug': 'aws-lifecycle',
-                            'edge_options': '{}',
-                            'plugin_options': '{}',
-                            'default': False,
-                            'src': 'project',
-                        },
-                    ]
-                ),
-            }
-        ]
-        entry_a = _make_registry_entry('github-lifecycle')
-        entry_b = _make_registry_entry('aws-lifecycle')
-        entries = {'github-lifecycle': entry_a, 'aws-lifecycle': entry_b}
         with (
+            mock.patch(
+                'imbi_api.plugins.resolution.effective_bindings',
+                new=mock.AsyncMock(return_value=bindings),
+            ),
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin',
+                return_value=_make_registry_entry('ssm'),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                new=mock.AsyncMock(return_value=True),
+            ),
+        ):
+            resolved = asyncio.run(
+                resolve_capability(mock_db, 'proj1', 'configuration', 'b')
+            )
+        self.assertEqual(resolved.integration_id, 'i2')
+
+    def test_unknown_source_returns_404(self) -> None:
+        from fastapi import HTTPException
+
+        from imbi_api.plugins.resolution import resolve_capability
+
+        mock_db = mock.AsyncMock()
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.effective_bindings',
+                new=mock.AsyncMock(return_value=[_binding(slug='a')]),
+            ),
+            mock.patch(
+                'imbi_api.plugins.resolution.get_plugin',
+                return_value=_make_registry_entry('ssm'),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                new=mock.AsyncMock(return_value=True),
+            ),
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                asyncio.run(
+                    resolve_capability(
+                        mock_db, 'proj1', 'configuration', 'unknown'
+                    )
+                )
+        self.assertEqual(ctx.exception.status_code, 404)
+
+
+class ResolveAllCapabilitiesTestCase(unittest.TestCase):
+    """Branch coverage for ``resolve_all_capabilities`` (fan-out)."""
+
+    def test_empty_when_no_bindings(self) -> None:
+        from imbi_api.plugins.resolution import resolve_all_capabilities
+
+        mock_db = mock.AsyncMock()
+        with mock.patch(
+            'imbi_api.plugins.resolution.effective_bindings',
+            new=mock.AsyncMock(return_value=[]),
+        ):
+            result = asyncio.run(
+                resolve_all_capabilities(mock_db, 'p1', 'lifecycle')
+            )
+        self.assertEqual(result, [])
+
+    def test_returns_all_enabled_integrations(self) -> None:
+        from imbi_api.plugins.resolution import resolve_all_capabilities
+
+        mock_db = mock.AsyncMock()
+        bindings = [
+            _binding(integration_id='i1', slug='gh', plugin='github'),
+            _binding(integration_id='i2', slug='aws', plugin='aws'),
+        ]
+        entries = {
+            'github': _make_registry_entry('github', kind='lifecycle'),
+            'aws': _make_registry_entry('aws', kind='lifecycle'),
+        }
+        with (
+            mock.patch(
+                'imbi_api.plugins.resolution.effective_bindings',
+                new=mock.AsyncMock(return_value=bindings),
+            ),
             mock.patch(
                 'imbi_api.plugins.resolution.get_plugin',
                 side_effect=lambda slug: entries[slug],
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle.get_enabled_map',
-                new=mock.AsyncMock(
-                    return_value={
-                        'github-lifecycle': True,
-                        'aws-lifecycle': True,
-                    }
-                ),
+                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                new=mock.AsyncMock(return_value=True),
             ),
         ):
             result = asyncio.run(
-                resolve_all_plugins(mock_db, 'proj1', 'lifecycle')
+                resolve_all_capabilities(mock_db, 'proj1', 'lifecycle')
             )
-        self.assertEqual(len(result), 2)
-        slugs = {r.plugin_slug for r in result}
-        self.assertEqual(slugs, {'github-lifecycle', 'aws-lifecycle'})
+        self.assertEqual({r.plugin_slug for r in result}, {'github', 'aws'})
 
-    def test_surfaces_third_party_service_slug(self) -> None:
-        from imbi_api.plugins.resolution import resolve_all_plugins
+    def test_skips_disabled_integrations(self) -> None:
+        from imbi_api.plugins.resolution import resolve_all_capabilities
 
         mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'pt_plugins': '[]',
-                'proj_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'github-lifecycle',
-                            'edge_options': '{}',
-                            'plugin_options': '{}',
-                            'tps_slug': 'github-enterprise-cloud',
-                            'default': True,
-                            'src': 'project',
-                        }
-                    ]
-                ),
-            }
+        bindings = [
+            _binding(integration_id='i1', slug='on', plugin='on'),
+            _binding(integration_id='i2', slug='off', plugin='off'),
         ]
-        entry = _make_registry_entry('github-lifecycle')
         with (
             mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
-                side_effect=lambda slug: entry,
+                'imbi_api.plugins.resolution.effective_bindings',
+                new=mock.AsyncMock(return_value=bindings),
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle.get_enabled_map',
-                new=mock.AsyncMock(return_value={'github-lifecycle': True}),
+                'imbi_api.plugins.resolution.get_plugin',
+                side_effect=lambda slug: _make_registry_entry(
+                    slug, kind='lifecycle'
+                ),
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                new=mock.AsyncMock(side_effect=lambda db, slug: slug == 'on'),
             ),
         ):
             result = asyncio.run(
-                resolve_all_plugins(mock_db, 'proj1', 'lifecycle')
+                resolve_all_capabilities(mock_db, 'proj1', 'lifecycle')
             )
-        self.assertEqual(len(result), 1)
-        self.assertEqual(
-            result[0].third_party_service_slug, 'github-enterprise-cloud'
-        )
-
-    def test_third_party_service_slug_none_when_unbound(self) -> None:
-        from imbi_api.plugins.resolution import resolve_all_plugins
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'pt_plugins': '[]',
-                'proj_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'github-lifecycle',
-                            'edge_options': '{}',
-                            'plugin_options': '{}',
-                            'tps_slug': None,
-                            'default': True,
-                            'src': 'project',
-                        }
-                    ]
-                ),
-            }
-        ]
-        entry = _make_registry_entry('github-lifecycle')
-        with (
-            mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
-                side_effect=lambda slug: entry,
-            ),
-            mock.patch(
-                'imbi_api.plugins.lifecycle.get_enabled_map',
-                new=mock.AsyncMock(return_value={'github-lifecycle': True}),
-            ),
-        ):
-            result = asyncio.run(
-                resolve_all_plugins(mock_db, 'proj1', 'lifecycle')
-            )
-        self.assertIsNone(result[0].third_party_service_slug)
+        self.assertEqual({r.plugin_slug for r in result}, {'on'})
 
     def test_skips_unregistered_plugin(self) -> None:
         from imbi_common.plugins.errors import PluginNotFoundError
 
-        from imbi_api.plugins.resolution import resolve_all_plugins
+        from imbi_api.plugins.resolution import resolve_all_capabilities
 
         mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'pt_plugins': '[]',
-                'proj_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'present',
-                            'edge_options': '{}',
-                            'plugin_options': '{}',
-                            'default': True,
-                            'src': 'project',
-                        },
-                        {
-                            'id': 'p2',
-                            'slug': 'gone',
-                            'edge_options': '{}',
-                            'plugin_options': '{}',
-                            'default': False,
-                            'src': 'project',
-                        },
-                    ]
-                ),
-            }
+        bindings = [
+            _binding(integration_id='i1', slug='present', plugin='present'),
+            _binding(integration_id='i2', slug='gone', plugin='gone'),
         ]
-        entry = _make_registry_entry('present')
+        entry = _make_registry_entry('present', kind='lifecycle')
 
-        def _get(slug: str):
+        def _get(slug: str) -> typing.Any:
             if slug == 'present':
                 return entry
             raise PluginNotFoundError(slug)
 
         with (
             mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
-                side_effect=_get,
+                'imbi_api.plugins.resolution.effective_bindings',
+                new=mock.AsyncMock(return_value=bindings),
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle.get_enabled_map',
-                new=mock.AsyncMock(
-                    return_value={'present': True, 'gone': True}
-                ),
+                'imbi_api.plugins.resolution.get_plugin', side_effect=_get
+            ),
+            mock.patch(
+                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                new=mock.AsyncMock(return_value=True),
             ),
         ):
             result = asyncio.run(
-                resolve_all_plugins(mock_db, 'proj1', 'lifecycle')
+                resolve_all_capabilities(mock_db, 'proj1', 'lifecycle')
             )
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].plugin_slug, 'present')
-
-    def test_project_overrides_project_type(self) -> None:
-        from imbi_api.plugins.resolution import resolve_all_plugins
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'pt_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'github-lifecycle',
-                            'edge_options': '{"archive_target_org": "type"}',
-                            'plugin_options': '{}',
-                            'default': True,
-                            'src': 'project_type',
-                        }
-                    ]
-                ),
-                'proj_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'github-lifecycle',
-                            'edge_options': '{"archive_target_org": "proj"}',
-                            'plugin_options': '{}',
-                            'default': True,
-                            'src': 'project',
-                        }
-                    ]
-                ),
-            }
-        ]
-        entry = _make_registry_entry('github-lifecycle')
-        with (
-            mock.patch(
-                'imbi_api.plugins.resolution.get_plugin', return_value=entry
-            ),
-            mock.patch(
-                'imbi_api.plugins.lifecycle.get_enabled_map',
-                new=mock.AsyncMock(return_value={'github-lifecycle': True}),
-            ),
-        ):
-            result = asyncio.run(
-                resolve_all_plugins(mock_db, 'proj1', 'lifecycle')
-            )
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0].options['archive_target_org'], 'proj')
-
-
-class CredentialsTestCase(unittest.TestCase):
-    """Branch coverage for ``get_plugin_credentials``."""
-
-    def test_empty_no_required_returns_empty_dict(self) -> None:
-        from imbi_api.plugins.credentials import get_plugin_credentials
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = []
-        entry = _make_registry_entry('ssm', required_creds=False)
-        creds = asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
-        self.assertEqual(creds, {})
-
-    def test_missing_required_raises(self) -> None:
-        from imbi_common.plugins.errors import PluginCredentialsMissing
-
-        from imbi_api.plugins.credentials import get_plugin_credentials
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [{'creds': None}]
-        entry = _make_registry_entry('ssm', required_creds=True)
-        with self.assertRaises(PluginCredentialsMissing) as ctx:
-            asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
-        self.assertIn('token', str(ctx.exception))
-
-    def test_connection_plugin_slugs_filters_by_type(self) -> None:
-        from imbi_api.plugins import credentials
-
-        def _entry(slug: str, plugin_type: str) -> mock.MagicMock:
-            entry = mock.MagicMock()
-            entry.manifest.slug = slug
-            entry.manifest.plugin_type = plugin_type
-            return entry
-
-        entries = [
-            _entry('github-connection', 'connection'),
-            _entry('github-identity', 'identity'),
-            _entry('ssm', 'configuration'),
-        ]
-        with mock.patch.object(
-            credentials, 'list_plugins', return_value=entries
-        ):
-            self.assertEqual(
-                credentials.connection_plugin_slugs(), ['github-connection']
-            )
-
-    def test_connection_fallback_matches_by_slug(self) -> None:
-        """Regression: when the plugin's own blob is empty, the connection
-        sibling is located by ``plugin_slug`` against the registry
-        connection slugs — not the absent node ``plugin_type``.
-
-        The old ``WHERE conn.plugin_type = 'connection'`` filter matched
-        nothing, so the doctor fell through to an anonymous GitHub
-        request and got a 401 despite a PAT on the github-connection.
-        """
-        from imbi_api.plugins import credentials
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.side_effect = [
-            [],  # the plugin's own blob is empty
-            [{'creds': '"ENCRYPTED"'}],  # connection sibling blob
-        ]
-        encryptor = mock.MagicMock()
-        encryptor.decrypt.return_value = json.dumps({'access_token': 'pat'})
-        entry = _make_registry_entry('github-doctor', required_creds=False)
-        with (
-            mock.patch.object(
-                credentials,
-                'connection_plugin_slugs',
-                return_value=['github-connection'],
-            ),
-            mock.patch(
-                'imbi_api.plugins.credentials.TokenEncryption.get_instance',
-                return_value=encryptor,
-            ),
-        ):
-            creds = asyncio.run(
-                credentials.get_plugin_credentials(mock_db, 'p1', entry)
-            )
-        self.assertEqual(creds, {'access_token': 'pat'})
-        conn_query, conn_params, _cols = mock_db.execute.await_args_list[
-            1
-        ].args
-        self.assertIn('plugin_slug IN', conn_query)
-        self.assertNotIn('plugin_type', conn_query)
-        self.assertEqual(
-            conn_params['connection_slugs'], ['github-connection']
-        )
-
-    def test_decrypt_returns_dict(self) -> None:
-        from imbi_api.plugins.credentials import get_plugin_credentials
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [{'creds': '"ENCRYPTED"'}]
-
-        encryptor = mock.MagicMock()
-        encryptor.decrypt.return_value = json.dumps({'token': 'abc'})
-        entry = _make_registry_entry('ssm', required_creds=True)
-        with mock.patch(
-            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
-            return_value=encryptor,
-        ):
-            creds = asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
-        self.assertEqual(creds, {'token': 'abc'})
-
-    def test_decrypt_returns_empty_string_yields_no_creds(self) -> None:
-        from imbi_common.plugins.errors import PluginCredentialsMissing
-
-        from imbi_api.plugins.credentials import get_plugin_credentials
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [{'creds': '"ENCRYPTED"'}]
-        encryptor = mock.MagicMock()
-        encryptor.decrypt.return_value = ''
-        entry = _make_registry_entry('ssm', required_creds=True)
-        with mock.patch(
-            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
-            return_value=encryptor,
-        ):
-            with self.assertRaises(PluginCredentialsMissing):
-                asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
-
-    def test_oauth2_unlinked_plugin_raises(self) -> None:
-        from imbi_common.plugins.errors import PluginCredentialsMissing
-
-        from imbi_api.plugins.credentials import get_plugin_credentials
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = []
-        entry = _make_registry_entry('github', auth_type='oauth2')
-        with self.assertRaises(PluginCredentialsMissing) as ctx:
-            asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
-        self.assertIn('not linked to a ServiceApplication', str(ctx.exception))
-
-    def test_oauth2_linked_plugin_returns_decrypted(self) -> None:
-        from imbi_api.plugins.credentials import get_plugin_credentials
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'client_id': '"my-client-id"',
-                'client_secret': '"ENCRYPTED-SECRET"',
-            }
-        ]
-        encryptor = mock.MagicMock()
-        encryptor.decrypt.return_value = 'plaintext-secret'
-        entry = _make_registry_entry('github', auth_type='oauth2')
-        with mock.patch(
-            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
-            return_value=encryptor,
-        ):
-            creds = asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
-        self.assertEqual(
-            creds,
-            {'client_id': 'my-client-id', 'client_secret': 'plaintext-secret'},
-        )
-
-    def test_oauth2_decrypt_failure_raises_missing(self) -> None:
-        from imbi_common.plugins.errors import PluginCredentialsMissing
-
-        from imbi_api.plugins.credentials import get_plugin_credentials
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'client_id': '"my-client-id"',
-                'client_secret': '"ENCRYPTED-SECRET"',
-            }
-        ]
-        encryptor = mock.MagicMock()
-        encryptor.decrypt.side_effect = RuntimeError('boom')
-        entry = _make_registry_entry('github', auth_type='oauth2')
-        with mock.patch(
-            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
-            return_value=encryptor,
-        ):
-            with self.assertRaises(PluginCredentialsMissing) as ctx:
-                asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
-        self.assertIn('could not be decrypted', str(ctx.exception))
-
-    def test_oauth2_missing_client_id_raises(self) -> None:
-        from imbi_common.plugins.errors import PluginCredentialsMissing
-
-        from imbi_api.plugins.credentials import get_plugin_credentials
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {'client_id': None, 'client_secret': '"ENCRYPTED"'}
-        ]
-        entry = _make_registry_entry('github', auth_type='oauth2')
-        with self.assertRaises(PluginCredentialsMissing) as ctx:
-            asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
-        self.assertIn('client_id or client_secret', str(ctx.exception))
-
-    def test_falls_back_to_connection_blob(self) -> None:
-        from imbi_api.plugins.credentials import get_plugin_credentials
-
-        mock_db = mock.AsyncMock()
-        # First call: the plugin's own blob is empty. Second call: the
-        # github-connection sibling carries the service-account token.
-        mock_db.execute.side_effect = [
-            [{'creds': None}],
-            [{'creds': '"ENCRYPTED"'}],
-        ]
-        encryptor = mock.MagicMock()
-        encryptor.decrypt.return_value = json.dumps({'access_token': 'pat'})
-        entry = _make_registry_entry('github-deployment', required_creds=False)
-        with mock.patch(
-            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
-            return_value=encryptor,
-        ):
-            creds = asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
-        self.assertEqual(creds, {'access_token': 'pat'})
-        self.assertEqual(mock_db.execute.await_count, 2)
-
-    def test_own_blob_wins_over_connection(self) -> None:
-        from imbi_api.plugins.credentials import get_plugin_credentials
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [{'creds': '"ENCRYPTED"'}]
-        encryptor = mock.MagicMock()
-        encryptor.decrypt.return_value = json.dumps({'access_token': 'own'})
-        entry = _make_registry_entry('github-deployment', required_creds=False)
-        with mock.patch(
-            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
-            return_value=encryptor,
-        ):
-            creds = asyncio.run(get_plugin_credentials(mock_db, 'p1', entry))
-        # The own blob satisfied the request, so the connection query is
-        # never issued.
-        self.assertEqual(creds, {'access_token': 'own'})
-        self.assertEqual(mock_db.execute.await_count, 1)
-
-
-class ResolveServicePluginsTestCase(unittest.TestCase):
-    """Coverage for ``resolve_service_plugins`` (sibling discovery)."""
-
-    def test_empty_when_no_records(self) -> None:
-        from imbi_api.plugins.resolution import resolve_service_plugins
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = []
-        result = asyncio.run(resolve_service_plugins(mock_db, 'p1'))
-        self.assertEqual(result, [])
-
-    def test_empty_when_plugins_column_null(self) -> None:
-        from imbi_api.plugins.resolution import resolve_service_plugins
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [{'plugins': None}]
-        result = asyncio.run(resolve_service_plugins(mock_db, 'p1'))
-        self.assertEqual(result, [])
-
-    def test_returns_connection_sibling(self) -> None:
-        from imbi_api.plugins.resolution import resolve_service_plugins
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'plugins': json.dumps(
-                    [
-                        {
-                            'slug': 'github-connection',
-                            'options': json.dumps(
-                                {'flavor': 'ghec', 'host': 'tenant.ghe.com'}
-                            ),
-                        },
-                        {'slug': 'github-deployment', 'options': '{}'},
-                    ]
-                )
-            }
-        ]
-        result = asyncio.run(resolve_service_plugins(mock_db, 'p1'))
-        self.assertEqual(
-            [p.slug for p in result],
-            [
-                'github-connection',
-                'github-deployment',
-            ],
-        )
-        conn = next(p for p in result if p.slug == 'github-connection')
-        self.assertEqual(conn.options['flavor'], 'ghec')
-        self.assertEqual(conn.options['host'], 'tenant.ghe.com')
-
-
-class PatchPluginConfigurationTestCase(unittest.IsolatedAsyncioTestCase):
-    """Compare-and-swap behavior of ``patch_plugin_configuration`` (M19)."""
-
-    def _encryptor(self, decrypted: str | None = None) -> mock.MagicMock:
-        enc = mock.MagicMock()
-        enc.encrypt.return_value = 'CIPHER'
-        if decrypted is not None:
-            enc.decrypt.return_value = decrypted
-        return enc
-
-    def _db_with(
-        self, *, read: list[dict[str, object]], writes: list[list[object]]
-    ) -> mock.AsyncMock:
-        """Build a mock graph whose execute branches on read vs CAS write.
-
-        ``read`` is the row list returned for the SELECT; ``writes`` is a
-        FIFO of the row lists returned for each CAS ``SET`` attempt.
-        """
-        pending = list(writes)
-
-        def fake_execute(query: str, params=None, columns=None):  # type: ignore[no-untyped-def]
-            if 'SET p.plugin_configuration' in query:
-                return pending.pop(0)
-            return read
-
-        db = mock.AsyncMock()
-        db.execute.side_effect = fake_execute
-        return db
-
-    async def test_first_attempt_success_no_prior_blob(self) -> None:
-        from imbi_api.plugins.credentials import patch_plugin_configuration
-
-        db = self._db_with(read=[{'creds': None}], writes=[[{'p': {}}]])
-        with mock.patch(
-            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
-            return_value=self._encryptor(),
-        ):
-            populated = await patch_plugin_configuration(
-                db, 'p1', {'token': 'abc'}
-            )
-        self.assertEqual(populated, ['token'])
-        write_call = next(
-            c
-            for c in db.execute.call_args_list
-            if 'SET p.plugin_configuration' in c.args[0]
-        )
-        self.assertEqual(write_call.args[1]['expected'], '')
-        self.assertEqual(write_call.args[1]['blob'], 'CIPHER')
-
-    async def test_merges_onto_existing_blob(self) -> None:
-        from imbi_api.plugins.credentials import patch_plugin_configuration
-
-        db = self._db_with(read=[{'creds': '"OLD"'}], writes=[[{'p': {}}]])
-        with mock.patch(
-            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
-            return_value=self._encryptor(decrypted=json.dumps({'a': '1'})),
-        ):
-            populated = await patch_plugin_configuration(db, 'p1', {'b': '2'})
-        self.assertEqual(sorted(populated), ['a', 'b'])
-        write_call = next(
-            c
-            for c in db.execute.call_args_list
-            if 'SET p.plugin_configuration' in c.args[0]
-        )
-        # CAS witness is the ciphertext we read, not a re-encryption.
-        self.assertEqual(write_call.args[1]['expected'], 'OLD')
-
-    async def test_empty_value_removes_field(self) -> None:
-        from imbi_api.plugins.credentials import patch_plugin_configuration
-
-        db = self._db_with(read=[{'creds': '"OLD"'}], writes=[[{'p': {}}]])
-        with mock.patch(
-            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
-            return_value=self._encryptor(
-                decrypted=json.dumps({'a': '1', 'b': '2'})
-            ),
-        ):
-            populated = await patch_plugin_configuration(
-                db, 'p1', {'a': None, 'b': ''}
-            )
-        self.assertEqual(populated, [])
-
-    async def test_lost_cas_retries_then_succeeds(self) -> None:
-        from imbi_api.plugins.credentials import patch_plugin_configuration
-
-        db = self._db_with(read=[{'creds': None}], writes=[[], [{'p': {}}]])
-        with mock.patch(
-            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
-            return_value=self._encryptor(),
-        ):
-            populated = await patch_plugin_configuration(
-                db, 'p1', {'token': 'abc'}
-            )
-        self.assertEqual(populated, ['token'])
-        writes = [
-            c
-            for c in db.execute.call_args_list
-            if 'SET p.plugin_configuration' in c.args[0]
-        ]
-        self.assertEqual(len(writes), 2)
-
-    async def test_exhausted_retries_raises_409(self) -> None:
-        from imbi_api.plugins.credentials import patch_plugin_configuration
-
-        db = self._db_with(read=[{'creds': None}], writes=[[], [], []])
-        with mock.patch(
-            'imbi_api.plugins.credentials.TokenEncryption.get_instance',
-            return_value=self._encryptor(),
-        ):
-            with self.assertRaises(fastapi.HTTPException) as ctx:
-                await patch_plugin_configuration(db, 'p1', {'token': 'abc'})
-        self.assertEqual(ctx.exception.status_code, 409)
 
 
 class ReloadSubscriberTestCase(unittest.IsolatedAsyncioTestCase):
@@ -1673,310 +911,3 @@ class ReloadSubscriberTestCase(unittest.IsolatedAsyncioTestCase):
                     pass
 
         asyncio.run(_run())
-
-
-class ResolveAnalysisPluginsTestCase(unittest.TestCase):
-    """Coverage for the analysis-plugin union resolver."""
-
-    def _enabled(self, *slugs: str) -> mock.AsyncMock:
-        return mock.AsyncMock(return_value=dict.fromkeys(slugs, True))
-
-    def _make_analysis_registry_entry(self, slug: str) -> object:
-        from imbi_common.plugins.base import AnalysisPlugin, PluginManifest
-        from imbi_common.plugins.registry import RegistryEntry
-
-        class _Fake(AnalysisPlugin):
-            manifest = PluginManifest(
-                slug=slug, name=slug, plugin_type='analysis'
-            )
-
-            async def analyze(self, ctx, credentials):  # type: ignore[override]
-                return []
-
-        return RegistryEntry(
-            handler_cls=_Fake,
-            manifest=_Fake.manifest,
-            package_name='x',
-            package_version='0',
-        )
-
-    def test_raises_404_when_project_missing(self) -> None:
-        # Empty result from db.execute() means the anchor ``MATCH
-        # (proj:Project)`` matched zero rows -- the project_id is
-        # bogus. Surface that as 404 instead of collapsing it into
-        # "no plugins" (which the endpoint would happily persist as
-        # an empty pass report).
-        from imbi_api.plugins.resolution import resolve_analysis_plugins
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = []
-        with self.assertRaises(fastapi.HTTPException) as ctx:
-            asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
-        self.assertEqual(404, ctx.exception.status_code)
-
-    def test_returns_empty_when_project_has_no_plugins(self) -> None:
-        # Project exists, no plugins assigned anywhere -- collect()
-        # over the OPTIONAL MATCHes still yields one record with
-        # three empty lists, which the resolver should treat as
-        # "no findings will be produced".
-        from imbi_api.plugins.resolution import resolve_analysis_plugins
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'proj_plugins': '[]',
-                'pt_plugins': '[]',
-                'tps_plugins': '[]',
-            }
-        ]
-        with mock.patch(
-            'imbi_api.plugins.lifecycle.get_enabled_map',
-            new=mock.AsyncMock(return_value={}),
-        ):
-            result = asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
-        self.assertEqual([], result)
-
-    def test_returns_tps_plugins(self) -> None:
-        from imbi_api.plugins.resolution import resolve_analysis_plugins
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'proj_plugins': '[]',
-                'pt_plugins': '[]',
-                'tps_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'logzio',
-                            'plugin_options': '{}',
-                            'src': 'third_party_service',
-                        }
-                    ]
-                ),
-            }
-        ]
-        with (
-            mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
-                side_effect=lambda s: self._make_analysis_registry_entry(s),
-            ),
-            mock.patch(
-                'imbi_api.plugins.lifecycle.get_enabled_map',
-                new=self._enabled('logzio'),
-            ),
-        ):
-            resolved = asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
-        self.assertEqual({r.plugin_slug for r in resolved}, {'logzio'})
-
-    def test_project_override_wins_over_project_type(self) -> None:
-        from imbi_api.plugins.resolution import resolve_analysis_plugins
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'proj_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'sonarqube',
-                            'edge_options': json.dumps({'token': 'proj'}),
-                            'plugin_options': '{}',
-                            'default': True,
-                            'src': 'project',
-                        }
-                    ]
-                ),
-                'pt_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'sonarqube',
-                            'edge_options': json.dumps({'token': 'pt'}),
-                            'plugin_options': '{}',
-                            'default': True,
-                            'src': 'project_type',
-                        }
-                    ]
-                ),
-                'tps_plugins': '[]',
-            }
-        ]
-        with (
-            mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
-                side_effect=lambda s: self._make_analysis_registry_entry(s),
-            ),
-            mock.patch(
-                'imbi_api.plugins.lifecycle.get_enabled_map',
-                new=self._enabled('sonarqube'),
-            ),
-        ):
-            resolved = asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
-        self.assertEqual(len(resolved), 1)
-        self.assertEqual(resolved[0].options.get('token'), 'proj')
-
-    def test_dedup_across_sources(self) -> None:
-        from imbi_api.plugins.resolution import resolve_analysis_plugins
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'proj_plugins': '[]',
-                'pt_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'logzio',
-                            'edge_options': '{}',
-                            'plugin_options': '{}',
-                            'default': True,
-                            'src': 'project_type',
-                        }
-                    ]
-                ),
-                'tps_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'logzio',
-                            'plugin_options': '{}',
-                            'src': 'third_party_service',
-                        }
-                    ]
-                ),
-            }
-        ]
-        with (
-            mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
-                side_effect=lambda s: self._make_analysis_registry_entry(s),
-            ),
-            mock.patch(
-                'imbi_api.plugins.lifecycle.get_enabled_map',
-                new=self._enabled('logzio'),
-            ),
-        ):
-            resolved = asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
-        # p1 should appear exactly once even though two paths matched
-        self.assertEqual([r.plugin_id for r in resolved], ['p1'])
-
-    def test_skips_disabled_plugins(self) -> None:
-        from imbi_api.plugins.resolution import resolve_analysis_plugins
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'proj_plugins': '[]',
-                'pt_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'enabled',
-                            'edge_options': '{}',
-                            'plugin_options': '{}',
-                            'src': 'project_type',
-                        },
-                        {
-                            'id': 'p2',
-                            'slug': 'disabled',
-                            'edge_options': '{}',
-                            'plugin_options': '{}',
-                            'src': 'project_type',
-                        },
-                    ]
-                ),
-                'tps_plugins': '[]',
-            }
-        ]
-        with (
-            mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
-                side_effect=lambda s: self._make_analysis_registry_entry(s),
-            ),
-            mock.patch(
-                'imbi_api.plugins.lifecycle.get_enabled_map',
-                new=mock.AsyncMock(
-                    return_value={'enabled': True, 'disabled': False}
-                ),
-            ),
-        ):
-            resolved = asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
-        self.assertEqual({r.plugin_slug for r in resolved}, {'enabled'})
-
-    def test_edge_identity_plugin_id_honored(self) -> None:
-        # A project USES_PLUGIN edge that names an identity plugin must be
-        # honored for the analysis fan-out, not dropped in favor of static
-        # credentials.
-        from imbi_api.plugins.resolution import resolve_analysis_plugins
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'proj_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'sonarqube',
-                            'edge_options': '{}',
-                            'plugin_options': '{}',
-                            'identity_plugin_id': 'idp-1',
-                            'src': 'project',
-                        }
-                    ]
-                ),
-                'pt_plugins': '[]',
-                'tps_plugins': '[]',
-            }
-        ]
-        with (
-            mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
-                side_effect=lambda s: self._make_analysis_registry_entry(s),
-            ),
-            mock.patch(
-                'imbi_api.plugins.lifecycle.get_enabled_map',
-                new=self._enabled('sonarqube'),
-            ),
-        ):
-            resolved = asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
-        self.assertEqual(len(resolved), 1)
-        self.assertEqual(resolved[0].identity_plugin_id, 'idp-1')
-
-    def test_plugin_default_identity_honored(self) -> None:
-        # The Plugin node's own identity default applies when no edge names
-        # one (three-tier precedence, matching resolve_all_plugins).
-        from imbi_api.plugins.resolution import resolve_analysis_plugins
-
-        mock_db = mock.AsyncMock()
-        mock_db.execute.return_value = [
-            {
-                'proj_plugins': '[]',
-                'pt_plugins': json.dumps(
-                    [
-                        {
-                            'id': 'p1',
-                            'slug': 'sonarqube',
-                            'edge_options': '{}',
-                            'plugin_options': '{}',
-                            'plugin_identity_plugin_id': 'idp-default',
-                            'src': 'project_type',
-                        }
-                    ]
-                ),
-                'tps_plugins': '[]',
-            }
-        ]
-        with (
-            mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
-                side_effect=lambda s: self._make_analysis_registry_entry(s),
-            ),
-            mock.patch(
-                'imbi_api.plugins.lifecycle.get_enabled_map',
-                new=self._enabled('sonarqube'),
-            ),
-        ):
-            resolved = asyncio.run(resolve_analysis_plugins(mock_db, 'p1'))
-        self.assertEqual(len(resolved), 1)
-        self.assertEqual(resolved[0].identity_plugin_id, 'idp-default')

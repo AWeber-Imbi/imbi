@@ -101,7 +101,7 @@ class RefreshEndpointTestCase(unittest.IsolatedAsyncioTestCase):
             'refresh_connection',
             new=mock.AsyncMock(
                 side_effect=errors.IdentityRequiredError(
-                    plugin_id='p', start_url='/me/identities/p/start'
+                    integration_id='p', start_url='/me/identities/p/start'
                 )
             ),
         ):
@@ -391,15 +391,14 @@ class ListMyIdentitiesTestCase(unittest.IsolatedAsyncioTestCase):
         rows = [
             {
                 'id': 'conn-1',
-                'plugin_id': 'plugin-1',
-                'plugin_slug': 'oidc',
-                'plugin_label': 'OIDC',
+                'integration_id': 'integration-1',
+                'integration_slug': 'oidc',
+                'integration_name': 'OIDC',
                 'subject': 'sub-1',
                 'status': 'active',
                 'expires_at': None,
                 'scopes': ['openid'],
                 'last_used_at': None,
-                'connects_users_to': None,
                 'metadata': {},
             }
         ]
@@ -411,4 +410,4 @@ class ListMyIdentitiesTestCase(unittest.IsolatedAsyncioTestCase):
             result = await endpoints.list_my_identities(db, auth)
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].id, 'conn-1')
-        self.assertEqual(result[0].plugin_slug, 'oidc')
+        self.assertEqual(result[0].integration_slug, 'oidc')

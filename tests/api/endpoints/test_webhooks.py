@@ -35,7 +35,7 @@ class _WebhookRecord(typing.TypedDict):
     tps: typing.NotRequired[dict[str, str] | None]
     identifier_selector: typing.NotRequired[str | None]
     user_subject_selector: typing.NotRequired[str | None]
-    identity_plugin_slug: typing.NotRequired[str | None]
+    identity_integration_slug: typing.NotRequired[str | None]
     event_type_selector: typing.NotRequired[str | None]
     rules: list[_WebhookRule | None]
 
@@ -185,7 +185,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         ):
             payload = {
                 'name': 'Events',
-                'third_party_service_slug': 'github',
+                'integration_slug': 'github',
                 'identifier_selector': '$.repository.full_name',
             }
             response = self.client.post(
@@ -195,8 +195,8 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
 
         self.assertEqual(response.status_code, 201)
         data = response.json()
-        self.assertIsNotNone(data['third_party_service'])
-        self.assertEqual(data['third_party_service']['slug'], 'github')
+        self.assertIsNotNone(data['integration'])
+        self.assertEqual(data['integration']['slug'], 'github')
 
     def test_create_with_rules(self) -> None:
         record = copy.deepcopy(self.webhook_record)
@@ -268,7 +268,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
-    def test_create_third_party_service_not_found(self) -> None:
+    def test_create_integration_not_found(self) -> None:
         self.mock_db.execute.return_value = []
         with (
             self._patch_encryption(),
@@ -278,7 +278,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
             ),
         ):
             payload = dict(self.webhook_create_json)
-            payload['third_party_service_slug'] = 'nonexistent'
+            payload['integration_slug'] = 'nonexistent'
             payload['identifier_selector'] = '$.repository.full_name'
             response = self.client.post(
                 '/organizations/engineering/webhooks/',
@@ -308,12 +308,12 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 422)
 
     def test_create_with_identity_fields(self) -> None:
-        """user_subject_selector and identity_plugin_slug round-trip."""
+        """user_subject_selector and identity_integration_slug round-trip."""
         record = copy.deepcopy(self.webhook_record)
         record['tps'] = {'name': 'GitHub', 'slug': 'github'}
         record['identifier_selector'] = '/repository/full_name'
         record['user_subject_selector'] = '/deployment/creator/id'
-        record['identity_plugin_slug'] = 'github'
+        record['identity_integration_slug'] = 'github'
 
         self.mock_db.execute.return_value = [record]
         with (
@@ -324,10 +324,10 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         ):
             payload = {
                 'name': 'GitHub Events',
-                'third_party_service_slug': 'github',
+                'integration_slug': 'github',
                 'identifier_selector': '/repository/full_name',
                 'user_subject_selector': '/deployment/creator/id',
-                'identity_plugin_slug': 'github',
+                'identity_integration_slug': 'github',
             }
             response = self.client.post(
                 '/organizations/engineering/webhooks/',
@@ -339,7 +339,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(
             data['user_subject_selector'], '/deployment/creator/id'
         )
-        self.assertEqual(data['identity_plugin_slug'], 'github')
+        self.assertEqual(data['identity_integration_slug'], 'github')
 
     def test_create_user_subject_selector_without_service(self) -> None:
         """user_subject_selector requires a third-party service."""
@@ -352,13 +352,13 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         )
         self.assertEqual(response.status_code, 422)
 
-    def test_create_identity_plugin_slug_without_service(self) -> None:
-        """identity_plugin_slug requires a third-party service."""
+    def test_create_identity_integration_slug_without_service(self) -> None:
+        """identity_integration_slug requires a third-party service."""
         response = self.client.post(
             '/organizations/engineering/webhooks/',
             json={
                 'name': 'Test',
-                'identity_plugin_slug': 'github',
+                'identity_integration_slug': 'github',
             },
         )
         self.assertEqual(response.status_code, 422)
@@ -379,7 +379,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         ):
             payload = {
                 'name': 'GitHub Events',
-                'third_party_service_slug': 'github',
+                'integration_slug': 'github',
                 'identifier_selector': '/repository/full_name',
                 'event_type_selector': 'x-github-event',
             }
@@ -568,7 +568,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         self.assertIn('read-only', response.json()['detail'])
 
     def test_patch_service_change_regenerates_slug(self) -> None:
-        """Changing third_party_service_slug auto-regenerates the slug."""
+        """Changing integration_slug auto-regenerates the slug."""
         existing_record = {
             'webhook': {
                 'id': 'abc123def4',
@@ -615,7 +615,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
                 json=[
                     {
                         'op': 'replace',
-                        'path': '/third_party_service_slug',
+                        'path': '/integration_slug',
                         'value': 'gitlab',
                     }
                 ],
@@ -675,7 +675,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
                 json=[
                     {
                         'op': 'replace',
-                        'path': '/third_party_service_slug',
+                        'path': '/integration_slug',
                         'value': 'gitlab',
                     },
                     {
@@ -769,12 +769,12 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
             'tps': {'slug': 'github', 'name': 'GitHub'},
             'identifier_selector': '/repository/full_name',
             'user_subject_selector': None,
-            'identity_plugin_slug': None,
+            'identity_integration_slug': None,
             'rules': [],
         }
         updated_record = copy.deepcopy(existing_record)
         updated_record['user_subject_selector'] = '/deployment/creator/id'
-        updated_record['identity_plugin_slug'] = 'github'
+        updated_record['identity_integration_slug'] = 'github'
 
         self.mock_db.execute.side_effect = [
             [existing_record],
@@ -799,7 +799,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
                     },
                     {
                         'op': 'replace',
-                        'path': '/identity_plugin_slug',
+                        'path': '/identity_integration_slug',
                         'value': 'github',
                     },
                 ],
@@ -810,7 +810,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(
             data['user_subject_selector'], '/deployment/creator/id'
         )
-        self.assertEqual(data['identity_plugin_slug'], 'github')
+        self.assertEqual(data['identity_integration_slug'], 'github')
 
     def test_patch_event_type_selector(self) -> None:
         """Patching event_type_selector round-trips through the edge."""
@@ -826,7 +826,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
             'tps': {'slug': 'github', 'name': 'GitHub'},
             'identifier_selector': '/repository/full_name',
             'user_subject_selector': None,
-            'identity_plugin_slug': None,
+            'identity_integration_slug': None,
             'event_type_selector': None,
             'rules': [],
         }
@@ -865,7 +865,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
 
         WebhookUpdate runs the model-level validator on the patched
         document, so adding ``user_subject_selector`` /
-        ``identity_plugin_slug`` to a webhook that isn't linked to a
+        ``identity_integration_slug`` to a webhook that isn't linked to a
         third-party service must be rejected, the same way the create
         path rejects it. Suggested-by: coderabbitai
         """
@@ -881,7 +881,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
             'tps': None,
             'identifier_selector': None,
             'user_subject_selector': None,
-            'identity_plugin_slug': None,
+            'identity_integration_slug': None,
             'rules': [],
         }
         self.mock_db.execute.side_effect = [[existing_record]]
@@ -904,15 +904,17 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
             )
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn('third_party_service_slug', response.json()['detail'])
+        self.assertIn('integration_slug', response.json()['detail'])
 
-    def test_patch_identity_plugin_slug_rejected_without_tps(self) -> None:
+    def test_patch_identity_integration_slug_rejected_without_tps(
+        self,
+    ) -> None:
         """Cover the second validator branch on PATCH.
 
         ``test_patch_identity_fields_rejected_without_tps`` exercises the
         ``user_subject_selector`` branch of ``WebhookUpdate``'s validator;
         this sibling case locks down the same behavior for
-        ``identity_plugin_slug`` so a regression on either field would
+        ``identity_integration_slug`` so a regression on either field would
         fail. Suggested-by: coderabbitai
         """
         existing_record = {
@@ -927,7 +929,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
             'tps': None,
             'identifier_selector': None,
             'user_subject_selector': None,
-            'identity_plugin_slug': None,
+            'identity_integration_slug': None,
             'rules': [],
         }
         self.mock_db.execute.side_effect = [[existing_record]]
@@ -943,14 +945,14 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
                 json=[
                     {
                         'op': 'replace',
-                        'path': '/identity_plugin_slug',
+                        'path': '/identity_integration_slug',
                         'value': 'github',
                     }
                 ],
             )
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn('third_party_service_slug', response.json()['detail'])
+        self.assertIn('integration_slug', response.json()['detail'])
 
     def test_patch_event_type_selector_rejected_without_tps(self) -> None:
         """Setting event_type_selector on a TPS-less webhook is a 400."""
@@ -966,7 +968,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
             'tps': None,
             'identifier_selector': None,
             'user_subject_selector': None,
-            'identity_plugin_slug': None,
+            'identity_integration_slug': None,
             'event_type_selector': None,
             'rules': [],
         }
@@ -990,7 +992,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
             )
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn('third_party_service_slug', response.json()['detail'])
+        self.assertIn('integration_slug', response.json()['detail'])
 
     def test_patch_webhook_slug_collision_returns_409(self) -> None:
         existing_record = {
@@ -1434,7 +1436,7 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
         self.assertIsInstance(data, list)
         self.assertEqual(len(data), 1)
         self.assertEqual(
-            data[0]['third_party_service_slug'],
+            data[0]['integration_slug'],
             'github',
         )
         self.assertEqual(data[0]['identifier'], 'org/repo')
@@ -1482,7 +1484,7 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
             response = self.client.post(
                 '/organizations/engineering/projects/my-project/services/',
                 json={
-                    'third_party_service_slug': 'github',
+                    'integration_slug': 'github',
                     'identifier': 'org/repo',
                     'canonical_url': ('https://github.com/org/repo'),
                 },
@@ -1491,7 +1493,7 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(
-            data['third_party_service_slug'],
+            data['integration_slug'],
             'github',
         )
         self.assertEqual(data['identifier'], 'org/repo')
@@ -1505,7 +1507,7 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
             response = self.client.post(
                 '/organizations/engineering/projects/my-project/services/',
                 json={
-                    'third_party_service_slug': 'nonexistent',
+                    'integration_slug': 'nonexistent',
                     'identifier': 'org/repo',
                 },
             )
@@ -1517,7 +1519,7 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
         response = self.client.post(
             '/organizations/engineering/projects/my-project/services/',
             json={
-                'third_party_service_slug': 'github',
+                'integration_slug': 'github',
             },
         )
         self.assertEqual(response.status_code, 422)
@@ -1526,7 +1528,7 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
         response = self.client.post(
             '/organizations/engineering/projects/my-project/services/',
             json={
-                'third_party_service_slug': 'github',
+                'integration_slug': 'github',
                 'identifier': '',
             },
         )
@@ -1592,7 +1594,7 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
             response = self.client.post(
                 '/organizations/engineering/projects/my-project/services/',
                 json={
-                    'third_party_service_slug': 'github',
+                    'integration_slug': 'github',
                     'identifier': 'org/repo',
                     'canonical_url': 'https://api.github.com/repositories/1',
                     'dashboard_url': 'https://github.com/org/repo',

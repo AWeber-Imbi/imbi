@@ -36,20 +36,22 @@ class ProjectLifecycleSyncEndpointTestCase(support.SharedAppTestCase):
             mock_get_current_user
         )
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
     def test_sync_rolls_up_statuses(self) -> None:
         invocations = [
             LifecycleInvocation(
-                plugin_id='p1', plugin_slug='pagerduty-lifecycle', status='ok'
+                integration_id='p1',
+                plugin_slug='pagerduty-lifecycle',
+                status='ok',
             ),
             LifecycleInvocation(
-                plugin_id='p2', plugin_slug='other', status='skipped'
+                integration_id='p2', plugin_slug='other', status='skipped'
             ),
             LifecycleInvocation(
-                plugin_id='p3',
+                integration_id='p3',
                 plugin_slug='broken',
                 status='failed',
                 message='boom',

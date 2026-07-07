@@ -1,29 +1,141 @@
-"""Tests for the login-provider repository."""
+"""Tests for the login-provider repository (Plugin Architecture v3).
+
+A login provider is now an ``Integration`` node carrying a direct
+``used_as_login=true`` property whose plugin declares a login-capable
+``identity`` capability. The repository queries those Integrations,
+hydrates them, resolves the plugin via ``get_plugin``, checks the
+identity capability's ``login_capable`` hint plus ``capability_enabled``,
+and decrypts the stored credentials into a flat :class:`LoginApp`.
+"""
 
 from __future__ import annotations
 
-import json
 import typing
 import unittest
 from unittest import mock
 
+from imbi_common.plugins.base import (
+    Capability,
+    IdentityCapability,
+    LogsCapability,
+    Plugin,
+    PluginManifest,
+)
+from imbi_common.plugins.errors import PluginNotFoundError
+from imbi_common.plugins.registry import RegistryEntry
+
 from imbi_api.auth import login_providers
 
 
-class _FakeDB:
-    """Minimal DB stub that returns canned execute results.
+class _FakeIdentity(IdentityCapability):
+    """Minimal identity handler; login_providers never instantiates it."""
 
-    ``rows`` carry service-application rows; ``plugin_rows`` carry
-    Plugin-node rows for the identity-plugin source.
-    """
+    async def authorization_request(
+        self, *args: typing.Any, **kwargs: typing.Any
+    ) -> typing.Any:
+        raise NotImplementedError
+
+    async def exchange_code(
+        self, *args: typing.Any, **kwargs: typing.Any
+    ) -> typing.Any:
+        raise NotImplementedError
+
+    async def refresh(
+        self, *args: typing.Any, **kwargs: typing.Any
+    ) -> typing.Any:
+        raise NotImplementedError
+
+
+class _FakeLogs(LogsCapability):
+    """Non-identity handler used to keep a manifest valid when it must
+    declare a capability other than ``identity``."""
+
+    async def search(
+        self, *args: typing.Any, **kwargs: typing.Any
+    ) -> typing.Any:
+        raise NotImplementedError
+
+    async def schema(
+        self, *args: typing.Any, **kwargs: typing.Any
+    ) -> typing.Any:
+        raise NotImplementedError
+
+
+class _FakePlugin(Plugin):
+    """Concrete Plugin subclass to satisfy ``RegistryEntry.plugin_cls``."""
+
+
+def _entry(
+    plugin_slug: str = 'okta',
+    *,
+    login_capable: bool = True,
+    has_identity: bool = True,
+    auth_type: str = 'oidc',
+) -> RegistryEntry:
+    """Build a v3 registry entry whose manifest carries an identity
+    capability with the ``login_capable`` hint."""
+    capabilities: list[Capability] = []
+    if has_identity:
+        capabilities.append(
+            Capability(
+                kind='identity',
+                label='Identity',
+                hints={'login_capable': True} if login_capable else {},
+                handler=_FakeIdentity,
+            )
+        )
+    else:
+        # A manifest must declare at least one capability; use a
+        # non-identity one so the login source correctly skips it.
+        capabilities.append(
+            Capability(kind='logs', label='Logs', handler=_FakeLogs)
+        )
+    manifest = PluginManifest(
+        slug=plugin_slug,
+        name=plugin_slug.title(),
+        auth_type=auth_type,  # type: ignore[arg-type]
+        capabilities=capabilities,
+    )
+    return RegistryEntry(
+        plugin_cls=_FakePlugin,
+        manifest=manifest,
+        package_name=f'imbi-plugin-{plugin_slug}',
+        package_version='1.0.0',
+    )
+
+
+def _integration_row(
+    slug: str,
+    *,
+    plugin: str = 'okta',
+    name: str | None = None,
+    status: str = 'active',
+    integration_id: str | None = None,
+    options: dict[str, typing.Any] | None = None,
+    credentials: dict[str, str] | None = None,
+    identity_enabled: bool = True,
+) -> dict[str, typing.Any]:
+    """Build hydrated ``Integration`` node props for a login provider."""
+    return {
+        'id': integration_id or f'int-{slug}',
+        'slug': slug,
+        'name': name or slug,
+        'plugin': plugin,
+        'status': status,
+        'used_as_login': True,
+        'options': options or {},
+        'encrypted_credentials': credentials or {},
+        'capabilities': {'identity': {'enabled': identity_enabled}},
+    }
+
+
+class _FakeDB:
+    """DB stub returning ``Integration`` rows under the ``i`` column."""
 
     def __init__(
-        self,
-        rows: list[dict[str, typing.Any]] | None = None,
-        plugin_rows: list[dict[str, typing.Any]] | None = None,
+        self, rows: list[dict[str, typing.Any]] | None = None
     ) -> None:
         self.rows = rows or []
-        self.plugin_rows = plugin_rows or []
         self.execute = mock.AsyncMock(side_effect=self._execute)
 
     async def _execute(
@@ -34,67 +146,36 @@ class _FakeDB:
     ) -> list[dict[str, typing.Any]]:
         params = params or {}
         slug = params.get('slug')
-        is_plugin_query = 'Plugin' in str(query) and 'login_capable' in str(
-            query
-        )
-        source = self.plugin_rows if is_plugin_query else self.rows
+        rows = self.rows
         if slug is not None:
-            if is_plugin_query:
-                return [
-                    r for r in source if r['plugin']['plugin_slug'] == slug
-                ]
-            return [r for r in source if r['app']['slug'] == slug]
-        return list(source)
+            rows = [r for r in rows if r['slug'] == slug]
+        return [{'i': row} for row in rows]
 
 
-def _plugin_row(
-    plugin_slug: str,
-    *,
-    plugin_id: str = 'plug-1',
-    label: str | None = None,
-    used_as_login: bool = True,
-) -> dict[str, typing.Any]:
-    return {
-        'plugin': {
-            'id': plugin_id,
-            'plugin_slug': plugin_slug,
-            'label': label or plugin_slug,
-            'login_capable': True,
-            'used_as_login': used_as_login,
-        }
-    }
+def _patch_resolution(
+    entries: dict[str, RegistryEntry] | None = None,
+) -> typing.Any:
+    """Patch ``get_plugin``/``decrypt_integration_credentials`` on the
+    ``login_providers`` module.
 
+    ``get_plugin`` resolves per plugin slug from ``entries`` (default: a
+    single login-capable ``okta`` plugin), raising
+    :class:`PluginNotFoundError` for anything unknown.
+    ``decrypt_integration_credentials`` round-trips the stored map.
+    """
+    registry = entries if entries is not None else {'okta': _entry('okta')}
 
-def _row(
-    slug: str,
-    *,
-    oauth_app_type: str = 'google',
-    usage: str = 'login',
-    status: str = 'active',
-    name: str = 'X',
-    issuer_url: str | None = None,
-    allowed_domains: list[str] | None = None,
-) -> dict[str, typing.Any]:
-    return {
-        'app': {
-            'slug': slug,
-            'name': name,
-            'oauth_app_type': oauth_app_type,
-            'usage': usage,
-            'status': status,
-            'client_id': 'cid',
-            'client_secret': 'enc:secret',
-            'issuer_url': issuer_url,
-            'allowed_domains': json.dumps(allowed_domains or []),
-            'scopes': json.dumps([]),
-        },
-        'service': {
-            'slug': 'svc',
-            'authorization_endpoint': 'https://auth/authorize',
-            'token_endpoint': 'https://auth/token',
-            'revoke_endpoint': None,
-        },
-    }
+    def _get_plugin(slug: str) -> RegistryEntry:
+        try:
+            return registry[slug]
+        except KeyError as exc:
+            raise PluginNotFoundError(slug) from exc
+
+    return mock.patch.multiple(
+        login_providers,
+        get_plugin=_get_plugin,
+        decrypt_integration_credentials=lambda creds: dict(creds or {}),
+    )
 
 
 class LoginProvidersRepoTestCase(unittest.IsolatedAsyncioTestCase):
@@ -103,22 +184,18 @@ class LoginProvidersRepoTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_list_login_apps_empty(self) -> None:
         db = _FakeDB([])
-        with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
-        ):
+        with _patch_resolution():
             rows = await login_providers.list_login_apps(db)  # type: ignore[arg-type]
         self.assertEqual(rows, [])
 
     async def test_list_login_apps_filters_enabled(self) -> None:
         db = _FakeDB(
             [
-                _row('a', status='active'),
-                _row('b', status='inactive'),
+                _integration_row('a', status='active'),
+                _integration_row('b', status='inactive'),
             ]
         )
-        with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
-        ):
+        with _patch_resolution():
             all_rows = await login_providers.list_login_apps(db)  # type: ignore[arg-type]
             login_providers.invalidate_cache()
             active = await login_providers.list_login_apps(
@@ -130,153 +207,85 @@ class LoginProvidersRepoTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_login_app_returns_none_for_missing(self) -> None:
         db = _FakeDB([])
-        with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
-        ):
+        with _patch_resolution():
             row = await login_providers.get_login_app(db, 'absent')  # type: ignore[arg-type]
         self.assertIsNone(row)
 
     async def test_get_login_app_returns_row(self) -> None:
-        db = _FakeDB([_row('google', oauth_app_type='google')])
-        with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
-        ):
-            row = await login_providers.get_login_app(db, 'google')  # type: ignore[arg-type]
-        self.assertIsNotNone(row)
-        assert row is not None
-        self.assertEqual(row.slug, 'google')
-        self.assertEqual(row.oauth_app_type, 'google')
-        self.assertEqual(row.token_endpoint, 'https://auth/token')
-
-    async def test_get_login_app_refuses_on_duplicate_slug(self) -> None:
-        """When two login rows share a slug, ``get_login_app`` returns None.
-
-        The write path now blocks new collisions, but pre-existing
-        duplicates can still exist in deployed instances. Picking one
-        arbitrarily would silently route through whichever IdP the
-        graph happened to return first. See AWeber-Imbi/imbi-api#254.
-        """
         db = _FakeDB(
             [
-                _row('google', oauth_app_type='google'),
-                _row('google', oauth_app_type='google', name='Other'),
+                _integration_row(
+                    'okta-prod',
+                    plugin='okta',
+                    options={
+                        'oauth_app_type': 'oidc',
+                        'token_endpoint': 'https://auth/token',
+                        'issuer_url': 'https://auth',
+                    },
+                    credentials={'client_id': 'cid', 'client_secret': 'sec'},
+                )
             ]
         )
-        with (
-            mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
-            ),
-            self.assertLogs(
-                'imbi_api.auth.login_providers', level='ERROR'
-            ) as logs,
+        with _patch_resolution():
+            row = await login_providers.get_login_app(db, 'okta-prod')  # type: ignore[arg-type]
+        self.assertIsNotNone(row)
+        assert row is not None
+        self.assertEqual(row.slug, 'okta-prod')
+        self.assertEqual(row.integration_id, 'int-okta-prod')
+        self.assertEqual(row.oauth_app_type, 'oidc')
+        self.assertEqual(row.token_endpoint, 'https://auth/token')
+        self.assertEqual(row.client_id, 'cid')
+        self.assertEqual(row.client_secret, 'sec')
+
+    async def test_oauth_app_type_defaults_to_plugin_auth_type(self) -> None:
+        """With no ``oauth_app_type`` option, the plugin's ``auth_type``
+        is used."""
+        db = _FakeDB([_integration_row('okta-prod', plugin='okta')])
+        with _patch_resolution({'okta': _entry('okta', auth_type='oidc')}):
+            row = await login_providers.get_login_app(db, 'okta-prod')  # type: ignore[arg-type]
+        assert row is not None
+        self.assertEqual(row.oauth_app_type, 'oidc')
+
+    async def test_skips_plugin_without_identity_capability(self) -> None:
+        db = _FakeDB([_integration_row('x', plugin='noident')])
+        with _patch_resolution(
+            {'noident': _entry('noident', has_identity=False)}
         ):
-            row = await login_providers.get_login_app(db, 'google')  # type: ignore[arg-type]
-        self.assertIsNone(row)
-        self.assertTrue(
-            any('share slug' in m for m in logs.output),
-            f'Expected duplicate-slug error in logs, got {logs.output!r}',
+            rows = await login_providers.list_login_apps(db)  # type: ignore[arg-type]
+        self.assertEqual(rows, [])
+
+    async def test_skips_plugin_not_login_capable(self) -> None:
+        db = _FakeDB([_integration_row('x', plugin='plain')])
+        with _patch_resolution(
+            {'plain': _entry('plain', login_capable=False)}
+        ):
+            rows = await login_providers.list_login_apps(db)  # type: ignore[arg-type]
+        self.assertEqual(rows, [])
+
+    async def test_skips_disabled_identity_capability(self) -> None:
+        db = _FakeDB(
+            [_integration_row('x', plugin='okta', identity_enabled=False)]
         )
+        with _patch_resolution():
+            rows = await login_providers.list_login_apps(db)  # type: ignore[arg-type]
+        self.assertEqual(rows, [])
+
+    async def test_skips_unknown_plugin(self) -> None:
+        db = _FakeDB([_integration_row('x', plugin='ghost')])
+        # Empty registry -> get_plugin raises PluginNotFoundError.
+        with _patch_resolution({}):
+            rows = await login_providers.list_login_apps(db)  # type: ignore[arg-type]
+        self.assertEqual(rows, [])
 
     async def test_cache_invalidation(self) -> None:
-        db = _FakeDB([_row('google')])
-        with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
-        ):
-            first = await login_providers.get_login_app(db, 'google')  # type: ignore[arg-type]
+        db = _FakeDB([_integration_row('okta-prod', plugin='okta')])
+        with _patch_resolution():
+            first = await login_providers.get_login_app(db, 'okta-prod')  # type: ignore[arg-type]
             # Returns cached value even after rows are mutated.
             db.rows = []
-            second = await login_providers.get_login_app(db, 'google')  # type: ignore[arg-type]
+            second = await login_providers.get_login_app(db, 'okta-prod')  # type: ignore[arg-type]
             self.assertIsNotNone(first)
             self.assertEqual(first, second)
-            login_providers.invalidate_cache('google')
-            third = await login_providers.get_login_app(db, 'google')  # type: ignore[arg-type]
+            login_providers.invalidate_cache('okta-prod')
+            third = await login_providers.get_login_app(db, 'okta-prod')  # type: ignore[arg-type]
         self.assertIsNone(third)
-
-
-class IdentityPluginLoginSourceTestCase(unittest.IsolatedAsyncioTestCase):
-    """Verify the identity-plugin source merges into the login list."""
-
-    def setUp(self) -> None:
-        login_providers.invalidate_cache()
-
-    async def test_list_includes_identity_plugin_rows(self) -> None:
-        db = _FakeDB(
-            rows=[],
-            plugin_rows=[_plugin_row('oidc', plugin_id='p-1')],
-        )
-        with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
-        ):
-            apps = await login_providers.list_login_apps(db)  # type: ignore[arg-type]
-        self.assertEqual(len(apps), 1)
-        self.assertEqual(apps[0].slug, 'oidc')
-        self.assertEqual(apps[0].source, 'identity_plugin')
-        self.assertEqual(apps[0].oauth_app_type, 'identity_plugin')
-        self.assertEqual(apps[0].plugin_id, 'p-1')
-
-    async def test_get_prefers_identity_plugin_on_collision(self) -> None:
-        db = _FakeDB(
-            rows=[_row('oidc', oauth_app_type='oidc')],
-            plugin_rows=[_plugin_row('oidc', plugin_id='p-99')],
-        )
-        with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
-        ):
-            app = await login_providers.get_login_app(db, 'oidc')  # type: ignore[arg-type]
-        assert app is not None
-        self.assertEqual(app.source, 'identity_plugin')
-        self.assertEqual(app.plugin_id, 'p-99')
-
-    async def test_list_merges_both_sources(self) -> None:
-        db = _FakeDB(
-            rows=[_row('google', oauth_app_type='google')],
-            plugin_rows=[_plugin_row('oidc', plugin_id='p-1')],
-        )
-        with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
-        ):
-            apps = await login_providers.list_login_apps(db)  # type: ignore[arg-type]
-        slugs = {a.slug: a.source for a in apps}
-        self.assertEqual(
-            slugs, {'google': 'service_app', 'oidc': 'identity_plugin'}
-        )
-
-    async def test_list_skips_plugin_rows_missing_id(self) -> None:
-        """Plugin rows without plugin_slug or id are silently skipped."""
-        db = _FakeDB(
-            rows=[],
-            plugin_rows=[
-                {
-                    'plugin': {
-                        'id': '',
-                        'plugin_slug': '',
-                        'login_capable': True,
-                        'used_as_login': True,
-                    }
-                },
-                _plugin_row('okta', plugin_id='p-99'),
-            ],
-        )
-        with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
-        ):
-            apps = await login_providers.list_login_apps(db)  # type: ignore[arg-type]
-        # Bad row dropped, good row kept.
-        self.assertEqual(len(apps), 1)
-        self.assertEqual(apps[0].slug, 'okta')
-
-    async def test_list_skips_app_rows_without_oauth_type(self) -> None:
-        """Service-app rows missing oauth_app_type are silently skipped."""
-        bad_row = {
-            'app': {'slug': 'incomplete'},
-            'service': None,
-        }
-        db = _FakeDB(
-            rows=[bad_row, _row('google', oauth_app_type='google')],
-        )
-        with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
-        ):
-            apps = await login_providers.list_login_apps(db)  # type: ignore[arg-type]
-        slugs = [a.slug for a in apps]
-        self.assertEqual(slugs, ['google'])

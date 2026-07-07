@@ -7,9 +7,11 @@ import fastapi
 from fastapi import testclient
 from imbi_common import graph
 from imbi_common.plugins.base import (
+    Capability,
     IncidentResult,
-    IncidentsPlugin,
+    IncidentsCapability,
     IncidentView,
+    Plugin,
     PluginManifest,
 )
 from imbi_common.plugins.errors import CursorExpiredError
@@ -17,17 +19,11 @@ from imbi_common.plugins.registry import RegistryEntry
 
 from imbi_api import models
 from imbi_api.auth import password, permissions
-from imbi_api.plugins.resolution import ResolvedPlugin
+from imbi_api.plugins.resolution import ResolvedCapability
 from tests import support
 
 
-class _FakeIncidentsPlugin(IncidentsPlugin):
-    manifest = PluginManifest(
-        slug='pagerduty-incidents',
-        name='PagerDuty Incidents',
-        plugin_type='incidents',
-    )
-
+class _FakeIncidentsHandler(IncidentsCapability):
     async def list_incidents(  # type: ignore[override]
         self,
         ctx,
@@ -58,12 +54,50 @@ class _FakeIncidentsPlugin(IncidentsPlugin):
         )
 
 
-def _entry() -> RegistryEntry:
+class _FakePlugin(Plugin):
+    pass
+
+
+def _manifest(handler: type[IncidentsCapability]) -> PluginManifest:
+    return PluginManifest(
+        slug='pagerduty-incidents',
+        name='PagerDuty Incidents',
+        capabilities=[
+            Capability(kind='incidents', label='Incidents', handler=handler)
+        ],
+    )
+
+
+def _entry(
+    handler: type[IncidentsCapability] = _FakeIncidentsHandler,
+) -> RegistryEntry:
     return RegistryEntry(
-        handler_cls=_FakeIncidentsPlugin,
-        manifest=_FakeIncidentsPlugin.manifest,
+        plugin_cls=_FakePlugin,
+        manifest=_manifest(handler),
         package_name='imbi-plugin-pagerduty',
         package_version='1.0.0',
+    )
+
+
+def _resolved(
+    handler: type[IncidentsCapability] = _FakeIncidentsHandler,
+) -> ResolvedCapability:
+    entry = _entry(handler)
+    return ResolvedCapability(
+        integration_id='i1',
+        integration_slug='pagerduty-prod',
+        plugin_slug='pagerduty-incidents',
+        kind='incidents',
+        entry=entry,
+        capability_cls=entry.manifest.get_capability('incidents').handler,
+        integration={
+            'id': 'i1',
+            'slug': 'pagerduty-prod',
+            'plugin': 'pagerduty-incidents',
+        },
+        integration_options={},
+        capability_options={},
+        encrypted_credentials={},
     )
 
 
@@ -91,22 +125,17 @@ class ProjectIncidentsEndpointTestCase(support.SharedAppTestCase):
             mock_get_current_user
         )
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
-    def _resolved(self) -> ResolvedPlugin:
-        return ResolvedPlugin(
-            plugin_id='p1',
-            plugin_slug='pagerduty-incidents',
-            entry=_entry(),
-            options={},
-        )
+    def _resolved(self) -> ResolvedCapability:
+        return _resolved()
 
     def test_list_incidents_happy_path(self) -> None:
         with (
             mock.patch(
-                'imbi_api.endpoints.project_incidents.resolve_plugin',
+                'imbi_api.endpoints.project_incidents.resolve_capability',
                 return_value=self._resolved(),
             ),
             mock.patch(
@@ -114,8 +143,9 @@ class ProjectIncidentsEndpointTestCase(support.SharedAppTestCase):
                 return_value=('proj-slug', 'team-slug'),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_incidents.get_plugin_credentials',
-                return_value={},
+                'imbi_api.endpoints.project_incidents'
+                '.decrypt_integration_credentials',
+                return_value={'token': 'x'},
             ),
             mock.patch(
                 'imbi_api.endpoints.project_incidents.lookup_project_links',
@@ -134,7 +164,7 @@ class ProjectIncidentsEndpointTestCase(support.SharedAppTestCase):
 
     def test_list_incidents_no_plugin_returns_404(self) -> None:
         with mock.patch(
-            'imbi_api.endpoints.project_incidents.resolve_plugin',
+            'imbi_api.endpoints.project_incidents.resolve_capability',
             side_effect=fastapi.HTTPException(
                 status_code=404, detail='No incidents plugin'
             ),
@@ -147,7 +177,7 @@ class ProjectIncidentsEndpointTestCase(support.SharedAppTestCase):
 
     def test_list_incidents_invalid_datetime_returns_400(self) -> None:
         with mock.patch(
-            'imbi_api.endpoints.project_incidents.resolve_plugin',
+            'imbi_api.endpoints.project_incidents.resolve_capability',
             return_value=self._resolved(),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -159,7 +189,7 @@ class ProjectIncidentsEndpointTestCase(support.SharedAppTestCase):
 
     def test_list_incidents_inverted_window_returns_400(self) -> None:
         with mock.patch(
-            'imbi_api.endpoints.project_incidents.resolve_plugin',
+            'imbi_api.endpoints.project_incidents.resolve_capability',
             return_value=self._resolved(),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -171,11 +201,9 @@ class ProjectIncidentsEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_list_incidents_credentials_missing_returns_503(self) -> None:
-        from imbi_common.plugins.errors import PluginCredentialsMissing
-
         with (
             mock.patch(
-                'imbi_api.endpoints.project_incidents.resolve_plugin',
+                'imbi_api.endpoints.project_incidents.resolve_capability',
                 return_value=self._resolved(),
             ),
             mock.patch(
@@ -183,8 +211,9 @@ class ProjectIncidentsEndpointTestCase(support.SharedAppTestCase):
                 return_value=('proj-slug', 'team-slug'),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_incidents.get_plugin_credentials',
-                side_effect=PluginCredentialsMissing('no creds'),
+                'imbi_api.endpoints.project_incidents'
+                '.decrypt_integration_credentials',
+                return_value={},
             ),
             mock.patch(
                 'imbi_api.endpoints.project_incidents.lookup_project_links',
@@ -198,36 +227,25 @@ class ProjectIncidentsEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 503)
 
     def test_list_incidents_cursor_expired_returns_409(self) -> None:
-        class _Expiring(_FakeIncidentsPlugin):
+        class _Expiring(_FakeIncidentsHandler):
             async def list_incidents(  # type: ignore[override]
                 self, ctx, credentials, **kwargs
             ):
                 raise CursorExpiredError('expired')
 
-        entry = RegistryEntry(
-            handler_cls=_Expiring,
-            manifest=_FakeIncidentsPlugin.manifest,
-            package_name='imbi-plugin-pagerduty',
-            package_version='1.0.0',
-        )
-        resolved = ResolvedPlugin(
-            plugin_id='p1',
-            plugin_slug='pagerduty-incidents',
-            entry=entry,
-            options={},
-        )
         with (
             mock.patch(
-                'imbi_api.endpoints.project_incidents.resolve_plugin',
-                return_value=resolved,
+                'imbi_api.endpoints.project_incidents.resolve_capability',
+                return_value=_resolved(_Expiring),
             ),
             mock.patch(
                 'imbi_api.endpoints.project_incidents.lookup_project_slugs',
                 return_value=('proj-slug', 'team-slug'),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_incidents.get_plugin_credentials',
-                return_value={},
+                'imbi_api.endpoints.project_incidents'
+                '.decrypt_integration_credentials',
+                return_value={'token': 'x'},
             ),
             mock.patch(
                 'imbi_api.endpoints.project_incidents.lookup_project_links',

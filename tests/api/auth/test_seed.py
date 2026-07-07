@@ -39,6 +39,35 @@ class SeedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(count, 0)
         mock_db.execute.assert_awaited_once()
 
+    async def test_cleanup_retired_permissions_removes(self) -> None:
+        """Retired permissions are detach-deleted when present."""
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [{'removed': 4}]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            removed = await seed.cleanup_retired_permissions(mock_db)
+
+        self.assertEqual(removed, 4)
+        # One query to count, one to detach-delete.
+        self.assertEqual(mock_db.execute.await_count, 2)
+
+    async def test_cleanup_retired_permissions_noop(self) -> None:
+        """No delete is issued when nothing retired remains."""
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [{'removed': 0}]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            removed = await seed.cleanup_retired_permissions(mock_db)
+
+        self.assertEqual(removed, 0)
+        mock_db.execute.assert_awaited_once()
+
     async def test_permission_format_validation(self) -> None:
         """Ensure all permission names match resource_type:action."""
         for (
@@ -193,6 +222,10 @@ class BootstrapAuthSystemTestCase(unittest.IsolatedAsyncioTestCase):
                 return_value=True,
             ) as mock_org,
             mock.patch(
+                'imbi_api.auth.seed.cleanup_retired_permissions',
+                return_value=0,
+            ),
+            mock.patch(
                 'imbi_api.auth.seed.seed_permissions',
                 return_value=len(seed.STANDARD_PERMISSIONS),
             ) as mock_perms,
@@ -224,6 +257,10 @@ class BootstrapAuthSystemTestCase(unittest.IsolatedAsyncioTestCase):
                 return_value=False,
             ),
             mock.patch(
+                'imbi_api.auth.seed.cleanup_retired_permissions',
+                return_value=0,
+            ),
+            mock.patch(
                 'imbi_api.auth.seed.seed_permissions',
                 return_value=0,
             ),
@@ -246,6 +283,10 @@ class BootstrapAuthSystemTestCase(unittest.IsolatedAsyncioTestCase):
             mock.patch(
                 'imbi_api.auth.seed.seed_default_organization',
                 return_value=True,
+            ),
+            mock.patch(
+                'imbi_api.auth.seed.cleanup_retired_permissions',
+                return_value=0,
             ),
             mock.patch(
                 'imbi_api.auth.seed.seed_permissions',

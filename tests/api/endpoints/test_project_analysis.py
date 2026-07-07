@@ -11,8 +11,10 @@ from unittest import mock
 from fastapi import testclient
 from imbi_common import graph
 from imbi_common.plugins.base import (
-    AnalysisPlugin,
+    AnalysisCapability,
     AnalysisResultItem,
+    Capability,
+    Plugin,
     PluginManifest,
     RemediationOffer,
     RemediationResult,
@@ -22,15 +24,14 @@ from imbi_common.plugins.registry import RegistryEntry
 
 from imbi_api import app, models
 from imbi_api.auth import password, permissions
-from imbi_api.plugins.resolution import ResolvedPlugin
+from imbi_api.plugins.resolution import ResolvedCapability
 
 _MODULE = 'imbi_api.endpoints.project_analysis'
 
 
-class _PassPlugin(AnalysisPlugin):
-    manifest = PluginManifest(
-        slug='pass-plugin', name='Pass', plugin_type='analysis'
-    )
+class _PassPlugin(AnalysisCapability):
+    _SLUG = 'pass-plugin'
+    _NAME = 'Pass'
 
     async def analyze(self, ctx, credentials) -> list[AnalysisResultItem]:  # type: ignore[override]
         return [
@@ -43,10 +44,9 @@ class _PassPlugin(AnalysisPlugin):
         ]
 
 
-class _FailPlugin(AnalysisPlugin):
-    manifest = PluginManifest(
-        slug='fail-plugin', name='Fail', plugin_type='analysis'
-    )
+class _FailPlugin(AnalysisCapability):
+    _SLUG = 'fail-plugin'
+    _NAME = 'Fail'
 
     async def analyze(self, ctx, credentials) -> list[AnalysisResultItem]:  # type: ignore[override]
         return [
@@ -65,19 +65,17 @@ class _FailPlugin(AnalysisPlugin):
         ]
 
 
-class _BoomPlugin(AnalysisPlugin):
-    manifest = PluginManifest(
-        slug='boom-plugin', name='Boom', plugin_type='analysis'
-    )
+class _BoomPlugin(AnalysisCapability):
+    _SLUG = 'boom-plugin'
+    _NAME = 'Boom'
 
     async def analyze(self, ctx, credentials) -> list[AnalysisResultItem]:  # type: ignore[override]
         raise RuntimeError('boom')
 
 
-class _RemediablePlugin(AnalysisPlugin):
-    manifest = PluginManifest(
-        slug='fix-plugin', name='Fix', plugin_type='analysis'
-    )
+class _RemediablePlugin(AnalysisCapability):
+    _SLUG = 'fix-plugin'
+    _NAME = 'Fix'
 
     async def analyze(self, ctx, credentials) -> list[AnalysisResultItem]:  # type: ignore[override]
         return [
@@ -100,21 +98,44 @@ class _RemediablePlugin(AnalysisPlugin):
         )
 
 
-def _registry_entry(cls: type[AnalysisPlugin]) -> RegistryEntry:
+class _FakePlugin(Plugin):
+    pass
+
+
+def _registry_entry(cls: type[AnalysisCapability]) -> RegistryEntry:
     return RegistryEntry(
-        handler_cls=cls,
-        manifest=cls.manifest,
+        plugin_cls=_FakePlugin,
+        manifest=PluginManifest(
+            slug=cls._SLUG,
+            name=cls._NAME,
+            capabilities=[
+                Capability(kind='analysis', label='Analysis', handler=cls)
+            ],
+        ),
         package_name='test-pkg',
         package_version='0',
     )
 
 
-def _resolved(plugin_id: str, cls: type[AnalysisPlugin]) -> ResolvedPlugin:
-    return ResolvedPlugin(
-        plugin_id=plugin_id,
-        plugin_slug=cls.manifest.slug,
-        entry=_registry_entry(cls),
-        options={},
+def _resolved(
+    plugin_id: str, cls: type[AnalysisCapability]
+) -> ResolvedCapability:
+    entry = _registry_entry(cls)
+    return ResolvedCapability(
+        integration_id=plugin_id,
+        integration_slug=f'{cls._SLUG}-prod',
+        plugin_slug=cls._SLUG,
+        kind='analysis',
+        entry=entry,
+        capability_cls=entry.manifest.get_capability('analysis').handler,
+        integration={
+            'id': plugin_id,
+            'slug': f'{cls._SLUG}-prod',
+            'plugin': cls._SLUG,
+        },
+        integration_options={},
+        capability_options={},
+        encrypted_credentials={},
     )
 
 
@@ -168,12 +189,6 @@ class ProjectAnalysisTestCase(unittest.TestCase):
                 return_value=['service'],
             )
         )
-        self.mocks['get_plugin_credentials'] = self._start(
-            mock.patch(
-                f'{_MODULE}.get_plugin_credentials',
-                return_value={},
-            )
-        )
         self.mocks['check_blueprint_compliance'] = self._start(
             mock.patch(
                 f'{_MODULE}.check_blueprint_compliance',
@@ -183,12 +198,6 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         self.mocks['lookup_project_exists_in'] = self._start(
             mock.patch(
                 f'{_MODULE}.lookup_project_exists_in',
-                return_value=[],
-            )
-        )
-        self.mocks['resolve_service_plugins'] = self._start(
-            mock.patch(
-                f'{_MODULE}.resolve_service_plugins',
                 return_value=[],
             )
         )
@@ -208,7 +217,7 @@ class ProjectAnalysisTestCase(unittest.TestCase):
 
     def test_run_with_no_plugins_persists_empty_pass_report(self) -> None:
         with mock.patch(
-            f'{_MODULE}.resolve_analysis_plugins',
+            f'{_MODULE}.resolve_all_capabilities',
             return_value=[],
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -222,7 +231,7 @@ class ProjectAnalysisTestCase(unittest.TestCase):
 
     def test_run_returns_worst_status_and_sorted_results(self) -> None:
         with mock.patch(
-            f'{_MODULE}.resolve_analysis_plugins',
+            f'{_MODULE}.resolve_all_capabilities',
             return_value=[
                 _resolved('p1', _PassPlugin),
                 _resolved('p2', _FailPlugin),
@@ -241,7 +250,7 @@ class ProjectAnalysisTestCase(unittest.TestCase):
 
     def test_run_captures_plugin_exception_as_fail_result(self) -> None:
         with mock.patch(
-            f'{_MODULE}.resolve_analysis_plugins',
+            f'{_MODULE}.resolve_all_capabilities',
             return_value=[_resolved('p3', _BoomPlugin)],
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -321,7 +330,7 @@ class ProjectAnalysisTestCase(unittest.TestCase):
             mock_get_current_user
         )
         with mock.patch(
-            f'{_MODULE}.resolve_analysis_plugins',
+            f'{_MODULE}.resolve_all_capabilities',
             return_value=[],
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -332,7 +341,7 @@ class ProjectAnalysisTestCase(unittest.TestCase):
 
     def test_remediate_calls_plugin_and_persists_writeback(self) -> None:
         with mock.patch(
-            f'{_MODULE}.resolve_analysis_plugins',
+            f'{_MODULE}.resolve_all_capabilities',
             return_value=[_resolved('p1', _RemediablePlugin)],
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -353,7 +362,7 @@ class ProjectAnalysisTestCase(unittest.TestCase):
 
     def test_remediate_unknown_plugin_returns_404(self) -> None:
         with mock.patch(
-            f'{_MODULE}.resolve_analysis_plugins',
+            f'{_MODULE}.resolve_all_capabilities',
             return_value=[],
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -375,7 +384,7 @@ class ProjectAnalysisTestCase(unittest.TestCase):
                     status='fixed', message='set default'
                 ),
             ) as rb,
-            mock.patch(f'{_MODULE}.resolve_analysis_plugins', return_value=[]),
+            mock.patch(f'{_MODULE}.resolve_all_capabilities', return_value=[]),
         ):
             with testclient.TestClient(self.test_app) as client:
                 resp = client.post(
@@ -457,7 +466,7 @@ class ProjectAnalysisTestCase(unittest.TestCase):
                 f'{_MODULE}.remediate_blueprint',
                 return_value=RemediationResult(status='fixed', message='ok'),
             ),
-            mock.patch(f'{_MODULE}.resolve_analysis_plugins', return_value=[]),
+            mock.patch(f'{_MODULE}.resolve_all_capabilities', return_value=[]),
         ):
             with testclient.TestClient(self.test_app) as client:
                 resp = client.post(
@@ -503,7 +512,7 @@ class ProjectAnalysisTestCase(unittest.TestCase):
                 f'{_MODULE}.remediate_blueprint',
                 side_effect=RuntimeError('boom'),
             ),
-            mock.patch(f'{_MODULE}.resolve_analysis_plugins', return_value=[]),
+            mock.patch(f'{_MODULE}.resolve_all_capabilities', return_value=[]),
         ):
             with testclient.TestClient(self.test_app) as client:
                 resp = client.post(

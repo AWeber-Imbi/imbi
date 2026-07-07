@@ -6,6 +6,12 @@ identity tokens.  Plaintext credentials enter via ``upsert_connection``
 and leave via :class:`IdentityCredentialsInternal` from
 ``load_connection``; the rest of the API code path never handles
 ciphertext directly.
+
+Plugin Architecture v3: connections key off ``integration_id`` (an
+``Integration`` node id), not a ``Plugin`` node.  Lookups that need the
+Integration's slug / name join by property equality on
+``Integration.id`` — there is no more ``USES_PLUGIN`` edge or
+``:Plugin`` node to traverse.
 """
 
 import datetime
@@ -42,7 +48,7 @@ def _parse_metadata(raw: typing.Any) -> dict[str, typing.Any]:
             return {}
         try:
             decoded = json.loads(parsed)
-        except (json.JSONDecodeError, TypeError):
+        except json.JSONDecodeError, TypeError:
             return {}
         if isinstance(decoded, dict):
             return typing.cast('dict[str, typing.Any]', decoded)
@@ -65,14 +71,15 @@ def _now_iso() -> str:
 
 async def upsert_connection(
     db: graph.Graph,
-    plugin_id: str,
+    integration_id: str,
     user_id: str,
     profile: IdentityProfile,
     credentials: IdentityCredentials,
     *,
     metadata: dict[str, typing.Any] | None = None,
 ) -> str:
-    """MERGE the user's connection for this plugin and persist tokens.
+    """MERGE the user's connection for this Integration and persist
+    tokens.
 
     Returns the connection's nano-ID.  Sets ``status='active'``,
     ``last_used_at=now()``.
@@ -110,7 +117,7 @@ async def upsert_connection(
     # coalesce() to preserve ``id`` and ``created_at`` on the existing
     # row while every other field is overwritten.
     query: typing.LiteralString = """
-    MERGE (c:IdentityConnection {{plugin_id: {plugin_id},
+    MERGE (c:IdentityConnection {{integration_id: {integration_id},
                                   user_id: {user_id}}})
     SET c.id = coalesce(c.id, {new_id}),
         c.created_at = coalesce(c.created_at, {now}),
@@ -125,13 +132,12 @@ async def upsert_connection(
         c.updated_at = {now},
         c.metadata = {metadata}
     WITH c
-    MATCH (u:User {{id: {user_id}}}), (p:Plugin {{id: {plugin_id}}})
+    MATCH (u:User {{id: {user_id}}})
     MERGE (u)-[:HAS_IDENTITY]->(c)
-    MERGE (c)-[:USES_PLUGIN]->(p)
     RETURN c.id AS id
     """
     params = {
-        'plugin_id': plugin_id,
+        'integration_id': integration_id,
         'user_id': user_id,
         'new_id': new_id,
         'now': now,
@@ -148,8 +154,8 @@ async def upsert_connection(
         records = await db.execute(query, params, ['id'])
     except Exception:
         LOGGER.exception(
-            'Failed to upsert IdentityConnection plugin_id=%s user_id=%s',
-            plugin_id,
+            'Failed to upsert IdentityConnection integration_id=%s user_id=%s',
+            integration_id,
             user_id,
         )
         raise
@@ -160,12 +166,12 @@ async def upsert_connection(
 
 async def load_connection(
     db: graph.Graph,
-    plugin_id: str,
+    integration_id: str,
     user_id: str,
 ) -> IdentityCredentialsInternal | None:
-    """Load and decrypt the actor's connection for ``plugin_id``."""
+    """Load and decrypt the actor's connection for ``integration_id``."""
     query: typing.LiteralString = """
-    MATCH (c:IdentityConnection {{plugin_id: {plugin_id},
+    MATCH (c:IdentityConnection {{integration_id: {integration_id},
                                   user_id: {user_id}}})
     RETURN c.id AS id,
            c.subject AS subject,
@@ -179,7 +185,7 @@ async def load_connection(
     """
     records = await db.execute(
         query,
-        {'plugin_id': plugin_id, 'user_id': user_id},
+        {'integration_id': integration_id, 'user_id': user_id},
         [
             'id',
             'subject',
@@ -197,8 +203,9 @@ async def load_connection(
     access = _decrypt(row.get('access'))
     if access is None:
         LOGGER.warning(
-            'IdentityConnection plugin_id=%s user_id=%s missing access token',
-            plugin_id,
+            'IdentityConnection integration_id=%s user_id=%s missing '
+            'access token',
+            integration_id,
             user_id,
         )
         return None
@@ -220,7 +227,7 @@ async def load_connection(
 
     return IdentityCredentialsInternal(
         connection_id=graph.parse_agtype(row['id']),
-        plugin_id=plugin_id,
+        integration_id=integration_id,
         user_id=user_id,
         subject=graph.parse_agtype(row['subject']),
         access_token=access,
@@ -251,7 +258,7 @@ async def mark_status(
 
 async def connection_status(
     db: graph.Graph,
-    plugin_id: str,
+    integration_id: str,
     user_id: str,
 ) -> str | None:
     """Return the connection's current ``status`` field (or ``None``).
@@ -262,13 +269,15 @@ async def connection_status(
     revoke / forget UI needs to tell those apart.
     """
     query: typing.LiteralString = """
-    MATCH (c:IdentityConnection {{plugin_id: {plugin_id},
+    MATCH (c:IdentityConnection {{integration_id: {integration_id},
                                   user_id: {user_id}}})
     RETURN c.status AS status
     LIMIT 1
     """
     rows = await db.execute(
-        query, {'plugin_id': plugin_id, 'user_id': user_id}, ['status']
+        query,
+        {'integration_id': integration_id, 'user_id': user_id},
+        ['status'],
     )
     if not rows:
         return None
@@ -278,26 +287,28 @@ async def connection_status(
 
 async def delete_connection(
     db: graph.Graph,
-    plugin_id: str,
+    integration_id: str,
     user_id: str,
 ) -> None:
     """Hard-delete the user's connection node and its edges."""
     query: typing.LiteralString = """
-    MATCH (c:IdentityConnection {{plugin_id: {plugin_id},
+    MATCH (c:IdentityConnection {{integration_id: {integration_id},
                                   user_id: {user_id}}})
     DETACH DELETE c
     """
-    await db.execute(query, {'plugin_id': plugin_id, 'user_id': user_id}, [])
+    await db.execute(
+        query, {'integration_id': integration_id, 'user_id': user_id}, []
+    )
 
 
 async def revoke(
     db: graph.Graph,
-    plugin_id: str,
+    integration_id: str,
     user_id: str,
 ) -> None:
     """Mark the user's connection revoked and clear tokens."""
     query: typing.LiteralString = """
-    MATCH (c:IdentityConnection {{plugin_id: {plugin_id},
+    MATCH (c:IdentityConnection {{integration_id: {integration_id},
                                   user_id: {user_id}}})
     SET c.status = 'revoked',
         c.access_token_encrypted = null,
@@ -307,7 +318,11 @@ async def revoke(
     """
     await db.execute(
         query,
-        {'plugin_id': plugin_id, 'user_id': user_id, 'now': _now_iso()},
+        {
+            'integration_id': integration_id,
+            'user_id': user_id,
+            'now': _now_iso(),
+        },
         [],
     )
 
@@ -316,15 +331,19 @@ async def list_for_user(
     db: graph.Graph,
     user_id: str,
 ) -> list[dict[str, typing.Any]]:
-    """Return raw connection rows for the actor (for admin / settings UI)."""
+    """Return raw connection rows for the actor (for admin / settings UI).
+
+    Joins the ``Integration`` by property equality on ``id`` -- there is
+    no ``USES_PLUGIN``-style edge between an ``IdentityConnection`` and
+    its ``Integration`` in v3.
+    """
     query: typing.LiteralString = """
     MATCH (u:User {{id: {user_id}}})-[:HAS_IDENTITY]->(c:IdentityConnection)
-    OPTIONAL MATCH (c)-[:USES_PLUGIN]->(p:Plugin)
+    OPTIONAL MATCH (i:Integration) WHERE i.id = c.integration_id
     RETURN c.id AS id,
-           c.plugin_id AS plugin_id,
-           p.plugin_slug AS plugin_slug,
-           p.label AS plugin_label,
-           p.connects_users_to AS connects_users_to,
+           c.integration_id AS integration_id,
+           i.slug AS integration_slug,
+           i.name AS integration_name,
            c.subject AS subject,
            c.status AS status,
            c.expires_at AS expires_at,
@@ -338,10 +357,9 @@ async def list_for_user(
         {'user_id': user_id},
         [
             'id',
-            'plugin_id',
-            'plugin_slug',
-            'plugin_label',
-            'connects_users_to',
+            'integration_id',
+            'integration_slug',
+            'integration_name',
             'subject',
             'status',
             'expires_at',
@@ -367,7 +385,7 @@ async def list_for_user(
                         login = claims.get('login')
                         if login:
                             meta['login'] = str(login)
-                except (json.JSONDecodeError, TypeError):
+                except json.JSONDecodeError, TypeError:
                     pass
         decoded['metadata'] = meta
         # Don't leak the ciphertext to callers.
@@ -378,24 +396,25 @@ async def list_for_user(
 
 async def find_user_by_subject(
     db: graph.Graph,
-    plugin_slug: str,
+    integration_id: str,
     subject: str,
 ) -> str | None:
     """Return the Imbi user_id whose active connection has this subject.
 
-    ``subject`` is the external provider's unique ID — for GitHub plugins
-    this is the numeric user ID as a string (e.g. ``"12345"``), which is
-    what :func:`imbi_plugin_github.plugin._build_userinfo` stores.
+    ``subject`` is the external provider's unique ID — for GitHub
+    integrations this is the numeric user ID as a string (e.g.
+    ``"12345"``), which is what
+    :func:`imbi_plugin_github.plugin._build_userinfo` stores.
 
     Returns ``None`` when no active connection matches OR when more than
-    one distinct Imbi user is reachable from the (``plugin_slug``,
+    one distinct Imbi user is reachable from the (``integration_id``,
     ``subject``) pair — that's a data bug we don't want to paper over by
     silently picking one. Callers (the gateway in particular) treat
     ``None`` as "do not attribute" rather than as "no such user".
     """
     query: typing.LiteralString = """
-    MATCH (c:IdentityConnection {{subject: {subject}}})
-          -[:USES_PLUGIN]->(p:Plugin {{plugin_slug: {plugin_slug}}})
+    MATCH (c:IdentityConnection {{subject: {subject},
+                                  integration_id: {integration_id}}})
     WHERE c.status = 'active'
     OPTIONAL MATCH (u:User)-[:HAS_IDENTITY]->(c)
     WITH collect(DISTINCT u.id) AS user_ids
@@ -403,7 +422,7 @@ async def find_user_by_subject(
     """
     records = await db.execute(
         query,
-        {'subject': subject, 'plugin_slug': plugin_slug},
+        {'subject': subject, 'integration_id': integration_id},
         ['user_ids'],
     )
     if not records:
@@ -420,9 +439,64 @@ async def find_user_by_subject(
     if len(matches) != 1:
         if len(matches) > 1:
             LOGGER.error(
-                'plugin_slug=%r subject=%r resolved to multiple Imbi '
+                'integration_id=%r subject=%r resolved to multiple Imbi '
                 'users %r; refusing to guess',
-                plugin_slug,
+                integration_id,
+                subject,
+                sorted(matches),
+            )
+        return None
+    return matches[0]
+
+
+async def find_user_by_integration_slug(
+    db: graph.Graph,
+    integration_slug: str,
+    subject: str,
+) -> str | None:
+    """Return the Imbi user_id whose active connection has this subject
+    on the Integration identified by ``integration_slug``.
+
+    The slug-keyed sibling of :func:`find_user_by_subject`, for callers
+    that only know the Integration by its slug -- notably the inbound
+    webhook gateway's ``/users/by-identity`` attribution lookup, which
+    reads the ``IMPLEMENTED_BY`` edge's identity slug (an Integration
+    slug in v3). Joins ``IdentityConnection`` to its ``Integration`` by
+    ``i.id = c.integration_id`` (there is no edge between them).
+
+    ``subject`` is the external provider's unique ID -- for GitHub
+    integrations the numeric user ID as a string.
+
+    Returns ``None`` when no active connection matches OR when more than
+    one distinct Imbi user is reachable -- callers treat ``None`` as "do
+    not attribute" rather than "no such user".
+    """
+    query: typing.LiteralString = """
+    MATCH (i:Integration {{slug: {integration_slug}}})
+    MATCH (c:IdentityConnection {{subject: {subject}}})
+    WHERE c.integration_id = i.id AND c.status = 'active'
+    OPTIONAL MATCH (u:User)-[:HAS_IDENTITY]->(c)
+    WITH collect(DISTINCT u.id) AS user_ids
+    RETURN user_ids
+    """
+    records = await db.execute(
+        query,
+        {'integration_slug': integration_slug, 'subject': subject},
+        ['user_ids'],
+    )
+    if not records:
+        return None
+    parsed = graph.parse_agtype(records[0]['user_ids'])
+    if not isinstance(parsed, list):
+        return None
+    user_ids: list[typing.Any] = parsed  # pyright: ignore[reportUnknownVariableType]
+    matches: list[str] = [str(uid) for uid in user_ids if uid]
+    if len(matches) != 1:
+        if len(matches) > 1:
+            LOGGER.error(
+                'integration_slug=%r subject=%r resolved to multiple Imbi '
+                'users %r; refusing to guess',
+                integration_slug,
                 subject,
                 sorted(matches),
             )
@@ -444,11 +518,13 @@ async def stale_connections(
       AND c.expires_at IS NOT NULL
       AND c.expires_at < {before}
     RETURN c.id AS id,
-           c.plugin_id AS plugin_id,
+           c.integration_id AS integration_id,
            c.user_id AS user_id
     """
     records = await db.execute(
-        query, {'before': before.isoformat()}, ['id', 'plugin_id', 'user_id']
+        query,
+        {'before': before.isoformat()},
+        ['id', 'integration_id', 'user_id'],
     )
     return [
         {k: graph.parse_agtype(v) for k, v in row.items()} for row in records

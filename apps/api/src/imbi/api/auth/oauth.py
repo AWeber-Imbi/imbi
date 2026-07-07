@@ -13,7 +13,6 @@ from urllib import parse as urlparse
 import httpx
 import jwt
 from imbi_common import graph
-from imbi_common.auth import encryption
 from valkey import asyncio as valkey_module
 
 from imbi_api import settings
@@ -279,7 +278,7 @@ async def exchange_oauth_code(
     """Exchange OAuth authorization code for tokens.
 
     Args:
-        slug: ServiceApplication slug for the login provider
+        slug: Login-Integration slug
         code: Authorization code from provider
         redirect_uri: Redirect URI used in authorization request
         db: Graph database used to look up provider configuration
@@ -327,7 +326,7 @@ async def fetch_oauth_profile(
     """Fetch user profile from OAuth provider.
 
     Args:
-        slug: ServiceApplication slug for the login provider
+        slug: Login-Integration slug
         access_token: Access token from provider
         db: Graph database used to look up provider configuration
 
@@ -446,17 +445,6 @@ async def _load_active_login_app(
     return app
 
 
-def _decrypt_secret(app: login_providers.LoginApp) -> str:
-    """Decrypt the row's ``client_secret_encrypted`` value."""
-    if not app.client_secret_encrypted:
-        return ''
-    encryptor = encryption.TokenEncryption.get_instance()
-    secret = encryptor.decrypt(app.client_secret_encrypted)
-    if secret is None:
-        raise ValueError('Failed to decrypt OAuth client secret')
-    return secret
-
-
 async def _get_provider_config(
     slug: str, db: graph.Graph
 ) -> tuple[str, str, str]:
@@ -467,7 +455,11 @@ async def _get_provider_config(
     """
     app = await _load_active_login_app(slug, db)
     client_id = app.client_id or ''
-    client_secret = _decrypt_secret(app)
+    # LoginApp.client_secret is already plaintext -- Integration
+    # credentials are decrypted once when the login app is materialized
+    # (imbi_api.auth.login_providers), unlike the old ServiceApplication
+    # row which stored an encrypted value this module used to decrypt.
+    client_secret = app.client_secret or ''
     if app.oauth_app_type == 'google':
         return (
             'https://oauth2.googleapis.com/token',
@@ -480,7 +472,7 @@ async def _get_provider_config(
             client_id,
             client_secret,
         )
-    # oidc: prefer parent ThirdPartyService.token_endpoint, else discover
+    # oidc: prefer the Integration's configured token_endpoint, else discover
     if app.token_endpoint:
         return (app.token_endpoint, client_id, client_secret)
     if not app.issuer_url:

@@ -22,6 +22,8 @@ import functools
 import unittest
 
 import fastapi
+from imbi_common.plugins.base import Plugin, PluginManifest
+from imbi_common.plugins.registry import RegistryEntry
 from starlette import testclient
 
 
@@ -31,6 +33,35 @@ def shared_app() -> fastapi.FastAPI:
     from imbi_api import app
 
     return app.create_app()
+
+
+def registry_entry(
+    manifest: PluginManifest,
+    *,
+    plugin_cls: type[Plugin] | None = None,
+    package_name: str | None = None,
+    package_version: str = '1.0.0',
+) -> RegistryEntry:
+    """Build a :class:`RegistryEntry` wrapping ``manifest``.
+
+    Centralizes the throwaway-``Plugin`` fixture pattern shared across the
+    endpoint tests. When ``plugin_cls`` is omitted a fresh ``Plugin``
+    subclass is created and its ``manifest`` attribute set; ``package_name``
+    defaults to ``imbi-plugin-<slug>``.
+    """
+    if plugin_cls is None:
+
+        class _FakePlugin(Plugin):
+            pass
+
+        _FakePlugin.manifest = manifest  # type: ignore[misc]
+        plugin_cls = _FakePlugin
+    return RegistryEntry(
+        plugin_cls=plugin_cls,
+        manifest=manifest,
+        package_name=package_name or f'imbi-plugin-{manifest.slug}',
+        package_version=package_version,
+    )
 
 
 def _reset(case: unittest.TestCase, test_app: fastapi.FastAPI) -> None:

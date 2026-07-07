@@ -4,9 +4,9 @@ Project Doctor surfaces a per-project ``AnalysisReport`` made up of
 ``AnalysisResult`` items emitted by every applicable analysis plugin.
 The endpoints below let the UI fetch the latest persisted report and
 re-run analysis on demand.  Plugin discovery is delegated to
-:func:`imbi_api.plugins.resolution.resolve_analysis_plugins` so it
-covers project / project-type ``USES_PLUGIN`` edges plus
-``ThirdPartyService`` ``HAS_PLUGIN`` edges via ``EXISTS_IN``.
+:func:`imbi_api.plugins.resolution.resolve_all_capabilities` so it
+uniformly covers project / project-type ``USES {capability}`` edges
+(plus the default-all rule) for the ``analysis`` capability kind.
 """
 
 from __future__ import annotations
@@ -22,8 +22,9 @@ import nanoid
 import pydantic
 from imbi_common import graph
 from imbi_common.graph import cypher as graph_cypher
+from imbi_common.plugins import decrypt_integration_credentials
 from imbi_common.plugins.base import (
-    AnalysisPlugin,
+    AnalysisCapability,
     AnalysisResultItem,
     LinkWriteback,
     PluginContext,
@@ -31,10 +32,7 @@ from imbi_common.plugins.base import (
     RemediationResult,
     ServiceWriteback,
 )
-from imbi_common.plugins.errors import (
-    PluginCredentialsMissing,
-    PluginRemediationNotSupported,
-)
+from imbi_common.plugins.errors import PluginRemediationNotSupported
 
 from imbi_api.auth import permissions
 from imbi_api.blueprint_compliance import (
@@ -55,11 +53,9 @@ from imbi_api.identity import errors as identity_errors
 from imbi_api.identity import resolution as identity_resolution
 from imbi_api.identity.host_integration import call_with_identity_retry
 from imbi_api.plugins import call_with_timeout
-from imbi_api.plugins.credentials import get_plugin_credentials
 from imbi_api.plugins.resolution import (
-    ResolvedPlugin,
-    resolve_analysis_plugins,
-    resolve_service_plugins,
+    ResolvedCapability,
+    resolve_all_capabilities,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -99,100 +95,94 @@ class AnalysisReport(pydantic.BaseModel):
     results: list[AnalysisResult]
 
 
-def _handler(resolved: ResolvedPlugin) -> AnalysisPlugin:
+def _handler(resolved: ResolvedCapability) -> AnalysisCapability:
     """Instantiate and type-narrow an analysis plugin handler."""
-    return typing.cast('AnalysisPlugin', resolved.entry.handler_cls())
+    return typing.cast('AnalysisCapability', resolved.capability_cls())
 
 
 async def _build_context(
     db: graph.Graph,
     org_slug: str,
     project_id: str,
-    resolved: ResolvedPlugin,
+    resolved: ResolvedCapability,
 ) -> PluginContext:
     project_slug, team_slug = await lookup_project_slugs(db, project_id)
     project_links = await lookup_project_links(db, project_id)
     project_type_slugs = await lookup_project_type_slugs(db, project_id)
     service_connections = await lookup_project_exists_in(db, project_id)
-    service_plugins = await resolve_service_plugins(db, project_id)
     return PluginContext(
         project_id=project_id,
         project_slug=project_slug,
         org_slug=org_slug,
         team_slug=team_slug,
-        assignment_options=resolved.options,
+        assignment_options=resolved.capability_options,
+        integration_options=resolved.integration_options,
+        capability_options=resolved.capability_options,
         project_links=project_links,
         project_type_slugs=project_type_slugs,
-        third_party_service_slug=resolved.third_party_service_slug,
+        integration_slug=resolved.integration_slug,
         service_connections=service_connections,
-        service_plugins=service_plugins,
     )
 
 
-async def _credentials_for(
-    db: graph.Graph, resolved: ResolvedPlugin
-) -> dict[str, str]:
-    """Return decrypted credentials for ``resolved`` or ``{}`` when absent.
+def _credentials_for(resolved: ResolvedCapability) -> dict[str, str]:
+    """Return decrypted credentials for ``resolved``.
 
     Unlike the deployment path, analysis plugins are allowed to run
     without credentials — many of them inspect public project metadata
-    only. Missing credentials therefore surface as an empty dict
-    instead of an HTTP error.
+    only. ``decrypt_integration_credentials`` never raises for missing
+    credentials; an empty ``encrypted_credentials`` dict simply decrypts
+    to ``{}``.
     """
-    try:
-        return await get_plugin_credentials(
-            db, resolved.plugin_id, resolved.entry
-        )
-    except PluginCredentialsMissing:
-        return {}
+    return decrypt_integration_credentials(resolved.encrypted_credentials)
 
 
 async def _hydrate_identity_optional(
     db: graph.Graph,
-    resolved: ResolvedPlugin,
+    resolved: ResolvedCapability,
     ctx: PluginContext,
     auth: permissions.AuthContext,
 ) -> PluginContext:
     """Stamp the actor and best-effort hydrate the user's identity.
 
-    Analysis plugins discovered via a third-party service carry the
-    service's sibling identity plugin id, letting the doctor act as the
-    connecting user. When the user has not connected that identity we
-    silently fall back to the plugin's static credentials rather than
-    forcing a hard ``identity_required`` — diagnosis must not depend on
-    every user having linked their account.
+    Analysis plugins bound with an identity integration carry that
+    integration's id, letting the doctor act as the connecting user.
+    When the user has not connected that identity we silently fall back
+    to the plugin's static credentials rather than forcing a hard
+    ``identity_required`` — diagnosis must not depend on every user
+    having linked their account.
     """
     actor_user_id = auth.user.id if auth.user else None
     ctx = ctx.model_copy(update={'actor_user_id': actor_user_id})
-    if resolved.identity_plugin_id and auth.user:
+    if resolved.identity_integration_id and auth.user:
         try:
             ctx = await identity_resolution.hydrate_identity(
-                db, ctx, resolved.identity_plugin_id
+                db, ctx, resolved.identity_integration_id
             )
         except identity_errors.IdentityRequiredError:
             LOGGER.info(
                 'No identity connection for plugin %s / user %s; '
                 'falling back to static credentials',
-                resolved.identity_plugin_id,
+                resolved.identity_integration_id,
                 auth.user.id,
             )
     return ctx
 
 
 async def _resolve_credentials(
-    db: graph.Graph, resolved: ResolvedPlugin, ctx: PluginContext
+    resolved: ResolvedCapability, ctx: PluginContext
 ) -> dict[str, str]:
     """Prefer the acting user's identity token; fall back to static."""
     if ctx.identity and ctx.identity.access_token:
         return {'access_token': ctx.identity.access_token}
-    return await _credentials_for(db, resolved)
+    return _credentials_for(resolved)
 
 
 async def _run_one(
     db: graph.Graph,
     org_slug: str,
     project_id: str,
-    resolved: ResolvedPlugin,
+    resolved: ResolvedCapability,
     auth: permissions.AuthContext,
 ) -> list[AnalysisResult]:
     """Invoke a single plugin's ``analyze`` and shape the response.
@@ -203,7 +193,7 @@ async def _run_one(
     try:
         ctx = await _build_context(db, org_slug, project_id, resolved)
         ctx = await _hydrate_identity_optional(db, resolved, ctx, auth)
-        credentials = await _resolve_credentials(db, resolved, ctx)
+        credentials = await _resolve_credentials(resolved, ctx)
         handler = _handler(resolved)
         items: list[AnalysisResultItem] = await call_with_timeout(
             handler.analyze(ctx, credentials)
@@ -218,7 +208,7 @@ async def _run_one(
         LOGGER.exception(
             'Analysis plugin %r (id=%s) raised',
             resolved.plugin_slug,
-            resolved.plugin_id,
+            resolved.integration_id,
         )
         return [
             AnalysisResult(
@@ -230,7 +220,7 @@ async def _run_one(
                 ),
                 status='fail',
                 plugin_slug=resolved.plugin_slug,
-                plugin_id=resolved.plugin_id,
+                plugin_id=resolved.integration_id,
             )
         ]
     return [
@@ -240,7 +230,7 @@ async def _run_one(
             description=item.description,
             status=item.status,
             plugin_slug=resolved.plugin_slug,
-            plugin_id=resolved.plugin_id,
+            plugin_id=resolved.integration_id,
             remediation=item.remediation,
         )
         for item in items
@@ -499,7 +489,7 @@ async def _collect_results(
         )
         for item in compliance_items
     ]
-    plugins = await resolve_analysis_plugins(db, project_id)
+    plugins = await resolve_all_capabilities(db, project_id, 'analysis')
     per_plugin = await asyncio.gather(
         *(_run_one(db, org_slug, project_id, rp, auth) for rp in plugins)
     )
@@ -576,7 +566,7 @@ async def _remediate_one(
     remediation_id: str,
     auth: permissions.AuthContext,
     *,
-    plugins: list[ResolvedPlugin] | None = None,
+    plugins: list[ResolvedCapability] | None = None,
     type_slugs: list[str] | None = None,
 ) -> RemediationResult:
     """Apply a single finding's remediation, persisting any write-back.
@@ -599,8 +589,10 @@ async def _remediate_one(
         )
 
     if plugins is None:
-        plugins = await resolve_analysis_plugins(db, project_id)
-    resolved = next((p for p in plugins if p.plugin_id == plugin_id), None)
+        plugins = await resolve_all_capabilities(db, project_id, 'analysis')
+    resolved = next(
+        (p for p in plugins if p.integration_id == plugin_id), None
+    )
     if resolved is None:
         raise fastapi.HTTPException(
             status_code=404,
@@ -614,7 +606,7 @@ async def _remediate_one(
     captured_link: list[LinkWriteback] = []
 
     async def _do(c: PluginContext) -> RemediationResult:
-        creds = await _resolve_credentials(db, resolved, c)
+        creds = await _resolve_credentials(resolved, c)
         res = await call_with_timeout(
             handler.remediate(c, creds, remediation_id)
         )
@@ -625,7 +617,7 @@ async def _remediate_one(
         return res
 
     try:
-        if resolved.identity_plugin_id and ctx.identity:
+        if resolved.identity_integration_id and ctx.identity:
             result = await call_with_identity_retry(
                 db, ctx, resolved, auth, fn=_do, attached=True
             )
@@ -698,7 +690,7 @@ async def remediate_all_project_findings(
     # Resolve plugins and project-type slugs once and reuse them across
     # every finding, rather than re-running these graph queries per
     # finding inside _remediate_one.
-    plugins = await resolve_analysis_plugins(db, project_id)
+    plugins = await resolve_all_capabilities(db, project_id, 'analysis')
     type_slugs = await lookup_project_type_slugs(db, project_id)
     outcomes: list[RemediateOutcome] = []
     for finding in report.results:

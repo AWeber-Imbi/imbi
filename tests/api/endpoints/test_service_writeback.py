@@ -30,26 +30,26 @@ class LookupProjectExistsInTestCase(unittest.TestCase):
         db = mock.AsyncMock()
         db.execute.return_value = [
             {
-                'service_slug': 'github-enterprise-cloud',
+                'integration_slug': 'github-enterprise-cloud',
                 'identifier': '134741',
                 'canonical_url': 'https://api.x.ghe.com/repositories/134741',
             },
             {
-                'service_slug': 'sonarqube',
+                'integration_slug': 'sonarqube',
                 'identifier': 'conv:account',
                 'canonical_url': None,
             },
         ]
         result = asyncio.run(_helpers.lookup_project_exists_in(db, 'proj-1'))
         self.assertEqual(len(result), 2)
-        self.assertEqual(result[0].service_slug, 'github-enterprise-cloud')
+        self.assertEqual(result[0].integration_slug, 'github-enterprise-cloud')
         # numeric-looking identifiers round-trip back to a string
         self.assertEqual(result[0].identifier, '134741')
         self.assertEqual(
             result[0].canonical_url,
             'https://api.x.ghe.com/repositories/134741',
         )
-        self.assertEqual(result[1].service_slug, 'sonarqube')
+        self.assertEqual(result[1].integration_slug, 'sonarqube')
         self.assertIsNone(result[1].canonical_url)
 
     def test_empty_on_lookup_failure(self) -> None:
@@ -61,7 +61,11 @@ class LookupProjectExistsInTestCase(unittest.TestCase):
     def test_skips_rows_without_slug(self) -> None:
         db = mock.AsyncMock()
         db.execute.return_value = [
-            {'service_slug': None, 'identifier': 'x', 'canonical_url': None}
+            {
+                'integration_slug': None,
+                'identifier': 'x',
+                'canonical_url': None,
+            }
         ]
         result = asyncio.run(_helpers.lookup_project_exists_in(db, 'proj-1'))
         self.assertEqual(result, [])
@@ -122,7 +126,7 @@ class PersistServiceWritebackTestCase(unittest.TestCase):
     def test_upsert_path(self) -> None:
         db = mock.AsyncMock()
         ctx = _ctx(
-            third_party_service_slug='github-enterprise-cloud',
+            integration_slug='github-enterprise-cloud',
             service_writeback=ServiceWriteback(
                 identifier='134741',
                 canonical_url='https://api.x.ghe.com/repositories/134741',
@@ -158,7 +162,7 @@ class PersistServiceWritebackTestCase(unittest.TestCase):
     def test_upsert_path_passes_webhook_secret(self) -> None:
         db = mock.AsyncMock()
         ctx = _ctx(
-            third_party_service_slug='pagerduty',
+            integration_slug='pagerduty',
             service_writeback=ServiceWriteback(
                 identifier='PSVC1',
                 canonical_url='https://api.pagerduty.com/services/PSVC1',
@@ -182,7 +186,7 @@ class PersistServiceWritebackTestCase(unittest.TestCase):
     def test_remove_path(self) -> None:
         db = mock.AsyncMock()
         ctx = _ctx(
-            third_party_service_slug='github-enterprise-cloud',
+            integration_slug='github-enterprise-cloud',
             service_writeback=ServiceWriteback(
                 identifier='1',
                 canonical_url='https://api/1',
@@ -212,7 +216,7 @@ class PersistServiceWritebackTestCase(unittest.TestCase):
     def test_write_failure_is_swallowed(self) -> None:
         db = mock.AsyncMock()
         ctx = _ctx(
-            third_party_service_slug='github',
+            integration_slug='github',
             service_writeback=ServiceWriteback(
                 identifier='1', canonical_url='https://api/1'
             ),

@@ -12,8 +12,9 @@ import unittest.mock as mock
 
 import fastapi
 from imbi_common.plugins.base import (
-    ConfigurationPlugin,
-    LifecyclePlugin,
+    Capability,
+    ConfigurationCapability,
+    LifecycleCapability,
     LifecycleResult,
     LinkWriteback,
     PluginContext,
@@ -29,7 +30,27 @@ from imbi_api.plugins.lifecycle_dispatch import (
     build_lifecycle_context_bundle,
     dispatch_lifecycle,
 )
-from imbi_api.plugins.resolution import ResolvedPlugin
+from imbi_api.plugins.resolution import ResolvedCapability
+
+
+def _entry(slug: str, handler_cls: type[LifecycleCapability]) -> RegistryEntry:
+    """Build a registry entry exposing ``handler_cls`` as ``lifecycle``."""
+    manifest = PluginManifest(
+        slug=slug,
+        name=slug,
+        auth_type='api_token',
+        capabilities=[
+            Capability(
+                kind='lifecycle', label='Lifecycle', handler=handler_cls
+            )
+        ],
+    )
+    return RegistryEntry(
+        plugin_cls=object,  # type: ignore[arg-type]
+        manifest=manifest,
+        package_name=f'imbi-plugin-{slug}',
+        package_version='1.0.0',
+    )
 
 
 def _make_lifecycle_entry(
@@ -42,20 +63,14 @@ def _make_lifecycle_entry(
     """Build a registry entry for a synthetic lifecycle plugin.
 
     ``unarchive_raises`` defaults to ``None`` so the fixture inherits the
-    base ``LifecyclePlugin.on_project_unarchived`` stub (which raises
-    :class:`NotImplementedError`); the dispatcher detects the missing
-    hook by identity and reports ``status='skipped'`` without invoking.
-    Pass an exception class to install an *implemented* override that
-    raises -- exercising the runtime-failure path.
+    base ``LifecycleCapability.on_project_unarchived`` stub; the
+    dispatcher detects the missing hook by identity and reports
+    ``status='skipped'`` without invoking. Pass an exception class to
+    install an *implemented* override that raises -- exercising the
+    runtime-failure path.
     """
 
-    class _FakeLifecycle(LifecyclePlugin):
-        manifest = PluginManifest(
-            slug=slug,
-            name=slug,
-            plugin_type='lifecycle',
-        )
-
+    class _FakeLifecycle(LifecycleCapability):
         async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
             if archive_raises is not None:
                 raise archive_raises('archive boom')
@@ -73,12 +88,7 @@ def _make_lifecycle_entry(
 
         _FakeLifecycle.on_project_unarchived = _on_unarchived  # type: ignore[method-assign]
 
-    return RegistryEntry(
-        handler_cls=_FakeLifecycle,
-        manifest=_FakeLifecycle.manifest,
-        package_name=f'imbi-plugin-{slug}',
-        package_version='1.0.0',
-    )
+    return _entry(slug, _FakeLifecycle)
 
 
 def _make_auth() -> mock.MagicMock:
@@ -88,13 +98,31 @@ def _make_auth() -> mock.MagicMock:
     return auth
 
 
-def _resolved(entry: RegistryEntry, plugin_id: str = 'p1') -> ResolvedPlugin:
-    return ResolvedPlugin(
-        plugin_id=plugin_id,
-        plugin_slug=entry.manifest.slug,
+def _resolved(
+    entry: RegistryEntry,
+    integration_id: str = 'p1',
+    *,
+    integration_slug: str | None = None,
+) -> ResolvedCapability:
+    slug = entry.manifest.slug
+    integration_slug = integration_slug or slug
+    capability = entry.manifest.get_capability('lifecycle')
+    assert capability is not None
+    return ResolvedCapability(
+        integration_id=integration_id,
+        integration_slug=integration_slug,
+        plugin_slug=slug,
+        kind='lifecycle',
         entry=entry,
-        options={},
-        identity_plugin_id=None,
+        capability_cls=capability.handler,
+        integration={
+            'id': integration_id,
+            'slug': integration_slug,
+            'plugin': slug,
+        },
+        integration_options={},
+        capability_options={},
+        encrypted_credentials={},
     )
 
 
@@ -103,7 +131,7 @@ class DispatchLifecycleTestCase(unittest.TestCase):
 
     def _run(
         self,
-        resolved_list: list[ResolvedPlugin],
+        resolved_list: list[ResolvedCapability],
         *,
         event: LifecycleEvent = 'archived',
     ) -> tuple[list[LifecycleInvocation], mock.AsyncMock]:
@@ -111,7 +139,7 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         auth = _make_auth()
         with (
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch.resolve_all_plugins',
+                'imbi_api.plugins.lifecycle_dispatch.resolve_all_capabilities',
                 mock.AsyncMock(return_value=resolved_list),
             ),
             mock.patch(
@@ -127,12 +155,16 @@ class DispatchLifecycleTestCase(unittest.TestCase):
                 mock.AsyncMock(return_value=[]),
             ),
             mock.patch(
+                'imbi_api.endpoints._helpers.lookup_project_exists_in',
+                mock.AsyncMock(return_value=[]),
+            ),
+            mock.patch(
                 'imbi_api.plugins.lifecycle_dispatch.call_with_identity_retry',
                 new=_passthrough_identity_retry,
             ),
             mock.patch(
                 'imbi_api.plugins.lifecycle_dispatch._resolve_credentials',
-                mock.AsyncMock(return_value={'access_token': 'tok'}),
+                mock.Mock(return_value={'access_token': 'tok'}),
             ),
             mock.patch(
                 'imbi_api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
@@ -162,11 +194,7 @@ class DispatchLifecycleTestCase(unittest.TestCase):
     def test_archive_persists_link_writeback(self) -> None:
         # A lifecycle plugin that reports a link writeback on ctx
         # triggers a persist of the stored link via update_project_link.
-        class _Reloc(LifecyclePlugin):
-            manifest = PluginManifest(
-                slug='gh', name='gh', plugin_type='lifecycle'
-            )
-
+        class _Reloc(LifecycleCapability):
             async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
                 ctx.link_writeback = LinkWriteback(
                     link_key='github-repository',
@@ -176,15 +204,7 @@ class DispatchLifecycleTestCase(unittest.TestCase):
                 )
                 return LifecycleResult(status='ok', message='done')
 
-            async def on_project_unarchived(self, ctx, credentials):  # type: ignore[override]
-                raise NotImplementedError
-
-        entry = RegistryEntry(
-            handler_cls=_Reloc,
-            manifest=_Reloc.manifest,
-            package_name='imbi-plugin-gh',
-            package_version='1.0.0',
-        )
+        entry = _entry('gh', _Reloc)
         with mock.patch(
             'imbi_api.endpoints._helpers.update_project_link',
             new=mock.AsyncMock(return_value=True),
@@ -201,12 +221,8 @@ class DispatchLifecycleTestCase(unittest.TestCase):
     def test_archive_persists_service_writeback(self) -> None:
         # A lifecycle plugin that reports a service writeback on ctx
         # triggers an EXISTS_IN upsert + dashboard-link merge against the
-        # plugin's bound third-party service.
-        class _Svc(LifecyclePlugin):
-            manifest = PluginManifest(
-                slug='gh', name='gh', plugin_type='lifecycle'
-            )
-
+        # integration it is bound to (ctx.integration_slug).
+        class _Svc(LifecycleCapability):
             async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
                 ctx.service_writeback = ServiceWriteback(
                     identifier='134741',
@@ -217,22 +233,8 @@ class DispatchLifecycleTestCase(unittest.TestCase):
                 )
                 return LifecycleResult(status='ok', message='done')
 
-            async def on_project_unarchived(self, ctx, credentials):  # type: ignore[override]
-                raise NotImplementedError
-
-        entry = RegistryEntry(
-            handler_cls=_Svc,
-            manifest=_Svc.manifest,
-            package_name='imbi-plugin-gh',
-            package_version='1.0.0',
-        )
-        resolved = ResolvedPlugin(
-            plugin_id='p1',
-            plugin_slug='gh',
-            entry=entry,
-            options={},
-            third_party_service_slug='github-enterprise-cloud',
-        )
+        entry = _entry('gh', _Svc)
+        resolved = _resolved(entry, integration_slug='github-enterprise-cloud')
         with (
             mock.patch(
                 'imbi_api.endpoints._helpers._merge_exists_in',
@@ -260,11 +262,7 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         )
 
     def test_service_writeback_remove_deletes_edge(self) -> None:
-        class _Svc(LifecyclePlugin):
-            manifest = PluginManifest(
-                slug='gh', name='gh', plugin_type='lifecycle'
-            )
-
+        class _Svc(LifecycleCapability):
             async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
                 ctx.service_writeback = ServiceWriteback(
                     identifier='1',
@@ -276,22 +274,8 @@ class DispatchLifecycleTestCase(unittest.TestCase):
                 )
                 return LifecycleResult(status='ok')
 
-            async def on_project_unarchived(self, ctx, credentials):  # type: ignore[override]
-                raise NotImplementedError
-
-        entry = RegistryEntry(
-            handler_cls=_Svc,
-            manifest=_Svc.manifest,
-            package_name='imbi-plugin-gh',
-            package_version='1.0.0',
-        )
-        resolved = ResolvedPlugin(
-            plugin_id='p1',
-            plugin_slug='gh',
-            entry=entry,
-            options={},
-            third_party_service_slug='github-enterprise-cloud',
-        )
+        entry = _entry('gh', _Svc)
+        resolved = _resolved(entry, integration_slug='github-enterprise-cloud')
         with (
             mock.patch(
                 'imbi_api.endpoints._helpers._delete_exists_in',
@@ -314,7 +298,8 @@ class DispatchLifecycleTestCase(unittest.TestCase):
     def test_emits_one_clickhouse_call_for_multiple_plugins(self) -> None:
         """H17: N plugins → 1 ClickHouse insert (rows batched)."""
         entries = [
-            _resolved(_make_lifecycle_entry(f'gh-{i}')) for i in range(3)
+            _resolved(_make_lifecycle_entry(f'gh-{i}'), integration_id=f'p{i}')
+            for i in range(3)
         ]
         results, insert = self._run(entries)
         self.assertEqual(len(results), 3)
@@ -348,13 +333,7 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         self.assertIn('RuntimeError', results[0].message or '')
 
     def test_http_exception_surfaces_failed(self) -> None:
-        entry = _make_lifecycle_entry('gh')
-
-        # Override the plugin handler at the registry to raise HTTPException
-        # mid-call by patching the method on the registry's class.
-        class _Raises(LifecyclePlugin):
-            manifest = entry.manifest
-
+        class _Raises(LifecycleCapability):
             async def on_project_archived(  # type: ignore[override]
                 self, ctx, credentials
             ):
@@ -362,16 +341,11 @@ class DispatchLifecycleTestCase(unittest.TestCase):
                     status_code=401,
                     detail={
                         'error': 'identity_required',
-                        'plugin_id': 'ident',
+                        'integration_id': 'ident',
                     },
                 )
 
-        broken = RegistryEntry(
-            handler_cls=_Raises,
-            manifest=entry.manifest,
-            package_name=entry.package_name,
-            package_version=entry.package_version,
-        )
+        broken = _entry('gh', _Raises)
         results, _ = self._run([_resolved(broken)])
         self.assertEqual(results[0].status, 'failed')
         self.assertIn('identity_required', results[0].message or '')
@@ -382,7 +356,7 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         auth = _make_auth()
         with (
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch.resolve_all_plugins',
+                'imbi_api.plugins.lifecycle_dispatch.resolve_all_capabilities',
                 mock.AsyncMock(return_value=[_resolved(entry)]),
             ),
             mock.patch(
@@ -398,12 +372,16 @@ class DispatchLifecycleTestCase(unittest.TestCase):
                 mock.AsyncMock(return_value=[]),
             ),
             mock.patch(
+                'imbi_api.endpoints._helpers.lookup_project_exists_in',
+                mock.AsyncMock(return_value=[]),
+            ),
+            mock.patch(
                 'imbi_api.plugins.lifecycle_dispatch.call_with_identity_retry',
                 new=_passthrough_identity_retry,
             ),
             mock.patch(
                 'imbi_api.plugins.lifecycle_dispatch._resolve_credentials',
-                mock.AsyncMock(return_value={'access_token': 't'}),
+                mock.Mock(return_value={'access_token': 't'}),
             ),
             mock.patch(
                 'imbi_api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
@@ -433,7 +411,7 @@ async def _passthrough_identity_retry(
 class LifecycleInvocationSerializationTestCase(unittest.TestCase):
     def test_round_trip(self) -> None:
         inv = LifecycleInvocation(
-            plugin_id='p1',
+            integration_id='p1',
             plugin_slug='gh',
             status='ok',
             message='done',
@@ -444,54 +422,39 @@ class LifecycleInvocationSerializationTestCase(unittest.TestCase):
         self.assertEqual(restored.artifacts['k'], 'v')
 
 
-class ConfigurationPluginIsNotLifecycle(unittest.TestCase):
-    """Sanity: only LifecyclePlugin handlers should be invoked by dispatch."""
+class ConfigurationCapabilityIsNotLifecycle(unittest.TestCase):
+    """Sanity: only lifecycle handlers should be invoked by dispatch."""
 
-    def test_configuration_plugin_no_archive_method(self) -> None:
-        self.assertFalse(hasattr(ConfigurationPlugin, 'on_project_archived'))
+    def test_configuration_capability_no_archive_method(self) -> None:
+        self.assertFalse(
+            hasattr(ConfigurationCapability, 'on_project_archived')
+        )
 
 
 class WidenedEventNotImplementedTestCase(unittest.TestCase):
     """The new lifecycle events skip when a plugin doesn't implement them.
 
-    Only ``archived`` is a required hook on :class:`LifecyclePlugin`; the
-    rest of the events resolve to ``status='skipped'`` when the plugin
-    doesn't implement them, so plugins can opt into per-event support
-    incrementally without breaking the dispatch.
+    Only ``archived`` is a required hook on
+    :class:`LifecycleCapability`; the rest of the events resolve to
+    ``status='skipped'`` when the plugin doesn't implement them, so
+    plugins can opt into per-event support incrementally without
+    breaking the dispatch.
     """
 
     def _run_with_bare_plugin(
         self, event: LifecycleEvent
     ) -> LifecycleInvocation:
-        class _Bare(LifecyclePlugin):
-            manifest = PluginManifest(
-                slug='bare', name='bare', plugin_type='lifecycle'
-            )
-
+        class _Bare(LifecycleCapability):
             async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
                 return LifecycleResult(status='ok')
 
-            async def on_project_unarchived(self, ctx, credentials):  # type: ignore[override]
-                raise NotImplementedError
-
-        entry = RegistryEntry(
-            handler_cls=_Bare,
-            manifest=_Bare.manifest,
-            package_name='imbi-plugin-bare',
-            package_version='1.0.0',
-        )
-        resolved = ResolvedPlugin(
-            plugin_id='p1',
-            plugin_slug='bare',
-            entry=entry,
-            options={},
-            identity_plugin_id=None,
-        )
+        entry = _entry('bare', _Bare)
+        resolved = _resolved(entry)
         mock_db = mock.AsyncMock()
         auth = _make_auth()
         with (
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch.resolve_all_plugins',
+                'imbi_api.plugins.lifecycle_dispatch.resolve_all_capabilities',
                 mock.AsyncMock(return_value=[resolved]),
             ),
             mock.patch(
@@ -507,12 +470,16 @@ class WidenedEventNotImplementedTestCase(unittest.TestCase):
                 mock.AsyncMock(return_value=[]),
             ),
             mock.patch(
+                'imbi_api.endpoints._helpers.lookup_project_exists_in',
+                mock.AsyncMock(return_value=[]),
+            ),
+            mock.patch(
                 'imbi_api.plugins.lifecycle_dispatch.call_with_identity_retry',
                 new=_passthrough_identity_retry,
             ),
             mock.patch(
                 'imbi_api.plugins.lifecycle_dispatch._resolve_credentials',
-                mock.AsyncMock(return_value={'access_token': 't'}),
+                mock.Mock(return_value={'access_token': 't'}),
             ),
             mock.patch(
                 'imbi_api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
@@ -558,11 +525,7 @@ class BundleAndContextPropagationTestCase(unittest.TestCase):
     ) -> mock.MagicMock:
         captured: dict[str, PluginContext] = {}
 
-        class _Capture(LifecyclePlugin):
-            manifest = PluginManifest(
-                slug='cap', name='cap', plugin_type='lifecycle'
-            )
-
+        class _Capture(LifecycleCapability):
             async def on_project_created(self, ctx, credentials):  # type: ignore[override]
                 captured['ctx'] = ctx
                 return LifecycleResult(status='ok')
@@ -578,30 +541,17 @@ class BundleAndContextPropagationTestCase(unittest.TestCase):
             async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
                 return LifecycleResult(status='ok')
 
-            async def on_project_unarchived(self, ctx, credentials):  # type: ignore[override]
-                raise NotImplementedError
-
-        entry = RegistryEntry(
-            handler_cls=_Capture,
-            manifest=_Capture.manifest,
-            package_name='imbi-plugin-cap',
-            package_version='1.0.0',
-        )
-        resolved = ResolvedPlugin(
-            plugin_id='p1',
-            plugin_slug='cap',
-            entry=entry,
-            options={},
-            identity_plugin_id=None,
-        )
+        entry = _entry('cap', _Capture)
+        resolved = _resolved(entry)
         mock_db = mock.AsyncMock()
         auth = _make_auth()
         slugs_lookup = mock.AsyncMock(return_value=('fetched', 'team-x'))
         links_lookup = mock.AsyncMock(return_value={})
         types_lookup = mock.AsyncMock(return_value=[])
+        exists_in_lookup = mock.AsyncMock(return_value=[])
         with (
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch.resolve_all_plugins',
+                'imbi_api.plugins.lifecycle_dispatch.resolve_all_capabilities',
                 mock.AsyncMock(return_value=[resolved]),
             ),
             mock.patch(
@@ -617,12 +567,16 @@ class BundleAndContextPropagationTestCase(unittest.TestCase):
                 types_lookup,
             ),
             mock.patch(
+                'imbi_api.endpoints._helpers.lookup_project_exists_in',
+                exists_in_lookup,
+            ),
+            mock.patch(
                 'imbi_api.plugins.lifecycle_dispatch.call_with_identity_retry',
                 new=_passthrough_identity_retry,
             ),
             mock.patch(
                 'imbi_api.plugins.lifecycle_dispatch._resolve_credentials',
-                mock.AsyncMock(return_value={'access_token': 't'}),
+                mock.Mock(return_value={'access_token': 't'}),
             ),
             mock.patch(
                 'imbi_api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
@@ -656,7 +610,7 @@ class BundleAndContextPropagationTestCase(unittest.TestCase):
             project_type_slugs=['api-service'],
         )
         out = self._capture_ctx(event='deleted', bundle=bundle)
-        # Bundle short-circuits the three helpers entirely.
+        # Bundle short-circuits the helper lookups entirely.
         out.slugs_lookup.assert_not_called()
         out.links_lookup.assert_not_called()
         out.types_lookup.assert_not_called()
@@ -695,7 +649,7 @@ class BundleAndContextPropagationTestCase(unittest.TestCase):
 
 
 class BuildLifecycleContextBundleTestCase(unittest.TestCase):
-    """:func:`build_lifecycle_context_bundle` packages the three lookups."""
+    """:func:`build_lifecycle_context_bundle` packages the lookups."""
 
     def test_packages_slug_team_links_and_type_slugs(self) -> None:
         mock_db = mock.AsyncMock()
@@ -713,6 +667,10 @@ class BuildLifecycleContextBundleTestCase(unittest.TestCase):
             mock.patch(
                 'imbi_api.endpoints._helpers.lookup_project_type_slugs',
                 mock.AsyncMock(return_value=['api-service', 'consumer']),
+            ),
+            mock.patch(
+                'imbi_api.endpoints._helpers.lookup_project_exists_in',
+                mock.AsyncMock(return_value=[]),
             ),
         ):
             bundle = asyncio.run(

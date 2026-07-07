@@ -8,9 +8,11 @@ from unittest import mock
 from fastapi import testclient
 from imbi_common import graph
 from imbi_common.plugins.base import (
+    Capability,
     LogEntry,
     LogResult,
-    LogsPlugin,
+    LogsCapability,
+    Plugin,
     PluginManifest,
 )
 from imbi_common.plugins.errors import (
@@ -20,17 +22,11 @@ from imbi_common.plugins.registry import RegistryEntry
 
 from imbi_api import models
 from imbi_api.auth import password, permissions
-from imbi_api.plugins.resolution import ResolvedPlugin
+from imbi_api.plugins.resolution import ResolvedCapability
 from tests import support
 
 
-class _FakeLogsPlugin(LogsPlugin):
-    manifest = PluginManifest(
-        slug='logzio',
-        name='Logz.io',
-        plugin_type='logs',
-    )
-
+class _FakeLogsHandler(LogsCapability):
     async def search(self, ctx, credentials, query):  # type: ignore[override]
         return LogResult(
             entries=[
@@ -51,12 +47,42 @@ class _FakeLogsPlugin(LogsPlugin):
         return [{'name': 'level', 'type': 'string'}]
 
 
-def _entry() -> RegistryEntry:
+class _FakePlugin(Plugin):
+    pass
+
+
+def _manifest(handler: type[LogsCapability]) -> PluginManifest:
+    return PluginManifest(
+        slug='logzio',
+        name='Logz.io',
+        capabilities=[Capability(kind='logs', label='Logs', handler=handler)],
+    )
+
+
+def _entry(handler: type[LogsCapability] = _FakeLogsHandler) -> RegistryEntry:
     return RegistryEntry(
-        handler_cls=_FakeLogsPlugin,
-        manifest=_FakeLogsPlugin.manifest,
+        plugin_cls=_FakePlugin,
+        manifest=_manifest(handler),
         package_name='imbi-plugin-logzio',
         package_version='1.0.0',
+    )
+
+
+def _resolved(
+    handler: type[LogsCapability] = _FakeLogsHandler,
+) -> ResolvedCapability:
+    entry = _entry(handler)
+    return ResolvedCapability(
+        integration_id='i1',
+        integration_slug='logzio-prod',
+        plugin_slug='logzio',
+        kind='logs',
+        entry=entry,
+        capability_cls=entry.manifest.get_capability('logs').handler,
+        integration={'id': 'i1', 'slug': 'logzio-prod', 'plugin': 'logzio'},
+        integration_options={},
+        capability_options={},
+        encrypted_credentials={},
     )
 
 
@@ -84,27 +110,23 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
             mock_get_current_user
         )
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
-    def _resolved(self) -> ResolvedPlugin:
-        return ResolvedPlugin(
-            plugin_id='p1',
-            plugin_slug='logzio',
-            entry=_entry(),
-            options={},
-        )
+    def _resolved(self) -> ResolvedCapability:
+        return _resolved()
 
     def test_search_logs_happy_path(self) -> None:
         with (
             mock.patch(
-                'imbi_api.endpoints.project_logs.resolve_plugin',
+                'imbi_api.endpoints.project_logs.resolve_capability',
                 return_value=self._resolved(),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_logs.get_plugin_credentials',
-                return_value={},
+                'imbi_api.endpoints.project_logs'
+                '.decrypt_integration_credentials',
+                return_value={'token': 'x'},
             ),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -118,7 +140,7 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
 
     def test_search_logs_invalid_datetime_returns_400(self) -> None:
         with mock.patch(
-            'imbi_api.endpoints.project_logs.resolve_plugin',
+            'imbi_api.endpoints.project_logs.resolve_capability',
             return_value=self._resolved(),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -131,7 +153,7 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
 
     def test_search_logs_invalid_filter_returns_400(self) -> None:
         with mock.patch(
-            'imbi_api.endpoints.project_logs.resolve_plugin',
+            'imbi_api.endpoints.project_logs.resolve_capability',
             return_value=self._resolved(),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -142,7 +164,7 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
 
     def test_search_logs_unknown_filter_op(self) -> None:
         with mock.patch(
-            'imbi_api.endpoints.project_logs.resolve_plugin',
+            'imbi_api.endpoints.project_logs.resolve_capability',
             return_value=self._resolved(),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -153,16 +175,15 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_search_logs_credentials_missing_returns_503(self) -> None:
-        from imbi_common.plugins.errors import PluginCredentialsMissing
-
         with (
             mock.patch(
-                'imbi_api.endpoints.project_logs.resolve_plugin',
+                'imbi_api.endpoints.project_logs.resolve_capability',
                 return_value=self._resolved(),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_logs.get_plugin_credentials',
-                side_effect=PluginCredentialsMissing('missing token'),
+                'imbi_api.endpoints.project_logs'
+                '.decrypt_integration_credentials',
+                return_value={},
             ),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -172,30 +193,19 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 503)
 
     def test_search_logs_cursor_expired_returns_409(self) -> None:
-        class _Expiring(_FakeLogsPlugin):
+        class _Expiring(_FakeLogsHandler):
             async def search(self, ctx, credentials, query):  # type: ignore[override]
                 raise CursorExpiredError('cursor too old')
 
-        entry = RegistryEntry(
-            handler_cls=_Expiring,
-            manifest=_Expiring.manifest,
-            package_name='imbi-plugin-logzio',
-            package_version='1.0.0',
-        )
-        resolved = ResolvedPlugin(
-            plugin_id='p1',
-            plugin_slug='logzio',
-            entry=entry,
-            options={},
-        )
         with (
             mock.patch(
-                'imbi_api.endpoints.project_logs.resolve_plugin',
-                return_value=resolved,
+                'imbi_api.endpoints.project_logs.resolve_capability',
+                return_value=_resolved(_Expiring),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_logs.get_plugin_credentials',
-                return_value={},
+                'imbi_api.endpoints.project_logs'
+                '.decrypt_integration_credentials',
+                return_value={'token': 'x'},
             ),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -208,12 +218,13 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
     def test_get_log_schema(self) -> None:
         with (
             mock.patch(
-                'imbi_api.endpoints.project_logs.resolve_plugin',
+                'imbi_api.endpoints.project_logs.resolve_capability',
                 return_value=self._resolved(),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_logs.get_plugin_credentials',
-                return_value={},
+                'imbi_api.endpoints.project_logs'
+                '.decrypt_integration_credentials',
+                return_value={'token': 'x'},
             ),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -226,16 +237,15 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
         )
 
     def test_get_log_schema_credentials_missing(self) -> None:
-        from imbi_common.plugins.errors import PluginCredentialsMissing
-
         with (
             mock.patch(
-                'imbi_api.endpoints.project_logs.resolve_plugin',
+                'imbi_api.endpoints.project_logs.resolve_capability',
                 return_value=self._resolved(),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_logs.get_plugin_credentials',
-                side_effect=PluginCredentialsMissing('no token'),
+                'imbi_api.endpoints.project_logs'
+                '.decrypt_integration_credentials',
+                return_value={},
             ),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -247,12 +257,13 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
     def test_search_logs_with_valid_datetime_and_filter(self) -> None:
         with (
             mock.patch(
-                'imbi_api.endpoints.project_logs.resolve_plugin',
+                'imbi_api.endpoints.project_logs.resolve_capability',
                 return_value=self._resolved(),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_logs.get_plugin_credentials',
-                return_value={},
+                'imbi_api.endpoints.project_logs'
+                '.decrypt_integration_credentials',
+                return_value={'token': 'x'},
             ),
         ):
             with testclient.TestClient(self.test_app) as client:

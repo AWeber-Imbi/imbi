@@ -32,7 +32,7 @@ def _row(
         'recorded_at': recorded_at
         or datetime.datetime(2026, 4, 1, 12, 0, tzinfo=datetime.UTC),
         'type': 'project-change',
-        'third_party_service': 'internal',
+        'integration': 'internal',
         'attributed_to': 'alice@example.com',
         'metadata': '{}',
         'payload': '{"field":"name","old":"A","new":"B"}',
@@ -64,8 +64,8 @@ class _EventsTestBase(support.SharedAppTestCase):
         ] = _current_user
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = (
-            lambda: self.mock_db
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
         )
 
         self.query_patcher = mock.patch(
@@ -229,7 +229,7 @@ class GlobalListTests(_EventsTestBase):
                 'project_id': 'p1',
                 'type': 'project-change',
                 'attributed_to': 'alice@example.com',
-                'third_party_service': 'github-enterprise-cloud',
+                'integration': 'github-enterprise-cloud',
             },
         )
         self.assertEqual(response.status_code, 200)
@@ -238,11 +238,9 @@ class GlobalListTests(_EventsTestBase):
         self.assertEqual(params['project_id'], 'p1')
         self.assertEqual(params['type'], 'project-change')
         self.assertEqual(params['attributed_to'], 'alice@example.com')
-        self.assertEqual(
-            params['third_party_service'], 'github-enterprise-cloud'
-        )
+        self.assertEqual(params['integration'], 'github-enterprise-cloud')
         sql = call.args[0]
-        self.assertIn('third_party_service =', sql)
+        self.assertIn('integration =', sql)
 
     def test_list_filters_by_event_type_through_metadata(self) -> None:
         """``event_type`` filters on ``metadata.event_type`` so the

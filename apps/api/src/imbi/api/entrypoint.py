@@ -36,22 +36,18 @@ async def _backfill_node_ids_async() -> None:
         raise typer.Exit(code=1) from e
 
     try:
-        tps_count = await _backfill_tps_ids(db)
+        integration_count = await _backfill_integration_ids(db)
         typer.echo(
-            f'  ✓ ThirdPartyService: assigned id to {tps_count} node(s)'
-        )
-        app_count = await _backfill_service_application_ids(db)
-        typer.echo(
-            f'  ✓ ServiceApplication: assigned id to {app_count} node(s)'
+            f'  ✓ Integration: assigned id to {integration_count} node(s)'
         )
     finally:
         await db.close()
 
 
-async def _backfill_tps_ids(db: graph.Graph) -> int:
-    """Assign a fresh nanoid to every ``ThirdPartyService`` missing one."""
+async def _backfill_integration_ids(db: graph.Graph) -> int:
+    """Assign a fresh nanoid to every ``Integration`` missing one."""
     query = (
-        'MATCH (s:ThirdPartyService)-[:BELONGS_TO]->(o:Organization)'
+        'MATCH (s:Integration)-[:BELONGS_TO]->(o:Organization)'
         ' WHERE s.id IS NULL'
         ' RETURN o.slug AS org_slug, s.slug AS slug'
     )
@@ -61,7 +57,7 @@ async def _backfill_tps_ids(db: graph.Graph) -> int:
         org_slug = graph.parse_agtype(record['org_slug'])
         slug = graph.parse_agtype(record['slug'])
         update_query = (
-            'MATCH (s:ThirdPartyService {{slug: {slug}}})'
+            'MATCH (s:Integration {{slug: {slug}}})'
             ' -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})'
             ' WHERE s.id IS NULL'
             ' SET s.id = {new_id}'
@@ -71,45 +67,6 @@ async def _backfill_tps_ids(db: graph.Graph) -> int:
             update_query,
             {
                 'slug': slug,
-                'org_slug': org_slug,
-                'new_id': nanoid.generate(),
-            },
-            ['id'],
-        )
-        if updated:
-            count += 1
-    return count
-
-
-async def _backfill_service_application_ids(db: graph.Graph) -> int:
-    """Assign a fresh nanoid to every ``ServiceApplication`` missing one."""
-    query = (
-        'MATCH (a:ServiceApplication)-[:REGISTERED_IN]'
-        '->(s:ThirdPartyService)-[:BELONGS_TO]->(o:Organization)'
-        ' WHERE a.id IS NULL'
-        ' RETURN o.slug AS org_slug,'
-        ' s.slug AS svc_slug, a.slug AS app_slug'
-    )
-    records = await db.execute(query, {}, ['org_slug', 'svc_slug', 'app_slug'])
-    count = 0
-    for record in records:
-        org_slug = graph.parse_agtype(record['org_slug'])
-        svc_slug = graph.parse_agtype(record['svc_slug'])
-        app_slug = graph.parse_agtype(record['app_slug'])
-        update_query = (
-            'MATCH (a:ServiceApplication {{slug: {app_slug}}})'
-            ' -[:REGISTERED_IN]->'
-            '(s:ThirdPartyService {{slug: {svc_slug}}})'
-            ' -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})'
-            ' WHERE a.id IS NULL'
-            ' SET a.id = {new_id}'
-            ' RETURN a.id AS id'
-        )
-        updated = await db.execute(
-            update_query,
-            {
-                'app_slug': app_slug,
-                'svc_slug': svc_slug,
                 'org_slug': org_slug,
                 'new_id': nanoid.generate(),
             },

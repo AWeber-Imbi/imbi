@@ -26,6 +26,7 @@ BlueprintAssignment = _common.BlueprintAssignment
 BlueprintEdge = _common.BlueprintEdge
 DeploymentEvent = _common.DeploymentEvent
 Environment = _common.Environment
+Integration = _common.Integration
 LinkDefinition = _common.LinkDefinition
 MCPServer = _common.MCPServer
 Node = _common.Node
@@ -43,6 +44,7 @@ Team = _common.Team
 MODEL_TYPES: dict[str, type[_common.Node]] = {
     'Environment': _common.Environment,
     'LinkDefinition': _common.LinkDefinition,
+    'Integration': _common.Integration,
     'Organization': _common.Organization,
     'Project': _common.Project,
     'ProjectType': _common.ProjectType,
@@ -50,7 +52,17 @@ MODEL_TYPES: dict[str, type[_common.Node]] = {
 }
 
 # API-specific models from imbi_api.domain
-ThirdPartyService = _domain.ThirdPartyService
+CapabilityAssignment = _domain.CapabilityAssignment
+CapabilityAssignmentsUpdate = _domain.CapabilityAssignmentsUpdate
+CapabilityToggle = _domain.CapabilityToggle
+InstalledPluginResponse = _domain.InstalledPluginResponse
+IntegrationCreate = _domain.IntegrationCreate
+IntegrationCredentialsUpdate = _domain.IntegrationCredentialsUpdate
+IntegrationResponse = _domain.IntegrationResponse
+IntegrationUpdate = _domain.IntegrationUpdate
+PluginRegistrationUpdate = _domain.PluginRegistrationUpdate
+ProjectIntegrationAssignment = _domain.ProjectIntegrationAssignment
+ProjectIntegrationsUpdate = _domain.ProjectIntegrationsUpdate
 APIKey = _domain.APIKey
 ClientCredential = _domain.ClientCredential
 ClientCredentialCreate = _domain.ClientCredentialCreate
@@ -73,9 +85,6 @@ Role = _domain.Role
 ServiceAccount = _domain.ServiceAccount
 ServiceAccountCreate = _domain.ServiceAccountCreate
 ServiceAccountResponse = _domain.ServiceAccountResponse
-ServiceApplicationCreate = _domain.ServiceApplicationCreate
-ServiceApplicationResponse = _domain.ServiceApplicationResponse
-ServiceApplicationSecrets = _domain.ServiceApplicationSecrets
 Session = _domain.Session
 TOTPSecret = _domain.TOTPSecret
 TeamMembership = _domain.TeamMembership

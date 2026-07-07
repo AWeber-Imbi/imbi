@@ -424,7 +424,7 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
         self.assertIn('not found', response.json()['detail'])
 
     def test_get_user_by_identity_success(self) -> None:
-        """Test resolving a user from a plugin subject."""
+        """Test resolving a user from an integration subject."""
         mock_user = models.User(
             id='user-nano-id',
             email='gh@example.com',
@@ -435,7 +435,7 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
         self.mock_db.match.return_value = [mock_user]
-        # find_user_by_subject + _load_user_memberships both call execute
+        # find_user_by_integration_slug + _load_user_memberships call execute
         self.mock_db.execute.side_effect = [
             [{'user_ids': ['user-nano-id']}],
             [{'org_name': 'Default', 'org_slug': 'default', 'role': 'dev'}],
@@ -446,7 +446,7 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
         ):
             response = self.client.get(
                 '/users/by-identity',
-                params={'plugin_slug': 'github', 'subject': '12345'},
+                params={'integration_slug': 'github', 'subject': '12345'},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -460,13 +460,13 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
 
         response = self.client.get(
             '/users/by-identity',
-            params={'plugin_slug': 'github', 'subject': '99999'},
+            params={'integration_slug': 'github', 'subject': '99999'},
         )
 
         self.assertEqual(response.status_code, 404)
 
     def test_get_user_by_identity_user_node_missing(self) -> None:
-        """find_user_by_subject hits but the User node was deleted."""
+        """find_user_by_integration_slug hits but the User node was deleted."""
         self.mock_db.execute.return_value = [{'user_ids': ['orphan-id']}]
         self.mock_db.match.return_value = []
 
@@ -475,16 +475,16 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
         ):
             response = self.client.get(
                 '/users/by-identity',
-                params={'plugin_slug': 'github', 'subject': '12345'},
+                params={'integration_slug': 'github', 'subject': '12345'},
             )
 
         self.assertEqual(response.status_code, 404)
 
     def test_get_user_by_identity_requires_query_params(self) -> None:
-        """Both plugin_slug and subject are required."""
+        """Both integration_slug and subject are required."""
         response = self.client.get(
             '/users/by-identity',
-            params={'plugin_slug': 'github'},
+            params={'integration_slug': 'github'},
         )
         self.assertEqual(response.status_code, 422)
 

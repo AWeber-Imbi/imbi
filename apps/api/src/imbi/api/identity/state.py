@@ -29,7 +29,7 @@ _NONCE_KEY_PREFIX = 'identity:state:nonce:'
 
 def encode_identity_state(
     *,
-    plugin_id: str,
+    integration_id: str,
     plugin_slug: str,
     redirect_uri: str,
     intent: str = 'identity',
@@ -47,7 +47,7 @@ def encode_identity_state(
         redirect_uri=redirect_uri,
         timestamp=int(time.time()),
         intent=intent,  # type: ignore[arg-type]
-        plugin_id=plugin_id,
+        integration_id=integration_id,
         code_verifier=code_verifier,
         return_to=return_to,
         actor_user_id=actor_user_id,
@@ -73,9 +73,9 @@ def _decode_state_for_intent(
     """Shared decode + verify for identity-flow state JWTs.
 
     Both the ``identity`` and ``login`` intents use the same payload
-    shape and the same expiry / plugin_id assertions; only the error
-    messages differ. Centralizing the logic prevents the two flows from
-    drifting apart over time.
+    shape and the same expiry / integration_id assertions; only the
+    error messages differ. Centralizing the logic prevents the two
+    flows from drifting apart over time.
     """
     auth = auth_settings or settings.Auth()  # type: ignore[call-arg]
     try:
@@ -87,7 +87,7 @@ def _decode_state_for_intent(
         state_data = models.OAuthStateData(**payload)
     except jwt.InvalidTokenError as exc:
         raise ValueError(f'{invalid_message}: {exc}') from exc
-    if state_data.intent != expected_intent or not state_data.plugin_id:
+    if state_data.intent != expected_intent or not state_data.integration_id:
         raise ValueError(intent_message)
     age = int(time.time()) - state_data.timestamp
     if age > max_age_seconds:

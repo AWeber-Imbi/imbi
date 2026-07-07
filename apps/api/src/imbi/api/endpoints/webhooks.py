@@ -135,7 +135,7 @@ def _rules_create_clauses(
 _FETCH_WEBHOOK_QUERY: typing.LiteralString = """
 MATCH (w:Webhook)-[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
 WHERE w.slug = {identifier} OR w.id = {identifier}
-OPTIONAL MATCH (w)-[impl:IMPLEMENTED_BY]->(tps:ThirdPartyService)
+OPTIONAL MATCH (w)-[impl:IMPLEMENTED_BY]->(tps:Integration)
 OPTIONAL MATCH (r:WebhookRule)-[:ACTIONS]->(w)
 WITH w, tps, impl, r
 ORDER BY r.ordinal
@@ -149,7 +149,7 @@ RETURN w{{.*}} AS webhook,
        tps{{.*}} AS tps,
        impl.identifier_selector AS identifier_selector,
        impl.user_subject_selector AS user_subject_selector,
-       impl.identity_plugin_slug AS identity_plugin_slug,
+       impl.identity_integration_slug AS identity_integration_slug,
        impl.event_type_selector AS event_type_selector,
        [x IN all_rules
         | x {{.filter_expression, .handler,
@@ -169,7 +169,7 @@ _UPDATE_RETURN_TAIL_WITH_TPS: typing.LiteralString = (
     ' RETURN w{{.*}} AS webhook, tps{{.*}} AS tps,'
     ' impl.identifier_selector AS identifier_selector,'
     ' impl.user_subject_selector AS user_subject_selector,'
-    ' impl.identity_plugin_slug AS identity_plugin_slug,'
+    ' impl.identity_integration_slug AS identity_integration_slug,'
     ' impl.event_type_selector AS event_type_selector,'
     ' [x IN all_rules'
     ' | x {{.filter_expression, .handler,'
@@ -188,7 +188,7 @@ _UPDATE_RETURN_TAIL_NO_TPS: typing.LiteralString = (
     ' RETURN w{{.*}} AS webhook, null AS tps,'
     ' null AS identifier_selector,'
     ' null AS user_subject_selector,'
-    ' null AS identity_plugin_slug,'
+    ' null AS identity_integration_slug,'
     ' null AS event_type_selector,'
     ' [x IN all_rules'
     ' | x {{.filter_expression, .handler,'
@@ -201,7 +201,7 @@ def _parse_json_rules(raw: typing.Any) -> list[typing.Any]:
     if isinstance(raw, str):
         try:
             return json.loads(raw)  # type: ignore[no-any-return]
-        except (json.JSONDecodeError, TypeError):
+        except json.JSONDecodeError, TypeError:
             return []
     return list(raw) if raw else []
 
@@ -231,7 +231,7 @@ async def create_webhook(
     encryptor = encryption.TokenEncryption.get_instance()
 
     webhook_id = _generate_id()
-    slug = _compute_webhook_slug(data.third_party_service_slug, data.name)
+    slug = _compute_webhook_slug(data.integration_slug, data.name)
     await _check_identifier_collision(
         db, org_slug, slug=slug, webhook_id=webhook_id
     )
@@ -269,26 +269,26 @@ async def create_webhook(
         **props,
         **rules_params,
     }
-    if data.third_party_service_slug is not None:
+    if data.integration_slug is not None:
         write_query: str = (
             'MATCH (o:Organization {{slug: {org_slug}}})'
-            ' MATCH (tps:ThirdPartyService {{slug: {tps_slug}}})'
+            ' MATCH (tps:Integration {{slug: {tps_slug}}})'
             ' -[:BELONGS_TO]->(o)'
             f' CREATE (w:Webhook {create_tpl})'
             ' CREATE (w)-[:BELONGS_TO]->(o)'
             ' CREATE (w)-[:IMPLEMENTED_BY {{'
             'identifier_selector: {identifier_selector},'
             ' user_subject_selector: {user_subject_selector},'
-            ' identity_plugin_slug: {identity_plugin_slug},'
+            ' identity_integration_slug: {identity_integration_slug},'
             ' event_type_selector: {event_type_selector}'
             '}}]->(tps)' + rule_clauses + ' RETURN w.id AS id'
         )
         write_params: dict[str, typing.Any] = {
             **base_params,
-            'tps_slug': data.third_party_service_slug,
+            'tps_slug': data.integration_slug,
             'identifier_selector': data.identifier_selector,
             'user_subject_selector': data.user_subject_selector,
-            'identity_plugin_slug': data.identity_plugin_slug,
+            'identity_integration_slug': data.identity_integration_slug,
             'event_type_selector': data.event_type_selector,
         }
     else:
@@ -312,12 +312,12 @@ async def create_webhook(
         )
 
     if not write_records:
-        if data.third_party_service_slug:
+        if data.integration_slug:
             raise fastapi.HTTPException(
                 status_code=404,
                 detail=(
-                    f'Organization {org_slug!r} or third-party service '
-                    f'{data.third_party_service_slug!r} not found'
+                    f'Organization {org_slug!r} or integration '
+                    f'{data.integration_slug!r} not found'
                 ),
             )
         raise fastapi.HTTPException(
@@ -333,7 +333,7 @@ async def create_webhook(
             'tps',
             'identifier_selector',
             'user_subject_selector',
-            'identity_plugin_slug',
+            'identity_integration_slug',
             'event_type_selector',
             'rules',
         ],
@@ -357,7 +357,7 @@ async def list_webhooks(
     MATCH (w:Webhook)-[:BELONGS_TO]->
           (o:Organization {{slug: {org_slug}}})
     OPTIONAL MATCH (w)-[impl:IMPLEMENTED_BY]->
-                   (tps:ThirdPartyService)
+                   (tps:Integration)
     OPTIONAL MATCH (r:WebhookRule)-[:ACTIONS]->(w)
     WITH w, tps, impl, r
     ORDER BY r.ordinal
@@ -371,7 +371,7 @@ async def list_webhooks(
            tps{{.*}} AS tps,
            impl.identifier_selector AS identifier_selector,
            impl.user_subject_selector AS user_subject_selector,
-           impl.identity_plugin_slug AS identity_plugin_slug,
+           impl.identity_integration_slug AS identity_integration_slug,
            impl.event_type_selector AS event_type_selector,
            [x IN all_rules
             | x {{.filter_expression, .handler,
@@ -387,7 +387,7 @@ async def list_webhooks(
             'tps',
             'identifier_selector',
             'user_subject_selector',
-            'identity_plugin_slug',
+            'identity_integration_slug',
             'event_type_selector',
             'rules',
         ],
@@ -416,7 +416,7 @@ async def get_webhook(
             'tps',
             'identifier_selector',
             'user_subject_selector',
-            'identity_plugin_slug',
+            'identity_integration_slug',
             'event_type_selector',
             'rules',
         ],
@@ -448,9 +448,9 @@ async def patch_webhook(
     The ``id`` and ``notification_path`` fields are read-only;
     patch operations targeting them are rejected with 400.
 
-    When ``third_party_service_slug`` is changed and ``slug`` is not
+    When ``integration_slug`` is changed and ``slug`` is not
     explicitly set in the same patch, the slug is auto-regenerated
-    from the new service slug and webhook name.
+    from the new integration slug and webhook name.
     """
     for op in operations:
         if op.path in _READ_ONLY_PATHS:
@@ -467,7 +467,7 @@ async def patch_webhook(
             'tps',
             'identifier_selector',
             'user_subject_selector',
-            'identity_plugin_slug',
+            'identity_integration_slug',
             'event_type_selector',
             'rules',
         ],
@@ -493,7 +493,7 @@ async def patch_webhook(
         'description': existing_webhook.get('description'),
         'icon': existing_webhook.get('icon'),
         'secret': None,
-        'third_party_service_slug': (
+        'integration_slug': (
             existing_tps.get('slug') if existing_tps else None
         ),
         'identifier_selector': graph.parse_agtype(
@@ -502,8 +502,8 @@ async def patch_webhook(
         'user_subject_selector': graph.parse_agtype(
             existing[0].get('user_subject_selector')
         ),
-        'identity_plugin_slug': graph.parse_agtype(
-            existing[0].get('identity_plugin_slug')
+        'identity_integration_slug': graph.parse_agtype(
+            existing[0].get('identity_integration_slug')
         ),
         'event_type_selector': graph.parse_agtype(
             existing[0].get('event_type_selector')
@@ -524,14 +524,14 @@ async def patch_webhook(
     }
 
     op_paths = {op.path for op in operations}
-    service_changed = '/third_party_service_slug' in op_paths
+    service_changed = '/integration_slug' in op_paths
     slug_explicitly_set = '/slug' in op_paths
 
     patched = json_patch.apply_patch(patchable, operations)
 
     if service_changed and not slug_explicitly_set:
         patched['slug'] = _compute_webhook_slug(
-            patched.get('third_party_service_slug'),
+            patched.get('integration_slug'),
             patched['name'],
         )
 
@@ -586,12 +586,12 @@ async def patch_webhook(
     # Use id as the stable lookup key for the write query
     existing_webhook_id: str = existing_webhook.get('id', '')
 
-    if data.third_party_service_slug:
+    if data.integration_slug:
         write_query: str = (
             'MATCH (w:Webhook {{id: {webhook_id}}})'
             ' -[:BELONGS_TO]->(o:Organization'
             ' {{slug: {org_slug}}})'
-            ' MATCH (tps:ThirdPartyService'
+            ' MATCH (tps:Integration'
             ' {{slug: {tps_slug}}})-[:BELONGS_TO]->(o)'
             ' OPTIONAL MATCH'
             ' (old_r:WebhookRule)-[:ACTIONS]->(w)'
@@ -606,7 +606,7 @@ async def patch_webhook(
             ' SET impl.identifier_selector'
             ' = {identifier_selector},'
             ' impl.user_subject_selector = {user_subject_selector},'
-            ' impl.identity_plugin_slug = {identity_plugin_slug},'
+            ' impl.identity_integration_slug = {identity_integration_slug},'
             ' impl.event_type_selector = {event_type_selector}'
             + rule_clauses
             + ' RETURN w.id AS id'
@@ -614,11 +614,11 @@ async def patch_webhook(
         params: dict[str, typing.Any] = {
             'webhook_id': existing_webhook_id,
             'org_slug': org_slug,
-            'tps_slug': data.third_party_service_slug,
+            'tps_slug': data.integration_slug,
             **props,
             'identifier_selector': data.identifier_selector,
             'user_subject_selector': data.user_subject_selector,
-            'identity_plugin_slug': data.identity_plugin_slug,
+            'identity_integration_slug': data.identity_integration_slug,
             'event_type_selector': data.event_type_selector,
             **rules_params,
         }
@@ -667,7 +667,7 @@ async def patch_webhook(
             'tps',
             'identifier_selector',
             'user_subject_selector',
-            'identity_plugin_slug',
+            'identity_integration_slug',
             'event_type_selector',
             'rules',
         ],
@@ -729,12 +729,12 @@ async def list_project_services(
         ),
     ],
 ) -> list[models.ExistsInResponse]:
-    """List third-party services this project exists in."""
+    """List integrations this project exists in."""
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    MATCH (p)-[ei:EXISTS_IN]->(tps:ThirdPartyService)
+    MATCH (p)-[ei:EXISTS_IN]->(tps:Integration)
     RETURN tps.slug AS service_slug,
            tps.name AS service_name,
            ei.identifier AS identifier,
@@ -758,8 +758,8 @@ async def list_project_services(
         slug = graph.parse_agtype(r['service_slug'])
         responses.append(
             models.ExistsInResponse(
-                third_party_service_slug=slug,
-                third_party_service_name=graph.parse_agtype(
+                integration_slug=slug,
+                integration_name=graph.parse_agtype(
                     r['service_name'],
                 ),
                 identifier=graph.parse_agtype(r['identifier']),
@@ -790,7 +790,7 @@ async def create_project_service(
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    MATCH (tps:ThirdPartyService {{slug: {tps_slug}}})
+    MATCH (tps:Integration {{slug: {tps_slug}}})
           -[:BELONGS_TO]->(o)
     MERGE (p)-[ei:EXISTS_IN]->(tps)
     SET ei.identifier = {identifier},
@@ -805,7 +805,7 @@ async def create_project_service(
         {
             'org_slug': org_slug,
             'project_id': project_id,
-            'tps_slug': data.third_party_service_slug,
+            'tps_slug': data.integration_slug,
             'identifier': data.identifier,
             'canonical_url': data.canonical_url,
         },
@@ -822,7 +822,7 @@ async def create_project_service(
             status_code=404,
             detail=(
                 f'Project {project_id!r} or '
-                f'service {data.third_party_service_slug!r} '
+                f'integration {data.integration_slug!r} '
                 f'not found'
             ),
         )
@@ -836,15 +836,15 @@ async def create_project_service(
         await merge_project_links(
             db,
             project_id,
-            add={data.third_party_service_slug: dashboard_url},
+            add={data.integration_slug: dashboard_url},
         )
 
     r = records[0]
     return models.ExistsInResponse(
-        third_party_service_slug=graph.parse_agtype(
+        integration_slug=graph.parse_agtype(
             r['service_slug'],
         ),
-        third_party_service_name=graph.parse_agtype(
+        integration_name=graph.parse_agtype(
             r['service_name'],
         ),
         identifier=graph.parse_agtype(r['identifier']),
@@ -877,7 +877,7 @@ async def delete_project_service(
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
     MATCH (p)-[ei:EXISTS_IN]->
-          (tps:ThirdPartyService {{slug: {tps_slug}}})
+          (tps:Integration {{slug: {tps_slug}}})
     DELETE ei
     RETURN count(ei) AS deleted
     """

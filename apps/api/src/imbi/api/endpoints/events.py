@@ -39,7 +39,7 @@ class EventRecord(pydantic.BaseModel):
     project_id: str
     recorded_at: datetime.datetime
     type: str
-    third_party_service: str
+    integration: str
     attributed_to: str
     metadata: dict[str, typing.Any]
     payload: dict[str, typing.Any]
@@ -57,7 +57,7 @@ class EventsPage(pydantic.BaseModel):
 #: as JSON text we then ``json.loads`` server-side, so the response
 #: encoder only sees ``dict`` / ``list`` / scalar trees.
 _SELECT_COLUMNS: str = (
-    'id, project_id, recorded_at, type, third_party_service, '
+    'id, project_id, recorded_at, type, integration, '
     'attributed_to, toJSONString(metadata) AS metadata, '
     'toJSONString(payload) AS payload'
 )
@@ -120,7 +120,7 @@ _FILTER_FIELDS: tuple[str, ...] = (
     'project_id',
     'type',
     'attributed_to',
-    'third_party_service',
+    'integration',
 )
 
 
@@ -223,7 +223,7 @@ async def list_events(
     type: str | None = None,
     event_type: str | None = None,
     attributed_to: str | None = None,
-    third_party_service: str | None = None,
+    integration: str | None = None,
     since: str | None = None,
     until: str | None = None,
 ) -> fastapi.Response:
@@ -246,7 +246,7 @@ async def list_events(
             'project_id': project_id,
             'type': type,
             'attributed_to': attributed_to,
-            'third_party_service': third_party_service,
+            'integration': integration,
         },
         event_type=event_type,
         since=since,

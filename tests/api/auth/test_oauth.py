@@ -19,17 +19,20 @@ def _stub_provider(
     issuer_url: str | None = None,
     name: str = 'Provider',
 ) -> login_providers.LoginApp:
-    """Build a login-app row with a clear-text secret stand-in.
+    """Build a login-app row for a login-capable Integration.
 
-    The tests patch ``TokenEncryption.get_instance`` so the
-    ``client_secret_encrypted`` value round-trips as plaintext.
+    Plugin Architecture v3: the ``LoginApp`` carries already-decrypted
+    credentials (``client_secret`` is plaintext), materialized from an
+    ``Integration`` whose plugin declares a login-capable ``identity``
+    capability.
     """
     return login_providers.LoginApp(
         slug=slug,
         name=name,
-        oauth_app_type=slug,  # type: ignore[arg-type]
+        integration_id=f'int-{slug}',
+        oauth_app_type=slug,
         client_id=client_id,
-        client_secret_encrypted=client_secret,
+        client_secret=client_secret,
         issuer_url=issuer_url,
         status='active' if enabled else 'inactive',
     )

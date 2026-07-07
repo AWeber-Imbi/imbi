@@ -219,184 +219,6 @@ class ProjectModelTestCase(unittest.TestCase):
             )
 
 
-class ThirdPartyServiceModelTestCase(unittest.TestCase):
-    """Test cases for ThirdPartyService model."""
-
-    def setUp(self) -> None:
-        self.org = models.Organization.model_validate(
-            {
-                'name': 'Engineering',
-                'slug': 'engineering',
-            }
-        )
-
-    def test_creation_minimal(self) -> None:
-        svc = domain_models.ThirdPartyService.model_validate(
-            {
-                'name': 'Stripe',
-                'slug': 'stripe',
-                'vendor': 'Stripe Inc',
-                'organization': self.org,
-            }
-        )
-        self.assertEqual(svc.name, 'Stripe')
-        self.assertEqual(svc.vendor, 'Stripe Inc')
-        self.assertEqual(svc.status, 'active')
-        self.assertIsNone(svc.team)
-        self.assertIsNone(svc.service_url)
-        self.assertIsNone(svc.category)
-        self.assertEqual(svc.links, {})
-        self.assertEqual(svc.identifiers, {})
-
-    def test_creation_full(self) -> None:
-        team = models.Team.model_validate(
-            {
-                'name': 'Backend',
-                'slug': 'backend',
-                'organization': self.org,
-            }
-        )
-        svc = domain_models.ThirdPartyService.model_validate(
-            {
-                'name': 'Datadog',
-                'slug': 'datadog',
-                'vendor': 'Datadog Inc',
-                'organization': self.org,
-                'team': team,
-                'service_url': 'https://app.datadoghq.com',
-                'category': 'observability',
-                'status': 'evaluating',
-                'identifiers': {'account_id': 'abc123'},
-            }
-        )
-        self.assertEqual(svc.status, 'evaluating')
-        self.assertEqual(svc.category, 'observability')
-        self.assertIsNotNone(svc.team)
-        self.assertIsNotNone(svc.service_url)
-
-    def test_invalid_status(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            domain_models.ThirdPartyService.model_validate(
-                {
-                    'name': 'Stripe',
-                    'slug': 'stripe',
-                    'vendor': 'Stripe Inc',
-                    'organization': self.org,
-                    'status': 'bogus',
-                }
-            )
-
-    def test_missing_required_fields(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            domain_models.ThirdPartyService.model_validate(
-                {
-                    'name': 'Stripe',
-                    'slug': 'stripe',
-                    'organization': self.org,
-                    # Missing vendor
-                }
-            )
-
-
-class ServiceApplicationCreateModelTestCase(unittest.TestCase):
-    """Test cases for ServiceApplicationCreate validation."""
-
-    def _valid_payload(
-        self,
-        **overrides: object,
-    ) -> dict[str, object]:
-        defaults: dict[str, object] = {
-            'slug': 'my-app',
-            'name': 'My App',
-            'app_type': 'github_app',
-            'client_id': 'cid-123',
-            'client_secret': 'secret-value',
-        }
-        defaults.update(overrides)
-        return defaults
-
-    def test_valid_creation(self) -> None:
-        obj = domain_models.ServiceApplicationCreate.model_validate(
-            self._valid_payload(),
-        )
-        self.assertEqual(obj.slug, 'my-app')
-        self.assertEqual(obj.status, 'active')
-        self.assertEqual(obj.scopes, [])
-        self.assertEqual(obj.settings, {})
-
-    def test_slug_pattern_rejects_uppercase(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            domain_models.ServiceApplicationCreate.model_validate(
-                self._valid_payload(slug='Bad-Slug'),
-            )
-
-    def test_slug_pattern_rejects_leading_digit(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            domain_models.ServiceApplicationCreate.model_validate(
-                self._valid_payload(slug='1-bad'),
-            )
-
-    def test_slug_too_short(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            domain_models.ServiceApplicationCreate.model_validate(
-                self._valid_payload(slug='x'),
-            )
-
-    def test_empty_name_rejected(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            domain_models.ServiceApplicationCreate.model_validate(
-                self._valid_payload(name=''),
-            )
-
-    def test_empty_client_secret_rejected(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            domain_models.ServiceApplicationCreate.model_validate(
-                self._valid_payload(client_secret=''),
-            )
-
-    def test_invalid_status_rejected(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            domain_models.ServiceApplicationCreate.model_validate(
-                self._valid_payload(status='bogus'),
-            )
-
-    def test_optional_fields(self) -> None:
-        obj = domain_models.ServiceApplicationCreate.model_validate(
-            self._valid_payload(
-                description='A test app',
-                application_url='https://example.com',
-                scopes=['read', 'write'],
-                webhook_secret='wh',
-                private_key='pk',
-                signing_secret='sig',
-                settings={'debug': True},
-                status='inactive',
-            ),
-        )
-        self.assertEqual(obj.description, 'A test app')
-        self.assertEqual(obj.scopes, ['read', 'write'])
-        self.assertEqual(obj.status, 'inactive')
-
-
-class ServiceApplicationResponseModelTestCase(unittest.TestCase):
-    """Test cases for ServiceApplicationResponse model."""
-
-    def test_defaults(self) -> None:
-        resp = domain_models.ServiceApplicationResponse.model_validate(
-            {
-                'slug': 'my-app',
-                'name': 'My App',
-                'app_type': 'github_app',
-                'client_id': 'cid-123',
-            }
-        )
-        self.assertEqual(resp.scopes, [])
-        self.assertEqual(resp.settings, {})
-        self.assertEqual(resp.status, 'active')
-        self.assertIsNone(resp.description)
-        self.assertIsNone(resp.application_url)
-
-
 class WebhookCreateModelTestCase(unittest.TestCase):
     """Test cases for WebhookCreate validation."""
 
@@ -416,7 +238,7 @@ class WebhookCreateModelTestCase(unittest.TestCase):
         )
         self.assertIsNone(obj.secret)
         self.assertEqual(obj.rules, [])
-        self.assertIsNone(obj.third_party_service_slug)
+        self.assertIsNone(obj.integration_slug)
 
     def test_identifier_selector_requires_tps(self) -> None:
         with self.assertRaises(pydantic.ValidationError):
@@ -429,7 +251,7 @@ class WebhookCreateModelTestCase(unittest.TestCase):
     def test_identifier_selector_with_tps_valid(self) -> None:
         obj = domain_models.WebhookCreate.model_validate(
             self._valid_payload(
-                third_party_service_slug='github',
+                integration_slug='github',
                 identifier_selector='$.repo.name',
             ),
         )
@@ -523,7 +345,7 @@ class ExistsInModelTestCase(unittest.TestCase):
     def test_exists_in_create(self) -> None:
         obj = domain_models.ExistsInCreate.model_validate(
             {
-                'third_party_service_slug': 'github',
+                'integration_slug': 'github',
                 'identifier': 'org/repo',
             }
         )
@@ -532,7 +354,7 @@ class ExistsInModelTestCase(unittest.TestCase):
     def test_exists_in_create_with_link(self) -> None:
         obj = domain_models.ExistsInCreate.model_validate(
             {
-                'third_party_service_slug': 'github',
+                'integration_slug': 'github',
                 'identifier': 'org/repo',
                 'canonical_url': 'https://github.com/org/repo',
             }
@@ -546,7 +368,7 @@ class ExistsInModelTestCase(unittest.TestCase):
         with self.assertRaises(pydantic.ValidationError):
             domain_models.ExistsInCreate.model_validate(
                 {
-                    'third_party_service_slug': 'github',
+                    'integration_slug': 'github',
                     'identifier': '',
                 }
             )
@@ -554,12 +376,12 @@ class ExistsInModelTestCase(unittest.TestCase):
     def test_exists_in_response(self) -> None:
         obj = domain_models.ExistsInResponse.model_validate(
             {
-                'third_party_service_slug': 'github',
-                'third_party_service_name': 'GitHub',
+                'integration_slug': 'github',
+                'integration_name': 'GitHub',
                 'identifier': 'org/repo',
             }
         )
-        self.assertEqual(obj.third_party_service_name, 'GitHub')
+        self.assertEqual(obj.integration_name, 'GitHub')
         self.assertIsNone(obj.canonical_url)
 
 
@@ -671,9 +493,9 @@ class WebhookResponseFromGraphRecordTestCase(unittest.TestCase):
             identifier_selector='$.repository.full_name',
         )
         response = domain_models.WebhookResponse.from_graph_record(record)
-        self.assertIsNotNone(response.third_party_service)
-        assert response.third_party_service is not None
-        self.assertEqual(response.third_party_service['slug'], 'github')
+        self.assertIsNotNone(response.integration)
+        assert response.integration is not None
+        self.assertEqual(response.integration['slug'], 'github')
         self.assertEqual(
             response.identifier_selector,
             '$.repository.full_name',
@@ -682,5 +504,5 @@ class WebhookResponseFromGraphRecordTestCase(unittest.TestCase):
     def test_without_tps(self) -> None:
         record = self._minimal_record(tps=None, identifier_selector=None)
         response = domain_models.WebhookResponse.from_graph_record(record)
-        self.assertIsNone(response.third_party_service)
+        self.assertIsNone(response.integration)
         self.assertIsNone(response.identifier_selector)

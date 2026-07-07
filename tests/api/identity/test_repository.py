@@ -83,12 +83,12 @@ class MarkStatusTestCase(unittest.IsolatedAsyncioTestCase):
 class RevokeTestCase(unittest.IsolatedAsyncioTestCase):
     """Verify revoke clears tokens and flips status."""
 
-    async def test_executes_with_plugin_and_user(self) -> None:
+    async def test_executes_with_integration_and_user(self) -> None:
         db = mock.AsyncMock()
-        await repository.revoke(db, 'plugin-1', 'user-1')
+        await repository.revoke(db, 'integration-1', 'user-1')
         db.execute.assert_awaited_once()
         query, params, _columns = db.execute.await_args.args
-        self.assertEqual(params['plugin_id'], 'plugin-1')
+        self.assertEqual(params['integration_id'], 'integration-1')
         self.assertEqual(params['user_id'], 'user-1')
         self.assertIn("status = 'revoked'", query)
         self.assertIn('access_token_encrypted = null', query)
@@ -118,7 +118,7 @@ class UpsertConnectionTestCase(unittest.IsolatedAsyncioTestCase):
             ),
         ):
             connection_id = await repository.upsert_connection(
-                db, 'plugin-1', 'user-1', profile, credentials
+                db, 'integration-1', 'user-1', profile, credentials
             )
         self.assertEqual(connection_id, 'conn-abc')
 
@@ -234,16 +234,16 @@ class ListForUserTestCase(unittest.IsolatedAsyncioTestCase):
         db.execute.return_value = [
             {
                 'id': '"conn-1"',
-                'plugin_id': '"plugin-1"',
-                'plugin_slug': '"oidc"',
-                'plugin_label': '"OIDC"',
-                'connects_users_to': None,
+                'integration_id': '"integration-1"',
+                'integration_slug': '"oidc"',
+                'integration_name': '"OIDC"',
                 'subject': '"sub"',
                 'status': '"active"',
                 'expires_at': None,
                 'scopes': None,
                 'last_used_at': None,
                 'metadata': None,
+                'claims_enc': None,
             }
         ]
 
@@ -260,7 +260,8 @@ class ListForUserTestCase(unittest.IsolatedAsyncioTestCase):
             rows = await repository.list_for_user(db, 'user-1')
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]['id'], 'conn-1')
-        self.assertEqual(rows[0]['plugin_slug'], 'oidc')
+        self.assertEqual(rows[0]['integration_slug'], 'oidc')
+        self.assertNotIn('claims_enc', rows[0])
 
     async def test_returns_empty_list_when_no_rows(self) -> None:
         db = mock.AsyncMock()
@@ -285,7 +286,7 @@ class FindUserBySubjectTestCase(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(result, 'user-42')
         _query, params, _cols = db.execute.await_args.args
-        self.assertEqual(params['plugin_slug'], 'github')
+        self.assertEqual(params['integration_id'], 'github')
         self.assertEqual(params['subject'], '12345')
 
     async def test_returns_none_when_no_rows(self) -> None:
@@ -364,7 +365,7 @@ class StaleConnectionsTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_returns_rows_with_parsed_values(self) -> None:
         db = mock.AsyncMock()
         db.execute.return_value = [
-            {'plugin_id': '"p"', 'user_id': '"u"', 'expires_at': '"x"'}
+            {'id': '"c"', 'integration_id': '"p"', 'user_id': '"u"'}
         ]
         horizon = datetime.datetime.now(datetime.UTC)
 
@@ -380,5 +381,5 @@ class StaleConnectionsTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             rows = await repository.stale_connections(db, horizon)
         self.assertEqual(
-            rows, [{'plugin_id': 'p', 'user_id': 'u', 'expires_at': 'x'}]
+            rows, [{'id': 'c', 'integration_id': 'p', 'user_id': 'u'}]
         )

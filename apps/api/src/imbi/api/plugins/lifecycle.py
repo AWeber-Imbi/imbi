@@ -16,7 +16,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 async def startup_load_plugins(db: graph.Graph) -> None:
-    """Load plugins from entry-points and seed registration state."""
+    """Discover installed plugins and seed registration state."""
     result = load_plugins()
     LOGGER.info(
         'Plugin registry loaded: %d loaded, %d errors, %d skipped',
@@ -42,10 +42,10 @@ async def startup_load_plugins(db: graph.Graph) -> None:
 
 
 async def audit_unavailable(db: graph.Graph) -> None:
-    """Log any Plugin nodes whose slug is not in the registry."""
+    """Log any Integration whose backing plugin is not in the registry."""
     registered = {e.manifest.slug for e in list_plugins()}
     query: typing.LiteralString = (
-        'MATCH (p:Plugin) RETURN DISTINCT p.plugin_slug AS slug'
+        'MATCH (i:Integration) RETURN DISTINCT i.plugin AS slug'
     )
     try:
         records = await db.execute(query, {}, ['slug'])

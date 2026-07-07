@@ -7,18 +7,16 @@ import typing
 
 import fastapi
 from imbi_common import graph
+from imbi_common.plugins import decrypt_integration_credentials
 from imbi_common.plugins.base import (
     LogFilter,
     LogHistogramBucket,
     LogQuery,
     LogResult,
-    LogsPlugin,
+    LogsCapability,
     PluginContext,
 )
-from imbi_common.plugins.errors import (
-    CursorExpiredError,
-    PluginCredentialsMissing,
-)
+from imbi_common.plugins.errors import CursorExpiredError
 
 from imbi_api.auth import permissions
 from imbi_api.domain import models
@@ -26,8 +24,7 @@ from imbi_api.endpoints._helpers import lookup_project_slugs
 from imbi_api.identity import resolution as identity_resolution
 from imbi_api.identity.host_integration import attach_identity
 from imbi_api.plugins import call_with_timeout
-from imbi_api.plugins.credentials import get_plugin_credentials
-from imbi_api.plugins.resolution import ResolvedPlugin, resolve_plugin
+from imbi_api.plugins.resolution import ResolvedCapability, resolve_capability
 
 LOGGER = logging.getLogger(__name__)
 
@@ -64,7 +61,7 @@ def _parse_filters(raw: list[str]) -> list[LogFilter]:
 async def _search_one_env(
     *,
     ctx_template: PluginContext,
-    resolved: ResolvedPlugin,
+    resolved: ResolvedCapability,
     credentials: dict[str, typing.Any],
     query: LogQuery,
     environment: str | None,
@@ -83,7 +80,7 @@ async def _search_one_env(
     ctx = await attach_identity(
         db, ctx, resolved, auth, identity_options=identity_options
     )
-    handler = typing.cast(LogsPlugin, resolved.entry.handler_cls())
+    handler = typing.cast(LogsCapability, resolved.capability_cls())
     result = await call_with_timeout(handler.search(ctx, credentials, query))
     # Stamp the env slug onto each entry's ``raw`` so the UI can render an
     # env column without requiring the upstream log source to include one.
@@ -151,7 +148,7 @@ async def search_logs(
     query so rare levels can still be located even when total volume
     is high.
     """
-    resolved = await resolve_plugin(db, project_id, 'logs', source)
+    resolved = await resolve_capability(db, project_id, 'logs', source)
 
     now = datetime.datetime.now(datetime.UTC)
     try:
@@ -199,7 +196,9 @@ async def search_logs(
         project_slug=project_slug,
         org_slug=org_slug,
         team_slug=team_slug,
-        assignment_options=resolved.options,
+        assignment_options=resolved.capability_options,
+        integration_options=resolved.integration_options,
+        capability_options=resolved.capability_options,
     )
     # Plugin credentials are env-independent so resolve them once.
     # Identity must be hydrated per-env (handled inside _search_one_env)
@@ -207,20 +206,19 @@ async def search_logs(
     # STS keys depending on the env's AwsAccount binding.
     identity_options = (
         await identity_resolution.load_plugin_options(
-            db, resolved.identity_plugin_id
+            db, resolved.identity_integration_id
         )
-        if resolved.identity_plugin_id
+        if resolved.identity_integration_id
         else None
     )
-    try:
-        credentials = await get_plugin_credentials(
-            db, resolved.plugin_id, resolved.entry
-        )
-    except PluginCredentialsMissing as exc:
+    credentials = decrypt_integration_credentials(
+        resolved.encrypted_credentials
+    )
+    if not credentials:
         raise fastapi.HTTPException(
             status_code=503,
-            detail=str(exc),
-        ) from exc
+            detail='No credentials configured for this integration',
+        )
 
     envs: list[str | None] = list(environment) if environment else [None]
 
@@ -307,7 +305,7 @@ async def search_logs(
 async def _histogram_one_env(
     *,
     ctx_template: PluginContext,
-    resolved: ResolvedPlugin,
+    resolved: ResolvedCapability,
     credentials: dict[str, typing.Any],
     query: LogQuery,
     bucket_count: int,
@@ -320,7 +318,7 @@ async def _histogram_one_env(
     ctx = await attach_identity(
         db, ctx, resolved, auth, identity_options=identity_options
     )
-    handler = typing.cast(LogsPlugin, resolved.entry.handler_cls())
+    handler = typing.cast(LogsCapability, resolved.capability_cls())
     return await call_with_timeout(
         handler.histogram(ctx, credentials, query, bucket_count)
     )
@@ -357,9 +355,12 @@ async def get_log_histogram(
     counts at matching timestamps; per-level counts are aggregated
     across envs.
     """
-    resolved = await resolve_plugin(db, project_id, 'logs', source)
-    handler = typing.cast(LogsPlugin, resolved.entry.handler_cls())
-    if not handler.manifest.supports_histogram:
+    resolved = await resolve_capability(db, project_id, 'logs', source)
+    capability = resolved.entry.manifest.get_capability('logs')
+    supports_histogram = bool(
+        capability and capability.hints.get('supports_histogram')
+    )
+    if not supports_histogram:
         return []
 
     now = datetime.datetime.now(datetime.UTC)
@@ -394,24 +395,25 @@ async def get_log_histogram(
         project_slug=project_slug,
         org_slug=org_slug,
         team_slug=team_slug,
-        assignment_options=resolved.options,
+        assignment_options=resolved.capability_options,
+        integration_options=resolved.integration_options,
+        capability_options=resolved.capability_options,
     )
     identity_options = (
         await identity_resolution.load_plugin_options(
-            db, resolved.identity_plugin_id
+            db, resolved.identity_integration_id
         )
-        if resolved.identity_plugin_id
+        if resolved.identity_integration_id
         else None
     )
-    try:
-        credentials = await get_plugin_credentials(
-            db, resolved.plugin_id, resolved.entry
-        )
-    except PluginCredentialsMissing as exc:
+    credentials = decrypt_integration_credentials(
+        resolved.encrypted_credentials
+    )
+    if not credentials:
         raise fastapi.HTTPException(
             status_code=503,
-            detail=str(exc),
-        ) from exc
+            detail='No credentials configured for this integration',
+        )
 
     envs: list[str | None] = list(environment) if environment else [None]
 
@@ -500,7 +502,7 @@ async def get_log_schema(
     environment: str | None = fastapi.Query(default=None),
 ) -> list[dict[str, typing.Any]]:
     """Get the log schema (available fields) for the assigned logs plugin."""
-    resolved = await resolve_plugin(db, project_id, 'logs', source)
+    resolved = await resolve_capability(db, project_id, 'logs', source)
     project_slug, team_slug = await lookup_project_slugs(db, project_id)
     ctx = PluginContext(
         project_id=project_id,
@@ -508,18 +510,19 @@ async def get_log_schema(
         org_slug=org_slug,
         team_slug=team_slug,
         environment=environment,
-        assignment_options=resolved.options,
+        assignment_options=resolved.capability_options,
+        integration_options=resolved.integration_options,
+        capability_options=resolved.capability_options,
     )
     ctx = await attach_identity(db, ctx, resolved, auth)
-    try:
-        credentials = await get_plugin_credentials(
-            db, resolved.plugin_id, resolved.entry
-        )
-    except PluginCredentialsMissing as exc:
+    credentials = decrypt_integration_credentials(
+        resolved.encrypted_credentials
+    )
+    if not credentials:
         raise fastapi.HTTPException(
             status_code=503,
-            detail=str(exc),
-        ) from exc
+            detail='No credentials configured for this integration',
+        )
 
-    handler = typing.cast(LogsPlugin, resolved.entry.handler_cls())
+    handler = typing.cast(LogsCapability, resolved.capability_cls())
     return await call_with_timeout(handler.schema(ctx, credentials))

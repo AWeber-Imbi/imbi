@@ -163,30 +163,30 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'delete',
         'Delete project types',
     ),
-    # Third-party service management
+    # Integration management
     (
-        'third_party_service:create',
-        'third_party_service',
+        'integration:create',
+        'integration',
         'create',
-        'Create third-party services',
+        'Create integrations',
     ),
     (
-        'third_party_service:read',
-        'third_party_service',
+        'integration:read',
+        'integration',
         'read',
-        'View third-party services',
+        'View integrations',
     ),
     (
-        'third_party_service:update',
-        'third_party_service',
+        'integration:update',
+        'integration',
         'update',
-        'Update third-party services',
+        'Update integrations',
     ),
     (
-        'third_party_service:delete',
-        'third_party_service',
+        'integration:delete',
+        'integration',
         'delete',
-        'Delete third-party services',
+        'Delete integrations',
     ),
     # Webhook management
     ('webhook:create', 'webhook', 'create', 'Create webhooks'),
@@ -415,6 +415,30 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'deployment:write',
         'Trigger deployments and promotions via plugins',
     ),
+    (
+        'project:commits:read',
+        'project',
+        'commits:read',
+        'Read commit history synced via plugins',
+    ),
+    (
+        'project:commits:write',
+        'project',
+        'commits:write',
+        'Trigger commit-history sync via plugins',
+    ),
+    (
+        'project:pull-requests:read',
+        'project',
+        'pull-requests:read',
+        'Read pull request history synced via plugins',
+    ),
+    (
+        'project:pull-requests:write',
+        'project',
+        'pull-requests:write',
+        'Trigger pull-request sync via plugins',
+    ),
     # Vector search
     (
         'search:read',
@@ -457,6 +481,17 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ),
 ]
 
+# Permissions retired by the ThirdPartyService -> Integration rename.
+# Installs seeded before the rename retain these orphaned Permission
+# nodes (and any GRANTS edges); ``cleanup_retired_permissions`` removes
+# them so role grants stay clean. Their replacements are ``integration:*``.
+RETIRED_PERMISSIONS: list[str] = [
+    'third_party_service:create',
+    'third_party_service:read',
+    'third_party_service:update',
+    'third_party_service:delete',
+]
+
 # Default role definitions.
 #
 # The 6th tuple element marks the role auto-assigned to newly-logging-in
@@ -493,8 +528,8 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'team:read',
             'team:update',
             'user:read',
-            'third_party_service:read',
-            'third_party_service:update',
+            'integration:read',
+            'integration:update',
             'upload:create',
             'upload:read',
             'webhook:read',
@@ -536,7 +571,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'search:read',
             'tag:read',
             'team:read',
-            'third_party_service:read',
+            'integration:read',
             'upload:read',
             'user:read',
             'webhook:read',
@@ -558,7 +593,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'organization:read',
             'search:read',
             'team:read',
-            'third_party_service:read',
+            'integration:read',
             'user:read',
             'role:read',
             'upload:read',
@@ -580,6 +615,41 @@ if sum(role[5] for role in DEFAULT_ROLES) != 1:
     raise RuntimeError(
         'Exactly one DEFAULT_ROLES entry must set is_default=True'
     )
+
+
+async def cleanup_retired_permissions(db: graph.Graph) -> int:
+    """Detach-delete permissions retired by the Integration rename.
+
+    Installs seeded before the ThirdPartyService -> Integration rename
+    retain orphaned ``third_party_service:*`` :class:`Permission` nodes and
+    any GRANTS edges pointing at them. Remove them so role grants stay
+    clean. Idempotent: a no-op once the retired nodes are gone.
+    """
+    placeholders = ', '.join(
+        f'{{r_{i}}}' for i in range(len(RETIRED_PERMISSIONS))
+    )
+    params: dict[str, typing.Any] = {
+        f'r_{i}': name for i, name in enumerate(RETIRED_PERMISSIONS)
+    }
+    count_query: str = (
+        'UNWIND [' + placeholders + '] AS name '
+        'MATCH (p:Permission {{name: name}}) '
+        'RETURN count(p) AS removed'
+    )
+    records = await db.execute(count_query, params, columns=['removed'])
+    removed = 0
+    if records:
+        raw = graph.parse_agtype(records[0].get('removed'))
+        removed = int(raw or 0)
+    if removed:
+        delete_query: str = (
+            'UNWIND [' + placeholders + '] AS name '
+            'MATCH (p:Permission {{name: name}}) '
+            'DETACH DELETE p'
+        )
+        await db.execute(delete_query, params)
+        LOGGER.info('Removed %d retired permissions', removed)
+    return removed
 
 
 async def seed_permissions(db: graph.Graph) -> int:
@@ -765,6 +835,7 @@ async def bootstrap_auth_system(
     LOGGER.info('Starting authentication system bootstrap')
 
     org_created = await seed_default_organization(db, org_slug, org_name)
+    await cleanup_retired_permissions(db)
     permissions_created = await seed_permissions(db)
     roles_created = await seed_default_roles(db)
 

@@ -1,11 +1,12 @@
-"""Resolve + invoke the commit-sync plugin and track its status.
+"""Resolve + invoke the commit-sync capability and track its status.
 
-The on-demand sync acts with the ``github-commit-sync`` plugin's
-*service* credential (PAT or GitHub App), so there is no acting user: the
-worker resolves the plugin attached to a ``ThirdPartyService`` the project
-``EXISTS_IN``, builds the :class:`PluginContext` it needs (project links +
-the connected ``service_plugins`` for host resolution), decrypts the
-credential, and awaits the plugin's ``sync_all_history`` method.
+The on-demand sync acts with the resolved Integration's *service*
+credential (PAT or GitHub App), so there is no acting user: the worker
+resolves the ``commit-sync`` capability bound to the project via
+:mod:`imbi_api.plugins.resolution`, builds the :class:`PluginContext` it
+needs (project links + identity-capable integrations for attribution),
+decrypts the credential, and awaits the capability's
+``sync_all_history`` method.
 
 Last-sync state is persisted as a handful of properties on the ``Project``
 node so the UI can poll it without a dedicated status store.
@@ -17,21 +18,23 @@ import asyncio
 import datetime
 import logging
 import typing
-from collections import abc
 
+import fastapi
 import pydantic
 from imbi_common import graph
-from imbi_common.plugins.base import PluginContext, ServicePlugin
-from imbi_common.plugins.errors import PluginNotFoundError
-from imbi_common.plugins.registry import RegistryEntry, get_plugin
+from imbi_common.plugins import decrypt_integration_credentials
+from imbi_common.plugins.base import CommitSyncCapability, PluginContext
 
 from imbi_api.identity import attribution
-from imbi_api.plugins import parse_options
-from imbi_api.plugins.credentials import get_plugin_credentials
+from imbi_api.plugins.resolution import (
+    ResolvedCapability,
+    build_plugin_context,
+    resolve_capability,
+)
 
 LOGGER = logging.getLogger(__name__)
 
-_COMMIT_SYNC_SLUG = 'github-commit-sync'
+_CAPABILITY_KIND = 'commit-sync'
 # Persisted error strings are truncated so a noisy upstream message can't
 # bloat the Project node.
 _MAX_ERROR_LEN = 500
@@ -46,7 +49,7 @@ SyncState = typing.Literal['idle', 'queued', 'running', 'success', 'failed']
 
 
 class CommitSyncUnavailable(Exception):
-    """No ``github-commit-sync`` plugin is reachable for the project."""
+    """No integration provides a usable commit-sync capability."""
 
 
 class CommitSyncStatus(pydantic.BaseModel):
@@ -60,91 +63,13 @@ class CommitSyncStatus(pydantic.BaseModel):
     requested_by: str | None = None
 
 
-class _ResolvedCommitSync(typing.NamedTuple):
-    plugin_id: str
-    entry: RegistryEntry
-    tps_slug: str
-    service_endpoint: str | None
-    service_plugins: list[ServicePlugin]
-
-
-async def _resolve_plugin(
-    db: graph.Graph, project_id: str
-) -> _ResolvedCommitSync:
-    """Find the ``github-commit-sync`` plugin attached to a service the
-    project ``EXISTS_IN`` and gather the sibling plugins on that service.
-
-    Raises :class:`CommitSyncUnavailable` when no such plugin is
-    configured (or its registry entry is missing).
-    """
-    query: typing.LiteralString = """
-    MATCH (proj:Project {{id: {project_id}}})
-      -[:EXISTS_IN]->(tps:ThirdPartyService)
-      -[:HAS_PLUGIN]->(csp:Plugin {{plugin_slug: {slug}}})
-    OPTIONAL MATCH (tps)-[:HAS_PLUGIN]->(sib:Plugin)
-    WITH tps, csp,
-      collect(DISTINCT {{slug: sib.plugin_slug, options: sib.options}})
-        AS siblings
-    RETURN csp.id AS plugin_id,
-           tps.slug AS tps_slug,
-           tps.api_endpoint AS api_endpoint,
-           siblings AS siblings
-    LIMIT 1
-    """
-    records = await db.execute(
-        query,
-        {'project_id': project_id, 'slug': _COMMIT_SYNC_SLUG},
-        ['plugin_id', 'tps_slug', 'api_endpoint', 'siblings'],
-    )
-    if not records:
-        raise CommitSyncUnavailable(
-            'No github-commit-sync plugin is connected to a service this '
-            'project belongs to; configure it on the GitHub service.'
-        )
-    record = records[0]
-    plugin_id = graph.parse_agtype(record.get('plugin_id'))
-    if not plugin_id:
-        raise CommitSyncUnavailable(
-            'github-commit-sync plugin row is missing an id'
-        )
-    try:
-        entry = get_plugin(_COMMIT_SYNC_SLUG)
-    except PluginNotFoundError as exc:
-        raise CommitSyncUnavailable(
-            'github-commit-sync plugin is not loaded in the registry'
-        ) from exc
-    tps_slug = graph.parse_agtype(record.get('tps_slug'))
-    api_endpoint = graph.parse_agtype(record.get('api_endpoint'))
-    siblings = typing.cast(
-        'list[dict[str, typing.Any]]',
-        graph.parse_agtype(record.get('siblings')) or [],
-    )
-    service_plugins: list[ServicePlugin] = []
-    for sib in siblings:
-        slug = sib.get('slug')
-        if not slug:
-            continue
-        service_plugins.append(
-            ServicePlugin(
-                slug=str(slug), options=parse_options(sib.get('options'))
-            )
-        )
-    return _ResolvedCommitSync(
-        plugin_id=str(plugin_id),
-        entry=entry,
-        tps_slug=str(tps_slug) if tps_slug else '',
-        service_endpoint=str(api_endpoint) if api_endpoint else None,
-        service_plugins=service_plugins,
-    )
-
-
 async def _build_context(
     db: graph.Graph,
     org_slug: str,
     project_id: str,
-    resolved: _ResolvedCommitSync,
+    resolved: ResolvedCapability,
 ) -> PluginContext:
-    """Assemble the :class:`PluginContext` the plugin needs (no actor)."""
+    """Assemble the :class:`PluginContext` the capability needs (no actor)."""
     # Imported here (not at module load) so the worker/service module
     # never pulls the endpoints package at import time.
     from imbi_api.endpoints import _helpers
@@ -159,62 +84,69 @@ async def _build_context(
     service_connections = await _helpers.lookup_project_exists_in(
         db, project_id
     )
-    assignment_options: dict[str, typing.Any] = {
-        'service_slug': resolved.tps_slug,
-    }
-    if resolved.service_endpoint:
-        assignment_options['service_endpoint'] = resolved.service_endpoint
-    return PluginContext(
+    integration_ids = await attribution.identity_integration_ids_for_project(
+        db, project_id
+    )
+    return build_plugin_context(
+        resolved,
         project_id=project_id,
         project_slug=project_slug,
         org_slug=org_slug,
         team_slug=team_slug,
-        assignment_options=assignment_options,
-        service_plugins=resolved.service_plugins,
         project_links=project_links,
         project_type_slugs=project_type_slugs,
-        third_party_service_slug=resolved.tps_slug or None,
         service_connections=service_connections,
         resolve_user_by_identity=attribution.make_user_resolver(
-            db, resolved.service_plugins
+            db, integration_ids
         ),
     )
 
 
-async def check_available(db: graph.Graph, project_id: str) -> None:
-    """Raise :class:`CommitSyncUnavailable` if the project can't be synced.
+async def check_available(
+    db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+    resolved: ResolvedCapability,
+) -> None:
+    """Raise :class:`CommitSyncUnavailable` if *resolved* can't sync now.
 
     Used by the enqueue endpoint to fail fast (400) rather than queueing a
     job that the worker can only mark failed.
     """
-    await _resolve_plugin(db, project_id)
+    ctx = await _build_context(db, org_slug, project_id, resolved)
+    credentials = decrypt_integration_credentials(
+        resolved.encrypted_credentials
+    )
+    handler = typing.cast('CommitSyncCapability', resolved.capability_cls())
+    available = await handler.check_available(ctx=ctx, credentials=credentials)
+    if not available:
+        raise CommitSyncUnavailable(
+            'The resolved commit-sync integration cannot sync this '
+            'project right now.'
+        )
 
 
 async def run_sync(
     db: graph.Graph, org_slug: str, project_id: str
 ) -> tuple[int, int]:
-    """Resolve the commit-sync plugin and run a full history backfill.
+    """Resolve the commit-sync capability and run a full history backfill.
 
     Returns ``(commits_recorded, tags_recorded)``.  Raises
-    :class:`CommitSyncUnavailable` when no plugin/credential is
-    configured; other failures propagate so the caller can record them.
+    :class:`CommitSyncUnavailable` when no integration provides the
+    capability; other failures propagate so the caller can record them.
     """
-    resolved = await _resolve_plugin(db, project_id)
-    ctx = await _build_context(db, org_slug, project_id, resolved)
-    credentials = await get_plugin_credentials(
-        db, resolved.plugin_id, resolved.entry
-    )
-    handler = resolved.entry.handler_cls()
-    sync = getattr(handler, 'sync_all_history', None)
-    if sync is None:
-        raise CommitSyncUnavailable(
-            'github-commit-sync plugin does not implement sync_all_history; '
-            'upgrade imbi-plugin-github'
+    try:
+        resolved = await resolve_capability(
+            db, project_id, _CAPABILITY_KIND, None
         )
-    sync_fn = typing.cast(
-        'abc.Callable[..., abc.Awaitable[tuple[int, int]]]', sync
+    except fastapi.HTTPException as exc:
+        raise CommitSyncUnavailable(str(exc.detail)) from exc
+    ctx = await _build_context(db, org_slug, project_id, resolved)
+    credentials = decrypt_integration_credentials(
+        resolved.encrypted_credentials
     )
-    return await sync_fn(ctx=ctx, credentials=credentials)
+    handler = typing.cast('CommitSyncCapability', resolved.capability_cls())
+    return await handler.sync_all_history(ctx=ctx, credentials=credentials)
 
 
 def _now_iso() -> str:

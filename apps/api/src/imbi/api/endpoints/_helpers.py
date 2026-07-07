@@ -207,7 +207,7 @@ async def lookup_project_links(
     if isinstance(raw, str):
         try:
             raw = json.loads(raw)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return {}
     if not isinstance(raw, dict):
         return {}
@@ -325,16 +325,16 @@ async def lookup_project_exists_in(
     """Return the project's ``EXISTS_IN`` connections.
 
     One :class:`ServiceConnection` per
-    ``(:Project)-[:EXISTS_IN]->(:ThirdPartyService)`` edge, carrying the
-    service slug, the edge ``identifier``, and the canonical API URL.
-    Returns ``[]`` on lookup failure or when the project exists in no
-    services. Populated onto :attr:`PluginContext.service_connections`
+    ``(:Project)-[:EXISTS_IN]->(:Integration)`` edge, carrying the
+    integration slug, the edge ``identifier``, and the canonical API
+    URL. Returns ``[]`` on lookup failure or when the project exists in
+    no integrations. Populated onto :attr:`PluginContext.service_connections`
     so plugins can read the relationship without re-querying the graph.
     """
     query: typing.LiteralString = (
         'MATCH (p:Project {{id: {project_id}}}) '
-        '-[ei:EXISTS_IN]->(tps:ThirdPartyService) '
-        'RETURN tps.slug AS service_slug, '
+        '-[ei:EXISTS_IN]->(i:Integration) '
+        'RETURN i.slug AS integration_slug, '
         'ei.identifier AS identifier, '
         'ei.canonical_url AS canonical_url'
     )
@@ -342,21 +342,21 @@ async def lookup_project_exists_in(
         records = await db.execute(
             query,
             {'project_id': project_id},
-            ['service_slug', 'identifier', 'canonical_url'],
+            ['integration_slug', 'identifier', 'canonical_url'],
         )
     except Exception:  # noqa: BLE001
         LOGGER.debug('Project EXISTS_IN lookup failed', exc_info=True)
         return []
     connections: list[ServiceConnection] = []
     for r in records:
-        slug = graph.parse_agtype(r.get('service_slug'))
+        slug = graph.parse_agtype(r.get('integration_slug'))
         if not slug:
             continue
         identifier = graph.parse_agtype(r.get('identifier'))
         canonical_url = graph.parse_agtype(r.get('canonical_url'))
         connections.append(
             ServiceConnection(
-                service_slug=str(slug),
+                integration_slug=str(slug),
                 identifier='' if identifier is None else str(identifier),
                 canonical_url=(
                     None if canonical_url is None else str(canonical_url)
@@ -373,7 +373,7 @@ async def persist_service_writeback(
 
     A lifecycle plugin sets ``ctx.service_writeback`` when a call
     created, moved, or tore down the project's relationship with the
-    service it is bound to (``ctx.third_party_service_slug``). Upsert the
+    Integration it is bound to (``ctx.integration_slug``). Upsert the
     ``EXISTS_IN`` edge (identifier + canonical API URL) and merge any
     dashboard links into ``Project.links`` -- or, when ``remove`` is set,
     delete the edge and drop those link keys. Best-effort: a write
@@ -383,11 +383,11 @@ async def persist_service_writeback(
     writeback = ctx.service_writeback
     if writeback is None:
         return
-    slug = ctx.third_party_service_slug
+    slug = ctx.integration_slug
     if not slug:
         LOGGER.warning(
             'Service writeback for project %s has no bound '
-            'third_party_service_slug; skipping',
+            'integration_slug; skipping',
             ctx.project_id,
         )
         return
@@ -430,12 +430,12 @@ async def _merge_exists_in(
     db: graph.Graph,
     org_slug: str,
     project_id: str,
-    tps_slug: str,
+    integration_slug: str,
     identifier: str,
     canonical_url: str,
     webhook_secret_enc: str | None = None,
 ) -> None:
-    """Upsert the ``EXISTS_IN`` edge for ``(project, service)``.
+    """Upsert the ``EXISTS_IN`` edge for ``(project, integration)``.
 
     ``webhook_secret_enc`` is an opaque, already-encrypted secret (the
     plugin encrypts it; this never decrypts or re-encrypts it) stored on
@@ -456,9 +456,9 @@ async def _merge_exists_in(
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    MATCH (tps:ThirdPartyService {{slug: {tps_slug}}})
+    MATCH (i:Integration {{slug: {integration_slug}}})
           -[:BELONGS_TO]->(o)
-    MERGE (p)-[ei:EXISTS_IN]->(tps)
+    MERGE (p)-[ei:EXISTS_IN]->(i)
     SET ei.identifier = {identifier},
         ei.canonical_url = {canonical_url}"""
         + secret_set
@@ -469,7 +469,7 @@ async def _merge_exists_in(
     params: dict[str, typing.Any] = {
         'org_slug': org_slug,
         'project_id': project_id,
-        'tps_slug': tps_slug,
+        'integration_slug': integration_slug,
         'identifier': identifier,
         'canonical_url': canonical_url,
     }
@@ -482,15 +482,18 @@ async def _delete_exists_in(
     db: graph.Graph,
     org_slug: str,
     project_id: str,
-    tps_slug: str,
+    integration_slug: str,
 ) -> None:
-    """Remove the ``EXISTS_IN`` edge for ``(project, service)``. Idempotent."""
+    """Remove the ``EXISTS_IN`` edge for ``(project, integration)``.
+
+    Idempotent.
+    """
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
     OPTIONAL MATCH (p)-[ei:EXISTS_IN]->
-          (tps:ThirdPartyService {{slug: {tps_slug}}})
+          (i:Integration {{slug: {integration_slug}}})
     DELETE ei
     """
     await db.execute(
@@ -498,7 +501,7 @@ async def _delete_exists_in(
         {
             'org_slug': org_slug,
             'project_id': project_id,
-            'tps_slug': tps_slug,
+            'integration_slug': integration_slug,
         },
         [],
     )

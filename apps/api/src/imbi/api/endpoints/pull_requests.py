@@ -319,16 +319,20 @@ async def _fetch_login_users(
 ) -> dict[str, dict[str, str | None]]:
     """Map lower-cased GitHub login -> Imbi user display fields.
 
-    Built from every active ``IdentityConnection`` to the GitHub identity
-    plugin whose metadata carries a ``login``.  Restricting to the GitHub
-    plugin prevents a non-GitHub connection sharing the same metadata key
-    from mapping a PR author to the wrong Imbi user.  Logins without a
-    GitHub connection simply won't appear.
+    Built from every active ``IdentityConnection`` whose bound
+    ``Integration`` runs the ``github`` plugin and whose metadata carries
+    a ``login``.  Plugin Architecture v3: an ``IdentityConnection`` keys
+    off ``Integration.id`` (``c.integration_id``) rather than a
+    ``USES_PLUGIN`` edge to a ``:Plugin`` node, so the Integration is
+    joined by property equality. Restricting to the ``github`` plugin
+    prevents a non-GitHub connection sharing the same metadata key from
+    mapping a PR author to the wrong Imbi user.  Logins without a GitHub
+    connection simply won't appear.
     """
     query: typing.LiteralString = """
     MATCH (u:User)-[:HAS_IDENTITY]->(c:IdentityConnection)
-          -[:USES_PLUGIN]->(:Plugin {{plugin_slug: 'github'}})
     WHERE c.status = 'active'
+    MATCH (i:Integration) WHERE i.id = c.integration_id AND i.plugin = 'github'
     RETURN u.email AS email,
            u.display_name AS display_name,
            u.avatar_url AS avatar_url,

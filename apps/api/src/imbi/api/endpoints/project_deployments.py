@@ -27,16 +27,16 @@ import nanoid
 import pydantic
 from imbi_common import clickhouse, graph, versioning
 from imbi_common import models as common_models
+from imbi_common.plugins import decrypt_integration_credentials
 from imbi_common.plugins.base import (
     Commit,
     CompareResult,
-    DeploymentPlugin,
+    DeploymentCapability,
     DeploymentRun,
     PluginContext,
     Ref,
     RemoteDeployment,
 )
-from imbi_common.plugins.errors import PluginCredentialsMissing
 
 from imbi_api.auth import permissions
 from imbi_api.endpoints._helpers import (
@@ -57,12 +57,7 @@ from imbi_api.identity.host_integration import (
 )
 from imbi_api.llm.dependencies import InjectAnthropicClient
 from imbi_api.plugins import call_with_timeout
-from imbi_api.plugins.credentials import get_plugin_credentials
-from imbi_api.plugins.resolution import (
-    ResolvedPlugin,
-    resolve_plugin,
-    resolve_service_plugins,
-)
+from imbi_api.plugins.resolution import ResolvedCapability, resolve_capability
 
 LOGGER = logging.getLogger(__name__)
 
@@ -333,9 +328,9 @@ async def _resolve_and_context(
     *,
     source: str | None = None,
     environment: str | None = None,
-) -> tuple[ResolvedPlugin, PluginContext, dict[str, str]]:
+) -> tuple[ResolvedCapability, PluginContext, dict[str, str]]:
     """Common boilerplate: resolve plugin, attach identity, build creds."""
-    resolved = await resolve_plugin(db, project_id, 'deployment', source)
+    resolved = await resolve_capability(db, project_id, 'deployment', source)
     project_slug, team_slug = await lookup_project_slugs(db, project_id)
     project_links = await lookup_project_links(db, project_id)
     project_type_slugs = await lookup_project_type_slugs(db, project_id)
@@ -354,11 +349,12 @@ async def _resolve_and_context(
         org_slug=org_slug,
         team_slug=team_slug,
         environment=environment,
-        assignment_options=resolved.options,
+        assignment_options=resolved.capability_options,
+        integration_options=resolved.integration_options,
+        capability_options=resolved.capability_options,
         environment_config=environment_config,
         project_links=project_links,
         project_type_slugs=project_type_slugs,
-        service_plugins=await resolve_service_plugins(db, project_id),
     )
     ctx = await attach_identity(db, ctx, resolved, auth)
 
@@ -367,15 +363,9 @@ async def _resolve_and_context(
             'access_token': ctx.identity.access_token,
         }
     else:
-        try:
-            credentials = await get_plugin_credentials(
-                db, resolved.plugin_id, resolved.entry
-            )
-        except PluginCredentialsMissing as exc:
-            raise fastapi.HTTPException(
-                status_code=503,
-                detail=str(exc),
-            ) from exc
+        credentials = decrypt_integration_credentials(
+            resolved.encrypted_credentials
+        )
         if not credentials.get('access_token') and not credentials.get(
             'token'
         ):
@@ -537,9 +527,9 @@ def _promote_warning(step: str, exc: BaseException) -> str:
     return f'{step} failed ({type(exc).__name__}); see server logs.'
 
 
-def _handler(resolved: ResolvedPlugin) -> DeploymentPlugin:
+def _handler(resolved: ResolvedCapability) -> DeploymentCapability:
     """Instantiate and type-narrow the plugin handler."""
-    return typing.cast(DeploymentPlugin, resolved.entry.handler_cls())
+    return typing.cast(DeploymentCapability, resolved.capability_cls())
 
 
 def _resolve_credentials(
@@ -795,7 +785,14 @@ async def resync_for_project(
     resolved, ctx, credentials = await _resolve_and_context(
         db, org_slug, project_id, auth, source=source
     )
-    if not getattr(resolved.entry.manifest, 'supports_deployment_sync', False):
+    deployment_capability = resolved.entry.manifest.get_capability(
+        'deployment'
+    )
+    supports_deployment_sync = bool(
+        deployment_capability
+        and deployment_capability.hints.get('supports_deployment_sync')
+    )
+    if not supports_deployment_sync:
         raise fastapi.HTTPException(
             status_code=400,
             detail=(
@@ -840,10 +837,10 @@ async def resync_for_project(
     # plugins on the same service) so ``performed_by`` matches in-product
     # deploys and the user_activity queries that key on the email. Built
     # once and reused across every observed deployment.
-    service_plugins = await attribution.load_service_plugins(
-        db, project_id=project_id, plugin_id=resolved.plugin_id
+    integration_ids = await attribution.identity_integration_ids_for_project(
+        db, project_id
     )
-    resolve_user = attribution.make_user_resolver(db, service_plugins)
+    resolve_user = attribution.make_user_resolver(db, integration_ids)
     # Track identities we've already touched so ``releases_created`` /
     # ``releases_updated`` are counted once per distinct
     # ``(committish, tag)`` pair -- the same tag promoted across
@@ -1388,7 +1385,7 @@ async def _handle_deploy(
         )
     return DeploymentTriggerResponse(
         run=run,
-        plugin_id=resolved.plugin_id,
+        plugin_id=resolved.integration_id,
         plugin_slug=resolved.plugin_slug,
         recorded=result is not None,
     )
@@ -1398,8 +1395,8 @@ async def _cut_tag_and_release(
     db: graph.Graph,
     *,
     ctx: PluginContext,
-    resolved: ResolvedPlugin,
-    handler: DeploymentPlugin,
+    resolved: ResolvedCapability,
+    handler: DeploymentCapability,
     credentials: dict[str, str],
     auth: permissions.AuthContext,
     from_committish: str,
@@ -1506,8 +1503,8 @@ async def _promote_cut_release(
     db: graph.Graph,
     *,
     ctx: PluginContext,
-    resolved: ResolvedPlugin,
-    handler: DeploymentPlugin,
+    resolved: ResolvedCapability,
+    handler: DeploymentCapability,
     credentials: dict[str, str],
     auth: permissions.AuthContext,
     body: PromoteActionRequest,
@@ -1666,7 +1663,7 @@ async def _handle_promote(
         warnings.append(_promote_warning('trigger_deployment', exc))
         return DeploymentTriggerResponse(
             run=run,
-            plugin_id=resolved.plugin_id,
+            plugin_id=resolved.integration_id,
             plugin_slug=resolved.plugin_slug,
             recorded=False,
             release_url=release_url,
@@ -1734,7 +1731,7 @@ async def _handle_promote(
     )
     return DeploymentTriggerResponse(
         run=run,
-        plugin_id=resolved.plugin_id,
+        plugin_id=resolved.integration_id,
         plugin_slug=resolved.plugin_slug,
         recorded=promote_result is not None,
         release_url=release_url,

@@ -37,7 +37,7 @@ _NODE_TYPES: list[type[models.Node]] = [
     models.Team,
     models.Environment,
     models.ProjectType,
-    models.ThirdPartyService,
+    models.Integration,
     models.Tag,
     models.LinkDefinition,
     models.DocumentTemplate,

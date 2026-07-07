@@ -8,11 +8,10 @@ import typing
 from urllib import parse as urlparse
 
 import fastapi
-import httpx
 import jwt
 import pydantic
 from imbi_common import graph
-from imbi_common.auth import core, encryption
+from imbi_common.auth import core
 from imbi_common.plugins import errors as plugin_errors
 from valkey import asyncio as valkey_module
 
@@ -21,7 +20,6 @@ from imbi_api.auth import (
     authorization_codes,
     local_auth,
     login_providers,
-    oauth,
     oauth_clients,
     permissions,
     tokens,
@@ -1257,20 +1255,24 @@ async def oauth_login(
 ) -> fastapi.responses.RedirectResponse:
     """Initiate OAuth login flow.
 
+    Every login provider is now a login-capable ``Integration`` whose
+    plugin implements the ``identity`` capability; the authorization
+    URL and token exchange are owned entirely by that plugin's
+    handler via :mod:`imbi_api.identity.flows`.
+
     Args:
-        provider: OAuth provider ('google', 'github', 'oidc')
+        provider: Login-Integration slug
         redirect_uri: Where to redirect after successful auth
 
     Returns:
-        Redirect to OAuth provider's authorization page
+        Redirect to the provider's authorization page
 
     Raises:
-        HTTPException: 400 if provider not enabled or invalid
+        HTTPException: 404 if provider not enabled or invalid, 503 if
+            its plugin isn't loaded
 
     """
-    auth_settings = settings.get_auth_settings()
-
-    # Provider is now an arbitrary slug. Resolve via login_providers.
+    # Provider is an arbitrary slug. Resolve via login_providers.
     app = await login_providers.get_login_app(db, provider)
     if app is None or app.status != 'active':
         raise fastapi.HTTPException(
@@ -1302,93 +1304,27 @@ async def oauth_login(
             detail='Invalid redirect_uri',
         )
 
-    # Identity-plugin login providers route through the registry's
-    # plugin handler — same redirect, but the URL builder + token
-    # exchange are owned by the plugin instead of the hardcoded
-    # branches below.
-    if app.oauth_app_type == 'identity_plugin':
-        if not app.plugin_id:
-            raise fastapi.HTTPException(
-                status_code=500,
-                detail=f'Identity plugin row {provider!r} missing plugin_id',
-            )
-        callback_url = settings.oauth_callback_url(
-            provider, base_url=request_base
-        )
-        try:
-            url, _state, _polling = await identity_flows.start_flow(
-                db,
-                plugin_id=app.plugin_id,
-                redirect_uri=callback_url,
-                actor_user_id=None,
-                return_to=redirect_uri,
-                intent='login',
-            )
-        except plugin_errors.PluginNotFoundError as exc:
-            raise fastapi.HTTPException(
-                status_code=503,
-                detail=f'Identity plugin {provider!r} not loaded',
-            ) from exc
-        LOGGER.info(
-            'Identity-plugin login initiated for slug %s (plugin_id=%s)',
-            provider,
-            app.plugin_id,
-        )
-        return fastapi.responses.RedirectResponse(url=url)
-
-    state_token, _ = oauth.generate_oauth_state(
-        provider, redirect_uri, auth_settings
-    )
-
     callback_url = settings.oauth_callback_url(provider, base_url=request_base)
-
-    auth_url = ''
-    if app.oauth_app_type == 'google':
-        params = {
-            'client_id': app.client_id or '',
-            'redirect_uri': callback_url,
-            'response_type': 'code',
-            'scope': 'openid email profile',
-            'state': state_token,
-        }
-        auth_url = (
-            'https://accounts.google.com/o/oauth2/v2/auth?'
-            + urlparse.urlencode(params)
+    try:
+        url, _state, _polling = await identity_flows.start_flow(
+            db,
+            integration_id=app.integration_id,
+            redirect_uri=callback_url,
+            actor_user_id=None,
+            return_to=redirect_uri,
+            intent='login',
         )
-    elif app.oauth_app_type == 'github':
-        params = {
-            'client_id': app.client_id or '',
-            'redirect_uri': callback_url,
-            'scope': 'read:user user:email',
-            'state': state_token,
-        }
-        auth_url = (
-            'https://github.com/login/oauth/authorize?'
-            + urlparse.urlencode(params)
-        )
-    elif app.oauth_app_type == 'oidc':
-        # Prefer the parent ThirdPartyService's authorization_endpoint;
-        # fall back to a Keycloak-shaped magic URL only as a last resort.
-        params = {
-            'client_id': app.client_id or '',
-            'redirect_uri': callback_url,
-            'response_type': 'code',
-            'scope': 'openid email profile',
-            'state': state_token,
-        }
-        if app.authorization_endpoint:
-            auth_url = (
-                app.authorization_endpoint + '?' + urlparse.urlencode(params)
-            )
-        else:
-            issuer = (app.issuer_url or '').rstrip('/')
-            auth_url = (
-                f'{issuer}/protocol/openid-connect/auth?'
-                + urlparse.urlencode(params)
-            )
-
-    LOGGER.info('OAuth login initiated for provider %s', provider)
-    return fastapi.responses.RedirectResponse(url=auth_url)
+    except plugin_errors.PluginNotFoundError as exc:
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail=f'Login provider {provider!r} not loaded',
+        ) from exc
+    LOGGER.info(
+        'Login flow initiated for provider %s (integration_id=%s)',
+        provider,
+        app.integration_id,
+    )
+    return fastapi.responses.RedirectResponse(url=url)
 
 
 @auth_router.get('/oauth/{provider}/callback')
@@ -1437,148 +1373,20 @@ async def oauth_callback(
         # Validate required parameters
         if not code or not state:
             raise ValueError('Missing required parameters: code and state')
-
-        # Identity-plugin login providers use the registry's
-        # exchange_code instead of the legacy oauth.py paths. We
-        # detect this by re-resolving the slug — the LoginApp's
-        # source discriminator says which path to take.
-        login_app_for_callback = await login_providers.get_login_app(
-            db, provider
-        )
-        if (
-            login_app_for_callback is not None
-            and login_app_for_callback.oauth_app_type == 'identity_plugin'
-        ):
-            return await _identity_plugin_login_callback(
-                db,
-                provider,
-                code,
-                state,
-                auth_settings,
-                valkey_client,
-            )
-
-        # Verify state parameter + atomically mark the nonce consumed
-        # so a captured state cannot be replayed within its TTL.
-        state_data = await oauth.verify_oauth_state(
+        return await _login_callback(
+            db,
+            provider,
+            code,
             state,
             auth_settings,
-            valkey_client=valkey_client,
+            valkey_client,
         )
-
-        if state_data.provider != provider:
-            raise ValueError('Provider mismatch')
-
-        # Exchange code for tokens. The redirect_uri must byte-match the
-        # one sent at authorize time; both derive from the request's
-        # trusted origin, and the IdP redirected the browser back to this
-        # same host, so they agree on a multi-host deployment.
-        callback_url = settings.oauth_callback_url(
-            provider,
-            base_url=_request_urls.public_base_url_for_request(request),
-        )
-        token_response = await oauth.exchange_oauth_code(
-            provider, code, callback_url, db
-        )
-
-        # Fetch user profile
-        profile = await oauth.fetch_oauth_profile(
-            provider,
-            token_response['access_token'],
-            db,
-        )
-
-        # Find or create OAuth identity
-        oauth_identity = await find_or_create_oauth_identity(
-            db, provider, profile, token_response, auth_settings
-        )
-
-        # Get associated user — fetch via graph query keyed on the
-        # OAuthIdentity's ServiceApplication slug (#255).
-        user_q: typing.LiteralString = """
-        MATCH (oi:OAuthIdentity {{
-            provider_slug: {provider_slug},
-            provider_user_id: {provider_user_id}
-        }})-[:OAUTH_IDENTITY]->(u:User)
-        RETURN u
-        """
-        user_records = await db.execute(
-            user_q,
-            {
-                'provider_slug': oauth_identity.provider_slug,
-                'provider_user_id': profile['id'],
-            },
-            ['u'],
-        )
-        if not user_records:
-            raise ValueError('No user linked to OAuth identity')
-        user_data = graph.parse_agtype(user_records[0]['u'])
-        user = models.User(**user_data)
-
-        if user.is_service_account:
-            raise ValueError(
-                'Service accounts cannot use OAuth authentication'
-            )
-
-        # Create JWT tokens
-        at, rt, meta = await tokens.issue_token_pair(
-            db,
-            principal_type='user',
-            principal_id=user.email,
-            auth_settings=auth_settings,
-        )
-        now = meta['issued_at']
-
-        # Update user last_login
-        user.last_login = now
-        await db.merge(user, match_on=['email'])
-
-        # Update OAuth identity last_used. Direct SET (not db.merge) so
-        # we don't walk the User edge target — when oauth_identity was
-        # loaded via db.match the edge isn't populated.
-        oauth_identity.last_used = now
-        update_last_used: typing.LiteralString = (
-            'MATCH (oi:OAuthIdentity {{provider_slug: {provider_slug},'
-            ' provider_user_id: {provider_user_id}}})'
-            ' SET oi.last_used = {last_used}'
-        )
-        await db.execute(
-            update_last_used,
-            {
-                'provider_slug': oauth_identity.provider_slug,
-                'provider_user_id': oauth_identity.provider_user_id,
-                'last_used': now.isoformat(),
-            },
-        )
-
-        LOGGER.info(
-            'OAuth login successful for user %s via %s',
-            user.email,
-            provider,
-        )
-
-        # Hand the access token to the SPA via the URL fragment but keep
-        # the refresh token out of it — it goes in an HttpOnly cookie (C2)
-        # so it never lands in browser history, the Referer header, or logs.
-        redirect_url = (
-            f'{state_data.redirect_uri}#'
-            f'access_token={at}&'
-            f'token_type=bearer&'
-            f'expires_in='
-            f'{auth_settings.access_token_expire_seconds}'
-        )
-        redirect = fastapi.responses.RedirectResponse(url=redirect_url)
-        _set_refresh_cookie(redirect, rt)
-        _set_access_cookie(redirect, at)
-        return redirect
-
     except (
         ValueError,
         KeyError,
         jwt.InvalidTokenError,
-        httpx.HTTPError,
         fastapi.HTTPException,
-        # verify_oauth_state raises RuntimeError when the Valkey replay-
+        # complete_login_flow raises RuntimeError when the Valkey replay-
         # protection backend is unavailable; surface that as the normal
         # auth-failed redirect so a missing dependency doesn't return a
         # bare 500.
@@ -1590,7 +1398,7 @@ async def oauth_callback(
         )
 
 
-async def _identity_plugin_login_callback(
+async def _login_callback(
     db: graph.Graph,
     provider: str,
     code: str,
@@ -1598,18 +1406,18 @@ async def _identity_plugin_login_callback(
     auth_settings: settings.Auth,
     valkey_client: valkey_module.Valkey | None,
 ) -> fastapi.responses.RedirectResponse:
-    """Complete a login-intent flow handled by an identity plugin.
+    """Complete a login-intent flow handled by a login-Integration's plugin.
 
-    Mirrors the OAuth callback's user-provisioning + JWT-issue path
-    but uses :func:`identity_flows.complete_login_flow` instead of the
-    hardcoded OAuth branches and persists an
-    :class:`imbi_common.models.IdentityConnection` instead of an
-    :class:`imbi_api.domain.models.OAuthIdentity`.
+    Every login provider is a login-capable ``Integration``; the
+    authorization-code exchange is owned by the plugin's identity
+    capability handler via :func:`identity_flows.complete_login_flow`.
+    Persists an :class:`imbi_common.models.IdentityConnection` once the
+    local user has been resolved / provisioned.
     """
     (
         profile,
         credentials,
-        plugin_id,
+        integration_id,
         return_to,
     ) = await identity_flows.complete_login_flow(
         db,
@@ -1619,7 +1427,7 @@ async def _identity_plugin_login_callback(
     )
     if not profile.email:
         raise ValueError(
-            'Identity plugin returned no email; cannot establish a session'
+            'Login provider returned no email; cannot establish a session'
         )
 
     user_results = await db.match(models.User, {'email': profile.email})
@@ -1633,13 +1441,13 @@ async def _identity_plugin_login_callback(
             )
         if not profile.email_verified:
             raise ValueError(
-                'Refusing to auto-link identity-plugin login to existing '
+                'Refusing to auto-link login to existing '
                 f'user {profile.email}: provider did not assert '
                 'email_verified=true.'
             )
         user = existing
         LOGGER.info(
-            'Linked identity-plugin %s to existing user %s',
+            'Linked login provider %s to existing user %s',
             provider,
             user.email,
         )
@@ -1662,20 +1470,18 @@ async def _identity_plugin_login_callback(
         )
         await db.merge(user, ['email'])
         LOGGER.info(
-            'Created new user %s via identity-plugin %s',
+            'Created new user %s via login provider %s',
             user.email,
             provider,
         )
 
     if user.is_service_account:
-        raise ValueError(
-            'Service accounts cannot use identity-plugin authentication'
-        )
+        raise ValueError('Service accounts cannot use login providers')
 
     # Persist the IdentityConnection now that we have a user_id.
     await identity_repository.upsert_connection(
         db,
-        plugin_id,
+        integration_id,
         user.id,
         profile,
         credentials,
@@ -1704,211 +1510,3 @@ async def _identity_plugin_login_callback(
     _set_refresh_cookie(redirect, rt)
     _set_access_cookie(redirect, at)
     return redirect
-
-
-async def find_or_create_oauth_identity(
-    db: graph.Graph,
-    provider: str,
-    profile: dict[str, typing.Any],
-    token_response: dict[str, typing.Any],
-    auth_settings: settings.Auth,
-) -> models.OAuthIdentity:
-    """Find existing or create new OAuth identity and user.
-
-    Logic:
-    1. Check if OAuth identity exists (by provider +
-       provider_user_id)
-    2. If exists, return it (with updated tokens)
-    3. If not exists:
-       a. Check if auto-link by email is enabled and user exists
-       b. Otherwise create new user
-       c. Create OAuth identity linked to user
-
-    Args:
-        db: Graph database instance
-        provider: OAuth provider identifier
-        profile: Normalized user profile from OAuth provider
-        token_response: Token response from OAuth provider
-        auth_settings: Auth settings instance
-
-    Returns:
-        OAuthIdentity with linked user
-
-    Raises:
-        ValueError: If user auto-creation disabled and no user
-            found
-        ValueError: If email domain not in allowed list (Google
-            OAuth)
-
-    """
-    # ``provider`` is now a ServiceApplication slug. Resolve to the
-    # row to determine oauth_app_type for storage and to enforce any
-    # Google domain restrictions on the row.
-    app = await login_providers.get_login_app(db, provider)
-    if app is None:
-        raise ValueError(f'Login provider {provider!r} not found')
-    oauth_app_type = app.oauth_app_type
-    if oauth_app_type == 'google' and app.allowed_domains:
-        email_domain = profile['email'].split('@')[1].lower()
-        allowed = [d.lower() for d in app.allowed_domains]
-        if email_domain not in allowed:
-            raise ValueError(
-                f'Email domain {email_domain} not in allowed'
-                f' domains: ' + ', '.join(app.allowed_domains)
-            )
-
-    # OAuthIdentity is keyed on ``provider_slug`` (#255): two configured
-    # IdPs of the same ``oauth_app_type`` would otherwise collide on
-    # ``provider_user_id`` when their ``sub`` values overlap.
-    identity_results = await db.match(
-        models.OAuthIdentity,
-        {
-            'provider_slug': provider,
-            'provider_user_id': profile['id'],
-        },
-    )
-    identity = identity_results[0] if identity_results else None
-
-    if identity:
-        # Refresh the row's encrypted tokens + expiry. ``db.merge`` walks
-        # the ``user`` edge target which ``db.match`` doesn't populate,
-        # so go through a direct SET. The model is updated in-memory so
-        # the return value reflects the new tokens.
-        encryptor = encryption.TokenEncryption.get_instance()
-        identity.set_encrypted_tokens(
-            token_response['access_token'],
-            token_response.get('refresh_token'),
-            encryptor,
-        )
-        identity.token_expires_at = datetime.datetime.now(
-            datetime.UTC
-        ) + datetime.timedelta(seconds=token_response.get('expires_in', 3600))
-        update_tokens_query: typing.LiteralString = (
-            'MATCH (oi:OAuthIdentity {{provider_slug: {provider_slug},'
-            ' provider_user_id: {provider_user_id}}})'
-            ' SET oi.access_token = {access_token},'
-            ' oi.refresh_token = {refresh_token},'
-            ' oi.token_expires_at = {token_expires_at}'
-        )
-        await db.execute(
-            update_tokens_query,
-            {
-                'provider_slug': provider,
-                'provider_user_id': profile['id'],
-                'access_token': identity.access_token,
-                'refresh_token': identity.refresh_token,
-                'token_expires_at': identity.token_expires_at.isoformat(),
-            },
-        )
-        return identity  # type: ignore[no-any-return]
-
-    # OAuth identity doesn't exist - need to create it
-
-    # Look up an existing user by email — always, regardless of the
-    # auto-link flag. The flag only controls whether a match means
-    # "link this OAuth identity" or "reject the login". Without this
-    # lookup, a brand-new OAuth login for an email that already has a
-    # local account would race the unique-email index and trip a
-    # UniqueViolation.
-    user_results = await db.match(models.User, {'email': profile['email']})
-    existing = user_results[0] if user_results else None
-
-    if existing is not None:
-        if not auth_settings.oauth_auto_link_by_email:
-            raise ValueError(
-                f'A user with email {profile["email"]} already exists. '
-                'OAuth auto-link by email is disabled.'
-            )
-        # Refuse to link an existing local account to an OAuth identity
-        # that the IdP has not vouched for. Without this, any IdP that
-        # returns an unverified email could take over a local account
-        # by simply asserting that address. ``email_verified`` is set
-        # by ``normalize_oauth_profile`` per provider type (always True
-        # for GitHub's primary email; from the claim for Google/OIDC).
-        if not profile.get('email_verified'):
-            raise ValueError(
-                f'Refusing to auto-link OAuth identity to existing user '
-                f'{profile["email"]}: provider did not assert '
-                'email_verified=true.'
-            )
-        user = existing
-        LOGGER.info(
-            'Linked OAuth %s identity to existing user %s',
-            provider,
-            user.email,
-        )
-    else:
-        if not auth_settings.oauth_auto_create_users:
-            raise ValueError('User auto-creation disabled')
-
-        user = models.User(
-            email=profile['email'],
-            display_name=profile['name'],
-            password_hash=None,  # OAuth-only user
-            is_active=True,
-            is_admin=False,
-            is_service_account=False,
-            created_at=datetime.datetime.now(datetime.UTC),
-            avatar_url=profile.get('avatar_url'),
-        )
-
-        await db.merge(user, ['email'])
-        LOGGER.info(
-            'Created new user %s via OAuth %s',
-            user.email,
-            provider,
-        )
-
-    # Create OAuth identity (Phase 5: with encrypted tokens)
-    now = datetime.datetime.now(datetime.UTC)
-    identity = models.OAuthIdentity(
-        provider_slug=provider,
-        provider_user_id=profile['id'],
-        email=profile['email'],
-        display_name=profile['name'],
-        avatar_url=profile.get('avatar_url'),
-        access_token=None,  # Set encrypted tokens below
-        refresh_token=None,  # Set encrypted tokens below
-        token_expires_at=now
-        + datetime.timedelta(seconds=token_response.get('expires_in', 3600)),
-        linked_at=now,
-        last_used=now,
-        raw_profile=profile,
-        user=user,
-    )
-
-    # Phase 5: Encrypt tokens before storing
-    encryptor = encryption.TokenEncryption.get_instance()
-    identity.set_encrypted_tokens(
-        token_response['access_token'],
-        token_response.get('refresh_token'),
-        encryptor,
-    )
-
-    await db.merge(identity)
-
-    # Create relationship via Cypher
-    rel_query: typing.LiteralString = """
-    MATCH (oi:OAuthIdentity {{
-        provider_slug: {provider_slug},
-        provider_user_id: {provider_user_id}
-    }})
-    MATCH (u:User {{email: {email}}})
-    MERGE (oi)-[:OAUTH_IDENTITY]->(u)
-    """
-    await db.execute(
-        rel_query,
-        {
-            'provider_slug': provider,
-            'provider_user_id': profile['id'],
-            'email': user.email,
-        },
-    )
-
-    LOGGER.info(
-        'Created OAuth identity for user %s via %s',
-        user.email,
-        provider,
-    )
-
-    return identity

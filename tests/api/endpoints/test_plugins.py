@@ -46,48 +46,51 @@ class PluginManifestEndpointTestCase(support.SharedAppTestCase):
 
     def _entry(self) -> object:
         from imbi_common.plugins.base import (
-            ConfigurationPlugin,
+            Capability,
             CredentialField,
+            LogsCapability,
             PluginManifest,
             PluginOption,
         )
-        from imbi_common.plugins.registry import RegistryEntry
 
-        class _Fake(ConfigurationPlugin):
-            manifest = PluginManifest(
-                slug='logzio',
-                name='Logz.io',
-                description='Logz.io log search',
-                plugin_type='logs',
-                options=[
-                    PluginOption(
-                        name='base_query',
-                        label='Base Query Template',
-                        type='string',
-                        description='Elasticsearch query_string clause.',
-                    ),
-                    PluginOption(
-                        name='region',
-                        label='Region',
-                        type='string',
-                        choices=['us', 'eu'],
-                        default='us',
-                    ),
-                ],
-                credentials=[
-                    CredentialField(
-                        name='api_token',
-                        label='API Token',
-                    ),
-                ],
-            )
+        class _FakeLogs(LogsCapability):
+            async def search(self, ctx, credentials, query):  # type: ignore[override]
+                raise NotImplementedError
 
-        return RegistryEntry(
-            handler_cls=_Fake,
-            manifest=_Fake.manifest,
-            package_name='imbi-plugin-logzio',
-            package_version='0.1.0',
+            async def schema(self, ctx, credentials):  # type: ignore[override]
+                return []
+
+        manifest = PluginManifest(
+            slug='logzio',
+            name='Logz.io',
+            description='Logz.io log search',
+            options=[
+                PluginOption(
+                    name='base_query',
+                    label='Base Query Template',
+                    type='string',
+                    description='Elasticsearch query_string clause.',
+                ),
+                PluginOption(
+                    name='region',
+                    label='Region',
+                    type='string',
+                    choices=['us', 'eu'],
+                    default='us',
+                ),
+            ],
+            credentials=[
+                CredentialField(
+                    name='api_token',
+                    label='API Token',
+                ),
+            ],
+            capabilities=[
+                Capability(kind='logs', label='Logs', handler=_FakeLogs)
+            ],
         )
+
+        return support.registry_entry(manifest, package_version='0.1.0')
 
     def test_returns_manifest(self) -> None:
         with (
@@ -103,7 +106,7 @@ class PluginManifestEndpointTestCase(support.SharedAppTestCase):
         data = response.json()
         self.assertEqual(data['slug'], 'logzio')
         self.assertEqual(data['name'], 'Logz.io')
-        self.assertEqual(data['plugin_type'], 'logs')
+        self.assertEqual([c['kind'] for c in data['capabilities']], ['logs'])
         self.assertEqual(len(data['options']), 2)
         self.assertEqual(data['options'][0]['name'], 'base_query')
         self.assertEqual(data['options'][0]['label'], 'Base Query Template')

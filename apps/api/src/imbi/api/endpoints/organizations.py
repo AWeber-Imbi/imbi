@@ -23,7 +23,7 @@ from .documents import (
 )
 from .environments import environments_router
 from .events import events_project_router
-from .identity_plugins import identity_plugins_router
+from .integrations import integrations_router
 from .link_definitions import link_definitions_router
 from .operations_log import operations_log_project_router
 from .project_analysis import project_analysis_router
@@ -33,18 +33,14 @@ from .project_deployments import project_deployments_router
 from .project_incidents import project_incidents_router
 from .project_lifecycle import project_lifecycle_router
 from .project_logs import project_logs_router
-from .project_plugins import project_plugins_router
 from .project_pr_sync import project_pr_sync_router
-from .project_type_plugins import project_type_plugins_router
 from .project_types import project_types_router
 from .projects import projects_router
 from .pull_requests import pull_requests_project_router, pull_requests_router
 from .releases import releases_router
 from .search import search_router
-from .service_plugins import service_plugins_router
 from .tags import tags_router
 from .teams import teams_router
-from .third_party_services import third_party_services_router
 from .webhooks import project_services_router, webhooks_router
 
 LOGGER = logging.getLogger(__name__)
@@ -74,8 +70,8 @@ organizations_router.include_router(
     prefix='/{org_slug}/projects',
 )
 organizations_router.include_router(
-    third_party_services_router,
-    prefix='/{org_slug}/third-party-services',
+    integrations_router,
+    prefix='/{org_slug}/integrations',
 )
 organizations_router.include_router(
     webhooks_router,
@@ -132,22 +128,6 @@ organizations_router.include_router(
 organizations_router.include_router(
     document_templates_router,
     prefix='/{org_slug}/document-templates',
-)
-organizations_router.include_router(
-    service_plugins_router,
-    prefix='/{org_slug}/third-party-services/{slug}/plugins',
-)
-organizations_router.include_router(
-    identity_plugins_router,
-    prefix='/{org_slug}/identity-plugins',
-)
-organizations_router.include_router(
-    project_type_plugins_router,
-    prefix='/{org_slug}/project-types/{pt_slug}/plugins',
-)
-organizations_router.include_router(
-    project_plugins_router,
-    prefix='/{org_slug}/projects/{project_id}/plugins',
 )
 organizations_router.include_router(
     project_configuration_router,

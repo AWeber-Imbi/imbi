@@ -11,11 +11,13 @@ from imbi_common import graph
 from imbi_common.llm import AnthropicClient, CompletionResult
 from imbi_common.models import SEMVER_TAG_FORMAT, TagFormat
 from imbi_common.plugins.base import (
+    Capability,
     Commit,
     CompareResult,
-    DeploymentPlugin,
+    DeploymentCapability,
     DeploymentRun,
     LinkWriteback,
+    Plugin,
     PluginManifest,
     Ref,
     RefInfo,
@@ -33,18 +35,11 @@ from imbi_api.endpoints.project_deployments import (
     persist_link_writeback,
 )
 from imbi_api.llm.dependencies import _get_anthropic_client
-from imbi_api.plugins.resolution import ResolvedPlugin
+from imbi_api.plugins.resolution import ResolvedCapability
 from tests import support
 
 
-class _FakeDeploymentPlugin(DeploymentPlugin):
-    manifest = PluginManifest(
-        slug='github-deployment',
-        name='GitHub Deployment',
-        plugin_type='deployment',
-        supports_deployment_sync=True,
-    )
-
+class _FakeDeploymentPlugin(DeploymentCapability):
     async def list_refs(  # type: ignore[override]
         self, ctx, credentials, kind='all', query=None
     ):
@@ -119,13 +114,6 @@ class _FakeDeploymentPlugin(DeploymentPlugin):
 class _FakeNoSyncDeploymentPlugin(_FakeDeploymentPlugin):
     """Deployment plugin that opts *out* of resync."""
 
-    manifest = PluginManifest(
-        slug='no-sync-deployment',
-        name='No-Sync Deployment',
-        plugin_type='deployment',
-        supports_deployment_sync=False,
-    )
-
 
 class _RelocatingDeploymentPlugin(_FakeDeploymentPlugin):
     """Deployment plugin that reports a repo rename on every call.
@@ -158,12 +146,69 @@ class _RelocatingDeploymentPlugin(_FakeDeploymentPlugin):
         )
 
 
-def _entry() -> RegistryEntry:
+class _FakePlugin(Plugin):
+    pass
+
+
+def _manifest(
+    handler: type[DeploymentCapability],
+    *,
+    slug: str = 'github-deployment',
+    name: str = 'GitHub Deployment',
+    sync: bool = True,
+) -> PluginManifest:
+    hints = {'supports_deployment_sync': True} if sync else {}
+    return PluginManifest(
+        slug=slug,
+        name=name,
+        capabilities=[
+            Capability(
+                kind='deployment',
+                label='Deployment',
+                handler=handler,
+                hints=hints,
+            )
+        ],
+    )
+
+
+def _entry(
+    handler: type[DeploymentCapability] = _FakeDeploymentPlugin,
+    *,
+    slug: str = 'github-deployment',
+    name: str = 'GitHub Deployment',
+    sync: bool = True,
+) -> RegistryEntry:
     return RegistryEntry(
-        handler_cls=_FakeDeploymentPlugin,
-        manifest=_FakeDeploymentPlugin.manifest,
+        plugin_cls=_FakePlugin,
+        manifest=_manifest(handler, slug=slug, name=name, sync=sync),
         package_name='imbi-plugin-github',
         package_version='0.1.0',
+    )
+
+
+def _make_resolved(
+    handler: type[DeploymentCapability] = _FakeDeploymentPlugin,
+    *,
+    slug: str = 'github-deployment',
+    name: str = 'GitHub Deployment',
+    sync: bool = True,
+    options: dict[str, typing.Any] | None = None,
+    env_payloads: dict[str, dict[str, typing.Any]] | None = None,
+) -> ResolvedCapability:
+    entry = _entry(handler, slug=slug, name=name, sync=sync)
+    return ResolvedCapability(
+        integration_id='p-1',
+        integration_slug=f'{slug}-prod',
+        plugin_slug=slug,
+        kind='deployment',
+        entry=entry,
+        capability_cls=entry.manifest.get_capability('deployment').handler,
+        integration={'id': 'p-1', 'slug': f'{slug}-prod', 'plugin': slug},
+        integration_options=options or {},
+        capability_options={},
+        encrypted_credentials={},
+        env_payloads=env_payloads,
     )
 
 
@@ -219,9 +264,10 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         )
 
         self.mocks = {
-            'resolve_plugin': self._start(
+            'resolve_capability': self._start(
                 mock.patch(
-                    f'{_MODULE}.resolve_plugin', return_value=self._resolved()
+                    f'{_MODULE}.resolve_capability',
+                    return_value=self._resolved(),
                 )
             ),
             'lookup_project_slugs': self._start(
@@ -236,9 +282,9 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                     side_effect=lambda db, ctx, resolved, auth: ctx,
                 )
             ),
-            'get_plugin_credentials': self._start(
+            'decrypt_integration_credentials': self._start(
                 mock.patch(
-                    f'{_MODULE}.get_plugin_credentials',
+                    f'{_MODULE}.decrypt_integration_credentials',
                     return_value={'access_token': 'gho_test'},
                 )
             ),
@@ -287,13 +333,8 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.addCleanup(patcher.stop)
         return m
 
-    def _resolved(self) -> ResolvedPlugin:
-        return ResolvedPlugin(
-            plugin_id='p-1',
-            plugin_slug='github-deployment',
-            entry=_entry(),
-            options={'owner': 'octo', 'repo': 'demo'},
-        )
+    def _resolved(self) -> ResolvedCapability:
+        return _make_resolved(options={'owner': 'octo', 'repo': 'demo'})
 
     def test_list_refs(self) -> None:
         with testclient.TestClient(self.test_app) as client:
@@ -411,15 +452,8 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                     ctx, credentials, ref_or_sha, inputs
                 )
 
-        self.mocks['resolve_plugin'].return_value = ResolvedPlugin(
-            plugin_id='p-1',
-            plugin_slug='github-deployment',
-            entry=RegistryEntry(
-                handler_cls=_Capturing,
-                manifest=_Capturing.manifest,
-                package_name='x',
-                package_version='1',
-            ),
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _Capturing,
             options={'owner': 'octo', 'repo': 'demo'},
             env_payloads={},
         )
@@ -450,15 +484,8 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                     ctx, credentials, ref_or_sha, inputs
                 )
 
-        self.mocks['resolve_plugin'].return_value = ResolvedPlugin(
-            plugin_id='p-1',
-            plugin_slug='github-deployment',
-            entry=RegistryEntry(
-                handler_cls=_Capturing,
-                manifest=_Capturing.manifest,
-                package_name='x',
-                package_version='1',
-            ),
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _Capturing,
             options={'owner': 'octo', 'repo': 'demo'},
             env_payloads={},
         )
@@ -499,7 +526,7 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 422)
 
     def test_no_credentials_returns_503(self) -> None:
-        self.mocks['get_plugin_credentials'].return_value = {}
+        self.mocks['decrypt_integration_credentials'].return_value = {}
         with testclient.TestClient(self.test_app) as client:
             response = client.get(
                 '/organizations/myorg/projects/proj1/deployments/refs'
@@ -786,15 +813,8 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                     ctx, credentials, ref_or_sha, inputs
                 )
 
-        self.mocks['resolve_plugin'].return_value = ResolvedPlugin(
-            plugin_id='p-1',
-            plugin_slug='github-deployment',
-            entry=RegistryEntry(
-                handler_cls=_Capturing,
-                manifest=_Capturing.manifest,
-                package_name='x',
-                package_version='1',
-            ),
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _Capturing,
             options={'owner': 'octo', 'repo': 'demo'},
             env_payloads={
                 'testing': {'environment': 'testing', 'tier': 'low'},
@@ -828,16 +848,8 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
             ):
                 raise RuntimeError('422 Unprocessable Entity')
 
-        self.mocks['resolve_plugin'].return_value = ResolvedPlugin(
-            plugin_id='p-1',
-            plugin_slug='boom',
-            entry=RegistryEntry(
-                handler_cls=_Boom,
-                manifest=_Boom.manifest,
-                package_name='x',
-                package_version='1',
-            ),
-            options={},
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _Boom, slug='boom', options={}
         )
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
@@ -870,16 +882,8 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
             ):
                 raise NotImplementedError
 
-        self.mocks['resolve_plugin'].return_value = ResolvedPlugin(
-            plugin_id='p-1',
-            plugin_slug='no-tag',
-            entry=RegistryEntry(
-                handler_cls=_NoTag,
-                manifest=_NoTag.manifest,
-                package_name='x',
-                package_version='1',
-            ),
-            options={},
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _NoTag, slug='no-tag', options={}
         )
         # Use a SHA tag so the ref-shape inference picks the
         # ``create_tag`` branch (semver refs would skip create_tag).
@@ -1048,16 +1052,8 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
             ):
                 raise NotImplementedError
 
-        self.mocks['resolve_plugin'].return_value = ResolvedPlugin(
-            plugin_id='p-1',
-            plugin_slug='no-status',
-            entry=RegistryEntry(
-                handler_cls=_NoStatus,
-                manifest=_NoStatus.manifest,
-                package_name='x',
-                package_version='1',
-            ),
-            options={},
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _NoStatus, slug='no-status', options={}
         )
         with testclient.TestClient(self.test_app) as client:
             response = client.get(
@@ -1287,15 +1283,11 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
 
     def test_resync_400_when_plugin_opts_out(self) -> None:
         # Override the resolved plugin to advertise the no-sync flavor.
-        self.mocks['resolve_plugin'].return_value = ResolvedPlugin(
-            plugin_id='p-1',
-            plugin_slug='no-sync-deployment',
-            entry=RegistryEntry(
-                handler_cls=_FakeNoSyncDeploymentPlugin,
-                manifest=_FakeNoSyncDeploymentPlugin.manifest,
-                package_name='imbi-plugin-test',
-                package_version='0.1.0',
-            ),
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _FakeNoSyncDeploymentPlugin,
+            slug='no-sync-deployment',
+            name='No-Sync Deployment',
+            sync=False,
             options={'owner': 'octo', 'repo': 'demo'},
         )
         with testclient.TestClient(self.test_app) as client:
@@ -1370,8 +1362,8 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
 
         self._start(
             mock.patch(
-                f'{_MODULE}.attribution.load_service_plugins',
-                new=mock.AsyncMock(return_value=[mock.Mock()]),
+                f'{_MODULE}.attribution.identity_integration_ids_for_project',
+                new=mock.AsyncMock(return_value=['int-1']),
             )
         )
         self._start(
@@ -1399,8 +1391,8 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
 
         self._start(
             mock.patch(
-                f'{_MODULE}.attribution.load_service_plugins',
-                new=mock.AsyncMock(return_value=[mock.Mock()]),
+                f'{_MODULE}.attribution.identity_integration_ids_for_project',
+                new=mock.AsyncMock(return_value=['int-1']),
             )
         )
         self._start(
@@ -1641,17 +1633,9 @@ class SafeAuditUrlTestCase(unittest.TestCase):
         self.assertIsNone(_safe_audit_url('file:///etc/passwd'))
 
 
-def _relocating_resolved() -> ResolvedPlugin:
-    return ResolvedPlugin(
-        plugin_id='p-1',
-        plugin_slug='github-deployment',
-        entry=RegistryEntry(
-            handler_cls=_RelocatingDeploymentPlugin,
-            manifest=_RelocatingDeploymentPlugin.manifest,
-            package_name='imbi-plugin-github',
-            package_version='0.1.0',
-        ),
-        options={'owner': 'octo', 'repo': 'demo'},
+def _relocating_resolved() -> ResolvedCapability:
+    return _make_resolved(
+        _RelocatingDeploymentPlugin, options={'owner': 'octo', 'repo': 'demo'}
     )
 
 
@@ -1662,7 +1646,7 @@ class LinkWritebackPersistTestCase(ProjectDeploymentsTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        self.mocks['resolve_plugin'].return_value = _relocating_resolved()
+        self.mocks['resolve_capability'].return_value = _relocating_resolved()
         # update_project_link is async; patch auto-uses AsyncMock.
         self.update_link = self._start(
             mock.patch(_UPDATE_LINK, return_value=True)
@@ -2113,16 +2097,8 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
                     ctx, credentials, ref_or_sha, inputs
                 )
 
-        self.mocks['resolve_plugin'].return_value = ResolvedPlugin(
-            plugin_id='p-1',
-            plugin_slug='github-deployment',
-            entry=RegistryEntry(
-                handler_cls=_NoDeploy,
-                manifest=_NoDeploy.manifest,
-                package_name='x',
-                package_version='1',
-            ),
-            options={'owner': 'octo', 'repo': 'demo'},
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _NoDeploy, options={'owner': 'octo', 'repo': 'demo'}
         )
         self.mock_db.execute = mock.AsyncMock(return_value=[])
         with testclient.TestClient(self.test_app) as client:
@@ -2208,16 +2184,8 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
             ):
                 raise RuntimeError('boom')
 
-        self.mocks['resolve_plugin'].return_value = ResolvedPlugin(
-            plugin_id='p-1',
-            plugin_slug='github-deployment',
-            entry=RegistryEntry(
-                handler_cls=_BoomRelease,
-                manifest=_BoomRelease.manifest,
-                package_name='x',
-                package_version='1',
-            ),
-            options={},
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _BoomRelease, options={}
         )
         self.mock_db.execute = mock.AsyncMock(return_value=[])
         with testclient.TestClient(self.test_app) as client:

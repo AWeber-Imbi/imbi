@@ -44,7 +44,7 @@ async def _get_org_node_ids(
     """Return node IDs for all nodes in the org, or None if org not found.
 
     Covers: the org itself, direct BELONGS_TO children (Team, Environment,
-    ProjectType, ThirdPartyService, Tag, DocumentTemplate, LinkDefinition),
+    ProjectType, Integration, Tag, DocumentTemplate, LinkDefinition),
     Projects, Documents, Releases, Comments, and the Components reachable
     through the org's release dependency graph. Components are shared,
     cross-org identities, so they are scoped to those an org actually

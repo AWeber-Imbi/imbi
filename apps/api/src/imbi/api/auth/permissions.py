@@ -276,8 +276,8 @@ async def _load_user_identities(
     query: typing.LiteralString = """
     MATCH (u:User {{id: {user_id}}})-[:HAS_IDENTITY]->(c:IdentityConnection)
     WHERE c.status = 'active'
-    OPTIONAL MATCH (c)-[:USES_PLUGIN]->(p:Plugin)
-    RETURN p.plugin_slug AS plugin_slug, c.subject AS subject
+    OPTIONAL MATCH (i:Integration) WHERE i.id = c.integration_id
+    RETURN i.plugin AS plugin_slug, c.subject AS subject
     """
     try:
         records = await db.execute(
@@ -778,17 +778,15 @@ _RESOURCE_LABEL_MAP: dict[str, str] = {
     'document_template': 'DocumentTemplate',
     'environment': 'Environment',
     'identity_connection': 'IdentityConnection',
+    'integration': 'Integration',
     'link_definition': 'LinkDefinition',
     'organization': 'Organization',
-    'plugin': 'Plugin',
     'project': 'Project',
     'project_type': 'ProjectType',
     'release': 'Release',
     'role': 'Role',
-    'service_application': 'ServiceApplication',
     'tag': 'Tag',
     'team': 'Team',
-    'third_party_service': 'ThirdPartyService',
 }
 
 

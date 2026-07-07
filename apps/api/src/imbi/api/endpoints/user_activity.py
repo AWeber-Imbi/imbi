@@ -704,7 +704,7 @@ async def _events_activity(
     if not subjects:
         return []
     sql: str = (
-        'SELECT id, recorded_at, type, third_party_service, '
+        'SELECT id, recorded_at, type, integration, '
         'project_id, metadata '
         'FROM events '
         'WHERE attributed_to IN {subjects:Array(String)} '
@@ -732,7 +732,7 @@ async def _events_activity(
             if isinstance(value, str):
                 meta_summary = value
         type_str = str(row.get('type') or '')
-        service = str(row.get('third_party_service') or '')
+        service = str(row.get('integration') or '')
         head = type_str
         if service:
             head = f'{type_str} via {service}' if type_str else service

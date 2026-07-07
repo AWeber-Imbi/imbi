@@ -28,7 +28,7 @@ BlueprintType = typing.Literal[
     'ProjectType',
     'Project',
     'Organization',
-    'ThirdPartyService',
+    'Integration',
     'relationship',
 ]
 

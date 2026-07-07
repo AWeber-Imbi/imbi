@@ -31,8 +31,8 @@ class CommitSyncEndpointTestCase(support.SharedAppTestCase):
             session_id='s',
             auth_method='jwt',
             permissions={
+                'project:commits:write',
                 'project:deployment:read',
-                'project:deployment:write',
             },
         )
 
@@ -59,7 +59,7 @@ class CommitSyncEndpointTestCase(support.SharedAppTestCase):
     def test_sync_enqueues(self) -> None:
         with (
             mock.patch.object(
-                project_commit_sync, 'resolve_plugin', mock.AsyncMock()
+                project_commit_sync, 'resolve_capability', mock.AsyncMock()
             ),
             mock.patch.object(service, 'check_available', mock.AsyncMock()),
             mock.patch.object(
@@ -77,7 +77,7 @@ class CommitSyncEndpointTestCase(support.SharedAppTestCase):
     def test_sync_debounced_skips_status(self) -> None:
         with (
             mock.patch.object(
-                project_commit_sync, 'resolve_plugin', mock.AsyncMock()
+                project_commit_sync, 'resolve_capability', mock.AsyncMock()
             ),
             mock.patch.object(service, 'check_available', mock.AsyncMock()),
             mock.patch.object(
@@ -95,7 +95,7 @@ class CommitSyncEndpointTestCase(support.SharedAppTestCase):
     def test_sync_no_commit_sync_plugin_returns_400(self) -> None:
         with (
             mock.patch.object(
-                project_commit_sync, 'resolve_plugin', mock.AsyncMock()
+                project_commit_sync, 'resolve_capability', mock.AsyncMock()
             ),
             mock.patch.object(
                 service,
@@ -111,7 +111,7 @@ class CommitSyncEndpointTestCase(support.SharedAppTestCase):
     def test_sync_no_deployment_plugin_returns_404(self) -> None:
         with mock.patch.object(
             project_commit_sync,
-            'resolve_plugin',
+            'resolve_capability',
             mock.AsyncMock(side_effect=fastapi.HTTPException(status_code=404)),
         ):
             response = self.client.post(f'{_BASE}/sync')

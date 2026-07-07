@@ -1,9 +1,10 @@
 """Background refresh sweeper for identity connections.
 
-Polls :func:`stale_connections` every 60s, acquires a per-(user,plugin)
-Valkey lock to prevent thundering-herd on shared dashboards, and calls
-:meth:`IdentityPlugin.refresh` for each row whose ``expires_at`` is
-within the next 5 minutes.  Failed refreshes flip ``status='expired'``.
+Polls :func:`stale_connections` every 60s, acquires a per-(user,
+integration) Valkey lock to prevent thundering-herd on shared
+dashboards, and calls :meth:`IdentityCapability.refresh` for each row
+whose ``expires_at`` is within the next 5 minutes.  Failed refreshes
+flip ``status='expired'``.
 
 The actual lifespan integration lives in
 :func:`imbi_api.lifespans.identity_refresh_hook`; this module only
@@ -30,8 +31,8 @@ LOOKAHEAD_SECONDS = 300
 LOCK_TTL_SECONDS = 60
 
 
-def _lock_key(plugin_id: str, user_id: str) -> str:
-    return f'imbi:identity:refresh:{plugin_id}:{user_id}'
+def _lock_key(integration_id: str, user_id: str) -> str:
+    return f'imbi:identity:refresh:{integration_id}:{user_id}'
 
 
 async def _try_lock(client: valkey.asyncio.Valkey, key: str) -> bool:
@@ -49,15 +50,15 @@ async def _refresh_one(
     client: valkey.asyncio.Valkey,
     row: dict[str, str],
 ) -> None:
-    plugin_id = row.get('plugin_id') or ''
+    integration_id = row.get('integration_id') or ''
     user_id = row.get('user_id') or ''
-    if not plugin_id or not user_id:
+    if not integration_id or not user_id:
         return
-    if not await _try_lock(client, _lock_key(plugin_id, user_id)):
+    if not await _try_lock(client, _lock_key(integration_id, user_id)):
         return
     try:
         await flows.refresh_connection(
-            db, plugin_id=plugin_id, actor_user_id=user_id
+            db, integration_id=integration_id, actor_user_id=user_id
         )
     except errors.IdentityRefreshFailed:
         # ``flows.refresh_connection`` flips status to ``expired`` only
@@ -68,13 +69,13 @@ async def _refresh_one(
         # iteration over remaining rows.
         try:
             connection = await repository.load_connection(
-                db, plugin_id, user_id
+                db, integration_id, user_id
             )
         except Exception:  # noqa: BLE001
             LOGGER.warning(
                 'Failed to load identity connection after refresh '
-                'failure plugin_id=%s user_id=%s',
-                plugin_id,
+                'failure integration_id=%s user_id=%s',
+                integration_id,
                 user_id,
                 exc_info=True,
             )
@@ -87,21 +88,21 @@ async def _refresh_one(
             except Exception:  # noqa: BLE001
                 LOGGER.warning(
                     'Failed to mark identity connection expired '
-                    'plugin_id=%s user_id=%s',
-                    plugin_id,
+                    'integration_id=%s user_id=%s',
+                    integration_id,
                     user_id,
                     exc_info=True,
                 )
         LOGGER.warning(
-            'Identity refresh failed plugin_id=%s user_id=%s; '
+            'Identity refresh failed integration_id=%s user_id=%s; '
             'connection marked expired',
-            plugin_id,
+            integration_id,
             user_id,
         )
     except Exception:  # noqa: BLE001
         LOGGER.warning(
-            'Identity refresh raised plugin_id=%s user_id=%s',
-            plugin_id,
+            'Identity refresh raised integration_id=%s user_id=%s',
+            integration_id,
             user_id,
             exc_info=True,
         )

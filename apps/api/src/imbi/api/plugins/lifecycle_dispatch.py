@@ -25,8 +25,9 @@ import nanoid
 import pydantic
 from imbi_common import graph
 from imbi_common.clickhouse import client as ch_client
+from imbi_common.plugins import decrypt_integration_credentials
 from imbi_common.plugins.base import (
-    LifecyclePlugin,
+    LifecycleCapability,
     LifecycleResult,
     LinkWriteback,
     PluginContext,
@@ -38,11 +39,9 @@ from imbi_common.plugins.errors import PluginCredentialsMissing
 from imbi_api.auth import permissions
 from imbi_api.identity.host_integration import call_with_identity_retry
 from imbi_api.plugins import call_with_timeout
-from imbi_api.plugins.credentials import get_plugin_credentials
 from imbi_api.plugins.resolution import (
-    ResolvedPlugin,
-    resolve_all_plugins,
-    resolve_service_plugins,
+    ResolvedCapability,
+    resolve_all_capabilities,
 )
 
 # ``_helpers`` lives in ``imbi_api.endpoints`` whose package ``__init__``
@@ -63,7 +62,7 @@ LifecycleEvent = typing.Literal[
     'relocated',
 ]
 
-#: Map of lifecycle events to the matching ``LifecyclePlugin`` hook
+#: Map of lifecycle events to the matching ``LifecycleCapability`` hook
 #: name.  Centralized here so both the dispatcher and any future
 #: capability checks read from the same source.
 _EVENT_METHOD: dict[LifecycleEvent, str] = {
@@ -139,7 +138,7 @@ async def build_lifecycle_context_bundle(
 class LifecycleInvocation(pydantic.BaseModel):
     """Per-plugin outcome surfaced to the operator after a lifecycle event."""
 
-    plugin_id: str
+    integration_id: str
     plugin_slug: str
     status: typing.Literal['ok', 'skipped', 'failed']
     message: str | None = None
@@ -174,23 +173,21 @@ async def dispatch_lifecycle(
     ``previous_*`` fields populate :class:`PluginContext` for plugins
     that need a before/after view (``'updated'`` / ``'relocated'``).
     """
-    resolved_plugins = await resolve_all_plugins(db, project_id, 'lifecycle')
-    if not resolved_plugins:
+    resolved_list = await resolve_all_capabilities(db, project_id, 'lifecycle')
+    if not resolved_list:
         return []
 
     if bundle is None:
         bundle = await build_lifecycle_context_bundle(db, project_id)
 
-    service_plugins = await resolve_service_plugins(db, project_id)
-
     results: list[LifecycleInvocation] = []
-    for resolved in resolved_plugins:
+    for resolved in resolved_list:
         ctx = PluginContext(
             project_id=project_id,
             project_slug=bundle.project_slug,
             org_slug=org_slug,
             team_slug=bundle.team_slug,
-            assignment_options=resolved.options,
+            assignment_options=resolved.capability_options,
             project_links=bundle.project_links,
             project_type_slugs=bundle.project_type_slugs,
             previous_project_slug=previous_project_slug,
@@ -199,9 +196,10 @@ async def dispatch_lifecycle(
             project_name=project_name,
             project_description=project_description,
             project_ui_url=project_ui_url,
-            third_party_service_slug=resolved.third_party_service_slug,
+            integration_slug=resolved.integration_slug,
+            integration_options=resolved.integration_options,
+            capability_options=resolved.capability_options,
             service_connections=bundle.service_connections,
-            service_plugins=service_plugins,
         )
         invocation = await _invoke_one(db, ctx, resolved, event, auth)
         results.append(invocation)
@@ -210,14 +208,16 @@ async def dispatch_lifecycle(
     # plugins serially, so a project assigned to a handful of plugins
     # was paying N CH round trips on every lifecycle tick.
     if results:
-        await _emit_events_batch(project_id, event, results, auth)
+        await _emit_events_batch(
+            project_id, event, resolved_list, results, auth
+        )
     return results
 
 
 async def _invoke_one(
     db: graph.Graph,
     ctx: PluginContext,
-    resolved: ResolvedPlugin,
+    resolved: ResolvedCapability,
     event: LifecycleEvent,
     auth: permissions.AuthContext,
 ) -> LifecycleInvocation:
@@ -228,30 +228,31 @@ async def _invoke_one(
     for this event) are all translated to a
     :class:`LifecycleInvocation` instead of bubbling.
     """
-    handler = typing.cast(LifecyclePlugin, resolved.entry.handler_cls())
+    handler = typing.cast(LifecycleCapability, resolved.capability_cls())
     method_name = _EVENT_METHOD[event]
 
     # Detect a truly-unimplemented hook (the plugin inherits the base
-    # ``LifecyclePlugin`` stub) *before* we call into it.  This lets a
-    # real ``NotImplementedError`` raised by an implemented hook surface
-    # as ``status='failed'`` via the generic exception handler instead of
-    # being misreported as ``skipped``.  ``on_project_archived`` is the
-    # only required hook -- a missing impl there still maps to ``failed``.
+    # ``LifecycleCapability`` stub) *before* we call into it.  This lets
+    # a real ``NotImplementedError`` raised by an implemented hook
+    # surface as ``status='failed'`` via the generic exception handler
+    # instead of being misreported as ``skipped``.  ``on_project_archived``
+    # is the only required hook -- a missing impl there still maps to
+    # ``failed``.
     method = getattr(handler, method_name)
-    base_method = getattr(LifecyclePlugin, method_name, None)
+    base_method = getattr(LifecycleCapability, method_name, None)
     if (
         base_method is not None
         and getattr(method, '__func__', method) is base_method
     ):
         if event == 'archived':
             return LifecycleInvocation(
-                plugin_id=resolved.plugin_id,
+                integration_id=resolved.integration_id,
                 plugin_slug=resolved.plugin_slug,
                 status='failed',
                 message=f'Plugin does not implement {method_name}',
             )
         return LifecycleInvocation(
-            plugin_id=resolved.plugin_id,
+            integration_id=resolved.integration_id,
             plugin_slug=resolved.plugin_slug,
             status='skipped',
             message=f'Plugin does not implement {method_name}',
@@ -266,7 +267,7 @@ async def _invoke_one(
     captured_service_writeback: list[ServiceWriteback] = []
 
     async def _call(c: PluginContext) -> LifecycleResult:
-        credentials = await _resolve_credentials(db, c, resolved)
+        credentials = _resolve_credentials(c, resolved)
         method = getattr(handler, method_name)
         res: LifecycleResult = await call_with_timeout(method(c, credentials))
         if c.link_writeback is not None:
@@ -281,14 +282,14 @@ async def _invoke_one(
         )
     except fastapi.HTTPException as exc:
         return LifecycleInvocation(
-            plugin_id=resolved.plugin_id,
+            integration_id=resolved.integration_id,
             plugin_slug=resolved.plugin_slug,
             status='failed',
             message=_extract_http_detail(exc),
         )
     except PluginCredentialsMissing as exc:
         return LifecycleInvocation(
-            plugin_id=resolved.plugin_id,
+            integration_id=resolved.integration_id,
             plugin_slug=resolved.plugin_slug,
             status='failed',
             message=str(exc),
@@ -297,12 +298,12 @@ async def _invoke_one(
         LOGGER.exception(
             'Lifecycle plugin %s (%s) raised on %s for project %s',
             resolved.plugin_slug,
-            resolved.plugin_id,
+            resolved.integration_id,
             event,
             ctx.project_id,
         )
         return LifecycleInvocation(
-            plugin_id=resolved.plugin_id,
+            integration_id=resolved.integration_id,
             plugin_slug=resolved.plugin_slug,
             status='failed',
             message=f'{type(exc).__name__}: {exc}',
@@ -324,7 +325,7 @@ async def _invoke_one(
             await persist_service_writeback(db, ctx)
 
     return LifecycleInvocation(
-        plugin_id=resolved.plugin_id,
+        integration_id=resolved.integration_id,
         plugin_slug=resolved.plugin_slug,
         status=result.status,
         message=result.message,
@@ -332,10 +333,9 @@ async def _invoke_one(
     )
 
 
-async def _resolve_credentials(
-    db: graph.Graph,
+def _resolve_credentials(
     ctx: PluginContext,
-    resolved: ResolvedPlugin,
+    resolved: ResolvedCapability,
 ) -> dict[str, str]:
     """Pick the credentials for a lifecycle call.
 
@@ -347,8 +347,8 @@ async def _resolve_credentials(
     """
     if ctx.identity is not None and ctx.identity.access_token:
         return {'access_token': ctx.identity.access_token}
-    credentials = await get_plugin_credentials(
-        db, resolved.plugin_id, resolved.entry
+    credentials = decrypt_integration_credentials(
+        resolved.encrypted_credentials
     )
     if not credentials.get('access_token') and not credentials.get('token'):
         raise PluginCredentialsMissing(
@@ -364,14 +364,14 @@ def _extract_http_detail(exc: fastapi.HTTPException) -> str:
     if isinstance(detail, dict):
         detail_dict = typing.cast(dict[str, object], detail)
         error = str(detail_dict.get('error') or 'http_error')
-        plugin_id = detail_dict.get('plugin_id')
+        integration_id = detail_dict.get('integration_id')
         # ``identity_required`` carries a ``start_url`` the UI needs to
         # surface; preserve it in the formatted string so the lifecycle
         # event log can reproduce the original re-auth handoff.
         start_url = detail_dict.get('start_url')
         parts: list[str] = []
-        if plugin_id:
-            parts.append(f'plugin_id={plugin_id}')
+        if integration_id:
+            parts.append(f'integration_id={integration_id}')
         if start_url:
             parts.append(f'start_url={start_url}')
         if parts:
@@ -385,7 +385,7 @@ _EVENT_COLUMNS = [
     'project_id',
     'recorded_at',
     'type',
-    'third_party_service',
+    'integration',
     'attributed_to',
     'metadata',
     'payload',
@@ -395,6 +395,7 @@ _EVENT_COLUMNS = [
 async def _emit_events_batch(
     project_id: str,
     event: LifecycleEvent,
+    resolved_list: list[ResolvedCapability],
     invocations: list[LifecycleInvocation],
     auth: permissions.AuthContext,
 ) -> None:
@@ -415,16 +416,18 @@ async def _emit_events_batch(
             project_id,
             now,
             f'plugin.lifecycle.{event}',
-            invocation.plugin_slug,
+            resolved.integration_slug,
             principal,
-            {'plugin_id': invocation.plugin_id},
+            {'plugin_id': invocation.integration_id},
             {
                 'status': invocation.status,
                 'message': invocation.message,
                 'artifacts': invocation.artifacts,
             },
         ]
-        for invocation in invocations
+        for resolved, invocation in zip(
+            resolved_list, invocations, strict=True
+        )
     ]
     try:
         await ch_client.Clickhouse.get_instance().insert(

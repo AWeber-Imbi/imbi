@@ -3,7 +3,7 @@
 Apache AGE stores nested list/dict properties as JSON strings, so
 endpoints serialize those fields on the way in and parse them back on
 the way out. The same field-list-driven serialize/deserialize pair was
-duplicated across ``third_party_services`` and ``projects``; this module
+duplicated across ``integrations`` and ``projects``; this module
 is the single home for it.
 
 ``fields`` maps each JSON field name to the default value used when the

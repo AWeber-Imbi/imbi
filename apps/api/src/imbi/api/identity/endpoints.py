@@ -7,7 +7,7 @@ import urllib.parse
 import fastapi
 import fastapi.responses
 from imbi_common import graph
-from imbi_common.plugins.errors import (
+from imbi_common.plugins import (
     IdentityAuthorizationExpired,
     IdentityAuthorizationPending,
     PluginNotFoundError,
@@ -50,19 +50,19 @@ def _is_safe_return_to(url: str | None) -> bool:
     return url.startswith('/') and not url.startswith('//')
 
 
-def _build_redirect_uri(request: fastapi.Request, plugin_id: str) -> str:
+def _build_redirect_uri(request: fastapi.Request, integration_id: str) -> str:
     """Compute the absolute callback URL for a connect flow."""
     try:
         base = settings.get_server_config().public_base_url
     except Exception:  # noqa: BLE001
         base = ''
     if base:
-        return f'{base.rstrip("/")}/me/identities/{plugin_id}/callback'
+        return f'{base.rstrip("/")}/me/identities/{integration_id}/callback'
     # Fallback: build from the inbound request — works in dev where
     # public_base_url isn't configured yet.
     scheme = request.url.scheme
     host = request.url.netloc
-    return f'{scheme}://{host}/me/identities/{plugin_id}/callback'
+    return f'{scheme}://{host}/me/identities/{integration_id}/callback'
 
 
 @me_identities_router.get('')
@@ -81,24 +81,23 @@ async def list_my_identities(
     return [
         models.IdentityConnectionResponse(
             id=row['id'],
-            plugin_id=row['plugin_id'],
-            plugin_slug=row.get('plugin_slug') or '',
-            plugin_label=row.get('plugin_label'),
+            integration_id=row['integration_id'],
+            integration_slug=row.get('integration_slug') or '',
+            integration_name=row.get('integration_name'),
             subject=row.get('subject') or '',
             status=row.get('status') or 'active',
             expires_at=row.get('expires_at'),
             scopes=list(row.get('scopes') or []),
             last_used_at=row.get('last_used_at'),
-            connects_users_to=row.get('connects_users_to'),
             metadata=row.get('metadata') or {},
         )
         for row in rows
     ]
 
 
-@me_identities_router.post('/{plugin_id}/start')
+@me_identities_router.post('/{integration_id}/start')
 async def start_connect(
-    plugin_id: str,
+    integration_id: str,
     body: models.IdentityConnectionStartRequest,
     request: fastapi.Request,
     db: graph.Pool,
@@ -116,11 +115,11 @@ async def start_connect(
     URL (redirect flows) or polls ``/poll`` (device flows).
     """
     user = auth.require_user
-    redirect_uri = _build_redirect_uri(request, plugin_id)
+    redirect_uri = _build_redirect_uri(request, integration_id)
     try:
         url, state_token, polling = await flows.start_flow(
             db,
-            plugin_id=plugin_id,
+            integration_id=integration_id,
             redirect_uri=redirect_uri,
             actor_user_id=user.id,
             return_to=body.return_to,
@@ -129,16 +128,17 @@ async def start_connect(
         )
     except PluginNotFoundError as exc:
         raise fastapi.HTTPException(
-            status_code=404, detail=f'Plugin {plugin_id!r} not available'
+            status_code=404,
+            detail=f'Integration {integration_id!r} not available',
         ) from exc
     return models.IdentityConnectionStartResponse(
         authorization_url=url, state=state_token, polling=polling
     )
 
 
-@me_identities_router.post('/{plugin_id}/poll')
+@me_identities_router.post('/{integration_id}/poll')
 async def poll_connect(
-    plugin_id: str,
+    integration_id: str,
     body: models.IdentityConnectionPollRequest,
     response: fastapi.Response,
     db: graph.Pool,
@@ -182,16 +182,17 @@ async def poll_connect(
         ) from exc
     except PluginNotFoundError as exc:
         raise fastapi.HTTPException(
-            status_code=404, detail=f'Plugin {plugin_id!r} not available'
+            status_code=404,
+            detail=f'Integration {integration_id!r} not available',
         ) from exc
     return models.IdentityConnectionPollResponse(
         status='complete', return_to=return_to
     )
 
 
-@me_identities_router.get('/{plugin_id}/callback')
+@me_identities_router.get('/{integration_id}/callback')
 async def callback(
-    plugin_id: str,
+    integration_id: str,
     code: str,
     state: str,
     db: graph.Pool,
@@ -205,7 +206,7 @@ async def callback(
         (
             _profile,
             _credentials,
-            _returned_plugin_id,
+            _returned_integration_id,
             return_to,
         ) = await flows.complete_flow(
             db,
@@ -219,7 +220,8 @@ async def callback(
         ) from exc
     except PluginNotFoundError as exc:
         raise fastapi.HTTPException(
-            status_code=404, detail=f'Plugin {plugin_id!r} not available'
+            status_code=404,
+            detail=f'Integration {integration_id!r} not available',
         ) from exc
 
     # The callback is served by the API, but the landing page is a UI
@@ -237,9 +239,9 @@ async def callback(
     return fastapi.responses.RedirectResponse(target, status_code=302)
 
 
-@me_identities_router.post('/{plugin_id}/refresh')
+@me_identities_router.post('/{integration_id}/refresh')
 async def refresh(
-    plugin_id: str,
+    integration_id: str,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -252,14 +254,14 @@ async def refresh(
     user = auth.require_user
     try:
         await flows.refresh_connection(
-            db, plugin_id=plugin_id, actor_user_id=user.id
+            db, integration_id=integration_id, actor_user_id=user.id
         )
     except errors.IdentityRequiredError as exc:
         raise fastapi.HTTPException(
             status_code=401,
             detail={
                 'error': 'identity_required',
-                'plugin_id': exc.plugin_id,
+                'integration_id': exc.integration_id,
                 'start_url': exc.start_url,
             },
         ) from exc
@@ -268,9 +270,9 @@ async def refresh(
     return {'status': 'refreshed'}
 
 
-@me_identities_router.delete('/{plugin_id}')
+@me_identities_router.delete('/{integration_id}')
 async def disconnect(
-    plugin_id: str,
+    integration_id: str,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -279,7 +281,7 @@ async def disconnect(
         ),
     ],
 ) -> fastapi.responses.Response:
-    """Revoke + delete the actor's connection for ``plugin_id``.
+    """Revoke + delete the actor's connection for ``integration_id``.
 
     Returns ``204 No Content`` when both local and IdP revocation
     succeed (or no IdP call was needed). When the IdP-side revoke
@@ -290,7 +292,7 @@ async def disconnect(
     """
     user = auth.require_user
     outcome = await flows.revoke_connection(
-        db, plugin_id=plugin_id, actor_user_id=user.id
+        db, integration_id=integration_id, actor_user_id=user.id
     )
     if not outcome['idp_revoked']:
         return fastapi.responses.JSONResponse(

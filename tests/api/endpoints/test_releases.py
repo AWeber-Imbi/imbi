@@ -1299,8 +1299,9 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             get_check_status = ci_mock
 
         resolved = mock.MagicMock()
-        resolved.entry.handler_cls = lambda: _Handler()
-        resolved.options = {}
+        resolved.capability_cls = lambda: _Handler()
+        resolved.integration_options = {}
+        resolved.capability_options = {}
 
         async def _resolve_and_context(
             db: typing.Any, org_slug: str, project_id: str, auth: typing.Any

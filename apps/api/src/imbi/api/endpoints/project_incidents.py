@@ -6,15 +6,13 @@ import typing
 
 import fastapi
 from imbi_common import graph
+from imbi_common.plugins import decrypt_integration_credentials
 from imbi_common.plugins.base import (
     IncidentResult,
-    IncidentsPlugin,
+    IncidentsCapability,
     PluginContext,
 )
-from imbi_common.plugins.errors import (
-    CursorExpiredError,
-    PluginCredentialsMissing,
-)
+from imbi_common.plugins.errors import CursorExpiredError
 
 from imbi_api.auth import permissions
 from imbi_api.endpoints._helpers import (
@@ -22,8 +20,7 @@ from imbi_api.endpoints._helpers import (
     lookup_project_slugs,
 )
 from imbi_api.plugins import call_with_timeout
-from imbi_api.plugins.credentials import get_plugin_credentials
-from imbi_api.plugins.resolution import resolve_plugin
+from imbi_api.plugins.resolution import resolve_capability
 
 LOGGER = logging.getLogger(__name__)
 
@@ -59,7 +56,7 @@ async def list_incidents(
     local incident store; the source system stays authoritative.
     """
     del auth  # required for authorization; not used in the body
-    resolved = await resolve_plugin(db, project_id, 'incidents', source)
+    resolved = await resolve_capability(db, project_id, 'incidents', source)
 
     now = datetime.datetime.now(datetime.UTC)
     try:
@@ -92,22 +89,23 @@ async def list_incidents(
         project_slug=project_slug,
         org_slug=org_slug,
         team_slug=team_slug,
-        assignment_options=resolved.options,
+        assignment_options=resolved.capability_options,
+        integration_options=resolved.integration_options,
+        capability_options=resolved.capability_options,
         # The plugin resolves its remote service from a project link
         # (e.g. ``pagerduty-service``), so populate the link map.
         project_links=await lookup_project_links(db, project_id),
     )
-    try:
-        credentials = await get_plugin_credentials(
-            db, resolved.plugin_id, resolved.entry
-        )
-    except PluginCredentialsMissing as exc:
+    credentials = decrypt_integration_credentials(
+        resolved.encrypted_credentials
+    )
+    if not credentials:
         raise fastapi.HTTPException(
             status_code=503,
-            detail=str(exc),
-        ) from exc
+            detail='No credentials configured for this integration',
+        )
 
-    handler = typing.cast(IncidentsPlugin, resolved.entry.handler_cls())
+    handler = typing.cast(IncidentsCapability, resolved.capability_cls())
     try:
         return await call_with_timeout(
             handler.list_incidents(

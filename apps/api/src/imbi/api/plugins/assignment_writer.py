@@ -1,16 +1,9 @@
-"""Transactional ``USES_PLUGIN`` replace for projects and project types.
+"""Transactional ``USES {capability}`` replace for projects/project types.
 
-The pre-existing ``replace_project_plugins`` /
-``replace_project_type_plugins`` performed a two-step
-"DELETE all, then CREATE one-by-one" sequence with N+1 separate
-``db.execute`` calls.  If any CREATE failed midway, the project or
-project type was left with a partially dropped assignment set (the
-DELETE landed, only some CREATEs ran) — see punchlist **H11**.
-
-This module fuses the DELETE + UNWIND CREATE into a single Cypher
-statement so AGE wraps the whole replace in one server-side
-transaction.  A failure during validation aborts before the DELETE
-runs; a failure during the fused write rolls back the DELETE too.
+Replaces every ``USES`` edge for a single capability kind on a parent
+node (a Project or a ProjectType) in one server-side transaction, so a
+mid-write failure cannot leave a partially-dropped assignment set. Edges
+for other capability kinds on the same parent are untouched.
 """
 
 from __future__ import annotations
@@ -21,30 +14,38 @@ import typing
 from imbi_common import graph
 
 from imbi_api.graph_sql import escape_prop
-from imbi_api.plugins.assignments import PluginAssignmentRow
 
 _ROW_KEYS: tuple[str, ...] = (
-    'plugin_id',
-    'plugin_type',
+    'integration_id',
     'default',
     'options',
-    'identity_plugin_id',
     'env_payloads',
+    'identity_integration_id',
 )
 
 
-def _assignment_rows_template(
-    rows: list[PluginAssignmentRow],
-) -> tuple[str, dict[str, typing.Any]]:
-    """Build an inline Cypher list of maps + the params dict.
+class CapabilityAssignmentRow(typing.TypedDict):
+    integration_id: str
+    default: bool
+    options: dict[str, typing.Any]
+    env_payloads: typing.NotRequired[dict[str, dict[str, typing.Any]]]
+    identity_integration_id: typing.NotRequired[str | None]
 
-    Mirrors the ``_env_entries_template`` pattern in ``projects.py``:
-    each row's values become indexed placeholders so the resulting
-    query is safe to pass through ``sql.SQL.format``. Optional fields
-    (``identity_plugin_id``, ``env_payloads``) are always emitted --
-    null when absent -- so every row in the UNWIND has the same shape;
-    downstream readers already treat missing and null the same.
-    """
+
+def _row_value(row: CapabilityAssignmentRow, key: str) -> typing.Any:
+    if key == 'options':
+        return json.dumps(row.get('options') or {})
+    if key == 'env_payloads':
+        value = row.get('env_payloads')
+        return json.dumps(value) if value else None
+    if key == 'identity_integration_id':
+        return row.get('identity_integration_id') or None
+    return row[key]  # type: ignore[literal-required]
+
+
+def _rows_template(
+    rows: list[CapabilityAssignmentRow],
+) -> tuple[str, dict[str, typing.Any]]:
     if not rows:
         return '[]', {}
     maps: list[str] = []
@@ -59,36 +60,23 @@ def _assignment_rows_template(
     return '[' + ', '.join(maps) + ']', params
 
 
-def _row_value(row: PluginAssignmentRow, key: str) -> typing.Any:
-    """Pull a row field; JSON-encode dict-valued ones for AGE storage."""
-    if key == 'options':
-        return json.dumps(row['options'])
-    if key == 'env_payloads':
-        value = row.get('env_payloads')
-        return json.dumps(value) if value else None
-    if key == 'identity_plugin_id':
-        return row.get('identity_plugin_id') or None
-    return row[key]  # type: ignore[literal-required]
-
-
-async def replace_assignments(
+async def replace_capability_assignments(
     db: graph.Graph,
     *,
     parent_label: typing.Literal['Project', 'ProjectType'],
     parent_key: typing.Literal['id', 'slug'],
     parent_value: str,
     org_slug: str,
-    rows: list[PluginAssignmentRow],
+    kind: str,
+    rows: list[CapabilityAssignmentRow],
 ) -> None:
-    """Atomically replace every ``USES_PLUGIN`` edge on a parent node.
+    """Atomically replace every ``USES {capability: kind}`` edge on a parent.
 
-    The MATCH clause scopes the write to ``org_slug`` via the parent's
-    ``BELONGS_TO`` chain so a caller from another org cannot mutate
-    edges by guessing the parent key.
-
-    Callers must validate plugin ids, identity_plugin_ids, and the
-    one-default-per-plugin-type invariant up front; passing an empty ``rows``
-    list clears all assignments.
+    The MATCH is scoped to ``org_slug`` through the parent's
+    ``BELONGS_TO`` chain so a caller from another org cannot mutate edges
+    by guessing the parent key. Callers validate integration ids and the
+    one-default invariant up front; an empty ``rows`` clears the
+    assignments for ``kind``.
     """
     parent_head = (
         f'MATCH (parent:{parent_label} {{{{{parent_key}: {{parent_value}}}}}})'
@@ -104,28 +92,24 @@ async def replace_assignments(
             + ' -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})'
         )
 
-    rows_tpl, row_params = _assignment_rows_template(rows)
+    rows_tpl, row_params = _rows_template(rows)
     if rows:
-        # ``count(old)`` collapses the post-DELETE rows back to one row
-        # per parent. Without it, ``OPTIONAL MATCH`` emits one row per
-        # pre-existing edge, and the following ``UNWIND`` would then run
-        # once per old edge -- creating ``K x N`` edges when the parent
-        # already had ``K`` assignments.
         query = (
-            parent_match + ' OPTIONAL MATCH (parent)-[old:USES_PLUGIN]->()'
+            parent_match + ' OPTIONAL MATCH (parent)-[old:USES]->()'
+            ' WHERE old.capability = {kind}'
             ' DELETE old'
             ' WITH parent, count(old) AS _del'
             f' UNWIND {rows_tpl} AS row'
-            ' MATCH (p:Plugin {{id: row.plugin_id}})'
-            ' CREATE (parent)-[:USES_PLUGIN {{plugin_type: row.plugin_type,'
-            ' default: row.default,'
-            ' options: row.options,'
-            ' identity_plugin_id: row.identity_plugin_id,'
-            ' env_payloads: row.env_payloads}}]->(p)'
+            ' MATCH (i:Integration {{id: row.integration_id}})'
+            ' CREATE (parent)-[:USES {{capability: {kind},'
+            ' default: row.default, options: row.options,'
+            ' env_payloads: row.env_payloads,'
+            ' identity_integration_id: row.identity_integration_id}}]->(i)'
         )
     else:
         query = (
-            parent_match + ' OPTIONAL MATCH (parent)-[old:USES_PLUGIN]->()'
+            parent_match + ' OPTIONAL MATCH (parent)-[old:USES]->()'
+            ' WHERE old.capability = {kind}'
             ' DELETE old'
         )
 
@@ -134,6 +118,7 @@ async def replace_assignments(
         {
             'parent_value': parent_value,
             'org_slug': org_slug,
+            'kind': kind,
             **row_params,
         },
         [],

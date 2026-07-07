@@ -2,17 +2,19 @@
 
 
 class IdentityRequiredError(Exception):
-    """Raised when a dependent plugin call needs an identity that the
-    actor has not yet connected.
+    """Raised when a dependent capability call needs an identity that
+    the actor has not yet connected.
 
     Mapped by the API to HTTP 401 with
-    ``WWW-Authenticate: Imbi-Identity plugin_id=<id>`` and a JSON body
-    ``{error: 'identity_required', plugin_id, start_url}``.
+    ``WWW-Authenticate: Imbi-Identity integration_id=<id>`` and a JSON
+    body ``{error: 'identity_required', integration_id, start_url}``.
     """
 
-    def __init__(self, plugin_id: str, start_url: str) -> None:
-        super().__init__(f'Identity required for plugin {plugin_id!r}')
-        self.plugin_id = plugin_id
+    def __init__(self, integration_id: str, start_url: str) -> None:
+        super().__init__(
+            f'Identity required for integration {integration_id!r}'
+        )
+        self.integration_id = integration_id
         self.start_url = start_url
 
 

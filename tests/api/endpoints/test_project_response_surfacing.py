@@ -39,8 +39,8 @@ class BuildServicesTestCase(unittest.TestCase):
         assert isinstance(services, list)
         self.assertEqual(len(services), 1)
         svc = services[0]
-        self.assertEqual(svc['third_party_service_slug'], 'github')
-        self.assertEqual(svc['third_party_service_name'], 'GitHub')
+        self.assertEqual(svc['integration_slug'], 'github')
+        self.assertEqual(svc['integration_name'], 'GitHub')
         # numeric identifier is stringified
         self.assertEqual(svc['identifier'], '134741')
         self.assertEqual(

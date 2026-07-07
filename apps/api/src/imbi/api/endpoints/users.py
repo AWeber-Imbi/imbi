@@ -389,7 +389,7 @@ async def list_users(
 
 @users_router.get('/by-identity', response_model=models.UserResponse)
 async def get_user_by_identity(
-    plugin_slug: str,
+    integration_slug: str,
     subject: str,
     db: graph.Pool,
     _auth: typing.Annotated[
@@ -397,20 +397,21 @@ async def get_user_by_identity(
         fastapi.Depends(permissions.require_permission('user:read')),
     ],
 ) -> models.UserResponse:
-    """Look up a user by an external identity-plugin subject.
+    """Look up a user by an external identity subject on an Integration.
 
     Used by inbound webhook gateways to attribute external events
     (e.g. a GitHub deployment) to the corresponding Imbi user.
     Returns 404 when no active ``IdentityConnection`` matches.
     """
-    user_id = await identity_repository.find_user_by_subject(
-        db, plugin_slug=plugin_slug, subject=subject
+    user_id = await identity_repository.find_user_by_integration_slug(
+        db, integration_slug, subject
     )
     if user_id is None:
         raise fastapi.HTTPException(
             status_code=404,
             detail=(
-                f'No user matches plugin {plugin_slug!r} subject {subject!r}'
+                f'No user matches integration {integration_slug!r} '
+                f'subject {subject!r}'
             ),
         )
 

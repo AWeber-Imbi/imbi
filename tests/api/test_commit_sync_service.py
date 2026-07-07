@@ -5,112 +5,88 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from imbi_common.plugins.base import ServicePlugin
+import fastapi
+from imbi_common.plugins.base import CommitSyncCapability
 
 from imbi_api.commit_sync import service
 
 
-def _resolve_rows() -> list[dict[str, object]]:
-    return [
-        {
-            'plugin_id': '"plg-1"',
-            'tps_slug': '"github"',
-            'api_endpoint': '"https://api.github.com"',
-            'siblings': (
-                '[{"slug": "github-commit-sync", "options": {}}, '
-                '{"slug": "github-deployment", "options": {}}]'
-            ),
-        }
-    ]
+class _FakeCommitSync(CommitSyncCapability):
+    async def check_available(self, *, ctx, credentials) -> bool:  # type: ignore[no-untyped-def]
+        return True
+
+    async def sync_all_history(self, *, ctx, credentials):  # type: ignore[no-untyped-def]
+        return (5, 1)
 
 
-class ResolvePluginTests(unittest.IsolatedAsyncioTestCase):
-    async def test_resolves_plugin_and_siblings(self) -> None:
-        db = mock.AsyncMock()
-        db.execute.return_value = _resolve_rows()
-        with mock.patch.object(
-            service, 'get_plugin', return_value=mock.Mock()
-        ):
-            resolved = await service._resolve_plugin(db, 'p1')
-        self.assertEqual('plg-1', resolved.plugin_id)
-        self.assertEqual('github', resolved.tps_slug)
-        self.assertEqual('https://api.github.com', resolved.service_endpoint)
-        slugs = {sp.slug for sp in resolved.service_plugins}
-        self.assertEqual({'github-commit-sync', 'github-deployment'}, slugs)
+class _UnavailableCommitSync(CommitSyncCapability):
+    async def check_available(self, *, ctx, credentials) -> bool:  # type: ignore[no-untyped-def]
+        return False
 
-    async def test_no_plugin_raises_unavailable(self) -> None:
-        db = mock.AsyncMock()
-        db.execute.return_value = []
-        with self.assertRaises(service.CommitSyncUnavailable):
-            await service._resolve_plugin(db, 'p1')
+    async def sync_all_history(self, *, ctx, credentials):  # type: ignore[no-untyped-def]
+        return (0, 0)
+
+
+def _resolved(handler_cls: type) -> mock.Mock:
+    return mock.Mock(capability_cls=handler_cls, encrypted_credentials={})
 
 
 class RunSyncTests(unittest.IsolatedAsyncioTestCase):
     async def test_invokes_handler_sync_all_history(self) -> None:
         db = mock.AsyncMock()
-        handler = mock.Mock()
-        handler.sync_all_history = mock.AsyncMock(return_value=(5, 1))
-        entry = mock.Mock()
-        entry.handler_cls.return_value = handler
-        resolved = service._ResolvedCommitSync(
-            plugin_id='plg-1',
-            entry=entry,
-            tps_slug='github',
-            service_endpoint='https://api.github.com',
-            service_plugins=[ServicePlugin(slug='github')],
-        )
         with (
             mock.patch.object(
                 service,
-                '_resolve_plugin',
-                mock.AsyncMock(return_value=resolved),
+                'resolve_capability',
+                mock.AsyncMock(return_value=_resolved(_FakeCommitSync)),
             ),
             mock.patch.object(
                 service,
                 '_build_context',
                 mock.AsyncMock(return_value=mock.Mock()),
-            ),
-            mock.patch.object(
-                service,
-                'get_plugin_credentials',
-                mock.AsyncMock(return_value={'access_token': 'x'}),
             ),
         ):
             result = await service.run_sync(db, 'octo', 'p1')
         self.assertEqual((5, 1), result)
-        handler.sync_all_history.assert_awaited_once()
 
-    async def test_missing_method_raises_unavailable(self) -> None:
+    async def test_unresolved_raises_unavailable(self) -> None:
         db = mock.AsyncMock()
-        handler = object()  # no sync_all_history
-        entry = mock.Mock()
-        entry.handler_cls.return_value = handler
-        resolved = service._ResolvedCommitSync(
-            plugin_id='plg-1',
-            entry=entry,
-            tps_slug='github',
-            service_endpoint=None,
-            service_plugins=[],
-        )
-        with (
-            mock.patch.object(
-                service,
-                '_resolve_plugin',
-                mock.AsyncMock(return_value=resolved),
-            ),
-            mock.patch.object(
-                service,
-                '_build_context',
-                mock.AsyncMock(return_value=mock.Mock()),
-            ),
-            mock.patch.object(
-                service,
-                'get_plugin_credentials',
-                mock.AsyncMock(return_value={}),
+        with mock.patch.object(
+            service,
+            'resolve_capability',
+            mock.AsyncMock(
+                side_effect=fastapi.HTTPException(
+                    status_code=404, detail='no capability'
+                )
             ),
         ):
             with self.assertRaises(service.CommitSyncUnavailable):
                 await service.run_sync(db, 'octo', 'p1')
+
+
+class CheckAvailableTests(unittest.IsolatedAsyncioTestCase):
+    async def test_available_does_not_raise(self) -> None:
+        db = mock.AsyncMock()
+        with mock.patch.object(
+            service,
+            '_build_context',
+            mock.AsyncMock(return_value=mock.Mock()),
+        ):
+            await service.check_available(
+                db, 'octo', 'p1', _resolved(_FakeCommitSync)
+            )
+
+    async def test_unavailable_raises(self) -> None:
+        db = mock.AsyncMock()
+        with mock.patch.object(
+            service,
+            '_build_context',
+            mock.AsyncMock(return_value=mock.Mock()),
+        ):
+            with self.assertRaises(service.CommitSyncUnavailable):
+                await service.check_available(
+                    db, 'octo', 'p1', _resolved(_UnavailableCommitSync)
+                )
 
 
 class StatusTests(unittest.IsolatedAsyncioTestCase):

@@ -12,11 +12,13 @@ import typing
 
 import pydantic
 from imbi_common import graph, models
-from imbi_common.plugins import PluginType
 
 __all__ = [
     'SECRET_FIELDS',
     'APIKey',
+    'CapabilityAssignment',
+    'CapabilityAssignmentsUpdate',
+    'CapabilityToggle',
     'ClientCredential',
     'ClientCredentialCreate',
     'ClientCredentialCreateResponse',
@@ -26,10 +28,16 @@ __all__ = [
     'EmptyRelationship',
     'ExistsInCreate',
     'ExistsInResponse',
+    'InstalledPluginResponse',
+    'IntegrationCreate',
+    'IntegrationCredentialsUpdate',
+    'IntegrationResponse',
+    'IntegrationUpdate',
     'LocalAuthConfig',
     'LogEntryResponse',
     'LogHistogramBucketResponse',
     'LogResultResponse',
+    'LoginProviderUpdate',
     'MembershipProperties',
     'OAuth2TokenResponse',
     'OAuthClient',
@@ -40,26 +48,17 @@ __all__ = [
     'OrganizationEdge',
     'PasswordChangeRequest',
     'Permission',
-    'PluginAssignmentCreate',
-    'PluginAssignmentResponse',
-    'PluginCreate',
-    'PluginResponse',
-    'PluginUpdate',
+    'PluginRegistrationUpdate',
+    'ProjectIntegrationAssignment',
+    'ProjectIntegrationsUpdate',
     'ResourcePermission',
     'Role',
     'ServiceAccount',
     'ServiceAccountCreate',
     'ServiceAccountResponse',
-    'ServiceApplicationCreate',
-    'ServiceApplicationResponse',
-    'ServiceApplicationSecrets',
     'Session',
     'TOTPSecret',
     'TeamMembership',
-    'ThirdPartyService',
-    'ThirdPartyServiceCreate',
-    'ThirdPartyServiceResponse',
-    'ThirdPartyServiceUpdate',
     'TokenMetadata',
     'Upload',
     'User',
@@ -601,137 +600,6 @@ class ClientCredentialCreateResponse(pydantic.BaseModel):
     expires_at: datetime.datetime | None = None
 
 
-class ThirdPartyService(models.Node):  # type: ignore[misc]
-    """An external SaaS platform or managed service.
-
-    Examples: Lob, FullStory, Stripe, Datadog, PagerDuty.
-    """
-
-    organization: typing.Annotated[
-        models.Organization,
-        models.Edge(
-            rel_type='BELONGS_TO',
-            direction='OUTGOING',
-        ),
-    ]
-    team: typing.Annotated[
-        models.Team | None,
-        models.Edge(
-            rel_type='MANAGED_BY',
-            direction='OUTGOING',
-        ),
-    ] = None
-    vendor: str
-    service_url: pydantic.HttpUrl | None = None
-    api_endpoint: pydantic.HttpUrl | None = None
-    authorization_endpoint: pydantic.HttpUrl | None = None
-    token_endpoint: pydantic.HttpUrl | None = None
-    revoke_endpoint: pydantic.HttpUrl | None = None
-    use_pkce: bool | None = None
-    category: str | None = None
-    status: typing.Literal[
-        'active',
-        'deprecated',
-        'evaluating',
-        'inactive',
-    ] = 'active'
-    links: dict[str, pydantic.HttpUrl] = {}  # noqa: RUF012
-    identifiers: dict[str, int | str] = {}  # noqa: RUF012
-
-
-_VALID_SERVICE_STATUSES = typing.Literal[
-    'active',
-    'deprecated',
-    'evaluating',
-    'inactive',
-]
-
-
-class ThirdPartyServiceCreate(pydantic.BaseModel):
-    """Request model for creating a third-party service."""
-
-    team_slug: str | None = None
-    name: str = pydantic.Field(min_length=1, max_length=128)
-    slug: str = pydantic.Field(
-        pattern=r'^[a-z][a-z0-9-]*$',
-        min_length=2,
-        max_length=64,
-    )
-    vendor: str = pydantic.Field(min_length=1, max_length=128)
-    description: str | None = None
-    icon: str | None = None
-    service_url: pydantic.HttpUrl | None = None
-    api_endpoint: pydantic.HttpUrl | None = None
-    authorization_endpoint: pydantic.HttpUrl | None = None
-    token_endpoint: pydantic.HttpUrl | None = None
-    revoke_endpoint: pydantic.HttpUrl | None = None
-    use_pkce: bool | None = None
-    category: str | None = None
-    status: _VALID_SERVICE_STATUSES = 'active'
-    links: dict[str, str] = pydantic.Field(
-        default_factory=dict,
-    )
-    identifiers: dict[str, int | str] = pydantic.Field(
-        default_factory=dict,
-    )
-
-
-class ThirdPartyServiceUpdate(pydantic.BaseModel):
-    """Request model for updating a third-party service.
-
-    Designed for GET-modify-PUT: the client fetches the full resource,
-    modifies fields, and sends the complete object back. All fields
-    that exist on the response are required (no silent defaults).
-    """
-
-    team_slug: str | None = None
-    name: str = pydantic.Field(min_length=1, max_length=128)
-    slug: str = pydantic.Field(
-        pattern=r'^[a-z][a-z0-9-]*$',
-        min_length=2,
-        max_length=64,
-    )
-    vendor: str = pydantic.Field(min_length=1, max_length=128)
-    description: str | None = None
-    icon: str | None = None
-    service_url: pydantic.HttpUrl | None = None
-    api_endpoint: pydantic.HttpUrl | None = None
-    authorization_endpoint: pydantic.HttpUrl | None = None
-    token_endpoint: pydantic.HttpUrl | None = None
-    revoke_endpoint: pydantic.HttpUrl | None = None
-    use_pkce: bool | None = None
-    category: str | None = None
-    status: _VALID_SERVICE_STATUSES
-    links: dict[str, str] = pydantic.Field(default_factory=dict)
-    identifiers: dict[str, int | str] = pydantic.Field(
-        default_factory=dict,
-    )
-
-
-class ThirdPartyServiceResponse(pydantic.BaseModel):
-    """Response model for a third-party service."""
-
-    model_config = pydantic.ConfigDict(extra='ignore')
-
-    name: str
-    slug: str
-    vendor: str
-    description: str | None = None
-    icon: str | None = None
-    service_url: str | None = None
-    api_endpoint: str | None = None
-    authorization_endpoint: str | None = None
-    token_endpoint: str | None = None
-    revoke_endpoint: str | None = None
-    use_pkce: bool | None = None
-    category: str | None = None
-    status: str = 'active'
-    links: dict[str, typing.Any] = {}
-    identifiers: dict[str, typing.Any] = {}
-    organization: dict[str, typing.Any] | None = None
-    team: dict[str, typing.Any] | None = None
-
-
 SECRET_FIELDS = (
     'client_secret',
     'webhook_secret',
@@ -741,205 +609,200 @@ SECRET_FIELDS = (
 )
 
 
-_OAuthAppType = typing.Literal['google', 'github', 'oidc']
-_AppUsage = typing.Literal['login', 'integration', 'both']
+_VALID_INTEGRATION_STATUSES = typing.Literal[
+    'active',
+    'deprecated',
+    'evaluating',
+    'inactive',
+]
 
 
-def validate_login_app_fields(
-    usage: str,
-    oauth_app_type: str | None,
-    client_id: str | None,
-    issuer_url: str | None,
-    allowed_domains: list[str],
-) -> None:
-    """Cross-field validation for login-shaped service applications."""
-    if usage in ('login', 'both'):
-        if oauth_app_type is None:
-            raise ValueError(
-                "oauth_app_type is required when usage is 'login' or 'both'"
-            )
-        if not client_id:
-            raise ValueError(
-                "client_id is required when usage is 'login' or 'both'"
-            )
-        if oauth_app_type == 'oidc' and not issuer_url:
-            raise ValueError(
-                "issuer_url is required when oauth_app_type is 'oidc'"
-            )
-    if allowed_domains and oauth_app_type != 'google':
-        raise ValueError(
-            "allowed_domains is only meaningful for oauth_app_type='google'"
-        )
+# -- Integration models ---------------------------------------------------
 
 
-class ServiceApplicationCreate(pydantic.BaseModel):
-    """Request model for creating a service application."""
+class CapabilityToggle(pydantic.BaseModel):
+    """Per-capability state on an Integration: enabled + capability options."""
 
+    enabled: bool
+    options: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
+
+
+class IntegrationCreate(pydantic.BaseModel):
+    """Request model for creating an Integration (a plugin instance)."""
+
+    plugin: str = pydantic.Field(min_length=1, max_length=64)
+    name: str = pydantic.Field(min_length=1, max_length=128)
     slug: str = pydantic.Field(
         pattern=r'^[a-z][a-z0-9-]*$',
         min_length=2,
         max_length=64,
     )
-    name: str = pydantic.Field(min_length=1, max_length=128)
+    team_slug: str | None = None
     description: str | None = None
-    app_type: str = pydantic.Field(min_length=1, max_length=64)
-    application_url: str | None = None
-    callback_url: pydantic.HttpUrl | None = None
-    client_id: str = pydantic.Field(min_length=1)
-    client_secret: str = pydantic.Field(min_length=1)
-    scopes: list[str] = pydantic.Field(default_factory=list)
-    webhook_secret: str | None = None
-    private_key: str | None = None
-    signing_secret: str | None = None
-    settings: dict[str, str | int | bool] = pydantic.Field(
-        default_factory=dict,
+    icon: str | None = None
+    vendor: str | None = None
+    service_url: pydantic.HttpUrl | None = None
+    category: str | None = None
+    status: _VALID_INTEGRATION_STATUSES = 'active'
+    #: Integration-level option values (validated against the plugin
+    #: manifest's ``options`` at the endpoint).
+    options: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
+    #: Plaintext credential values, encrypted before persistence. Keyed
+    #: by the manifest's ``credentials`` field names. Write-only.
+    credentials: dict[str, str] = pydantic.Field(default_factory=dict)
+    #: Initial per-capability toggles. Capabilities omitted here default
+    #: to their manifest ``default_enabled``.
+    capabilities: dict[str, CapabilityToggle] = pydantic.Field(
+        default_factory=dict
     )
-    status: typing.Literal['active', 'inactive', 'revoked'] = 'active'
-    usage: _AppUsage = 'integration'
-    oauth_app_type: _OAuthAppType | None = None
-    issuer_url: str | None = None
-    allowed_domains: list[str] = pydantic.Field(default_factory=list)
-
-    @pydantic.model_validator(mode='after')
-    def _validate_login_fields(self) -> typing.Self:
-        validate_login_app_fields(
-            self.usage,
-            self.oauth_app_type,
-            self.client_id,
-            self.issuer_url,
-            self.allowed_domains,
-        )
-        return self
+    links: dict[str, str] = pydantic.Field(default_factory=dict)
+    identifiers: dict[str, int | str] = pydantic.Field(default_factory=dict)
 
 
-class ServiceApplicationResponse(pydantic.BaseModel):
-    """Response model for service applications (no secrets)."""
+class IntegrationUpdate(pydantic.BaseModel):
+    """Request model for patching an Integration.
+
+    All fields are optional; only those present in the request body are
+    applied (tri-state via ``model_fields_set``). Credentials are updated
+    through the dedicated credentials endpoint, not here.
+    """
+
+    name: str | None = pydantic.Field(
+        default=None, min_length=1, max_length=128
+    )
+    team_slug: str | None = None
+    description: str | None = None
+    icon: str | None = None
+    vendor: str | None = None
+    service_url: pydantic.HttpUrl | None = None
+    category: str | None = None
+    status: _VALID_INTEGRATION_STATUSES | None = None
+    options: dict[str, typing.Any] | None = None
+    capabilities: dict[str, CapabilityToggle] | None = None
+    links: dict[str, str] | None = None
+    identifiers: dict[str, int | str] | None = None
+
+
+class IntegrationCredentialsUpdate(pydantic.BaseModel):
+    """Write-only credential patch for an Integration.
+
+    Maps credential field name to a new plaintext value; ``None`` (or an
+    empty string) removes the field. Fields not present are preserved.
+    """
+
+    credentials: dict[str, str | None] = pydantic.Field(default_factory=dict)
+
+
+class LoginProviderUpdate(pydantic.BaseModel):
+    """Promote/demote an Integration as the org's SSO login provider."""
+
+    used_as_login: bool
+
+
+class IntegrationResponse(pydantic.BaseModel):
+    """Response model for an Integration (no credential values)."""
+
+    model_config = pydantic.ConfigDict(extra='ignore')
+
+    plugin: str
+    name: str
+    slug: str
+    description: str | None = None
+    icon: str | None = None
+    vendor: str | None = None
+    service_url: str | None = None
+    category: str | None = None
+    status: str = 'active'
+    options: dict[str, typing.Any] = {}
+    capabilities: dict[str, CapabilityToggle] = {}
+    #: Names of the credential fields currently populated (never values).
+    credential_fields: list[str] = []
+    links: dict[str, typing.Any] = {}
+    identifiers: dict[str, typing.Any] = {}
+    organization: dict[str, typing.Any] | None = None
+    team: dict[str, typing.Any] | None = None
+
+
+# -- Admin plugin (installed package) models ------------------------------
+
+
+class PluginRegistrationUpdate(pydantic.BaseModel):
+    """Request model for enabling/disabling an installed plugin package."""
+
+    enabled: bool
+
+
+class InstalledPluginResponse(pydantic.BaseModel):
+    """Response model for an installed plugin package.
+
+    The manifest is serialized as pure data (capability ``handler``
+    bindings are excluded by the manifest itself) plus the package
+    identity and registration state.
+    """
+
+    model_config = pydantic.ConfigDict(extra='allow')
 
     slug: str
     name: str
     description: str | None = None
-    app_type: str
-    application_url: str | None = None
-    callback_url: str | None = None
-    client_id: str
-    scopes: list[str] = []
-    settings: dict[str, str | int | bool] = {}
-    status: str = 'active'
-    usage: _AppUsage = 'integration'
-    oauth_app_type: _OAuthAppType | None = None
-    issuer_url: str | None = None
-    allowed_domains: list[str] = []
-    is_global: bool = False
-
-
-class ServiceApplicationSecrets(pydantic.BaseModel):
-    """Response model for application secrets (decrypted)."""
-
-    client_secret: str
-    webhook_secret: str | None = None
-    private_key: str | None = None
-    signing_secret: str | None = None
-
-
-# -- Plugin models --------------------------------------------------------
-
-
-class PluginCreate(pydantic.BaseModel):
-    """Request model for creating a Plugin node."""
-
-    plugin_slug: str = pydantic.Field(min_length=1, max_length=64)
-    label: str = pydantic.Field(min_length=1, max_length=128)
-    options: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
-    service_application_slug: str | None = None
-
-
-class PluginUpdate(pydantic.BaseModel):
-    """Request model for updating a Plugin node."""
-
-    label: str = pydantic.Field(min_length=1, max_length=128)
-    options: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
-    used_as_login: bool | None = None
-    connects_users_to: str | None = None
-    # Default identity plugin used when a USES_PLUGIN edge does not name
-    # one of its own. Pass an explicit empty string to clear; ``None``
-    # leaves the existing value untouched.
-    identity_plugin_id: str | None = None
-    # Tri-state via ``model_fields_set``: omitted leaves the link
-    # alone, ``null`` clears it, a string sets/replaces it. Mirrors how
-    # an OAuth2 plugin instance picks the ServiceApplication that owns
-    # its client_id/secret.
-    service_application_slug: str | None = None
-
-
-class PluginResponse(pydantic.BaseModel):
-    """Response model for a Plugin node."""
-
-    id: str
-    plugin_slug: str
-    label: str
-    options: dict[str, typing.Any] = {}
     api_version: int
-    status: typing.Literal['active', 'unavailable'] = 'active'
-    service_slug: str | None = None
-    login_capable: bool = False
-    used_as_login: bool = False
-    connects_users_to: str | None = None
-    identity_plugin_id: str | None = None
-    application_slug: str | None = None
-    application_name: str | None = None
+    auth_type: str
+    options: list[dict[str, typing.Any]] = []
+    credentials: list[dict[str, typing.Any]] = []
+    capabilities: list[dict[str, typing.Any]] = []
+    data_types: list[dict[str, typing.Any]] = []
+    vertex_labels: list[dict[str, typing.Any]] = []
+    edge_labels: list[dict[str, typing.Any]] = []
+    package_name: str
+    package_version: str
+    enabled: bool = False
 
 
-class PluginAssignmentCreate(pydantic.BaseModel):
-    """Request model for assigning a plugin to a project-type or project."""
+# -- Capability assignment models -----------------------------------------
 
-    plugin_id: str
-    plugin_type: PluginType
+
+class CapabilityAssignment(pydantic.BaseModel):
+    """One project-type assignment of an Integration's capability.
+
+    Binds ``(:ProjectType)-[:USES {capability}]->(:Integration)``.
+    """
+
+    project_type_slug: str
     default: bool = False
     options: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
-    identity_plugin_id: str | None = None
-    # Per-env workflow-input overrides keyed by env slug.  Merged into
-    # the deploy / promote dispatch payload at trigger time.  Sibling
-    # to ``options`` (which is plugin-level) because the axis is the
-    # *environment* being deployed into, not the plugin's own config.
     env_payloads: dict[str, dict[str, typing.Any]] = pydantic.Field(
-        default_factory=dict,
+        default_factory=dict
+    )
+    identity_integration_slug: str | None = None
+
+
+class CapabilityAssignmentsUpdate(pydantic.BaseModel):
+    """Replace-all body for a capability's project-type assignments."""
+
+    assignments: list[CapabilityAssignment] = pydantic.Field(
+        default_factory=list
     )
 
 
-class PluginAssignmentResponse(pydantic.BaseModel):
-    """Response model for a plugin assignment."""
+class ProjectIntegrationAssignment(pydantic.BaseModel):
+    """One project-level ``USES`` override of an Integration capability."""
 
-    plugin_id: str
-    plugin_slug: str
-    label: str
-    plugin_type: PluginType
-    default: bool
-    options: dict[str, typing.Any] = {}
-    source: typing.Literal['project', 'project_type', 'merged'] = (
-        'project_type'
-    )
-    identity_plugin_id: str | None = None
+    integration_slug: str
+    capability: str
+    default: bool = False
+    options: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
     env_payloads: dict[str, dict[str, typing.Any]] = pydantic.Field(
-        default_factory=dict,
+        default_factory=dict
     )
-    # Pulled from the plugin manifest so the UI can hide affordances
-    # (e.g. the histogram strip on the Logs tab) for plugins whose
-    # underlying API does not support them.
-    supports_histogram: bool = False
-    # Set on deployment plugins that implement
-    # ``list_recent_deployments`` -- gates the "Resync deployments"
-    # card on the project settings page (and the admin TPS page) so
-    # the UI doesn't surface a button that the API will 400 on.
-    supports_deployment_sync: bool = False
-    # Set on lifecycle plugins whose ``on_project_updated`` is a safe
-    # upsert -- gates the "Sync lifecycle" controls on the project
-    # settings page (and the admin TPS page), which push current Imbi
-    # state to the remote on demand.
-    supports_lifecycle_sync: bool = False
-    # Parent third-party service (``ThirdPartyService -[:HAS_PLUGIN]->
-    # Plugin``) so the UI can show which service powers the tab.
-    service_name: str | None = None
-    service_icon: str | None = None
+    identity_integration_slug: str | None = None
+
+
+class ProjectIntegrationsUpdate(pydantic.BaseModel):
+    """Replace-all body for a project's ``USES`` overrides."""
+
+    assignments: list[ProjectIntegrationAssignment] = pydantic.Field(
+        default_factory=list
+    )
 
 
 class LifecycleSyncError(pydantic.BaseModel):
@@ -1100,7 +963,7 @@ class WebhookCreate(pydantic.BaseModel):
     description: str | None = None
     icon: str | None = None
     secret: str | None = None
-    third_party_service_slug: str | None = None
+    integration_slug: str | None = None
     identifier_selector: str | None = pydantic.Field(
         default=None,
         description='JSON Path expression to extract project identifier',
@@ -1112,12 +975,12 @@ class WebhookCreate(pydantic.BaseModel):
             '(e.g. /deployment/creator/id) used to resolve the Imbi user.'
         ),
     )
-    identity_plugin_slug: str | None = pydantic.Field(
+    identity_integration_slug: str | None = pydantic.Field(
         default=None,
         description=(
-            'Optional override for the identity plugin slug used to resolve '
-            'the Imbi user; falls back to identity plugins attached to the '
-            'third-party service when unset.'
+            'Optional override for the identity integration slug used to '
+            'resolve the Imbi user; falls back to identity integrations '
+            'attached to the integration when unset.'
         ),
     )
     event_type_selector: str | None = pydantic.Field(
@@ -1136,23 +999,17 @@ class WebhookCreate(pydantic.BaseModel):
 
     @pydantic.model_validator(mode='after')
     def validate_identifier_selector(self) -> typing.Self:
-        """identifier_selector requires a third_party_service."""
-        if self.identifier_selector and not self.third_party_service_slug:
+        """identifier_selector requires an integration."""
+        if self.identifier_selector and not self.integration_slug:
+            raise ValueError('identifier_selector requires integration_slug')
+        if self.user_subject_selector and not self.integration_slug:
+            raise ValueError('user_subject_selector requires integration_slug')
+        if self.identity_integration_slug and not self.integration_slug:
             raise ValueError(
-                'identifier_selector requires third_party_service_slug'
+                'identity_integration_slug requires integration_slug'
             )
-        if self.user_subject_selector and not self.third_party_service_slug:
-            raise ValueError(
-                'user_subject_selector requires third_party_service_slug'
-            )
-        if self.identity_plugin_slug and not self.third_party_service_slug:
-            raise ValueError(
-                'identity_plugin_slug requires third_party_service_slug'
-            )
-        if self.event_type_selector and not self.third_party_service_slug:
-            raise ValueError(
-                'event_type_selector requires third_party_service_slug'
-            )
+        if self.event_type_selector and not self.integration_slug:
+            raise ValueError('event_type_selector requires integration_slug')
         return self
 
 
@@ -1173,7 +1030,7 @@ class WebhookUpdate(pydantic.BaseModel):
     description: str | None = None
     icon: str | None = None
     secret: str | None = None
-    third_party_service_slug: str | None = None
+    integration_slug: str | None = None
     identifier_selector: str | None = pydantic.Field(
         default=None,
         description='JSON Path expression to extract project identifier',
@@ -1185,12 +1042,12 @@ class WebhookUpdate(pydantic.BaseModel):
             '(e.g. /deployment/creator/id) used to resolve the Imbi user.'
         ),
     )
-    identity_plugin_slug: str | None = pydantic.Field(
+    identity_integration_slug: str | None = pydantic.Field(
         default=None,
         description=(
-            'Optional override for the identity plugin slug used to resolve '
-            'the Imbi user; falls back to identity plugins attached to the '
-            'third-party service when unset.'
+            'Optional override for the identity integration slug used to '
+            'resolve the Imbi user; falls back to identity integrations '
+            'attached to the integration when unset.'
         ),
     )
     event_type_selector: str | None = pydantic.Field(
@@ -1209,23 +1066,17 @@ class WebhookUpdate(pydantic.BaseModel):
 
     @pydantic.model_validator(mode='after')
     def validate_identifier_selector(self) -> typing.Self:
-        """identifier_selector requires a third_party_service."""
-        if self.identifier_selector and not self.third_party_service_slug:
+        """identifier_selector requires an integration."""
+        if self.identifier_selector and not self.integration_slug:
+            raise ValueError('identifier_selector requires integration_slug')
+        if self.user_subject_selector and not self.integration_slug:
+            raise ValueError('user_subject_selector requires integration_slug')
+        if self.identity_integration_slug and not self.integration_slug:
             raise ValueError(
-                'identifier_selector requires third_party_service_slug'
+                'identity_integration_slug requires integration_slug'
             )
-        if self.user_subject_selector and not self.third_party_service_slug:
-            raise ValueError(
-                'user_subject_selector requires third_party_service_slug'
-            )
-        if self.identity_plugin_slug and not self.third_party_service_slug:
-            raise ValueError(
-                'identity_plugin_slug requires third_party_service_slug'
-            )
-        if self.event_type_selector and not self.third_party_service_slug:
-            raise ValueError(
-                'event_type_selector requires third_party_service_slug'
-            )
+        if self.event_type_selector and not self.integration_slug:
+            raise ValueError('event_type_selector requires integration_slug')
         return self
 
 
@@ -1250,10 +1101,10 @@ class WebhookResponse(pydantic.BaseModel):
     description: str | None = None
     icon: str | None = None
     notification_path: str
-    third_party_service: dict[str, typing.Any] | None = None
+    integration: dict[str, typing.Any] | None = None
     identifier_selector: str | None = None
     user_subject_selector: str | None = None
-    identity_plugin_slug: str | None = None
+    identity_integration_slug: str | None = None
     event_type_selector: str | None = None
     rules: list[WebhookRuleResponse] = []
 
@@ -1296,15 +1147,15 @@ class WebhookResponse(pydantic.BaseModel):
             description=webhook.get('description'),
             icon=webhook.get('icon'),
             notification_path=webhook['notification_path'],
-            third_party_service=tps,
+            integration=tps,
             identifier_selector=graph.parse_agtype(
                 record.get('identifier_selector')
             ),
             user_subject_selector=graph.parse_agtype(
                 record.get('user_subject_selector')
             ),
-            identity_plugin_slug=graph.parse_agtype(
-                record.get('identity_plugin_slug')
+            identity_integration_slug=graph.parse_agtype(
+                record.get('identity_integration_slug')
             ),
             event_type_selector=graph.parse_agtype(
                 record.get('event_type_selector')
@@ -1319,7 +1170,7 @@ class WebhookResponse(pydantic.BaseModel):
 class ExistsInCreate(pydantic.BaseModel):
     """Request model for creating a Project EXISTS_IN link."""
 
-    third_party_service_slug: str
+    integration_slug: str
     identifier: str = pydantic.Field(min_length=1)
     canonical_url: str | None = None
     #: Optional human dashboard URL; persisted into ``Project.links``
@@ -1333,8 +1184,8 @@ class ExistsInCreate(pydantic.BaseModel):
 class ExistsInResponse(pydantic.BaseModel):
     """Response model for a Project EXISTS_IN link."""
 
-    third_party_service_slug: str
-    third_party_service_name: str
+    integration_slug: str
+    integration_name: str
     identifier: str
     canonical_url: str | None = None
     #: Human dashboard URL read from ``Project.links`` (service slug key).

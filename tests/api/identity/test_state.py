@@ -18,20 +18,20 @@ class EncodeIdentityStateTestCase(unittest.TestCase):
 
     def test_round_trip_minimal(self) -> None:
         token = state.encode_identity_state(
-            plugin_id='p-1',
+            integration_id='p-1',
             plugin_slug='oidc',
             redirect_uri='https://imbi.test/callback',
             auth_settings=self.auth,
         )
         decoded = state.decode_identity_state(token, auth_settings=self.auth)
-        self.assertEqual(decoded.plugin_id, 'p-1')
+        self.assertEqual(decoded.integration_id, 'p-1')
         self.assertEqual(decoded.provider, 'oidc')
         self.assertEqual(decoded.redirect_uri, 'https://imbi.test/callback')
         self.assertEqual(decoded.intent, 'identity')
 
     def test_round_trip_full_payload(self) -> None:
         token = state.encode_identity_state(
-            plugin_id='p-2',
+            integration_id='p-2',
             plugin_slug='aws-sso',
             redirect_uri='https://imbi.test/cb',
             return_to='/projects/x',
@@ -40,7 +40,7 @@ class EncodeIdentityStateTestCase(unittest.TestCase):
             auth_settings=self.auth,
         )
         decoded = state.decode_identity_state(token, auth_settings=self.auth)
-        self.assertEqual(decoded.plugin_id, 'p-2')
+        self.assertEqual(decoded.integration_id, 'p-2')
         self.assertEqual(decoded.return_to, '/projects/x')
         self.assertEqual(decoded.code_verifier, 'verifier-abc')
         self.assertEqual(decoded.actor_user_id, 'user-7')
@@ -54,7 +54,7 @@ class DecodeIdentityStateTestCase(unittest.TestCase):
 
     def test_invalid_signature_raises_value_error(self) -> None:
         token = state.encode_identity_state(
-            plugin_id='p-1',
+            integration_id='p-1',
             plugin_slug='oidc',
             redirect_uri='https://imbi.test/cb',
             auth_settings=self.auth,
@@ -66,7 +66,7 @@ class DecodeIdentityStateTestCase(unittest.TestCase):
     def test_expired_token_raises_value_error(self) -> None:
         with mock.patch.object(state.time, 'time', return_value=1000):
             token = state.encode_identity_state(
-                plugin_id='p-1',
+                integration_id='p-1',
                 plugin_slug='oidc',
                 redirect_uri='https://imbi.test/cb',
                 auth_settings=self.auth,
@@ -85,7 +85,7 @@ class DecodeIdentityStateTestCase(unittest.TestCase):
             'redirect_uri': 'https://imbi.test/cb',
             'timestamp': int(time.time()),
             'intent': 'login',
-            'plugin_id': 'p-1',
+            'integration_id': 'p-1',
         }
         token = jwt.encode(
             payload,
@@ -95,14 +95,14 @@ class DecodeIdentityStateTestCase(unittest.TestCase):
         with self.assertRaises(ValueError):
             state.decode_identity_state(token, auth_settings=self.auth)
 
-    def test_missing_plugin_id_raises_value_error(self) -> None:
+    def test_missing_integration_id_raises_value_error(self) -> None:
         payload = {
             'provider': 'oidc',
             'nonce': 'n',
             'redirect_uri': 'https://imbi.test/cb',
             'timestamp': int(time.time()),
             'intent': 'identity',
-            'plugin_id': None,
+            'integration_id': None,
         }
         token = jwt.encode(
             payload,
@@ -121,7 +121,7 @@ class DecodeLoginStateTestCase(unittest.TestCase):
 
     def test_round_trip(self) -> None:
         token = state.encode_identity_state(
-            plugin_id='p-1',
+            integration_id='p-1',
             plugin_slug='oidc',
             redirect_uri='https://imbi.test/callback',
             intent='login',
@@ -129,13 +129,13 @@ class DecodeLoginStateTestCase(unittest.TestCase):
             auth_settings=self.auth,
         )
         decoded = state.decode_login_state(token, auth_settings=self.auth)
-        self.assertEqual(decoded.plugin_id, 'p-1')
+        self.assertEqual(decoded.integration_id, 'p-1')
         self.assertEqual(decoded.intent, 'login')
         self.assertEqual(decoded.return_to, '/dashboard')
 
     def test_identity_intent_rejected(self) -> None:
         token = state.encode_identity_state(
-            plugin_id='p-1',
+            integration_id='p-1',
             plugin_slug='oidc',
             redirect_uri='https://imbi.test/cb',
             intent='identity',
@@ -147,7 +147,7 @@ class DecodeLoginStateTestCase(unittest.TestCase):
     def test_expired_token_raises_value_error(self) -> None:
         with mock.patch.object(state.time, 'time', return_value=2000):
             token = state.encode_identity_state(
-                plugin_id='p-1',
+                integration_id='p-1',
                 plugin_slug='oidc',
                 redirect_uri='https://imbi.test/cb',
                 intent='login',
@@ -160,7 +160,7 @@ class DecodeLoginStateTestCase(unittest.TestCase):
 
     def test_invalid_signature_raises_value_error(self) -> None:
         token = state.encode_identity_state(
-            plugin_id='p-1',
+            integration_id='p-1',
             plugin_slug='oidc',
             redirect_uri='https://imbi.test/cb',
             intent='login',

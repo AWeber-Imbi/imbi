@@ -5,18 +5,19 @@ import logging
 import typing
 
 from imbi_common import graph
-from imbi_common.plugins.base import (
+from imbi_common.plugins import (
+    IdentityCapability,
     IdentityCredentials,
-    IdentityPlugin,
     PluginContext,
+    PluginNotFoundError,
+    decrypt_integration_credentials,
+    get_capability,
 )
-from imbi_common.plugins.errors import PluginNotFoundError
-from imbi_common.plugins.registry import get_plugin
 
 from imbi_api.identity import errors as identity_errors
 from imbi_api.identity import repository
 from imbi_api.identity.models import IdentityCredentialsInternal
-from imbi_api.plugins import parse_options
+from imbi_api.plugins.assignments import capability_state, hydrate_integration
 
 LOGGER = logging.getLogger(__name__)
 
@@ -27,19 +28,19 @@ LOGGER = logging.getLogger(__name__)
 _PROACTIVE_REFRESH_WINDOW_SECONDS = 60
 
 
-def _start_url_for(plugin_id: str) -> str:
-    """Build the canonical start URL for a plugin connect flow."""
-    return f'/me/identities/{plugin_id}/start'
+def _start_url_for(integration_id: str) -> str:
+    """Build the canonical start URL for an Integration connect flow."""
+    return f'/me/identities/{integration_id}/start'
 
 
 async def hydrate_identity(
     db: graph.Graph,
     ctx: PluginContext,
-    identity_plugin_id: str,
+    integration_id: str,
     *,
     identity_options: dict[str, typing.Any] | None = None,
 ) -> PluginContext:
-    """Load the actor's connection for ``identity_plugin_id`` and attach
+    """Load the actor's connection for ``integration_id`` and attach
     materialized credentials to ``ctx.identity``.
 
     Raises :class:`identity_errors.IdentityRequiredError` when the actor
@@ -48,46 +49,51 @@ async def hydrate_identity(
     user_id = ctx.actor_user_id
     if not user_id:
         raise identity_errors.IdentityRequiredError(
-            plugin_id=identity_plugin_id,
-            start_url=_start_url_for(identity_plugin_id),
+            integration_id=integration_id,
+            start_url=_start_url_for(integration_id),
         )
 
-    connection = await repository.load_connection(
-        db, identity_plugin_id, user_id
-    )
+    connection = await repository.load_connection(db, integration_id, user_id)
     if connection is None or connection.status != 'active':
         raise identity_errors.IdentityRequiredError(
-            plugin_id=identity_plugin_id,
-            start_url=_start_url_for(identity_plugin_id),
+            integration_id=integration_id,
+            start_url=_start_url_for(integration_id),
         )
 
     if _should_refresh(connection):
-        connection = await _refresh_and_reload(db, identity_plugin_id, user_id)
+        connection = await _refresh_and_reload(db, integration_id, user_id)
 
-    # Look up the identity plugin's slug + handler so we can call
-    # ``materialize`` for plugins that exchange the IdP token (AWS IAM IC).
-    slug = await _plugin_slug(db, identity_plugin_id)
-    if slug is None:
+    # Load the Integration so we can resolve its plugin's identity
+    # capability handler and decrypt its credentials for ``materialize``
+    # (e.g. AWS IAM IC exchanges the IdP token for STS credentials).
+    integration = await load_integration(db, integration_id)
+    if integration is None:
+        LOGGER.error(
+            'Integration %r missing for identity hydration', integration_id
+        )
         raise identity_errors.IdentityRequiredError(
-            plugin_id=identity_plugin_id,
-            start_url=_start_url_for(identity_plugin_id),
+            integration_id=integration_id,
+            start_url=_start_url_for(integration_id),
         )
 
+    plugin_slug = str(integration.get('plugin') or '')
     try:
-        entry = get_plugin(slug)
+        handler_cls = get_capability(plugin_slug, 'identity')
     except PluginNotFoundError as exc:
-        LOGGER.error('Identity plugin %r unavailable for hydrate', slug)
+        LOGGER.error(
+            'Identity capability unavailable for plugin %r (integration %r)',
+            plugin_slug,
+            integration_id,
+        )
         raise identity_errors.IdentityRequiredError(
-            plugin_id=identity_plugin_id,
-            start_url=_start_url_for(identity_plugin_id),
+            integration_id=integration_id,
+            start_url=_start_url_for(integration_id),
         ) from exc
 
-    handler = entry.handler_cls()
-    if not isinstance(handler, IdentityPlugin):
-        raise identity_errors.IdentityRequiredError(
-            plugin_id=identity_plugin_id,
-            start_url=_start_url_for(identity_plugin_id),
-        )
+    handler = typing.cast('IdentityCapability', handler_cls())
+    credentials = decrypt_integration_credentials(
+        integration.get('encrypted_credentials') or {}
+    )
 
     base_credentials = IdentityCredentials(
         access_token=connection.access_token,
@@ -97,11 +103,13 @@ async def hydrate_identity(
     )
 
     if identity_options is None:
-        identity_options = await load_plugin_options(db, identity_plugin_id)
+        identity_options = (
+            capability_state(integration, 'identity').get('options') or {}
+        )
 
     materialized = await handler.materialize(
         ctx,
-        {},
+        credentials,
         base_credentials,
         db=db,
         identity_options=identity_options,
@@ -110,34 +118,60 @@ async def hydrate_identity(
     return ctx.model_copy(update={'identity': materialized})
 
 
-async def _plugin_slug(db: graph.Graph, plugin_id: str) -> str | None:
+async def load_integration(
+    db: graph.Graph, integration_id: str
+) -> dict[str, typing.Any] | None:
+    """Return the hydrated ``Integration`` node props, or ``None``."""
     query: typing.LiteralString = (
-        'MATCH (p:Plugin {{id: {plugin_id}}}) '
-        'RETURN p.plugin_slug AS slug LIMIT 1'
+        'MATCH (i:Integration {{id: {integration_id}}}) RETURN i LIMIT 1'
     )
-    rows = await db.execute(query, {'plugin_id': plugin_id}, ['slug'])
+    rows = await db.execute(query, {'integration_id': integration_id}, ['i'])
     if not rows:
         return None
-    parsed = graph.parse_agtype(rows[0]['slug'])
-    return str(parsed) if parsed is not None else None
+    props: typing.Any = graph.parse_agtype(rows[0]['i'])
+    if not isinstance(props, dict):
+        return None
+    return hydrate_integration(typing.cast('dict[str, typing.Any]', props))
+
+
+async def load_integration_org_slug(
+    db: graph.Graph, integration_id: str
+) -> str | None:
+    """Return the slug of the Organization that owns ``integration_id``.
+
+    ``organization`` is a ``BELONGS_TO`` edge, not a stored node
+    property, so it has to be resolved via a separate traversal from
+    the Integration's other (JSON-string) properties.
+    """
+    query: typing.LiteralString = (
+        'MATCH (i:Integration {{id: {integration_id}}})'
+        '-[:BELONGS_TO]->(o:Organization) '
+        'RETURN o.slug AS slug LIMIT 1'
+    )
+    rows = await db.execute(
+        query, {'integration_id': integration_id}, ['slug']
+    )
+    if not rows:
+        return None
+    slug = graph.parse_agtype(rows[0]['slug'])
+    return str(slug) if slug else None
 
 
 async def load_plugin_options(
-    db: graph.Graph, plugin_id: str
+    db: graph.Graph, integration_id: str
 ) -> dict[str, typing.Any]:
-    """Return the identity plugin instance's ``Plugin.options`` dict.
+    """Return the identity Integration's ``capabilities.identity.options``.
 
     Materialize implementations are expected to validate the keys they
     need; an empty dict is returned when the blob is absent.
     """
-    query: typing.LiteralString = (
-        'MATCH (p:Plugin {{id: {plugin_id}}}) '
-        'RETURN p.options AS options LIMIT 1'
-    )
-    rows = await db.execute(query, {'plugin_id': plugin_id}, ['options'])
-    if not rows:
+    integration = await load_integration(db, integration_id)
+    if integration is None:
         return {}
-    return parse_options(rows[0]['options'])
+    return typing.cast(
+        'dict[str, typing.Any]',
+        capability_state(integration, 'identity').get('options') or {},
+    )
 
 
 def is_active(connection_expires_at: datetime.datetime | None) -> bool:
@@ -166,7 +200,7 @@ def _should_refresh(connection: IdentityCredentialsInternal) -> bool:
 
 async def _refresh_and_reload(
     db: graph.Graph,
-    plugin_id: str,
+    integration_id: str,
     user_id: str,
 ) -> IdentityCredentialsInternal:
     """Force-refresh the actor's connection and re-load it.
@@ -179,25 +213,25 @@ async def _refresh_and_reload(
 
     try:
         await flows.refresh_connection(
-            db, plugin_id=plugin_id, actor_user_id=user_id
+            db, integration_id=integration_id, actor_user_id=user_id
         )
     except identity_errors.IdentityRefreshFailed as exc:
         LOGGER.info(
-            'Proactive refresh failed plugin_id=%s user_id=%s: %s; '
+            'Proactive refresh failed integration_id=%s user_id=%s: %s; '
             'returning IdentityRequired to caller',
-            plugin_id,
+            integration_id,
             user_id,
             exc,
         )
         raise identity_errors.IdentityRequiredError(
-            plugin_id=plugin_id,
-            start_url=_start_url_for(plugin_id),
+            integration_id=integration_id,
+            start_url=_start_url_for(integration_id),
         ) from exc
 
-    refreshed = await repository.load_connection(db, plugin_id, user_id)
+    refreshed = await repository.load_connection(db, integration_id, user_id)
     if refreshed is None or refreshed.status != 'active':
         raise identity_errors.IdentityRequiredError(
-            plugin_id=plugin_id,
-            start_url=_start_url_for(plugin_id),
+            integration_id=integration_id,
+            start_url=_start_url_for(integration_id),
         )
     return refreshed

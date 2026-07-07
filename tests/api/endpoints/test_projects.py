@@ -1303,7 +1303,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
     # -- EXISTS_IN service filtering -----------------------------------
 
     def test_list_by_service_returns_matching_projects(self) -> None:
-        """``third_party_service_slug`` + ``identifier`` restrict to the
+        """``integration_slug`` + ``identifier`` restrict to the
         EXISTS_IN edge carrying that external identifier."""
         self.mock_db.execute.return_value = [
             {
@@ -1319,7 +1319,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ):
             response = self.client.get(
                 '/organizations/engineering/projects/'
-                '?third_party_service_slug=github&identifier=octo/api',
+                '?integration_slug=github&identifier=octo/api',
             )
 
         self.assertEqual(response.status_code, 200, response.text)
@@ -1332,14 +1332,14 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         query = self.mock_db.execute.call_args_list[0].args[0]
         params = self.mock_db.execute.call_args_list[0].args[1]
         self.assertIn('-[ei:EXISTS_IN]->', query)
-        self.assertIn('ThirdPartyService {{slug: {tps_slug}}}', query)
+        self.assertIn('Integration {{slug: {integration_slug}}}', query)
         self.assertIn('-[:BELONGS_TO]->(o)', query)
         self.assertIn('WHERE ei.identifier = {identifier}', query)
-        self.assertEqual(params['tps_slug'], 'github')
+        self.assertEqual(params['integration_slug'], 'github')
         self.assertEqual(params['identifier'], 'octo/api')
 
     def test_list_by_service_slug_only_omits_identifier(self) -> None:
-        """``third_party_service_slug`` alone matches every project in
+        """``integration_slug`` alone matches every project in
         the service without an identifier predicate."""
         self.mock_db.execute.return_value = []
 
@@ -1348,8 +1348,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
             side_effect=lambda x: x,
         ):
             response = self.client.get(
-                '/organizations/engineering/projects/'
-                '?third_party_service_slug=github',
+                '/organizations/engineering/projects/?integration_slug=github',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -1357,7 +1356,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         params = self.mock_db.execute.call_args.args[1]
         self.assertIn('-[ei:EXISTS_IN]->', query)
         self.assertNotIn('WHERE ei.identifier', query)
-        self.assertEqual(params['tps_slug'], 'github')
+        self.assertEqual(params['integration_slug'], 'github')
         self.assertIsNone(params['identifier'])
 
     def test_list_identifier_without_service_rejected(self) -> None:
@@ -1371,7 +1370,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
             )
 
         self.assertEqual(response.status_code, 422)
-        self.assertIn('third_party_service_slug', response.json()['detail'])
+        self.assertIn('integration_slug', response.json()['detail'])
         self.mock_db.execute.assert_not_called()
 
     def test_list_unknown_service_returns_empty(self) -> None:
@@ -1385,7 +1384,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ):
             response = self.client.get(
                 '/organizations/engineering/projects/'
-                '?third_party_service_slug=does-not-exist',
+                '?integration_slug=does-not-exist',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -1802,12 +1801,14 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
     def test_preview_returns_would_relocate_per_plugin(self) -> None:
         """``GET /lifecycle/preview`` fans out per plugin and flags diffs.
 
-        Stubs ``resolve_all_plugins`` with two plugins whose handlers
-        return different ``resolve_relocation_target`` outputs for the
-        current vs hypothetical type set, and asserts the preview rows
-        carry the expected ``would_relocate`` flags.
+        Stubs ``resolve_all_capabilities`` with two capabilities whose
+        handlers return different ``resolve_relocation_target`` outputs
+        for the current vs hypothetical type set, and asserts the
+        preview rows carry the expected ``would_relocate`` flags.
         """
         from imbi_common.plugins.base import RelocationTarget
+
+        from imbi_api.plugins.resolution import ResolvedCapability
 
         self._bundle_patcher.stop()
         bundle_value = mock.MagicMock(
@@ -1831,20 +1832,30 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
             None,
             None,
         ]
-        plugin_a_handler.manifest = mock.MagicMock(slug='gh-a')
-        plugin_b_handler.manifest = mock.MagicMock(slug='gh-b')
 
-        plugin_a = mock.MagicMock(
-            plugin_id='p-a',
+        plugin_a = ResolvedCapability(
+            integration_id='p-a',
+            integration_slug='gh-a',
             plugin_slug='gh-a',
-            options={},
-            entry=mock.MagicMock(handler_cls=lambda: plugin_a_handler),
+            kind='lifecycle',
+            entry=mock.MagicMock(),
+            capability_cls=lambda: plugin_a_handler,  # type: ignore[arg-type]
+            integration={},
+            integration_options={},
+            capability_options={},
+            encrypted_credentials={},
         )
-        plugin_b = mock.MagicMock(
-            plugin_id='p-b',
+        plugin_b = ResolvedCapability(
+            integration_id='p-b',
+            integration_slug='gh-b',
             plugin_slug='gh-b',
-            options={},
-            entry=mock.MagicMock(handler_cls=lambda: plugin_b_handler),
+            kind='lifecycle',
+            entry=mock.MagicMock(),
+            capability_cls=lambda: plugin_b_handler,  # type: ignore[arg-type]
+            integration={},
+            integration_options={},
+            capability_options={},
+            encrypted_credentials={},
         )
 
         self.mock_db.execute.side_effect = [[{'id': PROJECT_ID}]]
@@ -1854,7 +1865,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
                 new=mock.AsyncMock(return_value=bundle_value),
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.resolve_all_plugins',
+                'imbi_api.endpoints.projects.resolve_all_capabilities',
                 new=mock.AsyncMock(return_value=[plugin_a, plugin_b]),
             ),
         ):
@@ -1894,7 +1905,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
                 ),
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.resolve_all_plugins',
+                'imbi_api.endpoints.projects.resolve_all_capabilities',
                 new=mock.AsyncMock(return_value=[]),
             ),
         ):
@@ -1916,7 +1927,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
                 new=mock.AsyncMock(),
             ) as mock_bundle,
             mock.patch(
-                'imbi_api.endpoints.projects.resolve_all_plugins',
+                'imbi_api.endpoints.projects.resolve_all_capabilities',
                 new=mock.AsyncMock(return_value=[]),
             ) as mock_resolve,
         ):

@@ -4,7 +4,6 @@ import unittest
 from unittest import mock
 
 import jwt
-import pydantic
 from fastapi import testclient
 from imbi_common import graph
 
@@ -32,9 +31,10 @@ def _stub_provider(
     return login_providers.LoginApp(
         slug=slug,
         name=name or names.get(slug, slug),
-        oauth_app_type=slug,  # type: ignore[arg-type]
+        integration_id=f'int-{slug}',
+        oauth_app_type=slug,
         client_id=client_id,
-        client_secret_encrypted=client_secret,
+        client_secret=client_secret,
         issuer_url=issuer_url,
         allowed_domains=allowed_domains or [],
         scopes=[],
@@ -46,18 +46,22 @@ def _stub_provider(
 def _stub_identity_plugin_provider(
     slug: str,
     *,
-    plugin_id: str | None = 'plug-1',
+    integration_id: str | None = 'int-1',
     enabled: bool = True,
     name: str | None = None,
 ) -> login_providers.LoginApp:
-    """Build a LoginApp representing an identity-plugin login row."""
+    """Build a LoginApp for a login-capable ``Integration``.
+
+    Plugin Architecture v3: every login provider is an Integration whose
+    plugin implements a login-capable ``identity`` capability; the
+    authorization URL and token exchange are owned by that plugin's
+    handler via :mod:`imbi_api.identity.flows`.
+    """
     return login_providers.LoginApp(
         slug=slug,
         name=name or slug,
-        oauth_app_type='identity_plugin',
-        source='identity_plugin',
-        plugin_id=plugin_id,
-        plugin_slug=slug,
+        integration_id=integration_id or '',
+        oauth_app_type='oidc',
         status='active' if enabled else 'inactive',
         callback_url=f'http://localhost:8000/auth/oauth/{slug}/callback',
     )
@@ -334,33 +338,64 @@ class OAuthFlowTestCase(support.SharedAppTestCase):
             response.json()['detail'],
         )
 
+    def _mock_start_flow(self, url: str) -> typing.Any:
+        """Patch the identity flow's ``start_flow`` to return ``url``.
+
+        The endpoint delegates the authorization URL entirely to the
+        login-Integration's plugin handler via ``identity_flows``, so the
+        provider-specific URL is owned by the plugin, not this endpoint.
+        """
+        from imbi_api.identity import flows as identity_flows
+
+        return mock.patch.object(
+            identity_flows,
+            'start_flow',
+            new=mock.AsyncMock(return_value=(url, 'state-token', None)),
+        )
+
     def test_oauth_login_google_redirect(self) -> None:
-        """Test OAuth login redirects to Google."""
-        with _patch_providers([_stub_provider('google', client_id='test-id')]):
+        """Test OAuth login redirects to the flow's authorization URL."""
+        url = (
+            'https://accounts.google.com/o/oauth2/v2/auth'
+            '?client_id=test-id&response_type=code&state=state-token'
+        )
+        with (
+            _patch_providers([_stub_provider('google', client_id='test-id')]),
+            self._mock_start_flow(url) as start_mock,
+        ):
             response = self.client.get(
                 '/auth/oauth/google',
                 follow_redirects=False,
             )
         self.assertEqual(response.status_code, 307)
-        location = response.headers['location']
-        self.assertIn('accounts.google.com/o/oauth2/v2/auth', location)
-        self.assertIn('client_id=test-id', location)
-        self.assertIn('response_type=code', location)
-        self.assertIn('state=', location)
+        self.assertEqual(response.headers['location'], url)
+        start_mock.assert_awaited_once()
+        kwargs = start_mock.await_args.kwargs
+        self.assertEqual(kwargs['integration_id'], 'int-google')
+        self.assertEqual(kwargs['intent'], 'login')
 
     def test_oauth_login_github_redirect(self) -> None:
-        """Test OAuth login redirects to GitHub."""
-        with _patch_providers(
-            [_stub_provider('github', client_id='github-id')]
+        """Test OAuth login redirects to the flow's authorization URL."""
+        url = (
+            'https://github.com/login/oauth/authorize'
+            '?client_id=github-id&state=state-token'
+        )
+        with (
+            _patch_providers(
+                [_stub_provider('github', client_id='github-id')]
+            ),
+            self._mock_start_flow(url) as start_mock,
         ):
             response = self.client.get(
                 '/auth/oauth/github',
                 follow_redirects=False,
             )
         self.assertEqual(response.status_code, 307)
-        location = response.headers['location']
-        self.assertIn('github.com/login/oauth/authorize', location)
-        self.assertIn('client_id=github-id', location)
+        self.assertEqual(response.headers['location'], url)
+        start_mock.assert_awaited_once()
+        self.assertEqual(
+            start_mock.await_args.kwargs['integration_id'], 'int-github'
+        )
 
     def test_oauth_login_rejects_offsite_redirect_uri(self) -> None:
         """An off-origin redirect_uri is refused before the provider hop."""
@@ -384,7 +419,11 @@ class OAuthFlowTestCase(support.SharedAppTestCase):
         cfg = settings.get_server_config()
         origin = _urlparse.urlparse(cfg.public_base_url)
         callback = f'{origin.scheme}://{origin.netloc}/auth/callback'
-        with _patch_providers([_stub_provider('google', client_id='id')]):
+        url = 'https://accounts.google.com/o/oauth2/v2/auth?state=state-token'
+        with (
+            _patch_providers([_stub_provider('google', client_id='id')]),
+            self._mock_start_flow(url),
+        ):
             response = self.client.get(
                 f'/auth/oauth/google?redirect_uri={callback}',
                 follow_redirects=False,
@@ -437,26 +476,32 @@ class OAuthFlowTestCase(support.SharedAppTestCase):
         )
 
     def test_oauth_login_oidc_redirect(self) -> None:
-        """Test OAuth login redirects to OIDC."""
-        with _patch_providers(
-            [
-                _stub_provider(
-                    'oidc',
-                    client_id='oidc-id',
-                    issuer_url='https://auth.example.com',
-                )
-            ]
+        """Test OAuth login redirects to the flow's authorization URL."""
+        url = (
+            'https://auth.example.com/protocol/openid-connect/auth'
+            '?client_id=oidc-id&state=state-token'
+        )
+        with (
+            _patch_providers(
+                [
+                    _stub_provider(
+                        'oidc',
+                        client_id='oidc-id',
+                        issuer_url='https://auth.example.com',
+                    )
+                ]
+            ),
+            self._mock_start_flow(url) as start_mock,
         ):
             response = self.client.get(
                 '/auth/oauth/oidc',
                 follow_redirects=False,
             )
         self.assertEqual(response.status_code, 307)
-        location = response.headers['location']
-        self.assertIn(
-            'auth.example.com/protocol/openid-connect/auth', location
+        self.assertEqual(response.headers['location'], url)
+        self.assertEqual(
+            start_mock.await_args.kwargs['integration_id'], 'int-oidc'
         )
-        self.assertIn('client_id=oidc-id', location)
 
 
 class LoginPasswordRehashTestCase(support.SharedAppTestCase):
@@ -926,650 +971,6 @@ class LoginMFATestCase(support.SharedAppTestCase):
             'Invalid credentials',
             response.json()['detail'],
         )
-
-
-class OAuthCallbackSuccessTestCase(support.SharedAppTestCase):
-    """Test OAuth callback success path."""
-
-    def setUp(self) -> None:
-        """Set up test client."""
-        settings._auth_settings = None
-
-        self.mock_db = mock.AsyncMock(spec=graph.Graph)
-        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
-            self.mock_db
-        )
-
-        self.client = testclient.TestClient(self.test_app)
-
-        # Default-role auto-assignment is exercised separately in
-        # tests/auth/test_membership.py; patch it out here so its
-        # ``db.execute`` calls do not consume the tightly-sized
-        # ``side_effect`` lists each test below configures.
-        self._membership_patch = mock.patch(
-            'imbi_api.auth.tokens.membership.ensure_user_membership',
-            return_value=None,
-        )
-        self._membership_patch.start()
-
-    def tearDown(self) -> None:
-        """Reset settings singleton after tests."""
-        self._membership_patch.stop()
-        settings._auth_settings = None
-
-    @mock.patch.dict(
-        'os.environ',
-        {
-            'IMBI_AUTH_OAUTH_GOOGLE_ENABLED': 'true',
-            'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_ID': 'test-id',
-            'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_SECRET': ('test-secret'),
-            'IMBI_AUTH_ENCRYPTION_KEY': (
-                'nhia5yBgff552rNZAvT4GGu-IE0dMVsXQaM2auHNXRo='
-            ),
-        },
-    )
-    def test_oauth_callback_success_existing_identity(
-        self,
-    ) -> None:
-        """Test OAuth callback with existing identity."""
-        from imbi_common.auth import encryption
-
-        from imbi_api import models
-
-        settings._auth_settings = None
-        encryption.TokenEncryption.reset_instance()
-
-        test_user = models.User(
-            email='test@example.com',
-            display_name='Test User',
-            is_active=True,
-            password_hash=None,
-            created_at=datetime.datetime.now(datetime.UTC),
-        )
-
-        test_identity = models.OAuthIdentity(
-            provider_slug='google',
-            provider_user_id='google-123',
-            email='test@example.com',
-            display_name='Test User',
-            avatar_url=pydantic.HttpUrl('https://example.com/avatar.jpg'),
-            access_token='encrypted-access-token',
-            refresh_token='encrypted-refresh-token',
-            token_expires_at=(
-                datetime.datetime.now(datetime.UTC)
-                + datetime.timedelta(hours=1)
-            ),
-            linked_at=datetime.datetime.now(datetime.UTC),
-            last_used=datetime.datetime.now(datetime.UTC),
-            raw_profile={
-                'id': 'google-123',
-                'name': 'Test User',
-            },
-            user=test_user,
-        )
-
-        mock_state_data = auth_models.OAuthStateData(
-            provider='google',
-            redirect_uri='/dashboard',
-            nonce='test-nonce',
-            timestamp=int(
-                datetime.datetime.now(
-                    datetime.UTC,
-                ).timestamp()
-            ),
-        )
-
-        mock_token_response = {
-            'access_token': 'google-access-token',
-            'refresh_token': 'google-refresh-token',
-            'expires_in': 3600,
-        }
-
-        mock_profile = {
-            'id': 'google-123',
-            'email': 'test@example.com',
-            'name': 'Test User',
-            'avatar_url': 'https://example.com/avatar.jpg',
-        }
-
-        # db.match returns identity, then user data
-        self.mock_db.match.return_value = [test_identity]
-        self.mock_db.merge.return_value = None
-        # For user query after identity found
-        user_data = {
-            'email': 'test@example.com',
-            'display_name': 'Test User',
-            'is_active': True,
-            'password_hash': None,
-            'created_at': datetime.datetime.now(
-                datetime.UTC,
-            ).isoformat(),
-        }
-        # execute(): SET tokens on the existing identity, user fetch,
-        # the atomic MATCH/CREATE inside issue_token_pair
-        # (principal_count), then the SET last_used update.
-        self.mock_db.execute.side_effect = [
-            [],
-            [{'u': user_data}],
-            [{'principal_count': 1}],
-            [],
-        ]
-
-        with (
-            _patch_providers([_stub_provider('google')]),
-            mock.patch(
-                'imbi_api.auth.oauth.verify_oauth_state',
-                new=mock.AsyncMock(return_value=mock_state_data),
-            ),
-            mock.patch(
-                'imbi_api.auth.oauth.exchange_oauth_code',
-                return_value=mock_token_response,
-            ),
-            mock.patch(
-                'imbi_api.auth.oauth.fetch_oauth_profile',
-                return_value=mock_profile,
-            ),
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            response = self.client.get(
-                '/auth/oauth/google/callback?code=test-code&state=test-state',
-                follow_redirects=False,
-            )
-
-            self.assertEqual(response.status_code, 307)
-            location = response.headers['location']
-            self.assertIn('/dashboard#', location)
-            self.assertIn('access_token=', location)
-            # Refresh token is an HttpOnly cookie now, not in the fragment (C2)
-            self.assertNotIn('refresh_token=', location)
-            set_cookie = response.headers.get('set-cookie', '')
-            self.assertIn('imbi_refresh_token=', set_cookie)
-            self.assertIn('imbi_access_token=', set_cookie)
-            self.assertIn('HttpOnly', set_cookie)
-            self.assertIn('SameSite=strict', set_cookie)
-            self.assertIn('Path=/auth', set_cookie)
-            self.assertIn('token_type=bearer', location)
-            self.assertIn('expires_in=', location)
-
-    @mock.patch.dict(
-        'os.environ',
-        {
-            'IMBI_AUTH_OAUTH_GOOGLE_ENABLED': 'true',
-            'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_ID': 'test-id',
-            'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_SECRET': ('test-secret'),
-            'IMBI_AUTH_ENCRYPTION_KEY': (
-                'nhia5yBgff552rNZAvT4GGu-IE0dMVsXQaM2auHNXRo='
-            ),
-            'IMBI_AUTH_OAUTH_AUTO_CREATE_USERS': 'true',
-        },
-    )
-    def test_oauth_callback_success_new_user(self) -> None:
-        """Test OAuth callback creating new user."""
-        from imbi_common.auth import encryption
-
-        settings._auth_settings = None
-        encryption.TokenEncryption.reset_instance()
-
-        mock_state_data = auth_models.OAuthStateData(
-            provider='google',
-            redirect_uri='/dashboard',
-            nonce='test-nonce',
-            timestamp=int(
-                datetime.datetime.now(
-                    datetime.UTC,
-                ).timestamp()
-            ),
-        )
-
-        mock_token_response = {
-            'access_token': 'google-access-token',
-            'refresh_token': 'google-refresh-token',
-            'expires_in': 3600,
-        }
-
-        mock_profile = {
-            'id': 'google-456',
-            'email': 'newuser@example.com',
-            'name': 'New User',
-            'avatar_url': 'https://example.com/avatar2.jpg',
-        }
-
-        # No existing identity or user
-        self.mock_db.match.return_value = []
-        self.mock_db.merge.return_value = None
-        # User query after identity creation
-        user_data = {
-            'email': 'newuser@example.com',
-            'display_name': 'New User',
-            'is_active': True,
-            'password_hash': None,
-            'created_at': datetime.datetime.now(
-                datetime.UTC,
-            ).isoformat(),
-        }
-        # execute(): OAUTH_IDENTITY MERGE, user fetch, the atomic
-        # MATCH/CREATE inside issue_token_pair (principal_count), then
-        # the SET last_used update.
-        self.mock_db.execute.side_effect = [
-            [],
-            [{'u': user_data}],
-            [{'principal_count': 1}],
-            [],
-        ]
-
-        with (
-            _patch_providers([_stub_provider('google')]),
-            mock.patch(
-                'imbi_api.auth.oauth.verify_oauth_state',
-                new=mock.AsyncMock(return_value=mock_state_data),
-            ),
-            mock.patch(
-                'imbi_api.auth.oauth.exchange_oauth_code',
-                return_value=mock_token_response,
-            ),
-            mock.patch(
-                'imbi_api.auth.oauth.fetch_oauth_profile',
-                return_value=mock_profile,
-            ),
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            response = self.client.get(
-                '/auth/oauth/google/callback?code=test-code&state=test-state',
-                follow_redirects=False,
-            )
-
-            self.assertEqual(response.status_code, 307)
-            location = response.headers['location']
-            self.assertIn('/dashboard#', location)
-            self.assertIn('access_token=', location)
-            # Refresh token moved to an HttpOnly cookie (C2)
-            self.assertNotIn('refresh_token=', location)
-            set_cookie = response.headers.get('set-cookie', '')
-            self.assertIn('imbi_refresh_token=', set_cookie)
-            self.assertIn('imbi_access_token=', set_cookie)
-            self.assertIn('HttpOnly', set_cookie)
-            self.assertIn('SameSite=strict', set_cookie)
-            self.assertIn('Path=/auth', set_cookie)
-
-            # Verify merge was called for user + identity
-            self.assertTrue(self.mock_db.merge.called)
-
-    @mock.patch.dict(
-        'os.environ',
-        {
-            'IMBI_AUTH_OAUTH_GOOGLE_ENABLED': 'true',
-            'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_ID': 'test-id',
-            'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_SECRET': ('test-secret'),
-            'IMBI_AUTH_OAUTH_GOOGLE_ALLOWED_DOMAINS': (
-                '["example.com", "test.com"]'
-            ),
-            'IMBI_AUTH_ENCRYPTION_KEY': (
-                'nhia5yBgff552rNZAvT4GGu-IE0dMVsXQaM2auHNXRo='
-            ),
-        },
-    )
-    def test_oauth_callback_google_domain_restriction(
-        self,
-    ) -> None:
-        """Test OAuth callback with domain restriction."""
-        from imbi_common.auth import encryption
-
-        settings._auth_settings = None
-        encryption.TokenEncryption.reset_instance()
-
-        mock_state_data = auth_models.OAuthStateData(
-            provider='google',
-            redirect_uri='/dashboard',
-            nonce='test-nonce',
-            timestamp=int(
-                datetime.datetime.now(
-                    datetime.UTC,
-                ).timestamp()
-            ),
-        )
-
-        mock_token_response = {
-            'access_token': 'google-access-token',
-            'expires_in': 3600,
-        }
-
-        mock_profile = {
-            'id': 'google-789',
-            'email': 'user@baddomaindomain.com',
-            'name': 'Bad Domain User',
-        }
-
-        self.mock_db.match.return_value = []
-
-        with (
-            _patch_providers(
-                [
-                    _stub_provider(
-                        'google',
-                        allowed_domains=['example.com', 'test.com'],
-                    )
-                ]
-            ),
-            mock.patch(
-                'imbi_api.auth.oauth.verify_oauth_state',
-                new=mock.AsyncMock(return_value=mock_state_data),
-            ),
-            mock.patch(
-                'imbi_api.auth.oauth.exchange_oauth_code',
-                return_value=mock_token_response,
-            ),
-            mock.patch(
-                'imbi_api.auth.oauth.fetch_oauth_profile',
-                return_value=mock_profile,
-            ),
-        ):
-            response = self.client.get(
-                '/auth/oauth/google/callback?code=test-code&state=test-state',
-                follow_redirects=False,
-            )
-
-            self.assertEqual(response.status_code, 307)
-            self.assertIn(
-                'error=authentication_failed',
-                response.headers['location'],
-            )
-
-    @mock.patch.dict(
-        'os.environ',
-        {
-            'IMBI_AUTH_ENCRYPTION_KEY': (
-                'nhia5yBgff552rNZAvT4GGu-IE0dMVsXQaM2auHNXRo='
-            ),
-            'IMBI_AUTH_OAUTH_AUTO_LINK_BY_EMAIL': 'true',
-        },
-    )
-    def test_oauth_callback_auto_link_existing_user(
-        self,
-    ) -> None:
-        """Test OAuth callback auto-linking to existing user."""
-        from imbi_common.auth import encryption
-
-        from imbi_api import models
-
-        settings._auth_settings = None
-        encryption.TokenEncryption.reset_instance()
-
-        existing_user = models.User(
-            email='existing@example.com',
-            display_name='Existing User',
-            is_active=True,
-            password_hash='existing-hash',
-            created_at=datetime.datetime.now(datetime.UTC),
-        )
-
-        mock_state_data = auth_models.OAuthStateData(
-            provider='google',
-            redirect_uri='/dashboard',
-            nonce='test-nonce',
-            timestamp=int(
-                datetime.datetime.now(
-                    datetime.UTC,
-                ).timestamp()
-            ),
-        )
-
-        mock_token_response = {
-            'access_token': 'google-access-token',
-            'expires_in': 3600,
-        }
-
-        mock_profile = {
-            'id': 'google-999',
-            'email': 'existing@example.com',
-            'email_verified': True,
-            'name': 'Existing User',
-        }
-
-        # First match: identity not found
-        # Second match: user found by email
-        self.mock_db.match.side_effect = [
-            [],
-            [existing_user],
-        ]
-        self.mock_db.merge.return_value = None
-        # User query after identity creation
-        user_data = {
-            'email': 'existing@example.com',
-            'display_name': 'Existing User',
-            'is_active': True,
-            'password_hash': 'existing-hash',
-            'created_at': datetime.datetime.now(
-                datetime.UTC,
-            ).isoformat(),
-        }
-        # execute(): OAUTH_IDENTITY MERGE, user fetch, the atomic
-        # MATCH/CREATE inside issue_token_pair (principal_count), then
-        # the SET last_used update.
-        self.mock_db.execute.side_effect = [
-            [],
-            [{'u': user_data}],
-            [{'principal_count': 1}],
-            [],
-        ]
-
-        with (
-            _patch_providers([_stub_provider('google')]),
-            mock.patch(
-                'imbi_api.auth.oauth.verify_oauth_state',
-                new=mock.AsyncMock(return_value=mock_state_data),
-            ),
-            mock.patch(
-                'imbi_api.auth.oauth.exchange_oauth_code',
-                return_value=mock_token_response,
-            ),
-            mock.patch(
-                'imbi_api.auth.oauth.fetch_oauth_profile',
-                return_value=mock_profile,
-            ),
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            response = self.client.get(
-                '/auth/oauth/google/callback?code=test-code&state=test-state',
-                follow_redirects=False,
-            )
-
-            self.assertEqual(response.status_code, 307)
-            location = response.headers['location']
-            self.assertIn('/dashboard#', location)
-            self.assertIn('access_token=', location)
-
-    @mock.patch.dict(
-        'os.environ',
-        {
-            'IMBI_AUTH_ENCRYPTION_KEY': (
-                'nhia5yBgff552rNZAvT4GGu-IE0dMVsXQaM2auHNXRo='
-            ),
-            'IMBI_AUTH_OAUTH_AUTO_LINK_BY_EMAIL': 'true',
-        },
-    )
-    def test_oauth_callback_refuses_auto_link_unverified_email(
-        self,
-    ) -> None:
-        """Auto-link must refuse profiles without email_verified=True."""
-        from imbi_common.auth import encryption
-
-        from imbi_api import models
-
-        settings._auth_settings = None
-        encryption.TokenEncryption.reset_instance()
-
-        existing_user = models.User(
-            email='existing@example.com',
-            display_name='Existing User',
-            is_active=True,
-            password_hash='existing-hash',
-            created_at=datetime.datetime.now(datetime.UTC),
-        )
-        mock_state_data = auth_models.OAuthStateData(
-            provider='google',
-            redirect_uri='/dashboard',
-            nonce='test-nonce',
-            timestamp=int(datetime.datetime.now(datetime.UTC).timestamp()),
-        )
-        mock_token_response = {
-            'access_token': 'google-access-token',
-            'expires_in': 3600,
-        }
-        # No email_verified key → falsy → auto-link must be refused.
-        mock_profile = {
-            'id': 'google-999',
-            'email': 'existing@example.com',
-            'name': 'Existing User',
-        }
-        self.mock_db.match.side_effect = [[], [existing_user]]
-
-        with (
-            _patch_providers([_stub_provider('google')]),
-            mock.patch(
-                'imbi_api.auth.oauth.verify_oauth_state',
-                new=mock.AsyncMock(return_value=mock_state_data),
-            ),
-            mock.patch(
-                'imbi_api.auth.oauth.exchange_oauth_code',
-                return_value=mock_token_response,
-            ),
-            mock.patch(
-                'imbi_api.auth.oauth.fetch_oauth_profile',
-                return_value=mock_profile,
-            ),
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            response = self.client.get(
-                '/auth/oauth/google/callback?code=test-code&state=test-state',
-                follow_redirects=False,
-            )
-
-        # Callback redirects to error URL on failure.
-        self.assertEqual(response.status_code, 307)
-        location = response.headers['location']
-        self.assertIn('error=authentication_failed', location)
-        # The auto-link must NOT have run: no merge against the user
-        # record, no token issuance (issue_token_pair uses
-        # db.execute), no graph writes at all.
-        self.mock_db.merge.assert_not_called()
-        self.mock_db.execute.assert_not_called()
-        self.mock_db.merge.reset_mock()
-        self.mock_db.execute.reset_mock()
-        # Repeat with email_verified explicitly False to confirm the
-        # truthy check (not just absence) gates the link.
-        self.mock_db.match.side_effect = [[], [existing_user]]
-        mock_profile_explicit = {**mock_profile, 'email_verified': False}
-        with (
-            _patch_providers([_stub_provider('google')]),
-            mock.patch(
-                'imbi_api.auth.oauth.verify_oauth_state',
-                new=mock.AsyncMock(return_value=mock_state_data),
-            ),
-            mock.patch(
-                'imbi_api.auth.oauth.exchange_oauth_code',
-                return_value=mock_token_response,
-            ),
-            mock.patch(
-                'imbi_api.auth.oauth.fetch_oauth_profile',
-                return_value=mock_profile_explicit,
-            ),
-            mock.patch(
-                'imbi_common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
-        ):
-            response = self.client.get(
-                '/auth/oauth/google/callback?code=test-code&state=test-state',
-                follow_redirects=False,
-            )
-        self.assertEqual(response.status_code, 307)
-        self.assertIn(
-            'error=authentication_failed', response.headers['location']
-        )
-        self.mock_db.merge.assert_not_called()
-        self.mock_db.execute.assert_not_called()
-
-    @mock.patch.dict(
-        'os.environ',
-        {
-            'IMBI_AUTH_OAUTH_GOOGLE_ENABLED': 'true',
-            'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_ID': 'test-id',
-            'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_SECRET': ('test-secret'),
-            'IMBI_AUTH_ENCRYPTION_KEY': (
-                'nhia5yBgff552rNZAvT4GGu-IE0dMVsXQaM2auHNXRo='
-            ),
-            'IMBI_AUTH_OAUTH_AUTO_CREATE_USERS': 'false',
-        },
-    )
-    def test_oauth_callback_auto_create_disabled(
-        self,
-    ) -> None:
-        """Test OAuth callback with auto-creation off."""
-        from imbi_common.auth import encryption
-
-        settings._auth_settings = None
-        encryption.TokenEncryption.reset_instance()
-
-        mock_state_data = auth_models.OAuthStateData(
-            provider='google',
-            redirect_uri='/dashboard',
-            nonce='test-nonce',
-            timestamp=int(
-                datetime.datetime.now(
-                    datetime.UTC,
-                ).timestamp()
-            ),
-        )
-
-        mock_token_response = {
-            'access_token': 'google-access-token',
-            'expires_in': 3600,
-        }
-
-        mock_profile = {
-            'id': 'google-111',
-            'email': 'newuser@example.com',
-            'name': 'New User',
-        }
-
-        self.mock_db.match.return_value = []
-
-        with (
-            mock.patch(
-                'imbi_api.auth.oauth.verify_oauth_state',
-                new=mock.AsyncMock(return_value=mock_state_data),
-            ),
-            mock.patch(
-                'imbi_api.auth.oauth.exchange_oauth_code',
-                return_value=mock_token_response,
-            ),
-            mock.patch(
-                'imbi_api.auth.oauth.fetch_oauth_profile',
-                return_value=mock_profile,
-            ),
-        ):
-            response = self.client.get(
-                '/auth/oauth/google/callback?code=test-code&state=test-state',
-                follow_redirects=False,
-            )
-
-            self.assertEqual(response.status_code, 307)
-            self.assertIn(
-                'error=authentication_failed',
-                response.headers['location'],
-            )
 
 
 class TokenRefreshTestCase(support.SharedAppTestCase):
@@ -2484,7 +1885,7 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
 
     def test_oauth_login_redirects_through_identity_flow(self) -> None:
         """Identity-plugin LoginApp triggers identity_flows.start_flow."""
-        provider = _stub_identity_plugin_provider('okta', plugin_id='p-1')
+        provider = _stub_identity_plugin_provider('okta', integration_id='p-1')
         with (
             _patch_providers([provider]),
             mock.patch.object(
@@ -2510,25 +1911,14 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
         )
         start_mock.assert_awaited_once()
         kwargs = start_mock.await_args.kwargs
-        self.assertEqual(kwargs['plugin_id'], 'p-1')
+        self.assertEqual(kwargs['integration_id'], 'p-1')
         self.assertEqual(kwargs['intent'], 'login')
-
-    def test_oauth_login_missing_plugin_id_returns_500(self) -> None:
-        """Identity-plugin row without plugin_id is a server error."""
-        provider = _stub_identity_plugin_provider('okta', plugin_id=None)
-        with _patch_providers([provider]):
-            response = self.client.get(
-                '/auth/oauth/okta',
-                follow_redirects=False,
-            )
-        self.assertEqual(response.status_code, 500)
-        self.assertIn('missing plugin_id', response.json()['detail'])
 
     def test_oauth_login_plugin_not_loaded_returns_503(self) -> None:
         """PluginNotFoundError from start_flow surfaces as 503."""
         from imbi_common.plugins.errors import PluginNotFoundError
 
-        provider = _stub_identity_plugin_provider('okta', plugin_id='p-1')
+        provider = _stub_identity_plugin_provider('okta', integration_id='p-1')
         with (
             _patch_providers([provider]),
             mock.patch.object(
@@ -2564,7 +1954,7 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
         encryption.TokenEncryption.reset_instance()
         settings._auth_settings = None
 
-        provider = _stub_identity_plugin_provider('okta', plugin_id='p-1')
+        provider = _stub_identity_plugin_provider('okta', integration_id='p-1')
 
         profile = self._plugin_base.IdentityProfile(
             subject='okta-sub-1',
@@ -2646,7 +2036,7 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
         encryption.TokenEncryption.reset_instance()
         settings._auth_settings = None
 
-        provider = _stub_identity_plugin_provider('okta', plugin_id='p-1')
+        provider = _stub_identity_plugin_provider('okta', integration_id='p-1')
 
         existing = api_models.User(
             email='existing@example.com',
@@ -2725,7 +2115,7 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
         encryption.TokenEncryption.reset_instance()
         settings._auth_settings = None
 
-        provider = _stub_identity_plugin_provider('okta', plugin_id='p-1')
+        provider = _stub_identity_plugin_provider('okta', integration_id='p-1')
         existing = api_models.User(
             email='existing@example.com',
             display_name='Existing User',
@@ -2782,7 +2172,7 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
         encryption.TokenEncryption.reset_instance()
         settings._auth_settings = None
 
-        provider = _stub_identity_plugin_provider('okta', plugin_id='p-1')
+        provider = _stub_identity_plugin_provider('okta', integration_id='p-1')
         existing = api_models.User(
             email='existing@example.com',
             display_name='Existing User',
@@ -2838,7 +2228,7 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
         encryption.TokenEncryption.reset_instance()
         settings._auth_settings = None
 
-        provider = _stub_identity_plugin_provider('okta', plugin_id='p-1')
+        provider = _stub_identity_plugin_provider('okta', integration_id='p-1')
         profile = self._plugin_base.IdentityProfile(
             subject='okta-sub-1',
             email='nobody@example.com',
@@ -2888,7 +2278,7 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
         encryption.TokenEncryption.reset_instance()
         settings._auth_settings = None
 
-        provider = _stub_identity_plugin_provider('okta', plugin_id='p-1')
+        provider = _stub_identity_plugin_provider('okta', integration_id='p-1')
         sa_user = api_models.User(
             email='svc@example.com',
             display_name='Service',
@@ -2944,7 +2334,7 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
         encryption.TokenEncryption.reset_instance()
         settings._auth_settings = None
 
-        provider = _stub_identity_plugin_provider('okta', plugin_id='p-1')
+        provider = _stub_identity_plugin_provider('okta', integration_id='p-1')
         profile = self._plugin_base.IdentityProfile(
             subject='okta-sub-1',
             email=None,

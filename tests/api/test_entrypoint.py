@@ -300,73 +300,46 @@ class BackfillNodeIdsTestCase(unittest.TestCase):
         result = self.runner.invoke(entrypoint.main, ['backfill-node-ids'])
 
         self.assertEqual(result.exit_code, 0)
-        self.assertIn('ThirdPartyService: assigned id to 0', result.output)
-        self.assertIn('ServiceApplication: assigned id to 0', result.output)
-        # Only the two SELECTs (one per label); no UPDATEs.
-        self.assertEqual(self.mock_graph.execute.await_count, 2)
+        self.assertIn('Integration: assigned id to 0', result.output)
+        # Only the one SELECT; no UPDATEs.
+        self.assertEqual(self.mock_graph.execute.await_count, 1)
         self.mock_graph.close.assert_awaited_once()
 
     def test_backfill_assigns_ids(self) -> None:
         """Each missing-id row triggers a SET query with a nanoid."""
         self.mock_graph.execute.side_effect = [
-            # First SELECT: TPS missing id.
+            # SELECT: Integration missing id.
             [{'org_slug': 'eng', 'slug': 'stripe'}],
-            # SET on the TPS.
-            [{'id': 'generated'}],
-            # Second SELECT: ServiceApplication missing id.
-            [
-                {
-                    'org_slug': 'eng',
-                    'svc_slug': 'stripe',
-                    'app_slug': 'my-app',
-                }
-            ],
-            # SET on the ServiceApplication.
+            # SET on the Integration.
             [{'id': 'generated'}],
         ]
 
         result = self.runner.invoke(entrypoint.main, ['backfill-node-ids'])
 
         self.assertEqual(result.exit_code, 0)
-        self.assertIn('ThirdPartyService: assigned id to 1', result.output)
-        self.assertIn('ServiceApplication: assigned id to 1', result.output)
-        self.assertEqual(self.mock_graph.execute.await_count, 4)
-        # Verify the TPS SET carries a fresh id.
-        tps_set_params = self.mock_graph.execute.await_args_list[1].args[1]
-        self.assertIn('new_id', tps_set_params)
-        self.assertTrue(tps_set_params['new_id'])
-        self.assertEqual(tps_set_params['slug'], 'stripe')
-        self.assertEqual(tps_set_params['org_slug'], 'eng')
-        # Verify the SA SET carries a fresh id.
-        sa_set_params = self.mock_graph.execute.await_args_list[3].args[1]
-        self.assertIn('new_id', sa_set_params)
-        self.assertTrue(sa_set_params['new_id'])
-        self.assertEqual(sa_set_params['app_slug'], 'my-app')
+        self.assertIn('Integration: assigned id to 1', result.output)
+        self.assertEqual(self.mock_graph.execute.await_count, 2)
+        # Verify the SET carries a fresh id.
+        set_params = self.mock_graph.execute.await_args_list[1].args[1]
+        self.assertIn('new_id', set_params)
+        self.assertTrue(set_params['new_id'])
+        self.assertEqual(set_params['slug'], 'stripe')
+        self.assertEqual(set_params['org_slug'], 'eng')
 
     def test_backfill_skips_updates_that_match_no_rows(self) -> None:
         """When SET ... WHERE id IS NULL matches nothing, don't count it."""
         self.mock_graph.execute.side_effect = [
-            # First SELECT: TPS missing id.
+            # SELECT: Integration missing id.
             [{'org_slug': 'eng', 'slug': 'stripe'}],
-            # SET on the TPS returns no rows (e.g. concurrent backfill).
-            [],
-            # Second SELECT: ServiceApplication missing id.
-            [
-                {
-                    'org_slug': 'eng',
-                    'svc_slug': 'stripe',
-                    'app_slug': 'my-app',
-                }
-            ],
-            # SET on the ServiceApplication returns no rows.
+            # SET on the Integration returns no rows (e.g. concurrent
+            # backfill).
             [],
         ]
 
         result = self.runner.invoke(entrypoint.main, ['backfill-node-ids'])
 
         self.assertEqual(result.exit_code, 0)
-        self.assertIn('ThirdPartyService: assigned id to 0', result.output)
-        self.assertIn('ServiceApplication: assigned id to 0', result.output)
+        self.assertIn('Integration: assigned id to 0', result.output)
 
     def test_backfill_graph_connection_failure(self) -> None:
         """When the graph pool fails to open, exit non-zero."""

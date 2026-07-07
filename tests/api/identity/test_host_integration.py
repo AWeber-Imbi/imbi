@@ -24,9 +24,9 @@ def _ctx() -> PluginContext:
     )
 
 
-def _resolved(identity_plugin_id: str | None) -> mock.MagicMock:
+def _resolved(identity_integration_id: str | None) -> mock.MagicMock:
     resolved = mock.MagicMock()
-    resolved.identity_plugin_id = identity_plugin_id
+    resolved.identity_integration_id = identity_integration_id
     return resolved
 
 
@@ -39,7 +39,7 @@ def _auth(user_id: str | None) -> mock.MagicMock:
 
 
 class AttachIdentityTestCase(unittest.IsolatedAsyncioTestCase):
-    async def test_no_identity_plugin_only_stamps_actor(self) -> None:
+    async def test_no_identity_integration_only_stamps_actor(self) -> None:
         db = mock.AsyncMock()
         ctx = await host_integration.attach_identity(
             db, _ctx(), _resolved(None), _auth('user-1')
@@ -54,7 +54,7 @@ class AttachIdentityTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIsNone(ctx.actor_user_id)
 
-    async def test_hydrates_identity_when_plugin_id_set(self) -> None:
+    async def test_hydrates_identity_when_integration_id_set(self) -> None:
         db = mock.AsyncMock()
         hydrated = _ctx().model_copy(
             update={
@@ -85,7 +85,7 @@ class AttachIdentityTestCase(unittest.IsolatedAsyncioTestCase):
             host_integration.identity_resolution,
             'hydrate_identity',
             side_effect=identity_errors.IdentityRequiredError(
-                plugin_id='plug-1',
+                integration_id='plug-1',
                 start_url='/me/identities/plug-1/start',
             ),
         ):
@@ -100,12 +100,12 @@ class AttachIdentityTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(exc.status_code, 401)
         self.assertEqual(
             exc.headers,
-            {'WWW-Authenticate': 'Imbi-Identity plugin_id=plug-1'},
+            {'WWW-Authenticate': 'Imbi-Identity integration_id=plug-1'},
         )
         self.assertIsInstance(exc.detail, dict)
         detail = typing.cast('dict[str, typing.Any]', exc.detail)
         self.assertEqual(detail['error'], 'identity_required')
-        self.assertEqual(detail['plugin_id'], 'plug-1')
+        self.assertEqual(detail['integration_id'], 'plug-1')
         self.assertEqual(detail['start_url'], '/me/identities/plug-1/start')
 
 
@@ -133,7 +133,7 @@ class CallWithIdentityRetryTestCase(unittest.IsolatedAsyncioTestCase):
         attach.assert_awaited_once()
         fn.assert_awaited_once_with(ctx)
 
-    async def test_no_identity_plugin_does_not_retry(self) -> None:
+    async def test_no_identity_integration_does_not_retry(self) -> None:
         db = mock.AsyncMock()
         ctx = _ctx().model_copy(update={'actor_user_id': 'user-1'})
         with mock.patch.object(
@@ -222,7 +222,7 @@ class CallWithIdentityRetryTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cm.exception.status_code, 401)
         detail = typing.cast('dict[str, typing.Any]', cm.exception.detail)
         self.assertEqual(detail['error'], 'identity_required')
-        self.assertEqual(detail['plugin_id'], 'plug-1')
+        self.assertEqual(detail['integration_id'], 'plug-1')
 
     async def test_second_401_propagates(self) -> None:
         db = mock.AsyncMock()
