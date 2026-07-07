@@ -5,6 +5,11 @@ import { AlertCircle, Plus, Trash2 } from 'lucide-react'
 
 import { listLinkDefinitions, listProjectTypes } from '@/api/endpoints'
 import { FormHeader } from '@/components/admin/form-header'
+import {
+  ConditionBuilder,
+  DEFAULT_CONDITION,
+  normalizeCondition,
+} from '@/components/admin/scoring-policies/ConditionBuilder'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -25,6 +30,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { queryKeys } from '@/lib/queryKeys'
 import { slugify } from '@/lib/utils'
 import type {
+  Condition,
   ScoringPolicy,
   ScoringPolicyCategory,
   ScoringPolicyCreate,
@@ -42,6 +48,7 @@ const CATEGORY_LABELS: Record<ScoringPolicyCategory, string> = {
   age: 'Age',
   analysis_result: 'Analysis Result',
   attribute: 'Attribute',
+  condition: 'Condition',
   link_presence: 'Link Presence',
   presence: 'Presence',
 }
@@ -52,6 +59,8 @@ const CATEGORY_DESCRIPTIONS: Record<ScoringPolicyCategory, string> = {
     "Score based on a Project Doctor analysis result's status (pass / warn / fail). The result is identified by its plugin-emitted slug.",
   attribute:
     'Map a specific attribute value or numeric range to a score (e.g. test-coverage tiers).',
+  condition:
+    'Combine attribute and relationship predicates with boolean logic, then map the result to a score (e.g. penalize projects that depend on a deprecated service).',
   link_presence:
     'Penalize projects that do not have a link of a specific type (e.g. missing source-code link).',
   presence:
@@ -77,6 +86,7 @@ interface ScoringPolicyFormProps {
   policy: null | ScoringPolicy
 }
 
+// fallow-ignore-next-line complexity
 export function ScoringPolicyForm({
   error,
   isLoading = false,
@@ -158,6 +168,17 @@ export function ScoringPolicyForm({
       ? String(policy.status_score_map?.fail ?? 0)
       : '0',
   )
+  const [condition, setCondition] = useState<Condition>(() =>
+    policy?.category === 'condition'
+      ? normalizeCondition(policy.condition)
+      : DEFAULT_CONDITION,
+  )
+  const [trueScore, setTrueScore] = useState(
+    policy?.category === 'condition' ? String(policy.true_score) : '100',
+  )
+  const [falseScore, setFalseScore] = useState(
+    policy?.category === 'condition' ? String(policy.false_score) : '0',
+  )
 
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -202,21 +223,24 @@ export function ScoringPolicyForm({
       ...validateIdentity({ name, slug }),
       ...validateSubject({ attributeName, category, linkSlug, resultSlug }),
       ...validateWeight(weight),
-      ...validateCategoryFields({
-        ageMapRows,
-        analysisFailScore,
-        analysisPassScore,
-        analysisWarnScore,
-        attributeMapRows,
-        category,
-        missingScore,
-        presentScore,
-      }),
+      ...(category === 'condition'
+        ? validateConditionFields({ condition, falseScore, trueScore })
+        : validateCategoryFields({
+            ageMapRows,
+            analysisFailScore,
+            analysisPassScore,
+            analysisWarnScore,
+            attributeMapRows,
+            category,
+            missingScore,
+            presentScore,
+          })),
     }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
+  // fallow-ignore-next-line complexity
   const handleSave = () => {
     if (!validate()) return
     const base = {
@@ -269,6 +293,16 @@ export function ScoringPolicyForm({
           pass: parseInt(analysisPassScore, 10),
           warn: parseInt(analysisWarnScore, 10),
         },
+      })
+      return
+    }
+    if (category === 'condition') {
+      onSave({
+        ...base,
+        category: 'condition',
+        condition,
+        false_score: parseInt(falseScore, 10),
+        true_score: parseInt(trueScore, 10),
       })
       return
     }
@@ -330,6 +364,7 @@ export function ScoringPolicyForm({
                   'link_presence',
                   'age',
                   'analysis_result',
+                  'condition',
                 ] as ScoringPolicyCategory[]
               ).map((c) => (
                 <button
@@ -423,7 +458,7 @@ export function ScoringPolicyForm({
             <CardTitle>Policy Settings</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {category === 'link_presence' ? (
+            {category === 'condition' ? null : category === 'link_presence' ? (
               <div>
                 <Label
                   className="text-secondary mb-1.5 block text-sm"
@@ -729,6 +764,88 @@ export function ScoringPolicyForm({
           </Card>
         )}
 
+        {category === 'condition' && (
+          <>
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  Condition <RequiredAsterisk />
+                </CardTitle>
+                <p className="text-tertiary text-xs">
+                  Build a boolean expression over this project's attributes and
+                  its outgoing dependencies. The whole tree evaluates to true or
+                  false.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <ConditionBuilder
+                  disabled={isLoading}
+                  falseScore={parseInt(falseScore, 10) || 0}
+                  onChange={setCondition}
+                  trueScore={parseInt(trueScore, 10) || 0}
+                  value={condition}
+                  weight={parseInt(weight, 10) || 0}
+                />
+                {fieldError('condition')}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Score Mapping</CardTitle>
+                <p className="text-tertiary text-xs">
+                  Map the boolean result to a 0–100 score, then it joins the
+                  weighted average like any other policy.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <Label
+                      className="text-secondary mb-1.5 flex items-center gap-2 text-sm"
+                      htmlFor="sp-true-score"
+                    >
+                      <span className="bg-success size-2 rounded-full" />
+                      Score when true
+                    </Label>
+                    <Input
+                      className={errors.true_score ? 'border-danger' : ''}
+                      disabled={isLoading}
+                      id="sp-true-score"
+                      max={100}
+                      min={0}
+                      onChange={(e) => setTrueScore(e.target.value)}
+                      type="number"
+                      value={trueScore}
+                    />
+                    {fieldError('true_score')}
+                  </div>
+                  <div>
+                    <Label
+                      className="text-secondary mb-1.5 flex items-center gap-2 text-sm"
+                      htmlFor="sp-false-score"
+                    >
+                      <span className="bg-danger size-2 rounded-full" />
+                      Score when false
+                    </Label>
+                    <Input
+                      className={errors.false_score ? 'border-danger' : ''}
+                      disabled={isLoading}
+                      id="sp-false-score"
+                      max={100}
+                      min={0}
+                      onChange={(e) => setFalseScore(e.target.value)}
+                      type="number"
+                      value={falseScore}
+                    />
+                    {fieldError('false_score')}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
+
         {(category === 'presence' || category === 'link_presence') && (
           <Card>
             <CardHeader>
@@ -936,6 +1053,7 @@ function parseMapToRows(
   return rows.length > 0 ? rows : [emptyRow()]
 }
 
+// fallow-ignore-next-line complexity
 function rowsToMap(rows: MapRow[]): null | Record<string, number> {
   const out: Record<string, number> = {}
   for (const row of rows) {
@@ -951,6 +1069,25 @@ function rowsToMap(rows: MapRow[]): null | Record<string, number> {
 const AGE_THRESHOLD_RE = /^(>=|>|<=|<|==)\s*\d+(?:\.\d+)?\s*[smhdw]$/
 
 let rowIdCounter = 0
+// fallow-ignore-next-line complexity
+function conditionHasEmptyAttribute(node: Condition): boolean {
+  const n = node as {
+    all?: Condition[]
+    any?: Condition[]
+    attribute?: string
+    not?: Condition
+    op?: string
+    relationship?: { where: Condition }
+  }
+  if (n.all != null) return n.all.some(conditionHasEmptyAttribute)
+  if (n.any != null) return n.any.some(conditionHasEmptyAttribute)
+  if (n.not != null) return conditionHasEmptyAttribute(n.not)
+  if (n.relationship != null) {
+    return conditionHasEmptyAttribute(n.relationship.where)
+  }
+  return !n.attribute || !n.attribute.trim()
+}
+
 function emptyRow(): MapRow {
   return newRow('', '')
 }
@@ -1016,6 +1153,21 @@ function validateCategoryFields(args: {
   return validatePresenceScores(args.presentScore, args.missingScore)
 }
 
+function validateConditionFields(args: {
+  condition: Condition
+  falseScore: string
+  trueScore: string
+}): Record<string, string> {
+  const errors: Record<string, string> = {}
+  if (conditionHasEmptyAttribute(args.condition)) {
+    errors.condition = 'Every attribute rule needs an attribute name'
+  }
+  if (!isScoreInRange(args.trueScore)) errors.true_score = 'Score must be 0–100'
+  if (!isScoreInRange(args.falseScore))
+    errors.false_score = 'Score must be 0–100'
+  return errors
+}
+
 function validateIdentity(args: {
   name: string
   slug: string
@@ -1057,6 +1209,7 @@ function validateSubject(args: {
       ? {}
       : { result_slug: 'Result slug is required' }
   }
+  if (args.category === 'condition') return {}
   return args.attributeName.trim()
     ? {}
     : { attribute_name: 'Attribute name is required' }

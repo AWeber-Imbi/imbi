@@ -14,6 +14,10 @@ export interface AgeScoringPolicyCreate extends ScoringPolicyCreateBase {
   category: 'age'
 }
 
+export interface AllCondition {
+  all: Condition[]
+}
+
 export interface AnalysisResultScoringPolicy extends ScoringPolicyBase {
   category: 'analysis_result'
   result_slug: string
@@ -26,11 +30,21 @@ export interface AnalysisResultScoringPolicyCreate extends ScoringPolicyCreateBa
   status_score_map?: null | Record<'fail' | 'pass' | 'warn', number>
 }
 
+export interface AnyCondition {
+  any: Condition[]
+}
+
 // Back-compat alias: the archive / unarchive endpoints originally
 // shipped this response type, and downstream components import it by
 // name.  Identical shape to ``ProjectMutationResponse`` -- prefer the
 // new name in fresh code.
 export type ArchiveProjectResponse = ProjectMutationResponse
+
+export interface AttributeCondition {
+  attribute: string
+  op: ConditionOp
+  value?: unknown
+}
 
 export interface AttributeScoringPolicy extends ScoringPolicyBase {
   attribute_name: string
@@ -49,6 +63,43 @@ export interface AttributeScoringPolicyCreate extends ScoringPolicyCreateBase {
 // API Response Wrappers
 export interface CollectionResponse<T> {
   data: T[]
+}
+
+export type Condition =
+  | AllCondition
+  | AnyCondition
+  | AttributeCondition
+  | NotCondition
+  | RelationshipCondition
+
+// ---- Condition (multi-conditional / relationship compound) scoring ----
+// A recursive boolean expression tree. Each node is exactly one shape:
+// a combinator (all/any/not), an attribute predicate on the project being
+// scored, or a relationship predicate on the project's outgoing DEPENDS_ON
+// neighbours. Mirrors the imbi-common `Condition` model (keys all/any/not are
+// the JSON aliases the API serialises/accepts).
+export type ConditionOp =
+  | 'absent'
+  | 'eq'
+  | 'ge'
+  | 'gt'
+  | 'le'
+  | 'lt'
+  | 'ne'
+  | 'present'
+
+export interface ConditionScoringPolicy extends ScoringPolicyBase {
+  category: 'condition'
+  condition: Condition
+  false_score: number
+  true_score: number
+}
+
+export interface ConditionScoringPolicyCreate extends ScoringPolicyCreateBase {
+  category: 'condition'
+  condition: Condition
+  false_score: number
+  true_score: number
 }
 
 // `Environment` tracks the full response shape (with relationships).
@@ -82,6 +133,7 @@ export interface EnvironmentCreate {
 // third-party service: stable identifier + canonical API URL, plus the
 // human dashboard URL (read from / written to the project's links).
 export type Integration = Schemas['ExistsInResponse']
+
 export type IntegrationCreate = Schemas['ExistsInCreate']
 
 // Per-plugin outcome returned by the archive / unarchive endpoints, one
@@ -95,7 +147,6 @@ export interface LifecycleInvocation {
   plugin_slug: string
   status: 'failed' | 'ok' | 'skipped'
 }
-
 // One row of the ``GET /projects/{id}/lifecycle/preview`` response --
 // per-plugin "would the project-type change move my target?" answer
 // the UI uses to gate the "Also move repository to ..." opt-in.
@@ -128,6 +179,11 @@ export interface LinkPresenceScoringPolicyCreate extends ScoringPolicyCreateBase
   missing_score?: null | number
   present_score?: null | number
 }
+
+export interface NotCondition {
+  not: Condition
+}
+
 // Activity feed projection; distinct from `OperationsLogRecord`.
 export interface OperationsLogEntry {
   change_type:
@@ -158,7 +214,6 @@ export interface OperationsLogEntry {
   type: 'OperationsLogEntry'
   version?: null | string
 }
-
 export interface PresenceScoringPolicy extends ScoringPolicyBase {
   attribute_name: string
   category: 'presence'
@@ -323,6 +378,15 @@ export interface PullRequestListResponse {
   total: number
 }
 
+export interface RelationshipCondition {
+  relationship: {
+    direction: 'outgoing'
+    edge: 'DEPENDS_ON'
+    quantifier: 'all' | 'any' | 'none'
+    where: Condition
+  }
+}
+
 export type RelationshipLink = Schemas['RelationshipLink']
 
 export interface ReleaseInfo {
@@ -349,6 +413,7 @@ export type ScoringPolicy =
   | AgeScoringPolicy
   | AnalysisResultScoringPolicy
   | AttributeScoringPolicy
+  | ConditionScoringPolicy
   | LinkPresenceScoringPolicy
   | PresenceScoringPolicy
 
@@ -356,6 +421,7 @@ export type ScoringPolicyCategory =
   | 'age'
   | 'analysis_result'
   | 'attribute'
+  | 'condition'
   | 'link_presence'
   | 'presence'
 
@@ -363,6 +429,7 @@ export type ScoringPolicyCreate =
   | AgeScoringPolicyCreate
   | AnalysisResultScoringPolicyCreate
   | AttributeScoringPolicyCreate
+  | ConditionScoringPolicyCreate
   | LinkPresenceScoringPolicyCreate
   | PresenceScoringPolicyCreate
 
@@ -1322,7 +1389,15 @@ export interface PluginVertexLabel {
     nav_label?: null | string
   }
 }
-export type ProjectRelationship = Schemas['ProjectRelationship']
+// `deprecated` is surfaced on the neighbour summary by the relationships
+// endpoint so the UI can flag deprecated dependencies. Kept optional until
+// the generated schema snapshot is refreshed.
+export type ProjectRelationship = Omit<
+  Schemas['ProjectRelationship'],
+  'project'
+> & {
+  project: Schemas['ProjectRelationshipSummary'] & { deprecated?: boolean }
+}
 
 export type ProjectRelationshipsResponse =
   Schemas['ProjectRelationshipsResponse']

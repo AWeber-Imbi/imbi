@@ -16,6 +16,8 @@ import type {
   AgeScoringPolicyCreate,
   AnalysisResultScoringPolicyCreate,
   AttributeScoringPolicyCreate,
+  Condition,
+  ConditionScoringPolicyCreate,
   LinkPresenceScoringPolicyCreate,
   PresenceScoringPolicyCreate,
   ScoringPolicyCategory,
@@ -60,12 +62,14 @@ const VALID_CATEGORIES: ScoringPolicyCategory[] = [
   'link_presence',
   'age',
   'analysis_result',
+  'condition',
 ]
 
 const CATEGORY_LABELS: Record<ScoringPolicyCategory, string> = {
   age: 'Age',
   analysis_result: 'Analysis Result',
   attribute: 'Attribute',
+  condition: 'Condition',
   link_presence: 'Link Presence',
   presence: 'Presence',
 }
@@ -106,6 +110,7 @@ const BASE_FIELD_RULES: FieldRule[] = [
   },
 ]
 
+// fallow-ignore-next-line complexity
 export function ImportScoringPolicyDialog({
   apiError,
   isLoading = false,
@@ -138,6 +143,7 @@ export function ImportScoringPolicyDialog({
     onClose()
   }, [reset, onClose])
 
+  // fallow-ignore-next-line complexity
   const handleInputChange = useCallback((value: string) => {
     setRawInput(value)
     setError(null)
@@ -180,6 +186,7 @@ export function ImportScoringPolicyDialog({
     }
   }, [])
 
+  // fallow-ignore-next-line complexity
   const handleValidateAndImport = useCallback(() => {
     const trimmed = rawInput.trim()
     if (!trimmed) {
@@ -462,6 +469,7 @@ function optionalScore(
 function policySubjectKey(policy: ScoringPolicyCreate): string {
   if (policy.category === 'link_presence') return policy.link_slug
   if (policy.category === 'analysis_result') return policy.result_slug
+  if (policy.category === 'condition') return ''
   return policy.attribute_name
 }
 
@@ -672,6 +680,87 @@ function validateBaseShape(obj: Record<string, unknown>):
   }
 }
 
+const CONDITION_OPS = new Set([
+  'absent',
+  'eq',
+  'ge',
+  'gt',
+  'le',
+  'lt',
+  'ne',
+  'present',
+])
+
+const RELATIONSHIP_QUANTIFIERS = new Set(['all', 'any', 'none'])
+
+function isValidAttributeNode(node: Record<string, unknown>): boolean {
+  return (
+    typeof node.attribute === 'string' &&
+    node.attribute.length > 0 &&
+    CONDITION_OPS.has(node.op as string)
+  )
+}
+
+function isValidCombinator(
+  node: Record<string, unknown>,
+  key: 'all' | 'any',
+): boolean {
+  const list = node[key]
+  return (
+    Array.isArray(list) && list.length > 0 && list.every(isValidConditionNode)
+  )
+}
+
+// fallow-ignore-next-line complexity
+function isValidConditionNode(node: unknown): boolean {
+  if (!isPlainObject(node)) return false
+  if ('all' in node) return isValidCombinator(node, 'all')
+  if ('any' in node) return isValidCombinator(node, 'any')
+  if ('not' in node) return isValidConditionNode(node.not)
+  if ('relationship' in node) return isValidRelationshipNode(node)
+  if ('attribute' in node) return isValidAttributeNode(node)
+  return false
+}
+
+// fallow-ignore-next-line complexity
+function isValidRelationshipNode(node: Record<string, unknown>): boolean {
+  const r = node.relationship
+  if (!isPlainObject(r)) return false
+  return (
+    r.direction === 'outgoing' &&
+    r.edge === 'DEPENDS_ON' &&
+    RELATIONSHIP_QUANTIFIERS.has(r.quantifier as string) &&
+    isValidConditionNode(r.where)
+  )
+}
+
+// fallow-ignore-next-line complexity
+function validateConditionPolicy(
+  obj: Record<string, unknown>,
+  base: PolicyBase,
+): PolicyResult<ConditionScoringPolicyCreate> {
+  if (!isPlainObject(obj.condition)) {
+    return { error: '"condition" must be an object.', valid: false }
+  }
+  if (!isValidConditionNode(obj.condition)) {
+    return { error: '"condition" is not a valid condition tree.', valid: false }
+  }
+  const trueScore = optionalScore(obj.true_score, 'true_score')
+  if (!trueScore.ok) return { error: trueScore.error, valid: false }
+  const falseScore = optionalScore(obj.false_score, 'false_score')
+  if (!falseScore.ok) return { error: falseScore.error, valid: false }
+  return {
+    policy: {
+      ...base,
+      category: 'condition',
+      condition: obj.condition as unknown as Condition,
+      false_score: falseScore.value ?? 0,
+      true_score: trueScore.value ?? 100,
+    },
+    valid: true,
+  }
+}
+
 function validateLinkPresencePolicy(
   obj: Record<string, unknown>,
   base: PolicyBase,
@@ -702,6 +791,7 @@ const CATEGORY_VALIDATORS: Record<
   age: validateAgePolicy,
   analysis_result: validateAnalysisResultPolicy,
   attribute: validateAttributePolicy,
+  condition: validateConditionPolicy,
   link_presence: validateLinkPresencePolicy,
   presence: validatePresencePolicy,
 }

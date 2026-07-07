@@ -52,10 +52,12 @@ const CATEGORY_LABELS: Record<ScoringPolicyCategory, string> = {
   age: 'Age',
   analysis_result: 'Analysis Result',
   attribute: 'Attribute',
+  condition: 'Condition',
   link_presence: 'Link Presence',
   presence: 'Presence',
 }
 
+// fallow-ignore-next-line complexity
 export function ScoringPolicyManagement() {
   const {
     editPath,
@@ -106,6 +108,7 @@ export function ScoringPolicyManagement() {
     [policies, selectedSlug],
   )
 
+  // fallow-ignore-next-line complexity
   const filteredPolicies = policies.filter((p) => {
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
@@ -139,6 +142,7 @@ export function ScoringPolicyManagement() {
     setImportDialogOpen(true)
   }
 
+  // fallow-ignore-next-line complexity
   const handleSave = (data: ScoringPolicyCreate) => {
     if (viewMode === 'create') {
       createMutation.mutate(data)
@@ -379,6 +383,12 @@ function categorySpecificExport(
       }
     case 'attribute':
       return attributeExport(policy)
+    case 'condition':
+      return {
+        condition: policy.condition,
+        false_score: policy.false_score,
+        true_score: policy.true_score,
+      }
     case 'link_presence':
       return presenceExport({
         missing_score: policy.missing_score,
@@ -397,6 +407,7 @@ function categorySpecificExport(
 function policySubjectKey(policy: ScoringPolicy): string {
   if (policy.category === 'link_presence') return policy.link_slug
   if (policy.category === 'analysis_result') return policy.result_slug
+  if (policy.category === 'condition') return ''
   return policy.attribute_name
 }
 

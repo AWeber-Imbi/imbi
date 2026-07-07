@@ -98,6 +98,7 @@ import type {
   RoleDetail,
   RoleUser,
   ScoringPolicy,
+  ScoringPolicyCategory,
   ScoringPolicyCreate,
   ServiceAccount,
   ServiceAccountCreate,
@@ -245,11 +246,20 @@ export const getProject = (
 
 export interface AttributeContribution {
   attribute_name: string
+  category?: ScoringPolicyCategory
+  condition_result?: boolean | null
   mapped_score: number
+  matched_neighbours?: MatchedNeighbour[]
   policy_slug: string
   value: unknown
   weight: number
   weighted_contribution: number
+}
+
+export interface MatchedNeighbour {
+  id: string
+  name?: null | string
+  slug?: null | string
 }
 
 interface ScoreBreakdown {

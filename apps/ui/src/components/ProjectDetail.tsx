@@ -1521,7 +1521,10 @@ function ScoreBreakdownDetail({
     const maxPts = totalWeight > 0 ? (c.weight / totalWeight) * 100 : 0
     return {
       contribution: c,
-      isPerfect: c.mapped_score >= 100,
+      isPerfect:
+        c.category === 'condition'
+          ? c.condition_result === true
+          : c.mapped_score >= 100,
       maxPts,
       policy: policyBySlug.get(c.policy_slug),
     }
@@ -1555,17 +1558,20 @@ function ScoreBreakdownDetail({
               const fillPct =
                 maxPts > 0 ? (c.weighted_contribution / maxPts) * 100 : 0
               const lost = Math.round(maxPts - c.weighted_contribution)
-              const policyName =
-                formatFieldKey(c.attribute_name) ||
-                policy?.name ||
-                formatFieldKey(c.policy_slug)
-              const recommendation = policy
-                ? buildRecommendation(
-                    c,
-                    policy,
-                    allowedValuesByAttribute.get(c.attribute_name),
-                  )
-                : null
+              const isCondition = c.category === 'condition'
+              const policyName = isCondition
+                ? policy?.name || formatFieldKey(c.policy_slug)
+                : formatFieldKey(c.attribute_name) ||
+                  policy?.name ||
+                  formatFieldKey(c.policy_slug)
+              const recommendation =
+                policy && !isCondition
+                  ? buildRecommendation(
+                      c,
+                      policy,
+                      allowedValuesByAttribute.get(c.attribute_name),
+                    )
+                  : null
               return (
                 <div
                   className="border-tertiary bg-primary rounded-md border p-3.5"
@@ -1590,12 +1596,40 @@ function ScoreBreakdownDetail({
                       </span>
                     </div>
                   </div>
-                  <p className="text-secondary mt-1 mb-2.5 text-[13px]">
-                    Currently{' '}
-                    <span className="text-amber-text font-medium">
-                      {c.value != null ? fmtAttributeValue(c.value) : 'Not set'}
-                    </span>
-                  </p>
+                  {isCondition ? (
+                    <div className="text-secondary mt-1 mb-2.5 text-[13px]">
+                      <p>
+                        {policy?.description || 'Condition'}{' '}
+                        <span className="text-danger font-medium">
+                          {c.condition_result === false
+                            ? '· not met'
+                            : '· not evaluated'}
+                        </span>
+                      </p>
+                      {c.matched_neighbours &&
+                        c.matched_neighbours.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            {c.matched_neighbours.map((n) => (
+                              <span
+                                className="bg-danger text-danger inline-flex items-center rounded px-1.5 py-0.5 text-[12px] font-medium"
+                                key={n.id}
+                              >
+                                {n.name || n.slug || n.id}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                    </div>
+                  ) : (
+                    <p className="text-secondary mt-1 mb-2.5 text-[13px]">
+                      Currently{' '}
+                      <span className="text-amber-text font-medium">
+                        {c.value != null
+                          ? fmtAttributeValue(c.value)
+                          : 'Not set'}
+                      </span>
+                    </p>
+                  )}
                   <div className="bg-secondary relative h-1.5 rounded-full">
                     {fillPct > 0 && (
                       <div
@@ -1629,10 +1663,12 @@ function ScoreBreakdownDetail({
           <div className="border-tertiary overflow-hidden rounded-md border">
             {/* fallow-ignore-next-line complexity */}
             {perfect.map(({ contribution: c, maxPts, policy }, idx) => {
-              const policyName =
-                formatFieldKey(c.attribute_name) ||
-                policy?.name ||
-                formatFieldKey(c.policy_slug)
+              const isCondition = c.category === 'condition'
+              const policyName = isCondition
+                ? policy?.name || formatFieldKey(c.policy_slug)
+                : formatFieldKey(c.attribute_name) ||
+                  policy?.name ||
+                  formatFieldKey(c.policy_slug)
               return (
                 <div
                   className={`bg-primary grid grid-cols-[auto_1fr_auto] items-center gap-2.5 px-3 py-2.5 ${
@@ -1646,7 +1682,11 @@ function ScoreBreakdownDetail({
                   <span className="text-primary text-[13.5px] font-medium">
                     {policyName}
                     <span className="text-tertiary ml-1.5 font-normal">
-                      {c.value != null ? fmtAttributeValue(c.value) : 'Not set'}
+                      {isCondition
+                        ? 'met'
+                        : c.value != null
+                          ? fmtAttributeValue(c.value)
+                          : 'Not set'}
                     </span>
                   </span>
                   <span className="text-tertiary font-mono text-[12px] tabular-nums">

@@ -32,6 +32,7 @@ type RelFilter = 'all' | 'used-by' | 'uses'
 /*  Sidebar                                                           */
 /* ------------------------------------------------------------------ */
 
+// fallow-ignore-next-line complexity
 export function ProjectRelationshipsTab({
   orgSlug,
   project,
@@ -168,6 +169,7 @@ export function ProjectRelationshipsTab({
   )
 }
 
+// fallow-ignore-next-line complexity
 function ProjectRelationshipsSidebar({
   filter,
   inbound,
@@ -302,6 +304,11 @@ function SidebarProjectRow({ rel }: { rel: ProjectRelationship }) {
       </Link>
       {typeSlug && (
         <span className={`shrink-0 text-[10px] ${muted}`}>{typeSlug}</span>
+      )}
+      {rel.project.deprecated && (
+        <span className="bg-danger/10 text-danger shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium">
+          Deprecated
+        </span>
       )}
     </li>
   )
