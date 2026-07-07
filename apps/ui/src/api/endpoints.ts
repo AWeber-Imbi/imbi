@@ -980,12 +980,41 @@ export interface AnalysisResult {
   description: string
   plugin_id: string
   plugin_slug: string
+  remediation?: null | RemediationOffer
   slug: string
   status: AnalysisResultStatus
   title: string
 }
 
 export type AnalysisResultStatus = 'fail' | 'pass' | 'warn'
+
+export interface RemediationOffer {
+  confirm?: null | string
+  destructive?: boolean
+  id: string
+  label: string
+}
+
+interface RemediateAllResponse {
+  outcomes: RemediateOutcome[]
+  report: AnalysisReport
+}
+
+interface RemediateOutcome {
+  plugin_id: string
+  result: RemediationResult
+  slug: string
+}
+
+interface RemediateResponse {
+  report: AnalysisReport
+  result: RemediationResult
+}
+
+interface RemediationResult {
+  message: string
+  status: 'failed' | 'fixed' | 'noop'
+}
 
 export const getProjectAnalysis = (
   orgSlug: string,
@@ -1003,12 +1032,22 @@ export const runProjectAnalysis = (orgSlug: string, projectId: string) =>
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/analysis/run`,
   )
 
-export const applyProjectBlueprintDefaults = (
+export const remediateAnalysisFinding = (
+  orgSlug: string,
+  projectId: string,
+  body: { finding_slug: string; plugin_id: string; remediation_id: string },
+) =>
+  apiClient.post<RemediateResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/analysis/remediate`,
+    body,
+  )
+
+export const remediateAllAnalysisFindings = (
   orgSlug: string,
   projectId: string,
 ) =>
-  apiClient.post<{ properties_removed: number; properties_updated: number }>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/analysis/apply-blueprint-defaults`,
+  apiClient.post<RemediateAllResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/analysis/remediate-all`,
   )
 
 export interface CommitSyncEnqueueResponse {

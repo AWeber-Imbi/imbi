@@ -1,6 +1,11 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useIsMutating,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { AlertTriangle, CheckCircle2, XCircle } from 'lucide-react'
 import Markdown from 'react-markdown'
 import { toast } from 'sonner'
@@ -9,8 +14,9 @@ import {
   type AnalysisReport,
   type AnalysisResult,
   type AnalysisResultStatus,
-  applyProjectBlueprintDefaults,
   getProjectAnalysis,
+  remediateAllAnalysisFindings,
+  remediateAnalysisFinding,
   rescoreProject,
   runProjectAnalysis,
 } from '@/api/endpoints'
@@ -21,6 +27,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -119,32 +126,43 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
   // plus a connected github-pr-sync plugin for the service credential.
   const prSync = usePRSync(orgSlug, project.id, canResyncDeployments)
 
-  const applyDefaultsMutation = useMutation({
-    mutationFn: () => applyProjectBlueprintDefaults(orgSlug, project.id),
+  const setReport = (report: AnalysisReport) =>
+    queryClient.setQueryData(['projectAnalysis', orgSlug, project.id], report)
+
+  // Shared key for every remediation mutation (fix-all and per-finding)
+  // targeting this report. Both write a full report snapshot into the
+  // same query cache, so we gate them behind a single in-flight guard to
+  // stop concurrent responses from clobbering each other.
+  const remediateKey = ['remediate', orgSlug, project.id]
+  const isRemediating = useIsMutating({ mutationKey: remediateKey }) > 0
+
+  const remediateAllMutation = useMutation({
+    mutationFn: () => remediateAllAnalysisFindings(orgSlug, project.id),
+    mutationKey: remediateKey,
     onError: (err) =>
-      toast.error(`Apply defaults failed: ${extractApiErrorDetail(err)}`),
+      toast.error(`Fix all failed: ${extractApiErrorDetail(err)}`),
     onSuccess: (res) => {
-      const removed = res.properties_removed ?? 0
-      const total = res.properties_updated + removed
+      setReport(res.report)
+      const fixed = res.outcomes.filter(
+        (o) => o.result.status === 'fixed',
+      ).length
+      const failed = res.outcomes.filter(
+        (o) => o.result.status === 'failed',
+      ).length
       toast.success(
-        total > 0
-          ? `Blueprint sync: applied ${res.properties_updated}, removed ${removed}`
-          : 'All blueprint properties are already in sync',
+        failed > 0
+          ? `Fixed ${fixed}, ${failed} could not be fixed`
+          : `Fixed ${fixed} finding(s)`,
       )
-      void analyzeMutation.mutateAsync()
     },
   })
 
   const report = reportQuery.data
   const results = report?.results ?? []
-  const hasBlueprintIssues =
+  const hasFixableFindings =
     report !== null &&
     report !== undefined &&
-    results.some(
-      (r) =>
-        r.plugin_slug === 'blueprint-compliance' &&
-        (r.status === 'fail' || r.status === 'warn'),
-    )
+    results.some((r) => r.remediation != null)
 
   return (
     <div className="space-y-6">
@@ -204,18 +222,14 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
                 {prSync.isSyncing ? 'Syncing...' : 'Sync PRs'}
               </Button>
             )}
-            {canAnalyze && hasBlueprintIssues && (
+            {canAnalyze && hasFixableFindings && (
               <Button
-                disabled={
-                  applyDefaultsMutation.isPending || analyzeMutation.isPending
-                }
-                onClick={() => applyDefaultsMutation.mutate()}
+                disabled={isRemediating || analyzeMutation.isPending}
+                onClick={() => remediateAllMutation.mutate()}
                 size="sm"
                 variant="outline"
               >
-                {applyDefaultsMutation.isPending
-                  ? 'Applying...'
-                  : 'Apply Blueprint Fixes'}
+                {remediateAllMutation.isPending ? 'Fixing...' : 'Fix all'}
               </Button>
             )}
           </CardContent>
@@ -250,9 +264,17 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
           )}
           {report && results.length > 0 && (
             <div className="space-y-4">
-              <StatusSection results={results} status="fail" />
-              <StatusSection results={results} status="warn" />
-              <StatusSection results={results} status="pass" />
+              {(['fail', 'warn', 'pass'] as const).map((status) => (
+                <StatusSection
+                  canFix={canAnalyze}
+                  key={status}
+                  onReport={setReport}
+                  orgSlug={orgSlug}
+                  projectId={project.id}
+                  results={results}
+                  status={status}
+                />
+              ))}
             </div>
           )}
         </CardContent>
@@ -284,10 +306,88 @@ function DoctorReportSkeleton() {
   )
 }
 
-function ResultPanel({ result }: { result: AnalysisResult }) {
-  const startOpen = result.status !== 'pass'
+function FixControls({
+  onReport,
+  orgSlug,
+  projectId,
+  result,
+}: {
+  onReport: (report: AnalysisReport) => void
+  orgSlug: string
+  projectId: string
+  result: AnalysisResult
+}) {
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const offer = result.remediation
+
+  // Shares the report-wide remediation guard: any fix (this one, another
+  // finding's, or fix-all) writing the same report cache blocks the rest.
+  const remediateKey = ['remediate', orgSlug, projectId]
+  const isRemediating = useIsMutating({ mutationKey: remediateKey }) > 0
+
+  const fixMutation = useMutation({
+    mutationFn: () =>
+      remediateAnalysisFinding(orgSlug, projectId, {
+        finding_slug: result.slug,
+        plugin_id: result.plugin_id,
+        remediation_id: offer?.id ?? '',
+      }),
+    mutationKey: remediateKey,
+    onError: (err) => toast.error(`Fix failed: ${extractApiErrorDetail(err)}`),
+    onSuccess: (res) => {
+      onReport(res.report)
+      if (res.result.status === 'failed') {
+        toast.error(res.result.message)
+      } else {
+        toast.success(res.result.message)
+      }
+    },
+  })
+
+  if (offer == null) return null
+
   return (
-    <Collapsible defaultOpen={startOpen}>
+    <div className="mt-2">
+      <Button
+        disabled={isRemediating}
+        onClick={() =>
+          offer.destructive ? setConfirmOpen(true) : fixMutation.mutate()
+        }
+        size="sm"
+        variant="outline"
+      >
+        {fixMutation.isPending ? 'Fixing...' : offer.label}
+      </Button>
+      <ConfirmDialog
+        confirmLabel={offer.label}
+        description={offer.confirm ?? 'This action cannot be undone.'}
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={() => {
+          setConfirmOpen(false)
+          fixMutation.mutate()
+        }}
+        open={confirmOpen}
+        title={offer.label}
+      />
+    </div>
+  )
+}
+
+function ResultPanel({
+  canFix,
+  onReport,
+  orgSlug,
+  projectId,
+  result,
+}: {
+  canFix: boolean
+  onReport: (report: AnalysisReport) => void
+  orgSlug: string
+  projectId: string
+  result: AnalysisResult
+}) {
+  return (
+    <Collapsible defaultOpen={result.status !== 'pass'}>
       <CollapsibleTrigger
         className={`flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm ${STATUS_BG[result.status]}`}
       >
@@ -302,6 +402,14 @@ function ResultPanel({ result }: { result: AnalysisResult }) {
       </CollapsibleTrigger>
       <CollapsibleContent className="text-secondary max-w-none px-3 pt-2 pb-3 text-sm">
         <Markdown>{result.description}</Markdown>
+        {canFix && (
+          <FixControls
+            onReport={onReport}
+            orgSlug={orgSlug}
+            projectId={projectId}
+            result={result}
+          />
+        )}
       </CollapsibleContent>
     </Collapsible>
   )
@@ -315,9 +423,17 @@ function StatusIcon({ status }: { status: AnalysisResultStatus }) {
 }
 
 function StatusSection({
+  canFix,
+  onReport,
+  orgSlug,
+  projectId,
   results,
   status,
 }: {
+  canFix: boolean
+  onReport: (report: AnalysisReport) => void
+  orgSlug: string
+  projectId: string
   results: AnalysisResult[]
   status: AnalysisResultStatus
 }) {
@@ -335,7 +451,14 @@ function StatusSection({
         {STATUS_LABEL[status]} ({filtered.length})
       </h3>
       {filtered.map((r) => (
-        <ResultPanel key={`${r.plugin_slug}:${r.slug}`} result={r} />
+        <ResultPanel
+          canFix={canFix}
+          key={`${r.plugin_slug}:${r.slug}`}
+          onReport={onReport}
+          orgSlug={orgSlug}
+          projectId={projectId}
+          result={r}
+        />
       ))}
     </div>
   )
