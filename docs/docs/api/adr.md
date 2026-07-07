@@ -285,6 +285,37 @@ Replaces hand-coded per-plugin entity routers (e.g., `aws_accounts.py`) with a g
 
 ---
 
+### Operations & Integrations
+
+#### [ADR 0015: CycloneDX 1.7 as the SBoM Standard](adr/0015-cyclonedx-1.7-sbom-standard.md)
+
+*Date: 2026-05-27 | Status: Accepted*
+
+Standardizes the SBoM spec version accepted on `PUT .../releases/{id}/sbom` and the recommended producer for build CI.
+
+**Key Decisions:**
+
+- Accept CycloneDX 1.7 on the wire (1.5/1.6 silently drop fields Imbi reads)
+- Single recommended producer that covers the polyglot service population and emits the per-component metadata needed for `ReleaseComponentEdge` `scope`/`groups`
+
+---
+
+#### [ADR 0016: Delegated Execution for Scheduled Jobs](adr/0016-delegated-execution-for-scheduled-jobs.md)
+
+*Date: 2026-06-29 | Status: Accepted*
+
+Adds an OAuth2 token-exchange (RFC 8693) delegation primitive plus a `Consent` model so the standalone `imbi-scheduler` service can run scheduled jobs as a user, and externalizes the score-recompute daily tick off the API process.
+
+**Key Decisions:**
+
+- New `urn:ietf:params:oauth:grant-type:token-exchange` grant minting short-lived JWTs with `sub=<user>` and an `act`/`azp` claim naming the scheduler SA
+- `Consent` graph node recorded under the user's own session; scheduler stores no user secrets
+- `AuthContext.actor` field + `actor_name`; permission resolution uses the user's permissions (including user-only `CAN_ACCESS` ACLs)
+- New `auth:delegate` permission and `imbi-scheduler` service account; system jobs use the SA directly
+- Score-recompute daily tick (`run_daily_tick`) moves to a scheduler-owned cron; the Valkey-stream consumer stays in `imbi-api`
+
+---
+
 ## ADR Format
 
 Our ADRs follow this structure:
