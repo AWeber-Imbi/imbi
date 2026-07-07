@@ -12,13 +12,14 @@ import respx
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from imbi_common.models import CommitRecord, TagRecord
-from imbi_common.plugins.base import PluginContext, ServicePlugin
+from imbi_common.plugins.base import PluginContext
 from imbi_common.plugins.errors import (
     PluginAuthenticationFailed,
     PluginRateLimited,
 )
 
 from imbi_plugin_github import _app_auth, commits, deployment
+from imbi_plugin_github.plugin import GitHubPlugin, GitHubWebhookActions
 
 _ZERO = '0' * 40
 _CREDS = {'access_token': 'gho_test'}
@@ -46,30 +47,25 @@ def _await_args(m: mock.AsyncMock) -> tuple[typing.Any, ...]:
 
 
 def _connection(
-    flavor: str = 'github.com', host: str | None = None
-) -> ServicePlugin:
-    """Build a github-connection sibling carrying the flavor/host."""
+    flavor: str = 'github', host: str | None = None
+) -> dict[str, typing.Any]:
+    """Build the Integration flavor/host option values."""
     options: dict[str, typing.Any] = {'flavor': flavor}
     if host is not None:
         options['host'] = host
-    return ServicePlugin(slug='github-connection', options=options)
+    return options
 
 
 def _ctx(
     *,
-    service_plugins: list[ServicePlugin] | None = None,
-    service_endpoint: str | None = None,
+    connection: dict[str, typing.Any] | None = None,
     resolve_user: commits.ResolveUser | None = None,
 ) -> PluginContext:
-    options: dict[str, object] = {'service_slug': 'github'}
-    if service_endpoint is not None:
-        options['service_endpoint'] = service_endpoint
     return PluginContext(
         project_id='proj-1',
         project_slug='proj',
         org_slug='octo',
-        assignment_options=options,
-        service_plugins=service_plugins or [],
+        integration_options=connection or {},
         project_links={'github-repository': 'https://github.com/octo/demo'},
         resolve_user_by_identity=resolve_user,
     )
@@ -185,51 +181,30 @@ class ApiBaseResolutionTestCase(unittest.TestCase):
         )
 
     def test_explicit_override_wins(self) -> None:
-        ctx = _ctx(service_plugins=[_connection()])
+        ctx = _ctx(connection=_connection())
         self.assertEqual(
             'https://ghe.corp/api/v3',
             self._base(ctx=ctx, explicit='https://ghe.corp/api/v3/'),
         )
 
-    def test_connection_github_com(self) -> None:
-        ctx = _ctx(service_plugins=[_connection('github.com')])
+    def test_integration_github(self) -> None:
+        ctx = _ctx(connection=_connection('github'))
         self.assertEqual('https://api.github.com', self._base(ctx=ctx))
 
-    def test_connection_ghec(self) -> None:
-        ctx = _ctx(service_plugins=[_connection('ghec', 'tenant.ghe.com')])
+    def test_integration_ghec(self) -> None:
+        ctx = _ctx(connection=_connection('ghec', 'tenant.ghe.com'))
         self.assertEqual('https://api.tenant.ghe.com', self._base(ctx=ctx))
 
-    def test_connection_ghes(self) -> None:
-        ctx = _ctx(service_plugins=[_connection('ghes', 'ghe.example.com')])
+    def test_integration_ghes(self) -> None:
+        ctx = _ctx(connection=_connection('ghes', 'ghe.example.com'))
         self.assertEqual('https://ghe.example.com/api/v3', self._base(ctx=ctx))
 
-    def test_connection_wins_over_action_siblings(self) -> None:
-        # Action-plugin siblings carry no host; the connection plugin is
-        # the only host source and wins regardless of sibling ordering.
-        ctx = _ctx(
-            service_plugins=[
-                ServicePlugin(slug='github-pr-sync', options={}),
-                _connection('ghec', 'tenant.ghe.com'),
-            ]
-        )
-        self.assertEqual('https://api.tenant.ghe.com', self._base(ctx=ctx))
-
-    def test_invalid_connection_flavor_falls_through(self) -> None:
-        ctx = _ctx(
-            service_plugins=[_connection('ghes')],  # missing host
-            service_endpoint='https://ghe.fallback/api/v3',
-        )
-        with self.assertLogs(commits.LOGGER, level='WARNING'):
-            self.assertEqual(
-                'https://ghe.fallback/api/v3', self._base(ctx=ctx)
-            )
-
-    def test_non_github_plugin_ignored(self) -> None:
-        ctx = _ctx(
-            service_plugins=[ServicePlugin(slug='sonarqube', options={})],
-            service_endpoint='https://api.github.com',
-        )
-        self.assertEqual('https://api.github.com', self._base(ctx=ctx))
+    def test_invalid_flavor_falls_through_to_repo_url(self) -> None:
+        # An unusable flavor/host (ghes missing host) is logged and falls
+        # through to the push payload's repository.url.
+        ctx = _ctx(connection=_connection('ghes'))  # missing host
+        with self.assertLogs(commits.LOGGER, level='INFO'):
+            self.assertEqual('https://api.github.com', self._base(ctx=ctx))
 
     def test_repo_url_last_resort_github(self) -> None:
         with self.assertLogs(commits.LOGGER, level='INFO'):
@@ -872,25 +847,34 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
 
 class ManifestTestCase(unittest.TestCase):
     def test_manifest(self) -> None:
-        manifest = commits.GitHubCommitSyncPlugin.manifest
-        self.assertEqual('github-commit-sync', manifest.slug)
-        self.assertEqual('webhook', manifest.plugin_type)
-        self.assertEqual(
-            ['access_token', 'app_id', 'private_key', 'installation_id'],
-            [c.name for c in manifest.credentials],
-        )
+        manifest = GitHubPlugin.manifest
+        self.assertEqual('github', manifest.slug)
+        # The single Integration credential blob carries the App auth
+        # fields (installation tokens power commit / tag sync).
+        names = [c.name for c in manifest.credentials]
+        for expected in ('app_id', 'private_key', 'installation_id'):
+            self.assertIn(expected, names)
         self.assertTrue(
             all(not c.required for c in manifest.credentials),
-            'all auth credentials are optional (PAT or App mode)',
+            'all Integration credentials are optional',
         )
 
+    def test_commit_sync_capability(self) -> None:
+        cap = GitHubPlugin.manifest.get_capability('commit-sync')
+        assert cap is not None
+        self.assertIs(cap.handler, commits.GitHubCommitSync)
+
     def test_actions(self) -> None:
-        descriptors = commits.GitHubCommitSyncPlugin.actions()
+        # Commit / tag sync actions are catalogued by the webhook-actions
+        # capability alongside the PR-sync action.
+        descriptors = GitHubWebhookActions.actions()
         names = [d.name for d in descriptors]
-        self.assertEqual(['sync_commits', 'sync_tags'], names)
+        self.assertIn('sync_commits', names)
+        self.assertIn('sync_tags', names)
+        by_name = {d.name: d for d in descriptors}
         # ImportString validation resolved the callables at construction.
-        self.assertIs(descriptors[0].callable, commits.sync_commits)
-        self.assertIs(descriptors[1].callable, commits.sync_tags)
+        self.assertIs(by_name['sync_commits'].callable, commits.sync_commits)
+        self.assertIs(by_name['sync_tags'].callable, commits.sync_tags)
 
 
 class PrivateKeyTestCase(unittest.TestCase):
@@ -1111,18 +1095,18 @@ class AppAuthSyncTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class HostForContextTestCase(unittest.TestCase):
-    def test_resolves_from_connection_plugin(self) -> None:
-        ctx = _ctx(service_plugins=[_connection('github.com')])
+    def test_resolves_from_integration_options(self) -> None:
+        ctx = _ctx(connection=_connection('github'))
         self.assertEqual('github.com', commits._resolve_host_for_context(ctx))
 
-    def test_resolves_ghec_from_connection(self) -> None:
-        ctx = _ctx(service_plugins=[_connection('ghec', 'tenant.ghe.com')])
+    def test_resolves_ghec_from_integration_options(self) -> None:
+        ctx = _ctx(connection=_connection('ghec', 'tenant.ghe.com'))
         self.assertEqual(
             'tenant.ghe.com', commits._resolve_host_for_context(ctx)
         )
 
-    def test_no_connection_plugin_returns_none(self) -> None:
-        ctx = _ctx(service_plugins=[ServicePlugin(slug='sonarqube')])
+    def test_no_integration_options_returns_none(self) -> None:
+        ctx = _ctx(connection={})
         self.assertIsNone(commits._resolve_host_for_context(ctx))
 
 
@@ -1130,7 +1114,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
     _REPO = 'https://api.github.com/repos/octo/demo'
 
     def _ctx(self) -> PluginContext:
-        return _ctx(service_plugins=[_connection('github.com')])
+        return _ctx(connection=_connection('github'))
 
     def _mock_default_branch(self, branch: str = 'main') -> respx.Route:
         return respx.get(self._REPO).mock(
@@ -1169,7 +1153,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
             )
         )
         with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
-            result = await commits.GitHubCommitSyncPlugin().sync_all_history(
+            result = await commits.GitHubCommitSync().sync_all_history(
                 ctx=self._ctx(), credentials=_CREDS
             )
         self.assertEqual((2, 2), result)
@@ -1214,7 +1198,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         )
         with mock.patch.object(commits, '_BACKFILL_CI_LIMIT', 1):
             with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
-                await commits.GitHubCommitSyncPlugin().sync_all_history(
+                await commits.GitHubCommitSync().sync_all_history(
                     ctx=self._ctx(), credentials=_CREDS
                 )
         # Only the most-recent commit is hydrated; the rest stay 'unknown'.
@@ -1242,7 +1226,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         )
         with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
             with self.assertRaises(PluginRateLimited) as caught:
-                await commits.GitHubCommitSyncPlugin().sync_all_history(
+                await commits.GitHubCommitSync().sync_all_history(
                     ctx=self._ctx(), credentials=_CREDS
                 )
         self.assertGreater(caught.exception.retry_at, time.time() + 9_000)
@@ -1269,7 +1253,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
             (
                 commits_recorded,
                 tags_recorded,
-            ) = await commits.GitHubCommitSyncPlugin().sync_all_history(
+            ) = await commits.GitHubCommitSync().sync_all_history(
                 ctx=self._ctx(), credentials=_CREDS
             )
         self.assertEqual(2, commits_recorded)
@@ -1294,7 +1278,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(commits, '_MAX_HISTORY_PAGES', 1):
             with mock.patch(_INSERT, new=mock.AsyncMock()):
                 with self.assertLogs(commits.LOGGER, level='WARNING') as cm:
-                    await commits.GitHubCommitSyncPlugin().sync_all_history(
+                    await commits.GitHubCommitSync().sync_all_history(
                         ctx=self._ctx(), credentials=_CREDS
                     )
         self.assertTrue(any('truncated history' in x for x in cm.output))
@@ -1302,7 +1286,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
     async def test_no_github_host_raises(self) -> None:
         with self.assertRaises(ValueError):
-            await commits.GitHubCommitSyncPlugin().sync_all_history(
+            await commits.GitHubCommitSync().sync_all_history(
                 ctx=_ctx(), credentials=_CREDS
             )
 
@@ -1318,10 +1302,8 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         failing = mock.AsyncMock(side_effect=RuntimeError('clickhouse down'))
         with mock.patch(_INSERT, new=failing):
             with self.assertLogs(commits.LOGGER, level='ERROR'):
-                result = await (
-                    commits.GitHubCommitSyncPlugin().sync_all_history(
-                        ctx=self._ctx(), credentials=_CREDS
-                    )
+                result = await commits.GitHubCommitSync().sync_all_history(
+                    ctx=self._ctx(), credentials=_CREDS
                 )
         self.assertEqual((0, 0), result)
 
@@ -1349,7 +1331,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
             'installation_id': '42',
         }
         with mock.patch(_INSERT, new=mock.AsyncMock()):
-            await commits.GitHubCommitSyncPlugin().sync_all_history(
+            await commits.GitHubCommitSync().sync_all_history(
                 ctx=self._ctx(), credentials=creds
             )
         self.assertEqual(1, token_route.call_count)
@@ -1389,7 +1371,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
             )
         )
         with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
-            await commits.GitHubCommitSyncPlugin().sync_all_history(
+            await commits.GitHubCommitSync().sync_all_history(
                 ctx=self._ctx(), credentials=_CREDS
             )
         tag_call = next(
@@ -1823,11 +1805,11 @@ class AuthorAttributionTestCase(unittest.IsolatedAsyncioTestCase):
             side_effect=lambda s: 'dev@example.com' if s == '42' else None
         )
         ctx = _ctx(
-            service_plugins=[_connection('github.com')],
+            connection=_connection('github'),
             resolve_user=resolver,
         )
         with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
-            await commits.GitHubCommitSyncPlugin().sync_all_history(
+            await commits.GitHubCommitSync().sync_all_history(
                 ctx=ctx, credentials=_CREDS
             )
         commit_call = next(

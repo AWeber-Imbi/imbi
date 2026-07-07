@@ -21,14 +21,6 @@ dependencies = [
   "pyjwt[crypto]>=2.8",
 ]
 
-[project.entry-points."imbi.plugins"]
-github-connection = "imbi_plugin_github.connection:GitHubConnectionPlugin"
-github-identity = "imbi_plugin_github.identity:GitHubIdentityPlugin"
-github-deployment = "imbi_plugin_github.deployment:GitHubDeploymentPlugin"
-github-lifecycle = "imbi_plugin_github.lifecycle:GitHubLifecyclePlugin"
-github-commit-sync = "imbi_plugin_github.commits:GitHubCommitSyncPlugin"
-github-pr-sync = "imbi_plugin_github.pull_requests:GitHubPRSyncPlugin"
-
 [dependency-groups]
 dev = [
   "basedpyright",

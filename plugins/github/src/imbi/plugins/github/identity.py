@@ -1,13 +1,12 @@
-"""GitHub identity plugin.
+"""GitHub identity capability handler.
 
-A single, host-agnostic :class:`GitHubIdentityPlugin` implements the
-OAuth App flow for every GitHub flavor. The target host (github.com, a
-GHEC ``*.ghe.com`` tenant, or a GHES appliance) is resolved at call time
-from the ``github-connection`` plugin attached to the same
-``ThirdPartyService``, so there is no longer a per-flavor subclass.
+Implements the OAuth App flow for every GitHub flavor. The target host
+(github.com, a GHEC ``*.ghe.com`` tenant, or a GHES appliance) is
+resolved per call from the Integration's ``flavor`` + ``host`` options on
+``ctx.integration_options``.
 
-The access token from the OAuth grant is passed straight to GitHub APIs
-as a ``Bearer`` token.
+The OAuth client credentials (``client_id`` / ``client_secret``) are read
+from the Integration's shared credential blob passed as ``credentials``.
 """
 
 from __future__ import annotations
@@ -21,24 +20,18 @@ import urllib.parse
 import httpx
 from imbi_common.plugins.base import (
     AuthorizationRequest,
-    CredentialField,
+    IdentityCapability,
     IdentityCredentials,
-    IdentityPlugin,
     IdentityProfile,
     PluginContext,
-    PluginManifest,
-    PluginOption,
 )
 
-from imbi_plugin_github._hosts import (
-    host_to_api_base,
-    resolve_connection_host,
-)
+from imbi_plugin_github._hosts import flavor_host, host_to_api_base
 
 LOGGER = logging.getLogger(__name__)
 
 # Default scope set for the GitHub identity flow. Each scope maps to
-# at least one endpoint the plugin family actually calls:
+# at least one endpoint the plugin actually calls:
 #   * ``read:user``   — ``GET /user`` (sign-in / profile)
 #   * ``user:email``  — ``GET /user/emails`` (verified email fallback)
 #   * ``repo``        — ``GET /repos/{owner}/{repo}/...`` (branches,
@@ -51,7 +44,7 @@ LOGGER = logging.getLogger(__name__)
 #                       (Deploy tab).
 # ``read:org`` was deliberately dropped — no org/team endpoints are
 # called today. Operators that need a narrower bind can override this
-# on the identity assignment via the ``default_scopes`` plugin option.
+# via the identity capability's ``default_scopes`` option.
 DEFAULT_SCOPES = [
     'read:user',
     'user:email',
@@ -80,48 +73,15 @@ def _build_userinfo(claims: dict[str, typing.Any]) -> IdentityProfile:
     )
 
 
-class GitHubIdentityPlugin(IdentityPlugin):
-    """Host-agnostic GitHub OAuth App identity plugin.
+class GitHubIdentity(IdentityCapability):
+    """Host-agnostic GitHub OAuth App identity capability.
 
-    The target host is resolved per call from the ``github-connection``
-    plugin attached to the same service.
+    The target host is resolved per call from the Integration's
+    ``flavor`` + ``host`` options.
     """
 
-    manifest = PluginManifest(
-        slug='github-identity',
-        name='GitHub',
-        description='GitHub OAuth App identity provider.',
-        widget_text=(
-            'Connect to enable functionality such as pull-request visibility, '
-            'project creation, and deployments.'
-        ),
-        plugin_type='identity',
-        auth_type='oauth2',
-        login_capable=True,
-        default_scopes=DEFAULT_SCOPES,
-        options=[
-            PluginOption(
-                name='default_scopes',
-                label='Default scopes (space-separated)',
-                type='string',
-            ),
-        ],
-        credentials=[
-            CredentialField(
-                name='client_id',
-                label='Client ID',
-                required=True,
-            ),
-            CredentialField(
-                name='client_secret',
-                label='Client secret',
-                required=True,
-            ),
-        ],
-    )
-
     def _endpoints(self, ctx: PluginContext) -> dict[str, str]:
-        host = resolve_connection_host(ctx.service_plugins, 'github-identity')
+        host = flavor_host(ctx.integration_options, 'github identity')
         # OAuth authorize/token are always hosted by the resolved web
         # host (github.com, a ``*.ghe.com`` tenant, or a GHES appliance);
         # only the REST API base differs per flavor, and that routing is
@@ -158,7 +118,7 @@ class GitHubIdentityPlugin(IdentityPlugin):
         scopes: list[str] | None = None,
     ) -> AuthorizationRequest:
         endpoints = self._endpoints(ctx)
-        scope_list = self._scopes(ctx.assignment_options, scopes)
+        scope_list = self._scopes(ctx.capability_options, scopes)
         params: dict[str, str] = {
             'client_id': credentials['client_id'],
             'redirect_uri': redirect_uri,

@@ -1,28 +1,23 @@
 """GitHub commit / tag history sync (webhook action plugin).
 
-A single :class:`GitHubCommitSyncPlugin` exposes two webhook actions --
-``sync_commits`` and ``sync_tags`` -- dispatched by ``imbi-gateway`` on
-``push`` deliveries. Unlike the identity / deployment / lifecycle
-families, the host (github.com vs. GHEC tenant vs. GHES appliance) is
-*runtime* data on the webhook path rather than a class attribute, so one
-callable serves all three flavors. The API base is resolved per call, in
-order:
+The module exposes two webhook actions -- ``sync_commits`` and
+``sync_tags`` -- dispatched by ``imbi-gateway`` on ``push`` deliveries
+(catalogued by the plugin's ``webhook-actions`` capability). The API base
+is resolved per call, in order:
 
 1. ``api_base_url`` from the rule's ``handler_config`` (explicit
    override), else
-2. the GitHub plugin connected to the same ``ThirdPartyService`` --
-   surfaced on ``ctx.service_plugins`` (slug -> flavor,
-   ``options['host']`` -> host), else
-3. the ``ThirdPartyService.api_endpoint``
-   (``ctx.assignment_options['service_endpoint']``), else
-4. the push payload's ``repository.url`` (already the flavor-correct API
+2. the Integration's ``flavor`` + ``host`` options on
+   ``ctx.integration_options``, else
+3. the push payload's ``repository.url`` (already the flavor-correct API
    URL) as a last resort.
 
-The same plugin also exposes :meth:`GitHubCommitSyncPlugin.sync_all_history`
-for an on-demand, host-invoked backfill: there is no push payload, so the
-GitHub host is read from ``ctx.service_plugins`` and ``(owner, repo)`` from
-the project links; it walks the full default-branch history and the
-complete tag list rather than a single push delta.
+The :class:`GitHubCommitSync` capability handler exposes
+:meth:`~GitHubCommitSync.sync_all_history` for an on-demand, host-invoked
+backfill: there is no push payload, so the GitHub host is read from
+``ctx.integration_options`` and ``(owner, repo)`` from the project links;
+it walks the full default-branch history and the complete tag list rather
+than a single push delta.
 
 Commit / tag rows are written to the shared ClickHouse ``commits`` /
 ``tags`` tables via :func:`imbi_common.clickhouse.insert`. Writes are
@@ -51,19 +46,13 @@ from imbi_common.models import CommitRecord, TagRecord
 from imbi_common.plugins.base import (
     ActionDescriptor,
     CheckStatus,
-    CredentialField,
+    CommitSyncCapability,
     PluginContext,
-    PluginManifest,
-    WebhookActionPlugin,
 )
 from imbi_common.plugins.errors import PluginRateLimited
 
 from imbi_plugin_github import _app_auth
-from imbi_plugin_github._hosts import (
-    find_connection,
-    flavor_host,
-    host_to_api_base,
-)
+from imbi_plugin_github._hosts import host_to_api_base, resolve_host
 from imbi_plugin_github._repos import resolve_owner_repo
 from imbi_plugin_github.deployment import (
     _auth_headers,  # pyright: ignore[reportPrivateUsage]
@@ -304,28 +293,6 @@ def _branch_short_name(ref: str) -> str:
     return ref.removeprefix(prefix)
 
 
-def _connection_host(ctx: PluginContext, label: str) -> str | None:
-    """Resolve the GitHub host from the ``github-connection`` sibling.
-
-    Returns ``None`` when no connection plugin is attached so callers can
-    fall through to the next resolution source. A connection plugin that
-    *is* present but carries an unusable flavor/host is logged and also
-    treated as a fall-through rather than failing the delivery.
-    """
-    plugin = find_connection(ctx.service_plugins)
-    if plugin is None:
-        return None
-    try:
-        return flavor_host(plugin.options, label)
-    except ValueError as exc:
-        LOGGER.warning(
-            '%s: github-connection plugin has an unusable flavor/host: %s',
-            label,
-            exc,
-        )
-        return None
-
-
 def _api_base_from_repo_url(repo_url: object) -> str | None:
     """Derive the API base from the push payload's ``repository.url``.
 
@@ -352,18 +319,15 @@ def _resolve_api_base(
     """Pick the GitHub API base for this call (see module docstring)."""
     if explicit:
         return explicit.rstrip('/')
-    host = _connection_host(ctx, 'github-commit-sync')
+    host = resolve_host(ctx.integration_options, 'github-commit-sync')
     if host:
         return host_to_api_base(host)
-    endpoint = ctx.assignment_options.get('service_endpoint')
-    if isinstance(endpoint, str) and endpoint:
-        return endpoint.rstrip('/')
     base = _api_base_from_repo_url(_resolve(repo_url_pointer, event))
     if base:
         LOGGER.info(
             "github-commit-sync falling back to the event's repository.url "
-            'for the API base; no api_base_url, connected GitHub plugin, or '
-            'service_endpoint was available'
+            'for the API base; no api_base_url or resolvable Integration '
+            'flavor/host was available'
         )
         return base
     return None
@@ -715,12 +679,13 @@ async def _hydrate_ci(
 def _resolve_host_for_context(ctx: PluginContext) -> str | None:
     """Resolve the GitHub web host for an on-demand sync (no payload).
 
-    Reads the ``github-connection`` sibling on ``ctx.service_plugins``
-    and returns its resolved host (github.com, a GHEC tenant, or a GHES
-    appliance). Unlike the webhook path there is no push payload to fall
-    back to, so the absence of a connection plugin yields ``None``.
+    Reads the Integration's ``flavor`` + ``host`` options from
+    ``ctx.integration_options`` and returns the resolved host (github.com,
+    a GHEC tenant, or a GHES appliance). Unlike the webhook path there is
+    no push payload to fall back to, so a missing/unusable flavor/host
+    yields ``None``.
     """
-    return _connection_host(ctx, 'github-commit-sync')
+    return resolve_host(ctx.integration_options, 'github-commit-sync')
 
 
 async def _fetch_default_branch(
@@ -1253,70 +1218,35 @@ sync_tags_descriptor = ActionDescriptor(
 )
 
 
-class GitHubCommitSyncPlugin(WebhookActionPlugin):
-    """Webhook-action plugin syncing GitHub commit / tag history.
+class GitHubCommitSync(CommitSyncCapability):
+    """Commit / tag history sync capability handler.
 
-    Carries its own service credential -- it is *not* folded into the
-    identity / deployment / lifecycle plugins, which run as the acting
-    user.  Two mutually exclusive auth modes are supported (resolved by
-    :func:`_resolve_bearer`):
-
-    * **PAT** -- a static ``access_token``.
-    * **GitHub App** -- ``app_id`` + ``private_key`` (raw or base64 PEM),
-      with an optional ``installation_id``; the plugin mints a
-      short-lived installation token per call and caches it.
+    Uses the Integration's shared credential blob (resolved by
+    :func:`_resolve_bearer`): a static ``access_token`` PAT when present,
+    otherwise a GitHub App (``app_id`` + ``private_key``, raw or base64
+    PEM, with an optional ``installation_id``) whose short-lived
+    installation token is minted per call and cached.  The gateway-side
+    incremental sync flows through the ``sync_commits`` / ``sync_tags``
+    webhook actions catalogued by the plugin's ``webhook-actions``
+    capability.
     """
 
-    manifest = PluginManifest(
-        slug='github-commit-sync',
-        name='GitHub Commit History Sync',
-        description=(
-            'Syncs commit and tag history from GitHub push webhooks into '
-            'ClickHouse for analytics.'
-        ),
-        plugin_type='webhook',
-        credentials=[
-            CredentialField(
-                name='access_token',
-                label='GitHub Token (PAT)',
-                description=(
-                    'Static personal/service access token. Use this *or* '
-                    'the GitHub App fields below.'
-                ),
-                required=False,
-            ),
-            CredentialField(
-                name='app_id',
-                label='GitHub App ID',
-                description=(
-                    'GitHub App identifier; with a private key the plugin '
-                    'mints short-lived installation tokens.'
-                ),
-                required=False,
-            ),
-            CredentialField(
-                name='private_key',
-                label='GitHub App Private Key',
-                description=(
-                    'App private key, raw PEM or base64-encoded PEM.'
-                ),
-                required=False,
-            ),
-            CredentialField(
-                name='installation_id',
-                label='GitHub App Installation ID',
-                description=(
-                    'Optional. When unset, the installation is discovered '
-                    'from the pushed repository.'
-                ),
-                required=False,
-            ),
-        ],
-    )
-
-    @classmethod
-    def actions(cls) -> list[ActionDescriptor]:
-        return [sync_commits_descriptor, sync_tags_descriptor]
+    async def check_available(
+        self,
+        *,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> bool:
+        """Whether an on-demand sync can resolve a host + repo for ``ctx``."""
+        del credentials
+        host = _resolve_host_for_context(ctx)
+        if host is None:
+            return False
+        try:
+            resolve_owner_repo(ctx, host, 'github-commit-sync')
+        except ValueError:
+            return False
+        return True
 
     async def sync_all_history(
         self,
@@ -1327,12 +1257,12 @@ class GitHubCommitSyncPlugin(WebhookActionPlugin):
         """Record the project's full default-branch history and all tags.
 
         Host-invoked (no webhook payload): the host instantiates the
-        plugin, builds a :class:`PluginContext` carrying the project's
-        links and the connected ``service_plugins``, resolves this
-        plugin's service ``credentials``, and awaits this method.  The
-        GitHub host/flavor is read from ``service_plugins``, the
-        ``(owner, repo)`` from the project links, and the bearer token
-        from the same PAT-or-App resolution the webhook actions use.
+        handler, builds a :class:`PluginContext` carrying the project's
+        links and the Integration options, resolves the Integration's
+        ``credentials``, and awaits this method.  The GitHub host/flavor
+        is read from ``ctx.integration_options``, the ``(owner, repo)``
+        from the project links, and the bearer token from the same
+        PAT-or-App resolution the webhook actions use.
 
         Walks every commit reachable from the default branch head plus the
         repo's complete (lightweight) tag list, maps them onto
@@ -1352,7 +1282,7 @@ class GitHubCommitSyncPlugin(WebhookActionPlugin):
         if host is None:
             raise ValueError(
                 'github-commit-sync could not resolve a GitHub host for an '
-                'on-demand sync: connect a GitHub plugin to the service'
+                'on-demand sync: set the Integration flavor/host'
             )
         base = host_to_api_base(host)
         owner, repo = resolve_owner_repo(ctx, host, 'github-commit-sync')

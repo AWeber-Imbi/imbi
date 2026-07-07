@@ -1,4 +1,4 @@
-"""Smoke tests for the GitHub lifecycle plugins.
+"""Smoke tests for the GitHub lifecycle capability handler.
 
 Covers manifest shape, archive-in-place, transfer-then-archive,
 idempotent skip when already archived (or already unarchived), the
@@ -13,22 +13,22 @@ import unittest.mock
 import httpx
 import respx
 from imbi_common.plugins.base import (
-    LifecyclePlugin,
+    LifecycleCapability,
     PluginContext,
-    ServicePlugin,
 )
 from imbi_common.plugins.errors import PluginAuthenticationFailed
 
-from imbi_plugin_github.lifecycle import GitHubLifecyclePlugin
+from imbi_plugin_github.lifecycle import GitHubLifecycle
+from imbi_plugin_github.plugin import GitHubPlugin
 
 
 def _connection(
-    flavor: str = 'github.com', host: str | None = None
-) -> ServicePlugin:
+    flavor: str = 'github', host: str | None = None
+) -> dict[str, object]:
     options: dict[str, object] = {'flavor': flavor}
     if host is not None:
         options['host'] = host
-    return ServicePlugin(slug='github-connection', options=options)
+    return options
 
 
 def _ctx(
@@ -41,14 +41,14 @@ def _ctx(
     project_name: str | None = None,
     project_description: str | None = None,
     project_ui_url: str | None = None,
-    third_party_service_slug: str | None = None,
-    service_plugins: list[ServicePlugin] | None = None,
+    integration_slug: str | None = None,
+    connection: dict[str, object] | None = None,
 ) -> PluginContext:
     return PluginContext(
         project_id='p',
         project_slug=project_slug,
         org_slug='octo',
-        assignment_options=options or {},
+        capability_options=options or {},
         actor_user_id='u-1',
         project_links=(
             project_links
@@ -60,9 +60,9 @@ def _ctx(
         project_name=project_name,
         project_description=project_description,
         project_ui_url=project_ui_url,
-        third_party_service_slug=third_party_service_slug,
-        service_plugins=(
-            service_plugins if service_plugins is not None else [_connection()]
+        integration_slug=integration_slug,
+        integration_options=(
+            connection if connection is not None else _connection()
         ),
     )
 
@@ -70,42 +70,43 @@ def _ctx(
 _CREDS = {'access_token': 'gho_test'}
 
 
+def _lifecycle_cap():  # type: ignore[no-untyped-def]
+    cap = GitHubPlugin.manifest.get_capability('lifecycle')
+    assert cap is not None
+    return cap
+
+
 class ManifestTestCase(unittest.TestCase):
     def test_manifest_slug(self) -> None:
-        self.assertEqual(
-            GitHubLifecyclePlugin.manifest.slug, 'github-lifecycle'
-        )
+        self.assertEqual(GitHubPlugin.manifest.slug, 'github')
 
-    def test_is_lifecycle_plugin(self) -> None:
-        self.assertIsInstance(GitHubLifecyclePlugin(), LifecyclePlugin)
-        self.assertEqual(
-            GitHubLifecyclePlugin.manifest.plugin_type, 'lifecycle'
-        )
+    def test_is_lifecycle_capability(self) -> None:
+        cap = _lifecycle_cap()
+        self.assertTrue(issubclass(cap.handler, LifecycleCapability))
+        self.assertIs(cap.handler, GitHubLifecycle)
 
     def test_archive_target_org_option(self) -> None:
         # The transfer-on-archive option is the load-bearing setting for
-        # this plugin.
-        names = {opt.name for opt in GitHubLifecyclePlugin.manifest.options}
+        # this capability.
+        names = {opt.name for opt in _lifecycle_cap().options}
         self.assertIn('archive_target_org', names)
 
     def test_create_org_and_org_mapping_options(self) -> None:
-        opts = {
-            opt.name: opt for opt in GitHubLifecyclePlugin.manifest.options
-        }
+        opts = {opt.name: opt for opt in _lifecycle_cap().options}
         self.assertIn('create_org', opts)
         self.assertEqual(opts['create_org'].type, 'string')
         self.assertIn('org_mapping', opts)
         self.assertEqual(opts['org_mapping'].type, 'mapping')
 
     def test_no_host_option(self) -> None:
-        # Host now comes from the github-connection sibling, not a manifest
-        # option on the lifecycle plugin itself.
-        names = {opt.name for opt in GitHubLifecyclePlugin.manifest.options}
+        # Host now comes from the Integration's flavor/host options, not a
+        # per-capability option on the lifecycle capability itself.
+        names = {opt.name for opt in _lifecycle_cap().options}
         self.assertNotIn('host', names)
 
     def test_lifecycle_events_includes_all_supported(self) -> None:
-        # ``lifecycle_events`` drives UI affordance gating (e.g. the
-        # "Also delete the repository" checkbox).
+        # The ``lifecycle_events`` hint drives UI affordance gating (e.g.
+        # the "Also delete the repository" checkbox).
         expected = {
             'created',
             'updated',
@@ -115,7 +116,7 @@ class ManifestTestCase(unittest.TestCase):
             'relocated',
         }
         self.assertEqual(
-            set(GitHubLifecyclePlugin.manifest.lifecycle_events), expected
+            set(_lifecycle_cap().hints['lifecycle_events']), expected
         )
 
 
@@ -136,7 +137,7 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
             'https://api.github.com/repos/octo/demo'
         ).mock(return_value=httpx.Response(200, json={}))
 
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_archived(_ctx(), _CREDS)
 
         self.assertEqual(result.status, 'ok')
@@ -167,7 +168,7 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
             'https://api.github.com/repos/octo/demo'
         ).mock(return_value=httpx.Response(200, json={}))
 
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_archived(_ctx(), _CREDS)
 
         self.assertEqual(result.status, 'skipped')
@@ -198,7 +199,7 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
             'https://api.github.com/repos/octo-archive/demo'
         ).mock(return_value=httpx.Response(200, json={}))
 
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_archived(
             _ctx(options={'archive_target_org': 'octo-archive'}),
             _CREDS,
@@ -247,7 +248,7 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
             ]
         )
 
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         with unittest.mock.patch(
             'imbi_plugin_github.lifecycle.asyncio.sleep'
         ) as sleep:
@@ -287,7 +288,7 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
             'https://api.github.com/repos/octo-archive/demo'
         ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
 
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         with unittest.mock.patch(
             'imbi_plugin_github.lifecycle.asyncio.sleep'
         ) as sleep:
@@ -324,7 +325,7 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
             'https://api.github.com/repos/octo-archive/demo'
         ).mock(return_value=httpx.Response(403, json={'message': 'Forbidden'}))
 
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         with unittest.mock.patch(
             'imbi_plugin_github.lifecycle.asyncio.sleep'
         ) as sleep:
@@ -366,7 +367,7 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
             'https://api.github.com/repos/octo-archive/demo'
         ).mock(return_value=httpx.Response(200, json={}))
 
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_archived(
             _ctx(options={'archive_target_org': 'octo-archive'}),
             _CREDS,
@@ -414,7 +415,7 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
             'https://api.github.com/repos/octo-archive/demo-renamed'
         ).mock(return_value=httpx.Response(200, json={}))
 
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_archived(
             _ctx(options={'archive_target_org': 'octo-archive'}),
             _CREDS,
@@ -447,7 +448,7 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
             'https://api.github.com/repos/octo-archive/demo/transfer'
         )
 
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_archived(
             _ctx(
                 options={'archive_target_org': 'octo-archive'},
@@ -464,12 +465,12 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
 
     @respx.mock
     async def test_archive_raises_on_missing_link(self) -> None:
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         with self.assertRaises(ValueError):
             await plugin.on_project_archived(_ctx(project_links={}), _CREDS)
 
     async def test_archive_requires_access_token(self) -> None:
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         with self.assertRaises(ValueError):
             await plugin.on_project_archived(_ctx(), {})
 
@@ -478,7 +479,7 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get('https://api.github.com/repos/octo/demo').mock(
             return_value=httpx.Response(401, json={'message': 'Bad creds'})
         )
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         with self.assertRaises(PluginAuthenticationFailed):
             await plugin.on_project_archived(_ctx(), _CREDS)
 
@@ -500,7 +501,7 @@ class UnarchiveTestCase(unittest.IsolatedAsyncioTestCase):
             'https://api.github.com/repos/octo/demo'
         ).mock(return_value=httpx.Response(200, json={}))
 
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_unarchived(_ctx(), _CREDS)
 
         self.assertEqual(result.status, 'ok')
@@ -526,7 +527,7 @@ class UnarchiveTestCase(unittest.IsolatedAsyncioTestCase):
             'https://api.github.com/repos/octo/demo'
         ).mock(return_value=httpx.Response(200, json={}))
 
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_unarchived(_ctx(), _CREDS)
 
         self.assertEqual(result.status, 'skipped')
@@ -535,34 +536,30 @@ class UnarchiveTestCase(unittest.IsolatedAsyncioTestCase):
 
 class HostResolutionTestCase(unittest.TestCase):
     def test_github_com_resolves_from_connection(self) -> None:
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         self.assertEqual(
-            plugin._resolve_host(
-                _ctx(service_plugins=[_connection('github.com')])
-            ),
+            plugin._resolve_host(_ctx(connection=_connection('github'))),
             'github.com',
         )
 
     def test_ghec_requires_tenant_host(self) -> None:
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         self.assertEqual(
             plugin._resolve_host(
-                _ctx(service_plugins=[_connection('ghec', 'tenant.ghe.com')])
+                _ctx(connection=_connection('ghec', 'tenant.ghe.com'))
             ),
             'tenant.ghe.com',
         )
         with self.assertRaises(ValueError):
             plugin._resolve_host(
-                _ctx(
-                    service_plugins=[_connection('ghec', 'github.example.com')]
-                )
+                _ctx(connection=_connection('ghec', 'github.example.com'))
             )
 
     def test_ghes_accepts_any_host(self) -> None:
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         self.assertEqual(
             plugin._resolve_host(
-                _ctx(service_plugins=[_connection('ghes', 'ghe.example.com')])
+                _ctx(connection=_connection('ghes', 'ghe.example.com'))
             ),
             'ghe.example.com',
         )
@@ -570,9 +567,9 @@ class HostResolutionTestCase(unittest.TestCase):
     def test_missing_connection_raises(self) -> None:
         # A context with no github-connection sibling cannot resolve a
         # host and must raise an operator-facing ValueError.
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         with self.assertRaises(ValueError):
-            plugin._resolve_host(_ctx(service_plugins=[]))
+            plugin._resolve_host(_ctx(connection={}))
 
 
 class GhecApiBaseTestCase(unittest.IsolatedAsyncioTestCase):
@@ -596,10 +593,10 @@ class GhecApiBaseTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=httpx.Response(200, json={})
         )
 
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_archived(
             _ctx(
-                service_plugins=[_connection('ghec', 'tenant.ghe.com')],
+                connection=_connection('ghec', 'tenant.ghe.com'),
                 project_links={
                     'github-repository': ('https://tenant.ghe.com/octo/demo'),
                 },
@@ -650,7 +647,7 @@ class RenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
         ).mock(return_value=httpx.Response(200, json={}))
 
         ctx = _ctx()
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_archived(ctx, _CREDS)
 
         self.assertEqual(result.status, 'ok')
@@ -693,7 +690,7 @@ class RenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
         ).mock(return_value=httpx.Response(200, json={}))
 
         ctx = _ctx()
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_unarchived(ctx, _CREDS)
 
         self.assertEqual(result.status, 'ok')
@@ -730,7 +727,7 @@ class RenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
         ctx = _ctx()
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_archived(ctx, _CREDS)
 
         self.assertEqual(result.status, 'skipped')
@@ -755,7 +752,7 @@ class RenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=httpx.Response(200, json={})
         )
         ctx = _ctx()
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         await plugin.on_project_archived(ctx, _CREDS)
         self.assertIsNone(ctx.link_writeback)
 
@@ -783,7 +780,7 @@ class RenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=httpx.Response(200, json={})
         )
         ctx = _ctx(options={'archive_target_org': 'archives'})
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_archived(ctx, _CREDS)
         self.assertEqual(result.status, 'ok')
         self.assertIsNone(ctx.link_writeback)
@@ -823,7 +820,7 @@ class CreateTestCase(unittest.IsolatedAsyncioTestCase):
             project_description='An example API',
             project_ui_url='https://imbi.example.com/projects/p',
         )
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_created(ctx, _CREDS)
 
         self.assertEqual(result.status, 'ok')
@@ -864,7 +861,7 @@ class CreateTestCase(unittest.IsolatedAsyncioTestCase):
             project_links={},
             project_type_slugs=['api-service'],
         )
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_created(ctx, _CREDS)
 
         self.assertEqual(result.status, 'ok')
@@ -877,7 +874,7 @@ class CreateTestCase(unittest.IsolatedAsyncioTestCase):
             project_links={},
             project_type_slugs=['api-service'],
         )
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_created(ctx, _CREDS)
         self.assertEqual(result.status, 'skipped')
         self.assertIn('No target org', result.message or '')
@@ -906,7 +903,7 @@ class CreateTestCase(unittest.IsolatedAsyncioTestCase):
             project_links={},
             project_type_slugs=['api-service'],
         )
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_created(ctx, _CREDS)
         self.assertEqual(result.status, 'skipped')
         self.assertIn('already exists', result.message or '')
@@ -939,9 +936,9 @@ class ServiceWritebackTestCase(unittest.IsolatedAsyncioTestCase):
             options={'org_mapping': {'api-service': 'aweber-apis'}},
             project_links={},
             project_type_slugs=['api-service'],
-            third_party_service_slug='github',
+            integration_slug='github',
         )
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_created(ctx, _CREDS)
 
         self.assertEqual(result.status, 'ok')
@@ -979,9 +976,9 @@ class ServiceWritebackTestCase(unittest.IsolatedAsyncioTestCase):
             options={'org_mapping': {'api-service': 'aweber-apis'}},
             project_links={},
             project_type_slugs=['api-service'],
-            third_party_service_slug='github',
+            integration_slug='github',
         )
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_created(ctx, _CREDS)
 
         self.assertEqual(result.status, 'ok')
@@ -1021,7 +1018,7 @@ class UpdateTestCase(unittest.IsolatedAsyncioTestCase):
             project_description='New description',
             project_ui_url='https://imbi.example.com/projects/p',
         )
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_updated(ctx, _CREDS)
 
         self.assertEqual(result.status, 'ok')
@@ -1066,7 +1063,7 @@ class UpdateTestCase(unittest.IsolatedAsyncioTestCase):
                 'github-repository': 'https://github.com/octo/demo-old',
             },
         )
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_updated(ctx, _CREDS)
 
         self.assertEqual(result.status, 'ok')
@@ -1110,7 +1107,7 @@ class UpdateTestCase(unittest.IsolatedAsyncioTestCase):
             project_links={},
             project_type_slugs=['api-service'],
         )
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_updated(ctx, _CREDS)
         self.assertEqual(result.status, 'ok')
 
@@ -1124,7 +1121,7 @@ class DeleteTestCase(unittest.IsolatedAsyncioTestCase):
             'https://api.github.com/repos/octo/demo'
         ).mock(return_value=httpx.Response(204))
 
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_deleted(_ctx(), _CREDS)
 
         self.assertEqual(result.status, 'ok')
@@ -1135,7 +1132,7 @@ class DeleteTestCase(unittest.IsolatedAsyncioTestCase):
         respx.delete('https://api.github.com/repos/octo/demo').mock(
             return_value=httpx.Response(404, json={'message': 'Not Found'})
         )
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_deleted(_ctx(), _CREDS)
         self.assertEqual(result.status, 'skipped')
         self.assertIn('already gone', result.message or '')
@@ -1144,7 +1141,7 @@ class DeleteTestCase(unittest.IsolatedAsyncioTestCase):
         # No link, no project type → clean skip (rather than a hard
         # failure) since there's nothing to act on.
         ctx = _ctx(project_links={}, project_type_slugs=[])
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_deleted(ctx, _CREDS)
         self.assertEqual(result.status, 'skipped')
 
@@ -1173,7 +1170,7 @@ class RelocateTestCase(unittest.IsolatedAsyncioTestCase):
             options={'org_mapping': {'api-service': 'aweber-apis'}},
             project_type_slugs=['api-service'],
         )
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_relocated(ctx, _CREDS)
 
         self.assertEqual(result.status, 'ok')
@@ -1193,7 +1190,7 @@ class RelocateTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_relocate_skips_when_no_target_resolved(self) -> None:
         ctx = _ctx(options={}, project_type_slugs=['api-service'])
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_relocated(ctx, _CREDS)
         self.assertEqual(result.status, 'skipped')
         self.assertIn('No relocation target', result.message or '')
@@ -1204,7 +1201,7 @@ class RelocateTestCase(unittest.IsolatedAsyncioTestCase):
             options={'org_mapping': {'api-service': 'octo'}},
             project_type_slugs=['api-service'],
         )
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         result = await plugin.on_project_relocated(ctx, _CREDS)
         self.assertEqual(result.status, 'skipped')
         self.assertIn('already at the target', result.message or '')
@@ -1218,7 +1215,7 @@ class ResolveRelocationTargetTestCase(unittest.IsolatedAsyncioTestCase):
             options={'org_mapping': {'api-service': 'aweber-apis'}},
             project_type_slugs=['api-service'],
         )
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         target = await plugin.resolve_relocation_target(ctx, _CREDS)
         self.assertIsNotNone(target)
         assert target is not None
@@ -1233,7 +1230,7 @@ class ResolveRelocationTargetTestCase(unittest.IsolatedAsyncioTestCase):
             project_type_slugs=['api-service'],
             project_links={},
         )
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         target = await plugin.resolve_relocation_target(ctx, _CREDS)
         self.assertIsNotNone(target)
         assert target is not None
@@ -1241,6 +1238,6 @@ class ResolveRelocationTargetTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_returns_none_when_no_org_configured(self) -> None:
         ctx = _ctx(options={}, project_type_slugs=['api-service'])
-        plugin = GitHubLifecyclePlugin()
+        plugin = GitHubLifecycle()
         target = await plugin.resolve_relocation_target(ctx, _CREDS)
         self.assertIsNone(target)

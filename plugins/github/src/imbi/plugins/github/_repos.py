@@ -74,7 +74,7 @@ def derive_owner_repo_from_links(
     """Find a project link pointing at ``host`` and parse owner/repo.
 
     Prefers the dashboard link keyed by ``preferred_key`` (the bound
-    third-party-service slug) when present and pointing at ``host``,
+    Integration slug) when present and pointing at ``host``,
     then the legacy ``github-repository`` link key, then scans the
     remaining same-host links and returns the first usable one.
     Returns ``None`` when nothing matches.
@@ -122,7 +122,7 @@ def resolve_owner_repo(
     derived = derive_owner_repo_from_links(
         ctx.project_links,
         host,
-        preferred_key=ctx.third_party_service_slug,
+        preferred_key=ctx.integration_slug,
     )
     if derived is not None:
         return derived

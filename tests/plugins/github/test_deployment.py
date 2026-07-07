@@ -1,4 +1,4 @@
-"""Smoke tests for the GitHub deployment plugin."""
+"""Smoke tests for the GitHub deployment capability handler."""
 
 import datetime
 import json
@@ -8,45 +8,45 @@ import unittest
 import httpx
 import respx
 from imbi_common.plugins.base import (
-    DeploymentPlugin,
+    DeploymentCapability,
     PluginContext,
-    ServicePlugin,
 )
 from imbi_common.plugins.errors import PluginAuthenticationFailed
 
 from imbi_plugin_github.deployment import (
-    GitHubDeploymentPlugin,
+    GitHubDeployment,
     _repo_root_from_redirect,
 )
+from imbi_plugin_github.plugin import GitHubPlugin
 
 
 def _connection(
-    flavor: str = 'github.com', host: str | None = None
-) -> ServicePlugin:
+    flavor: str = 'github', host: str | None = None
+) -> dict[str, object]:
     options: dict[str, object] = {'flavor': flavor}
     if host is not None:
         options['host'] = host
-    return ServicePlugin(slug='github-connection', options=options)
+    return options
 
 
 def _ctx(
     options: dict[str, object] | None = None,
     environment: str | None = None,
     environment_config: dict[str, object] | None = None,
-    service_plugins: list[ServicePlugin] | None = None,
+    connection: dict[str, object] | None = None,
 ) -> PluginContext:
     return PluginContext(
         project_id='p',
         project_slug='proj',
         org_slug='octo',
         environment=environment,
-        assignment_options=options or {},
+        capability_options=options or {},
         environment_config=environment_config or {},
         actor_user_id='u-1',
         project_links={'github-repository': 'https://github.com/octo/demo'},
-        service_plugins=service_plugins
-        if service_plugins is not None
-        else [_connection()],
+        integration_options=connection
+        if connection is not None
+        else _connection(),
     )
 
 
@@ -55,155 +55,143 @@ _CREDS = {'access_token': 'gho_test'}
 
 class ManifestTestCase(unittest.TestCase):
     def test_manifest_slug(self) -> None:
-        self.assertEqual(
-            GitHubDeploymentPlugin.manifest.slug, 'github-deployment'
-        )
+        self.assertEqual(GitHubPlugin.manifest.slug, 'github')
 
-    def test_subclasses_deployment_plugin(self) -> None:
-        self.assertIsInstance(GitHubDeploymentPlugin(), DeploymentPlugin)
-        self.assertEqual(
-            GitHubDeploymentPlugin.manifest.plugin_type, 'deployment'
-        )
+    def test_subclasses_deployment_capability(self) -> None:
+        cap = GitHubPlugin.manifest.get_capability('deployment')
+        assert cap is not None
+        self.assertTrue(issubclass(cap.handler, DeploymentCapability))
+        self.assertIs(cap.handler, GitHubDeployment)
 
     def test_advertises_supports_deployment_sync(self) -> None:
+        cap = GitHubPlugin.manifest.get_capability('deployment')
+        assert cap is not None
         self.assertTrue(
-            GitHubDeploymentPlugin.manifest.supports_deployment_sync,
-            'GitHubDeploymentPlugin must opt in to deployment sync',
+            cap.hints.get('supports_deployment_sync'),
+            'deployment capability must opt in to deployment sync',
         )
 
-    def test_no_host_option_declared(self) -> None:
-        # The host now comes from the github-connection sibling, never
-        # from a per-assignment ``host`` option.
-        self.assertFalse(
-            any(
-                o.name == 'host'
-                for o in GitHubDeploymentPlugin.manifest.options
-            ),
-            'GitHubDeploymentPlugin must not declare a host option',
-        )
+    def test_no_capability_options_declared(self) -> None:
+        # The host now comes from the Integration's flavor/host options,
+        # never from a per-capability ``host`` option.
+        cap = GitHubPlugin.manifest.get_capability('deployment')
+        assert cap is not None
+        self.assertEqual(cap.options, [])
 
     def test_no_legacy_deploys_via_edge_declared(self) -> None:
         # Promote behaviour is inferred from the ref shape and per-env
-        # payloads ride on the USES_PLUGIN edge (``env_payloads``).  No
-        # plugin should declare a leftover ``DEPLOYS_VIA`` edge.
+        # payloads ride on the USES edge (``env_payloads``).  No plugin
+        # should declare a leftover ``DEPLOYS_VIA`` edge.
         self.assertFalse(
             any(
                 e.name == 'DEPLOYS_VIA'
-                for e in GitHubDeploymentPlugin.manifest.edge_labels
+                for e in GitHubPlugin.manifest.edge_labels
             ),
-            'GitHubDeploymentPlugin still declares DEPLOYS_VIA',
+            'GitHubPlugin still declares DEPLOYS_VIA',
         )
 
     def test_owner_repo_required(self) -> None:
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         ctx = PluginContext(
             project_id='p',
             project_slug='proj',
             org_slug='octo',
-            assignment_options={},
-            service_plugins=[_connection()],
+            integration_options=_connection(),
         )
         with self.assertRaises(ValueError):
             plugin._owner_repo(ctx)
 
     def test_owner_repo_derived_from_project_link(self) -> None:
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         ctx = PluginContext(
             project_id='p',
             project_slug='proj',
             org_slug='octo',
-            assignment_options={},
             project_links={
                 'github-repository': 'https://github.com/octo/demo'
             },
-            service_plugins=[_connection()],
+            integration_options=_connection(),
         )
         self.assertEqual(plugin._owner_repo(ctx), ('octo', 'demo'))
 
     def test_owner_repo_derived_strips_dot_git(self) -> None:
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         ctx = PluginContext(
             project_id='p',
             project_slug='proj',
             org_slug='octo',
-            assignment_options={},
             project_links={
                 'github-repository': 'https://github.com/octo/demo.git'
             },
-            service_plugins=[_connection()],
+            integration_options=_connection(),
         )
         self.assertEqual(plugin._owner_repo(ctx), ('octo', 'demo'))
 
     def test_owner_repo_derived_for_ghec_tenant(self) -> None:
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         ctx = PluginContext(
             project_id='p',
             project_slug='proj',
             org_slug='octo',
-            assignment_options={},
             project_links={
                 'github-repository': 'https://aweber.ghe.com/apis/account'
             },
-            service_plugins=[_connection('ghec', 'aweber.ghe.com')],
+            integration_options=_connection('ghec', 'aweber.ghe.com'),
         )
         self.assertEqual(plugin._owner_repo(ctx), ('apis', 'account'))
 
     def test_owner_repo_ignores_link_for_other_host(self) -> None:
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         ctx = PluginContext(
             project_id='p',
             project_slug='proj',
             org_slug='octo',
-            assignment_options={},
             project_links={
                 'gitlab-repository': 'https://gitlab.com/octo/demo'
             },
-            service_plugins=[_connection()],
+            integration_options=_connection(),
         )
         with self.assertRaises(ValueError):
             plugin._owner_repo(ctx)
 
     def test_owner_repo_falls_back_to_project_type(self) -> None:
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         ctx = PluginContext(
             project_id='p',
             project_slug='account',
             org_slug='octo',
-            assignment_options={},
             project_type_slugs=['apis'],
-            service_plugins=[_connection()],
+            integration_options=_connection(),
         )
         self.assertEqual(plugin._owner_repo(ctx), ('apis', 'account'))
 
     def test_owner_repo_link_wins_over_project_type(self) -> None:
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         ctx = PluginContext(
             project_id='p',
             project_slug='account',
             org_slug='octo',
-            assignment_options={},
             project_links={
                 'github-repository': 'https://github.com/from-link/repo'
             },
             project_type_slugs=['apis'],
-            service_plugins=[_connection()],
+            integration_options=_connection(),
         )
         self.assertEqual(plugin._owner_repo(ctx), ('from-link', 'repo'))
 
     def test_owner_repo_prefers_explicit_repo_link(self) -> None:
         """Explicit ``github-repository`` link key wins over other
         same-host links, even when it appears later in dict order."""
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         ctx = PluginContext(
             project_id='p',
             project_slug='proj',
             org_slug='octo',
-            assignment_options={},
             project_links={
                 'docs': 'https://github.com/other-org/other-repo',
                 'github-repository': 'https://github.com/correct/repo',
             },
-            service_plugins=[_connection()],
+            integration_options=_connection(),
         )
         self.assertEqual(plugin._owner_repo(ctx), ('correct', 'repo'))
 
@@ -211,29 +199,27 @@ class ManifestTestCase(unittest.TestCase):
         """``github.com/orgs/<org>`` is not a repository URL — fall
         through to the project_type fallback rather than binding to
         ``orgs/<org>``."""
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         ctx = PluginContext(
             project_id='p',
             project_slug='account',
             org_slug='octo',
-            assignment_options={},
             project_links={'github-org': 'https://github.com/orgs/octo'},
             project_type_slugs=['apis'],
-            service_plugins=[_connection()],
+            integration_options=_connection(),
         )
         self.assertEqual(plugin._owner_repo(ctx), ('apis', 'account'))
 
     def test_owner_repo_rejects_marketplace_path(self) -> None:
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         ctx = PluginContext(
             project_id='p',
             project_slug='proj',
             org_slug='octo',
-            assignment_options={},
             project_links={
                 'marketplace': 'https://github.com/marketplace/actions/checkout'
             },
-            service_plugins=[_connection()],
+            integration_options=_connection(),
         )
         with self.assertRaises(ValueError):
             plugin._owner_repo(ctx)
@@ -272,55 +258,47 @@ class ManifestTestCase(unittest.TestCase):
 
     def test_token_required(self) -> None:
         with self.assertRaises(ValueError):
-            GitHubDeploymentPlugin._token({})
+            GitHubDeployment._token({})
 
     def test_token_accepts_token_alias(self) -> None:
-        self.assertEqual(
-            GitHubDeploymentPlugin._token({'token': 'abc'}), 'abc'
-        )
+        self.assertEqual(GitHubDeployment._token({'token': 'abc'}), 'abc')
 
     def test_api_base_dot_com(self) -> None:
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         self.assertEqual(
-            plugin._api_base(
-                _ctx(service_plugins=[_connection('github.com')])
-            ),
+            plugin._api_base(_ctx(connection=_connection('github'))),
             'https://api.github.com',
         )
 
     def test_api_base_ghec(self) -> None:
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         self.assertEqual(
             plugin._api_base(
-                _ctx(service_plugins=[_connection('ghec', 'tenant.ghe.com')])
+                _ctx(connection=_connection('ghec', 'tenant.ghe.com'))
             ),
             'https://api.tenant.ghe.com',
         )
 
     def test_api_base_ghes(self) -> None:
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         self.assertEqual(
             plugin._api_base(
-                _ctx(
-                    service_plugins=[_connection('ghes', 'github.example.com')]
-                )
+                _ctx(connection=_connection('ghes', 'github.example.com'))
             ),
             'https://github.example.com/api/v3',
         )
 
     def test_ghec_rejects_non_tenant_host(self) -> None:
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         with self.assertRaises(ValueError):
             plugin._api_base(
-                _ctx(
-                    service_plugins=[_connection('ghec', 'github.example.com')]
-                )
+                _ctx(connection=_connection('ghec', 'github.example.com'))
             )
 
-    def test_api_base_requires_connection_plugin(self) -> None:
-        plugin = GitHubDeploymentPlugin()
+    def test_api_base_requires_integration_options(self) -> None:
+        plugin = GitHubDeployment()
         with self.assertRaises(ValueError):
-            plugin._api_base(_ctx(service_plugins=[]))
+            plugin._api_base(_ctx(connection={}))
 
 
 class ListRefsTestCase(unittest.IsolatedAsyncioTestCase):
@@ -334,7 +312,7 @@ class ListRefsTestCase(unittest.IsolatedAsyncioTestCase):
                 200, json={'commit': {'sha': 'sha-main'}}
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         refs = await plugin.list_refs(_ctx(), _CREDS, kind='default')
         self.assertEqual(len(refs), 1)
         self.assertEqual(refs[0].name, 'main')
@@ -356,7 +334,7 @@ class ListRefsTestCase(unittest.IsolatedAsyncioTestCase):
                 ],
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         refs = await plugin.list_refs(_ctx(), _CREDS, kind='branch')
         names = [r.name for r in refs]
         self.assertNotIn('main', names)
@@ -379,7 +357,7 @@ class ListRefsTestCase(unittest.IsolatedAsyncioTestCase):
                 ],
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         refs = await plugin.list_refs(_ctx(), _CREDS, kind='branch')
         names = [r.name for r in refs]
         self.assertNotIn('master', names)
@@ -399,7 +377,7 @@ class ListRefsTestCase(unittest.IsolatedAsyncioTestCase):
                 ],
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         refs = await plugin.list_refs(
             _ctx(), _CREDS, kind='branch', query='foo'
         )
@@ -415,7 +393,7 @@ class ListRefsTestCase(unittest.IsolatedAsyncioTestCase):
                 ],
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         refs = await plugin.list_refs(_ctx(), _CREDS, kind='tag')
         self.assertEqual(len(refs), 1)
         self.assertEqual(refs[0].kind, 'tag')
@@ -456,7 +434,7 @@ class CommitsTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         commits = await plugin.list_commits(_ctx(), _CREDS, ref='main')
         self.assertEqual(len(commits), 1)
         self.assertTrue(commits[0].is_head)
@@ -493,7 +471,7 @@ class CommitsTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         commits = await plugin.list_commits(_ctx(), _CREDS, ref='main')
         self.assertEqual(commits[0].ci_status, 'fail')
 
@@ -534,7 +512,7 @@ class CommitsTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         commits = await plugin.list_commits(_ctx(), _CREDS, ref='main')
         self.assertEqual(commits[0].ci_status, 'unknown')
 
@@ -559,7 +537,7 @@ class CommitsTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(
             'https://api.github.com/repos/octo/demo/commits/abc/check-runs'
         ).mock(return_value=httpx.Response(404, json={}))
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         commits = await plugin.list_commits(_ctx(), _CREDS, ref='main')
         self.assertEqual(commits[0].ci_status, 'unknown')
 
@@ -580,7 +558,7 @@ class CommitsTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         commit = await plugin.resolve_committish(_ctx(), _CREDS, 'abc')
         self.assertEqual(commit.sha, 'abc')
         self.assertEqual(commit.message, 'fix')
@@ -621,7 +599,7 @@ class CompareTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         result = await plugin.compare(_ctx(), _CREDS, 'base', 'head')
         self.assertEqual(result.ahead, 2)
         self.assertEqual(result.behind, 0)
@@ -652,7 +630,7 @@ class TriggerDeploymentTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         run = await plugin.trigger_deployment(
             _ctx(environment='testing'),
             _CREDS,
@@ -673,7 +651,7 @@ class TriggerDeploymentTestCase(unittest.IsolatedAsyncioTestCase):
 
     @respx.mock
     async def test_trigger_requires_environment(self) -> None:
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         with self.assertRaises(ValueError):
             await plugin.trigger_deployment(_ctx(), _CREDS, 'main')
 
@@ -686,7 +664,7 @@ class TriggerDeploymentTestCase(unittest.IsolatedAsyncioTestCase):
         deploy = respx.post(
             'https://api.github.com/repos/octo/demo/deployments'
         ).mock(return_value=httpx.Response(201, json={'id': 1, 'url': ''}))
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         ctx = _ctx(
             environment='production',
             environment_config={
@@ -738,7 +716,7 @@ class ListRefsPaginationTestCase(unittest.IsolatedAsyncioTestCase):
                 headers={'Link': f'<{page2_link}>; rel="next"'},
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         refs = await plugin.list_refs(_ctx(), _CREDS, kind='branch')
         names = sorted(r.name for r in refs)
         self.assertEqual(names, ['feat-a', 'feat-b', 'feat-c'])
@@ -770,7 +748,7 @@ class ListRefsPaginationTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         refs = await plugin.list_refs(_ctx(), _CREDS, kind='tag')
         names = sorted(r.name for r in refs)
         self.assertEqual(names, ['v1.0.0', 'v1.1.0', 'v2.0.0'])
@@ -784,7 +762,7 @@ class GetDeploymentStatusTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(
             'https://api.github.com/repos/octo/demo/deployments/42/statuses'
         ).mock(return_value=httpx.Response(200, json=[]))
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         run = await plugin.get_deployment_status(_ctx(), _CREDS, '42')
         self.assertEqual(run.status, 'queued')
         self.assertEqual(run.run_id, '42')
@@ -807,7 +785,7 @@ class GetDeploymentStatusTestCase(unittest.IsolatedAsyncioTestCase):
                 ],
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         run = await plugin.get_deployment_status(_ctx(), _CREDS, '42')
         self.assertEqual(run.status, 'in_progress')
         self.assertEqual(run.run_url, 'https://gh/runs/42')
@@ -830,7 +808,7 @@ class GetDeploymentStatusTestCase(unittest.IsolatedAsyncioTestCase):
                 ],
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         run = await plugin.get_deployment_status(_ctx(), _CREDS, '42')
         self.assertEqual(run.status, 'success')
         self.assertIsNotNone(run.completed_at)
@@ -851,7 +829,7 @@ class GetDeploymentStatusTestCase(unittest.IsolatedAsyncioTestCase):
                 ],
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         run = await plugin.get_deployment_status(_ctx(), _CREDS, '42')
         self.assertEqual(run.status, 'failure')
 
@@ -867,7 +845,7 @@ class GetDeploymentStatusTestCase(unittest.IsolatedAsyncioTestCase):
                 json=[{'state': 'inactive'}],
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         run = await plugin.get_deployment_status(_ctx(), _CREDS, '42')
         self.assertEqual(run.status, 'cancelled')
 
@@ -911,7 +889,7 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
                 ],
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         events = await plugin.list_recent_deployments(
             _ctx(), _CREDS, ['infrastructure-testing']
         )
@@ -982,7 +960,7 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(
             'https://api.github.com/repos/octo/demo/deployments/2/statuses'
         ).mock(return_value=httpx.Response(200, json=[]))
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         events = await plugin.list_recent_deployments(
             _ctx(), _CREDS, ['production', 'staging']
         )
@@ -1018,7 +996,7 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(
             'https://api.github.com/repos/octo/demo/deployments/7/statuses'
         ).mock(return_value=httpx.Response(200, json=[]))
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         events = await plugin.list_recent_deployments(
             _ctx(), _CREDS, ['production', 'never-deployed']
         )
@@ -1046,7 +1024,7 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
                 json=[{'state': 'inactive'}],
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         events = await plugin.list_recent_deployments(
             _ctx(), _CREDS, ['staging']
         )
@@ -1074,7 +1052,7 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
                 json=[{'state': 'failure'}, {'state': 'in_progress'}],
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         events = await plugin.list_recent_deployments(
             _ctx(), _CREDS, ['staging']
         )
@@ -1097,7 +1075,7 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(
             'https://api.github.com/repos/octo/demo/deployments/8/statuses'
         ).mock(return_value=httpx.Response(500, json={'message': 'oops'}))
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         events = await plugin.list_recent_deployments(
             _ctx(), _CREDS, ['staging']
         )
@@ -1122,7 +1100,7 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(
             'https://api.github.com/repos/octo/demo/deployments/11/statuses'
         ).mock(return_value=httpx.Response(200, json=[]))
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         events = await plugin.list_recent_deployments(
             _ctx(), _CREDS, ['staging']
         )
@@ -1144,7 +1122,7 @@ class CheckStatusTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         status = await plugin.get_check_status(_ctx(), _CREDS, 'v1.0.0')
         self.assertEqual(status, 'pass')
 
@@ -1162,7 +1140,7 @@ class CheckStatusTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         status = await plugin.get_check_status(_ctx(), _CREDS, 'abc')
         self.assertEqual(status, 'fail')
 
@@ -1171,7 +1149,7 @@ class CheckStatusTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(
             'https://api.github.com/repos/octo/demo/commits/abc/check-runs'
         ).mock(return_value=httpx.Response(404, json={}))
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         status = await plugin.get_check_status(_ctx(), _CREDS, 'abc')
         self.assertEqual(status, 'unknown')
 
@@ -1180,7 +1158,7 @@ class CheckStatusTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(
             'https://api.github.com/repos/octo/demo/commits/abc/check-runs'
         ).mock(side_effect=httpx.ConnectError('boom'))
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         status = await plugin.get_check_status(_ctx(), _CREDS, 'abc')
         self.assertEqual(status, 'unknown')
 
@@ -1197,7 +1175,7 @@ class CheckStatusTestCase(unittest.IsolatedAsyncioTestCase):
                 json={'check_runs': []},
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         status = await plugin.get_check_status(
             _ctx(), _CREDS, 'refs/tags/v1.0.0'
         )
@@ -1220,7 +1198,7 @@ class TagAndReleaseTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         info = await plugin.create_tag(
             _ctx(), _CREDS, 'commit-sha', 'v1.0.0', 'Release'
         )
@@ -1242,7 +1220,7 @@ class TagAndReleaseTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         info = await plugin.create_release(
             _ctx(),
             _CREDS,
@@ -1271,7 +1249,7 @@ class AuthenticationFailureTestCase(unittest.IsolatedAsyncioTestCase):
                 401, json={'message': 'Bad credentials'}
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         with self.assertRaises(PluginAuthenticationFailed):
             await plugin.list_refs(_ctx(), _CREDS, kind='default')
 
@@ -1282,7 +1260,7 @@ class AuthenticationFailureTestCase(unittest.IsolatedAsyncioTestCase):
         respx.post('https://api.github.com/repos/octo/demo/deployments').mock(
             return_value=httpx.Response(401, json={'message': 'token expired'})
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         with self.assertRaises(PluginAuthenticationFailed):
             await plugin.trigger_deployment(
                 _ctx(environment='production'),
@@ -1318,7 +1296,7 @@ class ListWorkflowsTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         workflows = await plugin.list_workflows(_ctx(), _CREDS)
         self.assertEqual(
             [w.path for w in workflows],
@@ -1340,7 +1318,7 @@ class ListWorkflowsTestCase(unittest.IsolatedAsyncioTestCase):
                 200, json={'total_count': 0, 'workflows': []}
             )
         )
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         self.assertEqual(await plugin.list_workflows(_ctx(), _CREDS), [])
 
 
@@ -1438,7 +1416,7 @@ class RepoRenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
             )
         )
         ctx = _ctx()
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         commits = await plugin.list_commits(ctx, _CREDS, ref='main')
         # The user-facing request still succeeds via the followed redirect.
         self.assertEqual(len(commits), 1)
@@ -1471,7 +1449,7 @@ class RepoRenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
             'https://api.github.com/repos/octo/demo/commits/abc/check-runs'
         ).mock(return_value=httpx.Response(200, json={'check_runs': []}))
         ctx = _ctx()
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         await plugin.list_commits(ctx, _CREDS, ref='main')
         self.assertIsNone(ctx.link_writeback)
 
@@ -1483,7 +1461,7 @@ class RepoRenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=httpx.Response(404)
         )
         ctx = _ctx()
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         commits = await plugin.list_commits(ctx, _CREDS, ref='main')
         self.assertEqual(len(commits), 1)
         self.assertIsNone(ctx.link_writeback)
@@ -1503,6 +1481,6 @@ class RepoRenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
             )
         )
         ctx = _ctx()
-        plugin = GitHubDeploymentPlugin()
+        plugin = GitHubDeployment()
         await plugin.list_commits(ctx, _CREDS, ref='main')
         self.assertIsNone(ctx.link_writeback)

@@ -1,9 +1,8 @@
-"""GitHub deployment plugin.
+"""GitHub deployment capability handler.
 
-A single :class:`GitHubDeploymentPlugin` resolves its host from the
-``github-connection`` plugin attached to the same ``ThirdPartyService``
-(github.com, a ``*.ghe.com`` GHEC tenant, or an operator-managed GHES
-appliance) instead of shipping a per-flavor subclass.
+:class:`GitHubDeployment` resolves its host from the Integration's
+``flavor`` + ``host`` options on ``ctx.integration_options`` (github.com,
+a ``*.ghe.com`` GHEC tenant, or an operator-managed GHES appliance).
 
 It drives the GitHub Deployments API
 (``POST /repos/{owner}/{repo}/deployments``) rather than
@@ -14,9 +13,9 @@ Tag/release creation is handled separately by ``create_tag`` and
 ``create_release`` and continues to feed projects whose deploys are
 triggered by ``on: release: [published]`` instead of ``on: deployment``.
 
-The plugin runs as the user via the paired ``IdentityPlugin``: callers
-materialize an :class:`~imbi_common.plugins.base.IdentityCredentials`
-and pass the access token through ``credentials['access_token']``.
+The handler runs as the acting user: the host passes the materialized
+access token through the Integration credential blob's
+``credentials['access_token']``.
 """
 
 from __future__ import annotations
@@ -36,16 +35,11 @@ from imbi_common.plugins.base import (
     CheckStatus,
     Commit,
     CompareResult,
-    CredentialField,
+    DeploymentCapability,
     DeploymentEventStatus,
-    DeploymentPlugin,
     DeploymentRun,
     LinkWriteback,
-    OpsLogTemplate,
     PluginContext,
-    PluginEdgeLabel,
-    PluginManifest,
-    PluginOption,
     Ref,
     RefInfo,
     ReleaseInfo,
@@ -54,10 +48,7 @@ from imbi_common.plugins.base import (
 )
 from imbi_common.plugins.errors import PluginAuthenticationFailed
 
-from imbi_plugin_github._hosts import (
-    host_to_api_base,
-    resolve_connection_host,
-)
+from imbi_plugin_github._hosts import flavor_host, host_to_api_base
 from imbi_plugin_github._repos import (
     derive_owner_repo_from_links,
     parse_owner_repo,
@@ -287,19 +278,18 @@ def _check_runs_to_status(
     return 'unknown'
 
 
-class _DeploymentBase(DeploymentPlugin):
-    """Shared base for the GitHub deployment plugin.
+class GitHubDeployment(DeploymentCapability):
+    """GitHub deployment capability handler.
 
-    The host is resolved per call from the ``github-connection`` sibling
-    on the same service via :meth:`_resolve_host`.  Each plugin instance
-    is single-shot: callers pass ``credentials`` (from the paired
-    :class:`IdentityPlugin`) and ``ctx`` per call.
+    The host is resolved per call from the Integration's ``flavor`` +
+    ``host`` options via :meth:`_resolve_host`.  Each instance is
+    single-shot: callers pass ``credentials`` (the Integration's
+    decrypted blob, carrying the acting user's access token) and ``ctx``
+    per call.
     """
 
     def _resolve_host(self, ctx: PluginContext) -> str:
-        return resolve_connection_host(
-            ctx.service_plugins, 'github-deployment'
-        )
+        return flavor_host(ctx.integration_options, 'github deployment')
 
     def _api_base(self, ctx: PluginContext) -> str:
         return host_to_api_base(self._resolve_host(ctx))
@@ -1113,73 +1103,3 @@ def _to_event_status(github_state: str) -> DeploymentEventStatus:
     if github_state == 'inactive':
         return 'rolled_back'
     return 'pending'
-
-
-_COMMON_OPTIONS: list[PluginOption] = []
-
-# Promote behaviour is now inferred from the ``body.tag`` shape on the
-# imbi-api side: semver tags trigger a Deployment, raw SHAs cut a tag
-# + GitHub Release.  Per-env workflow input overrides live on the
-# ``USES_PLUGIN`` edge under ``env_payloads`` (keyed by env slug),
-# resolved by the host and passed in via ``ctx.environment_config``.
-_COMMON_EDGE_LABELS: list[PluginEdgeLabel] = []
-
-_COMMON_CREDENTIALS: list[CredentialField] = [
-    CredentialField(
-        name='access_token',
-        label='Service-account PAT (optional fallback)',
-        description=(
-            'Personal access token used when no per-user identity is '
-            'bound.  Requires contents:write and actions:write scopes.'
-        ),
-        required=False,
-    ),
-]
-
-
-# Templates for the operations-log JSON payload the API writes from
-# ``_record_deployment_event`` in imbi-api: ``{action, plugin_slug,
-# run_url, release_url, from_environment}``.  Row-level fields
-# ``version`` and ``environment`` (from the entry's
-# ``environment_slug``/``environment.name``) are also in scope.
-_COMMON_OPS_LOG_TEMPLATES: dict[str, OpsLogTemplate] = {
-    'deploy': OpsLogTemplate(
-        label='Deployed {{version}} to {{environment}}',
-        summary='deployed',
-    ),
-    'redeploy': OpsLogTemplate(
-        label='Re-deployed {{version}} to {{environment}}',
-        summary='re-deployed',
-    ),
-    'promote': OpsLogTemplate(
-        label=(
-            'Promoted {{from_environment}} to {{environment}} as {{version}}.'
-        ),
-        summary='promoted',
-    ),
-    'resync': OpsLogTemplate(
-        label='Recorded {{version}} deploy in {{environment}}',
-        summary='recorded a deploy in',
-    ),
-}
-
-
-class GitHubDeploymentPlugin(_DeploymentBase):
-    manifest = PluginManifest(
-        slug='github-deployment',
-        name='GitHub Deployment',
-        description=(
-            'Drive GitHub Deployments and record GitHub Releases '
-            'on behalf of an Imbi project.  Each promote creates a '
-            'Deployment object so GitHub environment protection rules '
-            '(required reviewers, branch policies, wait timers) apply '
-            'server-side.  The GitHub host is resolved from the '
-            '``github-connection`` plugin on the same service.'
-        ),
-        plugin_type='deployment',
-        supports_deployment_sync=True,
-        options=_COMMON_OPTIONS,
-        credentials=_COMMON_CREDENTIALS,
-        edge_labels=_COMMON_EDGE_LABELS,
-        ops_log_templates=_COMMON_OPS_LOG_TEMPLATES,
-    )
