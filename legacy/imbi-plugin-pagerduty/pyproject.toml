@@ -20,11 +20,6 @@ dependencies = [
   "pydantic>=2",
 ]
 
-[project.entry-points."imbi.plugins"]
-pagerduty-lifecycle = "imbi_plugin_pagerduty.lifecycle:PagerDutyLifecyclePlugin"
-pagerduty-webhook = "imbi_plugin_pagerduty.webhook:PagerDutyWebhookPlugin"
-pagerduty-incidents = "imbi_plugin_pagerduty.incidents:PagerDutyIncidentsPlugin"
-
 [dependency-groups]
 dev = [
   "basedpyright",

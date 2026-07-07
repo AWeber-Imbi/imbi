@@ -1,4 +1,4 @@
-"""PagerDuty incidents plugin.
+"""PagerDuty incidents capability.
 
 Live-queries PagerDuty for the incidents on a project's service and
 returns them for the project-detail Incidents tab. Read-only: there is
@@ -12,41 +12,17 @@ import datetime
 import typing
 
 from imbi_common.plugins.base import (
-    CredentialField,
     IncidentResult,
-    IncidentsPlugin,
+    IncidentsCapability,
     PluginContext,
-    PluginManifest,
 )
 
 from imbi_plugin_pagerduty import _client, _services
 from imbi_plugin_pagerduty.models import to_incident_view
 
-_API_CREDENTIALS = [
-    CredentialField(
-        name='api_key',
-        label='PagerDuty REST API key',
-        description='A read-capable PagerDuty REST API key.',
-        required=True,
-    )
-]
 
-
-class PagerDutyIncidentsPlugin(IncidentsPlugin):
+class PagerDutyIncidents(IncidentsCapability):
     """Live-query PagerDuty incidents for a project's service."""
-
-    manifest = PluginManifest(
-        slug='pagerduty-incidents',
-        name='PagerDuty Incidents',
-        description=(
-            "Live-query PagerDuty for the incidents on a project's "
-            'service and render them on the Incidents tab.'
-        ),
-        plugin_type='incidents',
-        auth_type='api_token',
-        cacheable=True,
-        credentials=_API_CREDENTIALS,
-    )
 
     @staticmethod
     def _params(
