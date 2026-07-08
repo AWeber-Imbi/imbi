@@ -1,0 +1,124 @@
+[project]
+name = "imbi-plugin-google"
+version = "2.11.5"
+description = "Google identity plugin for Imbi"
+readme = "README.md"
+requires-python = ">=3.14"
+license = { text = "BSD-3-Clause" }
+authors = [{ name = "Gavin M. Roy", email = "gavinr@aweber.com" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+  "httpx>=0.27",
+  "imbi-common==2.11.5",
+  "pydantic>=2",
+]
+
+[dependency-groups]
+dev = [
+  "basedpyright",
+  "coverage[toml]",
+  "imbi-common[server,databases]==2.11.5",
+  "pre-commit",
+  "pytest",
+  "pytest-asyncio",
+  "respx",
+  "ruff~=0.14.6",
+]
+dist = ["build", "twine", "wheel"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.coverage.report]
+exclude_also = ["typing.TYPE_CHECKING"]
+fail_under = 90
+show_missing = true
+
+[tool.coverage.run]
+branch = true
+source = ["src/imbi_plugin_google"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/imbi_plugin_google"]
+
+[tool.pyright]
+executionEnvironments = [
+  { root = "src" },
+  { root = "tests", reportPrivateUsage = false },
+]
+deprecateTypingAliases = true
+reportMissingSuperCall = "hint"
+reportMissingTypeStubs = false
+typeCheckingMode = "strict"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 79
+target-version = "py314"
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint]
+select = [
+  "BLE",
+  "C4",
+  "C90",
+  "E",
+  "W",
+  "F",
+  "G",
+  "I",
+  "N",
+  "Q",
+  "S",
+  "ASYNC",
+  "B",
+  "DTZ",
+  "FURB",
+  "RUF",
+  "T20",
+  "UP",
+]
+ignore = [
+  "ASYNC109",
+  "N818",
+  "RSE",
+  "S105",
+  "TRY003",
+  "TRY400",
+  "UP047",
+]
+flake8-quotes = { inline-quotes = "single" }
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S"]
+
+[tool.uv]
+default-groups = ["dev"]
+exclude-newer = "7 days"
+exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "imbi-plugin-aws" = false, "imbi-plugin-github" = false, "imbi-plugin-google" = false, "imbi-plugin-logzio" = false, "imbi-plugin-oidc" = false, "imbi-plugin-pagerduty" = false, "imbi-plugin-sentry" = false, "imbi-plugin-sonarqube" = false }
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true
+
+# Temporary: track imbi-common main so the CredentialField.secret flag is
+# available before imbi-common is released. The lockstep release flow
+# restores the pinned PyPI version (==X) here. imbi-common is a public repo.
+[tool.uv.sources]
+imbi-common = { path = "../imbi-common", editable = true }
