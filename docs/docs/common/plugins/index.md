@@ -105,11 +105,18 @@ class GitHubPlugin(Plugin):
         ],
         # Integration-level credentials — the ONLY credential declaration.
         credentials=[
-            CredentialField(name='app_id', label='App ID'),
+            CredentialField(name='app_id', label='App ID', secret=False),
             CredentialField(name='private_key', label='Private key'),
-            CredentialField(name='installation_id', label='Installation ID'),
             CredentialField(
-                name='client_id', label='OAuth client ID', required=False
+                name='installation_id',
+                label='Installation ID',
+                secret=False,
+            ),
+            CredentialField(
+                name='client_id',
+                label='OAuth client ID',
+                required=False,
+                secret=False,
             ),
             CredentialField(
                 name='client_secret',
@@ -179,7 +186,10 @@ class GitHubPlugin(Plugin):
 - **`credentials`** are the **only** credential declaration in the
   package — capabilities cannot declare their own. Values are encrypted
   at rest as the Integration's single blob and decrypted into the
-  `credentials` dict passed to every call.
+  `credentials` dict passed to every call. Each field is `secret=True`
+  by default (masked in the UI, never echoed back); set `secret=False`
+  for non-sensitive identifiers such as an OAuth `client_id` or a GitHub
+  App id so the UI renders them as plain text.
 - **`capabilities`** must declare at least one `Capability`, and each
   `kind` must be unique within the manifest.
 - **`data_types`** apply to configuration capabilities — see

@@ -57,6 +57,10 @@ class CredentialField(pydantic.BaseModel):
     label: str
     description: str | None = None
     required: bool = True
+    #: Whether the value is sensitive. Secret fields are masked in the UI
+    #: (password input, never echoed back). Set ``False`` for identifiers
+    #: that are not sensitive, e.g. an OAuth client id or a GitHub App id.
+    secret: bool = True
 
 
 class DataType(pydantic.BaseModel):
