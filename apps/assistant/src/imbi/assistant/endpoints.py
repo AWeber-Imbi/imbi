@@ -396,6 +396,32 @@ async def _run_openapi_tool(
     )
 
 
+def _truncate_tool_result(content: str) -> str:
+    """Bound a tool result to ``max_tool_result_chars``.
+
+    A tool that returns more than the configured limit — e.g. an
+    unpaginated ``list_projects`` for a large org, which the API
+    documents as "megabytes" — would otherwise be embedded verbatim,
+    overflow the model's context window (HTTP 400), and, because the
+    round is persisted before the next request runs, permanently brick
+    the conversation. Keeping the head of the payload and appending a
+    notice lets the model recover by narrowing its next call.
+    """
+    limit = settings.get_assistant_settings().max_tool_result_chars
+    if limit <= 0 or len(content) <= limit:
+        return content
+    approx_tokens = len(content) // 4
+    notice = (
+        '\n\n[Tool result truncated: the full result was '
+        f'{len(content)} characters (~{approx_tokens} tokens), '
+        f'exceeding the {limit}-character limit; only the first '
+        f'{limit} characters are shown. Re-run with a narrower query '
+        '— pass slim=true, add filter predicates, or request a single '
+        'item or page instead of the full collection.]'
+    )
+    return content[:limit] + notice
+
+
 def _tool_result_block(
     tool_use_id: str,
     content: str,
@@ -406,11 +432,14 @@ def _tool_result_block(
     Setting ``is_error: true`` is what tells Claude the tool call
     failed so it can react (e.g. correct its inputs) instead of
     consuming the error payload as a successful result.
+
+    Oversized results are truncated (see :func:`_truncate_tool_result`)
+    so a single large payload cannot overflow the context window.
     """
     block: dict[str, typing.Any] = {
         'type': 'tool_result',
         'tool_use_id': tool_use_id,
-        'content': content,
+        'content': _truncate_tool_result(content),
     }
     if is_error:
         block['is_error'] = True

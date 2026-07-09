@@ -53,6 +53,23 @@ Do NOT fetch every project and filter them yourself, and do NOT use the
 `slim` listing for attribute questions — it omits blueprint attributes.
 Always push the work down with `filter` predicates.
 
+## Keeping Tool Results Small
+
+Listing endpoints can return **megabytes** of data — the full project
+listing for a large organization is far too big to read in one call and
+will be truncated before you see it. Never pull a full collection just to
+enumerate it:
+
+- **Enumerating projects (id/name/slug only), not filtering on blueprint
+  attributes?** Pass `slim=true` — it strips the heavy blueprint fields,
+  links, identifiers, and relationships, cutting the payload from
+  megabytes to kilobytes. (For attribute questions, keep it off and use
+  `filter` predicates instead, per the section above.)
+- Always scope with `project_type` and any available `filter` predicates
+  before listing.
+- If a result comes back truncated, do not retry the same call — narrow
+  it (add filters, request `slim=true`, or fetch a single item/page).
+
 ## Guidelines
 
 - Be concise. Use Markdown for structured output.

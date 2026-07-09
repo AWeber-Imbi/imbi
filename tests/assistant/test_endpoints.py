@@ -1501,3 +1501,48 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
             chunks.append(chunk)
         self.assertTrue(any('event: client_action' in c for c in chunks))
         self.assertEqual(len(tool_results), 1)
+
+
+class ToolResultTruncationTestCase(unittest.TestCase):
+    """A single oversized tool result must not overflow the context
+    window: it is truncated with a recovery notice before it enters the
+    conversation (and, crucially, before it is persisted).
+    """
+
+    def setUp(self) -> None:
+        settings._assistant_settings = None
+
+    def tearDown(self) -> None:
+        settings._assistant_settings = None
+
+    def _set_limit(self, limit: int) -> None:
+        settings._assistant_settings = settings.Assistant(
+            _env_file=None,
+            max_tool_result_chars=limit,
+        )
+
+    def test_result_under_limit_unchanged(self) -> None:
+        self._set_limit(100)
+        block = endpoints._tool_result_block('t1', 'small', False)
+        self.assertEqual(block['content'], 'small')
+
+    def test_result_over_limit_truncated(self) -> None:
+        self._set_limit(50)
+        content = 'x' * 500
+        block = endpoints._tool_result_block('t1', content, False)
+        self.assertTrue(block['content'].startswith('x' * 50))
+        self.assertIn('truncated', block['content'])
+        self.assertIn('slim=true', block['content'])
+        # The kept prefix plus a short notice, not the full payload.
+        self.assertLess(len(block['content']), len(content))
+
+    def test_error_flag_preserved_when_truncated(self) -> None:
+        self._set_limit(50)
+        block = endpoints._tool_result_block('t1', 'y' * 500, True)
+        self.assertIs(block['is_error'], True)
+
+    def test_limit_disabled_when_non_positive(self) -> None:
+        self._set_limit(0)
+        content = 'x' * 10_000
+        block = endpoints._tool_result_block('t1', content, False)
+        self.assertEqual(block['content'], content)

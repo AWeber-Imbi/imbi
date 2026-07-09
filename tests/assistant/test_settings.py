@@ -30,6 +30,7 @@ class AssistantSettingsTestCase(unittest.TestCase):
         self.assertIsNone(s.system_prompt)
         self.assertEqual(s.api_url, 'http://localhost:8000')
         self.assertEqual(s.max_tool_rounds, 10)
+        self.assertEqual(s.max_tool_result_chars, 120_000)
 
     @mock.patch.dict(
         os.environ,

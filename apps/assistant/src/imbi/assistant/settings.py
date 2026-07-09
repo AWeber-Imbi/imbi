@@ -23,6 +23,16 @@ class Assistant(pydantic_settings.BaseSettings):
     max_tokens: int = 16384
     max_conversation_turns: int = 100
     max_tool_rounds: int = 10
+    # Hard cap on the size (in characters) of a single tool result
+    # embedded into the conversation. A tool that returns more than this
+    # — e.g. an unpaginated ``list_projects`` for a large org, which the
+    # API itself documents as "megabytes" — is truncated with a notice
+    # telling the model to narrow its query. Without this bound one
+    # oversized result overflows the model's context window (HTTP 400)
+    # and, because the round is persisted before the next request runs,
+    # bricks the conversation permanently. Roughly 4 chars/token, so the
+    # default is about 30k tokens per result.
+    max_tool_result_chars: int = 120_000
     system_prompt: str | None = None
     # Where the assistant reaches the Imbi REST API. Distinct from
     # ``IMBI_API_URL`` (which carries the API's *public* URL for OAuth
