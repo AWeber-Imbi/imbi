@@ -390,7 +390,13 @@ class Integration(Node):
     :func:`imbi_common.plugins.credentials.decrypt_integration_credentials`.
     """
 
-    organization: BelongsToOrganization
+    #: Owning organization. Optional: login-provider Integrations are
+    #: global/system-owned (login happens before any org context exists)
+    #: and carry no ``BELONGS_TO`` edge; service Integrations set it.
+    organization: typing.Annotated[
+        Organization | None,
+        Edge(rel_type='BELONGS_TO', direction='OUTGOING'),
+    ] = None
     team: typing.Annotated[
         Team | None,
         Edge(rel_type='MANAGED_BY', direction='OUTGOING'),

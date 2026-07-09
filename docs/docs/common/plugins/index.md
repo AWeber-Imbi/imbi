@@ -91,6 +91,9 @@ class GitHubPlugin(Plugin):
         slug='github',
         name='GitHub',
         description='Repositories, deployments, and identity on GitHub.',
+        # Brand icon in `library-icon-name` form (Simple Icons, Tabler,
+        # Lucide, …). Surfaced to the UI to show the provider's logo.
+        icon='si-github',
         api_version=2,
         auth_type='oauth2',
         # Integration-level options — asked ONCE per Integration.

@@ -1460,6 +1460,13 @@ class IntegrationTestCase(unittest.TestCase):
         self.assertEqual(edges['organization'].rel_type, 'BELONGS_TO')
         self.assertEqual(edges['organization'].direction, 'OUTGOING')
 
+    def test_organization_optional(self) -> None:
+        # Login-provider Integrations are global and carry no org edge.
+        integration = models.Integration(
+            name='Google', slug='google', plugin='google'
+        )
+        self.assertIsNone(integration.organization)
+
     def test_team_edge_defaults_none(self) -> None:
         edges = self._edges(models.Integration)
         self.assertEqual(edges['team'].rel_type, 'MANAGED_BY')

@@ -59,8 +59,13 @@ class CredentialField(pydantic.BaseModel):
     required: bool = True
     #: Whether the value is sensitive. Secret fields are masked in the UI
     #: (password input, never echoed back). Set ``False`` for identifiers
-    #: that are not sensitive, e.g. an OAuth client id or a GitHub App id.
+    #: that are not sensitive, e.g. an OAuth client id or a GitHub App id;
+    #: non-secret values ARE echoed back in the integration response so the
+    #: UI can display them.
     secret: bool = True
+    #: Whether the value is multi-line (e.g. a PEM private key). The UI
+    #: renders a textarea instead of a single-line input.
+    multiline: bool = False
 
 
 class DataType(pydantic.BaseModel):
@@ -277,6 +282,12 @@ class PluginManifest(pydantic.BaseModel):
     slug: str
     name: str
     description: str | None = None
+    #: Brand/display icon in Imbi's ``library-icon-name`` form, e.g.
+    #: ``si-github`` (Simple Icons), ``tabler-aws`` (Tabler), or a bare
+    #: Lucide name like ``key-round``. Surfaced to the UI so it can show
+    #: the provider's logo instead of a generic glyph. ``None`` falls back
+    #: to a default icon in the UI.
+    icon: str | None = None
     api_version: int = 2
     auth_type: typing.Literal[
         'api_token', 'oauth2', 'oidc', 'aws-iam-ic', 'none'
