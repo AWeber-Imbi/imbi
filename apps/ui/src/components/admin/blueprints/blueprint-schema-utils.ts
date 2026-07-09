@@ -13,7 +13,6 @@ const RELATIONSHIP_MAP: Record<string, string[]> = {
   'Project:Team': ['OWNED_BY'],
   'ProjectType:Organization': ['BELONGS_TO'],
   'Team:Organization': ['BELONGS_TO'],
-  'ThirdPartyService:Organization': ['BELONGS_TO'],
 }
 
 export function getRelationshipTypes(source: string, target: string): string[] {

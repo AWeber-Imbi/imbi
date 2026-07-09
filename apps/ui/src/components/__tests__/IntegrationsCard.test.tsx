@@ -4,11 +4,12 @@ import * as endpoints from '@/api/endpoints'
 import { IntegrationsCard } from '@/components/IntegrationsCard'
 import { render, screen } from '@/test/utils'
 
+// fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
   createProjectService: vi.fn(),
   deleteProjectService: vi.fn(),
+  listIntegrations: vi.fn(),
   listProjectServices: vi.fn(),
-  listThirdPartyServices: vi.fn(),
 }))
 
 vi.mock('sonner', () => ({
@@ -18,7 +19,7 @@ vi.mock('sonner', () => ({
 describe('IntegrationsCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(endpoints.listThirdPartyServices).mockResolvedValue([])
+    vi.mocked(endpoints.listIntegrations).mockResolvedValue([])
   })
 
   it('renders a row per connected service with its URLs', async () => {
@@ -27,8 +28,8 @@ describe('IntegrationsCard', () => {
         canonical_url: 'https://api.aweber.ghe.com/repositories/138841',
         dashboard_url: 'https://aweber.ghe.com/org/webform',
         identifier: '138841',
-        third_party_service_name: 'GitHub',
-        third_party_service_slug: 'github',
+        integration_name: 'GitHub',
+        integration_slug: 'github',
       },
     ])
 
@@ -60,8 +61,8 @@ describe('IntegrationsCard', () => {
         canonical_url: null,
         dashboard_url: null,
         identifier: 'cc:webform',
-        third_party_service_name: 'SonarQube',
-        third_party_service_slug: 'sonarqube',
+        integration_name: 'SonarQube',
+        integration_slug: 'sonarqube',
       },
     ])
 

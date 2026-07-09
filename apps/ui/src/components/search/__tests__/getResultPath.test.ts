@@ -49,7 +49,6 @@ describe('getResultPath', () => {
       ['Team', 'teams'],
       ['Environment', 'environments'],
       ['ProjectType', 'project-types'],
-      ['ThirdPartyService', 'third-party-services'],
       ['DocumentTemplate', 'document-templates'],
       ['LinkDefinition', 'link-definitions'],
       ['Organization', 'organizations'],

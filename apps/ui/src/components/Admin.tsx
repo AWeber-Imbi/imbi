@@ -3,11 +3,11 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import {
+  Blocks,
   Bot,
   Building2,
   ChevronLeft,
   ChevronRight,
-  Cloud,
   FileJson,
   FolderTree,
   Globe,
@@ -39,16 +39,15 @@ import { DefaultSettingsManagement } from './admin/DefaultSettingsManagement'
 import { DocumentTemplateManagement } from './admin/DocumentTemplateManagement'
 import { EnvironmentManagement } from './admin/EnvironmentManagement'
 import { GraphQueryManagement } from './admin/GraphQueryManagement'
+import { IntegrationsManagement } from './admin/integrations/IntegrationsManagement'
 import { LinkDefinitionManagement } from './admin/LinkDefinitionManagement'
 import { OrganizationManagement } from './admin/OrganizationManagement'
-import { PluginPackageDetail } from './admin/PluginPackageDetail'
 import { PluginsManagement } from './admin/PluginsManagement'
 import { ProjectTypeManagement } from './admin/ProjectTypeManagement'
 import { RoleManagement } from './admin/RoleManagement'
 import { ScoringPolicyManagement } from './admin/ScoringPolicyManagement'
 import { ServiceAccountManagement } from './admin/ServiceAccountManagement'
 import { TeamManagement } from './admin/TeamManagement'
-import { ThirdPartyServiceManagement } from './admin/ThirdPartyServiceManagement'
 import { UserManagement } from './admin/UserManagement'
 import { WebhookHistory } from './admin/WebhookHistory'
 import { WebhookManagement } from './admin/WebhookManagement'
@@ -60,6 +59,7 @@ type AdminSection =
   | 'document-templates'
   | 'environments'
   | 'graph-query'
+  | 'integrations'
   | 'link-definitions'
   | 'oauth'
   | 'organizations'
@@ -70,7 +70,6 @@ type AdminSection =
   | 'scoring-policies'
   | 'service-accounts'
   | 'teams'
-  | 'third-party-services'
   | 'users'
   | 'webhook-history'
   | 'webhooks'
@@ -84,6 +83,7 @@ const VALID_SECTIONS: AdminSection[] = [
   'default-settings',
   'environments',
   'graph-query',
+  'integrations',
   'link-definitions',
   'document-templates',
   'oauth',
@@ -95,7 +95,6 @@ const VALID_SECTIONS: AdminSection[] = [
   'scoring-policies',
   'service-accounts',
   'teams',
-  'third-party-services',
   'users',
   'webhook-history',
   'webhooks',
@@ -151,10 +150,24 @@ export function Admin() {
       scope: 'org',
     },
     {
+      description: 'Manage reusable document templates',
+      icon: StickyNote,
+      id: 'document-templates',
+      label: 'Document Templates',
+      scope: 'org',
+    },
+    {
       description: 'Manage environments',
       icon: Layers,
       id: 'environments',
       label: 'Environments',
+      scope: 'org',
+    },
+    {
+      description: 'Connect external platforms',
+      icon: Blocks,
+      id: 'integrations',
+      label: 'Integrations',
       scope: 'org',
     },
     {
@@ -165,24 +178,10 @@ export function Admin() {
       scope: 'org',
     },
     {
-      description: 'Manage reusable document templates',
-      icon: StickyNote,
-      id: 'document-templates',
-      label: 'Document Templates',
-      scope: 'org',
-    },
-    {
       description: 'Manage project types',
       icon: FolderTree,
       id: 'project-types',
       label: 'Project Types',
-      scope: 'org',
-    },
-    {
-      description: 'Manage teams',
-      icon: UsersRound,
-      id: 'teams',
-      label: 'Teams',
       scope: 'org',
     },
     {
@@ -194,17 +193,10 @@ export function Admin() {
       scope: 'org',
     },
     {
-      description: 'Manage external SaaS services',
-      icon: Cloud,
-      id: 'third-party-services',
-      label: 'Third-Party Services',
-      scope: 'org',
-    },
-    {
-      description: 'Configure inbound webhook processing',
-      icon: Webhook,
-      id: 'webhooks',
-      label: 'Webhooks',
+      description: 'Manage teams',
+      icon: UsersRound,
+      id: 'teams',
+      label: 'Teams',
       scope: 'org',
     },
     {
@@ -215,16 +207,16 @@ export function Admin() {
       label: 'Webhook History',
       scope: 'org',
     },
+    {
+      description: 'Configure inbound webhook processing',
+      icon: Webhook,
+      id: 'webhooks',
+      label: 'Webhooks',
+      scope: 'org',
+    },
   ]
 
   const systemAdminSections: SectionDef[] = [
-    {
-      description: 'Manage organizational units and access',
-      icon: Building2,
-      id: 'organizations',
-      label: 'Organizations',
-      scope: 'system',
-    },
     {
       description: 'Configure the AI assistant and its MCP servers',
       icon: Sparkles,
@@ -244,6 +236,13 @@ export function Admin() {
       icon: Network,
       id: 'graph-query',
       label: 'Graph Query',
+      scope: 'system',
+    },
+    {
+      description: 'Manage organizational units and access',
+      icon: Building2,
+      id: 'organizations',
+      label: 'Organizations',
       scope: 'system',
     },
     {
@@ -410,9 +409,7 @@ export function Admin() {
             {currentSection === 'teams' && <TeamManagement />}
             {currentSection === 'environments' && <EnvironmentManagement />}
             {currentSection === 'project-types' && <ProjectTypeManagement />}
-            {currentSection === 'third-party-services' && (
-              <ThirdPartyServiceManagement />
-            )}
+            {currentSection === 'integrations' && <IntegrationsManagement />}
             {currentSection === 'webhooks' && <WebhookManagement />}
             {currentSection === 'webhook-history' && (
               <WebhookHistory eventId={slug} />
@@ -436,13 +433,7 @@ export function Admin() {
             {currentSection === 'assistant' && <AssistantManagement />}
             {currentSection === 'oauth' && <AuthProvidersManagement />}
             {currentSection === 'graph-query' && <GraphQueryManagement />}
-            {currentSection === 'plugins' && !slug && <PluginsManagement />}
-            {currentSection === 'plugins' && slug && (
-              <PluginPackageDetail
-                onBack={() => navigate('/admin/plugins')}
-                slug={slug}
-              />
-            )}
+            {currentSection === 'plugins' && <PluginsManagement />}
           </div>
         </main>
       </div>

@@ -559,7 +559,7 @@ export function ProjectDetail({
     myIdentitiesSuccess &&
     (myIdentities ?? []).some(
       (i) =>
-        i.plugin_id === resolvedIdentityPlugin.plugin_id &&
+        i.plugin === resolvedIdentityPlugin.plugin_slug &&
         i.status === 'active',
     )
   const deploymentReadiness:
@@ -589,10 +589,10 @@ export function ProjectDetail({
   const deploymentConnectLabel = (() => {
     if (resolvedIdentityPlugin?.label) return resolvedIdentityPlugin.label
     if (deploymentIdentityPluginId) {
-      const match = (myIdentities ?? []).find(
-        (i) => i.plugin_id === deploymentIdentityPluginId,
+      const match = (identityPlugins ?? []).find(
+        (p) => p.plugin_id === deploymentIdentityPluginId,
       )
-      if (match?.plugin_label) return match.plugin_label
+      if (match?.label) return match.label
     }
     if (deploymentPlugin?.label) return deploymentPlugin.label
     return 'the identity provider'

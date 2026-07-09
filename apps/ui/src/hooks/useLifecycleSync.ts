@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import type { LifecycleSyncSummary } from '@/api/endpoints'
-import { syncProjectLifecycle, syncServiceLifecycle } from '@/api/endpoints'
+import { syncProjectLifecycle } from '@/api/endpoints'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
 // Project-level lifecycle sync. Re-dispatches on_project_updated (an
@@ -21,21 +21,6 @@ export function useProjectLifecycleSync(orgSlug: string, projectId: string) {
       void queryClient.invalidateQueries({
         queryKey: ['project-plugins', orgSlug, projectId],
       })
-    },
-  })
-}
-
-// TPS-wide lifecycle sync. The fan-out can touch any project, so drop the
-// org/project scope and let TanStack invalidate every matching scope.
-export function useServiceLifecycleSync(orgSlug: string, serviceSlug: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: () => syncServiceLifecycle(orgSlug, serviceSlug),
-    onError: onSyncError,
-    onSuccess: (summary: LifecycleSyncSummary) => {
-      toastResult(summary)
-      void queryClient.invalidateQueries({ queryKey: ['project'] })
-      void queryClient.invalidateQueries({ queryKey: ['project-plugins'] })
     },
   })
 }

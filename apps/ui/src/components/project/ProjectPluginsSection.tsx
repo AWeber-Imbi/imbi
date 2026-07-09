@@ -6,12 +6,10 @@ import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
-  getPluginManifest,
-  listProjectPlugins,
-  listServicePlugins,
-  listThirdPartyServices,
-  type PluginManifestResponse,
-  replaceProjectPlugins,
+  getPluginPackage,
+  listIntegrations,
+  listProjectIntegrations,
+  replaceProjectIntegrations,
 } from '@/api/endpoints'
 import {
   OverrideCountChevron,
@@ -54,45 +52,30 @@ import {
 } from '@/components/ui/table'
 import { useExpandableRows } from '@/hooks/useExpandableRows'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { queryKeys } from '@/lib/queryKeys'
 import type {
-  PluginAssignmentCreate,
-  PluginAssignmentResponse,
-  PluginTab,
-  PluginType,
+  Integration,
+  PluginOption,
+  PluginOptionDef,
+  ProjectIntegrationAssignment,
 } from '@/types'
 
-interface OverrideDraft extends PluginAssignmentCreate {
-  label: string
-  // Always present on drafts (initialized to ``{}`` on add) so the
-  // option editor can index it without a null guard.
-  options: Record<string, unknown>
-  plugin_slug: string
-  source: PluginAssignmentResponse['source']
-}
-
 interface OverrideOptionsEditorProps {
-  draft: OverrideDraft
+  draft: ProjectIntegrationAssignment
   idx: number
-  inheritedOptions: Record<string, unknown>
   onChange: (idx: number, name: string, next: unknown) => void
+  pluginSlug: null | string
 }
 
-interface PluginOptionsListProps {
-  draft: OverrideDraft
+interface ProjectIntegrationRowProps {
+  draft: ProjectIntegrationAssignment
   idx: number
-  inheritedOptions: Record<string, unknown>
-  manifest: PluginManifestResponse
-  onChange: (idx: number, name: string, next: unknown) => void
-}
-
-interface ProjectPluginOverrideRowProps {
-  draft: OverrideDraft
-  idx: number
-  inheritedOptions: Record<string, unknown>
+  integrationName: string
   isExpanded: boolean
   onRemove: (idx: number) => void
   onToggle: (idx: number) => void
   onUpdateOption: (idx: number, name: string, next: unknown) => void
+  pluginSlug: null | string
 }
 
 interface ProjectPluginsSectionProps {
@@ -106,55 +89,44 @@ export function ProjectPluginsSection({
 }: ProjectPluginsSectionProps) {
   const queryClient = useQueryClient()
   const [showAdd, setShowAdd] = useState(false)
-  const [selectedService, setSelectedService] = useState('')
-  const [selectedPlugin, setSelectedPlugin] = useState('')
-  const [selectedTab, setSelectedTab] = useState<PluginTab>('configuration')
+  const [selectedIntegration, setSelectedIntegration] = useState('')
+  const [selectedCapability, setSelectedCapability] = useState('')
   const [isDefault, setIsDefault] = useState(false)
-  const [drafts, setDrafts] = useState<OverrideDraft[]>([])
+  const [drafts, setDrafts] = useState<ProjectIntegrationAssignment[]>([])
   const lastSeedRef = useRef<null | string>(null)
 
-  const { data: merged, isLoading: pluginsLoading } = useQuery({
-    queryFn: ({ signal }) => listProjectPlugins(orgSlug, projectId, signal),
-    queryKey: ['project-plugins', orgSlug, projectId],
+  const { data: assignments, isLoading: assignmentsLoading } = useQuery({
+    queryFn: ({ signal }) =>
+      listProjectIntegrations(orgSlug, projectId, signal),
+    queryKey: ['project-integrations', orgSlug, projectId],
     staleTime: 60 * 1000,
   })
 
-  const { data: services } = useQuery({
-    queryFn: ({ signal }) => listThirdPartyServices(orgSlug, signal),
-    queryKey: ['third-party-services', orgSlug],
+  const { data: integrations } = useQuery({
+    enabled: !!orgSlug,
+    queryFn: ({ signal }) => listIntegrations(orgSlug, signal),
+    queryKey: queryKeys.integrations(orgSlug),
     staleTime: 5 * 60 * 1000,
   })
 
-  const { data: servicePlugins } = useQuery({
-    enabled: !!selectedService,
-    queryFn: ({ signal }) =>
-      listServicePlugins(orgSlug, selectedService, signal),
-    queryKey: ['service-plugins', orgSlug, selectedService],
-    staleTime: 60 * 1000,
-  })
+  // Slug → Integration lookup for row labels and per-capability option
+  // schemas (fetched via the integration's plugin).
+  const integrationsBySlug = useMemo(() => {
+    const map = new Map<string, Integration>()
+    for (const i of integrations ?? []) map.set(i.slug, i)
+    return map
+  }, [integrations])
 
   useEffect(() => {
-    if (!merged) return
-    const projectOnly = merged.filter((a) => a.source === 'project')
-    const seed = projectOnly.map(assignmentToDraft)
+    if (!assignments) return
     // Only reseed drafts when the server snapshot actually changes;
     // otherwise a focus refetch or sibling invalidate would clobber
     // unsaved option edits.
-    const hash = JSON.stringify(seed)
+    const hash = JSON.stringify(assignments)
     if (hash === lastSeedRef.current) return
     lastSeedRef.current = hash
-    setDrafts(seed)
-  }, [merged])
-
-  // Inherited options keyed by ``plugin_id:tab`` -- shown as
-  // placeholders inside the per-row option editor so users can see what
-  // value they'd be overriding before picking one. Keying by tab too
-  // means the same plugin on different tabs doesn't merge inherited
-  // values.
-  const inheritedOptionsByKey = useMemo(
-    () => buildInheritedOptionsByKey(merged ?? []),
-    [merged],
-  )
+    setDrafts(assignments)
+  }, [assignments])
 
   const { expanded, removeRow, setExpanded, toggleExpanded } =
     useExpandableRows()
@@ -167,51 +139,49 @@ export function ProjectPluginsSection({
 
   const saveMutation = useMutation({
     mutationFn: () =>
-      replaceProjectPlugins(
-        orgSlug,
-        projectId,
-        drafts.map((d) => ({
-          default: d.default,
-          options: d.options,
-          plugin_id: d.plugin_id,
-          plugin_type: d.plugin_type,
-        })),
-      ),
+      replaceProjectIntegrations(orgSlug, projectId, { assignments: drafts }),
     onError: (err) => {
       toast.error(
-        extractApiErrorDetail(err) ?? 'Failed to save plugin overrides',
+        extractApiErrorDetail(err) ?? 'Failed to save integration overrides',
       )
     },
     onSuccess: () => {
-      toast.success('Plugin overrides saved')
+      toast.success('Integration overrides saved')
       void queryClient.invalidateQueries({
-        queryKey: ['project-plugins', orgSlug, projectId],
+        queryKey: ['project-integrations', orgSlug, projectId],
       })
     },
   })
 
+  const selected = selectedIntegration
+    ? integrationsBySlug.get(selectedIntegration)
+    : undefined
+  // Enabled capabilities are the only ones a project may override.
+  const enabledCapabilities = selected
+    ? Object.entries(selected.capabilities)
+        .filter(([, toggle]) => toggle.enabled)
+        .map(([kind]) => kind)
+    : []
+
   const openAdd = () => {
-    setSelectedService('')
-    setSelectedPlugin('')
-    setSelectedTab('configuration')
+    setSelectedIntegration('')
+    setSelectedCapability('')
     setIsDefault(false)
     setShowAdd(true)
   }
 
   const handleAdd = () => {
-    const plugin = servicePlugins?.find((p) => p.id === selectedPlugin)
-    if (!plugin) return
+    if (!selectedIntegration || !selectedCapability) return
     setDrafts((prev) => {
-      const nextDrafts = [
+      const nextDrafts: ProjectIntegrationAssignment[] = [
         ...prev,
         {
+          capability: selectedCapability,
           default: isDefault,
-          label: plugin.label,
-          options: {} as Record<string, unknown>,
-          plugin_id: plugin.id,
-          plugin_slug: plugin.plugin_slug,
-          plugin_type: selectedTab,
-          source: 'project' as const,
+          env_payloads: {},
+          identity_integration_slug: null,
+          integration_slug: selectedIntegration,
+          options: {},
         },
       ]
       // Auto-expand the freshly added row so the option editor is
@@ -224,44 +194,17 @@ export function ProjectPluginsSection({
 
   const handleRemove = (idx: number) => removeRow(idx, setDrafts)
 
-  const projectOnlyFromServer =
-    merged?.filter((a) => a.source === 'project') ?? []
-  const isDirty =
-    JSON.stringify(drafts.map(draftToCompare)) !==
-    JSON.stringify(projectOnlyFromServer.map(draftToCompare))
-
-  const inherited = merged?.filter((a) => a.source === 'project_type') ?? []
+  const isDirty = JSON.stringify(drafts) !== JSON.stringify(assignments ?? [])
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Plugins</CardTitle>
+        <CardTitle>Integrations</CardTitle>
         <CardDescription className="text-secondary">
-          Override or extend the plugin assignments inherited from the project
-          type.
+          Override an integration's capability options for this project.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 p-6 pt-0">
-        {inherited.length > 0 && (
-          <div>
-            <p className="text-secondary mb-2 text-xs font-medium tracking-wider uppercase">
-              Inherited from project type
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {inherited.map((a) => (
-                <div
-                  className="border-tertiary bg-secondary flex items-center gap-1.5 rounded border px-2 py-1 text-xs"
-                  key={`${a.plugin_id}:${a.plugin_type}`}
-                >
-                  <span className="text-primary">{a.label}</span>
-                  <Badge variant="secondary">{a.plugin_type}</Badge>
-                  {a.default && <span className="text-tertiary">default</span>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         <div>
           <div className="mb-2 flex items-center justify-between">
             <p className="text-secondary text-xs font-medium tracking-wider uppercase">
@@ -285,19 +228,19 @@ export function ProjectPluginsSection({
           </div>
 
           <Swap
-            ready={!pluginsLoading}
+            ready={!assignmentsLoading}
             skeleton={<ProjectPluginsRowsSkeleton />}
           >
             {drafts.length === 0 ? (
               <p className="text-secondary text-sm">
-                No project-level overrides. Using project type defaults.
+                No project-level integration overrides.
               </p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Plugin</TableHead>
-                    <TableHead>Tab</TableHead>
+                    <TableHead>Integration</TableHead>
+                    <TableHead>Capability</TableHead>
                     <TableHead>Default</TableHead>
                     <TableHead className="w-16" />
                     <TableHead className="w-12" />
@@ -305,19 +248,22 @@ export function ProjectPluginsSection({
                 </TableHeader>
                 <TableBody>
                   {drafts.map((draft, idx) => (
-                    <ProjectPluginOverrideRow
+                    <ProjectIntegrationRow
                       draft={draft}
                       idx={idx}
-                      inheritedOptions={
-                        inheritedOptionsByKey[
-                          inheritedKey(draft.plugin_id, draft.plugin_type)
-                        ] ?? {}
+                      integrationName={
+                        integrationsBySlug.get(draft.integration_slug)?.name ??
+                        draft.integration_slug
                       }
                       isExpanded={expanded.has(idx)}
                       key={idx}
                       onRemove={handleRemove}
                       onToggle={toggleExpanded}
                       onUpdateOption={updateOption}
+                      pluginSlug={
+                        integrationsBySlug.get(draft.integration_slug)
+                          ?.plugin ?? null
+                      }
                     />
                   ))}
                 </TableBody>
@@ -330,59 +276,44 @@ export function ProjectPluginsSection({
       <Dialog onOpenChange={setShowAdd} open={showAdd}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Plugin Override</DialogTitle>
+            <DialogTitle>Add Integration Override</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 p-6">
             <div className="space-y-2">
-              <Label>Tab</Label>
-              <Select
-                onValueChange={(v) => setSelectedTab(v as PluginTab)}
-                value={selectedTab}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="configuration">Configuration</SelectItem>
-                  <SelectItem value="logs">Logs</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Service</Label>
+              <Label>Integration</Label>
               <Select
                 onValueChange={(v) => {
-                  setSelectedService(v)
-                  setSelectedPlugin('')
+                  setSelectedIntegration(v)
+                  setSelectedCapability('')
                 }}
-                value={selectedService}
+                value={selectedIntegration}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select service…" />
+                  <SelectValue placeholder="Select integration…" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(services ?? []).map((svc) => (
-                    <SelectItem key={svc.slug} value={svc.slug}>
-                      {svc.name}
+                  {(integrations ?? []).map((i) => (
+                    <SelectItem key={i.slug} value={i.slug}>
+                      {i.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            {selectedService && (
+            {selectedIntegration && (
               <div className="space-y-2">
-                <Label>Plugin</Label>
+                <Label>Capability</Label>
                 <Select
-                  onValueChange={setSelectedPlugin}
-                  value={selectedPlugin}
+                  onValueChange={setSelectedCapability}
+                  value={selectedCapability}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select plugin…" />
+                    <SelectValue placeholder="Select capability…" />
                   </SelectTrigger>
                   <SelectContent>
-                    {(servicePlugins ?? []).map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.label}
+                    {enabledCapabilities.map((kind) => (
+                      <SelectItem key={kind} value={kind}>
+                        {kind}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -396,7 +327,7 @@ export function ProjectPluginsSection({
                 onCheckedChange={(checked) => setIsDefault(checked === true)}
               />
               <Label htmlFor="proj-is-default">
-                Set as default for this tab
+                Set as default for this capability
               </Label>
             </div>
           </div>
@@ -404,7 +335,7 @@ export function ProjectPluginsSection({
             <Button onClick={() => setShowAdd(false)} variant="outline">
               Cancel
             </Button>
-            <Button disabled={!selectedPlugin} onClick={handleAdd}>
+            <Button disabled={!selectedCapability} onClick={handleAdd}>
               Add
             </Button>
           </DialogFooter>
@@ -414,13 +345,25 @@ export function ProjectPluginsSection({
   )
 }
 
+function adaptOption(opt: PluginOption): PluginOptionDef {
+  return {
+    choices: opt.choices ?? null,
+    default: typeof opt.default === 'object' ? undefined : opt.default,
+    description: opt.description ?? null,
+    label: opt.label,
+    name: opt.name,
+    required: opt.required,
+    type: opt.type,
+  }
+}
+
 function applyOptionEdit(
-  draft: OverrideDraft,
+  draft: ProjectIntegrationAssignment,
   i: number,
   idx: number,
   name: string,
   next: unknown,
-): OverrideDraft {
+): ProjectIntegrationAssignment {
   if (i !== idx) return draft
   const options = { ...draft.options }
   // Treat empty / null / undefined as "remove the override" so the
@@ -430,90 +373,44 @@ function applyOptionEdit(
   return { ...draft, options }
 }
 
-function assignmentToDraft(a: PluginAssignmentResponse): OverrideDraft {
-  return {
-    default: a.default,
-    label: a.label,
-    options: a.options ?? {},
-    plugin_id: a.plugin_id,
-    plugin_slug: a.plugin_slug,
-    plugin_type: a.plugin_type,
-    source: a.source,
-  }
-}
-
-function buildInheritedOptionsByKey(merged: PluginAssignmentResponse[]) {
-  const out: Record<string, Record<string, unknown>> = {}
-  for (const a of merged) {
-    if (a.source !== 'project_type') continue
-    out[inheritedKey(a.plugin_id, a.plugin_type)] = a.options ?? {}
-  }
-  return out
-}
-
-function draftToCompare(d: {
-  default: boolean
-  label: string
-  options: Record<string, unknown>
-  plugin_id: string
-  plugin_type: PluginType
-}) {
-  return {
-    default: d.default,
-    label: d.label,
-    options: d.options,
-    plugin_id: d.plugin_id,
-    plugin_type: d.plugin_type,
-  }
-}
-
-function hasRenderableManifest(
-  isPending: boolean,
-  error: unknown,
-  manifest: PluginManifestResponse | undefined,
-): manifest is PluginManifestResponse {
-  if (isPending) return false
-  if (error) return false
-  if (!manifest) return false
-  return manifest.options.length > 0
-}
-
-// Composite key so the same plugin can be assigned under different
-// plugin types (e.g. ``configuration`` and ``logs``) without one
-// overwriting the other in the inherited-options lookup.
-function inheritedKey(pluginId: string, pluginType: PluginType) {
-  return `${pluginId}:${pluginType}`
-}
-
-// Placeholder text shown when the override is empty: prefer the
-// project-type-inherited value, fall back to the manifest default, and
-// finally to ``Inherits default`` when nothing concrete is available.
-function inheritedPlaceholder(
-  opt: import('@/types').PluginOptionDef,
-  inheritedRaw: unknown,
-): string {
-  const value = pickInheritedValue(inheritedRaw, opt.default ?? null)
-  return value === null ? 'Inherits default' : `Inherits: ${String(value)}`
-}
-
 function isClearValue(v: unknown): boolean {
   return v === null || v === undefined || v === ''
 }
 
-function ManifestStateMessage({
-  error,
-  isPending,
+// Fetches the integration's plugin manifest and renders the option editor
+// for the selected capability's options. Falls back to a message when the
+// plugin has no options for that capability.
+function OverrideOptionsEditor({
+  draft,
+  idx,
+  onChange,
   pluginSlug,
-}: {
-  error: Error | null
-  isPending: boolean
-  pluginSlug: string
-}) {
-  if (isPending)
+}: OverrideOptionsEditorProps) {
+  const {
+    data: pkg,
+    error,
+    isPending,
+  } = useQuery({
+    enabled: !!pluginSlug,
+    queryFn: ({ signal }) => getPluginPackage(pluginSlug as string, signal),
+    queryKey: queryKeys.pluginPackage(pluginSlug ?? ''),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  if (!pluginSlug) {
+    return (
+      <div className="text-secondary px-6 py-4 text-sm">
+        Integration is unavailable.
+      </div>
+    )
+  }
+  if (isPending) {
     return (
       <div className="text-secondary px-6 py-4 text-sm">Loading options…</div>
     )
-  if (error)
+  }
+  if (error) {
     return (
       <div className="text-destructive px-6 py-4 text-sm">
         Couldn&apos;t load options for{' '}
@@ -521,79 +418,28 @@ function ManifestStateMessage({
         {extractApiErrorDetail(error) ?? 'request failed'}.
       </div>
     )
-  return (
-    <div className="text-secondary px-6 py-4 text-sm">
-      This plugin has no configurable options.
-    </div>
-  )
-}
-
-function OverrideOptionsEditor({
-  draft,
-  idx,
-  inheritedOptions,
-  onChange,
-}: OverrideOptionsEditorProps) {
-  const {
-    data: manifest,
-    error: manifestError,
-    isPending,
-  } = useQuery({
-    queryFn: ({ signal }) => getPluginManifest(draft.plugin_slug, signal),
-    queryKey: ['plugin-manifest', draft.plugin_slug],
-    retry: false,
-    staleTime: 5 * 60 * 1000,
-  })
-
-  if (!hasRenderableManifest(isPending, manifestError, manifest))
+  }
+  const capability = pkg?.capabilities.find((c) => c.kind === draft.capability)
+  const options = capability?.options ?? []
+  if (options.length === 0) {
     return (
-      <ManifestStateMessage
-        error={manifestError ?? null}
-        isPending={isPending}
-        pluginSlug={draft.plugin_slug}
-      />
+      <div className="text-secondary px-6 py-4 text-sm">
+        This capability has no configurable options.
+      </div>
     )
-  return (
-    <PluginOptionsList
-      draft={draft}
-      idx={idx}
-      inheritedOptions={inheritedOptions}
-      manifest={manifest}
-      onChange={onChange}
-    />
-  )
-}
-
-function pickInheritedValue(inheritedRaw: unknown, fallback: unknown): unknown {
-  if (inheritedRaw === undefined) return fallback
-  if (inheritedRaw === null) return fallback
-  return inheritedRaw
-}
-
-function PluginOptionsList({
-  draft,
-  idx,
-  inheritedOptions,
-  manifest,
-  onChange,
-}: PluginOptionsListProps) {
+  }
   return (
     <div className="space-y-3 px-6 py-4">
-      {manifest.options.map((opt) => {
+      {options.map((opt) => {
         const overridden = opt.name in draft.options
         return (
           <OptionRow
             description={opt.description ?? null}
             key={opt.name}
             label={opt.label}
-            name={`${draft.plugin_id}-${opt.name}`}
+            name={`${draft.integration_slug}-${draft.capability}-${opt.name}`}
             onChange={(next) => onChange(idx, opt.name, next)}
-            opt={opt}
-            placeholder={
-              overridden
-                ? undefined
-                : inheritedPlaceholder(opt, inheritedOptions[opt.name])
-            }
+            opt={adaptOption(opt)}
             value={overridden ? draft.options[opt.name] : ''}
           />
         )
@@ -602,19 +448,18 @@ function PluginOptionsList({
   )
 }
 
-// Single override row + its expanded option editor pulled out of the
-// parent's drafts.map so the parent stays under the complexity gate
-// and so keyboard users can activate the expand toggle via Enter or
-// Space (the bare clickable row was mouse-only).
-function ProjectPluginOverrideRow({
+// Single override row + its expanded option editor. Keyboard users can
+// activate the expand toggle via Enter or Space.
+function ProjectIntegrationRow({
   draft,
   idx,
-  inheritedOptions,
+  integrationName,
   isExpanded,
   onRemove,
   onToggle,
   onUpdateOption,
-}: ProjectPluginOverrideRowProps) {
+  pluginSlug,
+}: ProjectIntegrationRowProps) {
   const overrideCount = Object.keys(draft.options).length
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTableRowElement>) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -632,9 +477,9 @@ function ProjectPluginOverrideRow({
         role="button"
         tabIndex={0}
       >
-        <TableCell className="font-medium">{draft.label}</TableCell>
+        <TableCell className="font-medium">{integrationName}</TableCell>
         <TableCell>
-          <Badge variant="secondary">{draft.plugin_type}</Badge>
+          <Badge variant="secondary">{draft.capability}</Badge>
         </TableCell>
         <TableCell className="text-secondary text-sm">
           {draft.default ? 'Yes' : 'No'}
@@ -655,8 +500,8 @@ function ProjectPluginOverrideRow({
             <OverrideOptionsEditor
               draft={draft}
               idx={idx}
-              inheritedOptions={inheritedOptions}
               onChange={onUpdateOption}
+              pluginSlug={pluginSlug}
             />
           </TableCell>
         </TableRow>
@@ -665,9 +510,8 @@ function ProjectPluginOverrideRow({
   )
 }
 
-// Small footprint skeleton for the overrides region while the merged
-// plugin assignments load — a few rows echoing the label · tab-badge ·
-// default columns. Purely presentational.
+// Small footprint skeleton for the overrides region while the assignments
+// load — a few rows echoing the name · capability-badge · default columns.
 function ProjectPluginsRowsSkeleton({ rows = 3 }: { rows?: number }) {
   return (
     <div aria-busy className="space-y-2">

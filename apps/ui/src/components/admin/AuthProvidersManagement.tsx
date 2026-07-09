@@ -4,130 +4,97 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
   CheckCircle,
-  Copy,
+  KeyRound,
   Lock,
+  Plus,
   Power,
-  Settings,
   Trash2,
-  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { API_URL } from '@/api/client'
 import {
-  createAuthProvider,
-  deleteAuthProvider,
+  deleteLoginProvider,
   getLocalAuthConfig,
-  listAuthProviders,
-  updateAuthProvider,
+  listLoginProviders,
+  listPluginPackages,
+  setLoginProviderUsedAsLogin,
   updateLocalAuthConfig,
 } from '@/api/endpoints'
 import { Alert } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { EntityIcon } from '@/components/ui/entity-icon'
 import { ErrorBanner } from '@/components/ui/error-banner'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { RequiredAsterisk } from '@/components/ui/required-asterisk'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Sk, Swap } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/hooks/useAuth'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
-import type {
-  LocalAuthConfig,
-  LoginProviderCreate,
-  LoginProviderRead,
-  LoginProviderUpdate,
-  OAuthAppType,
-} from '@/types'
+import { statusBadgeVariant } from '@/lib/status-colors'
+import type { LocalAuthConfig } from '@/types'
 
-const APP_TYPE_DESCRIPTIONS: Record<OAuthAppType, string> = {
-  github:
-    'Sign in with a GitHub account. Requires client ID and secret from a GitHub OAuth App.',
-  google:
-    'Sign in with a Google Workspace account. Optionally restrict by email domain.',
-  oidc: 'Generic OpenID Connect provider. Requires an issuer URL and a registered client.',
-}
+import { AddAuthProviderDialog } from './AddAuthProviderDialog'
 
-const APP_TYPE_ORDER: OAuthAppType[] = ['google', 'github', 'oidc']
-
-const callbackUrlForType = (appType: OAuthAppType): string =>
-  `${API_URL}/auth/oauth/${appType}/callback`
-
-const copyToClipboard = async (value: string, label: string) => {
-  try {
-    await navigator.clipboard.writeText(value)
-    toast.success(`${label} copied`)
-  } catch {
-    toast.error(`Failed to copy ${label.toLowerCase()}`)
-  }
-}
-
-const sortProviders = (rows: LoginProviderRead[]): LoginProviderRead[] => {
-  const rank = (p: LoginProviderRead): number => {
-    const t = p.oauth_app_type
-    return t ? APP_TYPE_ORDER.indexOf(t) : APP_TYPE_ORDER.length
-  }
-  return [...rows].sort((a, b) => {
-    const r = rank(a) - rank(b)
-    if (r !== 0) return r
-    return a.slug.localeCompare(b.slug)
-  })
-}
-
-interface CreateDialogProps {
-  isSaving: boolean
-  onCancel: () => void
-  onSave: (payload: LoginProviderCreate) => void
-}
-
-interface EditDialogProps {
-  isSaving: boolean
-  onCancel: () => void
-  onSave: (payload: LoginProviderUpdate) => void
-  provider: LoginProviderRead
-}
-
+// fallow-ignore-next-line complexity
 export function AuthProvidersManagement() {
   const queryClient = useQueryClient()
   const { user } = useAuth()
-  const canWrite =
+
+  const canManageLocalAuth =
     !!user?.is_admin ||
     (user?.permissions ?? []).includes('auth_providers:write')
-
-  const [editing, setEditing] = useState<LoginProviderRead | null>(null)
-  const [creating, setCreating] = useState(false)
-  const [pendingDelete, setPendingDelete] = useState<LoginProviderRead | null>(
-    null,
-  )
-
-  const { data, error } = useQuery({
-    queryFn: ({ signal }) => listAuthProviders(signal),
-    queryKey: queryKeys.adminAuthProviders(),
-  })
+  const canManageProviders =
+    !!user?.is_admin || (user?.permissions ?? []).includes('integration:update')
 
   const localAuthQuery = useQuery({
     queryFn: ({ signal }) => getLocalAuthConfig(signal),
     queryKey: queryKeys.adminLocalAuth(),
   })
+
+  const { data: plugins = [] } = useQuery({
+    queryFn: ({ signal }) => listPluginPackages(signal),
+    queryKey: queryKeys.pluginPackages(),
+    staleTime: 60 * 1000,
+  })
+
+  // Login providers are global (org-less): authentication happens before any
+  // organization context exists.
+  const { data: providers, error: providersError } = useQuery({
+    queryFn: ({ signal }) => listLoginProviders(signal),
+    queryKey: queryKeys.loginProviders(),
+  })
+
+  // A plugin can back a login provider when it declares an `identity`
+  // capability flagged `login_capable` in the manifest. Only enabled plugins
+  // that don't already have a provider can back a new one — login providers
+  // are one-per-plugin (name/slug derive from the plugin).
+  const addablePlugins = useMemo(() => {
+    // Until the providers query resolves we can't tell which plugins are
+    // already configured, so expose none rather than offering an Add action
+    // that could create a duplicate.
+    if (!providers) return []
+    const configured = new Set(providers.map((p) => p.plugin))
+    return plugins.filter((p) => {
+      if (!p.enabled || configured.has(p.slug)) return false
+      const identity = p.capabilities.find((c) => c.kind === 'identity')
+      return !!identity?.hints?.login_capable
+    })
+  }, [plugins, providers])
+
+  // Plugin brand icons, keyed by slug, for the provider rows.
+  const pluginIconBySlug = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const p of plugins) if (p.icon) map.set(p.slug, p.icon)
+    return map
+  }, [plugins])
+
+  const [addOpen, setAddOpen] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<null | {
+    name: string
+    slug: string
+  }>(null)
 
   const localAuthMutation = useMutation({
     mutationFn: (enabled: boolean) => updateLocalAuthConfig({ enabled }),
@@ -159,930 +126,246 @@ export function AuthProvidersManagement() {
     },
   })
 
-  const providers = useMemo(() => sortProviders(data ?? []), [data])
-
-  const invalidateAll = () => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.adminAuthProviders() })
-    queryClient.invalidateQueries({ queryKey: queryKeys.publicAuthProviders() })
-  }
-
-  const createMutation = useMutation({
-    mutationFn: (payload: LoginProviderCreate) => createAuthProvider(payload),
-    onError: (err) => {
-      toast.error(
-        `Failed to create auth provider: ${extractApiErrorDetail(err)}`,
-      )
-    },
-    onSuccess: () => {
-      invalidateAll()
-      setCreating(false)
-      toast.success('Auth provider created')
-    },
-  })
-
-  const updateMutation = useMutation({
+  // Promote (or demote) a login provider as the instance-wide SSO provider.
+  // The server enforces at most one active, so a full refetch reflects any
+  // sibling that was demoted as a side effect.
+  const loginProviderMutation = useMutation({
     mutationFn: ({
-      payload,
       slug,
+      usedAsLogin,
     }: {
-      payload: LoginProviderUpdate
       slug: string
-    }) => updateAuthProvider(slug, payload),
-    onError: (err) => {
+      usedAsLogin: boolean
+    }) => setLoginProviderUsedAsLogin(slug, usedAsLogin),
+    onError: (err) =>
       toast.error(
-        `Failed to update auth provider: ${extractApiErrorDetail(err)}`,
+        `Failed to update login provider: ${extractApiErrorDetail(err)}`,
+      ),
+    onSuccess: (_data, { usedAsLogin }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.loginProviders() })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.publicAuthProviders(),
+      })
+      toast.success(
+        usedAsLogin ? 'Login provider enabled' : 'Login provider disabled',
       )
-    },
-    onSuccess: () => {
-      invalidateAll()
-      setEditing(null)
-      toast.success('Auth provider updated')
     },
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (slug: string) => deleteAuthProvider(slug),
-    onError: (err) => {
+    mutationFn: (slug: string) => deleteLoginProvider(slug),
+    onError: (err) =>
       toast.error(
-        `Failed to delete auth provider: ${extractApiErrorDetail(err)}`,
-      )
-    },
+        `Failed to delete login provider: ${extractApiErrorDetail(err)}`,
+      ),
     onSuccess: () => {
-      invalidateAll()
-      setPendingDelete(null)
-      toast.success('Auth provider deleted')
+      queryClient.invalidateQueries({ queryKey: queryKeys.loginProviders() })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.publicAuthProviders(),
+      })
+      toast.success('Login provider deleted')
     },
   })
 
-  if (error) {
-    return <ErrorBanner error={error} title="Failed to load auth providers" />
-  }
-
   return (
-    <div className="space-y-4">
-      {!canWrite && (
+    <div className="max-w-4xl space-y-5">
+      {!canManageLocalAuth && !canManageProviders && (
         <Alert icon={Power} variant="info">
-          You don't have permission to modify auth providers. Contact an
-          administrator to add or change providers.
+          You don't have permission to modify authentication settings. Contact
+          an administrator to make changes.
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card className="flex h-full flex-col">
-          <CardHeader
-            className={
-              'flex flex-row items-center justify-between space-y-0 pb-2'
-            }
+      {/* Local authentication */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <div className="flex items-center gap-2">
+            <Lock className="text-secondary size-5" />
+            <CardTitle>Local Authentication</CardTitle>
+          </div>
+          <Swap
+            ready={!!localAuthQuery.data}
+            skeleton={<Sk circle h={20} w={20} />}
           >
-            <div className="flex items-center gap-2">
-              <Lock className="text-secondary size-5" />
-              <CardTitle>Local Authentication</CardTitle>
+            {localAuthQuery.data?.enabled ? (
+              <CheckCircle className="text-status-review-dot size-5 shrink-0" />
+            ) : (
+              <AlertCircle className="text-tertiary size-5 shrink-0" />
+            )}
+          </Swap>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-tertiary text-xs">
+            Allow users to sign in with an email address and password stored in
+            Imbi.
+          </p>
+          <div className="border-input flex items-center justify-between rounded-lg border p-3">
+            <div>
+              <div className="text-primary text-sm">Enabled</div>
+              <div className="text-tertiary text-xs">
+                When disabled, the email/password form is hidden on the login
+                page.
+              </div>
             </div>
             <Swap
               ready={!!localAuthQuery.data}
-              skeleton={<Sk circle h={20} w={20} />}
+              skeleton={<Sk h={20} r={9999} w={36} />}
             >
-              {localAuthQuery.data?.enabled ? (
-                <CheckCircle className="text-status-review-dot size-5 shrink-0" />
+              <Switch
+                checked={localAuthQuery.data?.enabled ?? false}
+                disabled={!canManageLocalAuth || localAuthMutation.isPending}
+                onCheckedChange={(checked) => localAuthMutation.mutate(checked)}
+              />
+            </Swap>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* SSO login provider (global) */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <div className="flex items-center gap-2">
+            <KeyRound className="text-secondary size-5" />
+            <CardTitle>SSO Login Provider</CardTitle>
+          </div>
+          {canManageProviders && addablePlugins.length > 0 && (
+            <Button onClick={() => setAddOpen(true)} size="sm">
+              <Plus className="size-4" />
+              Add auth provider
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-tertiary text-xs">
+            Choose which integration users sign in through. Only plugins that
+            provide a login-capable identity are eligible, and at most one can
+            be active. Login providers are global — sign-in happens before any
+            organization is selected.
+          </p>
+
+          {providersError ? (
+            <ErrorBanner
+              error={providersError}
+              title="Failed to load providers"
+            />
+          ) : (
+            <Swap
+              ready={!!providers}
+              skeleton={
+                <div className="space-y-2">
+                  <Sk h={56} r={8} />
+                  <Sk h={56} r={8} />
+                </div>
+              }
+            >
+              {(providers ?? []).length === 0 ? (
+                <div className="border-input text-tertiary rounded-lg border border-dashed p-4 text-sm">
+                  {addablePlugins.length > 0
+                    ? `No login providers configured yet. Use “Add auth provider” to create one.`
+                    : `No login-capable plugins are enabled. Enable one (e.g. Google, GitHub, OIDC) under Admin → Plugins first.`}
+                </div>
               ) : (
-                <AlertCircle className="text-tertiary size-5 shrink-0" />
+                <div className="divide-tertiary border-tertiary divide-y rounded-lg border">
+                  {(providers ?? []).map((provider) => (
+                    <div
+                      className="flex items-center justify-between gap-4 p-3"
+                      key={provider.slug}
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        {pluginIconBySlug.get(provider.plugin) && (
+                          <EntityIcon
+                            className="text-tertiary size-4 shrink-0"
+                            icon={pluginIconBySlug.get(provider.plugin)!}
+                          />
+                        )}
+                        <span className="text-primary truncate text-sm font-medium">
+                          {provider.name}
+                        </span>
+                        <Badge variant={statusBadgeVariant(provider.status)}>
+                          {provider.status}
+                        </Badge>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2.5">
+                        <span className="text-tertiary text-xs">
+                          {provider.used_as_login
+                            ? 'Used for sign-in'
+                            : 'Not used'}
+                        </span>
+                        <Switch
+                          aria-label={`Use ${provider.name} for sign-in`}
+                          checked={!!provider.used_as_login}
+                          disabled={
+                            !canManageProviders ||
+                            loginProviderMutation.isPending ||
+                            // Block promoting an inactive provider (it can't
+                            // serve sign-in and would lock users out); still
+                            // allow demoting one that's already in use.
+                            (provider.status !== 'active' &&
+                              !provider.used_as_login)
+                          }
+                          onCheckedChange={(checked) => {
+                            if (checked && provider.status !== 'active') return
+                            loginProviderMutation.mutate({
+                              slug: provider.slug,
+                              usedAsLogin: checked,
+                            })
+                          }}
+                        />
+                        {canManageProviders && (
+                          <Button
+                            aria-label={`Delete ${provider.name}`}
+                            disabled={deleteMutation.isPending}
+                            onClick={() =>
+                              setPendingDelete({
+                                name: provider.name,
+                                slug: provider.slug,
+                              })
+                            }
+                            size="icon"
+                            variant="ghost"
+                          >
+                            <Trash2 className="text-danger size-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </Swap>
-          </CardHeader>
-          <CardContent className="flex flex-1 flex-col space-y-3">
-            <p className="text-tertiary text-xs">
-              Allow users to sign in with an email address and password stored
-              in Imbi.
-            </p>
-            <div className="border-input mt-auto flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <div className="text-primary text-sm">Enabled</div>
-                <div className="text-tertiary text-xs">
-                  When disabled, the email/password form is hidden on the login
-                  page.
-                </div>
-              </div>
-              <Swap
-                ready={!!localAuthQuery.data}
-                skeleton={<Sk h={20} r={9999} w={36} />}
-              >
-                <Switch
-                  checked={localAuthQuery.data?.enabled ?? false}
-                  disabled={!canWrite || localAuthMutation.isPending}
-                  onCheckedChange={(checked) =>
-                    localAuthMutation.mutate(checked)
-                  }
-                />
-              </Swap>
-            </div>
-          </CardContent>
-        </Card>
+          )}
+        </CardContent>
+      </Card>
 
-        {!data
-          ? [0, 1].map((i) => (
-              <Card aria-busy className="reveal" key={`sk-${i}`}>
-                <CardHeader
-                  className={
-                    'flex flex-row items-center justify-between space-y-0 pb-2'
-                  }
-                >
-                  <Sk w={110} />
-                  <Sk circle h={20} w={20} />
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <Sk line w="92%" />
-                  <div>
-                    <Sk className="mb-1" w={120} />
-                    <Sk h={30} r={6} w="100%" />
-                  </div>
-                  {canWrite && (
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
-                      <Sk h={32} r={8} w={72} />
-                      <Sk h={32} r={8} w={84} />
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))
-          : null}
-
-        {providers.map((provider) => {
-          const appType = provider.oauth_app_type
-          const typeDesc = appType
-            ? APP_TYPE_DESCRIPTIONS[appType]
-            : 'Login-eligible service application.'
-          const isActive = provider.status === 'active'
-          return (
-            <Card key={provider.slug}>
-              <CardHeader
-                className={
-                  'flex flex-row items-center justify-between space-y-0 pb-2'
-                }
-              >
-                <div className="flex items-center gap-2">
-                  <CardTitle>{provider.name}</CardTitle>
-                </div>
-                {isActive ? (
-                  <CheckCircle className="text-status-review-dot size-5 shrink-0" />
-                ) : (
-                  <AlertCircle className="text-tertiary size-5 shrink-0" />
-                )}
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-tertiary text-xs">{typeDesc}</p>
-                <div>
-                  <div className="text-tertiary mb-1 text-xs">
-                    Authorized redirect URI
-                  </div>
-                  <div
-                    className={
-                      'border-input bg-secondary flex items-center gap-1 rounded-md border px-2 py-1'
-                    }
-                  >
-                    <code
-                      className="text-secondary flex-1 truncate text-xs"
-                      title={provider.callback_url}
-                    >
-                      {provider.callback_url}
-                    </code>
-                    <Button
-                      aria-label="Copy redirect URI"
-                      className="size-6 shrink-0"
-                      onClick={() =>
-                        copyToClipboard(provider.callback_url, 'Redirect URI')
-                      }
-                      size="icon"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <Copy className="size-3" />
-                    </Button>
-                  </div>
-                </div>
-                {canWrite && (
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <Button
-                      onClick={() => setEditing(provider)}
-                      size="sm"
-                      variant="outline"
-                    >
-                      <Settings className="mr-1 size-4" />
-                      Edit
-                    </Button>
-                    <Button
-                      onClick={() => setPendingDelete(provider)}
-                      size="sm"
-                      variant="ghost"
-                    >
-                      <Trash2 className="mr-1 size-4" />
-                      Delete
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )
-        })}
-
-        {canWrite && (
-          <Card
-            className="flex items-center justify-center border-dashed bg-transparent"
-            onClick={() => setCreating(true)}
-            role="button"
-            tabIndex={0}
-          >
-            <CardContent className="flex size-full items-center justify-center p-6">
-              <Button
-                onClick={() => setCreating(true)}
-                type="button"
-                variant="outline"
-              >
-                + Add auth provider
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {creating && (
-        <AuthProviderCreateDialog
-          isSaving={createMutation.isPending}
-          onCancel={() => setCreating(false)}
-          onSave={(payload) => createMutation.mutate(payload)}
-        />
-      )}
-
-      {editing && (
-        <AuthProviderEditDialog
-          isSaving={updateMutation.isPending}
-          onCancel={() => setEditing(null)}
-          onSave={(payload) =>
-            updateMutation.mutate({ payload, slug: editing.slug })
-          }
-          provider={editing}
-        />
-      )}
+      <AddAuthProviderDialog
+        onClose={() => setAddOpen(false)}
+        onCreated={() => {
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.loginProviders(),
+          })
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.publicAuthProviders(),
+          })
+        }}
+        open={addOpen}
+        plugins={addablePlugins}
+      />
 
       <ConfirmDialog
         confirmLabel="Delete"
-        description="Users currently linked through this provider won't be able to sign in until it's recreated."
+        description={
+          pendingDelete
+            ? `Delete "${pendingDelete.name}"? This removes its credentials and stops it being available for sign-in. This cannot be undone.`
+            : ''
+        }
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => {
           if (pendingDelete) deleteMutation.mutate(pendingDelete.slug)
+          setPendingDelete(null)
         }}
         open={!!pendingDelete}
-        title={
-          pendingDelete ? `Remove the ${pendingDelete.name} Auth Provider?` : ''
-        }
+        title="Delete login provider"
       />
     </div>
-  )
-}
-
-function AuthProviderCreateDialog({
-  isSaving,
-  onCancel,
-  onSave,
-}: CreateDialogProps) {
-  const [appType, setAppType] = useState<OAuthAppType>('google')
-  const [clientId, setClientId] = useState('')
-  const [secret, setSecret] = useState('')
-  const [issuerUrl, setIssuerUrl] = useState('')
-  const [scopes, setScopes] = useState('')
-  const [allowedDomains, setAllowedDomains] = useState<string[]>([])
-  const [domainDraft, setDomainDraft] = useState('')
-  const [enableIntegration, setEnableIntegration] = useState(false)
-  const [errors, setErrors] = useState<Record<string, string>>({})
-
-  const showAllowedDomains = appType === 'google'
-  const showIssuerUrl = appType === 'oidc'
-  const callbackUrl = callbackUrlForType(appType)
-
-  const addDomain = () => {
-    const value = domainDraft.trim().toLowerCase()
-    if (!value) return
-    if (!allowedDomains.includes(value)) {
-      setAllowedDomains([...allowedDomains, value])
-    }
-    setDomainDraft('')
-  }
-
-  const removeDomain = (value: string) => {
-    setAllowedDomains(allowedDomains.filter((d) => d !== value))
-  }
-
-  const validate = (): boolean => {
-    const next: Record<string, string> = {}
-    if (!clientId.trim()) next.client_id = 'Client ID is required'
-    if (!secret) next.client_secret = 'Client secret is required'
-    if (showIssuerUrl) {
-      if (!issuerUrl.trim()) {
-        next.issuer_url = 'Issuer URL is required for OIDC'
-      } else {
-        try {
-          const u = new URL(issuerUrl.trim())
-          if (u.protocol !== 'https:') {
-            next.issuer_url = 'Issuer URL must be https://'
-          }
-        } catch {
-          next.issuer_url = 'Issuer URL must be a valid URL'
-        }
-      }
-    }
-    setErrors(next)
-    return Object.keys(next).length === 0
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!validate()) return
-    const payload: LoginProviderCreate = {
-      client_id: clientId.trim(),
-      client_secret: secret,
-      oauth_app_type: appType,
-      usage: enableIntegration ? 'both' : 'login',
-    }
-    if (showIssuerUrl && issuerUrl.trim()) {
-      payload.issuer_url = issuerUrl.trim()
-    }
-    if (showAllowedDomains && allowedDomains.length > 0) {
-      payload.allowed_domains = allowedDomains
-    }
-    if (scopes.trim()) {
-      payload.scopes = scopes
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean)
-    }
-    onSave(payload)
-  }
-
-  return (
-    <Dialog
-      onOpenChange={(open) => {
-        if (!open) onCancel()
-      }}
-      open
-    >
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Add auth provider</DialogTitle>
-          <DialogDescription>
-            Configure a new login provider backed by a service application.
-          </DialogDescription>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit}>
-          <div className="space-y-4 p-6">
-            <div>
-              <Label className="text-secondary mb-1.5 block text-sm">
-                OAuth Type <RequiredAsterisk />
-              </Label>
-              <Select
-                disabled={isSaving}
-                onValueChange={(v) => setAppType(v as OAuthAppType)}
-                value={appType}
-              >
-                <SelectTrigger aria-label="OAuth type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="google">Google</SelectItem>
-                  <SelectItem value="github">GitHub</SelectItem>
-                  <SelectItem value="oidc">OpenID Connect</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label className="text-secondary mb-1.5 block text-sm">
-                Redirect URL
-              </Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  className="flex-1 font-mono text-xs"
-                  readOnly
-                  value={callbackUrl}
-                />
-                <Button
-                  aria-label="Copy redirect URL"
-                  onClick={() => copyToClipboard(callbackUrl, 'Redirect URL')}
-                  size="icon"
-                  type="button"
-                  variant="outline"
-                >
-                  <Copy className="size-4" />
-                </Button>
-              </div>
-              <p className="text-tertiary mt-1 text-xs">
-                Configure this URL in the provider&apos;s OAuth app settings.
-              </p>
-            </div>
-
-            <div>
-              <Label className="text-secondary mb-1.5 block text-sm">
-                Client ID <RequiredAsterisk />
-              </Label>
-              <Input
-                disabled={isSaving}
-                onChange={(e) => setClientId(e.target.value)}
-                value={clientId}
-              />
-              {errors.client_id && (
-                <div className="text-danger mt-1 text-xs">
-                  {errors.client_id}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <Label className="text-secondary mb-1.5 block text-sm">
-                Client Secret <RequiredAsterisk />
-              </Label>
-              <Input
-                autoComplete="new-password"
-                disabled={isSaving}
-                onChange={(e) => setSecret(e.target.value)}
-                type="password"
-                value={secret}
-              />
-              {errors.client_secret && (
-                <div className="text-danger mt-1 text-xs">
-                  {errors.client_secret}
-                </div>
-              )}
-            </div>
-
-            {showIssuerUrl && (
-              <div>
-                <Label className="text-secondary mb-1.5 block text-sm">
-                  Issuer URL <RequiredAsterisk />
-                </Label>
-                <Input
-                  disabled={isSaving}
-                  onChange={(e) => setIssuerUrl(e.target.value)}
-                  placeholder="https://idp.example.com/"
-                  value={issuerUrl}
-                />
-                {errors.issuer_url && (
-                  <div className="text-danger mt-1 text-xs">
-                    {errors.issuer_url}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div>
-              <Label className="text-secondary mb-1.5 block text-sm">
-                Scopes
-              </Label>
-              <Input
-                disabled={isSaving}
-                onChange={(e) => setScopes(e.target.value)}
-                placeholder="openid, email, profile (comma-separated)"
-                value={scopes}
-              />
-            </div>
-
-            {showAllowedDomains && (
-              <div>
-                <Label className="text-secondary mb-1.5 block text-sm">
-                  Allowed Email Domains
-                </Label>
-                <div
-                  className={
-                    'border-input bg-background flex flex-wrap items-center gap-2 rounded-lg border p-2'
-                  }
-                >
-                  {allowedDomains.map((d) => (
-                    <span
-                      className={
-                        'bg-secondary text-secondary inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs'
-                      }
-                      key={d}
-                    >
-                      {d}
-                      <Button
-                        aria-label={`Remove ${d}`}
-                        className="text-tertiary hover:text-primary size-4"
-                        disabled={isSaving}
-                        onClick={() => removeDomain(d)}
-                        onMouseDown={(e) => e.preventDefault()}
-                        size="icon"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <X className="size-3" />
-                      </Button>
-                    </span>
-                  ))}
-                  <input
-                    className={
-                      'placeholder:text-muted-foreground min-w-32 flex-1 bg-transparent px-1 py-0.5 text-sm outline-none'
-                    }
-                    disabled={isSaving}
-                    onBlur={addDomain}
-                    onChange={(e) => setDomainDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
-                        e.preventDefault()
-                        addDomain()
-                      } else if (
-                        e.key === 'Backspace' &&
-                        !domainDraft &&
-                        allowedDomains.length > 0
-                      ) {
-                        setAllowedDomains(allowedDomains.slice(0, -1))
-                      }
-                    }}
-                    placeholder={
-                      allowedDomains.length === 0
-                        ? 'example.com (Enter to add)'
-                        : ''
-                    }
-                    value={domainDraft}
-                  />
-                </div>
-              </div>
-            )}
-
-            <Label className="text-secondary flex w-full items-center gap-2 text-sm">
-              <Checkbox
-                checked={enableIntegration}
-                disabled={isSaving}
-                onCheckedChange={(checked) =>
-                  setEnableIntegration(checked === true)
-                }
-              />
-              Enable Integration
-            </Label>
-          </div>
-
-          <DialogFooter>
-            <Button
-              disabled={isSaving}
-              onClick={onCancel}
-              type="button"
-              variant="outline"
-            >
-              Cancel
-            </Button>
-            <Button disabled={isSaving} type="submit">
-              {isSaving ? 'Creating...' : 'Create'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function AuthProviderEditDialog({
-  isSaving,
-  onCancel,
-  onSave,
-  provider,
-}: EditDialogProps) {
-  const [name, setName] = useState(provider.name)
-  const [appType, setAppType] = useState<OAuthAppType>(
-    provider.oauth_app_type ?? 'google',
-  )
-  const [clientId, setClientId] = useState(provider.client_id ?? '')
-  const [issuerUrl, setIssuerUrl] = useState(provider.issuer_url ?? '')
-  const [allowedDomains, setAllowedDomains] = useState<string[]>(
-    provider.allowed_domains,
-  )
-  const [scopes, setScopes] = useState(provider.scopes.join(', '))
-  const [domainDraft, setDomainDraft] = useState('')
-  const [replaceSecret, setReplaceSecret] = useState(!provider.has_secret)
-  const [secret, setSecret] = useState('')
-  const [enableIntegration, setEnableIntegration] = useState(
-    provider.usage === 'both',
-  )
-  const [errors, setErrors] = useState<Record<string, string>>({})
-
-  const showAllowedDomains = appType === 'google'
-  const showIssuerUrl = appType === 'oidc'
-
-  const addDomain = () => {
-    const value = domainDraft.trim().toLowerCase()
-    if (!value) return
-    if (!allowedDomains.includes(value)) {
-      setAllowedDomains([...allowedDomains, value])
-    }
-    setDomainDraft('')
-  }
-
-  const removeDomain = (value: string) => {
-    setAllowedDomains(allowedDomains.filter((d) => d !== value))
-  }
-
-  const validate = (): boolean => {
-    const next: Record<string, string> = {}
-    if (!name.trim()) next.name = 'Name is required'
-    if (!clientId.trim()) next.client_id = 'Client ID is required'
-    if (replaceSecret && !secret && !provider.has_secret) {
-      next.client_secret = 'Client secret is required'
-    }
-    if (showIssuerUrl) {
-      if (!issuerUrl.trim()) {
-        next.issuer_url = 'Issuer URL is required for OIDC'
-      } else {
-        try {
-          const u = new URL(issuerUrl.trim())
-          if (u.protocol !== 'https:') {
-            next.issuer_url = 'Issuer URL must be https://'
-          }
-        } catch {
-          next.issuer_url = 'Issuer URL must be a valid URL'
-        }
-      }
-    }
-    setErrors(next)
-    return Object.keys(next).length === 0
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!validate()) return
-    const payload: LoginProviderUpdate = {
-      client_id: clientId.trim(),
-      name: name.trim(),
-      oauth_app_type: appType,
-      usage: enableIntegration ? 'both' : 'login',
-    }
-    // Empty / unchanged secret preserves existing on the server.
-    if (replaceSecret && secret) {
-      payload.client_secret = secret
-    } else {
-      payload.client_secret = ''
-    }
-    if (showIssuerUrl && issuerUrl.trim()) {
-      payload.issuer_url = issuerUrl.trim()
-    }
-    if (showAllowedDomains) {
-      payload.allowed_domains = allowedDomains
-    }
-    if (scopes.trim()) {
-      payload.scopes = scopes
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean)
-    } else {
-      payload.scopes = []
-    }
-    onSave(payload)
-  }
-
-  return (
-    <Dialog
-      onOpenChange={(open) => {
-        if (!open) onCancel()
-      }}
-      open
-    >
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Edit {provider.name}</DialogTitle>
-          <DialogDescription>
-            {provider.organization_name && provider.third_party_service_name
-              ? `${provider.organization_name} · ${provider.third_party_service_name}`
-              : 'Login provider configuration.'}
-          </DialogDescription>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit}>
-          <div className="space-y-4 p-6">
-            <div>
-              <Label className="text-secondary mb-1.5 block text-sm">
-                Display Name <RequiredAsterisk />
-              </Label>
-              <Input
-                disabled={isSaving}
-                onChange={(e) => setName(e.target.value)}
-                value={name}
-              />
-              {errors.name && (
-                <div className="text-danger mt-1 text-xs">{errors.name}</div>
-              )}
-            </div>
-
-            <div>
-              <Label className="text-secondary mb-1.5 block text-sm">
-                OAuth Type <RequiredAsterisk />
-              </Label>
-              <Select
-                disabled={isSaving}
-                onValueChange={(v) => setAppType(v as OAuthAppType)}
-                value={appType}
-              >
-                <SelectTrigger aria-label="OAuth type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="google">Google</SelectItem>
-                  <SelectItem value="github">GitHub</SelectItem>
-                  <SelectItem value="oidc">OpenID Connect</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label className="text-secondary mb-1.5 block text-sm">
-                Client ID <RequiredAsterisk />
-              </Label>
-              <Input
-                disabled={isSaving}
-                onChange={(e) => setClientId(e.target.value)}
-                value={clientId}
-              />
-              {errors.client_id && (
-                <div className="text-danger mt-1 text-xs">
-                  {errors.client_id}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <Label className="text-secondary mb-1.5 block text-sm">
-                Client Secret
-              </Label>
-              {provider.has_secret && !replaceSecret ? (
-                <div
-                  className={
-                    'border-input bg-secondary flex items-center justify-between rounded-lg border px-3 py-2'
-                  }
-                >
-                  <span className="text-secondary text-sm">
-                    Secret is set (hidden).
-                  </span>
-                  <Button
-                    disabled={isSaving}
-                    onClick={() => setReplaceSecret(true)}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    Replace secret
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  <Input
-                    autoComplete="new-password"
-                    disabled={isSaving}
-                    onChange={(e) => setSecret(e.target.value)}
-                    placeholder={
-                      provider.has_secret
-                        ? 'Enter a new secret (leave blank to keep current)'
-                        : ''
-                    }
-                    type="password"
-                    value={secret}
-                  />
-                  {provider.has_secret && (
-                    <Button
-                      disabled={isSaving}
-                      onClick={() => {
-                        setReplaceSecret(false)
-                        setSecret('')
-                      }}
-                      size="sm"
-                      type="button"
-                      variant="ghost"
-                    >
-                      Cancel replace
-                    </Button>
-                  )}
-                  {errors.client_secret && (
-                    <div className="text-danger text-xs">
-                      {errors.client_secret}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {showIssuerUrl && (
-              <div>
-                <Label className="text-secondary mb-1.5 block text-sm">
-                  Issuer URL <RequiredAsterisk />
-                </Label>
-                <Input
-                  disabled={isSaving}
-                  onChange={(e) => setIssuerUrl(e.target.value)}
-                  placeholder="https://idp.example.com/"
-                  value={issuerUrl}
-                />
-                {errors.issuer_url && (
-                  <div className="text-danger mt-1 text-xs">
-                    {errors.issuer_url}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div>
-              <Label className="text-secondary mb-1.5 block text-sm">
-                Scopes
-              </Label>
-              <Input
-                disabled={isSaving}
-                onChange={(e) => setScopes(e.target.value)}
-                placeholder="openid, email, profile (comma-separated)"
-                value={scopes}
-              />
-            </div>
-
-            {showAllowedDomains && (
-              <div>
-                <Label className="text-secondary mb-1.5 block text-sm">
-                  Allowed Email Domains
-                </Label>
-                <div
-                  className={
-                    'border-input bg-background flex flex-wrap items-center gap-2 rounded-lg border p-2'
-                  }
-                >
-                  {allowedDomains.map((d) => (
-                    <span
-                      className={
-                        'bg-secondary text-secondary inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs'
-                      }
-                      key={d}
-                    >
-                      {d}
-                      <Button
-                        aria-label={`Remove ${d}`}
-                        className="text-tertiary hover:text-primary size-4"
-                        disabled={isSaving}
-                        onClick={() => removeDomain(d)}
-                        onMouseDown={(e) => e.preventDefault()}
-                        size="icon"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <X className="size-3" />
-                      </Button>
-                    </span>
-                  ))}
-                  <input
-                    className={
-                      'placeholder:text-muted-foreground min-w-32 flex-1 bg-transparent px-1 py-0.5 text-sm outline-none'
-                    }
-                    disabled={isSaving}
-                    onBlur={addDomain}
-                    onChange={(e) => setDomainDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
-                        e.preventDefault()
-                        addDomain()
-                      } else if (
-                        e.key === 'Backspace' &&
-                        !domainDraft &&
-                        allowedDomains.length > 0
-                      ) {
-                        setAllowedDomains(allowedDomains.slice(0, -1))
-                      }
-                    }}
-                    placeholder={
-                      allowedDomains.length === 0
-                        ? 'example.com (Enter to add)'
-                        : ''
-                    }
-                    value={domainDraft}
-                  />
-                </div>
-              </div>
-            )}
-
-            <Label className="text-secondary flex w-full items-center gap-2 text-sm">
-              <Checkbox
-                checked={enableIntegration}
-                disabled={isSaving}
-                onCheckedChange={(checked) =>
-                  setEnableIntegration(checked === true)
-                }
-              />
-              Enable Integration
-            </Label>
-          </div>
-
-          <DialogFooter>
-            <Button
-              disabled={isSaving}
-              onClick={onCancel}
-              type="button"
-              variant="outline"
-            >
-              Cancel
-            </Button>
-            <Button disabled={isSaving} type="submit">
-              {isSaving ? 'Saving...' : 'Save'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   )
 }

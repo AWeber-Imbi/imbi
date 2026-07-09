@@ -11,7 +11,6 @@ const ADMIN_SECTIONS: Record<string, string> = {
   ProjectType: 'project-types',
   Role: 'roles',
   Team: 'teams',
-  ThirdPartyService: 'third-party-services',
 }
 
 export function getResultPath(result: SearchResult): null | string {

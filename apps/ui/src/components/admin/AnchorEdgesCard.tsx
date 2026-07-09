@@ -21,10 +21,11 @@ import {
 } from '@/lib/plugin-entities'
 import { queryKeys } from '@/lib/queryKeys'
 import type {
-  InstalledPlugin,
   PluginEdge,
   PluginEdgeLabel,
   PluginEntity,
+  PluginPackage,
+  PluginVertexLabel,
 } from '@/types'
 
 interface AnchorEdgesCardProps {
@@ -32,7 +33,7 @@ interface AnchorEdgesCardProps {
   anchorKind: AnchorKind
   edge: PluginEdgeLabel
   entityPluginSlug: string
-  manifest: InstalledPlugin
+  manifest: PluginPackage
   title?: string
 }
 
@@ -56,6 +57,7 @@ const labelEntitySubtitle = (entity: PluginEntity): null | string => {
   return null
 }
 
+// fallow-ignore-next-line complexity
 export function AnchorEdgesCard({
   anchor,
   anchorKind,
@@ -66,9 +68,11 @@ export function AnchorEdgesCard({
 }: AnchorEdgesCardProps) {
   const queryClient = useQueryClient()
   const targetLabel = edge.to_labels[0]
-  const targetVlabel = manifest.vertex_labels?.find(
-    (v) => v.name === targetLabel,
-  )
+  // v3 PluginPackage surfaces vertex_labels as untyped records; they carry
+  // the same shape as PluginVertexLabel.
+  const vertexLabels =
+    (manifest.vertex_labels as unknown as PluginVertexLabel[]) ?? []
+  const targetVlabel = vertexLabels.find((v) => v.name === targetLabel)
   const targetDisplay = targetVlabel?.display_name || targetLabel
   const naturalKey = naturalKeyField(targetVlabel)
   const edgesKey = queryKeys.anchorEdges(

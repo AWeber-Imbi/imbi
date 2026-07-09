@@ -23,18 +23,18 @@ import { useQuery } from '@tanstack/react-query'
 import { GitPullRequest, Settings } from 'lucide-react'
 
 import {
-  getAdminPlugins,
   getMyIdentities,
   getOrgPullRequests,
   getProjects,
 } from '@/api/endpoints'
+import { pluginIsIdentity } from '@/components/plugin-packages'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useConnectableIdentities } from '@/hooks/useConnectableIdentities'
 import { useRecentDeployments } from '@/hooks/useRecentDeployments'
-import { queryKeys } from '@/lib/queryKeys'
-import type { AdminPluginsResponse, IdentityConnectionResponse } from '@/types'
+import type { IdentityConnectionResponse } from '@/types'
 
 import { MyPullRequestCountsWidget } from './dashboard/widgets/MyPullRequestCountsWidget'
 import { MyPullRequestsWidget } from './dashboard/widgets/MyPullRequestsWidget'
@@ -210,11 +210,8 @@ export function Dashboard({
   const [dismissedIntegrations, setDismissedIntegrations] = useState<string[]>(
     loadDismissedIntegrations,
   )
-  const pluginsQuery = useQuery<AdminPluginsResponse>({
-    queryFn: ({ signal }) => getAdminPlugins(signal),
-    queryKey: queryKeys.adminPlugins(),
-    staleTime: 60 * 1000,
-  })
+  const { connectableSlugs, integrationsQuery, pluginsQuery } =
+    useConnectableIdentities(orgSlug)
   const identitiesQuery = useQuery<IdentityConnectionResponse[]>({
     queryFn: ({ signal }) => getMyIdentities(signal),
     queryKey: ['me-identities'],
@@ -224,19 +221,29 @@ export function Dashboard({
     staleTime: 5 * 60 * 1000,
   })
 
-  const connectedSlugs = new Set(
-    (identitiesQuery.data ?? [])
-      .filter((c) => c.status === 'active')
-      .map((c) => c.plugin_slug),
-  )
-  const unconnectedIdentityPlugins = (
-    pluginsQuery.data?.installed ?? []
-  ).filter(
+  // Connections key off the integration id; map back to the plugin slug so
+  // an active connection hides that plugin's "connect" tile.
+  const pluginByIntegrationId = new Map<string, string>()
+  for (const i of integrationsQuery.data ?? []) {
+    if (i.id) pluginByIntegrationId.set(i.id, i.plugin)
+  }
+  // Slugs already connected (active) or dismissed by the actor — either
+  // way, don't prompt to connect them.
+  const hiddenSlugs = new Set<string>(dismissedIntegrations)
+  for (const c of identitiesQuery.data ?? []) {
+    if (c.status !== 'active') continue
+    const slug = pluginByIntegrationId.get(c.integration_id)
+    if (slug) hiddenSlugs.add(slug)
+  }
+  // Only offer to connect identity plugins that actually have a configured
+  // integration in this org — a login provider (org-less) or a merely
+  // installed-but-unconfigured plugin isn't something the actor connects to.
+  const unconnectedIdentityPlugins = (pluginsQuery.data ?? []).filter(
     (p) =>
       p.enabled &&
-      p.plugin_type === 'identity' &&
-      !connectedSlugs.has(p.slug) &&
-      !dismissedIntegrations.includes(p.slug),
+      pluginIsIdentity(p) &&
+      connectableSlugs.has(p.slug) &&
+      !hiddenSlugs.has(p.slug),
   )
 
   const [selectedWidgets, setSelectedWidgets] = useState<WidgetId[]>(() => {

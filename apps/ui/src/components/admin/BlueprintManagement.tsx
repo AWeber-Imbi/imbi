@@ -88,7 +88,6 @@ export function BlueprintManagement() {
     'Project',
     'ProjectType',
     'Team',
-    'ThirdPartyService',
   ]
 
   const {

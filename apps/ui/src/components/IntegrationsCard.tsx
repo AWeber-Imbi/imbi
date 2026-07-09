@@ -7,8 +7,8 @@ import { toast } from 'sonner'
 import {
   createProjectService,
   deleteProjectService,
+  listIntegrations,
   listProjectServices,
-  listThirdPartyServices,
 } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import {
@@ -45,6 +45,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { queryKeys } from '@/lib/queryKeys'
 
 interface IntegrationsCardProps {
   orgSlug: string
@@ -73,10 +74,10 @@ export function IntegrationsCard({
     queryKey: ['projectServices', orgSlug, projectId],
   })
 
-  const { data: thirdPartyServices = [] } = useQuery({
+  const { data: integrations = [] } = useQuery({
     enabled: !!orgSlug,
-    queryFn: ({ signal }) => listThirdPartyServices(orgSlug, signal),
-    queryKey: ['thirdPartyServices', orgSlug],
+    queryFn: ({ signal }) => listIntegrations(orgSlug, signal),
+    queryKey: queryKeys.integrations(orgSlug),
   })
 
   const invalidate = () => {
@@ -90,12 +91,12 @@ export function IntegrationsCard({
     })
   }
 
-  // Services the project does not already exist in — can't connect the
-  // same service twice.
+  // Integrations the project does not already exist in — can't connect
+  // the same integration twice.
   const connectableServices = useMemo(() => {
-    const connected = new Set(services.map((s) => s.third_party_service_slug))
-    return thirdPartyServices.filter((s) => !connected.has(s.slug))
-  }, [services, thirdPartyServices])
+    const connected = new Set(services.map((s) => s.integration_slug))
+    return integrations.filter((s) => !connected.has(s.slug))
+  }, [services, integrations])
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -103,7 +104,7 @@ export function IntegrationsCard({
         canonical_url: form.canonicalUrl.trim() || null,
         dashboard_url: form.dashboardUrl.trim() || null,
         identifier: form.identifier.trim(),
-        third_party_service_slug: form.serviceSlug,
+        integration_slug: form.serviceSlug,
       }),
     onError: (error) => {
       toast.error(`Failed to add integration: ${extractApiErrorDetail(error)}`)
@@ -176,8 +177,8 @@ export function IntegrationsCard({
             </TableHeader>
             <TableBody>
               {services.map((svc) => (
-                <TableRow key={svc.third_party_service_slug}>
-                  <TableCell>{svc.third_party_service_name}</TableCell>
+                <TableRow key={svc.integration_slug}>
+                  <TableCell>{svc.integration_name}</TableCell>
                   <TableCell className="font-mono text-sm">
                     {svc.identifier}
                   </TableCell>
@@ -189,10 +190,8 @@ export function IntegrationsCard({
                   </TableCell>
                   <TableCell>
                     <Button
-                      aria-label={`Remove ${svc.third_party_service_name} integration`}
-                      onClick={() =>
-                        setDeleteTarget(svc.third_party_service_slug)
-                      }
+                      aria-label={`Remove ${svc.integration_name} integration`}
+                      onClick={() => setDeleteTarget(svc.integration_slug)}
                       size="sm"
                       variant="ghost"
                     >

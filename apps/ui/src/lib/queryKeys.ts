@@ -17,12 +17,19 @@ export const queryKeys = {
   ) => ['anchor-edges', kind, orgSlug, anchorSlug, relType] as const,
   environments: (orgSlug: string) => ['environments', orgSlug] as const,
   identityPlugins: (orgSlug: string) => ['identity-plugins', orgSlug] as const,
+  integration: (orgSlug: string, slug: string) =>
+    ['integration', orgSlug, slug] as const,
+  integrations: (orgSlug: string) => ['integrations', orgSlug] as const,
+  // Global (org-less) login providers managed on the Auth Providers screen.
+  loginProviders: () => ['login-providers'] as const,
   pluginEdgesByOrg: (pluginSlug: string, relType: string, orgSlug: string) =>
     ['plugin-edges-by-org', pluginSlug, relType, orgSlug] as const,
   pluginEntities: (slug: string, label: string) =>
     ['plugin-entities', slug, label] as const,
   pluginEntitySchema: (slug: string, label: string) =>
     ['plugin-entity-schema', slug, label] as const,
+  pluginPackage: (slug: string) => ['plugin-package', slug] as const,
+  pluginPackages: () => ['plugin-packages'] as const,
   projectTypes: (orgSlug: string) => ['projectTypes', orgSlug] as const,
   // Login form's view of providers (/auth/providers, public payload with
   // default_redirect). Distinct from adminAuthProviders, which lists admin

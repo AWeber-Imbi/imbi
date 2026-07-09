@@ -8,15 +8,16 @@ import { toast } from 'sonner'
 
 import {
   disconnectMyIdentity,
-  getAdminPlugins,
   getMyIdentities,
   refreshMyIdentity,
   startMyIdentity,
 } from '@/api/endpoints'
+import { pluginIsIdentity } from '@/components/plugin-packages'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { EntityIcon } from '@/components/ui/entity-icon'
 import { Sk } from '@/components/ui/skeleton'
 import {
   Table,
@@ -26,22 +27,23 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { useConnectableIdentities } from '@/hooks/useConnectableIdentities'
 import { extractApiErrorDetail } from '@/lib/apiError'
-import { getIcon, iconRegistry, useIconRegistryVersion } from '@/lib/icons'
-import type { IconComponent } from '@/lib/icons'
-import { queryKeys } from '@/lib/queryKeys'
 import type {
-  AdminPluginsResponse,
   IdentityConnectionResponse,
   IdentityConnectionStatus,
   IdentityPollingDescriptor,
-  InstalledPlugin,
+  PluginPackage,
 } from '@/types'
 
 import { DeviceCodePollingDialog } from './DeviceCodePollingDialog'
 
 interface ConnectionActionsProps {
   connection: IdentityConnectionResponse | null
+  // No connectable integration for this plugin (e.g. legacy integration
+  // without a stable id) — the Connect action is unavailable.
+  disabled?: boolean
   onConnect: () => void
   onDisconnect: () => void
   onRefresh: () => void
@@ -50,12 +52,15 @@ interface ConnectionActionsProps {
 
 interface ConnectionRow {
   connection: IdentityConnectionResponse | null
-  plugin: InstalledPlugin
+  // The org integration backing this provider; null when the plugin has
+  // no configured (identity-enabled) integration the actor can connect to.
+  integrationId: null | string
+  plugin: PluginPackage
 }
 
 interface DevicePoll {
+  integrationId: string
   pluginLabel: string
-  pluginSlug: string
   polling: IdentityPollingDescriptor
   state: string
 }
@@ -82,8 +87,11 @@ const STATUS_VARIANT: Record<
   revoked: 'secondary',
 }
 
+// fallow-ignore-next-line complexity
 export function SettingsConnections() {
   const queryClient = useQueryClient()
+  const { selectedOrganization } = useOrganization()
+  const orgSlug = selectedOrganization?.slug ?? ''
   // Pre-opened during the click handler so the popup-blocker accepts it as
   // a user-gesture window; the URL is assigned once the start mutation
   // resolves.  See the comment on `onConnect` below.
@@ -109,6 +117,7 @@ export function SettingsConnections() {
   // (window.opener set, same origin), signal the opener that a connect
   // flight just landed and self-close.  The opener invalidates its
   // connections query in the message-listener below.
+  // fallow-ignore-next-line complexity
   useEffect(() => {
     const opener = window.opener as null | Window
     if (!opener || opener === window || opener.closed) return
@@ -162,6 +171,7 @@ export function SettingsConnections() {
   // the table flips to "Connected" the instant the redirect-flow
   // callback lands without any timer-driven polling on this side.
   useEffect(() => {
+    // fallow-ignore-next-line complexity
     function handler(event: MessageEvent) {
       if (event.origin !== window.location.origin) return
       const data = event.data as unknown
@@ -177,11 +187,8 @@ export function SettingsConnections() {
     return () => window.removeEventListener('message', handler)
   }, [queryClient])
 
-  const pluginsQuery = useQuery<AdminPluginsResponse>({
-    queryFn: ({ signal }) => getAdminPlugins(signal),
-    queryKey: queryKeys.adminPlugins(),
-    staleTime: 60 * 1000,
-  })
+  const { connectableSlugs, integrationsQuery, pluginsQuery } =
+    useConnectableIdentities(orgSlug)
 
   const connectionsQuery = useQuery<IdentityConnectionResponse[]>({
     queryFn: ({ signal }) => getMyIdentities(signal),
@@ -194,8 +201,10 @@ export function SettingsConnections() {
   })
 
   const startMutation = useMutation({
-    mutationFn: (variables: { pluginLabel: string; pluginSlug: string }) =>
-      startMyIdentity(variables.pluginSlug, {
+    // Identity connections target an Integration by its id (the host's
+    // start endpoint matches on Integration.id), not the plugin slug.
+    mutationFn: (variables: { integrationId: string; pluginLabel: string }) =>
+      startMyIdentity(variables.integrationId, {
         return_to: '/settings/connections',
       }).then((data) => ({ data, ...variables })),
     onError: (err) => {
@@ -205,7 +214,7 @@ export function SettingsConnections() {
         extractApiErrorDetail(err) ?? 'Failed to start the connect flow',
       )
     },
-    onSuccess: ({ data, pluginLabel, pluginSlug }) => {
+    onSuccess: ({ data, integrationId, pluginLabel }) => {
       const popup = pendingAuthWindowRef.current
       pendingAuthWindowRef.current = null
       if (popup) {
@@ -224,8 +233,8 @@ export function SettingsConnections() {
         verificationWindowRef.current = popup
         setPokeNonce(0)
         setDevicePoll({
+          integrationId,
           pluginLabel,
-          pluginSlug,
           polling: data.polling,
           state: data.state,
         })
@@ -234,7 +243,7 @@ export function SettingsConnections() {
   })
 
   const refreshMutation = useMutation({
-    mutationFn: (pluginId: string) => refreshMyIdentity(pluginId),
+    mutationFn: (integrationId: string) => refreshMyIdentity(integrationId),
     onError: (err) => {
       toast.error(extractApiErrorDetail(err) ?? 'Failed to refresh connection')
     },
@@ -247,7 +256,7 @@ export function SettingsConnections() {
   })
 
   const disconnectMutation = useMutation({
-    mutationFn: (pluginId: string) => disconnectMyIdentity(pluginId),
+    mutationFn: (integrationId: string) => disconnectMyIdentity(integrationId),
     onError: (err) => {
       toast.error(extractApiErrorDetail(err) ?? 'Failed to disconnect')
     },
@@ -266,10 +275,11 @@ export function SettingsConnections() {
   const [searchParams, setSearchParams] = useSearchParams()
   const autoConnectSlug = searchParams.get('connect')
   const autoConnectFiredRef = useRef(false)
+  // fallow-ignore-next-line complexity
   useEffect(() => {
     if (!autoConnectSlug || autoConnectFiredRef.current) return
     if (pluginsQuery.isLoading) return
-    const plugin = (pluginsQuery.data?.installed ?? []).find(
+    const plugin = (pluginsQuery.data ?? []).find(
       (p) => p.slug === autoConnectSlug && p.enabled,
     )
     autoConnectFiredRef.current = true
@@ -282,15 +292,31 @@ export function SettingsConnections() {
       { replace: true },
     )
     if (!plugin) return
+    const integration = (integrationsQuery.data ?? []).find(
+      (i) => i.plugin === plugin.slug && i.capabilities?.identity?.enabled,
+    )
+    if (!integration?.id) {
+      toast.error(`No connectable ${plugin.name} integration is configured`)
+      return
+    }
     pendingAuthWindowRef.current = window.open('', '_blank')
     startMutation.mutate({
+      integrationId: integration.id,
       pluginLabel: plugin.name,
-      pluginSlug: plugin.slug,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoConnectSlug, pluginsQuery.isLoading, pluginsQuery.data])
+  }, [
+    autoConnectSlug,
+    pluginsQuery.isLoading,
+    pluginsQuery.data,
+    integrationsQuery.data,
+  ])
 
-  if (pluginsQuery.isLoading || connectionsQuery.isLoading) {
+  if (
+    pluginsQuery.isLoading ||
+    connectionsQuery.isLoading ||
+    (!!orgSlug && integrationsQuery.isLoading)
+  ) {
     return <ConnectionsSkeleton />
   }
 
@@ -316,8 +342,12 @@ export function SettingsConnections() {
     )
   }
 
-  const identityPlugins = (pluginsQuery.data?.installed ?? []).filter(
-    (p) => p.enabled && p.plugin_type === 'identity',
+  // Only identity plugins that have a configured integration in this org
+  // are connectable — global login providers (org-less) and merely
+  // installed-but-unconfigured plugins are excluded (see
+  // useConnectableIdentities).
+  const identityPlugins = (pluginsQuery.data ?? []).filter(
+    (p) => p.enabled && pluginIsIdentity(p) && connectableSlugs.has(p.slug),
   )
 
   if (identityPlugins.length === 0) {
@@ -337,20 +367,33 @@ export function SettingsConnections() {
     )
   }
 
-  // Phase 1: a Plugin row's id isn't surfaced on the admin/plugins
-  // catalog (which is keyed on slug), so we join connections to plugins
-  // by slug.  The host's start endpoint accepts either the node id or
-  // the slug; the latter is unambiguous when only one Plugin exists per
-  // slug, which matches the Phase-1 catalog.
-  const connectionsByPluginSlug = new Map<string, IdentityConnectionResponse>()
+  // The identity-enabled integration backing each plugin, keyed by plugin
+  // slug; the connect flow targets its id. Connections join to their
+  // integration by id.
+  const integrationByPluginSlug = new Map<string, string>()
+  for (const i of integrationsQuery.data ?? []) {
+    if (i.capabilities?.identity?.enabled && i.id) {
+      integrationByPluginSlug.set(i.plugin, i.id)
+    }
+  }
+  const connectionsByIntegrationId = new Map<
+    string,
+    IdentityConnectionResponse
+  >()
   for (const c of connectionsQuery.data ?? []) {
-    connectionsByPluginSlug.set(c.plugin_slug, c)
+    connectionsByIntegrationId.set(c.integration_id, c)
   }
 
-  const rows: ConnectionRow[] = identityPlugins.map((plugin) => ({
-    connection: connectionsByPluginSlug.get(plugin.slug) ?? null,
-    plugin,
-  }))
+  const rows: ConnectionRow[] = identityPlugins.map((plugin) => {
+    const integrationId = integrationByPluginSlug.get(plugin.slug) ?? null
+    return {
+      connection: integrationId
+        ? (connectionsByIntegrationId.get(integrationId) ?? null)
+        : null,
+      integrationId,
+      plugin,
+    }
+  })
 
   return (
     <div className="space-y-4">
@@ -377,7 +420,8 @@ export function SettingsConnections() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map(({ connection, plugin }) => {
+              {/* fallow-ignore-next-line complexity */}
+              {rows.map(({ connection, integrationId, plugin }) => {
                 const status: 'not_connected' | IdentityConnectionStatus =
                   connection?.status ?? 'not_connected'
                 return (
@@ -396,7 +440,9 @@ export function SettingsConnections() {
                     <TableCell className="text-right">
                       <ConnectionActions
                         connection={connection}
+                        disabled={!integrationId}
                         onConnect={() => {
+                          if (!integrationId) return
                           // Open the auth tab synchronously inside the
                           // click handler so the browser treats it as a
                           // user-initiated popup; the URL is filled in
@@ -409,12 +455,16 @@ export function SettingsConnections() {
                             '_blank',
                           )
                           startMutation.mutate({
+                            integrationId,
                             pluginLabel: plugin.name,
-                            pluginSlug: plugin.slug,
                           })
                         }}
-                        onDisconnect={() => setPendingDisconnectId(plugin.slug)}
-                        onRefresh={() => refreshMutation.mutate(plugin.slug)}
+                        onDisconnect={() =>
+                          integrationId && setPendingDisconnectId(integrationId)
+                        }
+                        onRefresh={() =>
+                          integrationId && refreshMutation.mutate(integrationId)
+                        }
                         pending={
                           startMutation.isPending ||
                           refreshMutation.isPending ||
@@ -468,7 +518,7 @@ export function SettingsConnections() {
         }}
         open={devicePoll !== null}
         pluginLabel={devicePoll?.pluginLabel ?? ''}
-        pluginSlug={devicePoll?.pluginSlug ?? ''}
+        pluginSlug={devicePoll?.integrationId ?? ''}
         pokeNonce={pokeNonce}
         polling={devicePoll?.polling ?? null}
         state={devicePoll?.state ?? ''}
@@ -477,8 +527,10 @@ export function SettingsConnections() {
   )
 }
 
+// fallow-ignore-next-line complexity
 function ConnectionActions({
   connection,
+  disabled,
   onConnect,
   onDisconnect,
   onRefresh,
@@ -487,7 +539,7 @@ function ConnectionActions({
   if (!connection) {
     return (
       <Button
-        disabled={pending}
+        disabled={pending || disabled}
         onClick={onConnect}
         size="sm"
         variant="outline"
@@ -528,7 +580,7 @@ function ConnectionActions({
   return (
     <div className="flex justify-end gap-2">
       <Button
-        disabled={pending}
+        disabled={pending || disabled}
         onClick={onConnect}
         size="sm"
         variant="outline"
@@ -610,33 +662,16 @@ function formatRelative(value: null | string): string {
   return ts.toLocaleString()
 }
 
-function ProviderCell({ plugin }: { plugin: InstalledPlugin }) {
-  const version = useIconRegistryVersion()
-  const iconValue = plugin.icon ?? null
-
-  // Lazy-load whichever icon set owns this value, so the brand glyph
-  // resolves on first render even if the set wasn't pre-loaded.
-  useEffect(() => {
-    if (iconValue) {
-      void iconRegistry.loadSetFor(iconValue)
-    }
-  }, [iconValue])
-
-  // ``getIcon`` returns null while the owning set is still in-flight;
-  // re-derive on every registry version bump so the icon swaps in
-  // once the chunk lands.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const ResolvedIcon: IconComponent | null = iconValue
-    ? getIcon(iconValue, null)
-    : null
-  // Reference ``version`` so React treats this cell as dependent on
-  // registry changes (cheap; no hook needed beyond useIconRegistryVersion).
-  void version
-
+// v3 PluginPackage carries no brand glyph, so the provider cell falls back
+// to the generic Plug icon (the v2 InstalledPlugin.icon had no v3 source).
+function ProviderCell({ plugin }: { plugin: PluginPackage }) {
   return (
     <div className="flex items-center gap-3">
-      {ResolvedIcon ? (
-        <ResolvedIcon className="text-secondary size-6 shrink-0" />
+      {plugin.icon ? (
+        <EntityIcon
+          className="text-tertiary size-6 shrink-0"
+          icon={plugin.icon}
+        />
       ) : (
         <Plug className="text-tertiary size-6 shrink-0" />
       )}

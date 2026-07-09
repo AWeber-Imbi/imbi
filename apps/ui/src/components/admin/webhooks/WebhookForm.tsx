@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { AlertCircle, ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 
 import { ApiError } from '@/api/client'
-import { listThirdPartyServices } from '@/api/endpoints'
+import { listIntegrations } from '@/api/endpoints'
 import { FormHeader } from '@/components/admin/form-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,6 +24,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
+import { queryKeys } from '@/lib/queryKeys'
 import { slugify } from '@/lib/utils'
 import type { Webhook, WebhookCreate, WebhookRule } from '@/types'
 
@@ -84,8 +85,8 @@ export function WebhookForm({
 
   const { data: services = [] } = useQuery({
     enabled: !!orgSlug,
-    queryFn: ({ signal }) => listThirdPartyServices(orgSlug, signal),
-    queryKey: ['third-party-services', orgSlug],
+    queryFn: ({ signal }) => listIntegrations(orgSlug, signal),
+    queryKey: queryKeys.integrations(orgSlug),
   })
 
   // Compute what the auto-generated slug would look like for a given

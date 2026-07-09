@@ -4,7 +4,6 @@ import {
   TEAM_BASE_FIELDS,
 } from '@/lib/constants'
 import type {
-  AdminPluginsResponse,
   AdminSettings,
   AdminUser,
   AdminUserCreate,
@@ -14,6 +13,9 @@ import type {
   AuthProvider,
   Blueprint,
   BlueprintCreate,
+  CapabilityAssignment,
+  CapabilityAssignmentsUpdate,
+  CapabilityKind,
   ClientCredential,
   ClientCredentialCreate,
   ClientCredentialCreated,
@@ -45,17 +47,14 @@ import type {
   IdentityConnectionStartRequest,
   IdentityConnectionStartResponse,
   IncidentResult,
-  InstalledPlugin,
   Integration,
   IntegrationCreate,
+  IntegrationUpdate,
   LifecyclePreviewResponse,
   LinkDefinition,
   LinkDefinitionCreate,
   LocalAuthConfig,
   LogHistogramBucket,
-  LoginProviderCreate,
-  LoginProviderRead,
-  LoginProviderUpdate,
   LoginRequest,
   LogResultResponse,
   MCPServer,
@@ -68,25 +67,21 @@ import type {
   Organization,
   OrganizationCreate,
   PatchOperation,
-  PluginAssignmentCreate,
-  PluginAssignmentInput,
   PluginAssignmentResponse,
-  PluginAssignmentRow,
-  PluginConfigurationResponse,
-  PluginCreate,
   PluginEdge,
   PluginEdgePut,
   PluginEntity,
   PluginEntityCreate,
-  PluginEntitySchema,
-  PluginOptionDef,
-  PluginResponse,
-  PluginUpdate,
+  PluginPackage,
   Project,
   ProjectCreate,
   ProjectDeletedResponse,
+  ProjectIntegrationAssignment,
+  ProjectIntegrationsUpdate,
   ProjectMutationResponse,
   ProjectRelationshipsResponse,
+  ProjectServiceEdge,
+  ProjectServiceEdgeCreate,
   ProjectType,
   ProjectTypeCreate,
   PullRequestListResponse,
@@ -102,15 +97,10 @@ import type {
   ScoringPolicyCreate,
   ServiceAccount,
   ServiceAccountCreate,
-  ServiceApplication,
-  ServiceApplicationCreate,
-  ServiceApplicationSecrets,
   Tag,
   Team,
   TeamCreate,
   TeamMember,
-  ThirdPartyService,
-  ThirdPartyServiceCreate,
   TokenResponse,
   Upload,
   UserResponse,
@@ -1296,7 +1286,7 @@ interface OpenApiResponse {
 
 // Flatten Pydantic/OpenAPI 3.1 anyOf nullable patterns.
 // e.g. { anyOf: [{type:"string",format:"email"},{type:"null"}] } → {type:"string",format:"email"}
-export function flattenNullableAnyOf(
+function flattenNullableAnyOf(
   prop: Record<string, unknown>,
 ): DynamicFieldSchema {
   const anyOf = prop.anyOf as Record<string, unknown>[] | undefined
@@ -1405,115 +1395,6 @@ export const removeTeamMember = (
 ) =>
   apiClient.delete<void>(
     `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}/members/${encodeURIComponent(email)}`,
-  )
-
-// Admin - Third-Party Services
-export const listThirdPartyServices = async (
-  orgSlug: string,
-  signal?: AbortSignal,
-): Promise<ThirdPartyService[]> => {
-  const response = await apiClient.get<ThirdPartyService[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/`,
-    undefined,
-    signal,
-  )
-  return Array.isArray(response) ? response : []
-}
-
-export const createThirdPartyService = (
-  orgSlug: string,
-  svc: ThirdPartyServiceCreate,
-) =>
-  apiClient.post<ThirdPartyService>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/`,
-    svc,
-  )
-
-export const updateThirdPartyService = (
-  orgSlug: string,
-  slug: string,
-  operations: PatchOperation[],
-) =>
-  apiClient.patch<ThirdPartyService>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(slug)}`,
-    operations,
-  )
-
-export const deleteThirdPartyService = (orgSlug: string, slug: string) =>
-  apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(slug)}`,
-  )
-
-// Service Applications (nested under Third-Party Services)
-// `usage` defaults to `'integration'` server-side, which yields rows in
-// this org with `usage IN ('integration','both')` plus any global
-// `usage IN ('login','both')` row from any org as `is_global=true`.
-export const listServiceApplications = async (
-  orgSlug: string,
-  serviceSlug: string,
-  usage?: 'integration' | 'login',
-  signal?: AbortSignal,
-): Promise<ServiceApplication[]> => {
-  const response = await apiClient.get<ServiceApplication[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/`,
-    usage ? { usage } : undefined,
-    signal,
-  )
-  return Array.isArray(response) ? response : []
-}
-
-export const createServiceApplication = (
-  orgSlug: string,
-  serviceSlug: string,
-  data: ServiceApplicationCreate,
-) =>
-  apiClient.post<ServiceApplication>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/`,
-    data,
-  )
-
-export const updateServiceApplication = (
-  orgSlug: string,
-  serviceSlug: string,
-  appSlug: string,
-  operations: PatchOperation[],
-) =>
-  apiClient.patch<ServiceApplication>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`,
-    operations,
-  )
-
-export const deleteServiceApplication = (
-  orgSlug: string,
-  serviceSlug: string,
-  appSlug: string,
-) =>
-  apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`,
-  )
-
-// Service Application Secrets
-export const getApplicationSecrets = (
-  orgSlug: string,
-  serviceSlug: string,
-  appSlug: string,
-  signal?: AbortSignal,
-) =>
-  apiClient.get<ServiceApplicationSecrets>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}/secrets`,
-    undefined,
-    signal,
-  )
-
-export const updateApplicationSecrets = (
-  orgSlug: string,
-  serviceSlug: string,
-  appSlug: string,
-  operations: PatchOperation[],
-) =>
-  apiClient.patch<ServiceApplicationSecrets>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}/secrets`,
-    operations,
   )
 
 // Uploads
@@ -1689,19 +1570,6 @@ export const deleteWebhook = (orgSlug: string, slug: string) =>
     `/organizations/${encodeURIComponent(orgSlug)}/webhooks/${encodeURIComponent(slug)}`,
   )
 
-export const listServiceWebhooks = async (
-  orgSlug: string,
-  serviceSlug: string,
-  signal?: AbortSignal,
-): Promise<Webhook[]> => {
-  const response = await apiClient.get<Webhook[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/webhooks/`,
-    undefined,
-    signal,
-  )
-  return Array.isArray(response) ? response : []
-}
-
 // Admin - MCP Servers (global Assistant configuration)
 export const listMcpServers = async (
   signal?: AbortSignal,
@@ -1737,32 +1605,37 @@ export const testMcpServer = (id: string) =>
 export const testMcpServerConfig = (data: MCPServerTestConfig) =>
   apiClient.post<MCPServerTestResult>('/mcp-servers/test', data)
 
-// Admin - Auth Providers (login-eligible service applications)
-export const listAuthProviders = async (
+// Admin - Auth Providers (global). Login providers are org-less
+// Integrations backed by a login-capable identity plugin. Authentication
+// happens before any organization context exists, so they are managed
+// globally (not under /organizations/{org}/integrations) and at most one
+// may be flagged used_as_login across the whole instance.
+export const listLoginProviders = async (
   signal?: AbortSignal,
-): Promise<LoginProviderRead[]> => {
-  const response = await apiClient.get<unknown>(
-    '/admin/auth-providers',
+): Promise<Integration[]> => {
+  const response = await apiClient.get<Integration[]>(
+    '/login-providers/',
     undefined,
     signal,
   )
-  if (!Array.isArray(response)) {
-    throw new Error('Invalid auth providers response')
-  }
-  return response as LoginProviderRead[]
+  return Array.isArray(response) ? response : []
 }
 
-export const createAuthProvider = (data: LoginProviderCreate) =>
-  apiClient.post<LoginProviderRead>('/admin/auth-providers', data)
+export const createLoginProvider = (data: IntegrationCreate) =>
+  apiClient.post<Integration>('/login-providers/', data)
 
-export const updateAuthProvider = (slug: string, data: LoginProviderUpdate) =>
-  apiClient.put<LoginProviderRead>(
-    `/admin/auth-providers/${encodeURIComponent(slug)}`,
-    data,
+// Promote/demote a login provider as the instance-wide SSO provider.
+export const setLoginProviderUsedAsLogin = (
+  slug: string,
+  usedAsLogin: boolean,
+) =>
+  apiClient.put<Integration>(
+    `/login-providers/${encodeURIComponent(slug)}/used-as-login`,
+    { used_as_login: usedAsLogin },
   )
 
-export const deleteAuthProvider = (slug: string) =>
-  apiClient.delete<void>(`/admin/auth-providers/${encodeURIComponent(slug)}`)
+export const deleteLoginProvider = (slug: string) =>
+  apiClient.delete<void>(`/login-providers/${encodeURIComponent(slug)}`)
 
 export const getLocalAuthConfig = (signal?: AbortSignal) =>
   apiClient.get<LocalAuthConfig>('/admin/local-auth', undefined, signal)
@@ -1898,8 +1771,8 @@ export const listProjectServices = async (
   orgSlug: string,
   projectId: string,
   signal?: AbortSignal,
-): Promise<Integration[]> => {
-  const response = await apiClient.get<Integration[]>(
+): Promise<ProjectServiceEdge[]> => {
+  const response = await apiClient.get<ProjectServiceEdge[]>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/services/`,
     undefined,
     signal,
@@ -1910,9 +1783,9 @@ export const listProjectServices = async (
 export const createProjectService = (
   orgSlug: string,
   projectId: string,
-  data: IntegrationCreate,
+  data: ProjectServiceEdgeCreate,
 ) =>
-  apiClient.post<Integration>(
+  apiClient.post<ProjectServiceEdge>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/services/`,
     data,
   )
@@ -2262,14 +2135,6 @@ export const resyncProjectDeployments = (
   )
 }
 
-export const resyncServiceDeployments = (
-  orgSlug: string,
-  serviceSlug: string,
-): Promise<DeploymentResyncSummary> =>
-  apiClient.post<DeploymentResyncSummary>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/deployments/resync`,
-  )
-
 // Lifecycle push-sync
 
 export interface LifecycleSyncError {
@@ -2293,14 +2158,6 @@ export const syncProjectLifecycle = (
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/lifecycle/sync`,
   )
 
-export const syncServiceLifecycle = (
-  orgSlug: string,
-  serviceSlug: string,
-): Promise<LifecycleSyncSummary> =>
-  apiClient.post<LifecycleSyncSummary>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/lifecycle/sync`,
-  )
-
 // Identity Plugins (org-scoped)
 export interface IdentityPluginRef {
   label: string
@@ -2320,49 +2177,6 @@ export const listIdentityPlugins = async (
   return Array.isArray(response) ? response : []
 }
 
-// Service Plugins
-export const listServicePlugins = (
-  orgSlug: string,
-  serviceSlug: string,
-  signal?: AbortSignal,
-) =>
-  apiClient.get<PluginResponse[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/plugins/`,
-    undefined,
-    signal,
-  )
-
-export const createServicePlugin = (
-  orgSlug: string,
-  serviceSlug: string,
-  data: PluginCreate,
-) =>
-  apiClient.post<PluginResponse>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/plugins/`,
-    data,
-  )
-
-export const updateServicePlugin = (
-  orgSlug: string,
-  serviceSlug: string,
-  pluginId: string,
-  data: PluginUpdate,
-) =>
-  apiClient.put<PluginResponse>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/plugins/${encodeURIComponent(pluginId)}`,
-    data,
-  )
-
-export const deleteServicePlugin = (
-  orgSlug: string,
-  serviceSlug: string,
-  pluginId: string,
-  force = false,
-) =>
-  apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/plugins/${encodeURIComponent(pluginId)}${force ? '?force=true' : ''}`,
-  )
-
 export const listProjectPlugins = (
   orgSlug: string,
   projectId: string,
@@ -2372,16 +2186,6 @@ export const listProjectPlugins = (
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/plugins/`,
     undefined,
     signal,
-  )
-
-export const replaceProjectPlugins = (
-  orgSlug: string,
-  projectId: string,
-  assignments: PluginAssignmentCreate[],
-) =>
-  apiClient.put<PluginAssignmentResponse[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/plugins/`,
-    assignments,
   )
 
 // Project Configuration
@@ -2654,102 +2458,143 @@ export const refreshMyIdentity = (pluginId: string) =>
 export const disconnectMyIdentity = (pluginId: string) =>
   apiClient.delete<void>(`/me/identities/${encodeURIComponent(pluginId)}`)
 
-// Admin Plugins
-export const getAdminPlugins = (signal?: AbortSignal) =>
-  apiClient.get<AdminPluginsResponse>('/admin/plugins', undefined, signal)
+// ===========================================================================
+// Plugin Architecture v3 — installed plugins, integrations, capabilities
+// ===========================================================================
 
-export const getAdminPlugin = (slug: string, signal?: AbortSignal) =>
-  apiClient.get<InstalledPlugin>(
-    `/admin/plugins/${encodeURIComponent(slug)}`,
+// Installed plugin packages (system admin). GET returns a flat list of
+// manifests + package identity + system-wide enabled state.
+export const listPluginPackages = async (
+  signal?: AbortSignal,
+): Promise<PluginPackage[]> => {
+  const response = await apiClient.get<PluginPackage[]>(
+    '/admin/plugins',
     undefined,
     signal,
   )
-
-// Non-admin manifest endpoint -- returns just the static schema so
-// project editors with ``project:write`` (but not ``admin:plugins:read``)
-// can render a typed option editor for per-project overrides.
-export interface PluginManifestResponse {
-  credentials: { description?: null | string; label: string; name: string }[]
-  description: null | string
-  name: string
-  options: PluginOptionDef[]
-  plugin_type: string
-  slug: string
+  return Array.isArray(response) ? response : []
 }
 
-export const getPluginManifest = (slug: string, signal?: AbortSignal) =>
-  apiClient.get<PluginManifestResponse>(
-    `/plugins/${encodeURIComponent(slug)}/manifest`,
+export const getPluginPackage = (slug: string, signal?: AbortSignal) =>
+  apiClient.get<PluginPackage>(
+    `/admin/plugins/${encodeURIComponent(slug)}`,
     undefined,
     signal,
   )
 
-export const setAdminPluginEnabled = (slug: string, enabled: boolean) =>
-  apiClient.patch<InstalledPlugin>(
-    `/admin/plugins/${encodeURIComponent(slug)}`,
+// System-wide enable/disable kill switch for a plugin package.
+export const setPluginPackageEnabled = (slug: string, enabled: boolean) =>
+  apiClient.put<PluginPackage>(
+    `/admin/plugins/${encodeURIComponent(slug)}/registration`,
     { enabled },
   )
 
-// Operator-overrides patch.  ``widget_text``: ``null`` clears the
-// override (UI inherits the manifest); a string sets it.
-// ``vertex_label_overrides``: ``{label_name: {field: value-or-null}}`` —
-// null on a field clears that field, an empty inner dict clears every
-// override for that label, ``null`` for the whole field clears every
-// override entirely.
-export interface AdminPluginPatch {
-  vertex_label_overrides?: null | Record<string, Record<string, null | string>>
-  widget_text?: null | string
+// Integrations (org-scoped configured plugin instances).
+export const listIntegrations = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<Integration[]> => {
+  const response = await apiClient.get<Integration[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/integrations/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
 }
 
-export const updateAdminPlugin = (slug: string, body: AdminPluginPatch) =>
-  apiClient.patch<InstalledPlugin>(
-    `/admin/plugins/${encodeURIComponent(slug)}`,
+export const getIntegration = (
+  orgSlug: string,
+  slug: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<Integration>(
+    `/organizations/${encodeURIComponent(orgSlug)}/integrations/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
+  )
+
+export const createIntegration = (orgSlug: string, data: IntegrationCreate) =>
+  apiClient.post<Integration>(
+    `/organizations/${encodeURIComponent(orgSlug)}/integrations/`,
+    data,
+  )
+
+// PATCH takes a partial IntegrationUpdate object (NOT a JSON-Patch array);
+// `capabilities` and `options` are merged server-side.
+export const updateIntegration = (
+  orgSlug: string,
+  slug: string,
+  data: IntegrationUpdate,
+) =>
+  apiClient.patch<Integration>(
+    `/organizations/${encodeURIComponent(orgSlug)}/integrations/${encodeURIComponent(slug)}`,
+    data,
+  )
+
+export const deleteIntegration = (orgSlug: string, slug: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/integrations/${encodeURIComponent(slug)}`,
+  )
+
+// Write-only credential patch: null/empty removes a field, absent preserved.
+export const updateIntegrationCredentials = (
+  orgSlug: string,
+  slug: string,
+  credentials: Record<string, null | string>,
+) =>
+  apiClient.put<{ credential_fields: string[] }>(
+    `/organizations/${encodeURIComponent(orgSlug)}/integrations/${encodeURIComponent(slug)}/credentials`,
+    { credentials },
+  )
+
+// Per-capability project-type assignments. Zero assignments for an enabled,
+// project-scoped capability means "all project types".
+export const listCapabilityAssignments = async (
+  orgSlug: string,
+  slug: string,
+  kind: CapabilityKind,
+  signal?: AbortSignal,
+): Promise<CapabilityAssignment[]> => {
+  const response = await apiClient.get<CapabilityAssignment[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/integrations/${encodeURIComponent(slug)}/capabilities/${encodeURIComponent(kind)}/assignments`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const replaceCapabilityAssignments = (
+  orgSlug: string,
+  slug: string,
+  kind: CapabilityKind,
+  body: CapabilityAssignmentsUpdate,
+) =>
+  apiClient.put<CapabilityAssignment[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/integrations/${encodeURIComponent(slug)}/capabilities/${encodeURIComponent(kind)}/assignments`,
     body,
   )
 
-export const getServicePluginConfiguration = (
+// Project-level integration assignments (per-capability USES override).
+export const listProjectIntegrations = async (
   orgSlug: string,
-  serviceSlug: string,
-  pluginId: string,
+  projectId: string,
   signal?: AbortSignal,
-) =>
-  apiClient.get<PluginConfigurationResponse>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/plugins/${encodeURIComponent(pluginId)}/configuration`,
+): Promise<ProjectIntegrationAssignment[]> => {
+  const response = await apiClient.get<ProjectIntegrationAssignment[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/integrations/`,
     undefined,
     signal,
   )
+  return Array.isArray(response) ? response : []
+}
 
-export const patchServicePluginConfiguration = (
+export const replaceProjectIntegrations = (
   orgSlug: string,
-  serviceSlug: string,
-  pluginId: string,
-  values: Record<string, null | string>,
+  projectId: string,
+  body: ProjectIntegrationsUpdate,
 ) =>
-  apiClient.patch<PluginConfigurationResponse>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/plugins/${encodeURIComponent(pluginId)}/configuration`,
-    values,
-  )
-
-export const listServicePluginAssignments = (
-  orgSlug: string,
-  serviceSlug: string,
-  pluginId: string,
-  signal?: AbortSignal,
-) =>
-  apiClient.get<PluginAssignmentRow[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/plugins/${encodeURIComponent(pluginId)}/assignments`,
-    undefined,
-    signal,
-  )
-
-export const replaceServicePluginAssignments = (
-  orgSlug: string,
-  serviceSlug: string,
-  pluginId: string,
-  body: PluginAssignmentInput[],
-) =>
-  apiClient.put<PluginAssignmentRow[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/plugins/${encodeURIComponent(pluginId)}/assignments`,
+  apiClient.put<ProjectIntegrationAssignment[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/integrations/`,
     body,
   )
 
@@ -2772,38 +2617,11 @@ export const listPluginEntities = (
     signal,
   )
 
-export const getPluginEntitySchema = (
-  slug: string,
-  label: string,
-  signal?: AbortSignal,
-) =>
-  apiClient.get<PluginEntitySchema>(
-    `${pluginEntitiesPath(slug, label)}/_schema`,
-    undefined,
-    signal,
-  )
-
 export const createPluginEntity = (
   slug: string,
   label: string,
   body: PluginEntityCreate,
 ) => apiClient.post<PluginEntity>(pluginEntitiesPath(slug, label), body)
-
-export const updatePluginEntity = (
-  slug: string,
-  label: string,
-  id: string,
-  body: Record<string, unknown>,
-) =>
-  apiClient.patch<PluginEntity>(
-    `${pluginEntitiesPath(slug, label)}/${encodeURIComponent(id)}`,
-    body,
-  )
-
-export const deletePluginEntity = (slug: string, label: string, id: string) =>
-  apiClient.delete<void>(
-    `${pluginEntitiesPath(slug, label)}/${encodeURIComponent(id)}`,
-  )
 
 const environmentEdgesPath = (
   orgSlug: string,
@@ -2840,18 +2658,6 @@ export const deleteEnvironmentEdge = (
   envSlug: string,
   relType: string,
 ) => apiClient.delete<void>(environmentEdgesPath(orgSlug, envSlug, relType))
-
-export const listPluginEdgesByOrg = (
-  pluginSlug: string,
-  relType: string,
-  orgSlug: string,
-  signal?: AbortSignal,
-) =>
-  apiClient.get<Record<string, PluginEdge[]>>(
-    `/admin/plugins/${encodeURIComponent(pluginSlug)}/edges`,
-    { org_slug: orgSlug, rel_type: relType },
-    signal,
-  )
 
 export interface SearchResult {
   attribute: string

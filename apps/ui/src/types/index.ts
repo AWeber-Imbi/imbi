@@ -1,4 +1,5 @@
 import type { components } from './api-generated'
+import type { ProjectServiceEdge } from './integrations'
 
 export type ActivityFeedEntry = OperationsLogEntry | ProjectFeedEntry
 
@@ -129,12 +130,10 @@ export interface EnvironmentCreate {
   sort_order?: null | number
 }
 
-// Integration (EXISTS_IN edge) types — a project's relationship to a
-// third-party service: stable identifier + canonical API URL, plus the
-// human dashboard URL (read from / written to the project's links).
-export type Integration = Schemas['ExistsInResponse']
-
-export type IntegrationCreate = Schemas['ExistsInCreate']
+// Plugin Architecture v3 — Integration, plugin, capability, and
+// project↔integration edge types (hand-authored; the OpenAPI snapshot
+// predates v3). Includes ProjectServiceEdge / ProjectServiceEdgeCreate.
+export * from './integrations'
 
 // Per-plugin outcome returned by the archive / unarchive endpoints, one
 // entry per lifecycle plugin assigned to the project. `failed` is the
@@ -274,7 +273,7 @@ export interface Project {
   // Read-only EXISTS_IN connections (third-party service relationships).
   // Maintained via the project-services endpoints / Integrations panel,
   // not by editing `identifiers`.
-  services?: Integration[]
+  services?: ProjectServiceEdge[]
   slug: string
   team: {
     name: string
@@ -481,10 +480,6 @@ export const OPERATIONS_LOG_ENTRY_TYPES = [
   'Scaled',
   'Upgraded',
 ] as const
-
-export interface AdminPluginsResponse {
-  installed: InstalledPlugin[]
-}
 
 export type AdminSettings = Schemas['AdminSettings']
 
@@ -921,14 +916,15 @@ export interface IdentityConnectionPollResponse {
 }
 
 export interface IdentityConnectionResponse {
-  connects_users_to: null | string
   expires_at: null | string
   id: string
+  integration_id: string
+  integration_name: null | string
+  integration_slug: string
   last_used_at: null | string
   metadata: Record<string, unknown>
-  plugin_id: string
-  plugin_label: null | string
-  plugin_slug: string
+  // Slug of the plugin backing the integration; for plugin-level joins.
+  plugin: null | string
   scopes: string[]
   status: IdentityConnectionStatus
   subject: string
@@ -974,44 +970,6 @@ export interface IncidentView {
   url: string
 }
 
-export interface InstalledPlugin {
-  api_version: number
-  auth_type: 'api_token' | 'aws-iam-ic' | 'oauth2' | 'oidc'
-  cacheable: boolean
-  credentials: PluginCredentialField[]
-  description: string
-  docs_url: null | string
-  edge_labels?: PluginEdgeLabel[]
-  enabled: boolean
-  // Brand glyph inherited from the parent ThirdPartyService (an icon
-  // registry value or URL).  Null when the plugin isn't attached to
-  // any service yet.
-  icon?: null | string
-  // login_capable / requires_identity ride along on the manifest. The
-  // legacy Phase-1 catalog plugins (ssm, logzio) leave them at false;
-  // the Phase-2 identity plugins (oidc, github*, aws-iam-ic) set
-  // login_capable=true.
-  login_capable?: boolean
-  name: string
-  options: PluginOptionDef[]
-  package_name: string
-  package_version: string
-  plugin_type?: PluginType
-  requires_identity?: boolean
-  slug: string
-  supported_tabs: PluginType[]
-  supports_deployment_sync?: boolean
-  supports_lifecycle_sync?: boolean
-  vertex_labels?: PluginVertexLabel[]
-  // Body copy shown on the dashboard "unconnected integration" widget.
-  // Resolved server-side (override > manifest > null).  ``_default`` is
-  // the manifest value; ``_override`` is the operator-set value (null
-  // means "inherit").
-  widget_text?: null | string
-  widget_text_default?: null | string
-  widget_text_override?: null | string
-}
-
 // Admin local-auth (password login) toggle.
 // Hand-written: the admin endpoints aren't in the committed openapi.json
 // snapshot yet. Mirrors `LocalAuthRead` in
@@ -1032,59 +990,6 @@ export interface LogHistogramBucket {
   count: number
   levels: Record<string, number>
   timestamp: string
-}
-
-export interface LoginProviderCreate {
-  allowed_domains?: string[]
-  client_id: string
-  client_secret: string
-  description?: null | string
-  issuer_url?: null | string
-  // name/slug/org_slug/third_party_service_slug are derived server-side
-  // from oauth_app_type when omitted; the auth-providers admin UI
-  // doesn't expose them.
-  name?: string
-  oauth_app_type: OAuthAppType
-  org_slug?: string
-  scopes?: string[]
-  slug?: string
-  third_party_service_slug?: string
-  usage: 'both' | 'login'
-}
-
-export interface LoginProviderRead {
-  allowed_domains: string[]
-  authorization_endpoint: null | string
-  callback_url: string
-  client_id: null | string
-  description: null | string
-  has_secret: boolean
-  issuer_url: null | string
-  name: string
-  oauth_app_type: null | OAuthAppType
-  organization_name: null | string
-  organization_slug: null | string
-  revoke_endpoint: null | string
-  scopes: string[]
-  slug: string
-  status: string
-  third_party_service_name: null | string
-  third_party_service_slug: null | string
-  token_endpoint: null | string
-  usage: 'both' | 'login'
-}
-
-export interface LoginProviderUpdate {
-  allowed_domains?: string[]
-  // Empty string preserves existing secret on the server.
-  client_id: string
-  client_secret?: null | string
-  description?: null | string
-  issuer_url?: null | string
-  name: string
-  oauth_app_type: OAuthAppType
-  scopes?: string[]
-  usage: 'both' | 'login'
 }
 
 export interface LoginRequest {
@@ -1173,10 +1078,6 @@ export interface MCPServerTestResult {
 
 export type MCPServerUpdate = Partial<MCPServerCreate>
 
-// Auth provider types — mirror the consolidated `ServiceApplication`-backed
-// shape in imbi_api/endpoints/auth_providers.py.
-export type OAuthAppType = 'github' | 'google' | 'oidc'
-
 export type OperationsLogEntryType = (typeof OPERATIONS_LOG_ENTRY_TYPES)[number]
 
 export interface OperationsLogFilters {
@@ -1218,22 +1119,6 @@ export type PatchOperation = Schemas['PatchOperation']
 // Admin User Management Types (matching API schema)
 export type Permission = Schemas['Permission']
 
-export interface PluginAssignmentCreate {
-  default: boolean
-  identity_plugin_id?: null | string
-  options?: Record<string, unknown>
-  plugin_id: string
-  plugin_type: PluginType
-}
-
-export interface PluginAssignmentInput {
-  default: boolean
-  identity_plugin_id?: null | string
-  options: Record<string, unknown>
-  plugin_type: PluginType
-  project_type_slug: string
-}
-
 export interface PluginAssignmentResponse {
   default: boolean
   identity_plugin_id?: null | string
@@ -1252,34 +1137,6 @@ export interface PluginAssignmentResponse {
   supports_lifecycle_sync?: boolean
 }
 
-export interface PluginAssignmentRow {
-  default: boolean
-  identity_plugin_id?: null | string
-  options: Record<string, unknown>
-  plugin_type: PluginType
-  project_type_name: string
-  project_type_slug: string
-}
-
-export interface PluginConfigurationResponse {
-  auth_type: 'api_token' | 'oauth2'
-  fields: PluginCredentialField[]
-  plugin_slug: string
-  populated: string[]
-}
-
-export interface PluginCreate {
-  label: string
-  options?: Record<string, unknown>
-  plugin_slug: string
-  service_application_slug?: null | string
-}
-export interface PluginCredentialField {
-  description: null | string
-  label: string
-  name: string
-  required: boolean
-}
 // A materialized edge from /edges/{rel_type}.
 export interface PluginEdge {
   properties: Record<string, unknown>
@@ -1308,13 +1165,6 @@ export interface PluginEntityCreate {
   [key: string]: unknown
 }
 
-export interface PluginEntitySchema {
-  description?: string
-  properties: Record<string, Record<string, unknown>>
-  required?: string[]
-  title?: string
-  type: 'object'
-}
 export interface PluginOptionDef {
   choices?: null | string[]
   default?: boolean | null | number | string
@@ -1324,32 +1174,6 @@ export interface PluginOptionDef {
   required: boolean
   type: 'boolean' | 'integer' | 'mapping' | 'secret' | 'string'
 }
-
-// Plugin types (hand-written until api-generated.ts snapshot is refreshed)
-export interface PluginResponse {
-  api_version: number
-  application_name?: null | string
-  application_slug?: null | string
-  connects_users_to?: null | string
-  id: string
-  identity_plugin_id?: null | string
-  label: string
-  login_capable?: boolean
-  options: Record<string, unknown>
-  plugin_slug: string
-  service_slug: null | string
-  status: 'active' | 'unavailable'
-  used_as_login?: boolean
-}
-
-// The subset of plugin types that render a project-detail tab. Not
-// every plugin type is a tab (e.g. webhook, analysis): tabs ⊆ plugins.
-export type PluginTab =
-  | 'configuration'
-  | 'deployment'
-  | 'incidents'
-  | 'lifecycle'
-  | 'logs'
 
 // A plugin assignment is keyed by the plugin's type. Mirrors
 // imbi_common.plugins.PluginType (the full manifest set).
@@ -1363,16 +1187,6 @@ export type PluginType =
   | 'logs'
   | 'webhook'
 
-export interface PluginUpdate {
-  // Pass an explicit empty string to clear; omitting the field leaves
-  // the existing value untouched on the backend.
-  identity_plugin_id?: null | string
-  label: string
-  options?: Record<string, unknown>
-  // Tri-state: omit to leave the link alone, ``null`` to clear, a slug
-  // to set/replace the linked ServiceApplication.
-  service_application_slug?: null | string
-}
 export interface PluginVertexLabel {
   // Resolved (override-or-manifest) operator-facing display fields.
   description?: null | string
@@ -1555,37 +1369,6 @@ export type ServiceAccount = Schemas['ServiceAccountResponse']
 
 export type ServiceAccountCreate = Schemas['ServiceAccountCreate']
 
-// Service Application types
-// The committed openapi.json snapshot predates the OAuth-consolidation
-// fields (`usage`, `oauth_app_type`, `issuer_url`, `allowed_domains`,
-// `is_global`). Augment the generated types until the snapshot is
-// refreshed via `npm run codegen:fetch`.
-export type ServiceApplication = Schemas['ServiceApplicationResponse'] & {
-  allowed_domains?: string[]
-  is_global?: boolean
-  issuer_url?: null | string
-  oauth_app_type?: null | OAuthAppType
-  usage?: ServiceApplicationUsage
-}
-
-export type ServiceApplicationCreate = Schemas['ServiceApplicationCreate'] & {
-  allowed_domains?: string[]
-  issuer_url?: null | string
-  oauth_app_type?: null | OAuthAppType
-  usage?: ServiceApplicationUsage
-}
-
-export type ServiceApplicationSecrets = Schemas['ServiceApplicationSecrets']
-
-export type ServiceApplicationUpdate = Schemas['ServiceApplicationUpdate'] & {
-  allowed_domains?: string[]
-  issuer_url?: null | string
-  oauth_app_type?: null | OAuthAppType
-  usage?: ServiceApplicationUsage
-}
-
-export type ServiceApplicationUsage = 'both' | 'integration' | 'login'
-
 // Part of the hand-written dashboard system-health types; see
 // DashboardStatus for context.
 export interface ServiceStatus {
@@ -1654,11 +1437,6 @@ export interface TeamMembership {
   team_name: string
   team_slug: string
 }
-
-// Third-Party Service types
-export type ThirdPartyService = Schemas['ThirdPartyServiceResponse']
-
-export type ThirdPartyServiceCreate = Schemas['ThirdPartyServiceCreate']
 
 export type TokenResponse = Schemas['TokenResponse']
 

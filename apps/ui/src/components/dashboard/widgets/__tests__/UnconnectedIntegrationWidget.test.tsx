@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { InstalledPlugin } from '@/types'
+import type { PluginPackage } from '@/types'
 
 import { UnconnectedIntegrationWidget } from '../UnconnectedIntegrationWidget'
 
@@ -10,20 +10,13 @@ vi.mock('@/contexts/ThemeContext', () => ({
   useTheme: () => ({ isDarkMode: false }),
 }))
 
-// fallow-ignore-next-line unresolved-import
-vi.mock('@/lib/icons', () => ({
-  getIcon: () => null,
-  iconRegistry: { loadSetFor: vi.fn() },
-  useIconRegistryVersion: () => 0,
-}))
-
 const plugin = {
+  capabilities: [],
   description: 'desc',
   enabled: true,
-  icon: null,
   name: 'GitHub',
   slug: 'github',
-} as unknown as InstalledPlugin
+} as unknown as PluginPackage
 
 describe('UnconnectedIntegrationWidget', () => {
   it('renders a dismiss control and invokes onDismiss when clicked', () => {

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Edit2 } from 'lucide-react'
 
-import { getAdminPlugins, getEnvironmentSchema } from '@/api/endpoints'
+import { getEnvironmentSchema, listPluginPackages } from '@/api/endpoints'
 import { AnchorEdgesCard } from '@/components/admin/AnchorEdgesCard'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,7 +11,7 @@ import { Sk } from '@/components/ui/skeleton'
 import { ENVIRONMENT_BASE_FIELDS_SET } from '@/lib/constants'
 import { queryKeys } from '@/lib/queryKeys'
 import { extractDynamicFields } from '@/lib/utils'
-import type { Environment, InstalledPlugin } from '@/types'
+import type { Environment, PluginEdgeLabel, PluginPackage } from '@/types'
 
 interface EnvironmentDetailProps {
   environment: Environment
@@ -29,17 +29,19 @@ export function EnvironmentDetail({
     queryKey: ['environmentSchema'],
     staleTime: 5 * 60 * 1000,
   })
-  const { data: pluginsResponse } = useQuery({
-    queryFn: ({ signal }) => getAdminPlugins(signal),
-    queryKey: queryKeys.adminPlugins(),
+  const { data: pluginPackages } = useQuery({
+    queryFn: ({ signal }) => listPluginPackages(signal),
+    queryKey: queryKeys.pluginPackages(),
     staleTime: 60 * 1000,
   })
 
-  const enabledPlugins: InstalledPlugin[] = (
-    pluginsResponse?.installed ?? []
-  ).filter((p) => p.enabled)
+  const enabledPlugins: PluginPackage[] = (pluginPackages ?? []).filter(
+    (p) => p.enabled,
+  )
   const environmentEdges = enabledPlugins.flatMap((plugin) =>
-    (plugin.edge_labels ?? [])
+    // The manifest's edge_labels arrive as untyped records on v3
+    // PluginPackage; they carry the same shape as PluginEdgeLabel.
+    (plugin.edge_labels as unknown as PluginEdgeLabel[])
       .filter((edge) => edge.from_labels.includes('Environment'))
       .map((edge) => ({ edge, plugin })),
   )

@@ -2,10 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import type { DeploymentResyncSummary } from '@/api/endpoints'
-import {
-  resyncProjectDeployments,
-  resyncServiceDeployments,
-} from '@/api/endpoints'
+import { resyncProjectDeployments } from '@/api/endpoints'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { DEEP_RESYNC_LIMIT } from '@/lib/resync'
 
@@ -33,25 +30,6 @@ export function useProjectDeploymentResync(orgSlug: string, projectId: string) {
       void queryClient.invalidateQueries({
         queryKey: ['operationsLog', orgSlug, projectId],
       })
-    },
-  })
-}
-
-// TPS-wide resync. The fan-out can touch any project, so we drop the
-// org-key scope on the currentReleases and operationsLog query keys and
-// let TanStack invalidate every matching scope.
-export function useServiceDeploymentResync(
-  orgSlug: string,
-  serviceSlug: string,
-) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: () => resyncServiceDeployments(orgSlug, serviceSlug),
-    onError: onResyncError,
-    onSuccess: (summary: DeploymentResyncSummary) => {
-      toastResult(summary)
-      void queryClient.invalidateQueries({ queryKey: ['currentReleases'] })
-      void queryClient.invalidateQueries({ queryKey: ['operationsLog'] })
     },
   })
 }

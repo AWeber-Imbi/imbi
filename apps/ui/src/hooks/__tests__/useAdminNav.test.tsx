@@ -61,7 +61,7 @@ describe('useAdminNav hotkeys', () => {
 
   it('pressing "e" on a detail view navigates to edit', () => {
     const { result } = renderHook(() => useAdminNav(), {
-      wrapper: wrap('/admin/third-party-services/sonarqube'),
+      wrapper: wrap('/admin/integrations/sonarqube'),
     })
 
     expect(result.current.viewMode).toBe('detail')
@@ -71,48 +71,48 @@ describe('useAdminNav hotkeys', () => {
       pressKey('e')
     })
 
-    expect(latestPath).toBe('/admin/third-party-services/sonarqube/edit')
+    expect(latestPath).toBe('/admin/integrations/sonarqube/edit')
   })
 
   it('pressing Escape on an edit view navigates to the list', () => {
     renderHook(() => useAdminNav(), {
-      wrapper: wrap('/admin/third-party-services/sonarqube/edit'),
+      wrapper: wrap('/admin/integrations/sonarqube/edit'),
     })
 
     act(() => {
       pressKey('Escape')
     })
 
-    expect(latestPath).toBe('/admin/third-party-services')
+    expect(latestPath).toBe('/admin/integrations')
   })
 
   it('pressing Escape on a create view navigates to the list', () => {
     renderHook(() => useAdminNav(), {
-      wrapper: wrap('/admin/third-party-services/new'),
+      wrapper: wrap('/admin/integrations/new'),
     })
 
     act(() => {
       pressKey('Escape')
     })
 
-    expect(latestPath).toBe('/admin/third-party-services')
+    expect(latestPath).toBe('/admin/integrations')
   })
 
   it('does not navigate when "e" is pressed in a list view', () => {
     renderHook(() => useAdminNav(), {
-      wrapper: wrap('/admin/third-party-services'),
+      wrapper: wrap('/admin/integrations'),
     })
 
     act(() => {
       pressKey('e')
     })
 
-    expect(latestPath).toBe('/admin/third-party-services')
+    expect(latestPath).toBe('/admin/integrations')
   })
 
   it('does not navigate when "e" is pressed inside an input', () => {
     renderHook(() => useAdminNav(), {
-      wrapper: wrap('/admin/third-party-services/sonarqube'),
+      wrapper: wrap('/admin/integrations/sonarqube'),
     })
 
     const input = document.createElement('input')
@@ -123,12 +123,12 @@ describe('useAdminNav hotkeys', () => {
       pressKey('e', { target: input })
     })
 
-    expect(latestPath).toBe('/admin/third-party-services/sonarqube')
+    expect(latestPath).toBe('/admin/integrations/sonarqube')
   })
 
   it('does not navigate when "e" is pressed inside a textarea', () => {
     renderHook(() => useAdminNav(), {
-      wrapper: wrap('/admin/third-party-services/sonarqube'),
+      wrapper: wrap('/admin/integrations/sonarqube'),
     })
 
     const textarea = document.createElement('textarea')
@@ -139,12 +139,12 @@ describe('useAdminNav hotkeys', () => {
       pressKey('e', { target: textarea })
     })
 
-    expect(latestPath).toBe('/admin/third-party-services/sonarqube')
+    expect(latestPath).toBe('/admin/integrations/sonarqube')
   })
 
   it('does not navigate when "e" is pressed in a contenteditable element', () => {
     renderHook(() => useAdminNav(), {
-      wrapper: wrap('/admin/third-party-services/sonarqube'),
+      wrapper: wrap('/admin/integrations/sonarqube'),
     })
 
     const div = document.createElement('div')
@@ -156,24 +156,24 @@ describe('useAdminNav hotkeys', () => {
       pressKey('e', { target: div })
     })
 
-    expect(latestPath).toBe('/admin/third-party-services/sonarqube')
+    expect(latestPath).toBe('/admin/integrations/sonarqube')
   })
 
   it('skips hotkey when a modifier key is held', () => {
     renderHook(() => useAdminNav(), {
-      wrapper: wrap('/admin/third-party-services/sonarqube'),
+      wrapper: wrap('/admin/integrations/sonarqube'),
     })
 
     act(() => {
       pressKey('e', { metaKey: true })
     })
 
-    expect(latestPath).toBe('/admin/third-party-services/sonarqube')
+    expect(latestPath).toBe('/admin/integrations/sonarqube')
   })
 
   it('skips hotkey when an overlay (Radix data-state="open") is present', () => {
     renderHook(() => useAdminNav(), {
-      wrapper: wrap('/admin/third-party-services/sonarqube'),
+      wrapper: wrap('/admin/integrations/sonarqube'),
     })
 
     const dialog = document.createElement('div')
@@ -185,12 +185,12 @@ describe('useAdminNav hotkeys', () => {
       pressKey('e')
     })
 
-    expect(latestPath).toBe('/admin/third-party-services/sonarqube')
+    expect(latestPath).toBe('/admin/integrations/sonarqube')
   })
 
   it('skips hotkey when the event was already handled', () => {
     renderHook(() => useAdminNav(), {
-      wrapper: wrap('/admin/third-party-services/sonarqube'),
+      wrapper: wrap('/admin/integrations/sonarqube'),
     })
 
     act(() => {
@@ -200,18 +200,18 @@ describe('useAdminNav hotkeys', () => {
       window.removeEventListener('keydown', consumer, { capture: true })
     })
 
-    expect(latestPath).toBe('/admin/third-party-services/sonarqube')
+    expect(latestPath).toBe('/admin/integrations/sonarqube')
   })
 
   it('does not act on Escape from a detail view', () => {
     renderHook(() => useAdminNav(), {
-      wrapper: wrap('/admin/third-party-services/sonarqube'),
+      wrapper: wrap('/admin/integrations/sonarqube'),
     })
 
     act(() => {
       pressKey('Escape')
     })
 
-    expect(latestPath).toBe('/admin/third-party-services/sonarqube')
+    expect(latestPath).toBe('/admin/integrations/sonarqube')
   })
 })
