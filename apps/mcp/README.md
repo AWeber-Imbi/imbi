@@ -36,6 +36,11 @@ Two modes, which can be used together:
   (authorization-code + PKCE, with Dynamic Client Registration). Local
   JWT verification uses the shared `IMBI_AUTH_JWT_SECRET`.
 
+FastMCP's DNS-rebinding Host/Origin guard is opt-in (disabled by default as of
+fastmcp 3.4.4), so requests arriving through a reverse proxy are accepted
+normally. To enable it, set `FASTMCP_HTTP_HOST_ORIGIN_PROTECTION=true` and list
+the public host(s) in `FASTMCP_HTTP_ALLOWED_HOSTS='["your-host"]'`.
+
 ## Requirements
 
 - Python 3.12+

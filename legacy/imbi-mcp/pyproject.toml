@@ -7,7 +7,7 @@ requires-python = ">=3.14"
 license = "BSD-3-Clause"
 authors = [{ name = "Gavin M. Roy", email = "gavinr@aweber.com" }]
 dependencies = [
-  "fastmcp>=3.0.0",
+  "fastmcp>=3.4.4",
   "httpx>=0.28.1",
   "imbi-common[mcp]==2.11.6",
   "pydantic~=2.12",
@@ -61,6 +61,12 @@ reportUnusedFunction = "warning"
 root = "tests"
 reportPrivateUsage = "none"
 reportUnusedFunction = "none"
+# Starlette's TestClient is loosely typed once httpx typing is optional
+# (fastmcp 3.4.x's starlette), so response access reads as Unknown here.
+# Relaxed for tests only; src stays strict.
+reportUnknownMemberType = "none"
+reportUnknownVariableType = "none"
+reportUnknownArgumentType = "none"
 extraPaths = ["src", "."]
 
 [tool.pytest.ini_options]
@@ -121,7 +127,7 @@ flake8-quotes = { inline-quotes = "single" }
 
 [tool.uv]
 exclude-newer = "7 days"
-exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "imbi-plugin-aws" = false, "imbi-plugin-github" = false, "imbi-plugin-logzio" = false, "imbi-plugin-oidc" = false, "imbi-plugin-pagerduty" = false, "imbi-plugin-sentry" = false, "imbi-plugin-sonarqube" = false }
+exclude-newer-package = { "fastmcp" = false, "fastmcp-slim" = false, "clickhouse-connect" = false, "imbi-common" = false, "imbi-plugin-aws" = false, "imbi-plugin-github" = false, "imbi-plugin-logzio" = false, "imbi-plugin-oidc" = false, "imbi-plugin-pagerduty" = false, "imbi-plugin-sentry" = false, "imbi-plugin-sonarqube" = false }
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
