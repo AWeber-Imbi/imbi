@@ -192,7 +192,10 @@ class GitHubPlugin(Plugin):
   `credentials` dict passed to every call. Each field is `secret=True`
   by default (masked in the UI, never echoed back); set `secret=False`
   for non-sensitive identifiers such as an OAuth `client_id` or a GitHub
-  App id so the UI renders them as plain text.
+  App id so the UI renders them as plain text. Each field also accepts
+  `multiline`, which defaults to `False`; set it to `True` for values
+  that span multiple lines (e.g. a PEM private key) so the UI renders a
+  textarea instead of a single-line input.
 - **`capabilities`** must declare at least one `Capability`, and each
   `kind` must be unique within the manifest.
 - **`data_types`** apply to configuration capabilities — see
