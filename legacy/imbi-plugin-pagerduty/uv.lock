@@ -681,7 +681,7 @@ wheels = [
 
 [[package]]
 name = "imbi-common"
-version = "2.11.5"
+version = "2.12.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
@@ -697,9 +697,9 @@ dependencies = [
     { name = "python-slugify" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8a/46/bdf7e04755239b46f003327d7474ca93083c2b083591929f8fb3b15a1ab6/imbi_common-2.11.5.tar.gz", hash = "sha256:09b453fefe9916cfb7292a0e43a2997b6aeec2663478e217841c79d114415582", size = 349523, upload-time = "2026-06-12T18:03:17.891Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3a/67/70076e536ca9c9254f89d52fa4c7242ff3571182222440be474bcdb5bdaa/imbi_common-2.12.1.tar.gz", hash = "sha256:701e8941a49beceb319eec270a9517973e05c837c588086a18dfa79ca5a39600", size = 360810, upload-time = "2026-07-13T16:39:15.795Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/36/cf/e449133065933322bb8c7970f2905e66cb7680d6bd322f76caa816511979/imbi_common-2.11.5-py3-none-any.whl", hash = "sha256:df895c9698bd00ead82dc457cddcfb71bbf12872b04e87420e663f4e16955fba", size = 113174, upload-time = "2026-06-12T18:03:16.341Z" },
+    { url = "https://files.pythonhosted.org/packages/62/18/126ebfdf5e6b21a25344b6762112680c6ba7b43400bfa5471f0f0a1c12f5/imbi_common-2.12.1-py3-none-any.whl", hash = "sha256:785f11ecd5e5892579fd62f0060831111fef82fa337e070aca4dee362b9d71cd", size = 120610, upload-time = "2026-07-13T16:39:14.424Z" },
 ]
 
 [package.optional-dependencies]
@@ -745,7 +745,7 @@ dist = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
-    { name = "imbi-common", extras = ["databases"], specifier = "==2.11.5" },
+    { name = "imbi-common", extras = ["databases"], specifier = "==2.12.1" },
     { name = "pydantic", specifier = ">=2" },
 ]
 
@@ -753,7 +753,7 @@ requires-dist = [
 dev = [
     { name = "basedpyright" },
     { name = "coverage", extras = ["toml"] },
-    { name = "imbi-common", extras = ["server", "databases"], specifier = "==2.11.5" },
+    { name = "imbi-common", extras = ["server", "databases"], specifier = "==2.12.1" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
