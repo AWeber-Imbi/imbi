@@ -98,9 +98,9 @@ async def update_project_from_webhook(
     The webhook ``event`` is not consulted; the SonarQube component
     key arrives via ``external_identifier`` (resolved by the gateway
     from ``IMPLEMENTED_BY.identifier_selector``). Resolves the
-    SonarQube base URL from ``ctx.assignment_options['service_endpoint']``
-    (the gateway stashes the ``ThirdPartyService.api_endpoint`` there
-    before dispatch). Skips silently with a warning when the endpoint
+    SonarQube base URL from ``ctx.integration_options['service_url']``
+    (the Integration's ``service_url`` option value, populated by the
+    host before dispatch). Skips silently with a warning when the URL
     or API token is missing so a misconfiguration does not 5xx the
     webhook. ``action_config`` is a pre-validated :class:`MetricMappings`
     instance -- the host validates the JSON blob before calling.
@@ -120,11 +120,11 @@ async def update_project_from_webhook(
             ctx.project_id,
         )
         return
-    raw_endpoint = ctx.assignment_options.get('service_endpoint')
+    raw_endpoint = ctx.integration_options.get('service_url')
     service_endpoint = str(raw_endpoint) if raw_endpoint else None
     if not service_endpoint:
         LOGGER.warning(
-            'ThirdPartyService has no api_endpoint configured; skipping '
+            'Integration has no service_url configured; skipping '
             'project %s/%s update',
             ctx.org_slug,
             ctx.project_id,

@@ -16,17 +16,14 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27",
-  "imbi-common==2.11.6",
+  "imbi-common==2.12.1",
   "pydantic>=2",
 ]
-
-[project.entry-points."imbi.plugins"]
-sonarqube = "imbi_plugin_sonarqube.plugin:SonarqubePlugin"
 
 [dependency-groups]
 dev = [
   "coverage[toml]",
-  "imbi-common[server,databases]==2.11.6",
+  "imbi-common[server,databases]==2.12.1",
   "pre-commit",
   "pyrefly~=1.0",
   "pytest",

@@ -32,14 +32,15 @@ def _ctx(
     *,
     service_endpoint: str | None = 'https://sonarqube.example.com',
 ) -> plugin_base.PluginContext:
-    assignment_options: dict[str, object] = {'service_slug': 'sonarqube'}
+    integration_options: dict[str, object] = {}
     if service_endpoint is not None:
-        assignment_options['service_endpoint'] = service_endpoint
+        integration_options['service_url'] = service_endpoint
     return plugin_base.PluginContext(
         org_slug='org',
         project_id='proj',
         project_slug='proj',
-        assignment_options=assignment_options,
+        integration_slug='sonarqube',
+        integration_options=integration_options,
     )
 
 
